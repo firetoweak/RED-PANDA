@@ -26,6 +26,7 @@ from helperme.assistant.workspace_versions import StepNotRewindable
 from helperme.channels.web import app as web_app
 from helperme.channels.web.app import create_web_app, report_worker_failures
 from helperme.channels.web.channel import WebChannel
+from helperme.channels.web.directory_picker import DirectoryPickerUnavailable
 from helperme.channels.web.hub import WebEventHub
 from helperme.sandbox.registry import WorkspaceRegistry
 
@@ -586,6 +587,36 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json()["name"], "demo")
         self.assertEqual(len(self.client.get("/api/workspaces").json()), 1)
+
+    def test_directory_selection_only_returns_a_choice_without_registering_workspace(self):
+        selected = Path(self._directory.name)
+        for choice in (selected, None):
+            with self.subTest(choice=choice), patch.object(
+                web_app, "select_directory", return_value=choice
+            ):
+                response = self.client.post("/api/workspaces/select-directory")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.json(),
+                {"directory": None if choice is None else {
+                    "path": str(selected), "name": selected.name,
+                }},
+            )
+            self.assertEqual(self.workspaces.workspaces, ())
+
+    def test_directory_picker_only_converts_known_desktop_unavailability(self):
+        with patch.object(
+            web_app, "select_directory",
+            side_effect=DirectoryPickerUnavailable("当前 Python 未安装 Tcl/Tk"),
+        ):
+            response = self.client.post("/api/workspaces/select-directory")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "当前 Python 未安装 Tcl/Tk"})
+
+        with patch.object(
+            web_app, "select_directory", side_effect=ValueError("broken protocol")
+        ), self.assertRaisesRegex(ValueError, "broken protocol"):
+            self.client.post("/api/workspaces/select-directory")
 
     def test_create_workspace_rejects_missing_directory(self):
         response = self.client.post(

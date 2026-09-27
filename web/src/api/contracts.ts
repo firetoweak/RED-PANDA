@@ -55,6 +55,17 @@ export const workspaceSchema = z
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 
+export const directorySelectionSchema = z
+  .object({
+    directory: z
+      .object({ path: z.string().min(1), name: z.string().min(1) })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export type DirectorySelection = z.infer<typeof directorySelectionSchema>;
+
 export const toolStatusSchema = z.enum([
   "queued",
   "running",

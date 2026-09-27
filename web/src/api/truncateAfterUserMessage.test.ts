@@ -23,6 +23,7 @@ const conversation: ConversationView = {
       thinking: null,
       tools: [],
       occurred_at: "2026-09-15T08:00:01+00:00",
+      rewindable: false,
     },
     {
       kind: "user",
@@ -39,6 +40,7 @@ const conversation: ConversationView = {
       thinking: null,
       tools: [],
       occurred_at: "2026-09-15T08:00:03+00:00",
+      rewindable: false,
     },
   ],
   session: {

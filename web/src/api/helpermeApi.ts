@@ -10,10 +10,12 @@ import {
 import { truncateAfterUserMessage } from "./truncateAfterUserMessage";
 import {
   conversationViewSchema,
+  directorySelectionSchema,
   runtimeStatusSchema,
   sessionSummarySchema,
   workspaceSchema,
   type ConversationView,
+  type DirectorySelection,
   type RuntimeStatus,
   type SessionSummary,
   type Workspace,
@@ -114,6 +116,14 @@ export const helpermeApi = createApi({
       transformResponse: (value: unknown) =>
         workspaceSchema.array().parse(value),
       providesTags: ["Workspaces"],
+    }),
+    selectWorkspaceDirectory: build.mutation<DirectorySelection, void>({
+      query: () => ({ url: "/workspaces/select-directory", method: "POST" }),
+      transformResponse: (value: unknown) => directorySelectionSchema.parse(value),
+      transformErrorResponse: (response) =>
+        response.status === 503
+          ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
+          : response,
     }),
     createWorkspace: build.mutation<
       Workspace,
@@ -345,6 +355,7 @@ export const {
   useCreateSessionMutation,
   useGetRuntimeQuery,
   useCreateWorkspaceMutation,
+  useSelectWorkspaceDirectoryMutation,
   useGetSessionsQuery,
   useGetWorkspacesQuery,
   useGetConversationQuery,

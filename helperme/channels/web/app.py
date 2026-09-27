@@ -25,6 +25,10 @@ from helperme.assistant.runner import SessionNotFoundError
 from helperme.assistant.workspace_versions import StepNotRewindable
 from helperme.bootstrap import bootstrap_assistant
 from helperme.channels.web.channel import WebChannel
+from helperme.channels.web.directory_picker import (
+    DirectoryPickerUnavailable,
+    select_directory,
+)
 from helperme.channels.web.hub import WebEventHub
 from helperme.sandbox.registry import (
     WorkspaceNotFound,
@@ -215,6 +219,12 @@ def create_web_app(
     ):
         return JSONResponse(status_code=400, content={"detail": str(error)})
 
+    @app.exception_handler(DirectoryPickerUnavailable)
+    async def directory_picker_unavailable(
+        _request: Request, error: DirectoryPickerUnavailable
+    ):
+        return JSONResponse(status_code=503, content={"detail": str(error)})
+
     @app.get("/api/events", response_class=EventSourceResponse)
     async def stream_events(request: Request):
         web = _channel(request)
@@ -268,6 +278,16 @@ def create_web_app(
             task_root=Path(body.task_root),
             full_access=body.full_access,
         ).to_dict()
+
+    @app.post("/api/workspaces/select-directory")
+    async def pick_workspace_directory():
+        selected = await select_directory()
+        return {
+            "directory": None if selected is None else {
+                "path": str(selected),
+                "name": selected.name or str(selected),
+            }
+        }
 
     @app.post("/api/sessions/{session_id}/select")
     async def select_session(

@@ -57,6 +57,8 @@ python console_chat.py
 
 普通 Web 入口是 `python web_chat.py`，浏览器打开 `http://127.0.0.1:8765`。后端同时提供 API 和已构建的页面。`--port` 可以换端口。
 
+Web 新建工作区时可点击「选择文件夹」，选完自动填入目录；名称未填写时使用文件夹名。目录选择窗口打开在运行 HelperMe 的本机桌面，需要 Python 的 Tcl/Tk 组件；部分 Linux 发行版需要另行安装该组件。也可以直接填写路径。
+
 数据默认放在 `~/.helperme`。设置 `HELPERME_HOME` 会整体改写这个位置，配置和全部会话数据一起搬走。同一台机器要并行跑多个实例时，每个实例必须有自己的数据根和端口，否则会共用同一份 Journal；用 HelperMe 开发 HelperMe 的完整做法见[自举开发](docs/自举开发.md)。
 
 前端需要 Node.js。第一次使用或改过 `web/` 之后，先构建再启动：
