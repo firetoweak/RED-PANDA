@@ -613,7 +613,12 @@ class McpClientManager:
     ) -> McpServerRuntimeState:
         connection = await self._ensure_connection(record, force_refresh=True)
         try:
-            return self.runtime_state(record.id)
+            tools, _ = await self._paginate_tools(connection.session)
+            # 清单只属于本次测试返回体，不成为连接状态的第二份工具缓存。
+            return replace(
+                self.runtime_state(record.id),
+                tools=tuple(tool.model_dump(mode="json", exclude_none=True) for tool in tools),
+            )
         finally:
             await self._release_connection(connection)
             if not record.enabled:

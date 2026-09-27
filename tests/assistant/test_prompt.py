@@ -14,7 +14,7 @@ from helperme.assistant.context.prompt import (
     SUBAGENT_PROMPT,
 )
 from helperme.assistant.subagent.subagent import (
-    READONLY_TOOL_NAMES,
+    CHILD_BUILTIN_TOOL_NAMES,
     REPORT_FACT,
     TASK_FACT,
 )
@@ -228,10 +228,10 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
         mentioned = _ascii_tokens(SUBAGENT_PROMPT) & self._tool_names("vocabulary")
         self.assertEqual(
-            mentioned - READONLY_TOOL_NAMES,
+            mentioned - CHILD_BUILTIN_TOOL_NAMES - {LOAD_TOOLSET},
             set(),
             "子 Agent prompt 提到了它调不到的工具: "
-            f"{sorted(mentioned - READONLY_TOOL_NAMES)}",
+            f"{sorted(mentioned - CHILD_BUILTIN_TOOL_NAMES - {LOAD_TOOLSET})}",
         )
 
 

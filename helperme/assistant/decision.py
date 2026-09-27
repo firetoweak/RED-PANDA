@@ -230,10 +230,7 @@ class JournalBackedLlmDecisionMaker:
     ) -> tuple[list[dict[str, object]], frozenset[str]]:
         if self._compact is not None and self._compact.is_reader:
             return deepcopy(self._compact.schemas()), frozenset()
-        schemas = self._surface.schemas(
-            state.session_id,
-            state,
-        )
+        schemas = self._surface.base_schemas()
         schemas = [*schemas, *self._skill_tools.schemas()]
         schemas = [*schemas, *self._cli_tools.schemas()]
         schemas = [
@@ -262,6 +259,7 @@ class JournalBackedLlmDecisionMaker:
                     schema for schema in schemas if _schema_name(schema) in allowed
                 ]
                 offered_control_names = offered_control_names & allowed
+        schemas = [*schemas, *self._surface.toolset_schemas(state.session_id, state)]
         return deepcopy(sorted(schemas, key=_schema_name)), offered_control_names
 
     def _prompt_for(self, frame: DecisionFrame) -> str:
@@ -274,7 +272,7 @@ class JournalBackedLlmDecisionMaker:
         if self._subagents is not None:
             override = self._subagents.system_prompt(session_id)
             if override is not None:
-                # 子 Session 不加载 Toolset、不碰管理面，两份目录都不适用。
+                # 子使用独立提示词；能力目录仍由自己的 Journal 提供。
                 return override
         return self._system_prompt
 

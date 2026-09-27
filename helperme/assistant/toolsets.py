@@ -329,7 +329,15 @@ class ToolSurface:
         session_id: str,
         decision_state: DecisionState | None = None,
     ) -> list[dict[str, object]]:
-        schemas = list(self._base_schemas)
+        return [*self.base_schemas(), *self.toolset_schemas(session_id, decision_state)]
+
+    def base_schemas(self) -> list[dict[str, object]]:
+        return list(self._base_schemas)
+
+    def toolset_schemas(
+        self, session_id: str, decision_state: DecisionState | None = None,
+    ) -> list[dict[str, object]]:
+        schemas = []
         if self._catalogs.get(session_id, ()):
             schemas.append(LOAD_TOOLSET_SCHEMA)
         for loaded in self._visible_loaded(session_id, decision_state).values():

@@ -106,6 +106,7 @@ class McpConsoleAdapter:
             "transport_config",
             "secrets",
             "enabled",
+            "read_only",
         }
         if unknown:
             raise McpCommandError(
@@ -116,6 +117,7 @@ class McpConsoleAdapter:
         description = payload.get("description", "")
         transport_config = payload.get("transport_config", {})
         enabled = payload.get("enabled", False)
+        read_only = payload.get("read_only", False)
         if type(server_id) is not str or type(display_name) is not str:
             raise McpCommandError("id/display_name 必须是 string")
         if type(description) is not str:
@@ -124,6 +126,8 @@ class McpConsoleAdapter:
             raise McpCommandError("transport_config 必须是 JSON object")
         if type(enabled) is not bool:
             raise McpCommandError("enabled 必须是 bool")
+        if type(read_only) is not bool:
+            raise McpCommandError("read_only 必须是 bool")
         record = await self._service.upsert_server(
             server_id=server_id,
             display_name=display_name,
@@ -132,6 +136,7 @@ class McpConsoleAdapter:
             transport_config=transport_config,
             secrets=payload.get("secrets"),
             enabled=enabled,
+            read_only=read_only,
         )
         return (
             f"已保存 MCP Server `{record.id}` "

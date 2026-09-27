@@ -15,6 +15,7 @@ from helperme.tools.builtin.file_read import create_file_read_specs
 from helperme.tools.builtin.file_write import create_file_write_specs
 from helperme.tools.builtin.get_changes import create_get_changes_specs
 from helperme.tools.builtin.workspace_restore import create_workspace_restore_spec
+from helperme.tools.builtin.subagent_workspace import create_subagent_workspace_specs
 from helperme.tools.spec import ToolSpec
 
 

@@ -10,7 +10,7 @@ from helperme.assistant.decision import JournalBackedLlmDecisionMaker
 from helperme.assistant.delivery import deliver_binding
 from helperme.assistant.subagent.subagent import (
     DELEGATE,
-    READONLY_TOOL_NAMES,
+    CHILD_BUILTIN_TOOL_NAMES,
     RECLAIM,
     REPORT,
     REPORT_FACT,
@@ -85,7 +85,10 @@ class _RecordingLlm:
 
 
 class _NoToolsets:
-    def schemas(self, _session_id, _state):
+    def base_schemas(self):
+        return []
+
+    def toolset_schemas(self, _session_id, _state):
         return []
 
     def catalog_instruction(self, _session_id, _state):
@@ -721,7 +724,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             await scheduler.join()
             child_session_id = await self._child_session_id(runtime)
 
-            self.assertNotIn(DELEGATE, READONLY_TOOL_NAMES)
+            self.assertNotIn(DELEGATE, CHILD_BUILTIN_TOOL_NAMES)
             self.assertEqual(
                 [
                     schema["function"]["name"]
@@ -729,7 +732,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
                 ],
                 [REPORT],
             )
-            self.assertNotIn(RECLAIM, READONLY_TOOL_NAMES)
+            self.assertNotIn(RECLAIM, CHILD_BUILTIN_TOOL_NAMES)
             refused = await host._delegate(
                 _attempt_context(child_session_id),
                 {"task": "再委派一层"},
@@ -785,11 +788,11 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(restarted.is_subagent(child_session_id))
             pending = await restarted.rehydrate(self.PARENT)
 
-            # 认回来是安全边界：不认回，子 Session 就没有只读限制了。
+            # 认回来是安全边界：不认回，子 Session 就没有能力限制了。
             self.assertTrue(restarted.is_subagent(child_session_id))
             self.assertEqual(
                 restarted.tool_names(child_session_id),
-                READONLY_TOOL_NAMES,
+                CHILD_BUILTIN_TOOL_NAMES,
             )
             # 已经回收过，不需要再推它。
             self.assertEqual(pending, ())
@@ -817,7 +820,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             await restarted_scheduler.close()
 
     async def test_child_recognises_itself_without_going_through_its_parent(self):
-        """直接恢复一个子 Session 时，只读边界不能因为没经过父而丢失。"""
+        """直接恢复一个子 Session 时，能力边界不能因为没经过父而丢失。"""
 
         host, _model, runtime, scheduler = self._build(
             parent_scripts=(
@@ -1290,17 +1293,37 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
-    def test_readonly_names_exclude_every_writing_tool(self):
+    async def test_external_schemas_bypass_builtin_name_filter(self):
+        from helperme.assistant.toolsets import ToolSurface
+        from tests.assistant.test_toolsets import FakeEchoProvider
+
+        surface = ToolSurface(providers=(FakeEchoProvider(),), base_schemas=[
+            {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
+            for name in ("write_file", "execute_command")
+        ])
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        surface.attach(runtime)
+        surface.apply_catalog("child", surface.registry_descriptors())
+        await surface.load("child", "demo")
+        host = SubAgentHost()
+        host._parents["child"] = "parent"
+        maker = SubAgentPendingInstructionTest._decision_maker(runtime, None, host)
+        maker._surface = surface
+        schemas, _ = maker.schemas_for(SimpleNamespace(session_id="child"), ())
+        names = {schema["function"]["name"] for schema in schemas}
+        self.assertIn("demo_ping", names)
+        self.assertIn("load_toolset", names)
+        self.assertIn("write_file", names)
+        self.assertNotIn("execute_command", names)
+
+    def test_child_builtin_names_exclude_execution_and_recursion(self):
         for name in (
-            "write_file",
-            "apply_patch",
-            "replace_all",
             "execute_command",
             DELEGATE,
             RECLAIM,
         ):
             with self.subTest(tool=name):
-                self.assertNotIn(name, READONLY_TOOL_NAMES)
+                self.assertNotIn(name, CHILD_BUILTIN_TOOL_NAMES)
 
     def test_unknown_session_has_no_policy(self):
         host = SubAgentHost()

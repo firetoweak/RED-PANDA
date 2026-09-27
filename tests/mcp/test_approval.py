@@ -295,6 +295,7 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
             "server_id": "demo",
             "display_name": "Demo",
             "description": "demo server",
+            "read_only": False,
             "transport": "stdio",
             "transport_config": {
                 "command": "python",
@@ -330,6 +331,7 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
             transport="stdio",
             transport_config=self.payload["transport_config"],
             enabled=False,
+            read_only=False,
         )
         self.service.test_and_enable.assert_awaited_once_with(
             "demo",

@@ -210,7 +210,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
                 await registry.list_servers()
 
             for field in (
-                "enabled", "last_status", "last_checked_at", "last_error_summary"
+                "enabled", "read_only", "last_status", "last_checked_at", "last_error_summary"
             ):
                 with self.subTest(missing=field):
                     incomplete = dict(record)
@@ -805,6 +805,32 @@ class McpAdapterTest(unittest.TestCase):
 
 
 class McpProviderTest(unittest.IsolatedAsyncioTestCase):
+    async def test_read_only_declaration_survives_registry_writes_and_filters_directory(self):
+        await self.service.upsert_server(server_id="reader", display_name="Reader", transport="stdio",
+                                         transport_config={"command": "python"}, read_only=True)
+        await self.registry.set_enabled("reader", True)
+        await self.registry.mark_tested("reader", RuntimeAvailability.AVAILABLE)
+        await self.service.upsert_server(server_id="writer", display_name="Writer", transport="stdio",
+                                         transport_config={"command": "python"}, enabled=True)
+        descriptors = self.service.toolset_provider.descriptors(read_only_only=True)
+        self.assertEqual([item.id for item in descriptors], ["mcp:reader"])
+        record = await self.registry.get("reader")
+        self.assertTrue(record.read_only)
+        payload = record.to_dict()
+        payload["read_only"] = 1
+        with self.assertRaisesRegex(ValueError, "read_only"):
+            McpServerRecord.from_dict(payload)
+
+    async def test_connection_test_presents_tools_without_persisting_them(self):
+        self.sessions["reader"] = FakeMcpSession(tools=[_tool("search")])
+        await self.service.upsert_server(server_id="reader", display_name="Reader", transport="stdio",
+                                         transport_config={"command": "python"}, read_only=True)
+        result = await self.service.test_and_enable("reader")
+        self.assertTrue(result.succeeded)
+        self.assertEqual(result.runtime.tools[0]["name"], "search")
+        self.assertEqual(self.manager.runtime_state("reader").tools, ())
+        self.assertNotIn("tools", (await self.registry.get("reader")).to_dict())
+
     async def asyncSetUp(self):
         self._tmp = TemporaryDirectory()
         workspace = HelperMeHome(Path(self._tmp.name) / ".helperme")

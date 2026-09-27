@@ -483,6 +483,21 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(project_reclaimed(unrelated)), 0)
         self.assertTrue(self.host.failures.empty())
 
+    async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
+        from helperme.assistant.subagent.workspace import child_layout
+
+        await self.host.create("parent", self.workspace.workspace_id)
+        await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")
+        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
+        children = project_delegations(events)
+        roots = [child_layout(self.home, "parent", child)[0] for child in children]
+        self.assertTrue(all(root.is_dir() for root in roots))
+        await asyncio.wait_for(self.host.archive("parent"), 30)
+        self.assertTrue(self.host.is_archived("parent"))
+        self.assertTrue(all(not root.exists() for root in roots))
+        self.assertTrue(all(child not in self.host.workers for child in children))
+
     async def test_saved_return_is_redelivered_after_host_restart(self):
         route = self.host._route
 

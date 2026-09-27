@@ -36,14 +36,82 @@ class WorkspaceVersions:
     """独立 Git 对象库；只操作任务根，永不使用用户的索引或引用。"""
 
     def __init__(self, root: Path, storage: Path, *,
-                 excluded_roots: tuple[Path, ...] = ()) -> None:
+                 excluded_roots: tuple[Path, ...] = (), ref: str = "HEAD",
+                 ignore_root: Path | None = None) -> None:
         self.root = root.resolve()
         self.storage = storage.resolve()
         self.repository = self.storage / "repository.git"
+        self.ref = ref
+        self.ignore_root = self.root if ignore_root is None else ignore_root.resolve()
         self.excluded_roots = (self.storage, *(path.resolve() for path in excluded_roots))
 
     async def record(self) -> str:
         return await self._run(self._record)
+
+    async def fork(self, root: Path, ref: str, *, conflict_from: tuple[str, str] | None = None) -> str:
+        """冻结一次基准，原子发布工作树；重试不重置已经开始的子。"""
+        return await self._run(lambda index: self._fork(index, root, ref, conflict_from))
+
+    async def compare(self, base: str, version: str, paths: tuple[str, ...] = ()) -> dict:
+        def operation(index):
+            files = self._git(index, "diff", "--no-renames", "--name-status", "-z", base, version, "--")
+            fields = files.decode("utf-8").split("\0")[:-1]
+            changes = [dict(status=fields[i], path=fields[i + 1]) for i in range(0, len(fields), 2)]
+            result = {"files": changes}
+            if paths:
+                patch = self._git(index, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv",
+                                  "--no-renames", base, version, "--", *paths).decode("utf-8", errors="replace")
+                result.update(diff=patch[:120_000], truncated=len(patch) > 120_000)
+                result["limitations"] = ["binary 文件只提供变化摘要，不含正文"] if "Binary files " in patch else []
+            return result
+        return await self._run(operation)
+
+    async def merge(self, base: str, version: str) -> tuple[str, ...]:
+        def operation(index):
+            current = self._record(index)
+            tree, conflicts = self._merge_tree(index, base, current, version)
+            if not conflicts:
+                self._git(index, "read-tree", "--reset", "-u", tree)
+            return conflicts
+        return await self._run(operation)
+
+    def _merge_tree(self, index, base, current, version):
+        output = self._git(index, "merge-tree", "--write-tree", "--name-only", "-z",
+                           f"--merge-base={base}", current, version, accepted=(0, 1))
+        fields = output.split(b"\0")
+        tree = fields[0].decode().strip()
+        conflicts = []
+        for path in fields[1:]:
+            if not path:
+                break
+            conflicts.append(path.decode("utf-8"))
+        return tree, tuple(conflicts)
+
+    def _fork(self, index, root, ref, conflict_from):
+        base_ref = ref + "-base"
+        base = self._git(index, "rev-parse", "--verify", "--quiet", base_ref,
+                         accepted=(0, 1)).decode().strip()
+        if not base:
+            base = self._record(index)
+            self._git(index, "update-ref", base_ref, base, "0" * 40)
+        root = root.resolve()
+        child = WorkspaceVersions(root, self.storage, ref=ref, ignore_root=self.ignore_root)
+        if not root.exists():
+            root.parent.mkdir(parents=True, exist_ok=True)
+            with TemporaryDirectory(dir=root.parent) as temporary:
+                published = Path(temporary) / "tree"
+                published.mkdir()
+                staging = WorkspaceVersions(published, self.storage, ref=ref,
+                                            ignore_root=self.ignore_root)
+                tree = base
+                if conflict_from is not None:
+                    tree, _ = self._merge_tree(index, conflict_from[0], base, conflict_from[1])
+                staging._git(index, "read-tree", tree)
+                staging._git(index, "checkout-index", "--all", "--force")
+                os.rename(published, root)
+        if child._head(index) is None:
+            self._git(index, "update-ref", ref, base, "0" * 40)
+        return base
 
     async def restore(self, version: str) -> WorkspaceRestore:
         if re.fullmatch(r"[0-9a-f]{40}", version) is None:
@@ -94,7 +162,7 @@ class WorkspaceVersions:
             "GIT_AUTHOR_NAME": "HelperMe", "GIT_AUTHOR_EMAIL": "helperme@local",
             "GIT_COMMITTER_NAME": "HelperMe", "GIT_COMMITTER_EMAIL": "helperme@local",
         })
-        command = ["git"]
+        command = ["git", "-c", "core.longpaths=true"]
         if index is not None:
             env["GIT_INDEX_FILE"] = str(index)
             command += [
@@ -102,7 +170,7 @@ class WorkspaceVersions:
                 "-c", "core.bare=false", "-c", "core.autocrlf=false",
                 "-c", "core.safecrlf=false", "-c", "core.quotePath=false",
                 "-c", "core.symlinks=true",
-                "-c", f"core.excludesFile={self.root / '.git' / 'info' / 'exclude'}",
+                "-c", f"core.excludesFile={self.ignore_root / '.git' / 'info' / 'exclude'}",
             ]
         result = subprocess.run(
             [*command, *args], input=data, stdout=subprocess.PIPE,
@@ -122,7 +190,7 @@ class WorkspaceVersions:
         return result.stdout
 
     def _head(self, index: Path) -> str | None:
-        value = self._git(index, "rev-parse", "--verify", "--quiet", "HEAD", accepted=(0, 1))
+        value = self._git(index, "rev-parse", "--verify", "--quiet", self.ref, accepted=(0, 1))
         return value.decode().strip() or None
 
     def _walk(self, index: Path) -> list[bytes]:
@@ -199,14 +267,14 @@ class WorkspaceVersions:
         parent = [] if previous is None else ["-p", previous]
         version = self._git(index, "commit-tree", tree, *parent,
                             data=b"Workspace snapshot\n").decode().strip()
-        self._git(index, "update-ref", "HEAD", version, previous or "0" * 40)
+        self._git(index, "update-ref", self.ref, version, previous or "0" * 40)
         return version
 
     def _restore(self, index: Path, version: str) -> WorkspaceRestore:
         head = self._head(index)
         if head is None:
             raise UnknownWorkspaceVersion(version)
-        history = self._git(index, "rev-list", "HEAD").decode().splitlines()
+        history = self._git(index, "rev-list", self.ref).decode().splitlines()
         if version not in history:
             raise UnknownWorkspaceVersion(version)
         before = self._record(index)

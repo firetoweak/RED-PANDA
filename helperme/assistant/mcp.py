@@ -19,9 +19,10 @@ from helperme.mcp.adapter import parse_toolset_id
 class McpToolsetAdapter:
     """Translate the MCP catalog to the Assistant Toolset port."""
 
-    def __init__(self, mcp, attachments: AttachmentStore) -> None:
+    def __init__(self, mcp, attachments: AttachmentStore, *, read_only_only: bool = False) -> None:
         self._provider = mcp.toolset_provider
         self._attachments = attachments
+        self._read_only_only = read_only_only
 
     def descriptors(self) -> tuple[ToolsetDescriptor, ...]:
         return tuple(
@@ -30,7 +31,7 @@ class McpToolsetAdapter:
                 item.description,
                 item.revision,
             )
-            for item in self._provider.descriptors()
+            for item in self._provider.descriptors(read_only_only=self._read_only_only)
         )
 
     def handles(self, toolset_id: str) -> bool:

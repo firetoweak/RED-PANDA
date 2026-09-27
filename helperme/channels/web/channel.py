@@ -312,7 +312,7 @@ class WebChannel:
         self._require_connection(connection_id)
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
-        self._sessions.archive(session_id)
+        await self._sessions.archive(session_id)
         return {}
 
     async def set_title(self, connection_id: str, session_id: str, title: str):

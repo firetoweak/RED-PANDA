@@ -43,11 +43,12 @@ class CapabilityCatalogSnapshot:
 class CapabilityCatalog:
     """Commit Registry observations, then apply only the committed Session fact."""
 
-    def __init__(self, surface, skills, clis, management) -> None:
+    def __init__(self, surface, skills, clis, management, *, restricted: bool = False) -> None:
         self._surface = surface
         self._skills = skills
         self._clis = clis
         self._management = management
+        self._restricted = restricted
 
     async def sync(self, runtime, session_id: str) -> CapabilityCatalogSnapshot:
         events = await runtime.snapshot(session_id)
@@ -85,8 +86,8 @@ class CapabilityCatalog:
                 key=lambda item: item["id"],
             ),
             "skills": self._skills.registry_catalog(),
-            "clis": self._clis.registry_catalog(),
-            "management": self._management.catalog_instruction(session_id),
+            "clis": [] if self._restricted else self._clis.registry_catalog(),
+            "management": "本会话不提供管理操作。" if self._restricted else self._management.catalog_instruction(session_id),
         }
         return {"revision": _catalog_revision(content), **content}
 

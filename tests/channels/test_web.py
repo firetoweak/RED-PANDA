@@ -127,7 +127,7 @@ class _Sessions:
     def session_titles(self):
         return {"session-old": "改过的标题"}
 
-    def archive(self, session_id):
+    async def archive(self, session_id):
         self.calls.append(("archive", session_id))
 
     def set_title(self, session_id, title):

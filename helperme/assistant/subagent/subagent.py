@@ -53,6 +53,7 @@ class DelegateIntent:
     parent_session_id: str
     child_session_id: str
     task: str
+    resolve_conflicts_of: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,7 @@ class SubAgentTask:
     parent_session_id: str
     delegate_command_id: str
     task: str
+    resolve_conflicts_of: str | None = None
 
 
 def child_session_id(parent_session_id: str, command_id: str) -> str:
@@ -78,6 +80,7 @@ def task_fact_arguments(intent: DelegateIntent) -> dict[str, object]:
             "task": intent.task,
             "parent_session_id": intent.parent_session_id,
             "delegate_command_id": intent.command_id,
+            "resolve_conflicts_of": intent.resolve_conflicts_of,
         },
         "delivery_id": f"{intent.command_id}:task",
         "source": FACT_SOURCE,
@@ -108,6 +111,7 @@ def task_from_arguments(
         "task",
         "parent_session_id",
         "delegate_command_id",
+        "resolve_conflicts_of",
     }:
         raise ValueError("subagent 任务事实 data 字段不匹配")
     task = data["task"]
@@ -123,7 +127,10 @@ def task_from_arguments(
         raise ValueError("subagent task 的 child identity 与 delegate Command 不一致")
     if arguments["delivery_id"] != f"{command_id}:task":
         raise ValueError("subagent task delivery identity 无效")
-    return SubAgentTask(child_id, parent_session_id, command_id, task)
+    resolve = data["resolve_conflicts_of"]
+    if resolve is not None and (type(resolve) is not str or not resolve):
+        raise ValueError("resolve_conflicts_of 必须是非空 string|null")
+    return SubAgentTask(child_id, parent_session_id, command_id, task, resolve)
 
 
 def return_data(
@@ -252,7 +259,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
 SubAgentActivitySink = Callable[[str, bool], None]
 
 
-READONLY_TOOL_NAMES = frozenset(
+CHILD_BUILTIN_TOOL_NAMES = frozenset(
     {
         "glob",
         "grep",
@@ -261,10 +268,14 @@ READONLY_TOOL_NAMES = frozenset(
         "read_artifact",
         "load_skill",
         "read_skill_resource",
+        "write_file",
+        "apply_patch",
+        "replace_all",
+        "restore_workspace",
         REPORT,
     }
 )
-"""子 Session 能看见的全部工具。
+"""子 Session 能看见的内建工具；外部工具从只读 Server 目录渐进加载。
 
 显式列举而不是排除写工具：新增任何工具默认进不来，要进必须有人明确加。
 `execute_command` 永远不在其中——一条命令是否只读无法静态判断。`DELEGATE`
@@ -277,9 +288,10 @@ DELEGATE_SCHEMA: dict[str, object] = {
     "function": {
         "name": DELEGATE,
         "description": (
-            "把一件可独立完成的只读调查任务委派给子 Agent。"
+            "把一件可独立完成的任务委派给子 Agent。"
             "子 Agent 有自己的上下文，过程不会占用当前对话；"
-            "它只能读取，不能修改工作区或执行命令。"
+            "它可在自己的隔离工作树修改文件，不能执行命令。"
+            "成果交回后用 compare_subagent 验收，merge_subagent 经授权合入用户工作区。"
             "本次调用只返回“已创建”，结论稍后作为一条事实送回。"
             "多件互不依赖的任务可以在同一次决策里各发一次 delegate，"
             "子 Agent 之间并行推进。"
@@ -298,6 +310,10 @@ DELEGATE_SCHEMA: dict[str, object] = {
                         "交给子 Agent 的完整任务描述。它看不到当前对话，"
                         "所需背景必须写在这里。"
                     ),
+                },
+                "resolve_conflicts_of": {
+                    "type": ["string", "null"],
+                    "description": "可选：合入冲突的原 delegate 调用 id，新子从带冲突标记的工作树开工。",
                 },
             },
             "required": ["task"],
@@ -381,6 +397,7 @@ def project_delegate_intents(
                         event.session_id,
                         child_session_id(event.session_id, command.command_id),
                         task.strip(),
+                        arguments.get("resolve_conflicts_of"),
                     )
                 )
     return tuple(intents)
@@ -457,6 +474,7 @@ def project_task(events: Sequence[Event]) -> SubAgentTask | None:
         "task",
         "parent_session_id",
         "delegate_command_id",
+        "resolve_conflicts_of",
     }:
         raise ValueError("subagent 任务事实 data 字段不匹配")
     task = data["task"]
@@ -478,11 +496,15 @@ def project_task(events: Sequence[Event]) -> SubAgentTask | None:
         or delivery.delivery_id != f"{command_id}:task"
     ):
         raise ValueError("subagent task delivery identity 无效")
+    resolve = data["resolve_conflicts_of"]
+    if resolve is not None and (type(resolve) is not str or not resolve):
+        raise ValueError("resolve_conflicts_of 必须是非空 string|null")
     return SubAgentTask(
         event.session_id,
         parent_session_id,
         command_id,
         task,
+        resolve,
     )
 
 
@@ -606,7 +628,7 @@ class SubAgentHost:
     def tool_names(self, session_id: str) -> frozenset[str] | None:
         """本 Session 允许出现的工具名；None 表示不设限。"""
 
-        return READONLY_TOOL_NAMES if self.is_subagent(session_id) else None
+        return CHILD_BUILTIN_TOOL_NAMES if self.is_subagent(session_id) else None
 
     def system_prompt(self, session_id: str) -> str | None:
         return SUBAGENT_PROMPT if self.is_subagent(session_id) else None
@@ -665,7 +687,7 @@ class SubAgentHost:
         """重启后认回父子关系，并唤醒还没回收的子 Session。
 
         `_parents` 是进程内的可丢弃缓存。不重建它，重启后的子 Session 会
-        失去只读边界，未回收的委派也再没有人推进。恢复的可能是父，也可能
+        失去能力边界，未回收的委派也再没有人推进。恢复的可能是父，也可能
         直接就是某个子，两个方向都要认得出来。
         """
 
@@ -888,7 +910,19 @@ class SubAgentHost:
             context.session_id,
             child_session_id(context.session_id, context.command_id),
             task.strip(),
+            arguments.get("resolve_conflicts_of"),
         )
+        if intent.resolve_conflicts_of is not None:
+            events = await self._require_runtime().snapshot(context.session_id)
+            source = next((item for item in project_delegate_intents(events)
+                           if item.command_id == intent.resolve_conflicts_of), None)
+            if source is None or source.child_session_id not in project_reclaimed(events):
+                return {"ok": False, "code": "UNKNOWN_CONFLICT_SOURCE", "data": {},
+                        "error": "解冲突只能引用当前会话已经交回的委派。"}
+            available = await self._transport("child_workspace_version", source.child_session_id,
+                                              {"parent_session_id": context.session_id})
+            if not available["ok"]:
+                return available
         await self._transport(
             "create_child",
             intent.child_session_id,

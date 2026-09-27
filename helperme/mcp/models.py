@@ -114,6 +114,7 @@ class McpServerRecord:
     transport: TransportKind
     transport_config: TransportConfig
     enabled: bool = False
+    read_only: bool = False
     revision: int = 1
     created_at: datetime = field(default_factory=utc_now)
     updated_at: datetime = field(default_factory=utc_now)
@@ -131,6 +132,8 @@ class McpServerRecord:
             raise TypeError("description 必须是 string")
         if type(self.enabled) is not bool:
             raise TypeError("enabled 必须是 bool")
+        if type(self.read_only) is not bool:
+            raise TypeError("read_only 必须是 bool")
         if type(self.revision) is not int or self.revision < 1:
             raise ValueError("revision 必须大于 0")
         for label, value in (
@@ -194,6 +197,7 @@ class McpServerRecord:
             "transport": self.transport.value,
             "transport_config": transport_config,
             "enabled": self.enabled,
+            "read_only": self.read_only,
             "revision": self.revision,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
@@ -217,6 +221,7 @@ class McpServerRecord:
                 "transport",
                 "transport_config",
                 "enabled",
+                "read_only",
                 "revision",
                 "created_at",
                 "updated_at",
@@ -264,9 +269,12 @@ class McpServerRecord:
                 timeout_seconds=float(timeout),
             )
         enabled = payload["enabled"]
+        read_only = payload["read_only"]
         revision = payload["revision"]
         if type(enabled) is not bool:
             raise ValueError("enabled 必须是 bool")
+        if type(read_only) is not bool:
+            raise ValueError("read_only 必须是 bool")
         if type(revision) is not int:
             raise ValueError("revision 必须是 int")
         return cls(
@@ -276,6 +284,7 @@ class McpServerRecord:
             transport=transport,
             transport_config=transport_config,
             enabled=enabled,
+            read_only=read_only,
             revision=revision,
             created_at=_parse_datetime(payload["created_at"]),
             updated_at=_parse_datetime(payload["updated_at"]),
@@ -342,6 +351,7 @@ class McpServerRuntimeState:
     capabilities: dict[str, Any] = field(default_factory=dict)
     last_error_summary: str | None = None
     last_checked_at: datetime | None = None
+    tools: tuple[dict[str, Any], ...] = ()
 
     def mark_available(
         self,
@@ -358,6 +368,7 @@ class McpServerRuntimeState:
         self.last_checked_at = utc_now()
 
     def mark_unavailable(self, error_summary: str) -> None:
+        self.tools = ()
         self.status = RuntimeAvailability.UNAVAILABLE
         self.negotiated_version = None
         self.capabilities = {}
@@ -366,6 +377,7 @@ class McpServerRuntimeState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "tools": list(self.tools),
             "status": self.status.value,
             "negotiated_version": self.negotiated_version,
             "capabilities": dict(self.capabilities),

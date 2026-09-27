@@ -44,9 +44,10 @@ class McpToolsetProvider:
         self._registry = registry
         self._client_manager = client_manager
 
-    def descriptors(self) -> tuple[ToolsetDescriptor, ...]:
+    def descriptors(self, *, read_only_only: bool = False) -> tuple[ToolsetDescriptor, ...]:
         records = tuple(
-            record for record in self._registry.snapshot() if record.enabled
+            record for record in self._registry.snapshot()
+            if record.enabled and (not read_only_only or record.read_only)
         )
         descriptors: list[ToolsetDescriptor] = []
         for record in records:

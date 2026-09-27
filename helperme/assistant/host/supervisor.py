@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
 import os
+import shutil
 from datetime import datetime, timezone
 
 from helperme.automation.once import (
@@ -33,6 +34,8 @@ from helperme.assistant.host.llm_port import complete_llm_chat
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.sessions import session_view
 from helperme.assistant.subagent.subagent import (
+    RETURN_FACT,
+    project_delegate_intents,
     persist_return,
     project_pending,
     project_task,
@@ -40,10 +43,12 @@ from helperme.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
+from helperme.assistant.subagent.workspace import child_layout, workspace_versions
+from helperme.assistant.workspace_versions import project_workspace_versions
 from helperme.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from helperme.assistant.host.spawn import start_worker
 from helperme.assistant.host.worker import worker_main
-from helperme.runtime import SqliteJournal, replay
+from helperme.runtime import SqliteJournal, replay, DomainFactCommitted
 from helperme.sandbox.local.windows_job import WindowsJob
 from helperme.sandbox.registry import WorkspaceRegistry
 
@@ -200,6 +205,22 @@ class HostSupervisor:
                 expected_task.parent_session_id
             )
             async with self.locks.setdefault(session_id, asyncio.Lock()):
+                parent_workspace = self.workspaces.get(child_workspace_id)
+                root, ref = child_layout(self.home, expected_task.parent_session_id, session_id)
+                conflict_from = None
+                if expected_task.resolve_conflicts_of is not None:
+                    parent_events = await SqliteJournal(self.store.require(expected_task.parent_session_id)).snapshot(expected_task.parent_session_id)
+                    source = next((item for item in project_delegate_intents(parent_events)
+                                   if item.command_id == expected_task.resolve_conflicts_of), None)
+                    if source is None:
+                        raise ValueError("conflict source does not belong to parent")
+                    source_version = await self._route("child_workspace_version", source.child_session_id,
+                                                       {"parent_session_id": expected_task.parent_session_id})
+                    if not source_version["ok"]:
+                        raise ValueError("conflict source has no completed workspace version")
+                    _, source_ref = child_layout(self.home, expected_task.parent_session_id, source.child_session_id)
+                    conflict_from = (source_ref + "-base", source_version["version"])
+                await workspace_versions(self.home, parent_workspace).fork(root, ref, conflict_from=conflict_from)
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
@@ -224,6 +245,18 @@ class HostSupervisor:
             )
             self._track(session_id, activation)
             return None
+        if operation == "child_workspace_version":
+            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+            task = project_task(events)
+            if task is None or task.parent_session_id != arguments["parent_session_id"]:
+                raise ValueError("child workspace owner does not match delegate")
+            if not any(isinstance(event.payload, DomainFactCommitted)
+                       and event.payload.fact_type == RETURN_FACT for event in events):
+                return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
+            versions = project_workspace_versions(events)
+            if not versions or versions[-1].version is None:
+                return {"ok": False, "code": "CHILD_VERSION_UNAVAILABLE", "error": "子会话没有成功的最终版本记录。"}
+            return {"ok": True, "version": versions[-1].version}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
             return None
@@ -615,8 +648,26 @@ class HostSupervisor:
     def session_titles(self):
         return self._titles.items()
 
-    def archive(self, session_id):
+    async def archive(self, session_id):
         self.store.require(session_id)
+        self._pause.set(session_id, True)
+        if session_id in self.workers:
+            await self.compact.application("cancel_turn", session_id, {})
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        intents = project_delegate_intents(events)
+        for intent in intents:
+            if self.store.path(intent.child_session_id).exists():
+                await self._reclaim_child(intent.child_session_id,
+                                          {"parent_session_id": session_id, "reason": "父会话归档"})
+        if intents:
+            await self.wait_quiescent(session_id)
+            root, _ = child_layout(self.home, session_id, intents[0].child_session_id)
+            parent_root = root.parent.resolve()
+            expected = (self.home.state_root / "subagent_worktrees").resolve()
+            if not parent_root.is_relative_to(expected):
+                raise ValueError("child workspace cleanup escaped product data root")
+            if parent_root.exists():
+                await asyncio.to_thread(shutil.rmtree, parent_root)
         self._archived.set(session_id, True)
 
     def set_title(self, session_id, title):

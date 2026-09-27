@@ -34,6 +34,7 @@ async def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
         "git",
         "--no-optional-locks",
+        "-c", "diff.autoRefreshIndex=false",
         *args,
         cwd=cwd,
         stdin=asyncio.subprocess.DEVNULL,

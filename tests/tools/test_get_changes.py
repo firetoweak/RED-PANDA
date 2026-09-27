@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
@@ -92,6 +93,19 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["diff"], "")
         self.assertTrue(result["content_complete"])
         self.assertEqual(result["limitations"], [])
+
+    async def test_verification_does_not_refresh_user_index(self) -> None:
+        target = self._commit_file("tracked.txt", "base\n")
+        index = self.root / ".git" / "index"
+        before = index.read_bytes()
+        timestamp = target.stat().st_mtime + 2
+        os.utime(target, (timestamp, timestamp))
+
+        result = await self._changes()
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["changed"])
+        self.assertEqual(index.read_bytes(), before)
 
     async def test_staged_only_change_includes_content(self) -> None:
         target = self._commit_file("tracked.txt", "before\n")

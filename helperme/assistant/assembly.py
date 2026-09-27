@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from hashlib import sha256
 
 from helperme.assistant.artifacts import (
     READ_ARTIFACT_SCHEMA,
@@ -33,9 +32,11 @@ from helperme.assistant.decision import (
 )
 from helperme.assistant.runner import SessionScheduler
 from helperme.assistant.workspace_versions import WorkspaceVersionBoundary
-from helperme.sandbox.versions import WorkspaceVersions
 from helperme.assistant.sessions import AssistantSessions
-from helperme.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost
+from helperme.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
+from helperme.assistant.subagent.workspace import (
+    ChildWorkspaceReview, child_layout, child_workspace, workspace_versions,
+)
 from helperme.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -51,7 +52,7 @@ from helperme.automation.tool import (
     cancel_schedule_binding,
     schedule_once_binding,
 )
-from helperme.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool
+from helperme.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool, subagent_review_tools
 from helperme.sandbox.registry import WorkspaceRecord
 from helperme.assistant.cli import CliToolAdapter
 from helperme.assistant.mcp import McpToolsetAdapter
@@ -113,18 +114,18 @@ async def build_assistant_assembly(
 ) -> AssistantAssembly:
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = HelperMeHome.default() if home is None else home
-    versions = WorkspaceVersions(
-        workspace.task_root,
-        home.state_root / "workspace_versions" / sha256(
-            workspace.workspace_id.encode("utf-8")
-        ).hexdigest(),
-        # Journal/产品资源属于 Host，即使数据目录位于任务根内也不能随文件回退。
-        excluded_roots=(home.root,),
-    )
+    task = project_task(await journal.snapshot(session_id))
+    versions = workspace_versions(home, workspace)
+    if task is not None:
+        parent_root = workspace.task_root
+        child_root, ref = child_layout(home, task.parent_session_id, session_id)
+        await versions.fork(child_root, ref)
+        workspace = child_workspace(workspace, child_root)
+        versions = workspace_versions(home, workspace, ref=ref, ignore_root=parent_root)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
-        workspace, materials_root=attachments.files.materials,
+        workspace, materials_root=attachments.files.materials, isolated=task is not None,
     )
     command_interrupts = builtin_tools.command_interrupts
 
@@ -135,6 +136,14 @@ async def build_assistant_assembly(
         return await version_boundary.restore(command_id, target, events, visible)
 
     restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(restore_workspace)
+    async def review_operation(*args, **kwargs):
+        return await child_review.review(*args, **kwargs)
+
+    review_schemas, review_bindings, review_exclusive = (
+        subagent_review_tools(review_operation)
+        if task is None and session_transport is not None else ([], {}, frozenset())
+    )
+    exclusive_tools |= review_exclusive
     settings = _model_context_settings(config)
     gateway = FileArtifactGateway(sessions_root)
     projector = ModelContextProjector(
@@ -194,6 +203,8 @@ async def build_assistant_assembly(
     skill_tools = SkillToolAdapter(skills, gateway, settings)
     cli_tools = CliToolAdapter(cli, gateway, settings)
     subagents = SubAgentHost(subagent_activity_sink)
+    if task is not None:
+        subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
     delivery_sink = subagents.routed_sink(sink)
 
@@ -205,10 +216,11 @@ async def build_assistant_assembly(
             await observed
 
     surface = ToolSurface(
-        providers=(McpToolsetAdapter(mcp, attachments),),
+        providers=(McpToolsetAdapter(mcp, attachments, read_only_only=task is not None),),
         base_schemas=[
             *builtin_tools.schemas,
             restore_schema,
+            *review_schemas,
             *(
                 [SCHEDULE_ONCE_SCHEMA, CANCEL_SCHEDULE_SCHEMA]
                 if session_transport is not None else []
@@ -219,6 +231,7 @@ async def build_assistant_assembly(
         reserved_names=(
             *builtin_tools.names(),
             restore_schema["function"]["name"],
+            *review_bindings,
             SCHEDULE_ONCE,
             CANCEL_SCHEDULE,
             "read_artifact",
@@ -240,6 +253,7 @@ async def build_assistant_assembly(
         skill_tools,
         cli_tools,
         management,
+        restricted=task is not None,
     )
     compact_context = CompactContext(
         session_id,
@@ -262,6 +276,7 @@ async def build_assistant_assembly(
             command_interrupts,
         ),
         restore_schema["function"]["name"]: restore_binding,
+        **review_bindings,
         **(
             {
                 SCHEDULE_ONCE: schedule_once_binding(session_transport),
@@ -297,6 +312,7 @@ async def build_assistant_assembly(
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
+    child_review = ChildWorkspaceReview(runtime, session_id, versions, home, session_transport)
     surface.attach(runtime)
     compact_context.runtime = runtime
     scheduler = scheduler_factory(
@@ -336,7 +352,7 @@ async def build_assistant_assembly(
             "is_paused", session_id, {}
         ):
             return False
-        if not compact_context.is_reader and not subagents.is_subagent(session_id):
+        if not compact_context.is_reader:
             if not (await runtime.state(session_id)).waiting_command_ids:
                 await catalog.sync(runtime, session_id)
         return True if compact is None else await compact.before_advance()
@@ -344,7 +360,7 @@ async def build_assistant_assembly(
     scheduler.before_advance = before_advance
 
     async def record_workspace_versions():
-        if not compact_context.is_reader and not subagents.is_subagent(session_id):
+        if not compact_context.is_reader:
             await version_boundary.sync()
 
     scheduler.record_workspace_versions = record_workspace_versions

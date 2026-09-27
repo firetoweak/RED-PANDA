@@ -99,6 +99,7 @@ class McpApplicationService:
         transport_config: Mapping[str, Any],
         secrets: Mapping[str, str] | None = None,
         enabled: bool = False,
+        read_only: bool = False,
     ) -> McpServerRecord:
         async with self._management_lock:
             return await self._upsert_server_locked(
@@ -109,6 +110,7 @@ class McpApplicationService:
                 transport_config=transport_config,
                 secrets=secrets,
                 enabled=enabled,
+                read_only=read_only,
             )
 
     async def update_server(
@@ -120,6 +122,7 @@ class McpApplicationService:
         description: str,
         transport: str,
         transport_config: Mapping[str, Any],
+        read_only: bool = False,
     ) -> McpServerRecord:
         async with self._management_lock:
             current = await self.registry.get(server_id)
@@ -141,6 +144,7 @@ class McpApplicationService:
                 transport_config=transport_config,
                 secrets=None,
                 enabled=False,
+                read_only=read_only,
             )
 
     async def _upsert_server_locked(
@@ -153,6 +157,7 @@ class McpApplicationService:
         transport_config: Mapping[str, Any],
         secrets: Mapping[str, str] | None,
         enabled: bool,
+        read_only: bool,
     ) -> McpServerRecord:
         existing = await self.registry.get(server_id)
         try:
@@ -170,6 +175,7 @@ class McpApplicationService:
                 transport=kind,
                 transport_config=config,
                 enabled=enabled,
+                read_only=read_only,
                 created_at=(
                     existing.created_at if existing is not None else utc_now()
                 ),

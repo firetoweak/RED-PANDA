@@ -22,6 +22,7 @@ from helperme.tools.builtin import (
     CommandInterrupts,
     create_environment_tool_specs,
     create_workspace_restore_spec,
+    create_subagent_workspace_specs,
 )
 
 
@@ -63,6 +64,7 @@ async def build_builtin_tools(
     workspace: WorkspaceRecord,
     *,
     materials_root: Path | None = None,
+    isolated: bool = False,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -91,6 +93,8 @@ async def build_builtin_tools(
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
     for spec in create_environment_tool_specs(binding, interrupts):
+        if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
+            spec = replace(spec, requires_authorization=False)
         registry.register(spec)
     return BuiltinToolRunner(
         schemas=tuple(registry.get_tools()),
@@ -121,3 +125,20 @@ def workspace_restore_tool(operation: Callable[[str, str], Awaitable[dict]]):
     binding = ToolBinding(handler, requires_authorization=spec.requires_authorization)
     exclusive = frozenset({spec.name}) if spec.exclusive_batch else frozenset()
     return spec.to_openai_tool(), binding, exclusive
+
+
+def subagent_review_tools(operation):
+    from helperme.runtime import ToolBinding
+
+    specs = create_subagent_workspace_specs(operation)
+    registry = ToolRegistry()
+    for spec in specs:
+        registry.register(spec)
+    executor = ToolsExecutor(registry)
+    bindings = {}
+    for spec in specs:
+        async def handler(context, arguments, _name=spec.name):
+            return runtime_tool_result(await executor.execute_parsed(_name, arguments))
+        bindings[spec.name] = ToolBinding(handler, requires_authorization=spec.requires_authorization)
+    return ([spec.to_openai_tool() for spec in specs], bindings,
+            frozenset(spec.name for spec in specs if spec.exclusive_batch))

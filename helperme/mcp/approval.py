@@ -40,6 +40,7 @@ class McpInstallProposalInput(BaseModel):
     server_id: str
     display_name: str
     description: str = ""
+    read_only: bool = Field(default=False, description="声明此安装配置只提供只读能力；由配置者保证 transport 的限制。")
     transport: Literal["stdio", "streamable_http"]
     command: str | None = None
     args: list[str] = Field(default_factory=list)
@@ -112,6 +113,7 @@ class McpInstallProposalInput(BaseModel):
             "server_id": self.server_id,
             "display_name": self.display_name,
             "description": self.description,
+            "read_only": self.read_only,
             "transport": self.transport,
             "transport_config": self.transport_config(),
             "source": self.source,
@@ -121,6 +123,7 @@ class McpInstallProposalInput(BaseModel):
         lines = [
             f"准备安装 MCP Server `{self.server_id}`（{self.display_name}）",
             f"Transport：{self.transport}",
+            f"只读声明：{self.read_only}",
             f"来源：{self.source}",
         ]
         if self.transport == "stdio":
@@ -220,6 +223,7 @@ class McpInstallApprovalHandler:
                 "server_id",
                 "display_name",
                 "description",
+                "read_only",
                 "transport",
                 "transport_config",
                 "source",
@@ -232,6 +236,7 @@ class McpInstallApprovalHandler:
             transport=data["transport"],
             transport_config=data["transport_config"],
             enabled=False,
+            read_only=data["read_only"],
         )
         activation = await self._service.test_and_enable(
             record.id,
@@ -328,6 +333,7 @@ class McpUpdateApprovalHandler:
             "server_id",
             "display_name",
             "description",
+            "read_only",
             "transport",
             "transport_config",
             "source",
@@ -341,6 +347,7 @@ class McpUpdateApprovalHandler:
                 description=data["description"],
                 transport=data["transport"],
                 transport_config=data["transport_config"],
+                read_only=data["read_only"],
             )
         except McpRecoveryPreconditionError as exc:
             return ControlApprovalExecution(
