@@ -1,4 +1,4 @@
-"""本机 Web 入口的目录选择；GUI 在独立进程的主线程运行。"""
+"""本机 Web 入口的目录/文件选择；GUI 在独立进程的主线程运行。"""
 
 from __future__ import annotations
 
@@ -10,11 +10,19 @@ import sys
 
 
 class DirectoryPickerUnavailable(Exception):
-    """当前 Python 或桌面环境无法打开目录选择窗口。"""
+    """当前 Python 或桌面环境无法打开本机选择窗口。"""
 
 
 async def select_directory() -> Path | None:
-    command = (sys.executable, "-I", str(Path(__file__).resolve()))
+    return await _select([])
+
+
+async def select_file() -> Path | None:
+    return await _select(["--file"])
+
+
+async def _select(extra: list[str]) -> Path | None:
+    command = (sys.executable, "-I", str(Path(__file__).resolve()), *extra)
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -42,7 +50,7 @@ async def select_directory() -> Path | None:
     if selected is None:
         return None
     if type(selected) is not str or not selected or not Path(selected).is_absolute():
-        raise ValueError("目录选择进程必须返回绝对路径或 null")
+        raise ValueError("本机选择进程必须返回绝对路径或 null")
     return Path(selected)
 
 
@@ -54,23 +62,30 @@ def _main() -> None:
     except ModuleNotFoundError as error:
         if error.name not in {"tkinter", "_tkinter"}:
             raise
-        print("当前 Python 未安装 Tcl/Tk，无法打开文件夹选择窗口。", file=sys.stderr)
+        print("当前 Python 未安装 Tcl/Tk，无法打开本机选择窗口。", file=sys.stderr)
         raise SystemExit(2) from error
 
     try:
         root = tkinter.Tk()
     except tkinter.TclError as error:
-        print(f"无法连接本机图形桌面，无法打开文件夹选择窗口：{error}", file=sys.stderr)
+        print(f"无法连接本机图形桌面，无法打开本机选择窗口：{error}", file=sys.stderr)
         raise SystemExit(2) from error
     try:
         root.withdraw()
         root.attributes("-topmost", True)
-        selected = filedialog.askdirectory(
-            parent=root,
-            title="选择工作区文件夹",
-            mustexist=True,
-            initialdir=str(Path.home()),
-        )
+        if "--file" in sys.argv:
+            selected = filedialog.askopenfilename(
+                parent=root,
+                title="选择要分析的文件",
+                initialdir=str(Path.home()),
+            )
+        else:
+            selected = filedialog.askdirectory(
+                parent=root,
+                title="选择工作区文件夹",
+                mustexist=True,
+                initialdir=str(Path.home()),
+            )
     finally:
         root.destroy()
     print(json.dumps(selected if selected else None))

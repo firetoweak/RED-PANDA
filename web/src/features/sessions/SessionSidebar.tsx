@@ -6,40 +6,48 @@ import {
   Button,
   Collapse,
   Group,
-  NavLink,
   ScrollArea,
   Skeleton,
   Stack,
   Text,
+  TextInput,
   ThemeIcon,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import {
+  IconArchive,
   IconFolder,
   IconFolderPlus,
   IconMessageCircle,
+  IconPencil,
   IconPlus,
   IconSparkles,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
+import type { SessionSummary } from "../../api/contracts";
 import {
+  useArchiveSessionMutation,
   useGetSessionsQuery,
+  useGetSessionTitlesQuery,
   useGetWorkspacesQuery,
+  useSetSessionTitleMutation,
 } from "../../api/helpermeApi";
-import { useAppSelector } from "../../app/hooks";
+import { useAppDispatch, useAppSelector } from "../../app/hooks";
+import { lockDraft } from "../../realtime/runtimeSlice";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import {
+  DRAFT_TITLE,
   draftSessionId,
   defaultWorkspaceId,
   formatRelativeTime,
   groupSessions,
-  previewSessions,
   readCollapsedWorkspaces,
   workspaceOfSession,
+  workspaceSessionRows,
   writeCollapsedWorkspaces,
 } from "./workspaces";
 
@@ -55,8 +63,8 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<
     Record<string, boolean>
   >({});
-  const runtimes = useAppSelector((state) => state.runtime.sessions);
   const { data: sessions = [], isLoading } = useGetSessionsQuery();
+  const { data: titles = {} } = useGetSessionTitlesQuery();
   const { data: workspaces = [], isLoading: workspacesLoading } =
     useGetWorkspacesQuery();
   const [
@@ -90,6 +98,14 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
     if (targetId === null) {
       return;
     }
+    setCollapsedWorkspaces((current) => {
+      if (current[targetId] !== true) {
+        return current;
+      }
+      const next = { ...current, [targetId]: false };
+      writeCollapsedWorkspaces(next);
+      return next;
+    });
     const existing = draftSessionId(draftSessions, targetId);
     if (sessionId !== undefined && sessionId === existing) {
       onNavigate();
@@ -179,12 +195,14 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
             {workspaceGroups.map((workspace) => {
               const collapsed = collapsedWorkspaces[workspace.id] === true;
               const expanded = expandedWorkspaces[workspace.id] === true;
-              const shownSessions = previewSessions(
+              const draftId = draftSessions[workspace.id];
+              const { shown: shownSessions, hiddenCount } = workspaceSessionRows(
                 workspace.sessions,
+                workspace.id,
+                draftId,
                 expanded,
+                titles[draftId ?? ""] ?? DRAFT_TITLE,
               );
-              const hiddenCount =
-                workspace.sessions.length - shownSessions.length;
               return (
                 <Box
                   className={
@@ -231,65 +249,30 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                   </Group>
                   <Collapse expanded={!collapsed}>
                     <Stack className="workspace-sessions" gap={3}>
-                      {shownSessions.map((session) => {
-                        const runtime = runtimes[session.session_id];
-                        const activity = runtime?.activity ?? session.activity;
-                        const unread = runtime?.unread ?? 0;
-                        const updatedAt = formatRelativeTime(session.updated_at);
-                        return (
-                          <Tooltip
-                            key={session.session_id}
-                            label={session.title}
-                            openDelay={700}
-                            position="right"
-                          >
-                            <NavLink
-                              active={session.session_id === sessionId}
-                              aria-label={session.title}
-                              color="sage"
-                              label={session.title}
-                              leftSection={
-                                <span
-                                  className={`activity-dot activity-dot-${activity}`}
-                                  aria-label={
-                                    activity === "running" ? "运行中" : "空闲"
-                                  }
-                                />
-                              }
-                              rightSection={
-                                unread > 0 ? (
-                                  <Badge size="xs" variant="filled">
-                                    {unread}
-                                  </Badge>
-                                ) : updatedAt === "" ? null : (
-                                  <Text c="dimmed" fz={11}>
-                                    {updatedAt}
-                                  </Text>
-                                )
-                              }
-                              onClick={() => {
-                                navigate(
-                                  `/sessions/${encodeURIComponent(session.session_id)}`,
-                                );
-                                onNavigate();
-                              }}
-                              py={9}
-                              px="sm"
-                              style={{
-                                borderRadius: "var(--mantine-radius-md)",
-                              }}
-                              styles={{
-                                label: {
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                },
-                              }}
-                              variant="light"
-                            />
-                          </Tooltip>
-                        );
-                      })}
+                      {shownSessions.map((session) => (
+                        <SessionRow
+                          key={session.session_id}
+                          active={session.session_id === sessionId}
+                          connectionId={connectionId}
+                          onOpen={() => {
+                            navigate(
+                              `/sessions/${encodeURIComponent(session.session_id)}`,
+                            );
+                            onNavigate();
+                          }}
+                          onArchivedCurrent={() => {
+                            navigate(
+                              `/workspaces/${encodeURIComponent(workspace.id)}`,
+                            );
+                            onNavigate();
+                          }}
+                          session={{
+                            ...session,
+                            title:
+                              titles[session.session_id] ?? session.title,
+                          }}
+                        />
+                      ))}
                       {hiddenCount > 0 ? (
                         <UnstyledButton
                           className="workspace-more"
@@ -323,5 +306,172 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
         </Group>
       </AppShell.Section>
     </Stack>
+  );
+}
+
+function SessionRow({
+  session,
+  active,
+  connectionId,
+  onOpen,
+  onArchivedCurrent,
+}: {
+  session: SessionSummary;
+  active: boolean;
+  connectionId: string | null;
+  onOpen: () => void;
+  onArchivedCurrent: () => void;
+}) {
+  const dispatch = useAppDispatch();
+  const runtime = useAppSelector(
+    (state) => state.runtime.sessions[session.session_id],
+  );
+  const [archiveSession] = useArchiveSessionMutation();
+  const [setSessionTitle] = useSetSessionTitleMutation();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title);
+  const activity = runtime?.activity ?? session.activity;
+  const unread = runtime?.unread ?? 0;
+  const updatedAt = formatRelativeTime(session.updated_at);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(session.title);
+    }
+  }, [editing, session.title]);
+
+  async function saveTitle() {
+    const title = draft.trim();
+    if (connectionId === null || title === "" || title === session.title) {
+      setDraft(session.title);
+      setEditing(false);
+      return;
+    }
+    await setSessionTitle({
+      connectionId,
+      sessionId: session.session_id,
+      title,
+    }).unwrap();
+    setEditing(false);
+  }
+
+  async function archive() {
+    if (connectionId === null) {
+      return;
+    }
+    await archiveSession({
+      connectionId,
+      sessionId: session.session_id,
+    }).unwrap();
+    dispatch(lockDraft(session.session_id));
+    if (active) {
+      onArchivedCurrent();
+    }
+  }
+
+  return (
+    <Group
+      className={
+        active
+          ? "session-row is-active"
+          : editing
+            ? "session-row is-editing"
+            : "session-row"
+      }
+      gap={6}
+      wrap="nowrap"
+    >
+      <span
+        className={`activity-dot activity-dot-${activity}`}
+        aria-label={activity === "running" ? "运行中" : "空闲"}
+      />
+      {editing ? (
+        <TextInput
+          autoFocus
+          aria-label="会话标题"
+          className="session-title-input"
+          onBlur={() => {
+            void saveTitle();
+          }}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void saveTitle();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setDraft(session.title);
+              setEditing(false);
+            }
+          }}
+          size="xs"
+          value={draft}
+        />
+      ) : (
+        <UnstyledButton
+          aria-current={active ? "page" : undefined}
+          aria-label={session.title}
+          className="session-row-main"
+          onClick={onOpen}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            if (connectionId !== null) {
+              setEditing(true);
+            }
+          }}
+        >
+          <Tooltip label={session.title} openDelay={700} position="right">
+            <Text className="session-title" fz={13} truncate>
+              {session.title}
+            </Text>
+          </Tooltip>
+        </UnstyledButton>
+      )}
+      {editing ? null : (
+        <Group className="session-row-meta" gap={2} wrap="nowrap">
+          {unread > 0 ? (
+            <Badge size="xs" variant="filled">
+              {unread}
+            </Badge>
+          ) : updatedAt === "" ? null : (
+            <Text className="session-time" c="dimmed" fz={11}>
+              {updatedAt}
+            </Text>
+          )}
+          <Group className="session-actions" gap={0} wrap="nowrap">
+            <Tooltip label="重命名" openDelay={400} position="right">
+              <ActionIcon
+                aria-label={`重命名 ${session.title}`}
+                disabled={connectionId === null}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setEditing(true);
+                }}
+                size="sm"
+                variant="subtle"
+              >
+                <IconPencil size={13} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="归档" openDelay={400} position="right">
+              <ActionIcon
+                aria-label={`归档 ${session.title}`}
+                disabled={connectionId === null}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void archive();
+                }}
+                size="sm"
+                variant="subtle"
+              >
+                <IconArchive size={13} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Group>
+      )}
+    </Group>
   );
 }

@@ -3,7 +3,9 @@ export type ComposerAttachment = {
   name: string;
   previewUrl: string | null;
   kind: "image" | "file";
-  file: File;
+  file: File | null;
+  size: number;
+  sourcePath: string | null;
   error: string | null;
   attachmentId: string | null;
   state: "uploading" | "done" | "error";

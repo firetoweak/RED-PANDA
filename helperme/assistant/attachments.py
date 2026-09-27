@@ -120,13 +120,26 @@ class AttachmentStore:
         self._root = root.resolve()
         self.files = FileAttachmentStore(self._root / "files", self._root.parent / ".materials")
 
-    def save_file(self, data: bytes, name: str) -> FileAttachment:
-        if len(data) > MAX_SOURCE_BYTES:
-            raise AttachmentRejected(f"文件字节数超过上限 {MAX_SOURCE_BYTES}")
+    def save_file_stream(self, stream, name: str) -> FileAttachment:
         try:
-            return self.files.save(data, name)
+            return self.files.save_stream(stream, name)
         except InvalidAttachmentName as error:
             raise AttachmentRejected(str(error)) from error
+
+    async def save_file_upload(self, read, name: str) -> FileAttachment:
+        try:
+            return await self.files.save_async(read, name)
+        except InvalidAttachmentName as error:
+            raise AttachmentRejected(str(error)) from error
+
+    def save_file_path(self, source: Path) -> FileAttachment:
+        try:
+            return self.files.save_path(source)
+        except (InvalidAttachmentName, FileNotFoundError) as error:
+            raise AttachmentRejected(
+                "只能挂入本机已存在的文件" if isinstance(error, FileNotFoundError)
+                else str(error)
+            ) from error
 
     def save_image(self, data: bytes, declared_mime: str) -> AttachmentRef:
         stored, mime, size, source_size = _admit(data, declared_mime)

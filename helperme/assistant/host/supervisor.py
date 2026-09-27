@@ -16,7 +16,11 @@ from helperme.automation.once import (
     ScheduledCheck,
 )
 from helperme.assistant.control import pending_approval_view, project_control_message
-from helperme.assistant.session_metadata import SessionFlagStore, SessionLineageStore
+from helperme.assistant.session_metadata import (
+    SessionFlagStore,
+    SessionLineageStore,
+    SessionTextStore,
+)
 from helperme.assistant.workspace_versions import (
     StepNotRewindable,
     WorkspaceVersionFact,
@@ -116,6 +120,8 @@ class HostSupervisor:
         self.job = WindowsJob.create() if os.name == "nt" else None
         self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
         self._pause = SessionFlagStore(store.root, "paused.json")
+        self._archived = SessionFlagStore(store.root, "archived.json")
+        self._titles = SessionTextStore(store.root, "titles.json")
         self._lineage = SessionLineageStore(store.root, "lineage.json")
         self.automation = OneShotClock(
             OneShotSchedules(home.state_root / "automation.sqlite")
@@ -600,6 +606,23 @@ class HostSupervisor:
     def is_superseded(self, session_id):
         return self._lineage.is_superseded(session_id)
 
+    def is_archived(self, session_id):
+        return self._archived.get(session_id)
+
+    def session_title(self, session_id):
+        return self._titles.get(session_id)
+
+    def session_titles(self):
+        return self._titles.items()
+
+    def archive(self, session_id):
+        self.store.require(session_id)
+        self._archived.set(session_id, True)
+
+    def set_title(self, session_id, title):
+        self.store.require(session_id)
+        self._titles.set(session_id, title)
+
     def _with_host_metadata(self, view, session_id):
         return replace(
             view,
@@ -693,6 +716,24 @@ class HostSupervisor:
             delivery_id=delivery_id,
             source=source,
             artifact_refs=original.artifact_refs,
+        )
+
+    async def branch_after_turn(
+        self, owner, source_session_id, user_message_id, child_session_id
+    ):
+        """从这一轮收口之后切一条新会话线。
+
+        前缀含这一轮的全部回复，不含之后的用户消息。新身份自己成一条线，
+        不顶掉来源，也不写新的用户消息——人在新会话的输入框里接着说。
+        """
+        async with self.locks.setdefault(source_session_id, asyncio.Lock()):
+            await self.store.fork_after_turn(
+                source_session_id, user_message_id, child_session_id
+            )
+        await self.select(owner, child_session_id)
+        return self._with_host_metadata(
+            await self.compact.application("view", child_session_id, {}),
+            child_session_id,
         )
 
     async def select(self, owner, session_id):

@@ -26,8 +26,10 @@ import {
 } from "react";
 
 import {
+  useAttachLocalFileMutation,
   useGetRuntimeQuery,
   useGetWorkspacesQuery,
+  useSelectLocalFileMutation,
   useUploadAttachmentMutation,
 } from "../../api/helpermeApi";
 import { useAppSelector } from "../../app/hooks";
@@ -93,7 +95,6 @@ export function Composer({
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
   const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const parkedRef = useRef<ComposerDraft | null>(null);
   const flushingRef = useRef(false);
@@ -107,6 +108,8 @@ export function Composer({
     (workspace) => workspace.workspace_id === workspaceId,
   )?.task_root;
   const [uploadAttachment] = useUploadAttachmentMutation();
+  const [selectLocalFile] = useSelectLocalFileMutation();
+  const [attachLocalFile] = useAttachLocalFileMutation();
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const parkedPendingRef = useRef(parked?.pending ?? []);
@@ -252,6 +255,8 @@ export function Composer({
         name: file.name,
         kind,
         file,
+        size: file.size,
+        sourcePath: null,
         error: null,
         previewUrl,
         attachmentId: null,
@@ -259,6 +264,88 @@ export function Composer({
       },
     ]);
     await upload(localId, file);
+  }
+
+  async function addLocalPath() {
+    if (connectionId === null || disabled) {
+      return;
+    }
+    try {
+      const selection = await selectLocalFile().unwrap();
+      if (selection.file === null) {
+        return;
+      }
+      const chosen = selection.file;
+      const localId = crypto.randomUUID();
+      setPending((current) => [
+        ...current,
+        {
+          localId,
+          name: chosen.name,
+          kind: "file",
+          file: null,
+          size: 0,
+          sourcePath: chosen.path,
+          error: null,
+          previewUrl: null,
+          attachmentId: null,
+          state: "uploading",
+        },
+      ]);
+      await attachPath(localId, chosen.path);
+    } catch (error) {
+      setPending((current) => [
+        ...current,
+        {
+          localId: crypto.randomUUID(),
+          name: "本机文件",
+          kind: "file",
+          file: null,
+          size: 0,
+          sourcePath: null,
+          error: uploadError(error),
+          previewUrl: null,
+          attachmentId: null,
+          state: "error",
+        },
+      ]);
+    }
+  }
+
+  async function attachPath(localId: string, path: string) {
+    if (connectionId === null || disabled) {
+      return;
+    }
+    setPending((current) => current.map((item) =>
+      item.localId === localId ? { ...item, state: "uploading", error: null } : item,
+    ));
+    try {
+      const attached = await attachLocalFile({
+        connectionId,
+        sessionId,
+        path,
+      }).unwrap();
+      setPending((current) =>
+        current.map((item) =>
+          item.localId === localId
+            ? {
+                ...item,
+                attachmentId: attached.attachment_id,
+                name: attached.name,
+                size: attached.size,
+                kind: "file",
+                state: "done",
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setPending((current) =>
+        current.map((item) =>
+          item.localId === localId ? { ...item, state: "error", error: uploadError(error) } : item,
+        ),
+      );
+    }
   }
 
   async function upload(localId: string, file: File) {
@@ -281,6 +368,7 @@ export function Composer({
                 ...item,
                 attachmentId: uploaded.attachment_id,
                 kind: uploaded.kind,
+                size: uploaded.size,
                 state: "done",
               }
             : item,
@@ -292,6 +380,16 @@ export function Composer({
           item.localId === localId ? { ...item, state: "error", error: uploadError(error) } : item,
         ),
       );
+    }
+  }
+
+  function retryAttachment(item: ComposerAttachment) {
+    if (item.sourcePath !== null) {
+      void attachPath(item.localId, item.sourcePath);
+      return;
+    }
+    if (item.file !== null) {
+      void upload(item.localId, item.file);
     }
   }
 
@@ -359,7 +457,6 @@ export function Composer({
           event.currentTarget.value = "";
           addFiles(files);
         }}
-        ref={fileRef}
         type="file"
       />
       {parked === null ? null : (
@@ -398,9 +495,9 @@ export function Composer({
       {pending.length === 0 ? null : (
         <Group className="composer-attachments" gap={8} wrap="wrap">
           {pending.map((item) => item.kind === "file" ? (
-            <FileAttachmentTile key={item.localId} name={item.name} size={item.file.size}
+            <FileAttachmentTile key={item.localId} name={item.name} size={item.size}
               state={item.state} error={item.error}
-              onRetry={disabled ? undefined : () => void upload(item.localId, item.file)}
+              onRetry={disabled || (item.file === null && item.sourcePath === null) ? undefined : () => retryAttachment(item)}
               onRemove={() => removeAttachment(item)} />
           ) : (
             <div key={item.localId}>
@@ -410,18 +507,18 @@ export function Composer({
                 src={item.previewUrl!}
                 state={item.state}
               />
-              {item.state === "error" ? <Button disabled={disabled} size="compact-xs" variant="subtle"
-                title={item.error ?? undefined} onClick={() => void upload(item.localId, item.file)}>重试</Button> : null}
+              {item.state === "error" && item.file !== null ? <Button disabled={disabled} size="compact-xs" variant="subtle"
+                title={item.error ?? undefined} onClick={() => retryAttachment(item)}>重试</Button> : null}
             </div>
           ))}
         </Group>
       )}
       <Group className="composer-top" gap={10} wrap="nowrap" align="flex-end">
-        <Tooltip label="添加文件，也可拖入或粘贴">
+        <Tooltip label="添加本机文件，也可拖入或粘贴">
           <ActionIcon
             aria-label="Add attachment"
             disabled={busy || connectionId === null}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => void addLocalPath()}
             radius="xl"
             size={32}
             type="button"
@@ -608,6 +705,9 @@ function releasePreview(item: ComposerAttachment) {
 }
 
 function uploadError(error: unknown): string {
+  if (typeof error === "string" && error !== "") {
+    return error;
+  }
   if (typeof error === "object" && error !== null && "data" in error) {
     const data = error.data;
     if (typeof data === "object" && data !== null && "detail" in data && typeof data.detail === "string") return data.detail;

@@ -61,11 +61,35 @@ export function groupSessions(
   );
 }
 
-/**
- * 新建会话的缺省落点：最近一次聊天的工作区；还没有任何带归属的会话时，
- * 落最近创建的工作区；一个工作区都没有时返回 null（由界面引导创建）。
- */
 export const WORKSPACE_SESSION_PREVIEW = 5;
+export const DRAFT_TITLE = "new agent";
+
+export function workspaceSessionRows(
+  sessions: SessionSummary[],
+  workspaceId: string,
+  draftId: string | undefined,
+  expanded: boolean,
+  draftTitle: string = DRAFT_TITLE,
+): { shown: SessionSummary[]; hiddenCount: number } {
+  const real = sessions.filter((session) => session.session_id !== draftId);
+  const shownReal = previewSessions(real, expanded);
+  const draft =
+    draftId === undefined
+      ? []
+      : [
+          {
+            session_id: draftId,
+            workspace_id: workspaceId,
+            title: draftTitle,
+            updated_at: null,
+            activity: "idle" as const,
+          },
+        ];
+  return {
+    shown: [...draft, ...shownReal],
+    hiddenCount: real.length - shownReal.length,
+  };
+}
 
 export function previewSessions<T>(sessions: T[], expanded: boolean): T[] {
   if (expanded || sessions.length <= WORKSPACE_SESSION_PREVIEW) {
@@ -99,6 +123,10 @@ export function workspaceOfSession(
   return Object.entries(drafts).find(([, draftId]) => draftId === sessionId)?.[0];
 }
 
+/**
+ * 新建会话的缺省落点：最近一次聊天的工作区；还没有任何带归属的会话时，
+ * 落最近创建的工作区；一个工作区都没有时返回 null（由界面引导创建）。
+ */
 export function defaultWorkspaceId(
   groups: WorkspaceGroup[],
   workspaces: Workspace[],

@@ -86,6 +86,15 @@ class _Sessions:
         self.queries.record(kwargs["child_session_id"], content)
         return SessionView("runnable", (), (), True)
 
+    async def branch_after_turn(
+        self, owner, source_session_id, message_id, child_session_id
+    ):
+        self.calls.append(
+            ("branch_after_turn", owner, source_session_id, message_id, child_session_id)
+        )
+        self.queries.record(child_session_id, "这一轮已经说完")
+        return SessionView("waiting", ("external_fact",), (), False)
+
     async def release(self, owner):
         self.calls.append(("release", owner))
 
@@ -114,6 +123,15 @@ class _Sessions:
     async def set_paused(self, session_id, paused):
         self.calls.append(("set_paused", session_id, paused))
         return SessionView("waiting", ("external_fact",), (), False, paused=paused)
+
+    def session_titles(self):
+        return {"session-old": "改过的标题"}
+
+    def archive(self, session_id):
+        self.calls.append(("archive", session_id))
+
+    def set_title(self, session_id, title):
+        self.calls.append(("set_title", session_id, title))
 
 
 class _Queries:
@@ -411,6 +429,31 @@ class WebFirstSliceTest(unittest.TestCase):
             ],
         )
 
+    def test_branching_after_a_turn_creates_a_listed_session(self):
+        response = self.client.post(
+            "/api/sessions/session-old/branches",
+            json={
+                "connection_id": self.connection.connection_id,
+                "message_id": "user-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        child_session_id = response.json()["session_id"]
+        self.assertNotEqual(child_session_id, "session-old")
+        self.assertEqual(
+            self.sessions.calls,
+            [
+                (
+                    "branch_after_turn",
+                    self.connection.owner,
+                    "session-old",
+                    "user-1",
+                    child_session_id,
+                )
+            ],
+        )
+
     def test_editing_user_message_creates_and_selects_a_new_branch(self):
         response = self.client.post(
             "/api/sessions/session-old/forks",
@@ -561,6 +604,38 @@ class WebFirstSliceTest(unittest.TestCase):
             [("set_paused", "session-old", True)],
         )
 
+    def test_lists_session_titles(self):
+        response = self.client.get("/api/session-titles")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"session-old": "改过的标题"})
+
+    def test_archive_hides_the_session_from_the_list(self):
+        response = self.client.post(
+            "/api/sessions/session-old/archive",
+            json={"connection_id": self.connection.connection_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {})
+        self.assertEqual(self.sessions.calls, [("archive", "session-old")])
+
+    def test_title_override_is_a_product_label(self):
+        response = self.client.post(
+            "/api/sessions/session-old/title",
+            json={
+                "connection_id": self.connection.connection_id,
+                "title": "  我起的名  ",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"title": "我起的名"})
+        self.assertEqual(
+            self.sessions.calls,
+            [("set_title", "session-old", "我起的名")],
+        )
+
     def test_rejected_upload_is_a_client_error(self):
         response = self.client.post(
             "/api/sessions/session-old/attachments",
@@ -603,6 +678,22 @@ class WebFirstSliceTest(unittest.TestCase):
                 }},
             )
             self.assertEqual(self.workspaces.workspaces, ())
+
+    def test_file_selection_only_returns_a_choice_without_attaching(self):
+        selected = Path(self._directory.name) / "notes.txt"
+        selected.write_text("x")
+        for choice in (selected, None):
+            with self.subTest(choice=choice), patch.object(
+                web_app, "select_file", return_value=choice
+            ):
+                response = self.client.post("/api/files/select")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.json(),
+                {"file": None if choice is None else {
+                    "path": str(selected), "name": selected.name,
+                }},
+            )
 
     def test_directory_picker_only_converts_known_desktop_unavailability(self):
         with patch.object(

@@ -50,6 +50,12 @@ class _IdleSessions:
     def is_superseded(self, session_id: str) -> bool:
         return False
 
+    def is_archived(self, session_id: str) -> bool:
+        return False
+
+    def session_title(self, session_id: str) -> str | None:
+        return None
+
 
 class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
     async def test_create_writes_the_binding_as_the_first_event(self):

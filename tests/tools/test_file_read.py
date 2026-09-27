@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ from helperme.sandbox.workspace import (
 from helperme.tools.builtin.file_read import (
     GlobInput,
     GrepInput,
+    ReadFileInput,
     _glob_relative_entries,
     create_file_read_specs,
 )
@@ -64,6 +66,23 @@ class RgScopeContractTest(unittest.TestCase):
             1,
         )
         self.assertEqual(entries, [("src", "dir")])
+
+
+class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_read_file_does_not_reject_by_total_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "big.log"
+            path.write_bytes(b"first line\n")
+            os.truncate(path, 20 * 1024 * 1024 + 64)
+            specs = _handlers(root)
+            self.assertNotIn("20 MiB", specs["read_file"].description)
+            result = await specs["read_file"].handler(
+                ReadFileInput(path="big.log", offset=1, limit=1),
+            )
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["content"], "first line\n")
+            self.assertNotEqual(result.get("code"), "FILE_TOO_LARGE")
 
 
 @pytest.mark.process

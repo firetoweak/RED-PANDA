@@ -10,7 +10,6 @@ import {
 } from "@mantine/core";
 import {
   IconArrowUp,
-  IconGitBranch,
   IconPencil,
   IconX,
 } from "@tabler/icons-react";
@@ -30,11 +29,7 @@ type EditableUserMessageProps = {
   saving: boolean;
   // 这条消息之后还跑过东西，文件就可能和这一刻对不上。
   hasLaterWork: boolean;
-  onSave: (
-    text: string,
-    listed: boolean,
-    restoreFiles: boolean,
-  ) => Promise<void>;
+  onSave: (text: string, restoreFiles: boolean) => Promise<void>;
 };
 
 export function EditableUserMessage({
@@ -72,12 +67,12 @@ export function EditableUserMessage({
     setDraft(text);
   }
 
-  async function save(listed: boolean) {
+  async function save() {
     const content = draft.trim();
     if (!canSend) {
       return;
     }
-    await onSave(content, listed, hasLaterWork && restoreFiles);
+    await onSave(content, hasLaterWork && restoreFiles);
     setEditing(false);
   }
 
@@ -92,7 +87,7 @@ export function EditableUserMessage({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      void save(false);
+      void save();
     }
   }
 
@@ -140,26 +135,12 @@ export function EditableUserMessage({
                   <IconX size={16} />
                 </ActionIcon>
               </Tooltip>
-              <Tooltip label="作为新分支执行">
-                <ActionIcon
-                  aria-label="作为新分支执行"
-                  disabled={!canSend}
-                  loading={saving}
-                  onClick={() => void save(true)}
-                  radius="xl"
-                  size={32}
-                  type="button"
-                  variant="subtle"
-                >
-                  <IconGitBranch size={16} />
-                </ActionIcon>
-              </Tooltip>
               <Tooltip label="改写并执行">
                 <ActionIcon
                   aria-label="改写并执行"
                   disabled={!canSend}
                   loading={saving}
-                  onClick={() => void save(false)}
+                  onClick={() => void save()}
                   radius="xl"
                   size={32}
                   type="button"
@@ -181,7 +162,7 @@ export function EditableUserMessage({
           />
         ) : null}
         <Text c="dimmed" size="xs" ta="right">
-          改写就地接着这条会话走；作为新分支会在侧栏多出一条，原会话留在原处。
+          改写就地接着这条会话走。
         </Text>
       </Stack>
     );

@@ -102,6 +102,17 @@ export function turnNeedsSilentEnd(
   return settled && turn.process.length > 0 && turnReply(turn, settled) === null;
 }
 
+export function turnCanStartSession(
+  turn: TimelineTurn,
+  settled: boolean,
+): boolean {
+  return (
+    settled &&
+    turn.user !== null &&
+    (turnReply(turn, settled) !== null || turnNeedsSilentEnd(turn, settled))
+  );
+}
+
 function turnHasThinking(turn: TimelineTurn): boolean {
   return [turn.active, turn.final, ...turn.process].some(
     (step) => step !== null && (step.thinking ?? "").trim() !== "",

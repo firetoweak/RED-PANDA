@@ -120,3 +120,48 @@ class SessionStoreListingTest(unittest.IsolatedAsyncioTestCase):
             )
             await settle_session(child_runtime, "child")
             self.assertEqual(len(await journal.snapshot("source")), len(source_events))
+
+    async def test_fork_after_turn_keeps_this_turn_and_drops_the_next_user_message(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory))
+            await store.create("source", workspace_id="workspace-1")
+            journal = SqliteJournal(store.require("source"))
+            surface = ToolSurface(providers=(FakeEchoProvider(),))
+            runtime = AgentRuntime(
+                journal,
+                ScriptedDecisionMaker(
+                    (
+                        lambda _frame: ModelDecision(
+                            content="done",
+                            command_requests=(
+                                InvokeTool(
+                                    DELIVER_TOOL_NAME,
+                                    (("output_id", "first"), ("text", "done")),
+                                ),
+                            ),
+                        ),
+                    )
+                ),
+                deliver_binding(lambda *_args: None),
+                SequentialIds(),
+            )
+            surface.attach(runtime)
+            first = await runtime.receive_user_message(
+                "source", "first", delivery_id="first"
+            )
+            await settle_session(runtime, "source")
+            await runtime.receive_user_message(
+                "source", "later", delivery_id="second"
+            )
+
+            await store.fork_after_turn("source", first.event_id, "child")
+
+            source_events = await journal.snapshot("source")
+            child_events = await SqliteJournal(store.require("child")).snapshot(
+                "child"
+            )
+            self.assertEqual(
+                [event.event_id for event in child_events],
+                [event.event_id for event in source_events[:-1]],
+            )
+            self.assertTrue(all(event.session_id == "child" for event in child_events))

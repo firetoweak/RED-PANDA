@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from helperme.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
+    select_file,
 )
 
 
@@ -70,3 +71,16 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
                 await task
         process.terminate.assert_called_once()
         process.wait.assert_called_once()
+
+    async def test_select_file_asks_the_dialog_process_for_a_file(self):
+        selected = Path(__file__).resolve()
+        process = SimpleNamespace(
+            returncode=0,
+            communicate=lambda: (json.dumps(str(selected)).encode(), b""),
+        )
+        with patch(
+            "helperme.channels.web.directory_picker.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            self.assertEqual(await select_file(), selected)
+        self.assertEqual(popen.call_args.args[0][-1], "--file")

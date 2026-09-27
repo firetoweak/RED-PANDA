@@ -7,15 +7,23 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Composer } from "../src/features/conversation/Composer";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
-const { upload } = vi.hoisted(() => ({ upload: vi.fn() }));
+const { upload, selectLocal, attachLocal } = vi.hoisted(() => ({
+  upload: vi.fn(),
+  selectLocal: vi.fn(),
+  attachLocal: vi.fn(),
+}));
 vi.mock("../src/api/helpermeApi", () => ({
   useGetRuntimeQuery: () => ({ data: undefined }),
   useGetWorkspacesQuery: () => ({ data: [] }),
   useUploadAttachmentMutation: () => [upload],
+  useSelectLocalFileMutation: () => [selectLocal],
+  useAttachLocalFileMutation: () => [attachLocal],
 }));
 
 beforeEach(() => {
   upload.mockReset();
+  selectLocal.mockReset();
+  attachLocal.mockReset();
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(document, "fonts", { configurable: true, value: { addEventListener() {}, removeEventListener() {} } });
@@ -53,12 +61,12 @@ it("拖入普通文件后保留名称并以附件引用发送，不要求填写�
 });
 
 it("上传失败保留文件并阻止缺附件发送，重试成功后才可提交", async () => {
-  upload.mockReturnValueOnce({ unwrap: async () => { throw { data: { detail: "文件超过大小限制" } }; } })
+  upload.mockReturnValueOnce({ unwrap: async () => { throw { data: { detail: "无法写入附件" } }; } })
     .mockReturnValueOnce({ unwrap: async () => ({ kind: "file", attachment_id: `file:${"a".repeat(32)}` }) });
   const { container, onSend } = showComposer();
   fireEvent.change(screen.getByLabelText("消息"), { target: { value: "分析文件" } });
   fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["x"], "notes.txt")] } });
-  await screen.findByText("文件超过大小限制");
+  await screen.findByText("无法写入附件");
   expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
   expect(onSend).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
@@ -78,5 +86,23 @@ it("运行中停放的文件在当前轮结束后一起发送", async () => {
   expect(screen.getByText("附件（1）")).toBeVisible();
   expect(container.querySelector('input[type="file"]')).not.toHaveAttribute("accept");
   stop();
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
+});
+
+it("挂入本机文件只登记路径，不走整件上传", async () => {
+  selectLocal.mockReturnValue({ unwrap: async () => ({
+    file: { path: "D:\\logs\\a.log", name: "a.log" },
+  }) });
+  attachLocal.mockReturnValue({ unwrap: async () => ({
+    kind: "file", attachment_id: `file:${"a".repeat(32)}`, name: "a.log", size: 12,
+  }) });
+  const { onSend } = showComposer();
+  fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+  await waitFor(() => expect(screen.getByText("a.log")).toBeVisible());
+  expect(upload).not.toHaveBeenCalled();
+  expect(attachLocal).toHaveBeenCalledWith({
+    connectionId: "connection", sessionId: "session", path: "D:\\logs\\a.log",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
 });

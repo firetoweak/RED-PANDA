@@ -11,11 +11,13 @@ import { truncateAfterUserMessage } from "./truncateAfterUserMessage";
 import {
   conversationViewSchema,
   directorySelectionSchema,
+  fileSelectionSchema,
   runtimeStatusSchema,
   sessionSummarySchema,
   workspaceSchema,
   type ConversationView,
   type DirectorySelection,
+  type FileSelection,
   type RuntimeStatus,
   type SessionSummary,
   type Workspace,
@@ -46,8 +48,16 @@ type RestartFromStep = SelectSession & {
   deliveryId: string;
 };
 
+type BranchAfterTurn = SelectSession & {
+  messageId: string;
+};
+
 type UploadAttachment = SelectSession & {
   file: File;
+};
+
+type AttachLocalFile = SelectSession & {
+  path: string;
 };
 
 type AuthorizeCommand = SelectSession & {
@@ -66,6 +76,10 @@ type SetAutoAuthorize = SelectSession & {
 
 type SetPaused = SelectSession & {
   paused: boolean;
+};
+
+type SetSessionTitle = SelectSession & {
+  title: string;
 };
 
 const attachmentRefSchema = z.discriminatedUnion("kind", [
@@ -110,7 +124,7 @@ function putConversation(
 export const helpermeApi = createApi({
   reducerPath: "helpermeApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Sessions", "Workspaces", "Conversation"],
+  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles"],
   endpoints: (build) => ({
     getRuntime: build.query<RuntimeStatus, void>({
       query: () => "/runtime",
@@ -122,6 +136,12 @@ export const helpermeApi = createApi({
         sessionSummarySchema.array().parse(value),
       providesTags: ["Sessions"],
     }),
+    getSessionTitles: build.query<Record<string, string>, void>({
+      query: () => "/session-titles",
+      transformResponse: (value: unknown) =>
+        z.record(z.string(), z.string()).parse(value),
+      providesTags: ["SessionTitles"],
+    }),
     getWorkspaces: build.query<Workspace[], void>({
       query: () => "/workspaces",
       transformResponse: (value: unknown) =>
@@ -131,6 +151,14 @@ export const helpermeApi = createApi({
     selectWorkspaceDirectory: build.mutation<DirectorySelection, void>({
       query: () => ({ url: "/workspaces/select-directory", method: "POST" }),
       transformResponse: (value: unknown) => directorySelectionSchema.parse(value),
+      transformErrorResponse: (response) =>
+        response.status === 503
+          ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
+          : response,
+    }),
+    selectLocalFile: build.mutation<FileSelection, void>({
+      query: () => ({ url: "/files/select", method: "POST" }),
+      transformResponse: (value: unknown) => fileSelectionSchema.parse(value),
       transformErrorResponse: (response) =>
         response.status === 503
           ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
@@ -263,6 +291,14 @@ export const helpermeApi = createApi({
       },
       transformResponse: (value: unknown) => attachmentRefSchema.parse(value),
     }),
+    attachLocalFile: build.mutation<AttachmentRef, AttachLocalFile>({
+      query: ({ connectionId, sessionId, path }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/attachments/from-path`,
+        method: "POST",
+        body: { connection_id: connectionId, path },
+      }),
+      transformResponse: (value: unknown) => attachmentRefSchema.parse(value),
+    }),
     cancelTurn: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/cancel`,
@@ -329,6 +365,24 @@ export const helpermeApi = createApi({
         putConversation(dispatch, getState, arg.sessionId, data);
       },
     }),
+    archiveSession: build.mutation<void, SelectSession>({
+      query: ({ connectionId, sessionId }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/archive`,
+        method: "POST",
+        body: { connection_id: connectionId },
+      }),
+      invalidatesTags: ["Sessions"],
+    }),
+    setSessionTitle: build.mutation<{ title: string }, SetSessionTitle>({
+      query: ({ connectionId, sessionId, title }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/title`,
+        method: "POST",
+        body: { connection_id: connectionId, title },
+      }),
+      transformResponse: (value: unknown) =>
+        z.object({ title: z.string().min(1) }).strict().parse(value),
+      invalidatesTags: ["Sessions", "SessionTitles"],
+    }),
     retryTurn: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/retry`,
@@ -359,6 +413,23 @@ export const helpermeApi = createApi({
         putConversation(dispatch, getState, data.session_id, data);
       },
     }),
+    branchAfterTurn: build.mutation<ConversationView, BranchAfterTurn>({
+      query: ({ connectionId, sessionId, messageId }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/branches`,
+        method: "POST",
+        body: {
+          connection_id: connectionId,
+          message_id: messageId,
+        },
+      }),
+      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Sessions"],
+      async onQueryStarted(_arg, { dispatch, getState, queryFulfilled }) {
+        const { data } = await queryFulfilled;
+        dispatch(bindOwner(data.session_id));
+        putConversation(dispatch, getState, data.session_id, data);
+      },
+    }),
   }),
 });
 
@@ -367,18 +438,24 @@ export const {
   useGetRuntimeQuery,
   useCreateWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
+  useSelectLocalFileMutation,
   useGetSessionsQuery,
+  useGetSessionTitlesQuery,
   useGetWorkspacesQuery,
   useGetConversationQuery,
   useSelectSessionMutation,
   useSendInputMutation,
   useEditAndForkMutation,
   useUploadAttachmentMutation,
+  useAttachLocalFileMutation,
   useCancelTurnMutation,
   useAuthorizeCommandMutation,
   useResolveControlMutation,
   useSetAutoAuthorizeMutation,
   useSetPausedMutation,
+  useArchiveSessionMutation,
+  useSetSessionTitleMutation,
   useRetryTurnMutation,
   useRestartFromStepMutation,
+  useBranchAfterTurnMutation,
 } = helpermeApi;

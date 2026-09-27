@@ -120,12 +120,15 @@ class AssistantQueries:
                 continue
             if self._sessions.is_superseded(session_id):
                 continue
+            if self._sessions.is_archived(session_id):
+                continue
             summaries.append(
                 project_session_summary(
                     session_id,
                     events,
                     workspace_id=workspace_id,
                     activity=self._sessions.activity(session_id),
+                    title=self._sessions.session_title(session_id),
                 )
             )
         return tuple(
@@ -186,12 +189,14 @@ def project_session_summary(
     *,
     workspace_id: str,
     activity: SessionActivity,
+    title: str | None = None,
 ) -> SessionSummary:
-    title = "新会话"
-    for event in events:
-        if isinstance(event.payload, UserMessageReceived):
-            title = event.payload.content.strip().splitlines()[0]
-            break
+    if title is None:
+        title = "新会话"
+        for event in events:
+            if isinstance(event.payload, UserMessageReceived):
+                title = event.payload.content.strip().splitlines()[0]
+                break
     return SessionSummary(
         session_id=session_id,
         workspace_id=workspace_id,

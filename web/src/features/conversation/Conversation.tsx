@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -16,15 +17,18 @@ import {
   IconAlertCircle,
   IconArrowDown,
   IconCheck,
+  IconCopy,
+  IconGitBranch,
   IconMessageCircle,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
   useAuthorizeCommandMutation,
+  useBranchAfterTurnMutation,
   useEditAndForkMutation,
   useGetConversationQuery,
   useResolveControlMutation,
@@ -51,6 +55,7 @@ import { ThinkingBlock } from "./ThinkingBlock";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
+  turnCanStartSession,
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
@@ -83,6 +88,7 @@ export function Conversation() {
   const [selectSession] = useSelectSessionMutation();
   const [sendInput, sending] = useSendInputMutation();
   const [editAndFork, editing] = useEditAndForkMutation();
+  const [branchAfterTurn, branching] = useBranchAfterTurnMutation();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
   const [resolveControl, resolvingControl] = useResolveControlMutation();
   const [setAutoAuthorize, autoAuthorizing] = useSetAutoAuthorizeMutation();
@@ -194,7 +200,6 @@ export function Conversation() {
   async function edit(
     messageId: string,
     text: string,
-    listed: boolean,
     restoreFiles: boolean,
   ) {
     if (connectionId === null) {
@@ -206,12 +211,28 @@ export function Conversation() {
       messageId,
       deliveryId: `web-${crypto.randomUUID()}`,
       text,
-      listed,
+      listed: false,
       restoreFiles,
     }).unwrap();
     navigate(`/sessions/${encodeURIComponent(view.session_id)}`, {
-      replace: !listed,
+      replace: true,
     });
+  }
+
+  async function branch(messageId: string) {
+    if (connectionId === null) {
+      return;
+    }
+    try {
+      const view = await branchAfterTurn({
+        connectionId,
+        sessionId,
+        messageId,
+      }).unwrap();
+      navigate(`/sessions/${encodeURIComponent(view.session_id)}`);
+    } catch {
+      // 错误画在输入框上方，不把 Promise 拒绝甩到控制台。
+    }
   }
 
   async function restart(stepId: string) {
@@ -304,8 +325,8 @@ export function Conversation() {
                       images={turn.user.images}
                       files={turn.user.files}
                       hasLaterWork={turn.key !== lastTurnKey || turn.process.length > 0}
-                      onSave={(text, listed, restoreFiles) =>
-                        edit(turn.user!.key, text, listed, restoreFiles)
+                      onSave={(text, restoreFiles) =>
+                        edit(turn.user!.key, text, restoreFiles)
                       }
                       saving={editing.isLoading}
                       sessionId={sessionId}
@@ -345,10 +366,21 @@ export function Conversation() {
                       <ThemeIcon radius="xl" size={28} variant="subtle">
                         <IconSparkles size={15} />
                       </ThemeIcon>
-                      <MarkdownMessage
-                        content={reply.text}
-                        streaming={reply.streaming}
-                      />
+                      <Stack className="assistant-reply" gap={6}>
+                        <MarkdownMessage
+                          content={reply.text}
+                          streaming={reply.streaming}
+                        />
+                        {settled ? (
+                          <TurnEndActions
+                            branchBusy={branching.isLoading}
+                            branchDisabled={connectionId === null}
+                            canBranch={turnCanStartSession(turn, settled)}
+                            onBranch={() => void branch(turn.user!.key)}
+                            replyText={reply.text}
+                          />
+                        ) : null}
+                      </Stack>
                     </Group>
                   </Box>
                 ) : turnNeedsSilentEnd(turn, settled) &&
@@ -364,6 +396,17 @@ export function Conversation() {
                 ) ? (
                   <RunningHint label="子 Agent 执行中" />
                 ) : null}
+                {settled &&
+                reply === null &&
+                turnCanStartSession(turn, settled) ? (
+                  <TurnEndActions
+                    branchBusy={branching.isLoading}
+                    branchDisabled={connectionId === null}
+                    canBranch
+                    onBranch={() => void branch(turn.user!.key)}
+                    replyText={null}
+                  />
+                ) : null}
               </Stack>
               );
             })}
@@ -371,8 +414,21 @@ export function Conversation() {
         </ScrollArea>
       )}
       <Box className="composer-dock">
+        {items.length === 0 || followOutput.following ? null : (
+          <Button
+            className="jump-to-latest"
+            leftSection={<IconArrowDown size={14} />}
+            onClick={followOutput.scrollToBottom}
+            size="compact-sm"
+            variant="default"
+          >
+            跳到最新
+          </Button>
+        )}
+        <Stack className="composer-column" gap={8}>
         {conversation.workspace_version === null ? null : (
           <Text
+            className="composer-meta"
             size="xs"
             c={conversation.workspace_version.error === null ? "dimmed" : "red"}
             title={conversation.workspace_version.version ?? undefined}
@@ -384,17 +440,6 @@ export function Conversation() {
         )}
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
-        )}
-        {items.length === 0 || followOutput.following ? null : (
-          <Button
-            className="jump-to-latest"
-            leftSection={<IconArrowDown size={14} />}
-            onClick={followOutput.scrollToBottom}
-            size="compact-sm"
-            variant="default"
-          >
-            跳到最新
-          </Button>
         )}
         {compactPhase !== "failed" ? null : (
           <Alert
@@ -436,17 +481,22 @@ export function Conversation() {
             </Group>
           </Alert>
         )}
-        {sending.isError || editing.isError || retrying.isError ? (
+        {sending.isError || editing.isError || retrying.isError || branching.isError ? (
           <Alert
             className="composer-error"
             color="red"
             icon={<IconAlertCircle size={16} />}
             py="xs"
           >
-            {editing.isError
+            {branching.isError
+              ? requestErrorMessage(
+                  branching.error,
+                  "未能从这一轮建立新会话。",
+                )
+              : editing.isError
               ? requestErrorMessage(
                   editing.error,
-                  "消息编辑失败，未能从这条消息创建新分支。",
+                  "消息编辑失败，未能改写这条消息。",
                 )
               : retrying.isError
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
@@ -489,6 +539,7 @@ export function Conversation() {
             }).unwrap();
           }}
         />
+        </Stack>
       </Box>
       <Modal
         centered
@@ -594,6 +645,55 @@ function RunningHint({ label }: { label: string }) {
         </Group>
       </Group>
     </Box>
+  );
+}
+
+function TurnEndActions({
+  replyText,
+  canBranch,
+  branchBusy,
+  branchDisabled,
+  onBranch,
+}: {
+  replyText: string | null;
+  canBranch: boolean;
+  branchBusy: boolean;
+  branchDisabled: boolean;
+  onBranch: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Group className="turn-end-actions" gap={4} justify="flex-start">
+      {replyText === null ? null : (
+        <ActionIcon
+          aria-label="复制回复"
+          onClick={() => {
+            void navigator.clipboard.writeText(replyText).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+          radius="xl"
+          size="sm"
+          variant="subtle"
+        >
+          {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+        </ActionIcon>
+      )}
+      {canBranch ? (
+        <ActionIcon
+          aria-label="从这一轮之后建立新会话"
+          disabled={branchDisabled}
+          loading={branchBusy}
+          onClick={onBranch}
+          radius="xl"
+          size="sm"
+          variant="subtle"
+        >
+          <IconGitBranch size={14} />
+        </ActionIcon>
+      ) : null}
+    </Group>
   );
 }
 

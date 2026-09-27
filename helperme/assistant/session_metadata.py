@@ -71,3 +71,23 @@ class SessionLineageStore(_SessionMap):
 
     def is_superseded(self, session_id: str) -> bool:
         return session_id in self._values.values()
+
+
+class SessionTextStore(_SessionMap):
+    """Session 级文案。缺省没有，只在人写过时落盘。"""
+
+    def _coerce(self, value: Any) -> str:
+        if type(value) is not str or not value.strip():
+            raise ValueError(f"{self._filename} values must be non-empty strings")
+        return value.strip()
+
+    def get(self, session_id: str) -> str | None:
+        value = self._values.get(session_id)
+        return value if type(value) is str else None
+
+    def items(self) -> dict[str, str]:
+        return dict(self._values)
+
+    def set(self, session_id: str, title: str) -> None:
+        self._values[session_id] = self._coerce(title)
+        self._save()

@@ -42,12 +42,12 @@ GREP_DESCRIPTION = """
 READ_FILE_DESCRIPTION = """
 用途：读取当前 Environment Workspace View 内已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：相对 path 以当前 Environment cwd 为基准，绝对 path 使用 Environment 原生语义；offset 从 1 开始；文件最大 20 MiB，单次最多 2000 行和 8000 字符。
-失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功；FILE_TOO_LARGE 时先用 grep 定位或改用专用工具。
+关键限制：相对 path 以当前 Environment cwd 为基准，绝对 path 使用 Environment 原生语义；offset 从 1 开始；单次最多 2000 行和 8000 字符。文件体积不是拒绝条件。
+失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
 """.strip()
 
 
-MAX_READ_FILE_SIZE_BYTES = 20 * 1024 * 1024
+RG_STREAM_LIMIT_BYTES = 20 * 1024 * 1024
 MAX_READ_CHARS = 8_000
 MAX_GREP_HIT_CHARS = 2_000
 MAX_GREP_PAGE_CHARS = 8_000
@@ -236,7 +236,7 @@ async def _rg_file_paths(search_root: Path, scope_args: list[str]) -> dict[str, 
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            limit=MAX_READ_FILE_SIZE_BYTES,
+            limit=RG_STREAM_LIMIT_BYTES,
         )
     except OSError as exc:
         return _filesystem_failure("RG_FAILED", str(search_root), exc)
@@ -405,7 +405,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                limit=MAX_READ_FILE_SIZE_BYTES,
+                limit=RG_STREAM_LIMIT_BYTES,
             )
         except OSError as exc:
             return _filesystem_failure("RG_FAILED", raw.path, exc)
@@ -587,21 +587,6 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
         assert resolved_path is not None
         path = resolved_path.native_path
         relative_path = resolved_path.workspace_membership.display_path
-        try:
-            file_size = path.stat().st_size
-        except OSError as exc:
-            return _filesystem_failure("FILE_READ_FAILED", relative_path, exc)
-        if file_size > MAX_READ_FILE_SIZE_BYTES:
-            return {
-                "ok": False,
-                "code": "FILE_TOO_LARGE",
-                "error": f"文件超过 20 MiB，不能使用 read_file: {relative_path}",
-                "path": relative_path,
-                "size": file_size,
-                "max_size": MAX_READ_FILE_SIZE_BYTES,
-                **resolved_path.result_fields(),
-            }
-
         selected: list[str] = []
         content_length = 0
         end_line = raw.offset - 1

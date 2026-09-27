@@ -5,7 +5,11 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helperme.assistant.session_metadata import SessionFlagStore, SessionLineageStore
+from helperme.assistant.session_metadata import (
+    SessionFlagStore,
+    SessionLineageStore,
+    SessionTextStore,
+)
 
 
 class SessionFlagStoreTest(unittest.TestCase):
@@ -31,6 +35,25 @@ class SessionFlagStoreTest(unittest.TestCase):
             SessionFlagStore(root, "paused.json").set("session-1", True)
 
             self.assertFalse(SessionFlagStore(root, "lineage.json").get("session-1"))
+
+
+class SessionTextStoreTest(unittest.TestCase):
+    def test_missing_key_is_none_and_only_explicit_text_is_written(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = SessionTextStore(root, "titles.json")
+
+            self.assertIsNone(store.get("session-1"))
+            self.assertFalse((root / "titles.json").is_file())
+
+            store.set("session-1", "  我起的名  ")
+            raw = json.loads((root / "titles.json").read_text(encoding="utf-8"))
+            self.assertEqual(raw, {"session-1": "我起的名"})
+            self.assertEqual(
+                SessionTextStore(root, "titles.json").get("session-1"),
+                "我起的名",
+            )
+            self.assertEqual(store.items(), {"session-1": "我起的名"})
 
 
 class SessionLineageStoreTest(unittest.TestCase):

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
+from pathlib import Path
+from typing import BinaryIO
 from uuid import uuid4
 
 from helperme.assistant.attachments import (
@@ -78,12 +81,30 @@ class WebChannel:
         await self.conversation(session_id)
         return self._store().for_session(session_id).save_image(data, mime)
 
-    async def save_file(
-        self, connection_id: str, session_id: str, data: bytes, name: str,
+    async def save_file_stream(
+        self, connection_id: str, session_id: str, stream: BinaryIO, name: str,
     ) -> FileAttachment:
         self._require_connection(connection_id)
         await self.conversation(session_id)
-        return self._store().for_session(session_id).save_file(data, name)
+        return self._store().for_session(session_id).save_file_stream(stream, name)
+
+    async def save_file_upload(
+        self, connection_id: str, session_id: str, read, name: str,
+    ) -> FileAttachment:
+        self._require_connection(connection_id)
+        await self.conversation(session_id)
+        return await self._store().for_session(session_id).save_file_upload(read, name)
+
+    async def save_file_path(
+        self, connection_id: str, session_id: str, source: Path,
+    ) -> FileAttachment:
+        self._require_connection(connection_id)
+        await self.conversation(session_id)
+        if not isinstance(source, Path) or not source.is_absolute():
+            raise AttachmentRejected("必须是本机绝对路径")
+        return await asyncio.to_thread(
+            self._store().for_session(session_id).save_file_path, source,
+        )
 
     async def attachment_file(self, session_id: str, attachment_id: str):
         if type(session_id) is not str or not session_id:
@@ -155,6 +176,28 @@ class WebChannel:
             source="web",
             listed=bool(listed),
             restore_files=bool(restore_files),
+        )
+        return await self._queries.conversation(child_session_id, view=view)
+
+    async def branch_after_turn(
+        self,
+        connection_id: str,
+        source_session_id: str,
+        message_id: str,
+    ):
+        connection = self._require_connection(connection_id)
+        for label, value in (
+            ("source_session_id", source_session_id),
+            ("message_id", message_id),
+        ):
+            if type(value) is not str or not value:
+                raise ValueError(f"{label} must be a non-empty str")
+        child_session_id = f"session-{uuid4().hex}"
+        view = await self._sessions.branch_after_turn(
+            connection.owner,
+            source_session_id,
+            message_id,
+            child_session_id,
         )
         return await self._queries.conversation(child_session_id, view=view)
 
@@ -261,6 +304,24 @@ class WebChannel:
             raise ValueError("session_id must be a non-empty str")
         view = await self._sessions.set_paused(session_id, bool(paused))
         return await self._queries.conversation(session_id, view=view)
+
+    def session_titles(self) -> dict[str, str]:
+        return self._sessions.session_titles()
+
+    async def archive(self, connection_id: str, session_id: str):
+        self._require_connection(connection_id)
+        if type(session_id) is not str or not session_id:
+            raise ValueError("session_id must be a non-empty str")
+        self._sessions.archive(session_id)
+        return {}
+
+    async def set_title(self, connection_id: str, session_id: str, title: str):
+        self._require_connection(connection_id)
+        if type(session_id) is not str or not session_id:
+            raise ValueError("session_id must be a non-empty str")
+        cleaned = self._require_text(title)
+        self._sessions.set_title(session_id, cleaned)
+        return {"title": cleaned}
 
     def _store(self) -> AttachmentGateway:
         if self._attachments is None:

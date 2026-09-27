@@ -90,6 +90,43 @@ body {
     var(--hm-sidebar);
 }
 
+.sidebar-resize {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 2px;
+  width: 1px;
+  height: 100%;
+}
+
+.sidebar-resize:hover::after,
+.sidebar-resize.is-dragging::after {
+  background: var(--hm-accent-ring);
+}
+
+@media (min-width: 48em) {
+  .sidebar-resize {
+    display: block;
+  }
+}
+
+body.is-resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+
 .session-section {
   display: flex;
   min-height: 0;
@@ -150,6 +187,50 @@ body {
 
 .workspace-sessions {
   padding: 2px 0 2px 4px;
+}
+
+.session-row {
+  min-width: 0;
+  padding: 6px 6px 6px 10px;
+  border-radius: var(--mantine-radius-md);
+}
+
+.session-row:hover,
+.session-row:focus-within {
+  background: var(--hm-hover);
+}
+
+.session-row.is-active {
+  background: var(--hm-accent-soft);
+}
+
+.session-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-title,
+.session-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-row-meta {
+  flex: 0 0 auto;
+}
+
+.session-actions {
+  display: none;
+}
+
+.session-row:hover .session-actions,
+.session-row:focus-within .session-actions {
+  display: flex;
+}
+
+.session-row:hover .session-time,
+.session-row:focus-within .session-time {
+  display: none;
 }
 
 .activity-dot {
@@ -441,6 +522,15 @@ body {
   color: var(--mantine-color-dimmed);
 }
 
+.assistant-reply {
+  min-width: 0;
+  flex: 1;
+}
+
+.turn-end-actions {
+  padding-top: 0;
+}
+
 .composer-dock {
   position: relative;
   width: 100%;
@@ -457,10 +547,22 @@ body {
   box-shadow: 0 8px 24px var(--hm-shadow-strong);
 }
 
+.composer-column,
 .composer,
 .composer-error {
   width: min(860px, 100%);
   margin-inline: auto;
+}
+
+.composer-column .composer,
+.composer-column .composer-error,
+.composer-column .scheduled-wait {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.composer-meta {
+  color: var(--mantine-color-dimmed);
 }
 
 .composer {

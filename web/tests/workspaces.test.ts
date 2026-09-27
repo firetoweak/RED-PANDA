@@ -9,6 +9,7 @@ import {
   previewSessions,
   readCollapsedWorkspaces,
   workspaceOfSession,
+  workspaceSessionRows,
   writeCollapsedWorkspaces,
 } from "../src/features/sessions/workspaces";
 
@@ -117,6 +118,89 @@ describe("previewSessions", () => {
 
     expect(previewSessions(sessions, false)).toEqual(["a", "b", "c", "d", "e"]);
     expect(previewSessions(sessions, true)).toEqual(sessions);
+  });
+});
+
+describe("workspaceSessionRows", () => {
+  it("没有草稿时只预览真实会话", () => {
+    const sessions = [
+      session("s1", "w1"),
+      session("s2", "w1"),
+    ];
+
+    expect(workspaceSessionRows(sessions, "w1", undefined, false)).toEqual({
+      shown: sessions,
+      hiddenCount: 0,
+    });
+  });
+
+  it("每个工作区最多一条 new agent，钉在最前", () => {
+    const sessions = [session("s1", "w1"), session("s2", "w1")];
+
+    const { shown, hiddenCount } = workspaceSessionRows(
+      sessions,
+      "w1",
+      "draft-1",
+      false,
+    );
+
+    expect(hiddenCount).toBe(0);
+    expect(shown).toHaveLength(3);
+    expect(shown[0]).toEqual({
+      session_id: "draft-1",
+      workspace_id: "w1",
+      title: "new agent",
+      updated_at: null,
+      activity: "idle",
+    });
+    expect(shown.slice(1)).toEqual(sessions);
+  });
+
+  it("草稿改过名就不再写 new agent", () => {
+    const { shown } = workspaceSessionRows(
+      [session("s1", "w1")],
+      "w1",
+      "draft-1",
+      false,
+      "我起的名",
+    );
+
+    expect(shown[0]?.title).toBe("我起的名");
+  });
+
+  it("草稿不占真实会话的 More 额度，也不重复列出", () => {
+    const sessions = ["a", "b", "c", "d", "e", "f"].map((id) =>
+      session(id, "w1"),
+    );
+    sessions[0] = session("draft-1", "w1");
+
+    const collapsed = workspaceSessionRows(sessions, "w1", "draft-1", false);
+    expect(collapsed.shown[0]?.session_id).toBe("draft-1");
+    expect(collapsed.shown[0]?.title).toBe("new agent");
+    expect(collapsed.shown.slice(1).map((item) => item.session_id)).toEqual([
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+    ]);
+    expect(collapsed.hiddenCount).toBe(0);
+
+    const preview = workspaceSessionRows(
+      ["a", "b", "c", "d", "e", "f", "g"].map((id) => session(id, "w1")),
+      "w1",
+      "draft-1",
+      false,
+    );
+    expect(preview.shown.map((item) => item.session_id)).toEqual([
+      "draft-1",
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+    expect(preview.hiddenCount).toBe(2);
   });
 });
 

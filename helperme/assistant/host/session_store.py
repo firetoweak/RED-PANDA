@@ -147,6 +147,60 @@ class SessionStore:
         await self._materialize(source_path, prefix, child_session_id, child_path)
         return ForkedMessage(target.payload.content, target.artifact_refs)
 
+    async def fork_after_turn(
+        self,
+        source_session_id: str,
+        user_message_id: str,
+        child_session_id: str,
+    ) -> None:
+        """从这条用户消息所在轮次的收口处切分支，含这一轮本身。
+
+        前缀停在下一轮用户消息之前；这是最后一轮则含整本 Journal。
+        一轮必须已经回到 WAITING(external_fact)，否则不是收口。
+        """
+        source_path = self.require(source_session_id)
+        child_path = self.path(child_session_id)
+        if child_path.parent.exists():
+            raise ValueError(f"Session 已存在: {child_session_id}")
+
+        source_events = await SqliteJournal(source_path).snapshot(source_session_id)
+        target = next(
+            (event for event in source_events if event.event_id == user_message_id),
+            None,
+        )
+        if target is None:
+            raise ForkMessageNotFoundError(user_message_id)
+        if not isinstance(target.payload, UserMessageReceived):
+            raise SessionForkUnavailableError(
+                "branch target must be a user message"
+            )
+        next_user = next(
+            (
+                event
+                for event in source_events
+                if event.sequence > target.sequence
+                and isinstance(event.payload, UserMessageReceived)
+            ),
+            None,
+        )
+        prefix = (
+            tuple(
+                event
+                for event in source_events
+                if event.sequence < next_user.sequence
+            )
+            if next_user is not None
+            else source_events
+        )
+        state = replay(source_session_id, prefix).state
+        if state.status is not RuntimeStatus.WAITING or state.waiting_for != (
+            "external_fact",
+        ):
+            raise SessionForkUnavailableError(
+                "turn must end at an external-fact boundary"
+            )
+        await self._materialize(source_path, prefix, child_session_id, child_path)
+
     async def fork_after_event(
         self,
         source_session_id: str,

@@ -289,6 +289,16 @@ class ConversationProjectionTest(unittest.TestCase):
         self.assertEqual(summary.title, "第一行")
         self.assertEqual(summary.updated_at, events[-1].occurred_at)
         self.assertEqual(summary.activity, "running")
+        self.assertEqual(
+            project_session_summary(
+                "session-1",
+                events,
+                workspace_id="workspace-1",
+                activity="running",
+                title="我起的名",
+            ).title,
+            "我起的名",
+        )
 
     def test_user_message_carries_image_refs(self):
         attachment_id = "sha256:" + "a" * 64
@@ -365,6 +375,12 @@ class Idle:
     def is_superseded(self, session_id):
         return session_id in self.superseded
 
+    def is_archived(self, session_id):
+        return False
+
+    def session_title(self, session_id):
+        return None
+
     def conversation_status(self, session_id):
         from helperme.assistant.compact.store import ConversationStatus
 
@@ -438,6 +454,67 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(await queries.list_sessions(), ())
             self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
+
+    async def test_archived_identities_stay_out_of_the_top_level_list(self):
+        """归档只是不再出现在列表里，会话仍可读。"""
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from helperme.assistant.conversations import AssistantQueries
+        from helperme.assistant.host.session_store import SessionStore
+        from helperme.runtime import SqliteJournal
+        from helperme.runtime.events import DeliveryIdentity, EventDraft
+
+        class Archived(Idle):
+            def is_archived(self, session_id):
+                return session_id == "spoken"
+
+        with TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory))
+            queries = AssistantQueries(store, Archived())
+            await store.create("spoken", workspace_id="workspace-1")
+            await SqliteJournal(store.require("spoken")).accept_delivery(
+                EventDraft(
+                    event_id="user-1",
+                    session_id="spoken",
+                    payload=UserMessageReceived("你好"),
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity("web", "d1"),
+                )
+            )
+
+            self.assertEqual(await queries.list_sessions(), ())
+            self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
+
+    async def test_listed_title_uses_the_host_override(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from helperme.assistant.conversations import AssistantQueries
+        from helperme.assistant.host.session_store import SessionStore
+        from helperme.runtime import SqliteJournal
+        from helperme.runtime.events import DeliveryIdentity, EventDraft
+
+        class Named(Idle):
+            def session_title(self, session_id):
+                return "我起的名"
+
+        with TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory))
+            queries = AssistantQueries(store, Named())
+            await store.create("spoken", workspace_id="workspace-1")
+            await SqliteJournal(store.require("spoken")).accept_delivery(
+                EventDraft(
+                    event_id="user-1",
+                    session_id="spoken",
+                    payload=UserMessageReceived("你好"),
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity("web", "d1"),
+                )
+            )
+            listed = await queries.list_sessions()
+
+        self.assertEqual(listed[0].title, "我起的名")
 
     async def test_conversation_projects_control_approval_from_journal(self):
         from pathlib import Path

@@ -66,6 +66,17 @@ export const directorySelectionSchema = z
 
 export type DirectorySelection = z.infer<typeof directorySelectionSchema>;
 
+export const fileSelectionSchema = z
+  .object({
+    file: z
+      .object({ path: z.string().min(1), name: z.string().min(1) })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export type FileSelection = z.infer<typeof fileSelectionSchema>;
+
 export const toolStatusSchema = z.enum([
   "queued",
   "running",

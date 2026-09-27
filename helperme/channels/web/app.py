@@ -30,6 +30,7 @@ from helperme.channels.web.channel import WebChannel
 from helperme.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
+    select_file,
 )
 from helperme.channels.web.hub import WebEventHub
 from helperme.sandbox.registry import (
@@ -95,6 +96,10 @@ class RestartRequest(BaseModel):
     step_id: str
 
 
+class BranchRequest(ConnectionRequest):
+    message_id: str
+
+
 class AuthorizationRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
@@ -120,12 +125,28 @@ class PauseRequest(BaseModel):
     paused: bool
 
 
+class TitleRequest(ConnectionRequest):
+    title: str
+
+    @field_validator("title")
+    @classmethod
+    def named(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("title must be a non-empty str")
+        return stripped
+
+
 class WorkspaceCreateRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     name: str
     task_root: str
     full_access: bool = False
+
+
+class AttachLocalFileRequest(ConnectionRequest):
+    path: str
 
 
 def create_web_app(
@@ -259,6 +280,10 @@ def create_web_app(
     async def sessions(request: Request):
         return await _channel(request).list_sessions()
 
+    @app.get("/api/session-titles")
+    async def session_titles(request: Request):
+        return _channel(request).session_titles()
+
     @app.get("/api/sessions/{session_id}")
     async def conversation(session_id: str, request: Request):
         return await _channel(request).conversation(session_id)
@@ -291,6 +316,16 @@ def create_web_app(
             }
         }
 
+    @app.post("/api/files/select")
+    async def pick_local_file():
+        selected = await select_file()
+        return {
+            "file": None if selected is None else {
+                "path": str(selected),
+                "name": selected.name or str(selected),
+            }
+        }
+
     @app.post("/api/sessions/{session_id}/select")
     async def select_session(
         session_id: str,
@@ -311,10 +346,12 @@ def create_web_app(
             mime = "image/jpeg"
         if not file.filename:
             raise AttachmentRejected("缺少附件文件名")
-        data = await file.read(MAX_SOURCE_BYTES + 1)
         if mime not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
-            ref = await _channel(request).save_file(connection_id, session_id, data, file.filename)
+            ref = await _channel(request).save_file_upload(
+                connection_id, session_id, file.read, file.filename,
+            )
             return {"kind": "file", "attachment_id": ref.attachment_id, "name": ref.name, "size": ref.size}
+        data = await file.read(MAX_SOURCE_BYTES + 1)
         ref = await _channel(request).save_image(
             connection_id,
             session_id,
@@ -329,6 +366,22 @@ def create_web_app(
             "mime": ref.mime,
             "width": ref.width,
             "height": ref.height,
+        }
+
+    @app.post("/api/sessions/{session_id}/attachments/from-path", status_code=201)
+    async def attach_local_file(
+        session_id: str,
+        body: AttachLocalFileRequest,
+        request: Request,
+    ):
+        ref = await _channel(request).save_file_path(
+            body.connection_id, session_id, Path(body.path),
+        )
+        return {
+            "kind": "file",
+            "attachment_id": ref.attachment_id,
+            "name": ref.name,
+            "size": ref.size,
         }
 
     @app.get("/api/sessions/{session_id}/attachments/{attachment_id:path}")
@@ -386,6 +439,18 @@ def create_web_app(
             body.delivery_id,
             body.listed,
             body.restore_files,
+        )
+
+    @app.post("/api/sessions/{session_id}/branches", status_code=201)
+    async def branch_after_turn(
+        session_id: str,
+        body: BranchRequest,
+        request: Request,
+    ):
+        return await _channel(request).branch_after_turn(
+            body.connection_id,
+            session_id,
+            body.message_id,
         )
 
     @app.post("/api/sessions/{session_id}/restarts", status_code=201)
@@ -453,6 +518,26 @@ def create_web_app(
             body.connection_id,
             session_id,
             body.paused,
+        )
+
+    @app.post("/api/sessions/{session_id}/archive")
+    async def archive_session(
+        session_id: str,
+        body: ConnectionRequest,
+        request: Request,
+    ):
+        return await _channel(request).archive(body.connection_id, session_id)
+
+    @app.post("/api/sessions/{session_id}/title")
+    async def set_session_title(
+        session_id: str,
+        body: TitleRequest,
+        request: Request,
+    ):
+        return await _channel(request).set_title(
+            body.connection_id,
+            session_id,
+            body.title,
         )
 
     assets = Path(__file__).parents[3] / "web" / "dist"
