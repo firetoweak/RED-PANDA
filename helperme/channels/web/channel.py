@@ -8,6 +8,7 @@ from helperme.assistant.attachments import (
     AttachmentRejected,
     is_valid_attachment_id,
 )
+from helperme.assistant.file_attachments import FileAttachment, is_file_attachment_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,13 @@ class WebChannel:
         await self.conversation(session_id)
         return self._store().for_session(session_id).save_image(data, mime)
 
+    async def save_file(
+        self, connection_id: str, session_id: str, data: bytes, name: str,
+    ) -> FileAttachment:
+        self._require_connection(connection_id)
+        await self.conversation(session_id)
+        return self._store().for_session(session_id).save_file(data, name)
+
     async def attachment_file(self, session_id: str, attachment_id: str):
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
@@ -87,7 +95,11 @@ class WebChannel:
         path = store.path(attachment_id)
         if not path.is_file():
             raise FileNotFoundError(path)
-        return path, store.inspect(attachment_id).mime
+        mime = (
+            "application/octet-stream" if is_file_attachment_id(attachment_id)
+            else store.inspect(attachment_id).mime
+        )
+        return path, mime
 
     async def accept_input(
         self,
@@ -265,8 +277,12 @@ class WebChannel:
         store = self._store().for_session(session_id)
         for ref in artifact_refs:
             if not is_valid_attachment_id(ref):
-                raise AttachmentRejected("artifact_refs 必须是 sha256 附件 id")
-            if not store.path(ref).is_file():
+                raise AttachmentRejected("artifact_refs 必须是有效附件 id")
+            try:
+                exists = store.path(ref).is_file()
+            except FileNotFoundError:
+                exists = False
+            if not exists:
                 raise AttachmentRejected("附件不存在")
         return artifact_refs
 

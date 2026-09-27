@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 from helperme.assistant.tool_results import runtime_tool_result
 from helperme.runtime.model import AuthorizationPolicy
 from helperme.sandbox.api import EnvironmentSelection
 from helperme.sandbox.local.provider import create_local_environment_provider
 from helperme.sandbox.registry import WorkspaceRecord, workspace_view
+from helperme.sandbox.workspace import (
+    FilesystemPermission,
+    PermissionBinding,
+    RootBinding,
+    WorkspaceScope,
+    WorkspaceViewSnapshot,
+)
 from helperme.tools.executor import ToolsExecutor
 from helperme.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
 from helperme.tools.builtin import (
@@ -53,14 +61,33 @@ class BuiltinToolRunner:
 
 async def build_builtin_tools(
     workspace: WorkspaceRecord,
+    *,
+    materials_root: Path | None = None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
+    if materials_root is not None:
+        materials_root.mkdir(parents=True, exist_ok=True)
+        view = WorkspaceViewSnapshot((
+            *view.roots,
+            RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
+        ))
     provider = create_local_environment_provider()
     binding = await provider.attach(EnvironmentSelection(
         environment_id=provider.environment_id,
         workspace_view=view,
         cwd=str(workspace.task_root),
     ))
+    if materials_root is not None:
+        binding = replace(
+            binding,
+            permission_binding=PermissionBinding(
+                tuple(
+                    (root_id, FilesystemPermission.READ_ONLY if root_id == "session_materials" else access)
+                    for root_id, access in binding.permission_binding.filesystem
+                ),
+                network_access=binding.permission_binding.network_access,
+            ),
+        )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
     for spec in create_environment_tool_specs(binding, interrupts):

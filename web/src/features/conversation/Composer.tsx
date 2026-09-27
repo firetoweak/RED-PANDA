@@ -32,12 +32,13 @@ import {
 } from "../../api/helpermeApi";
 import { useAppSelector } from "../../app/hooks";
 import { AttachmentTile } from "./AttachmentTile";
+import { FileAttachmentTile } from "./FileAttachmentTile";
 import {
   composeSendContent,
   parkedPreviewText,
   restoreParkedDraft,
   type ComposerDraft,
-  type ComposerImage,
+  type ComposerAttachment,
 } from "./parkDraft";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
@@ -89,7 +90,7 @@ export function Composer({
   compactPhase,
 }: ComposerProps) {
   const [text, setText] = useState("");
-  const [pending, setPending] = useState<ComposerImage[]>([]);
+  const [pending, setPending] = useState<ComposerAttachment[]>([]);
   const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -122,15 +123,18 @@ export function Composer({
   );
   const busy = disabled || sending || uploading;
   const canSend =
-    !busy && parked === null && (text.trim() !== "" || ready.length > 0);
+    !busy &&
+    !pending.some((item) => item.state === "error") &&
+    parked === null &&
+    (text.trim() !== "" || ready.length > 0);
 
   useEffect(() => {
     return () => {
       for (const item of pendingRef.current) {
-        URL.revokeObjectURL(item.previewUrl);
+        releasePreview(item);
       }
       for (const item of parkedPendingRef.current) {
-        URL.revokeObjectURL(item.previewUrl);
+        releasePreview(item);
       }
     };
   }, []);
@@ -144,7 +148,7 @@ export function Composer({
     const previous = parkedRef.current;
     if (previous !== null) {
       for (const item of previous.pending) {
-        URL.revokeObjectURL(item.previewUrl);
+        releasePreview(item);
       }
     }
     parkedRef.current = null;
@@ -164,11 +168,11 @@ export function Composer({
     const done = draft.pending.filter(
       (item) => item.state === "done" && item.attachmentId !== null,
     );
-    const content = composeSendContent(draft.text, done.length);
+    const content = composeSendContent(draft.text, done);
     const artifactRefs = done.map((item) => item.attachmentId as string);
     await onSendRef.current(content, artifactRefs);
     for (const item of draft.pending) {
-      URL.revokeObjectURL(item.previewUrl);
+      releasePreview(item);
     }
   }
 
@@ -235,25 +239,35 @@ export function Composer({
   }
 
   async function addAttachment(file: File) {
-    if (
-      connectionId === null ||
-      disabled ||
-      !ACCEPTED_IMAGE_TYPES.has(normalizeMime(file.type))
-    ) {
+    if (connectionId === null || disabled) {
       return;
     }
     const localId = crypto.randomUUID();
-    const previewUrl = URL.createObjectURL(file);
+    const kind = ACCEPTED_IMAGE_TYPES.has(normalizeMime(file.type)) ? "image" : "file";
+    const previewUrl = kind === "image" ? URL.createObjectURL(file) : null;
     setPending((current) => [
       ...current,
       {
         localId,
-        name: file.name || "image",
+        name: file.name,
+        kind,
+        file,
+        error: null,
         previewUrl,
         attachmentId: null,
         state: "uploading",
       },
     ]);
+    await upload(localId, file);
+  }
+
+  async function upload(localId: string, file: File) {
+    if (connectionId === null || disabled) {
+      return;
+    }
+    setPending((current) => current.map((item) =>
+      item.localId === localId ? { ...item, state: "uploading", error: null } : item,
+    ));
     try {
       const uploaded = await uploadAttachment({
         connectionId,
@@ -266,15 +280,16 @@ export function Composer({
             ? {
                 ...item,
                 attachmentId: uploaded.attachment_id,
+                kind: uploaded.kind,
                 state: "done",
               }
             : item,
         ),
       );
-    } catch {
+    } catch (error) {
       setPending((current) =>
         current.map((item) =>
-          item.localId === localId ? { ...item, state: "error" } : item,
+          item.localId === localId ? { ...item, state: "error", error: uploadError(error) } : item,
         ),
       );
     }
@@ -282,6 +297,11 @@ export function Composer({
 
   function addFiles(files: File[]) {
     void Promise.all(files.map((file) => addAttachment(file)));
+  }
+
+  function removeAttachment(item: ComposerAttachment) {
+    releasePreview(item);
+    setPending((current) => current.filter((entry) => entry.localId !== item.localId));
   }
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -332,7 +352,6 @@ export function Composer({
       withBorder
     >
       <input
-        accept="image/png,image/jpeg,image/webp,image/gif"
         hidden
         multiple
         onChange={(event) => {
@@ -378,24 +397,27 @@ export function Composer({
       )}
       {pending.length === 0 ? null : (
         <Group className="composer-attachments" gap={8} wrap="wrap">
-          {pending.map((item) => (
-            <AttachmentTile
-              key={item.localId}
-              name={item.name}
-              onRemove={() => {
-                URL.revokeObjectURL(item.previewUrl);
-                setPending((current) =>
-                  current.filter((entry) => entry.localId !== item.localId),
-                );
-              }}
-              src={item.previewUrl}
-              state={item.state}
-            />
+          {pending.map((item) => item.kind === "file" ? (
+            <FileAttachmentTile key={item.localId} name={item.name} size={item.file.size}
+              state={item.state} error={item.error}
+              onRetry={disabled ? undefined : () => void upload(item.localId, item.file)}
+              onRemove={() => removeAttachment(item)} />
+          ) : (
+            <div key={item.localId}>
+              <AttachmentTile
+                name={item.name}
+                onRemove={() => removeAttachment(item)}
+                src={item.previewUrl!}
+                state={item.state}
+              />
+              {item.state === "error" ? <Button disabled={disabled} size="compact-xs" variant="subtle"
+                title={item.error ?? undefined} onClick={() => void upload(item.localId, item.file)}>重试</Button> : null}
+            </div>
           ))}
         </Group>
       )}
       <Group className="composer-top" gap={10} wrap="nowrap" align="flex-end">
-        <Tooltip label="添加图片，也可直接粘贴">
+        <Tooltip label="添加文件，也可拖入或粘贴">
           <ActionIcon
             aria-label="Add attachment"
             disabled={busy || connectionId === null}
@@ -417,7 +439,7 @@ export function Composer({
           onChange={(event) => setText(event.currentTarget.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={disabled ? "正在连接…" : "输入消息，Enter 发送，可粘贴图片"}
+          placeholder={disabled ? "正在连接…" : "输入消息，Enter 发送，可拖入文件或粘贴图片"}
           minRows={1}
           maxRows={7}
           variant="unstyled"
@@ -547,7 +569,7 @@ function ContextRing({ used, limit }: { used: number; limit: number }) {
         cy="7"
         fill="none"
         r={radius}
-        stroke="rgba(255, 255, 255, 0.14)"
+        stroke="var(--hm-ring-track)"
         strokeWidth="2"
       />
       <circle
@@ -579,4 +601,16 @@ function formatTokens(tokens: number) {
 function normalizeMime(type: string) {
   const mime = type.split(";", 1)[0].trim().toLowerCase();
   return mime === "image/jpg" ? "image/jpeg" : mime;
+}
+
+function releasePreview(item: ComposerAttachment) {
+  if (item.previewUrl !== null) URL.revokeObjectURL(item.previewUrl);
+}
+
+function uploadError(error: unknown): string {
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = error.data;
+    if (typeof data === "object" && data !== null && "detail" in data && typeof data.detail === "string") return data.detail;
+  }
+  return "上传失败，请重试或移除";
 }

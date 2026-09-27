@@ -100,6 +100,11 @@ export const conversationViewSchema = z
             text: z.string().min(1),
             occurred_at: z.string().datetime({ offset: true }),
             images: z.array(z.string().regex(/^sha256:[0-9a-f]{64}$/)),
+            files: z.array(z.object({
+              attachment_id: z.string().regex(/^file:[0-9a-f]{32}$/),
+              name: z.string().min(1),
+              size: z.number().int().nonnegative(),
+            }).strict()),
           })
           .strict(),
         z

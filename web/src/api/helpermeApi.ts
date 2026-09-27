@@ -68,14 +68,25 @@ type SetPaused = SelectSession & {
   paused: boolean;
 };
 
-const attachmentRefSchema = z
+const attachmentRefSchema = z.discriminatedUnion("kind", [
+  z
   .object({
+    kind: z.literal("image"),
     attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    name: z.string().min(1),
+    size: z.number().int().nonnegative(),
     mime: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
   })
-  .strict();
+  .strict(),
+  z.object({
+    kind: z.literal("file"),
+    attachment_id: z.string().regex(/^file:[0-9a-f]{32}$/),
+    name: z.string().min(1),
+    size: z.number().int().nonnegative(),
+  }).strict(),
+]);
 
 export type AttachmentRef = z.infer<typeof attachmentRefSchema>;
 

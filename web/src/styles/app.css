@@ -2,6 +2,64 @@
   color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --hm-canvas: #101211;
+  --hm-sidebar: #151716;
+  --hm-sidebar-sheen: rgba(255, 255, 255, 0.018);
+  --hm-surface: #1b1e1c;
+  --hm-bubble: var(--mantine-color-dark-6);
+  --hm-tile: var(--mantine-color-dark-5);
+  --hm-border: rgba(255, 255, 255, 0.07);
+  --hm-border-strong: rgba(255, 255, 255, 0.1);
+  --hm-hairline: rgba(255, 255, 255, 0.04);
+  --hm-hover: rgba(255, 255, 255, 0.025);
+  --hm-card: rgba(255, 255, 255, 0.025);
+  --hm-card-soft: rgba(255, 255, 255, 0.018);
+  --hm-card-faint: rgba(255, 255, 255, 0.014);
+  --hm-card-border: rgba(255, 255, 255, 0.075);
+  --hm-card-border-soft: rgba(255, 255, 255, 0.055);
+  --hm-divider: rgba(255, 255, 255, 0.08);
+  --hm-accent-soft: rgba(145, 181, 106, 0.08);
+  --hm-accent-ring: rgba(145, 181, 106, 0.5);
+  --hm-accent-glow: rgba(145, 181, 106, 0.12);
+  --hm-accent-wash: rgba(145, 181, 106, 0.055);
+  --hm-accent-fill: rgba(145, 181, 106, 0.04);
+  --hm-accent-drag: rgba(145, 181, 106, 0.55);
+  --hm-shadow: rgba(0, 0, 0, 0.24);
+  --hm-shadow-strong: rgba(0, 0, 0, 0.45);
+  --hm-overlay: rgba(0, 0, 0, 0.42);
+  --hm-ring-track: rgba(255, 255, 255, 0.14);
+  --hm-sage-text: var(--mantine-color-sage-3);
+}
+
+:root[data-mantine-color-scheme="light"] {
+  color-scheme: light;
+  --hm-canvas: #f5f6f2;
+  --hm-sidebar: #eaede6;
+  --hm-sidebar-sheen: rgba(255, 255, 255, 0.65);
+  --hm-surface: #ffffff;
+  --hm-bubble: #ffffff;
+  --hm-tile: #e3e7dc;
+  --hm-border: rgba(32, 36, 28, 0.08);
+  --hm-border-strong: rgba(32, 36, 28, 0.14);
+  --hm-hairline: rgba(32, 36, 28, 0.06);
+  --hm-hover: rgba(32, 36, 28, 0.045);
+  --hm-card: rgba(32, 36, 28, 0.03);
+  --hm-card-soft: rgba(32, 36, 28, 0.022);
+  --hm-card-faint: rgba(32, 36, 28, 0.016);
+  --hm-card-border: rgba(32, 36, 28, 0.08);
+  --hm-card-border-soft: rgba(32, 36, 28, 0.06);
+  --hm-divider: rgba(32, 36, 28, 0.08);
+  --hm-accent-soft: rgba(99, 143, 60, 0.12);
+  --hm-accent-ring: rgba(99, 143, 60, 0.48);
+  --hm-accent-glow: rgba(99, 143, 60, 0.16);
+  --hm-accent-wash: rgba(118, 166, 74, 0.1);
+  --hm-accent-fill: rgba(118, 166, 74, 0.07);
+  --hm-accent-drag: rgba(99, 143, 60, 0.5);
+  --hm-shadow: rgba(32, 36, 28, 0.1);
+  --hm-shadow-strong: rgba(32, 36, 28, 0.16);
+  --hm-overlay: rgba(255, 255, 255, 0.58);
+  --hm-ring-track: rgba(32, 36, 28, 0.16);
+  --hm-sage-text: var(--mantine-color-sage-8);
 }
 
 * {
@@ -18,18 +76,18 @@ body,
 
 body {
   overflow: hidden;
-  background: #101211;
+  background: var(--hm-canvas);
 }
 
 .app-shell {
   height: 100dvh;
-  --app-shell-border-color: rgba(255, 255, 255, 0.07);
+  --app-shell-border-color: var(--hm-border);
 }
 
 .app-navbar {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 28%),
-    #151716;
+    linear-gradient(180deg, var(--hm-sidebar-sheen), transparent 28%),
+    var(--hm-sidebar);
 }
 
 .session-section {
@@ -56,7 +114,7 @@ body {
 }
 
 .workspace-head:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--hm-hover);
 }
 
 .workspace-toggle {
@@ -69,7 +127,7 @@ body {
 
 .workspace-group.is-current .workspace-head {
   color: var(--mantine-color-text);
-  background: rgba(145, 181, 106, 0.08);
+  background: var(--hm-accent-soft);
 }
 
 .workspace-more {
@@ -99,7 +157,7 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--mantine-color-dark-2);
+  background: var(--mantine-color-dimmed);
 }
 
 .activity-dot-running {
@@ -113,15 +171,24 @@ body {
   min-height: 100dvh;
   height: 100dvh;
   background:
-    radial-gradient(circle at 50% -15%, rgba(145, 181, 106, 0.055), transparent 36%),
-    #101211;
+    radial-gradient(circle at 50% -15%, var(--hm-accent-wash), transparent 36%),
+    var(--hm-canvas);
 }
 
-.mobile-nav-trigger {
+.mobile-nav-trigger,
+.color-scheme-trigger {
   position: fixed;
   z-index: 110;
   top: 12px;
+}
+
+.mobile-nav-trigger {
   left: 12px;
+}
+
+.color-scheme-trigger {
+  right: 12px;
+  box-shadow: 0 0 0 1px var(--hm-border-strong);
 }
 
 .conversation {
@@ -138,7 +205,7 @@ body {
 .scheduled-wait {
   width: min(860px, calc(100% - 48px));
   margin: 0 auto 8px;
-  color: var(--mantine-color-sage-3);
+  color: var(--hm-sage-text);
 }
 
 .timeline-scroll {
@@ -154,20 +221,20 @@ body {
 }
 
 .tool-card {
-  background: rgba(255, 255, 255, 0.025);
-  border-color: rgba(255, 255, 255, 0.075);
+  background: var(--hm-card);
+  border-color: var(--hm-card-border);
 }
 
 .execution-process {
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.018);
-  border-color: rgba(255, 255, 255, 0.075);
+  background: var(--hm-card-soft);
+  border-color: var(--hm-card-border);
 }
 
 .thinking-block {
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.014);
-  border-color: rgba(255, 255, 255, 0.055);
+  background: var(--hm-card-faint);
+  border-color: var(--hm-card-border-soft);
 }
 
 .thinking-toggle,
@@ -204,7 +271,7 @@ body {
 .thinking-toggle:hover,
 .execution-toggle:hover,
 .step-toggle:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--hm-hover);
 }
 
 .execution-steps {
@@ -217,7 +284,7 @@ body {
 }
 
 .step-panel + .step-panel {
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid var(--hm-hairline);
 }
 
 .step-content {
@@ -243,13 +310,13 @@ body {
 
 .user-edit {
   width: 100%;
-  background: #1b1e1c;
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--hm-surface);
+  border-color: var(--hm-border-strong);
 }
 
 .user-edit:focus-within {
-  border-color: rgba(145, 181, 106, 0.5);
-  box-shadow: 0 0 0 1px rgba(145, 181, 106, 0.12);
+  border-color: var(--hm-accent-ring);
+  box-shadow: 0 0 0 1px var(--hm-accent-glow);
 }
 
 .user-edit-input {
@@ -275,7 +342,11 @@ body {
 .user-bubble {
   max-width: 640px;
   border-bottom-right-radius: 6px;
-  background: var(--mantine-color-dark-6);
+  background: var(--hm-bubble);
+}
+
+:root[data-mantine-color-scheme="light"] .user-bubble {
+  box-shadow: inset 0 0 0 1px var(--hm-border);
 }
 
 .user-image {
@@ -295,7 +366,7 @@ body {
   width: 72px;
   height: 72px;
   border-radius: 12px;
-  background: var(--mantine-color-dark-5);
+  background: var(--hm-tile);
 }
 
 .attachment-tile-large .attachment-tile-button {
@@ -324,7 +395,7 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--hm-overlay);
   color: white;
   font-size: 11px;
 }
@@ -337,12 +408,21 @@ body {
 
 .composer[data-dragging] {
   border-style: dashed;
-  border-color: rgba(145, 181, 106, 0.55);
-  background: rgba(145, 181, 106, 0.04);
+  border-color: var(--hm-accent-drag);
+  background: var(--hm-accent-fill);
 }
 
 .composer-attachments {
   padding: 6px 8px 4px 2px;
+}
+
+.file-attachment {
+  width: 280px;
+  max-width: 100%;
+}
+
+.file-attachment[data-state="error"] {
+  border-color: var(--mantine-color-red-7);
 }
 
 .message-text,
@@ -365,7 +445,7 @@ body {
   position: relative;
   width: 100%;
   padding: 0 24px 20px;
-  background: linear-gradient(180deg, transparent, #101211 24%);
+  background: linear-gradient(180deg, transparent, var(--hm-canvas) 24%);
 }
 
 .jump-to-latest {
@@ -374,7 +454,7 @@ body {
   left: 50%;
   z-index: 5;
   transform: translateX(-50%);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 24px var(--hm-shadow-strong);
 }
 
 .composer,
@@ -388,21 +468,21 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 2px;
-  border-color: rgba(255, 255, 255, 0.1);
-  background: #1b1e1c;
+  border-color: var(--hm-border-strong);
+  background: var(--hm-surface);
 }
 
 .composer:focus-within {
-  border-color: rgba(145, 181, 106, 0.5);
+  border-color: var(--hm-accent-ring);
   box-shadow:
-    0 12px 38px rgba(0, 0, 0, 0.24),
-    0 0 0 1px rgba(145, 181, 106, 0.12);
+    0 12px 38px var(--hm-shadow),
+    0 0 0 1px var(--hm-accent-glow);
 }
 
 .composer-parked {
   min-width: 0;
   padding: 4px 8px 6px 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--hm-divider);
 }
 
 .composer-parked-text {

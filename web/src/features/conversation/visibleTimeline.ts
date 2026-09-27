@@ -10,6 +10,7 @@ export type VisibleUser = {
   kind: "user";
   text: string;
   images: string[];
+  files: { attachment_id: string; name: string; size: number }[];
 };
 
 export type VisibleTool = {
@@ -57,6 +58,7 @@ export function visibleTimeline(
         kind: "user",
         text: item.text,
         images: item.images,
+        files: item.files,
       };
     }
     return {

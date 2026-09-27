@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Literal
 
 from helperme.assistant.control import pending_approval_view, project_control_message
+from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
+from helperme.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from helperme.assistant.delivery import DELIVER_TOOL_NAME
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.sessions import SessionView, session_view
@@ -53,6 +55,7 @@ class UserItem:
     text: str
     occurred_at: datetime
     images: tuple[str, ...] = ()
+    files: tuple[FileAttachment, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +167,7 @@ class AssistantQueries:
                 events,
                 state.steps,
                 session=view,
+                attachments=AttachmentGateway(self._store.root).for_session(session_id),
             ),
             compact_count=status.compact_count,
             compact_phase=status.compact_phase,
@@ -203,6 +207,7 @@ def project_conversation(
     steps: tuple[StepState, ...],
     *,
     session: SessionView,
+    attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
     versions = project_workspace_versions(events)
@@ -211,13 +216,17 @@ def project_conversation(
     for event in events:
         payload = event.payload
         if isinstance(payload, UserMessageReceived):
+            file_ids = tuple(ref for ref in event.artifact_refs if is_file_attachment_id(ref))
+            if file_ids and attachments is None:
+                raise ValueError("文件引用必须装配 Session 附件存储")
             items.append(
                 UserItem(
                     "user",
                     event.event_id,
                     payload.content,
                     event.occurred_at,
-                    event.artifact_refs,
+                    tuple(ref for ref in event.artifact_refs if not is_file_attachment_id(ref)),
+                    tuple(attachments.files.describe(ref) for ref in file_ids),
                 )
             )
             continue

@@ -1,4 +1,4 @@
-"""附件：工具带回的二进制外置物，按内容寻址存放在 Session 目录。
+"""Session 附件：图片按内容寻址，普通上传文件保留独立身份与原始名称。
 
 文本 Artifact 因超长而外置、按字符分页；附件因二进制天然写不进 Journal 而外置、
 整件取回。两者共用 Session 目录，不共用 API。见 docs/架构/上下文/多模态附件.md。
@@ -14,6 +14,10 @@ import re
 from uuid import uuid4
 
 from PIL import Image
+
+from helperme.assistant.file_attachments import (
+    FileAttachment, FileAttachmentStore, InvalidAttachmentName, is_file_attachment_id,
+)
 
 from helperme.runtime import ToolBinding
 from helperme.runtime.events import CommandOutcomeReceived
@@ -40,6 +44,10 @@ class AttachmentRejected(ValueError):
 
 
 def is_valid_attachment_id(value: object) -> bool:
+    return is_image_attachment_id(value) or is_file_attachment_id(value)
+
+
+def is_image_attachment_id(value: object) -> bool:
     return type(value) is str and _ATTACHMENT_ID_PATTERN.fullmatch(value) is not None
 
 
@@ -110,6 +118,15 @@ class AttachmentStore:
 
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
+        self.files = FileAttachmentStore(self._root / "files", self._root.parent / ".materials")
+
+    def save_file(self, data: bytes, name: str) -> FileAttachment:
+        if len(data) > MAX_SOURCE_BYTES:
+            raise AttachmentRejected(f"文件字节数超过上限 {MAX_SOURCE_BYTES}")
+        try:
+            return self.files.save(data, name)
+        except InvalidAttachmentName as error:
+            raise AttachmentRejected(str(error)) from error
 
     def save_image(self, data: bytes, declared_mime: str) -> AttachmentRef:
         stored, mime, size, source_size = _admit(data, declared_mime)
@@ -130,6 +147,8 @@ class AttachmentStore:
         )
 
     def path(self, attachment_id: str) -> Path:
+        if is_file_attachment_id(attachment_id):
+            return self.files.source(attachment_id)
         if not is_valid_attachment_id(attachment_id):
             raise ValueError("attachment id 格式无效")
         return self._root / attachment_id[len(_ATTACHMENT_ID_PREFIX) :]
@@ -190,6 +209,8 @@ def read_image_binding(journal, store: AttachmentStore) -> dict[str, ToolBinding
                 "code": "INVALID_ARGUMENT",
                 "error": "需要本 Session 的附件 id",
             }
+        if not is_image_attachment_id(attachment_id):
+            return {"ok": False, "code": "NOT_AN_IMAGE", "error": "该附件是普通文件，请使用消息中的材料路径读取"}
         for event in await journal.snapshot(context.session_id):
             if attachment_id in event.artifact_refs:
                 return {

@@ -17,6 +17,7 @@ describe("parked composer draft", () => {
             localId: "img-1",
             name: "shot.png",
             previewUrl: "blob:parked",
+            kind: "image", file: new File([], "shot.png"), error: null,
             attachmentId: "att-1",
             state: "done",
           },
@@ -31,6 +32,7 @@ describe("parked composer draft", () => {
         localId: "img-1",
         name: "shot.png",
         previewUrl: "blob:parked",
+            kind: "image", file: new File([], "shot.png"), error: null,
         attachmentId: "att-1",
         state: "done",
       },
@@ -42,7 +44,8 @@ describe("parked composer draft", () => {
   });
 
   it("does not rewrite image tokens until the parked draft actually sends", () => {
-    expect(composeSendContent("下一句", 2)).toBe("下一句 [Image #1] [Image #2]");
+    expect(composeSendContent("", [{ kind: "file" }, { kind: "image" }, { kind: "file" }])).toBe("[File #1] [Image #1] [File #2]");
+    expect(composeSendContent("下一句", [{ kind: "image" }, { kind: "image" }])).toBe("下一句 [Image #1] [Image #2]");
     expect(parkedPreviewText({ text: "  下一句  ", pending: [] })).toBe("下一句");
     expect(
       parkedPreviewText({
@@ -52,11 +55,12 @@ describe("parked composer draft", () => {
             localId: "img-1",
             name: "shot.png",
             previewUrl: "blob:parked",
+            kind: "image", file: new File([], "shot.png"), error: null,
             attachmentId: "att-1",
             state: "done",
           },
         ],
       }),
-    ).toBe("图片");
+    ).toBe("附件（1）");
   });
 });

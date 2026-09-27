@@ -35,7 +35,7 @@ describe("conversationViewSchema", () => {
           message_id: "user-event",
           text: "hello",
           occurred_at: "2026-09-15T08:00:00+00:00",
-          images: [],
+          images: [], files: [],
         },
         {
           kind: "step",
@@ -89,7 +89,7 @@ describe("conversationViewSchema", () => {
             output_id: "wrong",
             text: "hello",
             occurred_at: "2026-09-15T08:00:00+00:00",
-            images: [],
+            images: [], files: [],
           },
         ],
         session,
@@ -109,7 +109,7 @@ describe("conversationViewSchema", () => {
           message_id: "user-event",
           text: "[Image #1]",
           occurred_at: "2026-09-15T08:00:00+00:00",
-          images: [attachmentId],
+          images: [attachmentId], files: [],
         },
       ],
       session,
@@ -119,7 +119,7 @@ describe("conversationViewSchema", () => {
     });
     expect(parsed.items[0]).toMatchObject({
       kind: "user",
-      images: [attachmentId],
+      images: [attachmentId], files: [],
     });
   });
 });

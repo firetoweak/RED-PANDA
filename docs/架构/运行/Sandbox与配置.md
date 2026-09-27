@@ -12,6 +12,8 @@ Sandbox 假定当前进程已经是本机日常环境。若 Channel 客户端把
 
 `HelperMeHome` 只表示产品自身的数据目录，**不能充当任务 Workspace 或 Sandbox 根**。工作区清单是独立的产品级文件，会话与工作区的绑定是一条会话级事实。
 
+Session 已发送文件的材料视图可以作为独立只读根加入执行环境；这是窄材料入口，不把整个产品数据目录变成任务文件系统。只读由文件工具契约执行，本机命令不具备操作系统级隔离。原件不作为可写根，处理副本与产物由模型写入任务工作区，见[多模态附件](../上下文/多模态附件.md)。
+
 Sandbox 不 import Assistant、Runtime 或 Tools；Runtime 也不 import Sandbox；Tools 只消费 Sandbox 的窄契约。
 
 ## 配置

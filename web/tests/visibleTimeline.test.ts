@@ -33,7 +33,7 @@ const conversation: ConversationView = {
       message_id: "user-1",
       text: "hi",
       occurred_at: "2026-09-15T08:00:00+00:00",
-      images: [],
+      images: [], files: [],
     },
     {
       kind: "step",
@@ -305,7 +305,7 @@ describe("turnNeedsThinkingHint", () => {
     key: "user-1",
     kind: "user" as const,
     text: "hi",
-    images: [],
+    images: [], files: [],
   };
 
   it("shows thinking while the latest turn is running without text or tools", () => {
@@ -462,7 +462,7 @@ describe("turnIsSettled", () => {
     key: "user-1",
     kind: "user" as const,
     text: "安装这个 MCP",
-    images: [],
+    images: [], files: [],
   };
 
   it("closes an idle tool-only turn after install or test", () => {

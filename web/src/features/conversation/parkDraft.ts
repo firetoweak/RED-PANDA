@@ -1,14 +1,17 @@
-export type ComposerImage = {
+export type ComposerAttachment = {
   localId: string;
   name: string;
-  previewUrl: string;
+  previewUrl: string | null;
+  kind: "image" | "file";
+  file: File;
+  error: string | null;
   attachmentId: string | null;
   state: "uploading" | "done" | "error";
 };
 
 export type ComposerDraft = {
   text: string;
-  pending: ComposerImage[];
+  pending: ComposerAttachment[];
 };
 
 export function restoreParkedDraft(
@@ -31,11 +34,11 @@ export function joinRestoredText(parkedText: string, currentText: string): strin
   return `${parkedText.replace(/\s+$/u, "")}\n${currentText.replace(/^\s+/u, "")}`;
 }
 
-export function composeSendContent(text: string, readyCount: number): string {
-  const tokens = Array.from(
-    { length: readyCount },
-    (_, index) => `[Image #${index + 1}]`,
-  );
+export function composeSendContent(text: string, attachments: Pick<ComposerAttachment, "kind">[]): string {
+  let images = 0;
+  let files = 0;
+  const tokens = attachments.map((item) => item.kind === "image"
+    ? `[Image #${++images}]` : `[File #${++files}]`);
   return [text.trim(), ...tokens].filter(Boolean).join(" ");
 }
 
@@ -44,5 +47,5 @@ export function parkedPreviewText(draft: ComposerDraft): string {
   if (text !== "") {
     return text;
   }
-  return draft.pending.length > 0 ? "图片" : "";
+  return draft.pending.length > 0 ? `附件（${draft.pending.length}）` : "";
 }

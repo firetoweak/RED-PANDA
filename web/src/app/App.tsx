@@ -4,6 +4,7 @@ import { IconMenu2 } from "@tabler/icons-react";
 import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
+import { ColorSchemeSwitcher } from "./ColorSchemeSwitcher";
 import { useAppDispatch } from "./hooks";
 import { SessionConversation } from "../features/conversation/SessionConversation";
 import { DraftRedirect } from "../features/sessions/DraftRedirect";
@@ -43,6 +44,7 @@ export function App() {
         >
           <IconMenu2 size={19} />
         </ActionIcon>
+        <ColorSchemeSwitcher />
         <Routes>
           <Route path="/" element={<DraftRedirect />} />
           <Route

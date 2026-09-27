@@ -302,6 +302,7 @@ export function Conversation() {
                     <EditableUserMessage
                       disabled={connectionId === null}
                       images={turn.user.images}
+                      files={turn.user.files}
                       hasLaterWork={turn.key !== lastTurnKey || turn.process.length > 0}
                       onSave={(text, listed, restoreFiles) =>
                         edit(turn.user!.key, text, listed, restoreFiles)

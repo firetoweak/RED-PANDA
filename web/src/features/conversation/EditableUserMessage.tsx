@@ -17,13 +17,15 @@ import {
 import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { AttachmentTile, attachmentUrl } from "./AttachmentTile";
+import { FileAttachmentTile } from "./FileAttachmentTile";
 
-const IMAGE_TOKEN = /\[Image #\d+\]/g;
+const ATTACHMENT_TOKEN = /\[(?:Image|File) #\d+\]/g;
 
 type EditableUserMessageProps = {
   sessionId: string;
   text: string;
   images: string[];
+  files: { attachment_id: string; name: string; size: number }[];
   disabled: boolean;
   saving: boolean;
   // 这条消息之后还跑过东西，文件就可能和这一刻对不上。
@@ -39,6 +41,7 @@ export function EditableUserMessage({
   sessionId,
   text,
   images,
+  files,
   disabled,
   saving,
   hasLaterWork,
@@ -47,8 +50,13 @@ export function EditableUserMessage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
   const [restoreFiles, setRestoreFiles] = useState(false);
-  const displayText = text.replace(IMAGE_TOKEN, "").trim();
+  const displayText = text.replace(ATTACHMENT_TOKEN, "").trim();
   const canSend = !disabled && !saving && draft.trim() !== "";
+  const fileCards = files.length === 0 ? null : (
+    <Group gap={8} justify="flex-end">
+      {files.map((file) => <FileAttachmentTile key={file.attachment_id} name={file.name} size={file.size} href={attachmentUrl(sessionId, file.attachment_id)} />)}
+    </Group>
+  );
 
   useEffect(() => {
     if (!editing) {
@@ -91,6 +99,7 @@ export function EditableUserMessage({
   if (editing) {
     return (
       <Stack className="user-message-row user-message-editing" gap={8}>
+        {fileCards}
         {images.length === 0 ? null : (
           <Group className="user-attachments" gap={8} justify="flex-end">
             {images.map((attachmentId) => (
@@ -194,6 +203,7 @@ export function EditableUserMessage({
         </ActionIcon>
       </Tooltip>
       <Stack align="flex-end" gap={8}>
+        {fileCards}
         {images.length === 0 ? null : (
           <Group className="user-attachments" gap={8} justify="flex-end">
             {images.map((attachmentId) => (

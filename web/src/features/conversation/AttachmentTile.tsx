@@ -59,7 +59,7 @@ export function AttachmentTile({
           <ActionIcon
             aria-label={`Remove ${name}`}
             className="attachment-tile-remove"
-            color="dark"
+            color="gray"
             onClick={onRemove}
             radius="xl"
             size={18}

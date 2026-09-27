@@ -14,6 +14,7 @@ from helperme.assistant.artifacts import (
     is_valid_artifact_id,
 )
 from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
+from helperme.assistant.file_attachments import is_file_attachment_id
 from helperme.assistant.context.budget import (
     DEFAULT_IMAGE_TOKENS,
     BudgetAssessment,
@@ -43,7 +44,7 @@ from helperme.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 4
+PROJECTOR_VERSION = 5
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_RECENT_PROTECTION_TOKENS = 10_000
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 16_000
@@ -232,7 +233,25 @@ def _user_content(
         return text
     if attachments is None:
         raise ValueError("user message has attachment refs but no store")
-    images = [attachments.inspect(ref).to_block() for ref in event.artifact_refs]
+    images = []
+    files = []
+    for ref in event.artifact_refs:
+        if is_file_attachment_id(ref):
+            item = attachments.files.describe(ref)
+            files.append({
+                "id": item.attachment_id, "name": item.name, "size": item.size,
+                "path": str(attachments.files.materialize(ref)),
+            })
+        else:
+            images.append(attachments.inspect(ref).to_block())
+    if files:
+        text += (
+            "\n用户已发送的文件材料：\n" + json.dumps(files, ensure_ascii=False)
+            + "\n以上路径可用 read_file 或 execute_command 读取，自行选择解析方法。"
+            "需要修改文件时先复制到当前工作区，再编辑和验证工作副本；原件与材料目录不作为输出目录。"
+        )
+    if not images:
+        return text
     identifiers = "、".join(image["id"] for image in images)
     return [
         {"type": "text", "text": f"{text}{_USER_ATTACHMENT_HINT.format(ids=identifiers)}"},
@@ -246,6 +265,21 @@ def _translate_visible_events(
     system_prompt: str,
     attachments: AttachmentStore | None = None,
 ) -> list[_Projected]:
+    # Compact 和分支恢复只改变可见窗口；已经提交的材料仍属于此 Session。
+    file_refs = {
+        ref for event in events if isinstance(event.payload, UserMessageReceived)
+        for ref in event.artifact_refs if is_file_attachment_id(ref)
+    }
+    if file_refs:
+        if attachments is None:
+            raise ValueError("user message has attachment refs but no store")
+        for ref in sorted(file_refs):
+            attachments.files.materialize(ref)
+        system_prompt += (
+            f"\n当前会话的文件材料目录：{attachments.files.materials}。"
+            "材料只读，需要修改时先复制到当前工作区。"
+            "如果历史交接中的材料路径属于其他会话，使用当前材料目录和相同的附件子路径。"
+        )
     visible = set(state.visible_event_ids)
     # 记录失败可能在触发本次 Decision 的 Outcome 之后提交；不重加 Compact 已移出的事实。
     visible_tail = max((e.sequence for e in events if e.event_id in visible), default=0)

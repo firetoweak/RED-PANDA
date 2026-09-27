@@ -14,12 +14,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from helperme.assistant.attachments import (
     AttachmentGateway,
     AttachmentRejected,
+    MAX_SOURCE_BYTES,
     is_valid_attachment_id,
 )
 from helperme.assistant.host.session_store import (
     ForkMessageNotFoundError,
     SessionForkUnavailableError,
 )
+from helperme.assistant.file_attachments import is_file_attachment_id
 from helperme.assistant.host.supervisor import HostSupervisor
 from helperme.assistant.runner import SessionNotFoundError
 from helperme.assistant.workspace_versions import StepNotRewindable
@@ -75,7 +77,7 @@ class InputRequest(BaseModel):
     def attachment_ids(cls, value: list[str]) -> list[str]:
         for item in value:
             if not is_valid_attachment_id(item):
-                raise ValueError("artifact_refs 必须是 sha256 附件 id")
+                raise ValueError("artifact_refs 必须是有效的附件 id")
         return value
 
 
@@ -307,13 +309,22 @@ def create_web_app(
         mime = (file.content_type or "").split(";", 1)[0].strip().lower()
         if mime == "image/jpg":
             mime = "image/jpeg"
+        if not file.filename:
+            raise AttachmentRejected("缺少附件文件名")
+        data = await file.read(MAX_SOURCE_BYTES + 1)
+        if mime not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+            ref = await _channel(request).save_file(connection_id, session_id, data, file.filename)
+            return {"kind": "file", "attachment_id": ref.attachment_id, "name": ref.name, "size": ref.size}
         ref = await _channel(request).save_image(
             connection_id,
             session_id,
-            await file.read(),
+            data,
             mime,
         )
         return {
+            "kind": "image",
+            "name": file.filename,
+            "size": len(data),
             "attachment_id": ref.attachment_id,
             "mime": ref.mime,
             "width": ref.width,
@@ -333,7 +344,10 @@ def create_web_app(
             )
         except FileNotFoundError as error:
             return JSONResponse(status_code=404, content={"detail": str(error)})
-        return FileResponse(path, media_type=mime)
+        return FileResponse(
+            path, media_type=mime,
+            filename=path.name if is_file_attachment_id(attachment_id) else None,
+        )
 
     @app.post("/api/sessions/{session_id}/inputs")
     async def accept_input(session_id: str, body: InputRequest, request: Request):

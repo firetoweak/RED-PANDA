@@ -13,7 +13,7 @@ const conversation: ConversationView = {
       message_id: "user-1",
       text: "first",
       occurred_at: "2026-09-15T08:00:00+00:00",
-      images: [],
+      images: [], files: [],
     },
     {
       kind: "step",
@@ -30,7 +30,7 @@ const conversation: ConversationView = {
       message_id: "user-2",
       text: "second",
       occurred_at: "2026-09-15T08:00:02+00:00",
-      images: [],
+      images: [], files: [],
     },
     {
       kind: "step",
@@ -69,7 +69,7 @@ describe("truncateAfterUserMessage", () => {
         message_id: "user-1",
         text: "edited",
         occurred_at: "2026-09-15T08:00:00+00:00",
-        images: [],
+        images: [], files: [],
       },
     ]);
   });

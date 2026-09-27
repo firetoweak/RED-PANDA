@@ -121,7 +121,11 @@ async def build_assistant_assembly(
         # Journal/产品资源属于 Host，即使数据目录位于任务根内也不能随文件回退。
         excluded_roots=(home.root,),
     )
-    builtin_tools = await build_builtin_tools(workspace)
+    attachment_gateway = AttachmentGateway(sessions_root)
+    attachments = attachment_gateway.for_session(session_id)
+    builtin_tools = await build_builtin_tools(
+        workspace, materials_root=attachments.files.materials,
+    )
     command_interrupts = builtin_tools.command_interrupts
 
     async def restore_workspace(command_id, target):
@@ -133,8 +137,6 @@ async def build_assistant_assembly(
     restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(restore_workspace)
     settings = _model_context_settings(config)
     gateway = FileArtifactGateway(sessions_root)
-    attachment_gateway = AttachmentGateway(sessions_root)
-    attachments = attachment_gateway.for_session(session_id)
     projector = ModelContextProjector(
         gateway=gateway,
         attachments=attachment_gateway,

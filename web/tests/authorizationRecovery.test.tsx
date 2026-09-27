@@ -48,7 +48,7 @@ it("submits a recovered pending command with the new connection without an autho
       control_message: null, auto_authorize: false, paused: false,
     },
     items: [
-      { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [] },
+      { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "step", output_id: "user", text: null, thinking: null,
         occurred_at: "2026-09-22T00:00:01Z", rewindable: false, tools: [{ command_id: commandId,
           name: "write_file", status: "awaiting_authorization", error: null, arguments: { path: "probe.md" } }] },
@@ -119,7 +119,7 @@ it("disables pending authorization buttons while the web connection is down", as
       control_message: null, auto_authorize: false, paused: false,
     },
     items: [
-      { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [] },
+      { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "step", output_id: "user", text: null, thinking: null,
         occurred_at: "2026-09-22T00:00:01Z", rewindable: false, tools: [{ command_id: commandId,
           name: "write_file", status: "awaiting_authorization", error: null, arguments: { path: "probe.md" } }] },

@@ -565,7 +565,7 @@ class WebFirstSliceTest(unittest.TestCase):
         response = self.client.post(
             "/api/sessions/session-old/attachments",
             data={"connection_id": self.connection.connection_id},
-            files={"file": ("notes.txt", b"not an image", "text/plain")},
+            files={"file": ("shot.png", b"not an image", "image/png")},
         )
 
         self.assertEqual(response.status_code, 400)

@@ -41,6 +41,7 @@ class UnknownWorkspaceRoot(EnvironmentInputError):
 class WorkspaceScope(str, Enum):
     TASK = "task_workspace"
     HOST = "host_filesystem"
+    MATERIALS = "session_materials"
 
 
 class FilesystemPermission(str, Enum):
