@@ -112,12 +112,15 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
+        from helperme.assistant.subagent.workspace import child_layout, workspace_versions
         from helperme.runtime.events import (
             DomainFactCommitted,
             EventDraft,
             DeliveryIdentity,
         )
 
+        root, ref = child_layout(self.home, PARENT, CHILD)
+        await workspace_versions(self.home, self.workspace).fork(root, ref)
         await self.store.create(CHILD, workspace_id=self.workspace.workspace_id)
         journal = SqliteJournal(self.store.require(CHILD))
         await journal.accept_delivery(
@@ -195,6 +198,37 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertNotIn(CHILD, self.host.workers)
+
+    async def test_sibling_creation_serializes_workspace_forks(self):
+        from unittest.mock import AsyncMock, patch
+
+        await self.store.create(PARENT, workspace_id=self.workspace.workspace_id)
+        active = 0
+        peak = 0
+
+        class Versions:
+            async def fork(self, root, _ref, *, conflict_from=None):
+                nonlocal active, peak
+                active += 1
+                peak = max(peak, active)
+                await asyncio.sleep(0.02)
+                root.mkdir(parents=True)
+                active -= 1
+
+        intents = [
+            DelegateIntent(f"command-{index}", PARENT, f"{PARENT}/sub-command-{index}", "read")
+            for index in range(3)
+        ]
+        with (
+            patch("helperme.assistant.host.supervisor.workspace_versions", return_value=Versions()),
+            patch.object(self.host, "request", new_callable=AsyncMock),
+        ):
+            await asyncio.gather(*(
+                self.host._route("create_child", intent.child_session_id, task_fact_arguments(intent))
+                for intent in intents
+            ))
+        self.assertEqual(peak, 1)
+        self.assertTrue(all(self.store.path(intent.child_session_id).is_file() for intent in intents))
 
     async def test_child_startup_failure_does_not_strand_parent_delegate(self):
         from tests.fixtures.session_worker import delegate_startup_failure_config
@@ -580,7 +614,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         report = next(e for e in events if isinstance(e.payload, DomainFactCommitted)
                       and e.payload.fact_type == REPORT_FACT)
         self.assertTrue(report.payload.requests_decision)
-        self.assertIn("执行结果未知", report.payload.data["failure"])
+        self.assertIn("执行被中断", report.payload.data["failure"])
         self.assertIn(state.commands[0].command.command_id, report.payload.data["failure"])
         await asyncio.wait_for(self.host.resume(CHILD), 30)
         await until(lambda: not self.host.workers and not self.host.watchers)

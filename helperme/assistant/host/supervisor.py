@@ -117,6 +117,7 @@ class HostSupervisor:
         self.workers: dict[str, Worker] = {}
         self.watchers: set[asyncio.Task] = set()
         self.locks: dict[str, asyncio.Lock] = {}
+        self.workspace_creation_locks: dict[str, asyncio.Lock] = {}
         self.failures: asyncio.Queue[WorkerFailed] = asyncio.Queue()
         self.intentionally_stopped: set[str] = set()
         self.selections: dict[str, str] = {}
@@ -222,7 +223,12 @@ class HostSupervisor:
                         raise ValueError("conflict source has no completed workspace version")
                     _, source_ref = child_layout(self.home, expected_task.parent_session_id, source.child_session_id)
                     conflict_from = (source_ref + "-base", source_version["version"])
-                await workspace_versions(self.home, parent_workspace).fork(root, ref, conflict_from=conflict_from)
+                async with self.workspace_creation_locks.setdefault(
+                    child_workspace_id, asyncio.Lock()
+                ):
+                    await workspace_versions(self.home, parent_workspace).fork(
+                        root, ref, conflict_from=conflict_from
+                    )
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,

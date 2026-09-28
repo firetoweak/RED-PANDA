@@ -18,6 +18,7 @@ from helperme.assistant.delivery import DeliverySink, emit_delivery
 from helperme.assistant.host.ipc import ProcessFailure
 from helperme.runtime import (
     AgentRuntime,
+    CommandOutcome,
     CommandOutcomeReceived,
     CommandPhase,
     DeliveryConflictError,
@@ -181,6 +182,10 @@ def _return_event(events: Sequence[Event]) -> Event | None:
 
 def project_returned(events: Sequence[Event]) -> bool:
     return _return_event(events) is not None
+
+
+def _delegated_result(child_id: str) -> dict[str, object]:
+    return {"ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id}}
 
 
 async def persist_return(
@@ -723,9 +728,6 @@ class SubAgentHost:
         pending: list[str] = []
         for intent in intents:
             self._parents[intent.child_session_id] = session_id
-            if intent.child_session_id not in pending_ids:
-                continue
-            pending.append(intent.child_session_id)
             command = commands[intent.command_id]
             if command.phase is CommandPhase.UNKNOWN:
                 await self._transport(
@@ -733,7 +735,21 @@ class SubAgentHost:
                     intent.child_session_id,
                     task_fact_arguments(intent),
                 )
-            elif command.phase is CommandPhase.TERMINAL:
+                attempt = command.attempts[-1]
+                await runtime.dispatcher.accept_outcome(
+                    session_id,
+                    intent.command_id,
+                    attempt.attempt_id,
+                    attempt.started_event_id,
+                    CommandOutcome(
+                        OutcomeStatus.SUCCEEDED,
+                        value=_delegated_result(intent.child_session_id),
+                    ),
+                )
+            if intent.child_session_id not in pending_ids:
+                continue
+            pending.append(intent.child_session_id)
+            if command.phase is CommandPhase.TERMINAL:
                 await self._transport("resume", intent.child_session_id, {})
         self._visible_pending[session_id] = set(pending)
         self._publish_activity(session_id)
@@ -938,11 +954,7 @@ class SubAgentHost:
             intent.child_session_id
         )
         self._publish_activity(context.session_id)
-        return {
-            "ok": True,
-            "code": "DELEGATED",
-            "data": {"child_session_id": intent.child_session_id},
-        }
+        return _delegated_result(intent.child_session_id)
 
     async def _report(
         self,

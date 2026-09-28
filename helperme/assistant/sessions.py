@@ -148,11 +148,11 @@ class AssistantSessions:
             self._catalog,
         )
         await self.recover_control(session_id)
-        state = await self._runtime.state(session_id)
         pending_subagents: tuple[str, ...] = ()
         if self._subagents is not None:
             pending_subagents = await self._subagents.rehydrate(session_id)
         events = await self._runtime.snapshot(session_id)
+        state = await self._runtime.state(session_id)
         if self._subagents is not None and self._subagents.has_returned(session_id):
             return self._view(state, events)
         if self._view(state, events).should_wake:

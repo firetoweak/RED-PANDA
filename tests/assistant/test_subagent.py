@@ -23,12 +23,15 @@ from helperme.assistant.subagent.subagent import (
     project_pending,
     project_reclaimed,
     project_report,
+    report_arguments,
+    return_data,
     task_fact_arguments,
 )
 from helperme.llm.api import LLMProviderError
 from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage
 from helperme.runtime import (
     AgentRuntime,
+    CommandOutcomeReceived,
     CommandPhase,
     DomainFactCommitted,
     InvokeTool,
@@ -1251,6 +1254,27 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
             calls[0][2]["data"]["delegate_command_id"],
             state.commands[0].command.command_id,
         )
+        recovered = await runtime.state(parent)
+        self.assertEqual(recovered.commands[0].phase, CommandPhase.TERMINAL)
+        self.assertEqual(
+            recovered.commands[0].outcome.value,
+            {"ok": True, "code": "DELEGATED", "data": {"child_session_id": intent}},
+        )
+        await host.rehydrate(parent)
+        self.assertEqual([call[0] for call in calls], ["create_child", "resume"])
+        self.assertEqual(
+            sum(isinstance(event.payload, CommandOutcomeReceived)
+                for event in await runtime.snapshot(parent)),
+            1,
+        )
+        await runtime.receive_domain_fact(
+            parent,
+            **report_arguments(
+                intent,
+                return_data(intent, reported=True, summary="查清了", failure=None),
+            ),
+        )
+        self.assertEqual((await runtime.state(parent)).status, RuntimeStatus.RUNNABLE)
 
     async def test_known_delegate_failure_is_not_left_pending(self):
         async def reject(_context, _arguments):

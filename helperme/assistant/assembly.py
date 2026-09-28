@@ -120,7 +120,8 @@ async def build_assistant_assembly(
     if task is not None:
         parent_root = workspace.task_root
         child_root, ref = child_layout(home, task.parent_session_id, session_id)
-        await versions.fork(child_root, ref)
+        if not child_root.is_dir():
+            raise ValueError(f"child workspace missing: {child_root}")
         workspace = child_workspace(workspace, child_root)
         versions = workspace_versions(home, workspace, ref=ref, ignore_root=parent_root)
     attachment_gateway = AttachmentGateway(sessions_root)
