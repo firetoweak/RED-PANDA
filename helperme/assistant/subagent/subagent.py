@@ -179,6 +179,10 @@ def _return_event(events: Sequence[Event]) -> Event | None:
     )
 
 
+def project_returned(events: Sequence[Event]) -> bool:
+    return _return_event(events) is not None
+
+
 async def persist_return(
     journal: Journal,
     session_id: str,

@@ -19,7 +19,7 @@ from helperme.assistant.context.projection import (
     PreparedModelContext,
 )
 from helperme.assistant.control import project_pending_approval
-from helperme.assistant.subagent.subagent import project_parent
+from helperme.assistant.subagent.subagent import project_parent, project_returned
 from helperme.assistant.workspaces import SESSION_WORKSPACE_FACT
 from helperme.llm.api import InvalidLLMResponse
 from helperme.runtime import DomainFactCommitted, ToolBinding
@@ -433,9 +433,10 @@ def bounded_recent_tail(
 
 
 class CompactBoundary:
-    def __init__(self, runtime, decision, context, config, control, transport):
+    def __init__(self, runtime, decision, context, config, control, transport, subagents=None):
         self.runtime, self.decision, self.context = runtime, decision, context
         self.config, self.control, self.transport = config, control, transport
+        self.subagents = subagents
         self.scheduler = None
 
     async def snapshot(self, *, persist=True):
@@ -515,7 +516,9 @@ class CompactBoundary:
         if current is not None and current["id"] == data["id"]:
             if current != data:
                 raise ValueError("conflicting context window publication")
-            return
+            return True
+        if project_parent(events) is not None and project_returned(events):
+            return False
         if data["parent"] != (None if current is None else current["id"]):
             raise ValueError("stale handoff window")
         await self.runtime.receive_domain_fact(
@@ -529,14 +532,16 @@ class CompactBoundary:
             sid, WINDOW, data, source="compact", delivery_id=data["id"] + ":window"
         )
         self.context.refresh(await self.runtime.snapshot(sid))
+        return True
 
     async def before_advance(self):
         sid = self.context.session_id
         if self.context.is_reader:
             return True
         events = await self.runtime.snapshot(sid)
-        if project_parent(events) is not None:
-            return True
+        parent = project_parent(events)
+        if parent is not None and project_returned(events):
+            return False
         state = self.runtime.projector.project(sid, events).state
         if state.waiting_command_ids:
             return True
@@ -556,6 +561,11 @@ class CompactBoundary:
             },
         )
         if response == "wait":
+            return False
+        if isinstance(response, dict) and set(response) == {"failure"}:
+            if parent is None or self.subagents is None:
+                raise ValueError("compact failure response requires a child source")
+            await self.subagents.on_failed(sid, response["failure"])
             return False
         if response != "continue":
             raise ValueError("invalid compact boundary response")

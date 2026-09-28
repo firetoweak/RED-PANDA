@@ -20,6 +20,7 @@ from helperme.assistant.compact.store import CompactStore
 from helperme.assistant.context.budget import InputBudget, TiktokenEstimator
 from helperme.assistant.context.projection import ModelContextBudgetExceeded
 from helperme.assistant.host.ipc import ProcessFailure, WorkerFailed
+from helperme.assistant.subagent.subagent import project_parent, project_returned
 from helperme.runtime import SqliteJournal
 
 
@@ -51,6 +52,27 @@ class CompactHost:
     def lock(self, session):
         return self.locks.setdefault(session, asyncio.Lock())
 
+    async def _source_returned(self, source):
+        events = await SqliteJournal(self.host.store.require(source)).snapshot(source)
+        return project_parent(events) is not None and project_returned(events)
+
+    def _retire(self, job, *, stop_reader=True):
+        self.store.retire(job["reader"])
+        self.notify_status(job["source"])
+        if stop_reader:
+            worker = self.host.workers.get(job["reader"])
+            if worker is not None and not worker.exited.is_set():
+                self.host.intentionally_stopped.add(job["reader"])
+                worker.intentionally_stopped = True
+                if worker.process.is_alive():
+                    worker.process.terminate()
+
+    async def retire(self, source):
+        async with self.lock(source):
+            job = self.store.job(source)
+            if job is not None:
+                self._retire(job)
+
     def activate(self, session):
         if session in self.activating or self.host.closed:
             return
@@ -67,6 +89,9 @@ class CompactHost:
     async def ensure_reader(self, job):
         reader = job["reader"]
         if job["failure"] is not None:
+            return
+        if await self._source_returned(job["source"]):
+            self._retire(job)
             return
         material = json.loads(job["bundle"])
         data = dict(
@@ -94,17 +119,31 @@ class CompactHost:
 
     async def recover_prepared(self, source):
         job = self.store.job(source)
-        if job is None or job["prepared"] is None:
+        if job is None or job["prepared"] is None or job["failure"] is not None:
             return False
-        await self.host.request("compact_publish", source, json.loads(job["prepared"]))
+        if await self._source_returned(source):
+            self._retire(job)
+            return None
+        published = await self.host.request("compact_publish", source, json.loads(job["prepared"]))
+        if not published:
+            self._retire(job)
+            return None
         self.store.publish(job["reader"])
         self.notify_status(source)
         return True
 
     async def boundary(self, source, arguments):
         async with self.lock(source):
-            if await self.recover_prepared(source):
+            if await self._source_returned(source):
+                job = self.store.job(source)
+                if job is not None:
+                    self._retire(job)
+                return "wait"
+            recovery = await self.recover_prepared(source)
+            if recovery is True:
                 return "continue"
+            if recovery is None:
+                return "wait"
             job = self.store.job(source)
             if job is None:
                 if not arguments["pressure"]:
@@ -115,6 +154,10 @@ class CompactHost:
                 job = self.store.start(source, snapshot)
                 self.notify_status(source)
             if job["failure"] is not None:
+                if arguments["over_budget"]:
+                    events = await SqliteJournal(self.host.store.require(source)).snapshot(source)
+                    if project_parent(events) is not None:
+                        return {"failure": ProcessFailure(**json.loads(job["failure"])).render()}
                 return "wait" if arguments["over_budget"] else "continue"
             if job["summary"] is None:
                 await self.ensure_reader(job)
@@ -130,9 +173,13 @@ class CompactHost:
                 self.store.fail_publication(job["reader"], asdict(failure))
                 self.notify_status(source)
                 self.host.failures.put_nowait(WorkerFailed(job["reader"], failure))
+                if arguments["over_budget"]:
+                    events = await SqliteJournal(self.host.store.require(source)).snapshot(source)
+                    if project_parent(events) is not None:
+                        return {"failure": failure.render()}
                 return "wait" if arguments["over_budget"] else "continue"
-            await self.recover_prepared(source)
-            return "continue"
+            recovery = await self.recover_prepared(source)
+            return "wait" if recovery is None else "continue"
 
     def prepare_window(self, job, snapshot):
         if snapshot["window"] != job["window"]:
@@ -217,8 +264,14 @@ class CompactHost:
         job = self.store.reader_job(reader)
         if job is None:
             raise ValueError("unknown handoff worker")
-        self.store.finish(reader, arguments["handoff"])
-        self.notify_status(job["source"])
+        async with self.lock(job["source"]):
+            if job["published"] == 2:
+                return
+            if await self._source_returned(job["source"]):
+                self._retire(job, stop_reader=False)
+                return
+            self.store.finish(reader, arguments["handoff"])
+            self.notify_status(job["source"])
 
         async def ready():
             await self.host.request("compact_ready", job["source"], {})
@@ -228,7 +281,11 @@ class CompactHost:
     async def application(self, operation, session, arguments):
         async with self.lock(session):
             self.host.store.require(session)
-            await self.recover_prepared(session)
+            job = self.store.job(session)
+            if job is not None and await self._source_returned(session):
+                self._retire(job)
+            else:
+                await self.recover_prepared(session)
             result = await self.host.request(operation, session, arguments)
             if operation in {"resume", "view"}:
                 job = self.store.job(session)

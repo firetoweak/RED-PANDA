@@ -17,6 +17,7 @@ class ConversationStatus:
 
 
 class CompactStore:
+    # published: 0 = active, 1 = published, 2 = retired without publication.
     def __init__(self, root):
         self.path = root / "conversations.sqlite"
         existing = self.path.exists()
@@ -85,14 +86,14 @@ class CompactStore:
     def fail(self, reader, failure):
         with closing(self.connect()) as db, db:
             db.execute(
-                "UPDATE compactions SET failure=? WHERE reader=? AND summary IS NULL",
+                "UPDATE compactions SET failure=? WHERE reader=? AND summary IS NULL AND published=0",
                 (json.dumps(failure), reader),
             )
 
     def fail_publication(self, reader, failure):
         with closing(self.connect()) as db, db:
             db.execute(
-                "UPDATE compactions SET failure=? WHERE reader=?",
+                "UPDATE compactions SET failure=? WHERE reader=? AND published=0",
                 (json.dumps(failure), reader),
             )
 
@@ -124,6 +125,13 @@ class CompactStore:
     def publish(self, reader):
         with closing(self.connect()) as db, db:
             db.execute(
-                "UPDATE compactions SET published=1 WHERE reader=? AND prepared IS NOT NULL",
+                "UPDATE compactions SET published=1 WHERE reader=? AND prepared IS NOT NULL AND published=0",
+                (reader,),
+            )
+
+    def retire(self, reader):
+        with closing(self.connect()) as db, db:
+            db.execute(
+                "UPDATE compactions SET published=2 WHERE reader=? AND published=0",
                 (reader,),
             )

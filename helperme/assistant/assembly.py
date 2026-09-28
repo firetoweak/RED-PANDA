@@ -335,7 +335,8 @@ async def build_assistant_assembly(
     compact = None
     if session_transport is not None:
         compact = CompactBoundary(
-            runtime, decision, compact_context, config, control, session_transport
+            runtime, decision, compact_context, config, control, session_transport,
+            subagents,
         )
         compact.scheduler = scheduler
 

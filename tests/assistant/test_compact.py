@@ -15,13 +15,14 @@ from helperme.assistant.attachments import AttachmentGateway
 from helperme.assistant.compact.core import (
     WINDOW,
 )
+from helperme.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.host.supervisor import HostSupervisor
 from helperme.assistant.artifacts import FileArtifactGateway
 from helperme.paths import HelperMeHome
 from helperme.sandbox.registry import WorkspaceRegistry
 from helperme.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
-from tests.fixtures.compact_worker import CompactLlm, config_for, HANDOFF
+from tests.fixtures.compact_worker import CompactLlm, child_config_for, config_for, HANDOFF
 
 pytestmark = pytest.mark.process
 
@@ -129,7 +130,6 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         await until(
             lambda: self.host.conversation_status("chat").compact_phase == "failed"
         )
-        job = self.host.compact.store.job("chat")
         await self.host.receive_user_message("chat", "继续", delivery_id="next")
         await until(lambda: len(self.outputs) == 2)
         self.assertEqual(self.host.conversation_status("chat").compact_count, 0)
@@ -212,3 +212,80 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse((self.root / "forbidden.txt").exists())
         self.assertEqual(self.host.conversation_status("chat").compact_count, 0)
+
+    async def start_child(self, task):
+        child = "chat/sub-child"
+        (self.root / "input.txt").write_text("evidence", encoding="utf-8")
+        self.host.config_factory = partial(child_config_for, self.root)
+        self.host.llm = child_config_for(self.root).llm
+        await self.host.create("chat", self.workspace.workspace_id)
+        await self.store.create(
+            child,
+            workspace_id=self.workspace.workspace_id,
+            initial_fact=task_fact_arguments(
+                DelegateIntent("child", "chat", child, task)
+            ),
+        )
+        await self.host.resume(child)
+        return child
+
+    async def test_child_rollover_keeps_report_in_its_own_session(self):
+        (self.root / "hold_child").touch()
+        child = await self.start_child(" history" * 2800)
+        await until(lambda: (self.root / "compact_started").exists())
+        (self.root / "release_compact").touch()
+        await until(lambda: self.host.conversation_status(child).compact_phase == "ready")
+        (self.root / "release_child").touch()
+        await until(lambda: self.host.conversation_status(child).compact_count == 1)
+        await until(lambda: child not in self.host.workers)
+        child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
+        parent_events = await SqliteJournal(self.store.require("chat")).snapshot("chat")
+        self.assertEqual(sum(
+            isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == WINDOW
+            for e in child_events
+        ), 1)
+        self.assertEqual(sum(
+            isinstance(e.payload, DomainFactCommitted)
+            and e.payload.fact_type == "subagent.report"
+            and e.payload.data["reported"] is True
+            for e in parent_events
+        ), 1)
+        self.assertTrue(all(sid != child for sid, _ in self.outputs))
+
+    async def test_child_return_retires_unpublished_handoff(self):
+        (self.root / "hold_child").touch()
+        child = await self.start_child(" history" * 2800)
+        await until(lambda: (self.root / "compact_started").exists())
+        job = self.host.compact.store.job(child)
+        (self.root / "release_child").touch()
+        await until(lambda: self.host.compact.store.reader_job(job["reader"])["published"] == 2)
+        (self.root / "release_compact").touch()
+        await until(lambda: job["reader"] not in self.host.workers)
+        # Simulate a restart after subagent.return was committed but before job retirement.
+        with closing(self.host.compact.store.connect()) as db, db:
+            db.execute("UPDATE compactions SET published=0 WHERE reader=?", (job["reader"],))
+        await self.host.compact.application("view", child, {})
+        child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
+        self.assertFalse(any(
+            isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == WINDOW
+            for e in child_events
+        ))
+        self.assertEqual(self.host.conversation_status(child).compact_count, 0)
+        self.assertEqual(self.host.compact.store.reader_job(job["reader"])["published"], 2)
+
+    async def test_child_hard_budget_and_failed_handoff_reports_failure(self):
+        await self.start_child(" history" * 4000)
+        async with asyncio.timeout(45):
+            while True:
+                parent_events = await SqliteJournal(self.store.require("chat")).snapshot("chat")
+                failures = [
+                    e.payload.data["failure"]
+                    for e in parent_events
+                    if isinstance(e.payload, DomainFactCommitted)
+                    and e.payload.fact_type == "subagent.report"
+                ]
+                if failures:
+                    break
+                await asyncio.sleep(0.05)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("ModelContextBudgetExceeded", failures[0])

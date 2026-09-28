@@ -38,6 +38,8 @@ from helperme.assistant.subagent.subagent import (
     project_delegate_intents,
     persist_return,
     project_pending,
+    project_parent,
+    project_returned,
     project_task,
     report_arguments,
     return_data,
@@ -68,7 +70,7 @@ class Worker:
     idle_has_active_subagents: bool = False
     running: bool = False
     returned: tuple[str, dict] | None = None
-    reclaimed: bool = False
+    intentionally_stopped: bool = False
     active_preview: str | None = None
     active_thinking: str | None = None
     live_tools: dict[str, str] = field(default_factory=dict)
@@ -116,7 +118,7 @@ class HostSupervisor:
         self.watchers: set[asyncio.Task] = set()
         self.locks: dict[str, asyncio.Lock] = {}
         self.failures: asyncio.Queue[WorkerFailed] = asyncio.Queue()
-        self.reclaimed: set[str] = set()
+        self.intentionally_stopped: set[str] = set()
         self.selections: dict[str, str] = {}
         self.selecting: dict[str, str] = {}
         self.selection_locks: dict[str, asyncio.Lock] = {}
@@ -452,7 +454,7 @@ class HostSupervisor:
                 not task.cancelled()
                 and task.exception() is not None
                 and not isinstance(task.exception(), WorkerFailed)
-                and session_id not in self.reclaimed
+                and session_id not in self.intentionally_stopped
             ):
                 # WorkerFailed is already exposed by that Worker's lifecycle watcher.
                 self.failures.put_nowait(
@@ -477,8 +479,8 @@ class HostSupervisor:
                 worker.failure is None
                 and worker.process.exitcode != 0
                 and not self.closed
-                and not worker.reclaimed
-                and session_id not in self.reclaimed
+                and not worker.intentionally_stopped
+                and session_id not in self.intentionally_stopped
             ):
                 worker.failure = WorkerFailed(
                     session_id,
@@ -506,6 +508,17 @@ class HostSupervisor:
             if compact_job is not None:
                 self.compact.notify_status(compact_job["source"])
             self.failures.put_nowait(worker.failure)
+            if compact_job is not None and compact_job["published"] == 0 and not self.closed:
+                self._track(
+                    compact_job["source"],
+                    asyncio.create_task(
+                        self.request("compact_ready", compact_job["source"], {})
+                    ),
+                )
+        if not self.closed and self.compact.store.job(session_id) is not None:
+            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+            if project_parent(events) is not None and project_returned(events):
+                await self.compact.retire(session_id)
         if worker.returned is not None and not self.closed:
             parent, arguments = worker.returned
             await self.request("fact", parent, arguments)
@@ -556,11 +569,11 @@ class HostSupervisor:
 
         parent_session_id = arguments["parent_session_id"]
         reason = arguments.get("reason")
-        self.reclaimed.add(session_id)
+        self.intentionally_stopped.add(session_id)
         async with self.locks.setdefault(session_id, asyncio.Lock()):
             worker = self.workers.get(session_id)
             if worker is not None and not worker.exited.is_set():
-                worker.reclaimed = True
+                worker.intentionally_stopped = True
                 if worker.process.is_alive():
                     worker.process.terminate()
                 await worker.exited.wait()
@@ -576,6 +589,7 @@ class HostSupervisor:
                     reason=reason,
                 ),
             )
+        await self.compact.retire(session_id)
         await self.request(
             "fact",
             parent_session_id,

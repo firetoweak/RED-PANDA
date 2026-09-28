@@ -6,6 +6,8 @@
 
 子 Session 是普通独立 Session：同一套创建、推进、恢复，自己的 Journal 与判定。父子关系只存在于 Assistant 侧，用因果事实表达，**Runtime 不增加 `parent_session_id` 或 `agent_type`**。
 
+子 Session 的上下文也按普通 Session 压缩；后台交接只读它自身的冻结来源。交回或收回是窗口发布的截止边界，交接失败且容量耗尽则带原始原因交回父 Agent。具体窗口规则见 [Compact](../上下文/Compact.md)。
+
 ## 为什么要有它
 
 **上下文隔离是主要理由，并行是次要理由。** 整个上下文模块都在一条 Session 内部跟上下文膨胀作战——预算、保护窗、体积外置、脱水，见 [上下文](../上下文/上下文投影.md)；摘要则走独立的 [Compact](../上下文/Compact.md) 后台换会话机制。SubAgent 从另一个方向解同一个问题：让中间过程根本不发生在父的 Journal 里。

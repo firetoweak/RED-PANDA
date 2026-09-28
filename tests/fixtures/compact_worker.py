@@ -31,7 +31,6 @@ class CompactLlm:
         return None
 
     async def chat(self, messages, model, *, tools=None, on_content_delta=None, on_reasoning_delta=None):
-        names = {t["function"]["name"] for t in tools or []}
         if any("<self_handoff>" in str(m["content"]) for m in messages):
             request = self.workspace / "handoff_request.json"
             if not request.exists():
@@ -93,6 +92,37 @@ class CompactLlm:
         return LLMCallResult(response, LLMUsage(input_tokens=0, output_tokens=5))
 
 
+class ChildCompactLlm(CompactLlm):
+    async def chat(self, messages, model, *, tools=None, on_content_delta=None, on_reasoning_delta=None):
+        if any("<self_handoff>" in str(m["content"]) for m in messages):
+            return await super().chat(
+                messages, model, tools=tools,
+                on_content_delta=on_content_delta,
+                on_reasoning_delta=on_reasoning_delta,
+            )
+        if "你是一个被委派的子 Agent" in messages[0]["content"]:
+            while (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():
+                await asyncio.sleep(0.02)
+            if not any(message["role"] == "tool" for message in messages):
+                return LLMCallResult(
+                    LLMResponse(content="", calls=(ToolCall(
+                        "read", "read_file", '{"path":"input.txt"}'
+                    ),)),
+                    LLMUsage(input_tokens=0, output_tokens=5),
+                )
+            return LLMCallResult(
+                LLMResponse(content="", calls=(ToolCall(
+                    "report", "report", '{"summary":"已完成子任务"}'
+                ),)),
+                LLMUsage(input_tokens=0, output_tokens=5),
+            )
+        return await super().chat(
+            messages, model, tools=tools,
+            on_content_delta=on_content_delta,
+            on_reasoning_delta=on_reasoning_delta,
+        )
+
+
 def config_for(workspace: Path):
     return AssistantConfig(
         model_name="compact-test",
@@ -100,6 +130,16 @@ def config_for(workspace: Path):
         input_budget_ratio=0.9,
         llm=CompactLlm(workspace),
         compact_threshold_ratio=0.55,
+    )
+
+
+def child_config_for(workspace: Path):
+    from dataclasses import replace
+
+    return replace(
+        config_for(workspace),
+        llm=ChildCompactLlm(workspace),
+        model_context_limit=8000,
     )
 
 
