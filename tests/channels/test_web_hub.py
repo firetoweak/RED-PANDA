@@ -97,7 +97,7 @@ class WebEventHubTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event.name, "context_usage")
         self.assertEqual(
             event.data,
-            {"session_id": "session-a", "used": 1200, "limit": 200000},
+            {"session_id": "session-a", "used": 1200, "compact_threshold_tokens": 200000},
         )
         self.hub.unsubscribe(queue)
 

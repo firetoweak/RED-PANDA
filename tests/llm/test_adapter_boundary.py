@@ -1,12 +1,14 @@
-from types import SimpleNamespace
 import os
 import unittest
+from hashlib import sha256
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from helperme.llm.api import LLMAuthenticationError
-from helperme.llm.config import LiteLLMConfig, ModelConfig
+from helperme.llm.config import ModelConfig
 from helperme.llm.types import InvalidLLMResponse
-from helperme.paths import HelperMeHome
 
 
 class _AsyncStream:
@@ -240,6 +242,30 @@ class LiteLLMAdapterStreamingTest(unittest.IsolatedAsyncioTestCase):
 
 
 class LiteLLMAdapterRequestTest(unittest.IsolatedAsyncioTestCase):
+    def test_initializes_bundled_tokenizer_from_windows_line_endings(self):
+        from helperme.llm.adapter import _initialize_bundled_tokenizers
+
+        with TemporaryDirectory() as directory:
+            package_root = Path(directory) / "litellm"
+            tokenizer_root = package_root / "litellm_core_utils" / "tokenizers"
+            tokenizer_root.mkdir(parents=True)
+            resource = tokenizer_root / "encoding"
+            resource.write_bytes(b"first\r\nsecond\r\n")
+            expected = sha256(b"first\nsecond\n").hexdigest()
+            spec = SimpleNamespace(submodule_search_locations=[str(package_root)])
+
+            with (
+                patch("helperme.llm.adapter.find_spec", return_value=spec),
+                patch.dict(
+                    "helperme.llm.adapter._BUNDLED_TIKTOKEN_RESOURCES",
+                    {"encoding": expected},
+                    clear=True,
+                ),
+            ):
+                _initialize_bundled_tokenizers()
+
+            self.assertEqual(resource.read_bytes(), b"first\nsecond\n")
+
     def test_passes_router_config_without_interpreting_it(self):
         config = ModelConfig(
             active="logical-model",
@@ -255,16 +281,35 @@ class LiteLLMAdapterRequestTest(unittest.IsolatedAsyncioTestCase):
         from helperme.llm.adapter import LiteLLMAdapter
 
         fake_litellm = SimpleNamespace(Router=Mock())
-        with (
-            patch.dict(os.environ, {}, clear=False),
-            patch("helperme.llm.adapter.import_module", return_value=fake_litellm),
-        ):
-            LiteLLMAdapter(config, LiteLLMConfig(local_model_cost_map=True))
+        initialized = False
+
+        def initialize_tokenizers():
+            nonlocal initialized
+            initialized = True
+
+        def import_litellm(name):
+            self.assertTrue(initialized)
             self.assertEqual(os.environ["LITELLM_LOCAL_MODEL_COST_MAP"], "True")
-            self.assertEqual(
-                os.environ["CUSTOM_TIKTOKEN_CACHE_DIR"],
-                str(HelperMeHome.default().cache_root / "tiktoken"),
-            )
+            self.assertNotIn("CUSTOM_TIKTOKEN_CACHE_DIR", os.environ)
+            self.assertEqual(name, "litellm")
+            return fake_litellm
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LITELLM_LOCAL_MODEL_COST_MAP": "False",
+                    "CUSTOM_TIKTOKEN_CACHE_DIR": "stale-cache",
+                },
+                clear=False,
+            ),
+            patch(
+                "helperme.llm.adapter._initialize_bundled_tokenizers",
+                side_effect=initialize_tokenizers,
+            ),
+            patch("helperme.llm.adapter.import_module", side_effect=import_litellm),
+        ):
+            LiteLLMAdapter(config)
 
         fake_litellm.Router.assert_called_once_with(**config.router)
 

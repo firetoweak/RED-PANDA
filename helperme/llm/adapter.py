@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 from copy import deepcopy
+from hashlib import sha256
 from importlib import import_module
+from importlib.util import find_spec
 from inspect import isawaitable
+from pathlib import Path
 from typing import Any
 
 from helperme.llm.api import (
@@ -14,7 +17,7 @@ from helperme.llm.api import (
     LLMProviderError,
     LLMTransientError,
 )
-from helperme.llm.config import LiteLLMConfig, ModelConfig
+from helperme.llm.config import ModelConfig
 from helperme.llm.images import encode_images
 from helperme.llm.types import (
     InvalidLLMResponse,
@@ -23,10 +26,20 @@ from helperme.llm.types import (
     LLMUsage,
     ToolCall,
 )
-from helperme.paths import HelperMeHome
 
 
 _NORMALIZED_MESSAGE_FIELDS = frozenset({"role", "content", "tool_calls"})
+_BUNDLED_TIKTOKEN_RESOURCES = {
+    "9b5ad71b2ce5302211f9c61530b329a4922fc6a4": (
+        "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
+    ),
+    "ec7223a39ce59f226a68acc30dc1af2788490e15": (
+        "94b5ca7dff4d00767bc256fdd1b27e5b17361d7b8a5f968547f9f23eb70d2069"
+    ),
+    "fb374d419588a4632f3f557e76b4b70aebbca790": (
+        "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
+    ),
+}
 _CONTEXT_LIMIT_ERROR_MARKERS = (
     "context length",
     "maximum context",
@@ -44,14 +57,32 @@ def _is_context_limit_error(error: str) -> bool:
     return any(marker in text for marker in _CONTEXT_LIMIT_ERROR_MARKERS)
 
 
+def _initialize_bundled_tokenizers() -> None:
+    """修正 wheel 在 Windows 上的换行转换，并拒绝缺损的离线资源。"""
+    spec = find_spec("litellm")
+    if spec is None or spec.submodule_search_locations is None:
+        raise ModuleNotFoundError("litellm is not installed")
+    package_root = Path(next(iter(spec.submodule_search_locations)))
+    tokenizer_root = package_root / "litellm_core_utils" / "tokenizers"
+    for filename, expected_hash in _BUNDLED_TIKTOKEN_RESOURCES.items():
+        path = tokenizer_root / filename
+        content = path.read_bytes()
+        if sha256(content).hexdigest() == expected_hash:
+            continue
+        normalized = content.replace(b"\r\n", b"\n")
+        if sha256(normalized).hexdigest() != expected_hash:
+            raise RuntimeError(f"LiteLLM bundled tokenizer is invalid: {path}")
+        path.write_bytes(normalized)
+
+
 class LiteLLMAdapter:
-    def __init__(self, config: ModelConfig, litellm_config: LiteLLMConfig):
-        os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = (
-            "True" if litellm_config.local_model_cost_map else "False"
-        )
-        os.environ["CUSTOM_TIKTOKEN_CACHE_DIR"] = str(
-            HelperMeHome.default().cache_root / "tiktoken"
-        )
+    def __init__(self, config: ModelConfig):
+        # LiteLLM 在 import 时读取模型资料表；固定使用随包安装的本地副本。
+        os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+        # LiteLLM 默认使用随包安装的 tokenizer。外部遗留值会覆盖这个默认值，
+        # 并在缓存缺失时触发 tiktoken 下载，因此这里明确移除。
+        os.environ.pop("CUSTOM_TIKTOKEN_CACHE_DIR", None)
+        _initialize_bundled_tokenizers()
         self._litellm = import_module("litellm")
         self._router = self._litellm.Router(**deepcopy(config.router))
         self._read_attachment = None

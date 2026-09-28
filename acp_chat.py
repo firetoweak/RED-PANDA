@@ -35,10 +35,6 @@ async def async_main(argv: list[str] | None = None) -> None:
         assert agent is not None
         await agent.preview(session_id, phase, output_id, text)
 
-    def report_usage(session_id: str, used: int, limit: int) -> None:
-        assert agent is not None
-        _push(agent.report_usage(session_id, used, limit))
-
     def report_tool(*values) -> None:
         assert agent is not None
         _push(agent.report_tool(*values))
@@ -49,7 +45,6 @@ async def async_main(argv: list[str] | None = None) -> None:
     async with bootstrap_assistant(
         sink,
         workspace_path=Path.cwd() if options.workspace is None else options.workspace,
-        context_usage_sink=report_usage,
         tool_progress_sink=report_tool,
         preview_sink=preview,
         session_failed_sink=session_failed,

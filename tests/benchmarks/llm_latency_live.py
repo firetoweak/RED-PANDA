@@ -63,7 +63,7 @@ async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
         )
     model_config = replace(app.model, router=router)
     client_started = time.perf_counter()
-    async with LiteLLMAdapter(model_config, app.litellm) as client:
+    async with LiteLLMAdapter(model_config) as client:
         client_created = time.perf_counter()
         rows = []
         for index in range(repeats):

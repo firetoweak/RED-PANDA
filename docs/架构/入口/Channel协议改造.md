@@ -69,7 +69,7 @@ ACP 没有 HelperMe 的 Step，也没有「步骤上下文」方法。一次 pro
 
 取消映射为 `cancel_turn`：终止该 Step 正在执行的 `execute_command`，不终止 Session，不映射成用户消息。
 
-对外推送模型正文、用量和工具调用。正文 preview 与提交后的 `deliver` 共用同一输出身份，`deliver` 不重复全文，也不重复报工具。**工具终态信号只能在对应 Runtime Outcome 已经提交后发送**——执行函数返回、IPC 中断或 Worker 退出本身不能让 ACP 把 unknown 画成完成或失败。
+对外推送模型正文和工具调用。ACP 用量协议要求模型总容量，而产品只维护 compact 触发阈值，因此不把阈值作为总容量上报。正文 preview 与提交后的 `deliver` 共用同一输出身份，`deliver` 不重复全文，也不重复报工具。**工具终态信号只能在对应 Runtime Outcome 已经提交后发送**——执行函数返回、IPC 中断或 Worker 退出本身不能让 ACP 把 unknown 画成完成或失败。
 
 ### 明确不接，及理由
 

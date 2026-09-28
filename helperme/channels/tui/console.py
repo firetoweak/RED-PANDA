@@ -123,13 +123,13 @@ class _ContextMeter:
         self._compact_count = 0
         self._compact_phase = None
         self._used = 0
-        self._limit = 0
+        self._compact_threshold_tokens = 0
         self._subagent_active = False
 
     def select(
         self,
         status: ConversationStatus,
-        limit: int,
+        compact_threshold_tokens: int,
         *,
         subagent_active: bool = False,
     ) -> None:
@@ -138,14 +138,14 @@ class _ContextMeter:
         self._compact_count = status.compact_count
         self._compact_phase = status.compact_phase
         self._used = 0
-        self._limit = limit
+        self._compact_threshold_tokens = compact_threshold_tokens
         self._subagent_active = subagent_active
 
-    def update(self, session_id: str, used: int, limit: int) -> None:
+    def update(self, session_id: str, used: int, compact_threshold_tokens: int) -> None:
         if session_id != self._conversation_id:
             return
         self._used = used
-        self._limit = limit
+        self._compact_threshold_tokens = compact_threshold_tokens
 
     def update_subagent_activity(self, session_id: str, active: bool) -> None:
         if session_id == self._conversation_id:
@@ -162,7 +162,7 @@ class _ContextMeter:
         self._compact_phase = status.compact_phase
 
     def render(self) -> str:
-        context = f"上下文 {_compact_tokens(self._used)}/{_compact_tokens(self._limit)}"
+        context = f"实际输入 {_compact_tokens(self._used)} / compact {_compact_tokens(self._compact_threshold_tokens)}"
         context += f"  ·  compact {self._compact_count} 次"
         if self._compact_phase is not None:
             phase = {"running": "整理中", "ready": "等待切换", "failed": "失败"}
@@ -274,7 +274,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
         view = await sessions.select(owner, session_id)
         context_meter.select(
             sessions.conversation_status(session_id),
-            config.runtime.model_context_limit,
+            config.runtime.compact_threshold_tokens,
             subagent_active=view.has_active_subagents,
         )
         image_paste.bind(session_id)
@@ -332,7 +332,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                         image_paste.bind(session_id)
                         context_meter.select(
                             sessions.conversation_status(session_id),
-                            config.runtime.model_context_limit,
+                            config.runtime.compact_threshold_tokens,
                             subagent_active=view.has_active_subagents,
                         )
                         print(f"\n新 Session 已创建：{session_id}")
@@ -355,7 +355,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                         image_paste.bind(session_id)
                         context_meter.select(
                             sessions.conversation_status(session_id),
-                            config.runtime.model_context_limit,
+                            config.runtime.compact_threshold_tokens,
                             subagent_active=view.has_active_subagents,
                         )
                         print(f"\n已恢复 Session：{session_id}")

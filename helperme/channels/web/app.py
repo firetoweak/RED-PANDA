@@ -162,7 +162,7 @@ def create_web_app(
         app.state.hub = events
         if channel is not None:
             app.state.channel = channel
-            app.state.runtime = {"model": "test", "context_limit": 200000}
+            app.state.runtime = {"model": "test", "compact_threshold_tokens": 200000}
             app.state.workspaces = workspaces
             yield
             return
@@ -186,7 +186,7 @@ def create_web_app(
             )
             app.state.runtime = {
                 "model": assistant.config.model.active,
-                "context_limit": assistant.config.runtime.model_context_limit,
+                "compact_threshold_tokens": assistant.config.runtime.compact_threshold_tokens,
             }
             app.state.workspaces = assistant.workspaces
             failures = asyncio.create_task(

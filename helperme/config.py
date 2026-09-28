@@ -8,15 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from helperme.llm.api import LLMApi
-from helperme.llm.config import LiteLLMConfig, ModelConfig
+from helperme.llm.config import ModelConfig
 from helperme.paths import HelperMeHome
 
 
 CONFIG_PATH_ENV = "HELPERME_CONFIG"
 INITIAL_CONFIG = {
-    "litellm": {
-        "local_model_cost_map": True,
-    },
     "model": {
         "active": "deepseek-v4-pro",
         "router": {
@@ -33,9 +30,7 @@ INITIAL_CONFIG = {
         },
     },
     "runtime": {
-        "model_context_limit": 200000,
-        "input_budget_ratio": 0.9,
-        "compact_threshold_ratio": 0.55,
+        "compact_threshold_tokens": 200000,
         "loop_guard_repeat_threshold": 3,
     },
     "channels": {
@@ -63,9 +58,7 @@ class InitialConfigCreated(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
-    model_context_limit: int
-    input_budget_ratio: float
-    compact_threshold_ratio: float = 0.55
+    compact_threshold_tokens: int
     loop_guard_repeat_threshold: int = 3
 
 
@@ -82,7 +75,6 @@ class ChannelsConfig:
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    litellm: LiteLLMConfig
     model: ModelConfig
     runtime: RuntimeConfig
     channels: ChannelsConfig
@@ -91,15 +83,9 @@ class AppConfig:
 @dataclass(frozen=True, slots=True)
 class AssistantConfig:
     model_name: str
-    model_context_limit: int
-    input_budget_ratio: float
+    compact_threshold_tokens: int
     llm: LLMApi
-    compact_threshold_ratio: float = 0.55
     loop_guard_repeat_threshold: int = 3
-
-    def __post_init__(self):
-        if not 0 < self.compact_threshold_ratio < 1:
-            raise ValueError("compact_threshold_ratio must be in (0, 1)")
 
 
 def _create_initial_config(path: Path) -> None:
@@ -151,42 +137,22 @@ def _parse_model_config(data: dict) -> ModelConfig:
 
 def load_app_config(path: Path | None = None) -> AppConfig:
     data = _load_config_data(path)
-    if set(data) != {"litellm", "model", "runtime", "channels"}:
-        raise ValueError("配置字段必须是 litellm/model/runtime/channels")
-    litellm = data["litellm"]
-    if not isinstance(litellm, dict):
-        raise ValueError("配置必须包含 litellm 映射")
-    if set(litellm) != {"local_model_cost_map"}:
-        raise ValueError("litellm 配置字段必须是 local_model_cost_map")
-    local_model_cost_map = litellm["local_model_cost_map"]
-    if type(local_model_cost_map) is not bool:
-        raise ValueError("配置 litellm.local_model_cost_map 必须是布尔值")
+    if set(data) != {"model", "runtime", "channels"}:
+        raise ValueError("配置字段必须是 model/runtime/channels")
 
     runtime = data["runtime"]
     if not isinstance(runtime, dict):
         raise ValueError("配置必须包含 runtime 映射")
     if set(runtime) != {
-        "model_context_limit",
-        "input_budget_ratio",
-        "compact_threshold_ratio",
+        "compact_threshold_tokens",
         "loop_guard_repeat_threshold",
     }:
         raise ValueError(
-            "runtime 配置字段必须是 model_context_limit/input_budget_ratio/compact_threshold_ratio/loop_guard_repeat_threshold"
+            "runtime 配置字段必须是 compact_threshold_tokens/loop_guard_repeat_threshold"
         )
-    model_context_limit = runtime["model_context_limit"]
-    if type(model_context_limit) is not int or model_context_limit < 1:
-        raise ValueError("配置 runtime.model_context_limit 必须是大于 0 的整数")
-    input_budget_ratio = runtime["input_budget_ratio"]
-    if type(input_budget_ratio) not in (int, float) or not 0 < input_budget_ratio < 1:
-        raise ValueError("配置 runtime.input_budget_ratio 必须在 (0, 1) 范围内")
-
-    compact_threshold_ratio = runtime["compact_threshold_ratio"]
-    if (
-        type(compact_threshold_ratio) not in (int, float)
-        or not 0 < compact_threshold_ratio < 1
-    ):
-        raise ValueError("runtime.compact_threshold_ratio 必须在 (0, 1) 范围内")
+    compact_threshold_tokens = runtime["compact_threshold_tokens"]
+    if type(compact_threshold_tokens) is not int or compact_threshold_tokens <= 0:
+        raise ValueError("配置 runtime.compact_threshold_tokens 必须是大于 0 的整数")
 
     if type(runtime["loop_guard_repeat_threshold"]) is not int or runtime["loop_guard_repeat_threshold"] < 2:
         raise ValueError("runtime.loop_guard_repeat_threshold must be an integer >= 2")
@@ -215,12 +181,9 @@ def load_app_config(path: Path | None = None) -> AppConfig:
         )
 
     return AppConfig(
-        litellm=LiteLLMConfig(local_model_cost_map=local_model_cost_map),
         model=_parse_model_config(data),
         runtime=RuntimeConfig(
-            model_context_limit=model_context_limit,
-            input_budget_ratio=float(input_budget_ratio),
-            compact_threshold_ratio=float(compact_threshold_ratio),
+            compact_threshold_tokens=compact_threshold_tokens,
             loop_guard_repeat_threshold=runtime["loop_guard_repeat_threshold"],
         ),
         channels=ChannelsConfig(telegram=telegram_config),
@@ -230,9 +193,7 @@ def load_app_config(path: Path | None = None) -> AppConfig:
 def assistant_config_from_app(app: AppConfig, llm: LLMApi) -> AssistantConfig:
     return AssistantConfig(
         model_name=app.model.active,
-        model_context_limit=app.runtime.model_context_limit,
-        input_budget_ratio=app.runtime.input_budget_ratio,
+        compact_threshold_tokens=app.runtime.compact_threshold_tokens,
         llm=llm,
-        compact_threshold_ratio=app.runtime.compact_threshold_ratio,
         loop_guard_repeat_threshold=app.runtime.loop_guard_repeat_threshold,
     )

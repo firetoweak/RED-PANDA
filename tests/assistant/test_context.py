@@ -14,7 +14,6 @@ from helperme.assistant.artifacts import (
 )
 from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from helperme.assistant.context.projection import (
-    ModelContextBudgetExceeded,
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
@@ -51,21 +50,6 @@ class ArtifactBoundaryTest(unittest.TestCase):
                 store.read("../../outside", 0, 10)
 
             self.assertFalse((Path(directory) / "outside.json").exists())
-
-
-class CharacterEstimator:
-    def estimate(self, messages: list, tools: list) -> int:
-        return len(
-            json.dumps(
-                {"messages": messages, "tools": tools},
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-        )
-
-    def calibrate(self, messages, tools, actual_input_tokens):
-        return None
 
 
 def _deliver(text: str) -> ModelDecision:
@@ -179,19 +163,12 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     def _projector(self, **overrides) -> ModelContextProjector:
         gateway = overrides.pop("gateway", MemoryArtifactGateway())
         settings = ModelContextSettings(
-            recent_protection_tokens=overrides.pop(
-                "recent_protection_tokens",
-                8,
-            ),
             size_externalize_chars=overrides.pop("size_externalize_chars", 10_000),
             preview_chars=overrides.pop("preview_chars", 10),
-            context_limit=overrides.pop("context_limit", 200_000),
-            input_budget_ratio=overrides.pop("input_budget_ratio", 0.75),
         )
         return ModelContextProjector(
             gateway=gateway,
             settings=settings,
-            estimator=CharacterEstimator(),
             **overrides,
         )
 
@@ -791,58 +768,15 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(full_outcome["ok"], True)
         self.assertEqual(full_outcome["data"], blob)
 
-    async def test_token_window_can_keep_older_consumed_result(self):
-        async def ping(_context, _arguments):
-            return _result("keep-me")
-
-        events, _delivered = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    content="checking",
-                    command_requests=(InvokeTool("ping"),),
-                ),
-                lambda _frame: _deliver("first-done"),
-                lambda _frame: _deliver("second-done"),
-            ),
-            {"ping": ToolBinding(ping)},
-            ("first", "second"),
+    async def test_large_user_input_is_not_blocked_by_local_token_budget(self):
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        content = "large input " * 20000
+        await runtime.receive_user_message(self.SESSION, content, delivery_id="large")
+        events = await runtime.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
         )
-        prepared = self._projector(
-            recent_protection_tokens=1_000_000,
-        ).prepare(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            self.SESSION,
-            "sys",
-        )
-        tool = self._tool_messages(prepared.messages)[0]
-        self.assertIn("keep-me", tool["content"])
-        self.assertEqual(prepared.age_dehydrated_command_ids, ())
-
-    async def test_budget_overflow_fails_fast(self):
-        async def ping(_context, _arguments):
-            return _result("old-result")
-
-        events, _delivered = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    content="checking",
-                    command_requests=(InvokeTool("ping"),),
-                ),
-                lambda _frame: _deliver("first-done"),
-                lambda _frame: _deliver("second-done"),
-            ),
-            {"ping": ToolBinding(ping)},
-            ("first", "second"),
-        )
-        projector = self._projector(context_limit=20, input_budget_ratio=0.5)
-        with self.assertRaises(ModelContextBudgetExceeded):
-            projector.prepare(
-                events,
-                StateProjector().project_visible(self.SESSION, events),
-                self.SESSION,
-                "sys",
-            )
+        self.assertEqual(prepared.messages[-1]["content"], content)
 
     async def test_execute_time_externalize_writes_stub_value(self):
         gateway = MemoryArtifactGateway()
@@ -906,7 +840,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         prepared = ModelContextProjector(
             gateway=gateway,
             settings=settings,
-            estimator=CharacterEstimator(),
         ).prepare(
             events,
             StateProjector().project_visible(self.SESSION, events),

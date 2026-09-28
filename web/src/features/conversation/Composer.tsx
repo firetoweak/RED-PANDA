@@ -118,7 +118,7 @@ export function Composer({
     (state) => state.runtime.sessions[sessionId]?.contextUsage ?? null,
   );
   const used = usage?.used ?? 0;
-  const limit = usage?.limit ?? runtime?.context_limit ?? 0;
+  const limit = usage?.compact_threshold_tokens ?? runtime?.compact_threshold_tokens ?? 0;
   const model = runtime?.model ?? "";
   const uploading = pending.some((item) => item.state === "uploading");
   const ready = pending.filter(
@@ -606,11 +606,11 @@ export function Composer({
             <span />
           ) : (
             <Group gap={10} wrap="nowrap">
-              <Tooltip label="请求前为估算，响应后为实际输入占用">
+              <Tooltip label="最近一次实际输入用量 / compact 触发值（包含缓存命中）">
                 <Group gap={6} wrap="nowrap">
                   <ContextRing used={used} limit={limit} />
                   <Text c="dimmed" fz={11}>
-                    {formatTokens(used)} / {formatTokens(limit)}
+                    {formatTokens(used)} / compact {formatTokens(limit)}
                   </Text>
                 </Group>
               </Tooltip>

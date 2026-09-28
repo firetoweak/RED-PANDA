@@ -180,6 +180,7 @@ def _decision_maker(journal, llm, control, *, projector=None):
         journal,
         llm,
         "test-model",
+        compact_threshold_tokens=200000,
         environment="<environment />",
         surface=ToolSurface(),
         skill_tools=EmptyTools(),

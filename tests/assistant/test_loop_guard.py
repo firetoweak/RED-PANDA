@@ -122,7 +122,7 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
             llm = RepeatingLlm()
             journal = SqliteJournal(root / "journal.sqlite")
             assembly = await build_assistant_assembly(
-                AssistantConfig("test", 200000, 0.9, llm),
+                AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",
                 workspace=workspace_record(root),
                 home=HelperMeHome(root / "home"),
@@ -154,17 +154,9 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 frame = assembly.runtime.projector.project("s", prefix).next_decision
                 llm.fail_next = True
                 with patch.object(journal, "snapshot", AsyncMock(return_value=prefix)):
-                    boundary = CompactBoundary(
-                        assembly.runtime, maker, maker._compact, None, None, None
-                    )
-                    checked = await boundary.snapshot(persist=False)
                     with self.assertRaisesRegex(RuntimeError, "provider broke"):
                         await maker.decide(frame)
-                    schemas = maker.schemas_for(frame.state, prefix)[0]
-                    self.assertEqual(
-                        checked["assessment"],
-                        maker._projector.budget.assess(llm.requests[-1], schemas),
-                    )
+                    self.assertEqual(llm.requests[-1][-1]["content"], first["text"])
                 self.assertEqual(LoopGuard().inspect(prefix, first["covered_through"]), first)
                 llm.fail_next = False
                 with (
@@ -186,7 +178,7 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
                     "window": {
                         "id": "window-1", "parent": None, "upto": events[-1].sequence,
                         "cutover": events[-1].sequence, "context": material,
-                        "bundle": material, "recent_tail_start": 1,
+                        "bundle": material,
                     },
                 })
                 rolled = await journal.snapshot("s")

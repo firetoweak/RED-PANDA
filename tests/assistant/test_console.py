@@ -56,7 +56,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
         BottomAnchoredPromptSession, _ContextMeter, _read_console_input = _console()
         with create_pipe_input() as console_input:
             session = BottomAnchoredPromptSession(
-                bottom_toolbar=lambda: "上下文 0/200k  ·  compact 0 次\nSession ID：session-1",
+                bottom_toolbar=lambda: "实际输入 0 / compact 200k  ·  compact 0 次\nSession ID：session-1",
                 input=console_input,
                 output=DummyOutput(),
             )
@@ -118,33 +118,33 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             return f"{context}  ·  compact 0 次\nSession ID：session-1"
 
         meter.update("another-session", 90_000, 200_000)
-        self.assertEqual(meter.render(), rendered("上下文 0/200k"))
+        self.assertEqual(meter.render(), rendered("实际输入 0 / compact 200k"))
 
         meter.update("chat", 12_345, 200_000)
-        self.assertEqual(meter.render(), rendered("上下文 12.3k/200k"))
+        self.assertEqual(meter.render(), rendered("实际输入 12.3k / compact 200k"))
 
         meter.update_subagent_activity("another-session", True)
-        self.assertEqual(meter.render(), rendered("上下文 12.3k/200k"))
+        self.assertEqual(meter.render(), rendered("实际输入 12.3k / compact 200k"))
 
         meter.update_subagent_activity("chat", True)
         self.assertEqual(
             meter.render(),
-            "上下文 12.3k/200k  ·  compact 0 次  ·  子 Agent 工作中\nSession ID：session-1",
+            "实际输入 12.3k / compact 200k  ·  compact 0 次  ·  子 Agent 工作中\nSession ID：session-1",
         )
 
         meter.update_subagent_activity("chat", False)
-        self.assertEqual(meter.render(), rendered("上下文 12.3k/200k"))
+        self.assertEqual(meter.render(), rendered("实际输入 12.3k / compact 200k"))
 
         meter.update_conversation_status(ConversationStatus("other", "other", 9, "running"))
-        self.assertEqual(meter.render(), rendered("上下文 12.3k/200k"))
+        self.assertEqual(meter.render(), rendered("实际输入 12.3k / compact 200k"))
         meter.update_conversation_status(ConversationStatus("chat", "session-1", 0, "running"))
         self.assertIn("compact 整理中", meter.render())
         meter.update_conversation_status(ConversationStatus("chat", "session-1", 0, "ready"))
         self.assertIn("compact 等待切换", meter.render())
         meter.update_conversation_status(ConversationStatus("chat", "session-2", 1, None))
-        self.assertEqual(meter.render(), "上下文 0/200k  ·  compact 1 次\nSession ID：session-2")
+        self.assertEqual(meter.render(), "实际输入 0 / compact 200k  ·  compact 1 次\nSession ID：session-2")
         meter.update("chat", 2_000, 200_000)
-        self.assertIn("上下文 2k/200k", meter.render())
+        self.assertIn("实际输入 2k / compact 200k", meter.render())
 
     async def test_reader_continuously_collects_complete_lines(self):
         _BottomAnchoredPromptSession, _ContextMeter, read_console_input = _console()

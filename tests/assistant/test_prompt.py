@@ -162,8 +162,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             self._assembly = await build_assistant_assembly(
                 AssistantConfig(
                     model_name="test-model",
-                    model_context_limit=200_000,
-                    input_budget_ratio=0.75,
+                    compact_threshold_tokens=200_000,
                     llm=SilentLlm(),
                 ),
                 lambda _session_id, _output_id, _text: None,

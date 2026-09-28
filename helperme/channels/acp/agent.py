@@ -21,7 +21,6 @@ from helperme.channels.acp.project import (
     tool_failed_from_result,
     tool_finish,
     tool_start,
-    usage_update,
 )
 
 
@@ -244,14 +243,6 @@ class HelperMeAcpAgent:
                 content=TextContentBlock(type="text", text=text),
                 message_id=f"message-{output_id}",
             ),
-        )
-
-    async def report_usage(self, session_id: str, used: int, limit: int) -> None:
-        if self._client is None or session_id not in self._owners:
-            return
-        await self._client.session_update(
-            session_id=session_id,
-            update=usage_update(used, limit),
         )
 
     async def report_tool(

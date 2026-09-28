@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import asdict
 from inspect import isawaitable
 from helperme.assistant.artifacts import FileArtifactGateway
 from helperme.assistant.compact.core import (
@@ -13,13 +12,9 @@ from helperme.assistant.compact.core import (
     compact_seed,
     load_document,
     save_document,
-    bounded_recent_tail,
     projected_tail,
 )
 from helperme.assistant.compact.store import CompactStore
-from helperme.assistant.context.budget import InputBudget, TiktokenEstimator
-from helperme.assistant.context.projection import ModelContextBudgetExceeded
-from helperme.assistant.host.ipc import ProcessFailure, WorkerFailed
 from helperme.assistant.subagent.subagent import project_parent, project_returned
 from helperme.runtime import SqliteJournal
 
@@ -150,34 +145,18 @@ class CompactHost:
                     return "continue"
                 snapshot = await self.host.request("compact_snapshot", source, {})
                 if not snapshot["safe"]:
-                    return "wait" if arguments["over_budget"] else "continue"
+                    return "continue"
                 job = self.store.start(source, snapshot)
                 self.notify_status(source)
             if job["failure"] is not None:
-                if arguments["over_budget"]:
-                    events = await SqliteJournal(self.host.store.require(source)).snapshot(source)
-                    if project_parent(events) is not None:
-                        return {"failure": ProcessFailure(**json.loads(job["failure"])).render()}
-                return "wait" if arguments["over_budget"] else "continue"
+                return "continue"
             if job["summary"] is None:
                 await self.ensure_reader(job)
-                return "wait" if arguments["over_budget"] else "continue"
+                return "continue"
             snapshot = await self.host.request("compact_snapshot", source, {})
             if not snapshot["safe"]:
-                return "wait" if arguments["over_budget"] else "continue"
-            try:
-                self.prepare_window(job, snapshot)
-            except ModelContextBudgetExceeded as error:
-                failure = ProcessFailure.capture(error)
-                # Publication failure is terminal too; retain the accepted summary for inspection.
-                self.store.fail_publication(job["reader"], asdict(failure))
-                self.notify_status(source)
-                self.host.failures.put_nowait(WorkerFailed(job["reader"], failure))
-                if arguments["over_budget"]:
-                    events = await SqliteJournal(self.host.store.require(source)).snapshot(source)
-                    if project_parent(events) is not None:
-                        return {"failure": failure.render()}
-                return "wait" if arguments["over_budget"] else "continue"
+                return "continue"
+            self.prepare_window(job, snapshot)
             recovery = await self.recover_prepared(source)
             return "wait" if recovery is None else "continue"
 
@@ -186,7 +165,6 @@ class CompactHost:
             raise ValueError("stale handoff")
         source = job["source"]
         material = json.loads(job["bundle"])
-        inherited = load_document(self.gateway, source, material["inherited"])
         bundle = load_document(self.gateway, source, snapshot["bundle"])
         p, q = job["upto"], snapshot["position"]
         provenance = {
@@ -217,27 +195,7 @@ class CompactHost:
                 }
             )
         after = projected_tail(bundle["records"], p, q)
-        budget = InputBudget(
-            TiktokenEstimator(),
-            context_limit=snapshot["context_limit"],
-            input_ratio=snapshot["input_ratio"],
-        )
-        recent = bounded_recent_tail(
-            inherited["recent"],
-            before=before,
-            after=after,
-            system_prompt=snapshot["prompt"],
-            tools=snapshot["tools"],
-            budget=budget,
-            tail_budget_tokens=int(
-                budget.input_budget_tokens * snapshot["compact_threshold_ratio"]
-            ),
-        )
-        messages = [
-            *before,
-            *(record["message"] for record in recent),
-            *after,
-        ]
+        messages = [*before, *after]
         context = save_document(self.gateway, source, {"messages": messages})
         handoff = save_document(
             self.gateway, source, {"text": job["summary"], **provenance}
@@ -251,9 +209,6 @@ class CompactHost:
                     "parent": job["window"],
                     "upto": p,
                     "cutover": q,
-                    "recent_tail_start": recent[0]["sequence"]
-                    if recent
-                    else p + 1,
                     "context": context,
                     "bundle": snapshot["bundle"],
                 },

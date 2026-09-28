@@ -15,13 +15,6 @@ from helperme.assistant.artifacts import (
 )
 from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
 from helperme.assistant.file_attachments import is_file_attachment_id
-from helperme.assistant.context.budget import (
-    DEFAULT_IMAGE_TOKENS,
-    BudgetAssessment,
-    InputBudget,
-    TiktokenEstimator,
-    TokenEstimator,
-)
 from helperme.assistant.delivery import DELIVER_TOOL_NAME
 from helperme.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
@@ -44,32 +37,22 @@ from helperme.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 6
+PROJECTOR_VERSION = 7
 MESSAGE_EXTENSIONS = "message_extensions"
-DEFAULT_RECENT_PROTECTION_TOKENS = 10_000
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 16_000
 DEFAULT_PREVIEW_CHARS = 1_200
-DEFAULT_IMAGE_BUDGET_TOKENS = 8_000
+DEFAULT_MAX_TOOL_IMAGES = 5
 _IMAGE_EVICTED_HINT = "\n图片已移出上下文；需要重新查看时用上面的 id 调用 read_image。"
 _USER_ATTACHMENT_HINT = "\n（本消息附图 id：{ids}；需要重看时用 read_image 回读）"
 
 
 @dataclass(frozen=True, slots=True)
 class ModelContextSettings:
-    recent_protection_tokens: int = DEFAULT_RECENT_PROTECTION_TOKENS
     size_externalize_chars: int = DEFAULT_SIZE_EXTERNALIZE_CHARS
     preview_chars: int = DEFAULT_PREVIEW_CHARS
-    context_limit: int = 200_000
-    input_budget_ratio: float = 0.75
-    image_tokens: int = DEFAULT_IMAGE_TOKENS
-    image_budget_tokens: int = DEFAULT_IMAGE_BUDGET_TOKENS
+    max_tool_images: int = DEFAULT_MAX_TOOL_IMAGES
 
     def __post_init__(self) -> None:
-        if (
-            type(self.recent_protection_tokens) is not int
-            or self.recent_protection_tokens <= 0
-        ):
-            raise ValueError("recent_protection_tokens 必须大于 0")
         if (
             type(self.size_externalize_chars) is not int
             or self.size_externalize_chars <= 0
@@ -80,36 +63,13 @@ class ModelContextSettings:
             or not 0 <= self.preview_chars < self.size_externalize_chars
         ):
             raise ValueError("preview_chars 必须大于等于 0 且小于 size 阈值")
-        if type(self.context_limit) is not int or self.context_limit <= 0:
-            raise ValueError("context_limit 必须大于 0")
-        if (
-            type(self.input_budget_ratio) is not float
-            or not 0 < self.input_budget_ratio < 1
-        ):
-            raise ValueError("input_budget_ratio 必须在 0 和 1 之间")
-        if type(self.image_tokens) is not int or self.image_tokens <= 0:
-            raise ValueError("image_tokens 必须大于 0")
-        if (
-            type(self.image_budget_tokens) is not int
-            or self.image_budget_tokens < self.image_tokens
-        ):
-            raise ValueError("image_budget_tokens 必须至少容纳一张图片")
-
-
-class ModelContextBudgetExceeded(ValueError):
-    def __init__(self, assessment: BudgetAssessment) -> None:
-        super().__init__(
-            "模型输入估算 "
-            f"{assessment.estimated_input_tokens} 超过预算 "
-            f"{assessment.input_budget_tokens}"
-        )
-        self.assessment = assessment
+        if type(self.max_tool_images) is not int or self.max_tool_images <= 0:
+            raise ValueError("max_tool_images 必须大于 0")
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedModelContext:
     messages: list[dict[str, object]]
-    assessment: BudgetAssessment
     protection_start_index: int
     size_externalized_command_ids: tuple[str, ...]
     age_dehydrated_command_ids: tuple[str, ...]
@@ -344,7 +304,7 @@ def _translate_visible_events(
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
             items.append(_Projected(
-                {"role": "user", "content": content}, "user", sequence=event.sequence,
+                {"role": "user", "content": content}, "fact", sequence=event.sequence,
             ))
             continue
         if isinstance(payload, StepCommitted):
@@ -373,7 +333,7 @@ def _project_step(step: StepState) -> list[_Projected]:
     if metadata is not None and "loop_guard_notice" in metadata:
         items.append(_Projected(
             {"role": "user", "content": metadata["loop_guard_notice"]["text"]},
-            "user", sequence=step.sequence,
+            "notice", sequence=step.sequence,
         ))
     shown = [
         (state, effect)
@@ -600,7 +560,7 @@ def externalize_tool_result(
 
 
 class ModelContextProjector:
-    """产品层 Model Context：保护窗 + 体积外置 + Level 1 脱水 + 预算。
+    """产品层 Model Context：保护窗 + 体积外置 + Level 1 脱水。
 
     Journal 事实不变。command_id → artifact_id 只活在投影缓存里。
     """
@@ -608,30 +568,13 @@ class ModelContextProjector:
     def __init__(
         self,
         gateway: ArtifactGateway | None = None,
-        budget: InputBudget | None = None,
         settings: ModelContextSettings | None = None,
-        estimator: TokenEstimator | None = None,
         attachments: AttachmentGateway | None = None,
     ) -> None:
         self._gateway = MemoryArtifactGateway() if gateway is None else gateway
         self._attachments = attachments
         self._settings = ModelContextSettings() if settings is None else settings
-        self._budget = (
-            InputBudget(
-                TiktokenEstimator(image_tokens=self._settings.image_tokens)
-                if estimator is None
-                else estimator,
-                context_limit=self._settings.context_limit,
-                input_ratio=self._settings.input_budget_ratio,
-            )
-            if budget is None
-            else budget
-        )
         self._index: dict[tuple[str, str], str] = {}
-
-    @property
-    def budget(self) -> InputBudget:
-        return self._budget
 
     @property
     def gateway(self) -> ArtifactGateway:
@@ -652,10 +595,8 @@ class ModelContextProjector:
         state: DecisionState,
         session_id: str,
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
-        tools: list[dict[str, object]] | None = None,
         *,
         prefix: list[dict[str, object]] | None = None,
-        enforce_budget: bool = True,
     ) -> PreparedModelContext:
         items = [
             _Projected(
@@ -683,12 +624,6 @@ class ModelContextProjector:
             *(prefix or []),
             *(item.message for item in items[1:]),
         ]
-        assessment = self._budget.assess(
-            messages,
-            [] if tools is None else tools,
-        )
-        if enforce_budget and not assessment.allowed:
-            raise ModelContextBudgetExceeded(assessment)
         return PreparedModelContext(
             messages=messages,
             source_sequences=(
@@ -696,7 +631,6 @@ class ModelContextProjector:
                 *((0,) * len(prefix or [])),
                 *(item.sequence for item in items[1:]),
             ),
-            assessment=assessment,
             protection_start_index=protection_start,
             size_externalized_command_ids=tuple(size_ids),
             age_dehydrated_command_ids=tuple(age_ids),
@@ -704,14 +638,14 @@ class ModelContextProjector:
         )
 
     def _evict_images(self, items: list[_Projected]) -> list[str]:
-        """图片预算超出时最旧先脱水。
+        """工具图片数量超出时最旧先脱水。
 
         纯资源规则：不判断旧图是否已被新图取代，那属于模型的语义判断。
         模型认为旧图仍需要，用保留在文字里的 id 调 read_image 取回。
         """
 
         live = [item for item in items if item.kind == "tool_image"]
-        budget = self._settings.image_budget_tokens // self._settings.image_tokens
+        budget = self._settings.max_tool_images
         evicted: list[str] = []
         remaining = sum(len(item.message["content"]) - 1 for item in live)
         for item in live:
@@ -851,14 +785,7 @@ class ModelContextProjector:
         for index, item in enumerate(items):
             if item.kind == "user":
                 last_user = index
-        start = last_user
-        while start > 1:
-            recent = [item.message for item in items[start:]]
-            tokens = self._budget.estimator.estimate(recent, [])
-            if tokens >= self._settings.recent_protection_tokens:
-                break
-            start -= 1
-        return start
+        return last_user
 
     def _save(
         self,

@@ -87,7 +87,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       contextUsage({
         sessionId: payload.session_id,
         used: payload.used,
-        limit: payload.limit,
+        compact_threshold_tokens: payload.compact_threshold_tokens,
       }),
     );
   });

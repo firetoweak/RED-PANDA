@@ -1,7 +1,4 @@
 {
-  "litellm": {
-    "local_model_cost_map": true
-  },
   "model": {
     "active": "deepseek-v4-pro",
     "router": {
@@ -18,9 +15,7 @@
     }
   },
   "runtime": {
-    "model_context_limit": 200000,
-    "input_budget_ratio": 0.9,
-    "compact_threshold_ratio": 0.55,
+    "compact_threshold_tokens": 200000,
     "loop_guard_repeat_threshold": 3
   },
   "channels": {

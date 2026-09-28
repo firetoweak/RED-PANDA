@@ -324,13 +324,13 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertIsNone(response.json()["compact_phase"])
         self.assertEqual(self.sessions.calls, [])
 
-    def test_runtime_exposes_active_model_and_context_limit(self):
+    def test_runtime_exposes_active_model_and_compact_threshold_tokens(self):
         response = self.client.get("/api/runtime")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json(),
-            {"model": "test", "context_limit": 200000},
+            {"model": "test", "compact_threshold_tokens": 200000},
         )
 
     def test_selecting_unknown_session_is_a_client_error(self):

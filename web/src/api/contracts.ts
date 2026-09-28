@@ -222,7 +222,7 @@ export const authorizationRequiredEventSchema = z
 export const runtimeStatusSchema = z
   .object({
     model: z.string().min(1),
-    context_limit: z.number().int().positive(),
+    compact_threshold_tokens: z.number().int().positive(),
   })
   .strict();
 
@@ -230,7 +230,7 @@ export const contextUsageEventSchema = z
   .object({
     session_id: z.string().min(1),
     used: z.number().int().nonnegative(),
-    limit: z.number().int().positive(),
+    compact_threshold_tokens: z.number().int().positive(),
   })
   .strict();
 

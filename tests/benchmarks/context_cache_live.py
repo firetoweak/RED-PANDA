@@ -9,7 +9,7 @@ from pathlib import Path
 import secrets
 import time
 
-from helperme.assistant.context.budget import TiktokenEstimator
+import tiktoken
 from helperme.paths import runtime_data_root
 
 
@@ -93,7 +93,10 @@ def build_variants(
     canonical = _canonical_tool_contents(current)
     no_age = [_with_tool_contents(item, canonical) for item in current]
 
-    estimator = TiktokenEstimator()
+    encoding = tiktoken.get_encoding("o200k_base")
+
+    def estimate(messages):
+        return len(encoding.encode_ordinary(json.dumps(messages, ensure_ascii=False)))
     dehydrated_contents: dict[str, object] = {}
     active: set[str] = set()
     pending: set[str] = set()
@@ -108,7 +111,7 @@ def build_variants(
         }
         return max(
             0,
-            estimator.estimate([full], []) - estimator.estimate([stub], []),
+            estimate([full]) - estimate([stub]),
         )
 
     for request in current:
@@ -161,7 +164,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     salts = {name: secrets.token_urlsafe(32) for name in variants}
     rows: list[dict[str, object]] = []
 
-    async with LiteLLMAdapter(app.model, app.litellm) as client:
+    async with LiteLLMAdapter(app.model) as client:
         for step_index in range(len(manifests)):
             names = list(variants)
             offset = step_index % len(names)

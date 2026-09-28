@@ -28,9 +28,8 @@ class AppConfigTest(unittest.TestCase):
         for example in examples:
             ModelConfig(**example)
 
-    def _data(self, ratio: float = 0.8) -> dict:
+    def _data(self, threshold: int = 200000) -> dict:
         return {
-            "litellm": {"local_model_cost_map": True},
             "model": {
                 "active": "model",
                 "router": {
@@ -45,9 +44,7 @@ class AppConfigTest(unittest.TestCase):
                 },
             },
             "runtime": {
-                "model_context_limit": 1000,
-                "input_budget_ratio": ratio,
-                "compact_threshold_ratio": 0.55,
+                "compact_threshold_tokens": threshold,
                 "loop_guard_repeat_threshold": 3,
             },
             "channels": {},
@@ -119,12 +116,11 @@ class AppConfigTest(unittest.TestCase):
                 config = load_app_config()
 
         self.assertEqual(config.model.active, "model")
-        self.assertTrue(config.litellm.local_model_cost_map)
         self.assertEqual(
             config.model.router["model_list"][0]["litellm_params"]["custom_field"],
             {"kept": True},
         )
-        self.assertTrue(0 < config.runtime.input_budget_ratio < 1)
+        self.assertEqual(config.runtime.compact_threshold_tokens, 200000)
         self.assertIsNone(config.channels.telegram)
 
     def test_parses_telegram_config(self):
@@ -214,23 +210,20 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "model.router"):
                 load_app_config(path)
 
-    def test_rejects_non_boolean_local_model_cost_map(self):
+    def test_compact_threshold_is_required_and_a_positive_integer(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
-            data = self._data()
-            data["litellm"]["local_model_cost_map"] = "true"
+            for value in (None, 0, -1, True, 0.55, "200000"):
+                with self.subTest(value=value):
+                    data = self._data(value)
+                    if value is None:
+                        del data["runtime"]["compact_threshold_tokens"]
+                    self._write_config(path, data)
+                    with self.assertRaisesRegex(ValueError, "compact_threshold_tokens"):
+                        load_app_config(path)
+            data = self._data(123456)
             self._write_config(path, data)
-
-            with self.assertRaisesRegex(ValueError, "local_model_cost_map"):
-                load_app_config(path)
-
-    def test_rejects_budget_ratio_at_closed_upper_bound(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            self._write_config(path, self._data(ratio=1.0))
-
-            with self.assertRaisesRegex(ValueError, r"\(0, 1\)"):
-                load_app_config(path)
+            self.assertEqual(load_app_config(path).runtime.compact_threshold_tokens, 123456)
 
     def test_rejects_incomplete_telegram_config(self):
         with TemporaryDirectory() as directory:

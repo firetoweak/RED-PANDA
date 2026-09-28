@@ -74,8 +74,7 @@ class ProcessLlm:
 def config_for(workspace: Path):
     return AssistantConfig(
         model_name="test",
-        model_context_limit=200000,
-        input_budget_ratio=0.9,
+        compact_threshold_tokens=200000,
         llm=ProcessLlm(workspace),
     )
 
@@ -101,8 +100,7 @@ def cancellable_config(workspace: Path):
     config = config_for(workspace)
     return AssistantConfig(
         model_name=config.model_name,
-        model_context_limit=config.model_context_limit,
-        input_budget_ratio=config.input_budget_ratio,
+        compact_threshold_tokens=config.compact_threshold_tokens,
         llm=CancellableProcessLlm(workspace),
     )
 

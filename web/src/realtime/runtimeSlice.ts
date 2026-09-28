@@ -32,7 +32,7 @@ export type SessionRuntime = {
   committedThinking: Record<string, string>;
   tools: Record<string, LiveTool>;
   authorizations: Record<string, PendingAuthorization>;
-  contextUsage: { used: number; limit: number } | null;
+  contextUsage: { used: number; compact_threshold_tokens: number } | null;
   controlNotice: string | null;
   conversationStatus: {
     compactCount: number;
@@ -286,11 +286,11 @@ const runtimeSlice = createSlice({
     },
     contextUsage(
       state,
-      action: PayloadAction<{ sessionId: string; used: number; limit: number }>,
+      action: PayloadAction<{ sessionId: string; used: number; compact_threshold_tokens: number }>,
     ) {
       runtimeOf(state, action.payload.sessionId).contextUsage = {
         used: action.payload.used,
-        limit: action.payload.limit,
+        compact_threshold_tokens: action.payload.compact_threshold_tokens,
       };
     },
     conversationStatus(

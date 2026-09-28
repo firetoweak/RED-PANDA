@@ -18,7 +18,7 @@ pytestmark = pytest.mark.live
 class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_chat_roundtrip(self):
         config = load_app_config()
-        async with LiteLLMAdapter(config.model, config.litellm) as client:
+        async with LiteLLMAdapter(config.model) as client:
             result = await client.chat(
                 [{"role": "user", "content": "Reply with the single digit 2."}],
                 config.model.active,
@@ -47,7 +47,7 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         }]
-        async with LiteLLMAdapter(config.model, config.litellm) as client:
+        async with LiteLLMAdapter(config.model) as client:
             first = await client.chat(
                 [{"role": "user", "content": "调用 lookup 查询 key=answer。"}],
                 config.model.active,

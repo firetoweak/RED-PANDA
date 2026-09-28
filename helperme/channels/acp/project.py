@@ -7,7 +7,6 @@ from acp.schema import (
     TextContentBlock,
     ToolCallProgress,
     ToolCallStart,
-    UsageUpdate,
 )
 
 
@@ -25,10 +24,6 @@ _TOOL_KINDS = {
     "glob": "search",
     "get_changes": "search",
 }
-
-
-def usage_update(used: int, limit: int) -> UsageUpdate:
-    return UsageUpdate(session_update="usage_update", used=used, size=limit)
 
 
 def tool_start(command_id: str, name: str, arguments: Any) -> ToolCallStart:

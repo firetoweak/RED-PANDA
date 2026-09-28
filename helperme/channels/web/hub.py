@@ -173,16 +173,16 @@ class WebEventHub:
             },
         )
 
-    async def context_usage(self, session_id: str, used: int, limit: int) -> None:
+    async def context_usage(self, session_id: str, used: int, compact_threshold_tokens: int) -> None:
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
         if type(used) is not int or used < 0:
             raise ValueError("used must be a nonnegative int")
-        if type(limit) is not int or limit <= 0:
-            raise ValueError("limit must be a positive int")
+        if type(compact_threshold_tokens) is not int or compact_threshold_tokens <= 0:
+            raise ValueError("compact_threshold_tokens must be a positive int")
         await self._broadcast(
             "context_usage",
-            {"session_id": session_id, "used": used, "limit": limit},
+            {"session_id": session_id, "used": used, "compact_threshold_tokens": compact_threshold_tokens},
         )
 
     async def tool_progress(

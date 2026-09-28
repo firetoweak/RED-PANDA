@@ -1085,6 +1085,7 @@ class SubAgentPendingInstructionTest(unittest.IsolatedAsyncioTestCase):
             runtime,
             llm,
             "test-model",
+            compact_threshold_tokens=200000,
             environment="<environment />",
             surface=_NoToolsets(),
             skill_tools=_NoSkillTools(),

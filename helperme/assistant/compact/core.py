@@ -14,7 +14,6 @@ from helperme.assistant.artifacts import (
 )
 from helperme.assistant.attachments import is_valid_attachment_id
 from helperme.assistant.context.projection import (
-    ModelContextBudgetExceeded,
     _translate_visible_events,
     PreparedModelContext,
 )
@@ -22,12 +21,13 @@ from helperme.assistant.control import project_pending_approval
 from helperme.assistant.subagent.subagent import project_parent, project_returned
 from helperme.assistant.workspaces import SESSION_WORKSPACE_FACT
 from helperme.llm.api import InvalidLLMResponse
-from helperme.runtime import DomainFactCommitted, ToolBinding
+from helperme.runtime import DomainFactCommitted, StepCommitted, ToolBinding
 from helperme.runtime.state import StateProjector
 
 TASK = "compact.task"
 CREATED = "compact.handoff_created"
 WINDOW = "compact.window_rolled_over"
+MODEL_USAGE = "model_usage"
 READ = "read_compact_source"
 SUBMIT = "_accept_handoff"
 PURPOSE = """<self_handoff>
@@ -145,6 +145,20 @@ def window_fact(events):
     return result
 
 
+def latest_input_tokens(events):
+    """Read the last committed model usage belonging to the active window."""
+    current = window_fact(events)
+    window = None if current is None else current["id"]
+    for event in reversed(events):
+        payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == WINDOW:
+            return None
+        if isinstance(payload, StepCommitted):
+            usage = payload.decision_metadata[MODEL_USAGE]
+            return usage["input_tokens"] if usage["window"] == window else None
+    return None
+
+
 class CompactContext:
     def __init__(self, session_id, events, projector, transport):
         self.session_id = session_id
@@ -259,12 +273,8 @@ class CompactContext:
                 )
             else:
                 messages.append(item.message)
-        assessment = self.projector.budget.assess(messages, self.request["tools"])
-        if not assessment.allowed:
-            raise ModelContextBudgetExceeded(assessment)
         return PreparedModelContext(
             messages=messages,
-            assessment=assessment,
             protection_start_index=0,
             size_externalized_command_ids=(),
             age_dehydrated_command_ids=(),
@@ -340,7 +350,7 @@ def frozen_bundle(projector, events, session_id, context, prepared=None):
     visible = context.visible(events, whole)
     if prepared is None:
         prepared = projector.prepare(
-            events, visible, session_id, "", prefix=context.prefix, enforce_budget=False
+            events, visible, session_id, "", prefix=context.prefix
         )
     records = [
         {"source": session_id, "sequence": seq, "message": message}
@@ -383,63 +393,13 @@ def projected_tail(records, p, q):
     return [r["message"] for r in records if p < r["sequence"] <= q]
 
 
-def bounded_recent_tail(
-    records,
-    *,
-    before,
-    after,
-    system_prompt,
-    tools,
-    budget,
-    tail_budget_tokens,
-):
-    """Select the largest event-identity suffix that fits the publication budget."""
-
-    required = [
-        {"role": "system", "content": system_prompt},
-        *before,
-        *after,
-    ]
-    assessment = budget.assess(required, tools)
-    if not assessment.allowed:
-        raise ModelContextBudgetExceeded(assessment)
-
-    units = []
-    for record in records:
-        sequence = record["sequence"]
-        if sequence == 0:
-            continue
-        if not units or units[-1][0] != sequence:
-            units.append((sequence, []))
-        units[-1][1].append(record)
-
-    selected = []
-    for _, unit in reversed(units):
-        candidate = [*unit, *selected]
-        messages = [
-            {"role": "system", "content": system_prompt},
-            *before,
-            *(record["message"] for record in candidate),
-            *after,
-        ]
-        candidate_assessment = budget.assess(messages, tools)
-        if (
-            not candidate_assessment.allowed
-            or candidate_assessment.estimated_input_tokens > tail_budget_tokens
-        ):
-            break
-        selected = candidate
-    return selected
-
-
 class CompactBoundary:
-    def __init__(self, runtime, decision, context, config, control, transport, subagents=None):
+    def __init__(self, runtime, decision, context, config, control, transport):
         self.runtime, self.decision, self.context = runtime, decision, context
         self.config, self.control, self.transport = config, control, transport
-        self.subagents = subagents
         self.scheduler = None
 
-    async def snapshot(self, *, persist=True):
+    async def snapshot(self):
         sid = self.context.session_id
         events = await self.runtime.snapshot(sid)
         state = self.runtime.projector.project(sid, events).state
@@ -458,15 +418,8 @@ class CompactBoundary:
             visible,
             sid,
             prompt,
-            tools,
             prefix=self.context.prefix,
-            enforce_budget=False,
         )
-        if not persist:
-            prepared, _ = self.decision.with_loop_guard(
-                prepared, tools, events, state.journal_position, enforce_budget=False
-            )
-            return {"safe": True, "assessment": prepared.assessment}
         bundle = frozen_bundle(
             self.context.projector, events, sid, self.context, prepared
         )
@@ -493,18 +446,8 @@ class CompactBoundary:
                     "model": self.config.model_name,
                     "messages": prepared.messages,
                     "tools": tools,
-                    "recent": [
-                        record
-                        for record in bundle["records"]
-                        if record["sequence"] > 0
-                    ],
                 },
             ),
-            "prompt": prompt,
-            "tools": tools,
-            "context_limit": self.config.model_context_limit,
-            "input_ratio": self.config.input_budget_ratio,
-            "compact_threshold_ratio": self.config.compact_threshold_ratio,
             "catalog": catalog,
         }
 
@@ -543,29 +486,15 @@ class CompactBoundary:
         if parent is not None and project_returned(events):
             return False
         state = self.runtime.projector.project(sid, events).state
-        if state.waiting_command_ids:
+        if state.waiting_command_ids or project_pending_approval(events) is not None:
             return True
-        snap = await self.snapshot(persist=False)
-        if not snap["safe"]:
-            return True
-        assessment = snap["assessment"]
+        used = latest_input_tokens(events)
         response = await self.transport(
             "compact_boundary",
             sid,
-            {
-                "pressure": assessment.estimated_input_tokens
-                >= int(
-                    assessment.input_budget_tokens * self.config.compact_threshold_ratio
-                ),
-                "over_budget": not assessment.allowed,
-            },
+            {"pressure": used is not None and used >= self.config.compact_threshold_tokens},
         )
         if response == "wait":
-            return False
-        if isinstance(response, dict) and set(response) == {"failure"}:
-            if parent is None or self.subagents is None:
-                raise ValueError("compact failure response requires a child source")
-            await self.subagents.on_failed(sid, response["failure"])
             return False
         if response != "continue":
             raise ValueError("invalid compact boundary response")

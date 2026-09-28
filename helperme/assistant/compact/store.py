@@ -90,13 +90,6 @@ class CompactStore:
                 (json.dumps(failure), reader),
             )
 
-    def fail_publication(self, reader, failure):
-        with closing(self.connect()) as db, db:
-            db.execute(
-                "UPDATE compactions SET failure=? WHERE reader=? AND published=0",
-                (json.dumps(failure), reader),
-            )
-
     def prepare(self, reader, value):
         encoded = json.dumps(value, ensure_ascii=False)
         with closing(self.connect()) as db, db:

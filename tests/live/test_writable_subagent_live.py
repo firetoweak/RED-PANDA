@@ -2,7 +2,6 @@
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 import sys
 from uuid import uuid4
@@ -37,10 +36,6 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                     "commit", "-m", "baseline"], check=True, capture_output=True)
     user_head = (root / ".git" / "HEAD").read_bytes()
     user_index = (root / ".git" / "index").read_bytes()
-    # 隔离产品状态，复用公开分词表，避免本场景依赖第三方静态资源下载。
-    tokenizer_cache = HelperMeHome.default().cache_root / "tiktoken"
-    if tokenizer_cache.is_dir():
-        shutil.copytree(tokenizer_cache, home_root / "cache" / "tiktoken")
     monkeypatch.setenv("HELPERME_HOME", str(home_root))
     home_root.mkdir(exist_ok=True)
     nonce = "E2E_" + uuid4().hex

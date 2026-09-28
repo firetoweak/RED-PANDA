@@ -258,12 +258,12 @@ describe("toolProgressEventSchema", () => {
 });
 
 describe("runtimeStatusSchema", () => {
-  it("requires a model name and a positive context window", () => {
+  it("requires a model name and a positive compact threshold", () => {
     expect(
-      runtimeStatusSchema.parse({ model: "assistant", context_limit: 200000 }),
+      runtimeStatusSchema.parse({ model: "assistant", compact_threshold_tokens: 200000 }),
     ).toEqual({
       model: "assistant",
-      context_limit: 200000,
+      compact_threshold_tokens: 200000,
     });
   });
 });
@@ -304,12 +304,12 @@ describe("contextUsageEventSchema", () => {
       contextUsageEventSchema.parse({
         session_id: "session-1",
         used: 1200,
-        limit: 200000,
+        compact_threshold_tokens: 200000,
       }),
     ).toEqual({
       session_id: "session-1",
       used: 1200,
-      limit: 200000,
+      compact_threshold_tokens: 200000,
     });
   });
 });

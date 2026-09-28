@@ -2,23 +2,24 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from PIL import Image
 
 from helperme.assistant.artifacts import MemoryArtifactGateway
 from helperme.assistant.attachments import AttachmentGateway
 from helperme.assistant.compact.core import (
-    bounded_recent_tail,
     CompactBoundary,
     CompactContext,
     TASK,
+    MODEL_USAGE,
+    latest_input_tokens,
     frozen_bundle,
     save_document,
 )
-from helperme.assistant.context.budget import BudgetAssessment
-from helperme.assistant.context.projection import ModelContextBudgetExceeded
 from helperme.assistant.context.projection import ModelContextProjector
-from helperme.runtime import AgentRuntime, MemoryJournal, StateProjector
+from helperme.runtime import AgentRuntime, MemoryJournal, ModelDecision, RecordedDecision, StateProjector
 from helperme.assistant.toolsets import ToolSurface
 from helperme.assistant.workspaces import SESSION_WORKSPACE_FACT
 from tests.assistant.test_toolsets import FakeEchoProvider
@@ -31,61 +32,58 @@ def _png(color: str) -> bytes:
 
 
 class WindowTest(unittest.IsolatedAsyncioTestCase):
-    def test_recent_tail_uses_complete_sequence_units_within_remaining_budget(self):
-        class CharacterBudget:
-            def __init__(self, limit):
-                self.limit = limit
+    async def test_compact_uses_last_committed_usage_in_the_current_window(self):
+        gateway = MemoryArtifactGateway()
+        projector = ModelContextProjector(gateway=gateway)
+        usage = {"window": None, "input_tokens": 199999, "cached_input_tokens": 199999}
 
-            def assess(self, messages, tools):
-                used = sum(len(message["content"]) for message in messages)
-                return BudgetAssessment(used, self.limit)
+        class Decision:
+            async def decide(self, frame):
+                return RecordedDecision(ModelDecision(content="done"), (), {MODEL_USAGE: usage})
 
-        records = [
-            {"sequence": 1, "message": {"role": "user", "content": "old"}},
-            {
-                "sequence": 2,
-                "message": {"role": "assistant", "content": "12345"},
+        runtime = AgentRuntime(MemoryJournal(), Decision(), {})
+        await runtime.create_session("b")
+        transport = AsyncMock(return_value="continue")
+
+        async def check(expected):
+            # Reconstruct the context each time: usage must survive Worker restarts.
+            events = await runtime.snapshot("b")
+            context = CompactContext("b", events, projector, None)
+            boundary = CompactBoundary(
+                runtime, None, context,
+                SimpleNamespace(compact_threshold_tokens=200000), None, transport,
+            )
+            self.assertTrue(await boundary.before_advance())
+            transport.assert_awaited_with("compact_boundary", "b", {"pressure": expected})
+            return boundary
+
+        await runtime.receive_user_message("b", "large input " * 20000, delivery_id="one")
+        await check(False)  # No response yet; request size never triggers an estimate.
+        await runtime.advance("b")
+        await check(False)
+        usage["input_tokens"] = 200000
+        await runtime.receive_user_message("b", "next", delivery_id="two")
+        await runtime.advance("b")
+        boundary = await check(True)  # Includes cached input and uses >=, not >.
+        events = await runtime.snapshot("b")
+        material = save_document(gateway, "b", {"messages": [{"role": "user", "content": "handoff"}]})
+        await boundary.publish({
+            "handoff": {"artifact": material, "request": material},
+            "window": {
+                "id": "new-window", "parent": None, "upto": events[-1].sequence,
+                "cutover": events[-1].sequence, "context": material, "bundle": material,
             },
-            {"sequence": 2, "message": {"role": "tool", "content": "12345"}},
-            {"sequence": 3, "message": {"role": "user", "content": "new"}},
-        ]
-        selected = bounded_recent_tail(
-            records,
-            before=[{"role": "user", "content": "h"}],
-            after=[{"role": "user", "content": "n"}],
-            system_prompt="s",
-            tools=[],
-            budget=CharacterBudget(15),
-            tail_budget_tokens=15,
-        )
-
-        self.assertEqual([record["sequence"] for record in selected], [3])
-
-    def test_recent_tail_can_be_empty_but_required_publication_must_fit(self):
-        class CharacterBudget:
-            def __init__(self, limit):
-                self.limit = limit
-
-            def assess(self, messages, tools):
-                used = sum(len(message["content"]) for message in messages)
-                return BudgetAssessment(used, self.limit)
-
-        arguments = dict(
-            records=[
-                {"sequence": 1, "message": {"role": "user", "content": "large"}}
-            ],
-            before=[{"role": "user", "content": "h"}],
-            after=[{"role": "user", "content": "n"}],
-            system_prompt="s",
-            tools=[],
-            tail_budget_tokens=3,
-        )
-        self.assertEqual(
-            bounded_recent_tail(**arguments, budget=CharacterBudget(3)),
-            [],
-        )
-        with self.assertRaises(ModelContextBudgetExceeded):
-            bounded_recent_tail(**arguments, budget=CharacterBudget(2))
+        })
+        await check(False)
+        # Even a delayed result from the former window must not trigger again.
+        await runtime.receive_user_message("b", "late", delivery_id="three")
+        await runtime.advance("b")
+        await check(False)
+        usage.update(window="new-window", input_tokens=1, cached_input_tokens=0)
+        await runtime.receive_user_message("b", "new request", delivery_id="four")
+        await runtime.advance("b")
+        self.assertEqual(latest_input_tokens(await runtime.snapshot("b")), 1)
+        await check(False)  # Previous calls are not added to the current usage.
 
     async def test_frozen_bundle_keeps_user_image_blocks(self):
         with TemporaryDirectory() as directory:
@@ -145,7 +143,6 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
                         }
                     ],
                     "tools": [],
-                    "recent": [],
                 },
             )
             bundle = save_document(
@@ -219,7 +216,6 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             {
                 "messages": [{"role": "system", "content": "fixed"}],
                 "tools": [],
-                "recent": [],
             },
         )
         await runtime.receive_domain_fact(
@@ -294,7 +290,6 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
                     "cutover": len(await runtime.snapshot("b")),
                     "context": material,
                     "bundle": material,
-                    "recent_tail_start": 1,
                 },
             }
             await boundary.publish(args)

@@ -27,7 +27,6 @@ from helperme.runtime import (
     StateProjector,
     ToolBinding,
 )
-from tests.assistant.test_context import CharacterEstimator
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import settle_session
 
@@ -126,11 +125,8 @@ class ToolImageProjectionTest(unittest.IsolatedAsyncioTestCase):
         second = _image("second")
         events = await self._history((_shot(first), _shot(second)))
         prepared = ModelContextProjector(
-            estimator=CharacterEstimator(),
             settings=ModelContextSettings(
-                image_tokens=100,
-                image_budget_tokens=100,
-                recent_protection_tokens=1,
+                max_tool_images=1,
             ),
         ).prepare(
             events,

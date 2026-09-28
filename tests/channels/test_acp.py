@@ -196,16 +196,6 @@ class AcpChannelTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, -32602)
         self.assertEqual(self.sessions.calls, [])
 
-    async def test_usage_is_projected_as_session_update(self) -> None:
-        session_id = await self._new_session()
-
-        await self.agent.report_usage(session_id, 1200, 240000)
-
-        update = self.client.updates[-1]["update"]
-        self.assertEqual(update.session_update, "usage_update")
-        self.assertEqual(update.used, 1200)
-        self.assertEqual(update.size, 240000)
-
     async def test_tool_progress_is_projected_as_session_updates(self) -> None:
         session_id = await self._new_session()
 

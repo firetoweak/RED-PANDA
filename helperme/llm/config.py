@@ -17,12 +17,3 @@ class ModelConfig:
         if type(self.router) is not dict or not self.router:
             raise ValueError("router must be a non-empty dict")
         object.__setattr__(self, "router", deepcopy(self.router))
-
-
-@dataclass(frozen=True, slots=True)
-class LiteLLMConfig:
-    local_model_cost_map: bool
-
-    def __post_init__(self) -> None:
-        if type(self.local_model_cost_map) is not bool:
-            raise ValueError("local_model_cost_map must be a bool")

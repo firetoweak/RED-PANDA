@@ -170,9 +170,9 @@ describe("runtimeSlice", () => {
     let state = reducer(undefined, viewing("s2"));
     state = reducer(
       state,
-      contextUsage({ sessionId: "s1", used: 1200, limit: 200000 }),
+      contextUsage({ sessionId: "s1", used: 1200, compact_threshold_tokens: 200000 }),
     );
-    expect(state.sessions.s1.contextUsage).toEqual({ used: 1200, limit: 200000 });
+    expect(state.sessions.s1.contextUsage).toEqual({ used: 1200, compact_threshold_tokens: 200000 });
     expect(state.sessions.s2.contextUsage).toBeNull();
   });
 

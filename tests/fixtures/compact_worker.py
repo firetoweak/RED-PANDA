@@ -49,7 +49,7 @@ class CompactLlm:
             if (self.workspace / "invalid_handoff").exists():
                 return LLMCallResult(
                     LLMResponse(content="", calls=()),
-                    LLMUsage(input_tokens=0, output_tokens=5),
+                    LLMUsage(input_tokens=60000, output_tokens=5),
                 )
             if (self.workspace / "read_compact").exists() or (self.workspace / "repeat_reads").exists():
                 tool_results = [m for m in messages if m["role"] == "tool" and "source" in str(m["content"])]
@@ -58,11 +58,11 @@ class CompactLlm:
                     return LLMCallResult(LLMResponse(content="回读", calls=(ToolCall(
                         "read-source", "read_compact_source", json.dumps({
                             "source": "chat", "kind": "view", "reference": "", "offset": 0, "limit": 1000
-                        })),)), LLMUsage(input_tokens=0, output_tokens=5))
+                        })),)), LLMUsage(input_tokens=60000, output_tokens=5))
             if (self.workspace / "write_compact").exists():
                 return LLMCallResult(LLMResponse(content="", calls=(ToolCall(
                     "write", "write_file", '{"path":"forbidden.txt","content":"bad"}'
-                ),)), LLMUsage(input_tokens=0, output_tokens=5))
+                ),)), LLMUsage(input_tokens=60000, output_tokens=5))
             while not (self.workspace / "release_compact").exists():
                 await asyncio.sleep(0.02)
             response = LLMResponse(content=HANDOFF, calls=())
@@ -89,7 +89,8 @@ class CompactLlm:
             emitted = on_content_delta(response.content)
             if isawaitable(emitted):
                 await emitted
-        return LLMCallResult(response, LLMUsage(input_tokens=0, output_tokens=5))
+        used = 10 if any("模型生成的交接材料" in str(m["content"]) for m in messages) else 60000
+        return LLMCallResult(response, LLMUsage(input_tokens=used, output_tokens=5))
 
 
 class ChildCompactLlm(CompactLlm):
@@ -101,20 +102,28 @@ class ChildCompactLlm(CompactLlm):
                 on_reasoning_delta=on_reasoning_delta,
             )
         if "你是一个被委派的子 Agent" in messages[0]["content"]:
-            while (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():
+            has_tools = any(message["role"] == "tool" for message in messages)
+            used = 10 if any("模型生成的交接材料" in str(m["content"]) for m in messages) else 60000
+            while has_tools and (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():
                 await asyncio.sleep(0.02)
-            if not any(message["role"] == "tool" for message in messages):
+            continuing = (
+                has_tools and (self.workspace / "hold_child").exists()
+                and not (self.workspace / "child_continued").exists()
+            )
+            if continuing:
+                (self.workspace / "child_continued").touch()
+            if not has_tools or continuing:
                 return LLMCallResult(
                     LLMResponse(content="", calls=(ToolCall(
                         "read", "read_file", '{"path":"input.txt"}'
                     ),)),
-                    LLMUsage(input_tokens=0, output_tokens=5),
+                    LLMUsage(input_tokens=used, output_tokens=5),
                 )
             return LLMCallResult(
                 LLMResponse(content="", calls=(ToolCall(
                     "report", "report", '{"summary":"已完成子任务"}'
                 ),)),
-                LLMUsage(input_tokens=0, output_tokens=5),
+                LLMUsage(input_tokens=used, output_tokens=5),
             )
         return await super().chat(
             messages, model, tools=tools,
@@ -126,10 +135,8 @@ class ChildCompactLlm(CompactLlm):
 def config_for(workspace: Path):
     return AssistantConfig(
         model_name="compact-test",
-        model_context_limit=60000,
-        input_budget_ratio=0.9,
+        compact_threshold_tokens=60000,
         llm=CompactLlm(workspace),
-        compact_threshold_ratio=0.55,
     )
 
 
@@ -139,7 +146,7 @@ def child_config_for(workspace: Path):
     return replace(
         config_for(workspace),
         llm=ChildCompactLlm(workspace),
-        model_context_limit=8000,
+        compact_threshold_tokens=8000,
     )
 
 

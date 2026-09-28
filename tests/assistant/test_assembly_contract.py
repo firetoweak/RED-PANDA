@@ -121,8 +121,7 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                 journal = MemoryJournal()
                 config = AssistantConfig(
                     model_name="test-model",
-                    model_context_limit=200_000,
-                    input_budget_ratio=0.75,
+                    compact_threshold_tokens=200_000,
                     llm=llm,
                 )
                 session_id = "entry"
@@ -198,6 +197,10 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(manifest["request"], request)
                     self.assertEqual(
+                        event.payload.decision_metadata["model_usage"],
+                        {"window": None, **manifest["usage"]},
+                    )
+                    self.assertEqual(
                         event.payload.decision_metadata["message_extensions"],
                         {"reasoning_content": "private-state"},
                     )
@@ -244,8 +247,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(
                         model_name="test-model",
-                        model_context_limit=200_000,
-                        input_budget_ratio=0.75,
+                        compact_threshold_tokens=200_000,
                         llm=llm,
                     ),
                     lambda *_values: None,
@@ -310,8 +312,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(
                         model_name="test-model",
-                        model_context_limit=200_000,
-                        input_budget_ratio=0.75,
+                        compact_threshold_tokens=200_000,
                         llm=StreamingLlm(),
                     ),
                     lambda *values: delivered.append(values),
@@ -374,8 +375,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(
                         model_name="test-model",
-                        model_context_limit=200_000,
-                        input_budget_ratio=0.75,
+                        compact_threshold_tokens=200_000,
                         llm=CapturingLlm(),
                     ),
                     lambda session_id, _output_id, text: delivered.append(
@@ -451,8 +451,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(
                         model_name="test-model",
-                        model_context_limit=200_000,
-                        input_budget_ratio=0.75,
+                        compact_threshold_tokens=200_000,
                         llm=CapturingLlm(),
                     ),
                     lambda *_values: None,

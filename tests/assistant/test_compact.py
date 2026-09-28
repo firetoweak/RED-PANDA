@@ -176,7 +176,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         events = await SqliteJournal(self.store.require(job["reader"])).snapshot(job["reader"])
         steps = [e.payload for e in events if isinstance(e.payload, StepCommitted)]
         self.assertEqual(len(steps), 11)
-        notices = [s.decision_metadata["loop_guard_notice"] for s in steps if s.decision_metadata]
+        notices = [s.decision_metadata["loop_guard_notice"] for s in steps if "loop_guard_notice" in s.decision_metadata]
         self.assertEqual(len(notices), 3)
         self.assertTrue(all(n["evidence"][0]["new_count"] == 3 for n in notices))
         self.assertTrue(self.host.failures.empty())
@@ -219,12 +219,9 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         self.host.config_factory = partial(child_config_for, self.root)
         self.host.llm = child_config_for(self.root).llm
         await self.host.create("chat", self.workspace.workspace_id)
-        await self.store.create(
-            child,
-            workspace_id=self.workspace.workspace_id,
-            initial_fact=task_fact_arguments(
-                DelegateIntent("child", "chat", child, task)
-            ),
+        await self.host._route(
+            "create_child", child,
+            task_fact_arguments(DelegateIntent("child", "chat", child, task)),
         )
         await self.host.resume(child)
         return child
@@ -273,7 +270,8 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.conversation_status(child).compact_count, 0)
         self.assertEqual(self.host.compact.store.reader_job(job["reader"])["published"], 2)
 
-    async def test_child_hard_budget_and_failed_handoff_reports_failure(self):
+    async def test_child_large_context_can_report_without_local_budget_failure(self):
+        (self.root / "release_compact").touch()
         await self.start_child(" history" * 4000)
         async with asyncio.timeout(45):
             while True:
@@ -288,4 +286,4 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
                     break
                 await asyncio.sleep(0.05)
         self.assertEqual(len(failures), 1)
-        self.assertIn("ModelContextBudgetExceeded", failures[0])
+        self.assertIsNone(failures[0])

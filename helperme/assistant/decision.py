@@ -8,6 +8,7 @@ from typing import AbstractSet, Protocol
 
 from helperme.assistant.compact.core import (
     CompactContext,
+    MODEL_USAGE,
     READ_SCHEMA,
     SUBMIT,
 )
@@ -28,7 +29,6 @@ from helperme.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_tool_result,
-    ModelContextBudgetExceeded,
 )
 from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
 from helperme.assistant.toolsets import ToolSurface
@@ -202,6 +202,7 @@ class JournalBackedLlmDecisionMaker:
         environment: str,
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
         projector: ModelContextProjector | None = None,
+        compact_threshold_tokens: int,
         context_usage_sink: Callable[[str, int, int], None] | None = None,
         subagents: SubAgentHost | None = None,
         compact: CompactContext | None = None,
@@ -222,6 +223,7 @@ class JournalBackedLlmDecisionMaker:
         self._control = control
         self._management = management
         self._context_usage_sink = context_usage_sink
+        self._compact_threshold_tokens = compact_threshold_tokens
         self._subagents = subagents
         self._compact = compact
         self._loop_guard = LoopGuard() if loop_guard is None else loop_guard
@@ -330,17 +332,12 @@ class JournalBackedLlmDecisionMaker:
             ),
         )
 
-    def with_loop_guard(
-        self, prepared, schemas, events, position, *, enforce_budget=True
-    ):
+    def with_loop_guard(self, prepared, events, position):
         notice = self._loop_guard.inspect(events, position)
         if notice is not None:
             messages = [*prepared.messages, {"role": "user", "content": notice["text"]}]
-            assessment = self._projector.budget.assess(messages, schemas)
-            if enforce_budget and not assessment.allowed:
-                raise ModelContextBudgetExceeded(assessment)
             prepared = replace(
-                prepared, messages=messages, assessment=assessment,
+                prepared, messages=messages,
                 source_sequences=(*prepared.source_sequences, 0),
             )
         return prepared, notice
@@ -370,22 +367,15 @@ class JournalBackedLlmDecisionMaker:
                 visible,
                 frame.state.session_id,
                 prompt,
-                schemas,
                 prefix=None if self._compact is None else self._compact.prefix,
             )
         prepared, notice = self.with_loop_guard(
-            prepared, schemas, events, frame.observed_journal_position
+            prepared, events, frame.observed_journal_position
         )
-        if self._context_usage_sink is not None:
-            estimated = self._projector.budget.assess(
-                prepared.messages,
-                schemas,
-            ).estimated_input_tokens
-            self._context_usage_sink(
-                frame.state.session_id,
-                estimated,
-                self._projector.settings.context_limit,
-            )
+        window = (
+            None if self._compact is None or self._compact.window is None
+            else self._compact.window["id"]
+        )
         model = (
             self._compact.request["model"]
             if self._compact is not None and self._compact.is_reader
@@ -443,13 +433,7 @@ class JournalBackedLlmDecisionMaker:
             self._context_usage_sink(
                 frame.state.session_id,
                 usage.input_tokens,
-                self._projector.settings.context_limit,
-            )
-        if usage.input_tokens > 0:
-            self._projector.budget.observe_actual_usage(
-                prepared.messages,
-                schemas,
-                usage.input_tokens,
+                self._compact_threshold_tokens,
             )
         if self._compact is not None and self._compact.is_reader:
             calls = result.response.calls
@@ -519,7 +503,7 @@ class JournalBackedLlmDecisionMaker:
         artifact = self._projector.gateway.for_session(frame.state.session_id).save(
             json.dumps(manifest, ensure_ascii=False, sort_keys=True)
         )
-        metadata = {}
+        metadata = {MODEL_USAGE: {"window": window, **manifest["usage"]}}
         control_request = self._control.take_staged_metadata(frame)
         if control_request is not None:
             metadata[CONTROL_REQUEST_METADATA] = control_request
@@ -530,5 +514,5 @@ class JournalBackedLlmDecisionMaker:
         return RecordedDecision(
             decision,
             (artifact.artifact_id,),
-            metadata or None,
+            metadata,
         )

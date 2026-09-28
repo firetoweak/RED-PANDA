@@ -88,13 +88,6 @@ class AssistantAssembly:
     compact: CompactBoundary | None = None
 
 
-def _model_context_settings(config: AssistantConfig) -> ModelContextSettings:
-    return ModelContextSettings(
-        context_limit=config.model_context_limit,
-        input_budget_ratio=config.input_budget_ratio,
-    )
-
-
 async def build_assistant_assembly(
     config: AssistantConfig,
     sink,
@@ -148,7 +141,7 @@ async def build_assistant_assembly(
         if task is None and session_transport is not None else ([], {}, frozenset())
     )
     exclusive_tools |= review_exclusive
-    settings = _model_context_settings(config)
+    settings = ModelContextSettings()
     gateway = FileArtifactGateway(sessions_root)
     projector = ModelContextProjector(
         gateway=gateway,
@@ -311,6 +304,7 @@ async def build_assistant_assembly(
         projector=projector,
         control=control,
         management=management,
+        compact_threshold_tokens=config.compact_threshold_tokens,
         context_usage_sink=context_usage_sink,
         subagents=subagents,
         compact=compact_context,
@@ -337,7 +331,6 @@ async def build_assistant_assembly(
     if session_transport is not None:
         compact = CompactBoundary(
             runtime, decision, compact_context, config, control, session_transport,
-            subagents,
         )
         compact.scheduler = scheduler
 
