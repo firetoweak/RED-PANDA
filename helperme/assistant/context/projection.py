@@ -44,7 +44,7 @@ from helperme.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 5
+PROJECTOR_VERSION = 6
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_RECENT_PROTECTION_TOKENS = 10_000
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 16_000
@@ -300,6 +300,20 @@ def _translate_visible_events(
             continue
         payload = event.payload
         if isinstance(payload, UserMessageReceived):
+            items.append(
+                _Projected(
+                    {
+                        "role": "system",
+                        "content": (
+                            "<message_received_at>"
+                            f"{event.occurred_at.isoformat()}"
+                            "</message_received_at>"
+                        ),
+                    },
+                    "message_received_at",
+                    sequence=event.sequence,
+                )
+            )
             items.append(
                 _Projected(
                     {

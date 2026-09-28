@@ -23,26 +23,28 @@ from helperme.sandbox.workspace import (
 from helperme.tools.spec import PydanticParameters, ToolSpec
 
 
+RG_NOT_FOUND_HINT = "本机缺少 ripgrep，glob/grep 暂不可用；已知路径时改用 read_file，并告诉用户需要安装 ripgrep。"
+
 GLOB_DESCRIPTION = """
-用途：在当前 Environment 的 Workspace View 内按名称模式查找文件或目录。
+用途：在工作区内按名称模式查找文件或目录。
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
 默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 以当前 Environment cwd 为基准，绝对 path 使用 Environment 原生语义；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的路径；结果必须位于 Workspace View 内。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的路径；结果只包含工作区内的路径。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
 """.strip()
 
 GREP_DESCRIPTION = """
-用途：在当前 Environment 的 Workspace View 内用正则搜索文本，返回每个匹配行的位置和内容。
+用途：在工作区内用正则搜索文本，返回每个匹配行的位置和内容。
 何时使用：不知道内容出现在哪个文件、修改前需要定位原文时使用；找文件名用 glob，阅读匹配位置的完整上下文用 read_file。
 默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的文件或目录会搜索该路径，对目录而言进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 以当前 Environment cwd 为基准，绝对 path 使用 Environment 原生语义；query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path/query；content_truncated=true 时用 read_file 查看该行；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
 """.strip()
 
 READ_FILE_DESCRIPTION = """
-用途：读取当前 Environment Workspace View 内已知文本文件的行范围，返回内容、行号和分页状态。
+用途：读取工作区内已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：相对 path 以当前 Environment cwd 为基准，绝对 path 使用 Environment 原生语义；offset 从 1 开始；单次最多 2000 行和 8000 字符。文件体积不是拒绝条件。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；offset 从 1 开始；单次最多 2000 行和 8000 字符。文件体积不是拒绝条件。
 失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
 """.strip()
 
@@ -59,7 +61,7 @@ GREP_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 class GlobInput(BaseModel):
     pattern: str = Field(description="glob 模式；不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的路径，例如 *.py、tools/*.py")
-    path: str = Field(default=".", description="搜索起点；相对路径基于当前 Environment cwd")
+    path: str = Field(default=".", description="搜索起点；相对路径从工作区开始")
     kind: Literal["file", "dir", "any"] = Field(default="any", description="结果类型：file 仅文件、dir 仅目录、any 两者都要")
     max_depth: int | None = Field(default=None, ge=1, description="相对搜索起点的深度限制；默认不限制，1 表示只看当前层")
     include_hidden: bool = Field(
@@ -75,14 +77,14 @@ class GlobInput(BaseModel):
 
 
 class ReadFileInput(BaseModel):
-    path: str = Field(description="要读取的文件路径；相对路径基于当前 Environment cwd")
+    path: str = Field(description="要读取的文件路径；相对路径从工作区开始")
     offset: int = Field(default=1, ge=1, description="读取起始行号，从 1 开始")
     limit: int = Field(default=200, ge=1, le=2000, description="最多读取行数，范围 1 到 2000")
 
 
 class GrepInput(BaseModel):
     query: str = Field(description="正则表达式；字面匹配需转义正则元字符")
-    path: str = Field(default=".", description="搜索路径；相对路径基于当前 Environment cwd")
+    path: str = Field(default=".", description="搜索路径；相对路径从工作区开始")
     include_hidden: bool = Field(
         default=False,
         description="为 true 时搜索隐藏文件/目录（名称以 . 开头）；默认跳过。.git 仍会跳过，除非 path 已在 .git 内",
@@ -311,7 +313,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
                 **resolved_search.result_fields(),
             }
         if shutil.which("rg") is None:
-            return {"ok": False, "code": "RG_NOT_FOUND", "error": "未找到 rg"}
+            return {"ok": False, "code": "RG_NOT_FOUND", "error": "未找到 rg", "hint": RG_NOT_FOUND_HINT}
 
         search_root = resolved_search.native_path
         scope_args = _rg_scope_args(
@@ -370,7 +372,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
         if not raw.query.strip():
             return {"ok": False, "code": "EMPTY_QUERY", "error": "query 不能为空"}
         if shutil.which("rg") is None:
-            return {"ok": False, "code": "RG_NOT_FOUND", "error": "未找到 rg"}
+            return {"ok": False, "code": "RG_NOT_FOUND", "error": "未找到 rg", "hint": RG_NOT_FOUND_HINT}
         try:
             resolved_path, err = _require_existing(
                 resolver, raw.path, expect="any"
@@ -552,6 +554,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
                 "ok": False,
                 "code": "RG_FAILED",
                 "error": protocol_error,
+                "hint": "搜索结果无法解析，不能据此断定没有匹配；缩小 path 后重试，或改用 glob/read_file。",
                 **resolved_path.result_fields(),
             }
         if not truncated and return_code == 2:

@@ -4,6 +4,7 @@ import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from helperme.assistant.artifacts import MemoryArtifactGateway
@@ -17,6 +18,8 @@ from helperme.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
     REPORT_FACT,
     TASK_FACT,
+    DelegateIntent,
+    task_fact_arguments,
 )
 from helperme.assistant.toolsets import LOAD_TOOLSET
 from helperme.config import AssistantConfig
@@ -24,6 +27,7 @@ from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage
 from helperme.paths import HelperMeHome
 from helperme.runtime import MemoryJournal
 from helperme.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from helperme.tools.builtin import create_subagent_workspace_specs
 from helperme.tools.executor import RESERVED_KEYS
 from tests.fixtures.workspaces import workspace_record
 
@@ -46,8 +50,8 @@ PROSE_VOCABULARY = frozenset(
         "Git",
         "HelperMe",
         "Skill",
-        "Step",
         "Toolset",
+        "diff",
         "env",
         "false",
         "true",
@@ -60,8 +64,13 @@ PROSE_VOCABULARY = frozenset(
 """
 
 
-CONDITIONAL_TOOL_NAMES = frozenset({LOAD_TOOLSET, LOAD_SKILL, READ_SKILL_RESOURCE})
-"""按状态暴露的工具：没有可加载 Toolset、没有已装 Skill 时它们不在 schemas 里。
+CONDITIONAL_TOOL_NAMES = frozenset({
+    LOAD_TOOLSET,
+    LOAD_SKILL,
+    READ_SKILL_RESOURCE,
+    *(spec.name for spec in create_subagent_workspace_specs(None)),
+})
+"""按状态暴露的工具：没有可加载 Toolset、没有已装 Skill、没有 Host 传输时它们不在 schemas 里。
 
 从定义处导入而不是写死字符串，改名仍然会被跟上；prompt 里提到它们是合法的，
 因为 prompt 要负责让模型知道这些能力存在。
@@ -122,7 +131,8 @@ def _fact_type_tokens() -> set[str]:
     tokens: set[str] = set()
     for fact_type in (TASK_FACT, REPORT_FACT):
         tokens |= _ascii_tokens(fact_type)
-    return tokens
+    task = task_fact_arguments(DelegateIntent("command", "parent", "parent/sub-command", "task"))
+    return tokens | set(task["data"])
 
 
 class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
@@ -138,6 +148,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         root = Path(self._directory.name)
         workspace = root / "workspace"
         workspace.mkdir()
+        self._workspace = workspace_record(workspace)
         with (
             patch(
                 "helperme.assistant.assembly.HelperMeHome.default",
@@ -158,7 +169,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
                 lambda _session_id, _output_id, _text: None,
                 MemoryJournal(),
                 session_id="parent/sub-vocabulary",
-                workspace=workspace_record(workspace),
+                workspace=self._workspace,
             )
 
     async def asyncTearDown(self) -> None:
@@ -222,6 +233,11 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             set(),
             f"子 Agent prompt 指向了不存在的工具名或字段名: {sorted(unknown)}",
         )
+
+    def test_decision_prompt_tells_model_its_workspace(self):
+        decision = self._assembly.runtime.step_runner._decision_maker
+        prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
+        self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
 
     def test_subagent_prompt_names_no_tool_it_cannot_call(self):
         """子 Session 的工具名单比主对话窄，prompt 不能许诺名单外的动作。"""

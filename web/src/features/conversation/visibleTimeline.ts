@@ -25,6 +25,7 @@ export type VisibleStep = {
   key: string;
   kind: "step";
   outputId: string;
+  occurredAt: string | null;
   // 还在跑的那一步没有 step_id，也就没有可以退回去的落点。
   stepId: string | null;
   rewindable: boolean;
@@ -65,6 +66,7 @@ export function visibleTimeline(
       key: `output:${item.output_id}`,
       kind: "step",
       outputId: item.output_id,
+      occurredAt: item.occurred_at,
       stepId: item.step_id,
       rewindable: item.rewindable,
       text: item.text,
@@ -98,6 +100,7 @@ export function visibleTimeline(
       key: `output:${outputId}`,
       kind: "step",
       outputId,
+      occurredAt: null,
       stepId: null,
       rewindable: false,
       text,
@@ -115,6 +118,7 @@ export function visibleTimeline(
       key: `output:${preview.outputId}`,
       kind: "step",
       outputId: preview.outputId,
+      occurredAt: null,
       stepId: null,
       rewindable: false,
       text: preview.text,
@@ -134,6 +138,7 @@ export function visibleTimeline(
       key: `output:${outputId}`,
       kind: "step",
       outputId,
+      occurredAt: null,
       stepId: null,
       rewindable: false,
       text: null,

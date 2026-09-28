@@ -29,7 +29,7 @@ LOAD_TOOLSET = "load_toolset"
 
 LOAD_TOOLSET_DESCRIPTION = (
     "为当前 Session 加载一个 Toolset，并返回本次发现的工具名称与描述。"
-    "其中的工具从下一个 Step 开始可用。未加载前不能调用其中的工具。"
+    "其中的工具从下一次决策开始可用。未加载前不能调用其中的工具。"
 )
 
 LOAD_TOOLSET_SCHEMA: dict[str, object] = {
@@ -354,8 +354,8 @@ class ToolSurface:
             return "当前没有可加载的外部 Toolset。"
         lines = [
             "可按需加载以下 Toolset。需要其中能力时，调用 load_toolset；"
-            "加载后的工具从下一个 Step 开始可用。"
-            "只能调用当前 Step tools 中实际暴露的精确名称：",
+            "加载后的工具从下一次决策开始可用。"
+            "只能调用本次决策可用工具中的精确名称：",
         ]
         for descriptor in descriptors:
             lines.append(f"- {descriptor.id}: {descriptor.description}")
@@ -381,7 +381,7 @@ class ToolSurface:
                 "ok": False,
                 "code": "TOOLSET_NOT_FOUND",
                 "data": {"toolset_id": toolset_id},
-                "error": f"Toolset {toolset_id} not found",
+                "error": f"能力目录中没有 Toolset {toolset_id}",
                 "hint": "请从可选 Toolset 目录中选择有效 ID。",
             }
         current = available[toolset_id]
@@ -513,7 +513,7 @@ class ToolSurface:
                 return provider
         raise ToolsetLoadError(
             "TOOLSET_NOT_FOUND",
-            f"Toolset {toolset_id} not found",
+            f"能力目录中没有 Toolset {toolset_id}",
             data={"toolset_id": toolset_id},
         )
 

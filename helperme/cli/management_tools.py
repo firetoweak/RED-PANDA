@@ -74,7 +74,7 @@ def create_cli_management_specs(
         ToolSpec(
             TEST_CLI,
             "重跑已登记 CLI 的体检（--help / --version），返回测得的最新事实；"
-            "纯诊断，不写回 Registry。",
+            "只做诊断，不更新已登记的信息。",
             PydanticParameters(CliIdInput),
             test_cli,
         ),

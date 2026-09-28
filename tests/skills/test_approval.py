@@ -206,7 +206,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
 
             result = await SkillSetEnabledApprovalHandler(service).execute(request.payload)
             self.assertFalse(result.succeeded)
-            self.assertIn("过期", result.message)
+            self.assertIn("请重新提交", result.message)
 
             self.assertTrue(spec.control_boundary)
             self.assertTrue(spec.exclusive_batch)

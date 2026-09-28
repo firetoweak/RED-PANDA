@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from html import escape
-import platform
 from pathlib import Path
 from typing import Protocol
 
@@ -96,46 +93,3 @@ class EnvironmentProvider(Protocol):
 
 def environment_error(exc: EnvironmentInputError) -> dict[str, str | bool]:
     return {"ok": False, "code": exc.code, "error": str(exc)}
-
-
-def render_environment_context(binding: EnvironmentBinding) -> str:
-    now = datetime.now().astimezone()
-    roots = "\n".join(
-        "    <root "
-        f'id="{escape(root.root_id)}" scope="{root.scope.value}" '
-        f'uri="{escape(root.path.as_uri())}" />'
-        for root in binding.workspace_view.roots
-    )
-    permissions = "\n".join(
-        "    <filesystem "
-        f'root="{root_id}" access="{access.value}" />'
-        for root_id, access in binding.permission_binding.filesystem
-    )
-    return "\n".join([
-        "<environment_context>",
-        (
-            f'  <environment id="{escape(binding.environment_id)}" '
-            f'kind="host" os="{escape(platform.system())}" />'
-        ),
-        f"  <cwd>{escape(str(binding.cwd))}</cwd>",
-        f"  <current_date>{now.date().isoformat()}</current_date>",
-        f"  <timezone>{escape(str(now.tzinfo))}</timezone>",
-        "  <workspace_roots>",
-        roots,
-        "  </workspace_roots>",
-        "  <permissions>",
-        permissions,
-        "  </permissions>",
-        (
-            "  <network "
-            f'access="{escape(binding.permission_binding.network_access)}" />'
-        ),
-        (
-            "  <sandbox "
-            f'process="{escape(binding.execution_attachment.process_sandbox)}" />'
-        ),
-        "  <shell "
-        f'name="{escape(binding.shell_name)}" '
-        f'path="{escape(binding.shell_path)}" />',
-        "</environment_context>",
-    ])

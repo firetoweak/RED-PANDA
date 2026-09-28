@@ -190,7 +190,7 @@ class SkillApplicationService:
                 or record.content_hash != expected_hash
             ):
                 raise SkillPreconditionError(
-                    f"Skill `{skill_id}` 已在审批前变化，冻结方案过期"
+                    f"Skill `{skill_id}` 在提交审批后已变化，请重新提交该操作"
                 )
             return await self._set_enabled_locked(skill_id, enabled)
 
@@ -224,7 +224,7 @@ class SkillApplicationService:
             if self.diff_summarizer is None:
                 return SkillUpdateReport(
                     candidate,
-                    summary_error="未配置 Skill 更新概括模型",
+                    summary_error="暂无语义概括，可按 Diff 决定是否批准",
                 )
             try:
                 summary = await self.diff_summarizer.summarize(
@@ -266,7 +266,7 @@ class SkillApplicationService:
                 or candidate.old_source != current.source
             ):
                 raise SkillPreconditionError(
-                    "Skill 已在 check-update 后变化，候选过期"
+                    "Skill 在检查更新后已变化，请重新检查更新"
                 )
             if not candidate.diff.changed:
                 raise SkillPreconditionError("Skill 候选与当前安装内容相同")
@@ -340,7 +340,7 @@ class SkillApplicationService:
             if expected_revision is not None and (
                 record.revision != expected_revision or record.content_hash != expected_hash
             ):
-                raise SkillPreconditionError("Skill 已在审批前变化，冻结方案过期")
+                raise SkillPreconditionError("Skill 在提交审批后已变化，请重新提交该操作")
             target = self._package_directory(skill_id)
             if not target.exists():
                 return await self.registry.remove(skill_id)
@@ -398,11 +398,11 @@ class SkillApplicationService:
             )
         if bundle.description != record.description:
             raise SkillInstalledPackageError(
-                f"Skill Registry description 与包不一致: {skill_id}"
+                f"已安装 Skill 的登记描述与包内容不一致: {skill_id}"
             )
         if bundle.content_hash != record.content_hash:
             raise SkillInstalledPackageError(
-                f"Skill Registry hash 与包不一致: {skill_id}"
+                f"已安装 Skill 的登记 hash 与包内容不一致: {skill_id}"
             )
         return record, bundle
 

@@ -248,9 +248,9 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
             reported=False,
             summary=None,
             failure=(
-                "子会话执行中断：以下 Command 已开始，但没有记录到 Outcome，"
-                "执行结果未知，未自动重试。原调用和已完成结果仍保留在子会话 Journal。"
-                " Command IDs: " + ", ".join(unfinished)
+                "子 Agent 执行被中断：以下工具调用已经开始但没有返回结果，"
+                "不知道是否生效，也没有自动重试。需要的话重新 delegate。"
+                " 子 Agent 内部的调用 id（仅供排查）: " + ", ".join(unfinished)
             ),
         ),
     )
@@ -264,7 +264,6 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "glob",
         "grep",
         "read_file",
-        "get_changes",
         "read_artifact",
         "load_skill",
         "read_skill_resource",
@@ -277,9 +276,10 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
 )
 """子 Session 能看见的内建工具；外部工具从只读 Server 目录渐进加载。
 
-显式列举而不是排除写工具：新增任何工具默认进不来，要进必须有人明确加。
-`execute_command` 永远不在其中——一条命令是否只读无法静态判断。`DELEGATE`
-也不在其中，递归委派因此被同一份名单挡住。
+显式列举：新增任何工具默认进不来，要进必须有人明确加。
+`execute_command` 不在其中——执行等进程沙箱。`get_changes` 不在其中——子工作树
+没有用户 Git 仓库，比较由父按会话拉取。`DELEGATE` 也不在其中，递归委派因此被
+同一份名单挡住。
 """
 
 
@@ -290,11 +290,11 @@ DELEGATE_SCHEMA: dict[str, object] = {
         "description": (
             "把一件可独立完成的任务委派给子 Agent。"
             "子 Agent 有自己的上下文，过程不会占用当前对话；"
-            "它可在自己的隔离工作树修改文件，不能执行命令。"
+            "它可在自己的文件副本里修改文件，不能执行命令。"
             "成果交回后用 compare_subagent 验收，merge_subagent 经授权合入用户工作区。"
             "本次调用只返回“已创建”，结论稍后作为一条事实送回。"
             "多件互不依赖的任务可以在同一次决策里各发一次 delegate，"
-            "子 Agent 之间并行推进。"
+            "子 Agent 之间并行推进；并行的子 Agent 改同一批文件，合入时会冲突。"
             "结论一条条回来，不是一次性交齐。"
             "不再需要某个还在工作的子 Agent 时，用 reclaim 收回它，不要空等。"
             "回来的也可能是失败：failure 非空表示该子 Agent 没能跑完，"
@@ -308,7 +308,8 @@ DELEGATE_SCHEMA: dict[str, object] = {
                     "type": "string",
                     "description": (
                         "交给子 Agent 的完整任务描述。它看不到当前对话，"
-                        "所需背景必须写在这里。"
+                        "所需背景必须写在这里。写明只调查还是要修改，以及允许改动的范围。"
+                        "路径先自己核实再写进来；写明找不到目标时如实报告，不要换目标。"
                     ),
                 },
                 "resolve_conflicts_of": {
@@ -329,7 +330,7 @@ RECLAIM_SCHEMA: dict[str, object] = {
         "description": (
             "收回一个还在工作的子 Agent。"
             "用户不要继续、任务已变、或这个子 Agent 的参数已经不对时使用。"
-            "收回后它会停下来，待回收集合少一个；需要的话可以再 delegate 一个新的。"
+            "收回后它会停下来，不再有结论送回；需要的话可以再 delegate 一个新的。"
             "已经交回结论的子 Agent 再收回没有效果。"
         ),
         "parameters": {
@@ -359,13 +360,14 @@ REPORT_SCHEMA: dict[str, object] = {
         "description": (
             "把结论交回父 Agent。这是唯一会被父 Agent 看到的通道。"
             "summary 要能独立读懂：结论、依据、以及没能确定的部分。"
+            "改过文件时说明改了哪些、为什么改，不贴 diff。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "summary": {
                     "type": "string",
-                    "description": "面向父 Agent 的完整结论，含依据与遗留问题。",
+                    "description": "面向父 Agent 的完整结论，含依据、改动的文件与原因、遗留问题。",
                 },
             },
             "required": ["summary"],

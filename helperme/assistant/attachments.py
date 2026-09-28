@@ -194,7 +194,7 @@ READ_IMAGE_SCHEMA: dict[str, object] = {
     "function": {
         "name": "read_image",
         "description": (
-            "重新查看本 Session 用户或工具曾提供的图片。"
+            "重新查看本对话中用户或工具曾提供的图片。"
             "只能使用事实里真实出现过的附件 id；"
             "压缩后的文字引用不代表当前仍看得到图片。"
         ),
@@ -220,7 +220,7 @@ def read_image_binding(journal, store: AttachmentStore) -> dict[str, ToolBinding
             return {
                 "ok": False,
                 "code": "INVALID_ARGUMENT",
-                "error": "需要本 Session 的附件 id",
+                "error": "需要本对话中出现过的附件 id",
             }
         if not is_image_attachment_id(attachment_id):
             return {"ok": False, "code": "NOT_AN_IMAGE", "error": "该附件是普通文件，请使用消息中的材料路径读取"}

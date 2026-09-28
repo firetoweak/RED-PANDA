@@ -103,14 +103,18 @@ async def build_builtin_tools(
     )
 
 
-def workspace_restore_tool(operation: Callable[[str, str], Awaitable[dict]]):
+def workspace_restore_tool(
+    operation: Callable[[str, str], Awaitable[dict]],
+    *,
+    isolated: bool = False,
+):
     """声明来自 ToolSpec；每次执行绑定 Runtime 提供的调用身份。"""
     from helperme.runtime import ToolBinding
 
     def executor(command_id):
         async def restore(target):
             return await operation(command_id, target)
-        spec = create_workspace_restore_spec(restore)
+        spec = create_workspace_restore_spec(restore, isolated=isolated)
         registry = ToolRegistry()
         registry.register(spec)
         return spec, ToolsExecutor(registry)

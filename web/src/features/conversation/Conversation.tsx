@@ -377,6 +377,7 @@ export function Conversation() {
                             branchDisabled={connectionId === null}
                             canBranch={turnCanStartSession(turn, settled)}
                             onBranch={() => void branch(turn.user!.key)}
+                            occurredAt={turn.final?.occurredAt ?? null}
                             replyText={reply.text}
                           />
                         ) : null}
@@ -404,6 +405,7 @@ export function Conversation() {
                     branchDisabled={connectionId === null}
                     canBranch
                     onBranch={() => void branch(turn.user!.key)}
+                    occurredAt={null}
                     replyText={null}
                   />
                 ) : null}
@@ -650,18 +652,21 @@ function RunningHint({ label }: { label: string }) {
 
 function TurnEndActions({
   replyText,
+  occurredAt,
   canBranch,
   branchBusy,
   branchDisabled,
   onBranch,
 }: {
   replyText: string | null;
+  occurredAt: string | null;
   canBranch: boolean;
   branchBusy: boolean;
   branchDisabled: boolean;
   onBranch: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const time = occurredAt === null ? null : formatReplyTime(occurredAt);
   return (
     <Group className="turn-end-actions" gap={4} justify="flex-start">
       {replyText === null ? null : (
@@ -693,8 +698,32 @@ function TurnEndActions({
           <IconGitBranch size={14} />
         </ActionIcon>
       ) : null}
+      {time === null ? null : (
+        <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} ml={4} title={`回复提交于 ${time.full}`}>
+          {time.short}
+        </Text>
+      )}
     </Group>
   );
+}
+
+function formatReplyTime(value: string): { short: string; full: string } {
+  const date = new Date(value);
+  const today = new Date();
+  const clock = date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const sameDay = date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
+  let short = clock;
+  if (!sameDay) {
+    short = `${date.getMonth() + 1}/${date.getDate()} ${clock}`;
+  }
+  if (date.getFullYear() !== today.getFullYear()) {
+    short = `${date.getFullYear()}/${short}`;
+  }
+  return { short, full: date.toLocaleString("zh-CN") };
 }
 
 function SilentEndHint() {

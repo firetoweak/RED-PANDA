@@ -180,6 +180,7 @@ def _decision_maker(journal, llm, control, *, projector=None):
         journal,
         llm,
         "test-model",
+        environment="<environment />",
         surface=ToolSurface(),
         skill_tools=EmptyTools(),
         cli_tools=EmptyTools(),

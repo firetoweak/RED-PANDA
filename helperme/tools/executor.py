@@ -43,9 +43,9 @@ def _tool_not_found(tool_name: str) -> dict[str, Any]:
             "ok": False,
             "code": "TOOL_NOT_FOUND",
             "data": {"tool_name": tool_name},
-            "error": f"Tool {tool_name} is not available",
+            "error": f"工具 {tool_name} 当前不可用",
             "hint": (
-                "只能调用当前 Step 中暴露的精确名称；"
+                "只能调用本次决策中暴露的精确名称；"
                 "能力来自未加载的 Toolset 时，先调用 load_toolset。"
             ),
         }

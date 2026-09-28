@@ -167,7 +167,7 @@ READ_ARTIFACT_SCHEMA: dict[str, object] = {
             "分页读取因长度限制而外置保存的完整工具结果。"
             "只能使用工具结果真实提供的 artifact_id；"
             "offset 是字符偏移，limit 最大为 3000。"
-            "Artifact 只在所属 Session 抽屉内有效。"
+            "只能读取本对话中出现过的 artifact_id。"
         ),
         "parameters": {
             "type": "object",
@@ -223,7 +223,7 @@ def read_artifact_binding(gateway: ArtifactGateway) -> dict[str, ToolBinding]:
             return {
                 "ok": False,
                 "code": "ARTIFACT_NOT_FOUND",
-                "error": f"runtime artifact 不存在: {artifact_id}",
+                "error": f"artifact 不存在或不属于本对话: {artifact_id}",
             }
         except ArtifactOffsetOutOfRangeError as exc:
             return {

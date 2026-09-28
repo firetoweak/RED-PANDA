@@ -111,8 +111,7 @@ class CliToolCatalog:
             ToolSpec(
                 name=LOAD_CLI,
                 description=(
-                    "读取一个已登记 CLI 的事实（版本、路径、体检结果）。"
-                    "模型负责选择；本工具只按确定 ID 返回登记事实，不执行该 CLI。"
+                    "按 ID 读取一个已登记 CLI 的事实（版本、路径、体检结果），不执行该 CLI。"
                     "必须单独调用，不能与依赖其结果的工具同批执行。\n"
                     "当前 CLI 目录由上下文消息提供。"
                 ),
@@ -131,8 +130,8 @@ class CliToolCatalog:
         if current is None or current.revision != revision:
             raise CliRuntimeError(
                 "CLI_CATALOG_STALE",
-                f"CLI {cli_id} 已在当前 Session 目录快照后变化",
-                hint="在下一个 Step 使用最新 CLI 目录重新选择。",
+                f"CLI {cli_id} 在当前能力目录生成后已变化",
+                hint="在下一次决策中按最新 CLI 目录重新选择。",
                 data={
                     "cli_id": cli_id,
                     "expected_revision": revision,

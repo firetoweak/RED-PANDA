@@ -217,8 +217,8 @@ def input_required_unsupported() -> dict[str, Any]:
         "ok": False,
         "code": "MCP_INPUT_REQUIRED_UNSUPPORTED",
         "data": {},
-        "error": "当前 MVP 不支持 MCP input_required / multi-round-trip 请求",
-        "hint": "请改用无需中途交互的工具，或等待后续能力。",
+        "error": "该工具需要在调用中途再次请求输入，当前不支持",
+        "hint": "请改用无需中途交互的工具。",
     }
 
 
@@ -276,6 +276,7 @@ def ensure_unique_encoded_names(specs: list[ToolSpec]) -> None:
     if len(names) != len(set(names)):
         raise ToolsetLoadError(
             "MCP_TOOL_NAME_CONFLICT",
-            "编码后的工具名在同一 Toolset 内冲突",
+            "该服务暴露的工具名互相冲突，无法加载",
+            hint="这是服务端的问题，重试不会改变；如实告诉用户该 Toolset 当前不可用。",
             data={"names": names},
         )

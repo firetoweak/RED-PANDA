@@ -32,7 +32,7 @@ SCHEDULE_ONCE_SCHEMA: dict[str, object] = {
                 "purpose": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "到时要重新判断的事项，不是要求 Runtime 执行的指令。",
+                    "description": "到时你要重新判断的事项；到点时它会原样送回给你，不会被自动执行。",
                 },
             },
             "required": ["delay_seconds", "purpose"],
@@ -47,7 +47,7 @@ CANCEL_SCHEDULE_SCHEMA: dict[str, object] = {
     "function": {
         "name": CANCEL_SCHEDULE,
         "description": (
-            "取消当前 Session 中尚未开始触发的定时检查。"
+            "取消当前对话中尚未开始触发的定时检查。"
             "目标变化、提前完成或不再需要检查时，用 schedule_once 返回的 schedule_id 撤销。"
             "重复取消已取消的检查仍返回成功；已开始触发的返回 ALREADY_FIRED，"
             "其时间事实仍可能送达，不能撤回。"

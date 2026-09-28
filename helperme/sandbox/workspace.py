@@ -21,14 +21,14 @@ class PathOutsideWorkspaceView(EnvironmentInputError):
     code = "PATH_OUTSIDE_WORKSPACE_VIEW"
 
     def __init__(self, path: str) -> None:
-        super().__init__(f"path 不属于当前 Workspace View: {path}")
+        super().__init__(f"path 不在工作区内: {path}")
 
 
 class EnvironmentPermissionDenied(EnvironmentInputError):
     code = "ENVIRONMENT_PERMISSION_DENIED"
 
     def __init__(self, path: str, access: str) -> None:
-        super().__init__(f"当前 Environment 不允许对 path 执行 {access}: {path}")
+        super().__init__(f"没有对该 path 的 {access} 权限: {path}")
 
 
 class UnknownWorkspaceRoot(EnvironmentInputError):

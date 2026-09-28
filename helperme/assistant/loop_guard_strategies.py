@@ -59,6 +59,6 @@ class ConsecutiveActions:
             if len(run) >= self.threshold:
                 hits.append(Evidence(
                     "consecutive_action", 1, self.threshold, run,
-                    f"连续 {len(run)} 次调用了相同工具，规范化后的参数完全一致。",
+                    f"连续 {len(run)} 次用相同参数调用了相同工具。",
                 ))
         return tuple(hits)

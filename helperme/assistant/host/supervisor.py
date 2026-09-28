@@ -255,7 +255,7 @@ class HostSupervisor:
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
             versions = project_workspace_versions(events)
             if not versions or versions[-1].version is None:
-                return {"ok": False, "code": "CHILD_VERSION_UNAVAILABLE", "error": "子会话没有成功的最终版本记录。"}
+                return {"ok": False, "code": "CHILD_VERSION_UNAVAILABLE", "error": "子会话的最终文件状态没有保存下来，无法比较或合入。"}
             return {"ok": True, "version": versions[-1].version}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)

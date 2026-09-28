@@ -71,7 +71,9 @@ def create_mcp_management_specs(
                 "runtime": runtime.to_dict(),
             },
             "error": None if available else runtime.last_error_summary,
-            "hint": None,
+            "hint": None if available else (
+                "按 error 判断：配置本身有误用 propose_mcp_update；配置没问题只是连不上，用 propose_mcp_recovery。"
+            ),
         }
 
     return (
@@ -89,9 +91,8 @@ def create_mcp_management_specs(
         ToolSpec(
             name="test_mcp_server",
             description=(
-                "按 Registry 中冻结的配置真实测试一个 MCP Server，disabled 项也可测试。"
-                "失败只证明本次连接不可用，不代表 Server 未安装；"
-                "工具只返回登记状态与连接事实，由模型判断下一步。"
+                "按已登记的配置真实测试一个 MCP Server，disabled 项也可测试。"
+                "失败只证明本次连接不可用，不代表 Server 未安装。"
             ),
             parameters=PydanticParameters(McpServerInput),
             handler=test_server,

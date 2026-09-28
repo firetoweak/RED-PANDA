@@ -31,9 +31,9 @@ PROPOSE_SKILL_UNINSTALL = "propose_skill_uninstall"
 PROPOSE_SKILL_UPDATE = "propose_skill_update"
 
 
-SOURCE_KIND_HELP = "local=Host 本机目录；github=GitHub 仓库或子目录；url=HTTPS raw SKILL.md 或 ZIP。"
+SOURCE_KIND_HELP = "local=本机目录；github=GitHub 仓库或子目录；url=HTTPS raw SKILL.md 或 ZIP。"
 LOCATOR_HELP = (
-    "local 必须是 Host 本机包含 SKILL.md 的绝对目录，不是文件或 Workspace 相对路径；"
+    "local 必须是本机包含 SKILL.md 的绝对目录，不是文件，也不是相对工作区的路径；"
     "github 使用 owner/repo 或 https://github.com/owner/repo/tree/<ref>/<subpath>；"
     "url 使用 HTTPS raw Markdown 或 ZIP 地址，不接受普通 HTML 网页。"
     "仓库或 ZIP 未指定子目录时必须仅有一个 SKILL.md。工具自行下载，无需预先下载。"
@@ -43,7 +43,7 @@ REF_HELP = "仅 github 可用：分支、tag 或 commit；省略使用 HEAD。tr
 
 def _validate_source(source: SkillSourceRef) -> None:
     if source.kind == "local" and not Path(source.locator).is_absolute():
-        raise ValueError("local locator 必须是 Host 本机绝对目录")
+        raise ValueError("local locator 必须是本机绝对目录")
     if source.kind != "github" and source.requested_ref is not None:
         raise ValueError("requested_ref 仅适用于 github 来源")
 
@@ -115,7 +115,7 @@ def create_skill_install_proposal_spec(
                 f"来源：{candidate.source.kind} {candidate.source.locator}\n"
                 f"解析引用：{candidate.resolved_ref}\n"
                 f"Content hash：{candidate.content_hash}\n"
-                "批准后完整安装到 Agent HOME 并启用；下一 Step 进入能力目录。"
+                "批准后安装并启用；下一次决策进入能力目录。"
             ),
             risk=(
                 "Skill 包可包含外部指令和脚本；"
@@ -128,7 +128,7 @@ def create_skill_install_proposal_spec(
         name=PROPOSE_SKILL_INSTALL,
         description=(
             "从指定 local/GitHub/URL 来源安装 Skill。"
-            "工具自行获取、校验、冻结，批准后完整安装到 Agent HOME 并启用，无需先调用 test_installed_skill。"
+            "工具自行获取并校验，批准后安装并启用，无需先调用 test_installed_skill。"
             "只接受未安装的技能；已有技能用 propose_skill_update。本工具必须单独调用。"
         ),
         parameters=PydanticParameters(SkillInstallProposalInput),
@@ -179,7 +179,7 @@ class SkillInstallApprovalHandler:
             succeeded=True,
             message=(
                 f"Skill `{record.name}` 已安装并启用，包完整性校验通过。"
-                "下一 Step 进入能力目录；正文尚未加载，相关任务时按需 load_skill。"
+                "下一次决策进入能力目录；正文尚未加载，相关任务时按需 load_skill。"
             ),
             data={
                 "skill_id": record.name,
@@ -192,7 +192,7 @@ class SkillInstallApprovalHandler:
 
 class SkillSetEnabledProposalInput(BaseModel):
     skill_id: str = Field(description="已安装技能的名称，可用 list_installed_skills 查询。")
-    enabled: bool = Field(description="true 启用，false 停用；不删除 HOME 中的包。")
+    enabled: bool = Field(description="true 启用，false 停用；停用不删除已安装的包。")
 
 
 def create_skill_set_enabled_proposal_spec(service: SkillApplicationService) -> ToolSpec:
@@ -223,7 +223,7 @@ def create_skill_set_enabled_proposal_spec(service: SkillApplicationService) -> 
                 "enabled": input_data.enabled,
             },
             summary=f"准备{state} Skill `{record.name}`，revision={record.revision}。",
-            risk="批准后改变目录可用状态，下一 Step 生效；不执行技能正文或脚本。",
+            risk="批准后改变目录可用状态，下一次决策生效；不执行技能正文或脚本。",
         )
 
     return ToolSpec(
@@ -280,7 +280,7 @@ class SkillSetEnabledApprovalHandler:
             return ControlApprovalExecution(False, str(exc))
         state = "启用" if record.enabled else "停用"
         return ControlApprovalExecution(
-            True, f"Skill `{record.name}` 已{state}，目录变化从下一 Step 生效。",
+            True, f"Skill `{record.name}` 已{state}，目录变化从下一次决策生效。",
             {
                 "skill_id": record.name,
                 "revision": record.revision,
@@ -290,7 +290,7 @@ class SkillSetEnabledApprovalHandler:
 
 
 class SkillUninstallProposalInput(BaseModel):
-    skill_id: str = Field(description="要移除的已安装技能名称；删除 HOME 中的包及登记，不删除来源。")
+    skill_id: str = Field(description="要移除的已安装技能名称；删除已安装的包及登记，不删除来源。")
 
 
 def create_skill_uninstall_proposal_spec(service: SkillApplicationService) -> ToolSpec:
@@ -308,7 +308,7 @@ def create_skill_uninstall_proposal_spec(service: SkillApplicationService) -> To
                 "expected_hash": record.content_hash,
             },
             summary=f"准备卸载 Skill `{record.name}`，revision={record.revision}。",
-            risk="批准后删除 HOME 中的安装包与登记；来源不变，下一 Step 从目录移除。",
+            risk="批准后删除已安装的包与登记；来源不变，下一次决策从目录移除。",
         )
 
     return ToolSpec(
@@ -339,7 +339,7 @@ class SkillUninstallApprovalHandler:
         except SkillInputError as exc:
             return ControlApprovalExecution(False, str(exc))
         return ControlApprovalExecution(
-            True, f"Skill `{record.name}` 已卸载，下一 Step 从能力目录移除。",
+            True, f"Skill `{record.name}` 已卸载，下一次决策从能力目录移除。",
             {"skill_id": record.name},
         )
 
@@ -391,7 +391,7 @@ def create_skill_update_proposal_spec(
                 "code": "SKILL_UPDATE_CHECK_FAILED",
                 "data": {"skill_id": input_data.skill_id},
                 "error": str(exc),
-                "hint": None,
+                "hint": "按 error 核对 skill_id 与来源；包已损坏时不能更新，可卸载后重新安装。",
             })
         candidate = report.candidate
         if not candidate.diff.changed:
@@ -415,15 +415,15 @@ def create_skill_update_proposal_spec(
                 f"语义概括：{report.semantic_summary or report.summary_error}"
             ),
             risk=(
-                "批准后将以冻结候选原子替换已安装 Skill；"
-                "启用状态保持不变，revision 必须仍与检查时一致。"
+                "批准后用本次检查到的版本替换已安装 Skill，启用状态保持不变；"
+                "若检查之后该 Skill 又有变化，更新会失败，需要重新检查。"
             ),
         )
 
     return ToolSpec(
         name=PROPOSE_SKILL_UPDATE,
         description=(
-            "为健康的已安装 Skill 检查来源更新并冻结候选，提交更新审批。"
+            "为健康的已安装 Skill 检查来源更新，有变化时提交更新审批。"
             "省略来源时使用登记来源；保持启用状态。包损坏时不能更新，可卸载后重新安装。"
             "本工具必须单独调用。"
         ),

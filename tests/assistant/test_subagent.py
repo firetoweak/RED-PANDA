@@ -1082,6 +1082,7 @@ class SubAgentPendingInstructionTest(unittest.IsolatedAsyncioTestCase):
             runtime,
             llm,
             "test-model",
+            environment="<environment />",
             surface=_NoToolsets(),
             skill_tools=_NoSkillTools(),
             cli_tools=_NoCliTools(),

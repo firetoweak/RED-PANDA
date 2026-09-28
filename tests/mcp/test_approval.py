@@ -535,7 +535,7 @@ class McpRemoveApprovalTest(unittest.IsolatedAsyncioTestCase):
             result.payload,
             {"server_id": "demo", "expected_revision": 3},
         )
-        self.assertIn("所有 Session", result.risk)
+        self.assertIn("能力目录中不再出现", result.risk)
         self.assertTrue(spec.control_boundary)
 
     async def test_missing_server_does_not_create_approval(self):

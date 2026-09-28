@@ -41,7 +41,7 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
             events = await runtime.snapshot("session")
             state = StateProjector().project_visible("session", events)
             messages = project_chat_messages(events, state, "sys", attachments=store)
-            self.assertIn(sent.attachment_id, messages[1]["content"])
+            self.assertIn(sent.attachment_id, messages[2]["content"])
             self.assertNotIn(staged.attachment_id, json.dumps(messages))
             self.assertEqual(len(tuple(store.files.materials.iterdir())), 1)
             self.assertEqual(store.files.materialize(sent.attachment_id).read_bytes(), b"original")

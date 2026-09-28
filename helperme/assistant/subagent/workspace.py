@@ -59,7 +59,7 @@ class ChildWorkspaceReview:
             conflicts = await self.versions.merge(base, child["version"])
             if conflicts:
                 return {"ok": False, "code": "MERGE_CONFLICT", "data": {"conflicts": list(conflicts)},
-                        "error": "合入冲突，父工作树未写入冲突标记；可自行修改、放弃或再委派解决。"}
+                        "error": "合入冲突，用户的文件没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。"}
             return {"ok": True, "code": "SUBAGENT_MERGED", "data": {"tool_call_id": tool_call_id}}
         data = await self.versions.compare(base, child["version"], tuple(paths or ()))
         return {"ok": True, "code": "SUBAGENT_CHANGES", "data": data}

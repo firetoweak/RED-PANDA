@@ -130,7 +130,7 @@ class McpInstallProposalInput(BaseModel):
             lines.extend([
                 f"Executable：{self.command}",
                 "Arguments：" + json.dumps(self.args, ensure_ascii=False),
-                f"Working directory：{self.cwd or '(Server 私有 runtime 目录)'}",
+                f"Working directory：{self.cwd or '(未指定，使用该 Server 自己的默认目录)'}",
             ])
             if self.env:
                 lines.append(
@@ -184,7 +184,7 @@ def create_mcp_install_proposal_spec(
             payload=input_data.frozen_payload(),
             summary=input_data.approval_summary(),
             risk=(
-                "批准后 Application 将持久保存并启动该外部 MCP Server。"
+                "批准后会保存配置并启动该外部 MCP Server。"
             ),
         )
 
@@ -197,7 +197,7 @@ def create_mcp_install_proposal_spec(
             "streamable_http：填 url，鉴权信息填 headers 或 bearer，"
             "也可把密钥直接写在 url 的 query 里。"
             "禁止用 user:pass@host 的形式在 url 里带凭据。"
-            "启用成功后能力目录更新，load_toolset 之后工具从下一个 Step 可见。"
+            "启用成功后能力目录更新，load_toolset 之后工具从下一次决策可见。"
             "本工具必须单独调用。"
         ),
         parameters=PydanticParameters(McpInstallProposalInput),
@@ -262,7 +262,7 @@ class McpInstallApprovalHandler:
             succeeded=True,
             message=(
                 f"MCP Server `{enabled.id}` 安装、测试并启用成功。"
-                "能力目录已更新，load_toolset 之后工具从下一个 Step 可见。"
+                "能力目录已更新，load_toolset 之后工具从下一次决策可见。"
             ),
             data={
                 "server_id": enabled.id,
@@ -300,7 +300,7 @@ def create_mcp_update_proposal_spec(
                 f"{input_data.approval_summary()}"
             ),
             risk=(
-                "批准后将替换冻结 revision 的启动配置并真实连接测试；"
+                "批准后用新配置替换当前启动配置并真实连接测试；"
                 "测试失败时新配置保持 disabled。"
             ),
         )
@@ -309,7 +309,7 @@ def create_mcp_update_proposal_spec(
         name=PROPOSE_MCP_UPDATE,
         description=(
             "在诊断证明已登记 MCP Server 的配置需要变化时，"
-            "冻结新配置与当前 revision 并提交更新审批。"
+            "提交新配置的更新审批；若提交后该 Server 的登记又有变化，批准时会失败，需要重新提交。"
             "不得用于单纯重连；本工具必须单独调用。"
         ),
         parameters=PydanticParameters(McpInstallProposalInput),
@@ -407,7 +407,7 @@ def create_mcp_recovery_proposal_spec(
                 f"Revision：{record.revision}"
             ),
             risk=(
-                "批准后 Application 将启动已登记的外部 MCP Server 进行测试；"
+                "批准后会按已登记的配置启动该外部 MCP Server 进行测试；"
                 "测试成功后持久启用。"
             ),
         )
@@ -415,7 +415,7 @@ def create_mcp_recovery_proposal_spec(
     return ToolSpec(
         name=PROPOSE_MCP_RECOVERY,
         description=(
-            "按已注册 MCP Server 的冻结 revision 提交重测与重连审批，"
+            "按已注册 MCP Server 的当前配置提交重测与重连审批，"
             "不根据 enabled 推断健康。"
             "应先用 list_mcp_servers / test_mcp_server 获取事实；"
             "不得把 TOOLSET_NOT_FOUND 直接解释为未安装。"
@@ -476,7 +476,7 @@ class McpRecoveryApprovalHandler:
             succeeded=True,
             message=(
                 f"MCP Server `{server_id}` 测试并启用成功。"
-                "能力目录已更新，load_toolset 之后工具从下一个 Step 可见。"
+                "能力目录已更新，load_toolset 之后工具从下一次决策可见。"
             ),
             data={
                 "server_id": server_id,
@@ -521,7 +521,7 @@ def create_mcp_remove_proposal_spec(
             ),
             risk=(
                 "批准后将移除该 MCP Server 的登记与本地 Secret；"
-                "该 Server 对所有 Session 不再可见。"
+                "此后能力目录中不再出现该 Server。"
             ),
         )
 
@@ -573,7 +573,7 @@ class McpRemoveApprovalHandler:
             message=(
                 f"MCP Server `{record.id}` 已删除。"
                 "登记与本地 Secret 已清除，能力目录已更新，"
-                "load_toolset 之后工具从下一个 Step 不再可见。"
+                "load_toolset 之后工具从下一次决策不再可见。"
             ),
             data={
                 "server_id": record.id,

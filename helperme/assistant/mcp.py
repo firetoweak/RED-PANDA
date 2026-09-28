@@ -51,7 +51,8 @@ class McpToolsetAdapter:
             if current is None or current.revision != revision:
                 raise ToolsetLoadError(
                     "TOOLSET_REVISION_UNAVAILABLE",
-                    f"Toolset {toolset_id} revision is unavailable",
+                    f"Toolset {toolset_id} 在当前能力目录生成后已变化",
+                    hint="按最新能力目录中的 Toolset 重新 load_toolset。",
                     data={
                         "toolset_id": toolset_id,
                         "expected_revision": revision,

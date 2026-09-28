@@ -31,14 +31,14 @@ WINDOW = "compact.window_rolled_over"
 READ = "read_compact_source"
 SUBMIT = "_accept_handoff"
 PURPOSE = """<self_handoff>
-当前在后台整理截至冻结位置的交接，不继续用户业务、不向用户发消息。
+当前在后台为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
 优先使用已有上下文，仅为关键缺口调用 read_compact_source 回读。其他工具不能执行。
 保持目标、约束、纠正、决定、未完成委派、证据与来源；计划不写成已执行，声明不写成验证。
 相关图片保留原始附件 id 和来源；摘要文字不等于看过图片，业务模型可用 read_image 重新查看。
-不重复读取，不扩展调查；未知内容标明不确定。后续尾部事实可以更新本摘要。
+不重复读取，不扩展调查；未知内容标明不确定。交接之后新到的消息会接在它后面，可以修正它。
 完成时直接输出非空交接文本，不调用工具。
 </self_handoff>"""
-HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。遇到疑点按来源回读，后续事实可更新它。\n"
+HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。遇到疑点用 read_compact_source 按其中的 source 回读原始对话，之后的消息可修正它。\n"
 
 
 def schema(name, description, properties, required):
@@ -59,7 +59,7 @@ def schema(name, description, properties, required):
 
 READ_SCHEMA = schema(
     READ,
-    "回读当前会话或交接授权的冻结历史。view 读取带事件位置的视图；event 按事件序号读取；artifact 读取工具原文。source 为来源 Session；view 的 reference 为空。",
+    "回读交接之前的原始对话。view 读取带序号的对话视图；event 按序号读取其中一条；artifact 读取外置保存的工具原文。source 取交接材料里给出的 source；view 的 reference 为空。",
     {
         "source": {"type": "string"},
         "kind": {"enum": ["view", "event", "artifact"]},

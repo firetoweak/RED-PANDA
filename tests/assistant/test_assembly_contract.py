@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from helperme.assistant.assembly import build_assistant_assembly
-from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
+from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from helperme.assistant.management import LOAD_MANAGEMENT_TOOLS
 from helperme.config import AssistantConfig
 from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
@@ -162,7 +162,10 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                         *decision._compact.schemas(),
                     ]
                     expected_tools.sort(key=lambda item: item["function"]["name"])
-                    expected_prompt = DEFAULT_ASSISTANT_PROMPT
+                    environment = environment_prompt(
+                        workspace_record(workspace).task_root, full_access=False, own_copy=False,
+                    )
+                    expected_prompt = f"{DEFAULT_ASSISTANT_PROMPT}\n\n{environment}"
 
                     first = await assembly.runtime.advance(session_id)
                     await settle_session(

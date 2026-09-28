@@ -57,7 +57,7 @@ class SubagentRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(after[-1].payload, DomainFactCommitted)
         self.assertEqual(after[-1].payload.fact_type, RETURN_FACT)
         self.assertFalse(after[-1].payload.data["reported"])
-        self.assertIn("执行结果未知", after[-1].payload.data["failure"])
+        self.assertIn("不知道是否生效", after[-1].payload.data["failure"])
         state = StateProjector().project(CHILD, after).state
         self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
         await record_interrupted_return(journal, CHILD)

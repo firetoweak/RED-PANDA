@@ -158,7 +158,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
         command_schema = spec.to_openai_tool()["function"]["parameters"][
             "properties"
         ]["command"]
-        self.assertIn("Environment Shell", command_schema["description"])
+        self.assertIn("交给 Shell 执行", command_schema["description"])
         self.assertNotIn("PowerShell", command_schema["description"])
         self.assertEqual(result["code"], "SHELL_NOT_FOUND")
         self.assertEqual(result["shell"], "bash")

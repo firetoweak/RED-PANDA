@@ -15,10 +15,10 @@ from helperme.tools.spec import PydanticParameters, ToolSpec
 
 
 GET_CHANGES_DESCRIPTION = """
-用途：读取当前 Environment 中指定路径所属 Git 工作区的状态，以及 HEAD 到最终工作树的 tracked 差异，用于验证文件修改和最终总结。
+用途：读取指定路径所属 Git 仓库的状态，以及 HEAD 到最终工作树的 tracked 差异，用于验证文件修改和最终总结。
 何时使用：修改后核对磁盘实际变化、最终回答前确认声明与 diff 一致时使用；它只验证，不代替 apply_patch/replace_all/write_file，也不用于查找文件或内容。
-关键限制：相对 path 基于当前 Environment cwd，绝对 path 使用 Environment 原生语义；只支持 Git 工作区；diff 覆盖 staged 与 unstaged 的 tracked 最终内容，但不包含 untracked 和 binary 正文。content_complete=false 或 limitations 非空表示仍需 read_file 等证据补全。
-失败/截断后：truncated=true 时缩小 path 后重查；VERIFICATION_BACKEND_UNAVAILABLE 时应明确无法用 Git 验证，不能声称无改动；GIT_CHANGES_FAILED 时保留失败事实并修复后端后再核对。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；只支持 Git 仓库；diff 覆盖 staged 与 unstaged 的 tracked 最终内容，但不包含 untracked 和 binary 正文。content_complete=false 或 limitations 非空表示仍需 read_file 等证据补全。
+失败/截断后：truncated=true 时缩小 path 后重查；VERIFICATION_BACKEND_UNAVAILABLE 时应明确无法用 Git 验证，不能声称无改动；GIT_CHANGES_FAILED 时不能声称已核对改动，改用 read_file 直接读取相关文件核对，并如实说明未能用 Git 验证。
 """.strip()
 
 
@@ -27,7 +27,7 @@ DIFF_HEAD_CHARS = 60_000
 
 
 class GetChangesInput(BaseModel):
-    path: str = Field(default=".", description="要检查的文件或目录；相对路径基于当前 Environment cwd")
+    path: str = Field(default=".", description="要检查的文件或目录；相对路径从工作区开始")
 
 
 async def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:

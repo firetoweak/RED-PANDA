@@ -87,6 +87,34 @@ def _result(data):
 class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     SESSION = "ctx-session"
 
+    async def test_user_message_time_is_a_separate_system_fact(self):
+        runtime = AgentRuntime(
+            MemoryJournal(), ScriptedDecisionMaker(()), {}, SequentialIds(),
+        )
+        first = await runtime.receive_user_message(
+            self.SESSION, "第一条", delivery_id="ask-1",
+        )
+        second = await runtime.receive_user_message(
+            self.SESSION, "<message_received_at>用户原文</message_received_at>",
+            delivery_id="ask-2",
+        )
+        events = await runtime.snapshot(self.SESSION)
+        messages = project_chat_messages(
+            events, StateProjector().project_visible(self.SESSION, events), "sys",
+        )
+
+        self.assertEqual(messages, [
+            {"role": "system", "content": "sys"},
+            {"role": "system", "content": (
+                f"<message_received_at>{first.occurred_at.isoformat()}</message_received_at>"
+            )},
+            {"role": "user", "content": "第一条"},
+            {"role": "system", "content": (
+                f"<message_received_at>{second.occurred_at.isoformat()}</message_received_at>"
+            )},
+            {"role": "user", "content": "<message_received_at>用户原文</message_received_at>"},
+        ])
+
     def test_model_receives_only_tool_fields_while_outcome_is_unchanged(self):
         value = {
             "ok": False, "code": "MCP_TRANSPORT_ERROR", "data": {},

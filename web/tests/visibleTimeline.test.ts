@@ -66,7 +66,9 @@ describe("visibleTimeline", () => {
       {},
     );
     expect(visible).toHaveLength(2);
-    expect(visible[1]).toMatchObject({ kind: "step", text: "journal" });
+    expect(visible[1]).toMatchObject({
+      kind: "step", text: "journal", occurredAt: "2026-09-15T08:00:01+00:00",
+    });
   });
 
   it("shows preview only before the same output identity reaches the journal", () => {
@@ -82,6 +84,7 @@ describe("visibleTimeline", () => {
       kind: "step",
       text: "流",
       pending: true,
+      occurredAt: null,
     });
     expect(
       visibleTimeline(

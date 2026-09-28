@@ -98,9 +98,9 @@ def create_cli_install_proposal_spec(
                 f"体检：\n{_health_summary(candidate.probed.health)}"
             ),
             risk=(
-                "登记后该 CLI 立即对所有 Session 可见可用（无 enabled 开关）；"
-                "其本地凭据域（如 gh 的 GitHub 凭据）将对 agent 开放。"
-                "manifest 源只登记事实，不下载二进制。"
+                "登记后该 CLI 立即出现在能力目录中可用（没有启用/停用开关）；"
+                "其本地凭据（如 gh 的 GitHub 凭据）将对助手开放。"
+                "只登记本机已安装的程序，不下载任何软件。"
             ),
         )
 
@@ -151,7 +151,7 @@ class CliInstallApprovalHandler:
             )
         return ControlApprovalExecution(
             True,
-            f"CLI `{record.name}` 已登记。目录将从下一个 Step 生效。",
+            f"CLI `{record.name}` 已登记。目录将从下一次决策生效。",
             data={
                 "cli_id": record.name,
                 "revision": record.revision,
@@ -185,8 +185,8 @@ def create_cli_uninstall_proposal_spec(
                 f"解析路径：{record.resolved_path}"
             ),
             risk=(
-                "manifest 源只移除登记事实，不卸载软件本身；"
-                "移除后该 CLI 从所有 Session 的目录消失。"
+                "只移除登记，不卸载软件本身；"
+                "移除后该 CLI 不再出现在能力目录中。"
             ),
         )
 
@@ -218,7 +218,7 @@ def create_cli_update_proposal_spec(
                 "expected_revision": record.revision,
             },
             summary=(
-                f"准备刷新 CLI `{record.name}`（manifest 域 update = refresh）\n"
+                f"准备刷新 CLI `{record.name}` 的版本与体检信息（不安装新版本）\n"
                 f"Revision：{record.revision}\n"
                 f"当前版本：{record.version or '未知'}\n"
                 "将按登记路径重跑体检，更新 version 与 health。"

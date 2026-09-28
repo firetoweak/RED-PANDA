@@ -193,7 +193,7 @@ class WorkspaceVersionBoundary:
         previous = facts.get(previous_id)
         if previous is None or previous.version is None:
             return {"ok": False, "code": "WORKSPACE_VERSION_UNAVAILABLE",
-                    "error": "该调用前一步没有成功的版本记录，无法回退。"}
+                    "error": "无法回退到该调用之前：那时的文件状态没有保存下来。"}
         version = previous.version
         # 回退调用自身有精确的执行前救援快照，包含两步之间的手工修改。
         restore = project_workspace_restores(events).get(target)

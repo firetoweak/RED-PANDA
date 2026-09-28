@@ -177,7 +177,7 @@ class ManagementToolAdapter:
                     "code": "VALIDATION_ERROR",
                     "data": {"details": exc.details},
                     "error": "management tool arguments validation failed",
-                    "hint": "按当前 Step 提供的 schema 修正参数。",
+                    "hint": "按本次决策提供的 schema 修正参数。",
                 }
             result = await spec.handler(input_data)
             if type(result) is not dict:
@@ -261,12 +261,12 @@ class ManagementSurface:
     ) -> str:
         lines = [
             "管理能力按需加载。需要诊断、安装、更新或修复时，先调用 "
-            "load_management_tools；具体工具从下一个 Step 开始可用："
+            "load_management_tools；具体工具从下一次决策开始可用："
         ]
         for domain in self._domains.values():
             line = f"- {domain.id}: {domain.description}"
             if domain.resident_tools:
-                line += f"（本域常驻，已可直接调用：{'、'.join(domain.resident_names)}）"
+                line += f"（以下工具不必加载，已可直接调用：{'、'.join(domain.resident_names)}）"
             lines.append(line)
         return "\n".join(lines)
 
@@ -290,7 +290,7 @@ class ManagementSurface:
                 "ok": False,
                 "code": "MANAGEMENT_DOMAIN_NOT_FOUND",
                 "data": {"domain": domain_id},
-                "error": f"Management domain {domain_id} not found",
+                "error": f"没有名为 {domain_id} 的管理类别",
                 "hint": "请从管理能力目录中选择有效 domain。",
             }
         self._loaded.setdefault(session_id, {}).setdefault(domain_id, set()).add(
@@ -331,14 +331,14 @@ class ManagementSurface:
             "type": "function",
             "function": {
                 "name": LOAD_MANAGEMENT_TOOLS,
-                "description": "按需加载一类管理诊断与控制工具。具体工具从下一个 Step 开始可用。",
+                "description": "按需加载一类管理诊断与控制工具。具体工具从下一次决策开始可用。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "domain": {
                             "type": "string",
                             "enum": list(self._domains),
-                            "description": "管理域 ID",
+                            "description": "要加载的管理类别",
                         }
                     },
                     "required": ["domain"],

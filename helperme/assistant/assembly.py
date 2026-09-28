@@ -21,6 +21,7 @@ from helperme.assistant.delivery import (
     PreviewEmitter,
     deliver_binding,
 )
+from helperme.assistant.context.prompt import environment_prompt
 from helperme.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
@@ -135,7 +136,9 @@ async def build_assistant_assembly(
         visible = compact_context.visible(events, state)
         return await version_boundary.restore(command_id, target, events, visible)
 
-    restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(restore_workspace)
+    restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(
+        restore_workspace, isolated=task is not None,
+    )
     async def review_operation(*args, **kwargs):
         return await child_review.review(*args, **kwargs)
 
@@ -298,6 +301,9 @@ async def build_assistant_assembly(
         journal,
         config.llm,
         config.model_name,
+        environment=environment_prompt(
+            workspace.task_root, full_access=workspace.full_access, own_copy=task is not None,
+        ),
         surface=surface,
         skill_tools=skill_tools,
         cli_tools=cli_tools,

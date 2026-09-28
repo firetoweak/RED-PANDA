@@ -99,7 +99,7 @@ class SkillToolCatalog:
             if revision is None:
                 return _error_result(SkillRuntimeError(
                     "SKILL_NOT_FOUND",
-                    f"Skill {input_data.skill_id} 不在当前 Session 目录中",
+                    f"Skill {input_data.skill_id} 不在当前能力目录中",
                     hint="从上下文中的当前技能目录选择有效 ID。",
                     data={"skill_id": input_data.skill_id},
                 ))
@@ -129,7 +129,7 @@ class SkillToolCatalog:
             if revision is None:
                 return _error_result(SkillRuntimeError(
                     "SKILL_NOT_FOUND",
-                    f"Skill {input_data.skill_id} 不在当前 Session 目录中",
+                    f"Skill {input_data.skill_id} 不在当前能力目录中",
                     hint="从上下文中的当前技能目录选择有效 ID。",
                     data={"skill_id": input_data.skill_id},
                 ))
@@ -151,8 +151,7 @@ class SkillToolCatalog:
             ToolSpec(
                 name=LOAD_SKILL,
                 description=(
-                    "读取一个适合当前任务的可复用详细指令包。"
-                    "模型负责选择；本工具只按确定 ID 返回完整指令。"
+                    "读取一个适合当前任务的可复用详细指令包，按 ID 返回完整指令。"
                     "必须单独调用，不能与依赖其结果的工具同批执行。\n"
                     "当前技能目录由上下文消息提供。"
                 ),
@@ -164,8 +163,7 @@ class SkillToolCatalog:
                 name=READ_SKILL_RESOURCE,
                 description=(
                     "按字符范围读取当前可用 Skill 的文本资源。"
-                    "relative_path 必须是对应 Skill 包内的相对路径；"
-                    "是否先读取主指令由模型决定。"
+                    "relative_path 必须是对应 Skill 包内的相对路径。"
                 ),
                 parameters=PydanticParameters(ReadSkillResourceInput),
                 handler=read_resource,
@@ -185,8 +183,8 @@ class SkillToolCatalog:
         ):
             raise SkillRuntimeError(
                 "SKILL_CATALOG_STALE",
-                f"Skill {skill_id} 已在当前 Session 目录快照后变化",
-                hint="在下一个 Step 使用最新 Skill 目录重新选择。",
+                f"Skill {skill_id} 在当前能力目录生成后已变化",
+                hint="在下一次决策中按最新 Skill 目录重新选择。",
                 data={
                     "skill_id": skill_id,
                     "expected_revision": revision,
@@ -229,7 +227,7 @@ class SkillToolCatalog:
             raise SkillRuntimeError(
                 "INVALID_SKILL_RESOURCE_PATH",
                 str(exc),
-                hint="使用当前 Skill Directory 内的规范相对路径。",
+                hint="使用该 Skill 包内的相对路径，参考 load_skill 返回的正文。",
                 data={"skill_id": record.name, "relative_path": relative_path},
             ) from exc
         resource = package_directory.joinpath(*PurePosixPath(normalized).parts)

@@ -21,9 +21,9 @@ from helperme.tools.spec import PydanticParameters, ToolSpec
 
 
 EXECUTE_COMMAND_DESCRIPTION = """
-用途：在当前 Environment 中使用 {shell_name} 执行本机 CLI 命令。
+用途：使用 {shell_name} 在本机执行 CLI 命令。
 何时使用：用于依赖安装、构建、测试、格式化、静态检查、Git、包管理器和运行脚本；常规文件发现、搜索、读取和修改应使用专用文件工具。
-关键限制：相对 cwd 基于当前 Environment cwd，绝对 cwd 使用 Environment 原生语义；cwd 只决定启动位置，当前本地实现尚无进程级 Sandbox；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。
+关键限制：相对 cwd 从工作区开始，绝对 cwd 按本机路径规则；cwd 只决定启动目录，命令本身不受工作区限制，可能改动本机任何位置的文件；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。
 CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
 失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；超时或失败时不能假定命令成功，也不要无条件重试可能产生副作用的命令；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
 被用户打断时 code 为 COMMAND_INTERRUPTED，ok 为空，已捕获的 stdout/stderr 只是证据（output_is_result 为 false），执行结果未知，不要按失败重试，也不会自动撤销已经发生的副作用。
@@ -33,13 +33,13 @@ CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级�
 class ExecuteCommandInput(BaseModel):
     cwd: str | None = Field(
         default=None,
-        description="命令启动目录；省略时使用当前 Environment cwd，相对路径也基于它",
+        description="命令启动目录；省略时为工作区，相对路径也从工作区开始",
     )
-    command: str = Field(description="要交给当前 Environment Shell 执行的完整命令字符串")
+    command: str = Field(description="要交给 Shell 执行的完整命令字符串")
     workspace_effect: Literal["read_only", "may_write"] = Field(
         default="may_write",
         description=(
-            "命令对 Workspace 的预期副作用；明确只读查询使用 read_only，"
+            "命令对工作区文件的预期影响；明确只读查询使用 read_only，"
             "可能写入或无法确定时使用 may_write"
         ),
     )

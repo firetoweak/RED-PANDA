@@ -11,10 +11,7 @@ def runtime_tool_result(result: object) -> object:
         return {
             "ok": False,
             "code": "HOST_CONTROL_PLANE",
-            "error": (
-                "this action belongs on the host control plane: "
-                f"{action}"
-            ),
-            "hint": "使用 /mcp 或 /skill 管理能力；安装审批不是 Runtime 工具结果。",
+            "error": f"这个操作需要用户确认，不能作为普通工具调用执行: {action}",
+            "hint": "改用对应的 propose_* 管理工具提交，由用户确认后执行。",
         }
     return result

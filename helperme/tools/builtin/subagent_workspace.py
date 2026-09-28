@@ -30,10 +30,10 @@ def create_subagent_workspace_specs(review):
         return await review(raw.tool_call_id, merge=True)
 
     return (
-        ToolSpec("compare_subagent", "查看已交回子会话相对委派基准的文件变化；先列文件，再指定 paths 看 diff。",
+        ToolSpec("compare_subagent", "查看已交回子会话相对委派时文件状态的变化；先列文件，再指定 paths 看 diff。",
                  PydanticParameters(SubagentChangesInput), compare),
-        ToolSpec("merge_subagent", "将已交回子会话成果三方合入当前工作区，需要授权。冲突只返回清单，"
-                 "不写冲突标记。必须单独调用；成功后在正常 Step 边界记录版本。",
+        ToolSpec("merge_subagent", "把已交回子会话的修改合进用户的文件，与你这边的改动合并，需要授权。"
+                 "冲突时不改动任何文件，只返回冲突清单。必须单独调用。",
                  PydanticParameters(MergeSubagentInput), merge,
                  exclusive_batch=True, requires_authorization=True),
     )

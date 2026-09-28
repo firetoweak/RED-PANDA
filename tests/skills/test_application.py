@@ -147,7 +147,7 @@ class SkillApplicationServiceTest(unittest.IsolatedAsyncioTestCase):
         candidate = (await self.service.check_update("demo")).candidate
         await self.service.set_enabled("demo", False)
 
-        with self.assertRaisesRegex(ValueError, "候选过期"):
+        with self.assertRaisesRegex(ValueError, "请重新检查更新"):
             await self.service.update("demo", candidate.candidate_hash)
 
     async def test_unchanged_candidate_cannot_advance_revision(self):

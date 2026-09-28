@@ -13,9 +13,9 @@ LIST_INSTALLED_SKILLS = "list_installed_skills"
 TEST_INSTALLED_SKILL = "test_installed_skill"
 SKILL_HELP = "skill_help"
 SKILL_MANAGEMENT_GUIDE = (
-    "Skill 完整安装在 Agent HOME，由管理器维护；来源用于获取和更新，不是外部目录指针。"
-    "已安装列表不是可安装白名单。安装默认启用，一次审批；启用允许进入目录，不代表正文已加载。"
-    "正文用常驻的 load_skill，包内文本用常驻的 read_skill_resource；二者属于本域，直接可用，不随管理域加载才出现。"
+    "Skill 安装时会复制一份完整的包；来源只用于获取和更新，改动来源不会影响已安装的包。"
+    "已安装列表不是可安装白名单。安装默认启用，一次审批；启用后出现在能力目录，不代表正文已加载。"
+    "正文用 load_skill，包内文本用 read_skill_resource；二者始终可直接调用，不必先 load_management_tools。"
     "已知用法可直接操作，不必先调用 skill_help。只读操作查询事实，变更操作提交审批。"
 )
 
@@ -66,13 +66,13 @@ def create_skill_management_specs(service: SkillApplicationService) -> tuple[Too
     return (
         ToolSpec(
             LIST_INSTALLED_SKILLS,
-            "查询 HOME 中已安装 Skill 的来源、hash、revision 与启用状态，可按名称查询。"
+            "查询已安装 Skill 的来源、hash、revision 与启用状态，可按名称查询。"
             "只读登记，不校验磁盘包；需要检查实际安装时调用 test_installed_skill。",
             PydanticParameters(SkillListInput), list_skills,
         ),
         ToolSpec(
             TEST_INSTALLED_SKILL,
-            "检查 HOME 中指定安装包的身份、Frontmatter、路径、大小、登记元数据与 hash。"
+            "检查指定已安装包的身份、Frontmatter、路径、大小、登记信息与 hash 是否完好。"
             "只读，不运行脚本；通过只证明结构与完整性，不证明功能正确或内容安全。",
             PydanticParameters(SkillIdInput), test_skill,
         ),

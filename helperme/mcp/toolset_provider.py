@@ -192,7 +192,7 @@ class McpToolsetProvider:
                     "code": "MCP_SERVER_DISABLED",
                     "data": {"server_id": record_id},
                     "error": f"MCP Server 不可用或已停用: {record_id}",
-                    "hint": "请用户通过 /mcp 重新启用该 Server。",
+                    "hint": "先 load_management_tools 加载 mcp，用 list_mcp_servers 查看状态，再用 propose_mcp_recovery 申请恢复。",
                 }
             if record.revision != expected_revision:
                 return {
@@ -204,7 +204,7 @@ class McpToolsetProvider:
                         "current_revision": record.revision,
                     },
                     "error": "MCP Server 配置已变化，当前 Toolset 快照已过期",
-                    "hint": "请在新的 Step 中重新加载该 Toolset。",
+                    "hint": "请在下一次决策中重新加载该 Toolset。",
                 }
             try:
                 result = await self._client_manager.call_tool(

@@ -199,6 +199,7 @@ class JournalBackedLlmDecisionMaker:
         cli_tools: CliToolAdapter,
         control: AssistantControlPlane,
         management: ManagementSurface,
+        environment: str,
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
         projector: ModelContextProjector | None = None,
         context_usage_sink: Callable[[str, int, int], None] | None = None,
@@ -213,6 +214,7 @@ class JournalBackedLlmDecisionMaker:
         self._llm = llm
         self._model = model
         self._system_prompt = system_prompt
+        self._environment = environment
         self._projector = ModelContextProjector() if projector is None else projector
         self._surface = surface
         self._skill_tools = skill_tools
@@ -269,12 +271,13 @@ class JournalBackedLlmDecisionMaker:
         session_id = state.session_id
         if self._compact is not None and self._compact.is_reader:
             return self._compact.request["messages"][0]["content"]
+        prompt = self._system_prompt
         if self._subagents is not None:
             override = self._subagents.system_prompt(session_id)
             if override is not None:
                 # 子使用独立提示词；能力目录仍由自己的 Journal 提供。
-                return override
-        return self._system_prompt
+                prompt = override
+        return f"{prompt}\n\n{self._environment}"
 
     def _decision_from_response(
         self,
@@ -314,7 +317,7 @@ class JournalBackedLlmDecisionMaker:
                 ) from exc
             return ModelDecision(
                 content=(
-                    response.content or "已提交控制操作方案，等待主机生成确认信息。"
+                    response.content or "已提交需要用户确认的操作，等待用户确认。"
                 ),
             )
 
