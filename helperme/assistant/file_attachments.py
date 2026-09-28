@@ -64,9 +64,13 @@ def _link_or_copy(source: Path, dest: Path) -> None:
 
 
 class FileAttachmentStore:
-    def __init__(self, originals: Path, materials: Path):
+    def __init__(
+        self, originals: Path, materials: Path,
+        inherited_originals: tuple[Path, ...] = (),
+    ):
         self.originals = originals
         self.materials = materials
+        self._inherited_originals = inherited_originals
 
     def save_stream(self, stream: BinaryIO, name: str) -> FileAttachment:
         if not callable(getattr(stream, "read", None)):
@@ -122,18 +126,21 @@ class FileAttachmentStore:
     def source(self, attachment_id: str) -> Path:
         if not is_file_attachment_id(attachment_id):
             raise ValueError("file attachment id 格式无效")
-        pointer = self._mount_pointer(attachment_id)
-        if pointer.is_file():
-            text = pointer.read_text(encoding="utf-8")
-            path = Path(text)
-            if not text or not path.is_absolute():
-                raise ValueError("挂载指针必须是绝对路径")
-            return path
-        directory = self._directory(attachment_id)
-        entries = tuple(directory.iterdir())
-        if len(entries) != 1 or not entries[0].is_file():
-            raise ValueError("附件原件目录必须且只能包含一个文件")
-        return entries[0]
+        for root in (self.originals, *self._inherited_originals):
+            directory = root / attachment_id.removeprefix("file:")
+            pointer = directory.with_name(directory.name + _MOUNT_SUFFIX)
+            if pointer.is_file():
+                text = pointer.read_text(encoding="utf-8")
+                path = Path(text)
+                if not text or not path.is_absolute():
+                    raise ValueError("挂载指针必须是绝对路径")
+                return path
+            if directory.exists():
+                entries = tuple(directory.iterdir())
+                if len(entries) != 1 or not entries[0].is_file():
+                    raise ValueError("附件原件目录必须且只能包含一个文件")
+                return entries[0]
+        raise FileNotFoundError(self._directory(attachment_id))
 
     def describe(self, attachment_id: str) -> FileAttachment:
         path = self.source(attachment_id)

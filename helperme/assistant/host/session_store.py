@@ -123,7 +123,8 @@ class SessionStore:
         if child_path.parent.exists():
             raise ValueError(f"Session 已存在: {child_session_id}")
 
-        source_events = await SqliteJournal(source_path).snapshot(source_session_id)
+        source_journal = SqliteJournal(source_path)
+        source_events = await source_journal.snapshot(source_session_id)
         target = next(
             (event for event in source_events if event.event_id == message_id),
             None,
@@ -144,7 +145,7 @@ class SessionStore:
             raise SessionForkUnavailableError(
                 "fork prefix must end at an external-fact boundary"
             )
-        await self._materialize(source_path, prefix, child_session_id, child_path)
+        await self._materialize(source_journal, prefix, child_session_id, child_path)
         return ForkedMessage(target.payload.content, target.artifact_refs)
 
     async def fork_after_turn(
@@ -163,7 +164,8 @@ class SessionStore:
         if child_path.parent.exists():
             raise ValueError(f"Session 已存在: {child_session_id}")
 
-        source_events = await SqliteJournal(source_path).snapshot(source_session_id)
+        source_journal = SqliteJournal(source_path)
+        source_events = await source_journal.snapshot(source_session_id)
         target = next(
             (event for event in source_events if event.event_id == user_message_id),
             None,
@@ -199,7 +201,7 @@ class SessionStore:
             raise SessionForkUnavailableError(
                 "turn must end at an external-fact boundary"
             )
-        await self._materialize(source_path, prefix, child_session_id, child_path)
+        await self._materialize(source_journal, prefix, child_session_id, child_path)
 
     async def fork_after_event(
         self,
@@ -218,7 +220,8 @@ class SessionStore:
         if child_path.parent.exists():
             raise ValueError(f"Session 已存在: {child_session_id}")
 
-        source_events = await SqliteJournal(source_path).snapshot(source_session_id)
+        source_journal = SqliteJournal(source_path)
+        source_events = await source_journal.snapshot(source_session_id)
         target = next(
             (event for event in source_events if event.event_id == boundary_event_id),
             None,
@@ -228,20 +231,27 @@ class SessionStore:
         prefix = tuple(
             event for event in source_events if event.sequence <= target.sequence
         )
-        await self._materialize(source_path, prefix, child_session_id, child_path)
+        if replay(source_session_id, prefix).state.waiting_command_ids:
+            raise SessionForkUnavailableError(
+                "branch prefix has unresolved commands"
+            )
+        await self._materialize(source_journal, prefix, child_session_id, child_path)
 
-    async def _materialize(self, source_path, prefix, child_session_id, child_path):
+    async def _materialize(self, source_journal, prefix, child_session_id, child_path):
         staging = self.root / f".creating-{uuid4().hex}"
         staging.mkdir()
         try:
-            await SqliteJournal(staging / "journal.sqlite").materialize_history(
-                child_session_id,
-                prefix,
+            source_path = Path(source_journal.path)
+            spans = await source_journal.history_through(
+                prefix[-1].sequence if prefix else 0
             )
-            for drawer in ("artifacts", ".attachments"):
-                source_drawer = source_path.parent / drawer
-                if source_drawer.is_dir():
-                    shutil.copytree(source_drawer, staging / drawer)
+            asset_sources = tuple(
+                path.relative_to(self.root).as_posix()
+                for path in (*SqliteJournal.prefix_paths_at(source_path), source_path)
+            )
+            await SqliteJournal(staging / "journal.sqlite").create_branch(
+                child_session_id, spans, asset_sources
+            )
             os.rename(staging, child_path.parent)
         except BaseException:
             shutil.rmtree(staging, ignore_errors=True)

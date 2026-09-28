@@ -8,6 +8,7 @@ import re
 from typing import Protocol
 from uuid import uuid4
 
+from helperme.assistant.asset_locations import inherited_drawers
 from helperme.runtime.dispatcher import AttemptContext, ToolBinding
 
 
@@ -113,8 +114,9 @@ class MemoryArtifactGateway:
 
 
 class FileArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, inherited: tuple[Path, ...] = ()) -> None:
         self._root = root.resolve()
+        self._inherited = inherited
         self._root.mkdir(parents=True, exist_ok=True)
 
     def save(self, content: str) -> ArtifactRef:
@@ -126,8 +128,13 @@ class FileArtifactStore:
 
     def read(self, artifact_id: str, offset: int, limit: int) -> ArtifactChunk:
         _validate_read_request(artifact_id, offset, limit)
-        path = self._path(artifact_id)
-        if not path.is_file():
+        own = self._path(artifact_id)
+        path = next(
+            (candidate for candidate in (own, *(root / own.name for root in self._inherited))
+             if candidate.is_file()),
+            None,
+        )
+        if path is None:
             raise ArtifactNotFoundError(artifact_id)
         content = path.read_text(encoding="utf-8")
         if offset > len(content):
@@ -153,10 +160,15 @@ class FileArtifactGateway:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
+        self._inherited: dict[str, tuple[Path, ...]] = {}
 
     def for_session(self, session_id: str) -> FileArtifactStore:
         drawer = sha256(session_id.encode("utf-8")).hexdigest()
-        return FileArtifactStore(self._root / drawer / "artifacts")
+        inherited = self._inherited.get(session_id)
+        if inherited is None:
+            inherited = inherited_drawers(self._root, session_id, "artifacts")
+            self._inherited[session_id] = inherited
+        return FileArtifactStore(self._root / drawer / "artifacts", inherited)
 
 
 READ_ARTIFACT_SCHEMA: dict[str, object] = {

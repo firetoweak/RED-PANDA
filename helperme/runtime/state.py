@@ -60,7 +60,7 @@ class _StateBuilder:
 
     def version(self) -> str:
         content = json.dumps(
-            [self.session_id, *self.visible_event_ids],
+            self.visible_event_ids,
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")

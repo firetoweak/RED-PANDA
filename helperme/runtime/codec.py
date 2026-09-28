@@ -37,7 +37,7 @@ from helperme.runtime.model import (
 EVENT_SCHEMA_VERSION = 5
 DELIVERY_FINGERPRINT_VERSION = 3
 STATE_CODEC_VERSION = 6
-STATE_PROJECTION_VERSION = "canonical-state-v5"
+STATE_PROJECTION_VERSION = "canonical-state-v6"
 
 _USER_MESSAGE = "user.message.received"
 _STEP_COMMITTED = "step.committed"

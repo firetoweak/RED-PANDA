@@ -73,7 +73,7 @@ preview、committed cache 和 Journal Step 共用同一个显示身份，没有 
 
 编辑消息只做改写。改写仍可能改文件落点：分支点之后真有文件改动时由人选退不退，见[工作区版本 · 触发](../运行/工作区版本.md#触发)。新会话从「现在」切开，文件保持现状。
 
-分支物化完整事件前缀并重建 Step basis，同时复制前缀引用的 Artifact 与附件。因此上下文、ToolSurface、已加载 Toolset、管理域、Skill 使用记录和 Compact 历史都从同一份 Journal 恢复，不存在只继承消息的旁路。历史 Command 只作为事实重放，不重新执行。
+分支共享截止点之前的完整事件前缀，自己只追加后续事实；附件与 Artifact 从原所有者读取。上下文、ToolSurface、已加载 Toolset、管理域、Skill 使用记录和 Compact 历史仍从同一条逻辑 Journal 历史恢复，不存在只继承消息的旁路。历史 Command 只作为事实重放，不重新执行。存储与回收规则见[会话分支存储](../运行/会话分支存储.md)。
 
 ## SubAgent 入口
 
