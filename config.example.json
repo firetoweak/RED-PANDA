@@ -15,8 +15,7 @@
     }
   },
   "runtime": {
-    "compact_threshold_tokens": 200000,
-    "loop_guard_repeat_threshold": 3
+    "compact_threshold_tokens": 200000
   },
   "channels": {
     "telegram": {

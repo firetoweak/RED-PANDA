@@ -15,7 +15,6 @@ from helperme.assistant.attachments import (
 )
 from helperme.assistant.compact.core import CompactContext, CompactBoundary, READ, SUBMIT
 from helperme.assistant.loop_guard import LoopGuard
-from helperme.assistant.loop_guard_strategies import ConsecutiveActions
 from helperme.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
@@ -309,7 +308,7 @@ async def build_assistant_assembly(
         subagents=subagents,
         compact=compact_context,
         exclusive_tool_names=exclusive_tools,
-        loop_guard=LoopGuard((ConsecutiveActions(config.loop_guard_repeat_threshold),)),
+        loop_guard=LoopGuard(),
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)

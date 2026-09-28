@@ -31,7 +31,6 @@ INITIAL_CONFIG = {
     },
     "runtime": {
         "compact_threshold_tokens": 200000,
-        "loop_guard_repeat_threshold": 3,
     },
     "channels": {
         "telegram": {
@@ -59,7 +58,6 @@ class InitialConfigCreated(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     compact_threshold_tokens: int
-    loop_guard_repeat_threshold: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +83,6 @@ class AssistantConfig:
     model_name: str
     compact_threshold_tokens: int
     llm: LLMApi
-    loop_guard_repeat_threshold: int = 3
 
 
 def _create_initial_config(path: Path) -> None:
@@ -143,19 +140,11 @@ def load_app_config(path: Path | None = None) -> AppConfig:
     runtime = data["runtime"]
     if not isinstance(runtime, dict):
         raise ValueError("配置必须包含 runtime 映射")
-    if set(runtime) != {
-        "compact_threshold_tokens",
-        "loop_guard_repeat_threshold",
-    }:
-        raise ValueError(
-            "runtime 配置字段必须是 compact_threshold_tokens/loop_guard_repeat_threshold"
-        )
+    if set(runtime) != {"compact_threshold_tokens"}:
+        raise ValueError("runtime 配置字段必须是 compact_threshold_tokens")
     compact_threshold_tokens = runtime["compact_threshold_tokens"]
     if type(compact_threshold_tokens) is not int or compact_threshold_tokens <= 0:
         raise ValueError("配置 runtime.compact_threshold_tokens 必须是大于 0 的整数")
-
-    if type(runtime["loop_guard_repeat_threshold"]) is not int or runtime["loop_guard_repeat_threshold"] < 2:
-        raise ValueError("runtime.loop_guard_repeat_threshold must be an integer >= 2")
 
     channels = data["channels"]
     if not isinstance(channels, dict):
@@ -184,7 +173,6 @@ def load_app_config(path: Path | None = None) -> AppConfig:
         model=_parse_model_config(data),
         runtime=RuntimeConfig(
             compact_threshold_tokens=compact_threshold_tokens,
-            loop_guard_repeat_threshold=runtime["loop_guard_repeat_threshold"],
         ),
         channels=ChannelsConfig(telegram=telegram_config),
     )
@@ -195,5 +183,4 @@ def assistant_config_from_app(app: AppConfig, llm: LLMApi) -> AssistantConfig:
         model_name=app.model.active,
         compact_threshold_tokens=app.runtime.compact_threshold_tokens,
         llm=llm,
-        loop_guard_repeat_threshold=app.runtime.loop_guard_repeat_threshold,
     )
