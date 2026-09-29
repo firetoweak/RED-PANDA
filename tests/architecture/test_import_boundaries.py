@@ -135,11 +135,11 @@ class LayerImportBoundaryTest(unittest.TestCase):
 
     def test_bootstrap_not_config_owns_the_concrete_llm_client(self):
         self.assertNotIn(
-            "helperme.llm.adapter",
+            "helperme.llm.ferro_client",
             _imported_modules(CONFIG_PATH),
         )
         self.assertIn(
-            "helperme.llm.adapter",
+            "helperme.llm.ferro_client",
             _imported_modules(BOOTSTRAP_PATH),
         )
 
@@ -148,15 +148,15 @@ class LayerImportBoundaryTest(unittest.TestCase):
 
         from helperme.bootstrap import worker_config
 
-        self.assertNotIn("LiteLLMAdapter", inspect.getsource(worker_config))
+        self.assertNotIn("FerroClient", inspect.getsource(worker_config))
 
-    def test_assistant_does_not_import_litellm(self):
+    def test_assistant_does_not_import_foreign_llm_clients(self):
         offenders: list[str] = []
         for path in sorted(ASSISTANT_ROOT.rglob("*.py")):
             leaked = sorted(
                 module
                 for module in _imported_modules(path)
-                if module == "litellm" or module.startswith("litellm.")
+                if module == "httpx" or module.startswith("httpx.")
             )
             if leaked:
                 offenders.append(

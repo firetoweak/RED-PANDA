@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,37 +10,20 @@ from helperme.llm.config import ModelConfig
 
 
 class AppConfigTest(unittest.TestCase):
-    def test_documented_model_examples_are_valid_json_configs(self):
-        path = Path(__file__).resolve().parents[2] / "docs" / "模型配置.md"
-        blocks = re.findall(
-            r"```json\n(.*?)\n```",
-            path.read_text(encoding="utf-8"),
-            re.DOTALL,
-        )
-        examples = [
-            value
-            for block in blocks
-            if set(value := json.loads(block)) == {"active", "router"}
-        ]
+    def test_example_contains_only_the_selected_model(self):
+        path = Path(__file__).resolve().parents[2] / "config.example.json"
+        example = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertGreaterEqual(len(examples), 10)
-        for example in examples:
-            ModelConfig(**example)
+        self.assertEqual(set(example["model"]), {"active"})
+        self.assertEqual(
+            ModelConfig(active=example["model"]["active"]).active,
+            example["model"]["active"],
+        )
 
     def _data(self, threshold: int = 200000) -> dict:
         return {
             "model": {
                 "active": "model",
-                "router": {
-                    "model_list": [{
-                        "model_name": "model",
-                        "litellm_params": {
-                            "model": "openai/provider-model",
-                            "custom_field": {"kept": True},
-                        },
-                    }],
-                    "num_retries": 0,
-                },
             },
             "runtime": {
                 "compact_threshold_tokens": threshold,
@@ -61,17 +43,15 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual(document, INITIAL_CONFIG)
         self.assertIsNotNone(config.channels.telegram)
 
-    def test_router_retry_defaults_are_injected_by_code(self):
+    def test_keeps_selected_model(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             data = self._data()
-            data["model"]["router"].pop("num_retries")
             self._write_config(path, data)
 
             config = load_app_config(path)
 
-        self.assertEqual(config.model.router["num_retries"], 3)
-        self.assertEqual(config.model.router["timeout"], 60)
+        self.assertEqual(config.model.active, "model")
 
     def test_first_run_creates_default_config_and_stops(self):
         with TemporaryDirectory() as directory:
@@ -104,10 +84,6 @@ class AppConfigTest(unittest.TestCase):
                 config = load_app_config()
 
         self.assertEqual(config.model.active, "model")
-        self.assertEqual(
-            config.model.router["model_list"][0]["litellm_params"]["custom_field"],
-            {"kept": True},
-        )
         self.assertEqual(config.runtime.compact_threshold_tokens, 200000)
         self.assertIsNone(config.channels.telegram)
 
@@ -188,14 +164,15 @@ class AppConfigTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_app_config(path)
 
-    def test_rejects_non_mapping_router(self):
+    def test_rejects_gateway_and_model_parameter_config(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             data = self._data()
-            data["model"]["router"] = []
+            data["model"]["gateway"] = {"base_url": "http://localhost/v1"}
+            data["model"]["request_options"] = {"temperature": 0}
             self._write_config(path, data)
 
-            with self.assertRaisesRegex(ValueError, "model.router"):
+            with self.assertRaisesRegex(ValueError, "配置字段必须只有 active"):
                 load_app_config(path)
 
     def test_compact_threshold_is_required_and_a_positive_integer(self):

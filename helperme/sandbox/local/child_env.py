@@ -11,6 +11,8 @@ Worker 才可见。Unix 上包管理器一般装进已在 PATH 的目录，无�
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import sys
 
 # 禁用颜色、分页与交互行为，让 CLI 输出对模型友好。
 CHILD_ENV_OVERLAY: dict[str, str] = {
@@ -20,6 +22,23 @@ CHILD_ENV_OVERLAY: dict[str, str] = {
     "GH_PAGER": "cat",
     "CI": "1",
 }
+
+
+def with_runtime_python_environment(
+    child_env: dict[str, str],
+) -> dict[str, str]:
+    """Make commands resolve Python from the environment running HelperMe."""
+    if sys.prefix == sys.base_prefix:
+        return child_env
+
+    environment_root = Path(sys.prefix)
+    executable_dir = environment_root / ("Scripts" if os.name == "nt" else "bin")
+    path = child_env.get("PATH", "")
+    child_env["PATH"] = (
+        f"{executable_dir}{os.pathsep}{path}" if path else str(executable_dir)
+    )
+    child_env["VIRTUAL_ENV"] = str(environment_root)
+    return child_env
 
 
 def latest_persistent_path() -> str | None:

@@ -2,72 +2,63 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from copy import deepcopy
-from dataclasses import replace
 import json
 import time
 
 from helperme.config import load_app_config
-from helperme.llm.adapter import LiteLLMAdapter
+from helperme.llm.config import load_gateway_config
+from helperme.llm.ferro_client import FerroClient
 
 
 async def _stream_once(
-    client: LiteLLMAdapter,
+    client: FerroClient,
     model: str,
     prompt: str,
     thinking: bool,
 ) -> dict[str, object]:
     started = time.perf_counter()
-    stream = await client._router.acompletion(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=64,
-        temperature=0,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
-    opened = time.perf_counter()
     first_token_at: float | None = None
     output_chars = 0
-    usage = None
 
-    async for chunk in stream:
-        if chunk.usage is not None:
-            usage = chunk.usage
-        for choice in chunk.choices:
-            delta = choice.delta
-            content = getattr(delta, "content", None) or ""
-            reasoning = getattr(delta, "reasoning_content", None) or ""
-            if first_token_at is None and (content or reasoning):
-                first_token_at = time.perf_counter()
-            output_chars += len(content) + len(reasoning)
+    def on_delta(text: str) -> None:
+        nonlocal first_token_at, output_chars
+        if first_token_at is None:
+            first_token_at = time.perf_counter()
+        output_chars += len(text)
+
+    result = await client.chat(
+        [{"role": "user", "content": prompt}],
+        model,
+        on_content_delta=on_delta,
+        on_reasoning_delta=on_delta if thinking else None,
+    )
 
     finished = time.perf_counter()
     return {
-        "response_headers_seconds": round(opened - started, 3),
         "first_token_seconds": (
             None if first_token_at is None else round(first_token_at - started, 3)
         ),
         "complete_seconds": round(finished - started, 3),
-        "input_tokens": None if usage is None else usage.prompt_tokens,
-        "output_tokens": None if usage is None else usage.completion_tokens,
+        "input_tokens": result.usage.input_tokens,
+        "output_tokens": result.usage.output_tokens,
         "output_chars": output_chars,
     }
 
 
 async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
-    router = deepcopy(app.model.router)
-    for deployment in router["model_list"]:
-        deployment["litellm_params"]["reasoning_effort"] = (
-            "high" if thinking else "none"
-        )
-    model_config = replace(app.model, router=router)
+    request_options = {
+        "reasoning_effort": "high" if thinking else "none",
+        "max_tokens": 64,
+        "temperature": 0,
+    }
     client_started = time.perf_counter()
-    async with LiteLLMAdapter(model_config) as client:
+    async with FerroClient(
+        load_gateway_config(), request_options=request_options
+    ) as client:
         client_created = time.perf_counter()
         rows = []
         for index in range(repeats):
-            row = await _stream_once(client, model_config.active, prompt, thinking)
+            row = await _stream_once(client, app.model.active, prompt, thinking)
             row["request"] = index + 1
             rows.append(row)
     return {
@@ -82,12 +73,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     app = load_app_config()
     config_seconds = time.perf_counter() - config_started
     modes = (
-        [any(
-            deployment["litellm_params"].get("reasoning_effort") not in (None, "none")
-            for deployment in app.model.router["model_list"]
-        )]
-        if args.thinking == "configured"
-        else [args.thinking == "on"]
+        [args.thinking == "on"]
         if args.thinking in {"on", "off"}
         else [True, False]
     )
@@ -110,7 +96,7 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument(
         "--thinking",
-        choices=("configured", "on", "off", "both"),
+        choices=("on", "off", "both"),
         default="both",
     )
     parser.add_argument("--prompt", default="只回复数字 2。")

@@ -17,7 +17,10 @@ from helperme.sandbox.command import (
     ShellNotFoundError,
     wait_process,
 )
-from helperme.sandbox.local.child_env import CHILD_ENV_OVERLAY
+from helperme.sandbox.local.child_env import (
+    CHILD_ENV_OVERLAY,
+    with_runtime_python_environment,
+)
 
 
 DEFAULT_ENV_NAMES = (
@@ -97,7 +100,9 @@ class BashCommandRunner:
         if executable is None:
             raise ShellNotFoundError("bash", self.executable)
 
-        child_env = self.environment_policy.build(os.environ)
+        child_env = with_runtime_python_environment(
+            self.environment_policy.build(os.environ)
+        )
         started = time.perf_counter()
         try:
             proc = await asyncio.create_subprocess_exec(

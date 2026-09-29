@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from copy import deepcopy
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -141,7 +142,8 @@ def build_variants(
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
     from helperme.config import load_app_config
-    from helperme.llm.adapter import LiteLLMAdapter
+    from helperme.llm.config import load_gateway_config
+    from helperme.llm.ferro_client import FerroClient
 
     root = runtime_data_root()
     drawer = Path(args.drawer).resolve() if args.drawer else _default_drawer(root)
@@ -163,8 +165,21 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     app = load_app_config()
     salts = {name: secrets.token_urlsafe(32) for name in variants}
     rows: list[dict[str, object]] = []
+    clients = {
+        name: FerroClient(
+            load_gateway_config(),
+            request_options={
+                "max_tokens": 1,
+                "temperature": 0,
+                "cache_salt": salt,
+            },
+        )
+        for name, salt in salts.items()
+    }
 
-    async with LiteLLMAdapter(app.model) as client:
+    async with AsyncExitStack() as clients_scope:
+        for client in clients.values():
+            await clients_scope.enter_async_context(client)
         for step_index in range(len(manifests)):
             names = list(variants)
             offset = step_index % len(names)
@@ -172,28 +187,22 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             for name in names:
                 request = variants[name][step_index]
                 started = time.perf_counter()
-                completion = await client._router.acompletion(
-                    model=app.model.active,
-                    messages=request.messages,
+                completion = await clients[name].chat(
+                    request.messages,
+                    app.model.active,
                     tools=request.tools,
-                    tool_choice="auto" if request.tools else None,
-                    max_tokens=1,
-                    temperature=0,
-                    extra_body={"cache_salt": salts[name]},
                 )
                 elapsed = time.perf_counter() - started
                 usage = completion.usage
-                details = usage.prompt_tokens_details
-                cached = details.cached_tokens if details is not None else 0
-                cached = cached or 0
+                cached = usage.cached_input_tokens
                 row = {
                     "variant": name,
                     "step": step_index + 1,
                     "journal_position": request.journal_position,
-                    "prompt_tokens": usage.prompt_tokens,
+                    "prompt_tokens": usage.input_tokens,
                     "cached_tokens": cached,
-                    "uncached_tokens": usage.prompt_tokens - cached,
-                    "cache_rate": cached / usage.prompt_tokens,
+                    "uncached_tokens": usage.input_tokens - cached,
+                    "cache_rate": cached / usage.input_tokens,
                     "elapsed_seconds": elapsed,
                 }
                 rows.append(row)

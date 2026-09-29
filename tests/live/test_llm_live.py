@@ -6,7 +6,8 @@ import unittest
 import pytest
 
 from helperme.config import load_app_config
-from helperme.llm.adapter import LiteLLMAdapter
+from helperme.llm.config import load_gateway_config
+from helperme.llm.ferro_client import FerroClient
 
 pytestmark = pytest.mark.live
 
@@ -18,7 +19,7 @@ pytestmark = pytest.mark.live
 class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_chat_roundtrip(self):
         config = load_app_config()
-        async with LiteLLMAdapter(config.model) as client:
+        async with FerroClient(load_gateway_config()) as client:
             result = await client.chat(
                 [{"role": "user", "content": "Reply with the single digit 2."}],
                 config.model.active,
@@ -47,7 +48,7 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         }]
-        async with LiteLLMAdapter(config.model) as client:
+        async with FerroClient(load_gateway_config()) as client:
             first = await client.chat(
                 [{"role": "user", "content": "调用 lookup 查询 key=answer。"}],
                 config.model.active,

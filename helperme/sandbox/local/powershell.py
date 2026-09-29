@@ -19,6 +19,7 @@ from helperme.sandbox.command import (
 from helperme.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
+    with_runtime_python_environment,
 )
 from helperme.sandbox.local.windows_job import WindowsJob
 
@@ -125,7 +126,9 @@ class PowerShellCommandRunner:
         if executable is None:
             raise ShellNotFoundError("powershell", self.executable)
 
-        child_env = self.environment_policy.build(os.environ)
+        child_env = with_runtime_python_environment(
+            self.environment_policy.build(os.environ)
+        )
         utf8_command = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"
             "$OutputEncoding=[Console]::OutputEncoding;"

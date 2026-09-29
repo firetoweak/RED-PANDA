@@ -1,0 +1,9 @@
+apiVersion: v1
+strategy:
+  mode: single
+targets:
+  - virtual_key: deepseek
+    models:
+      - deepseek-v4-pro
+    retry:
+      attempts: 3

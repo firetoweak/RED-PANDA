@@ -32,12 +32,12 @@ class HostProcessEnvironmentTest(unittest.TestCase):
             built = host_process_environment(
                 {
                     "PATH": os.pathsep.join((r"C:\conda\env", r"C:\Windows\system32")),
-                    "LITELLM_X": "1",
+                    "EXTRA_X": "1",
                 }
             )
 
         parts = built["PATH"].split(os.pathsep)
-        self.assertEqual(built["LITELLM_X"], "1")
+        self.assertEqual(built["EXTRA_X"], "1")
         self.assertEqual(parts[0], r"C:\conda\env")
         self.assertIn(r"C:\Windows\System32\WindowsPowerShell\v1.0", parts)
 
@@ -91,10 +91,8 @@ class HostProcessEnvironmentTest(unittest.TestCase):
         built = host_process_environment(
             {
                 "PATH": r"C:\Windows\system32",
-                "LITELLM_LOCAL_MODEL_COST_MAP": "True",
                 "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
             }
         )
 
-        self.assertEqual(built["LITELLM_LOCAL_MODEL_COST_MAP"], "True")
         self.assertIsNotNone(shutil.which("powershell.exe", path=built["PATH"]))

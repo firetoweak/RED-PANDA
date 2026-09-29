@@ -13,16 +13,16 @@ from helperme.llm.api import (
 
 
 class ModelFailureMessageTest(unittest.TestCase):
-    def test_authentication_error_points_to_model_configuration(self):
+    def test_authentication_error_points_to_gateway_configuration(self):
         message = assistant_failure_message(LLMAuthenticationError("401"))
 
         self.assertIn("模型认证失败", message)
-        self.assertIn("model.router", message)
+        self.assertIn("FERRO_MASTER_KEY", message)
 
-    def test_transient_error_reports_exhausted_retries(self):
+    def test_transient_error_reports_service_availability(self):
         message = assistant_failure_message(LLMTransientError("timeout"))
 
-        self.assertIn("自动重试仍未成功", message)
+        self.assertIn("暂时不可用", message)
         self.assertIn("timeout", message)
 
     def test_other_known_model_errors_preserve_provider_detail(self):

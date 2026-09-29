@@ -10,7 +10,8 @@ import pytest
 from helperme.runtime import MemoryJournal, RuntimeStatus
 from tests.session_scheduler import build_settling_assistant as build_live_assistant
 from helperme.config import assistant_config_from_app, load_app_config
-from helperme.llm.adapter import LiteLLMAdapter
+from helperme.llm.config import load_gateway_config
+from helperme.llm.ferro_client import FerroClient
 from helperme.paths import HelperMeHome
 from helperme.sandbox.registry import WorkspaceRegistry
 
@@ -26,7 +27,7 @@ class RuntimeLiveModelTest(unittest.IsolatedAsyncioTestCase):
         app_config = load_app_config()
         config = assistant_config_from_app(
             app_config,
-            LiteLLMAdapter(app_config.model),
+            FerroClient(load_gateway_config()),
         )
         delivered: list[str] = []
         journal = MemoryJournal()

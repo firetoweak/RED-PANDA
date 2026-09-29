@@ -45,13 +45,16 @@ class LlmCodecTest(unittest.TestCase):
         class ProviderBoom(RuntimeError):
             pass
 
-        ProviderBoom.__module__ = "litellm.exceptions"
+        ProviderBoom.__module__ = "foreign_gateway.exceptions"
         ProviderBoom.__qualname__ = "APIError"
         try:
             raise ProviderBoom("upstream")
         except ProviderBoom as error:
             restored = decode_llm_error(encode_llm_error(error))
         self.assertIsInstance(restored, LLMRemoteError)
-        self.assertEqual(restored.exception_type, "litellm.exceptions.APIError")
+        self.assertEqual(
+            restored.exception_type,
+            "foreign_gateway.exceptions.APIError",
+        )
         self.assertIn("upstream", restored.original_message)
         self.assertIn("ProviderBoom", restored.remote_traceback)

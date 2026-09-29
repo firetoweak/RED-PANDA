@@ -16,18 +16,6 @@ CONFIG_PATH_ENV = "HELPERME_CONFIG"
 INITIAL_CONFIG = {
     "model": {
         "active": "deepseek-v4-pro",
-        "router": {
-            "model_list": [
-                {
-                    "model_name": "deepseek-v4-pro",
-                    "litellm_params": {
-                        "model": "deepseek/deepseek-v4-pro",
-                        "api_key": "your-api-key",
-                        "reasoning_effort": "high",
-                    },
-                }
-            ],
-        },
     },
     "runtime": {
         "compact_threshold_tokens": 200000,
@@ -38,14 +26,6 @@ INITIAL_CONFIG = {
             "allowed_chat_id": None,
         }
     },
-}
-
-
-# 重试与超时的代码默认值：不写入用户配置，避免用户漏配或写错。
-# num_retries 是"首次调用之外"的重试次数；timeout 是单次尝试的超时秒数（流式下即多久没有数据算超时）。
-DEFAULT_ROUTER_SETTINGS = {
-    "num_retries": 3,
-    "timeout": 60,
 }
 
 
@@ -119,17 +99,9 @@ def _parse_model_config(data: dict) -> ModelConfig:
     model = data["model"]
     if not isinstance(model, dict):
         raise ValueError("模型配置必须包含 model 映射")
-    if set(model) != {"active", "router"}:
-        raise ValueError("模型配置字段必须是 active/router")
-    active = model["active"]
-    if type(active) is not str or not active.strip():
-        raise ValueError("模型配置 model.active 不能为空")
-    router = model["router"]
-    if type(router) is not dict or not router:
-        raise ValueError("模型配置 model.router 必须是非空映射")
-    for key, value in DEFAULT_ROUTER_SETTINGS.items():
-        router.setdefault(key, value)
-    return ModelConfig(active=active.strip(), router=router)
+    if set(model) != {"active"}:
+        raise ValueError("模型配置字段必须只有 active")
+    return ModelConfig(active=model["active"])
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:

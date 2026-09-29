@@ -1,5 +1,6 @@
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from helperme.sandbox.command import (
@@ -10,6 +11,7 @@ from helperme.sandbox.command import (
 from helperme.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
+    with_runtime_python_environment,
 )
 from helperme.sandbox.local.powershell import CommandEnvironmentPolicy
 
@@ -45,6 +47,22 @@ class ChildEnvOverlayTest(unittest.TestCase):
         ):
             env = CommandEnvironmentPolicy().build({"SYSTEMROOT": "C:\\Windows"})
         self.assertEqual(env["PATH"], "C:\\new")
+
+    def test_runtime_python_environment_precedes_host_path(self):
+        environment_root = Path("project/helperme-env")
+        host_path = os.pathsep.join(("system-tools", "user-tools"))
+        with (
+            patch("helperme.sandbox.local.child_env.sys.prefix", str(environment_root)),
+            patch("helperme.sandbox.local.child_env.sys.base_prefix", "system-python"),
+        ):
+            env = with_runtime_python_environment({"PATH": host_path})
+
+        executable_dir = environment_root / ("Scripts" if os.name == "nt" else "bin")
+        self.assertEqual(
+            env["PATH"],
+            os.pathsep.join((str(executable_dir), host_path)),
+        )
+        self.assertEqual(env["VIRTUAL_ENV"], str(environment_root))
 
     @unittest.skipUnless(os.name == "nt", "Windows 注册表读取")
     def test_reads_real_persistent_path_on_windows(self):

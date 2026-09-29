@@ -7,7 +7,8 @@ from pathlib import Path
 
 from tests.session_scheduler import build_settling_assistant as build_stress_assistant
 from helperme.config import assistant_config_from_app, load_app_config
-from helperme.llm.adapter import LiteLLMAdapter
+from helperme.llm.config import load_gateway_config
+from helperme.llm.ferro_client import FerroClient
 from helperme.paths import HelperMeHome
 from helperme.sandbox.registry import WorkspaceRegistry
 from helperme.runtime import (
@@ -59,7 +60,7 @@ async def main() -> None:
 
     config = assistant_config_from_app(
         app_config,
-        LiteLLMAdapter(app_config.model),
+        FerroClient(load_gateway_config()),
     )
     delivered: list[str] = []
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")

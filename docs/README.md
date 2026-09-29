@@ -17,7 +17,7 @@
 
 | 文档 | 用途 |
 |---|---|
-| [模型配置](模型配置.md) | DeepSeek、OpenAI、Claude、Gemini、Azure、OpenRouter、vLLM、Ollama 可复制配置 |
+| [模型配置](模型配置.md) | 连接独立 Ferro Gateway；Provider 凭据与路由由 Ferro 管理 |
 | [自举开发](自举开发.md) | 用 HelperMe 开发 HelperMe：双 worktree、数据根与端口隔离 |
 
 ## 架构
@@ -79,7 +79,7 @@
 |---|---|
 | [工具与能力](架构/能力/工具与能力.md) | 准绳：环境工具、MCP、Skill 三个端口 |
 | [CLI 能力](架构/能力/CLI能力.md) | 第四个端口：外部 CLI 的登记、安装、体检与调用 |
-| [LiteLLM 接入](架构/能力/LiteLLM接入.md) | 进程内 Router、配置所有权与协议扩展 |
+| [Ferro Gateway 接入](架构/能力/Ferro%20Gateway接入.md) | 独立 Gateway 的配置所有权与 LLMApi 协议边界 |
 
 ### 入口/
 

@@ -1,4 +1,7 @@
 __pycache__/
+.env
+.tools/
+helperme-env/
 .vscode/
 .pytest_cache/
 .cursor/
