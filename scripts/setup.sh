@@ -75,5 +75,9 @@ fi
 
 "$uv" pip install --python "$python" pip -r requirements.txt
 
+if [ ! -e .env ]; then
+  cp .env.example .env
+fi
+
 printf '%s\n' "Setup complete."
-printf '%s\n' "Copy .env.example to .env and fill in the settings for your model provider."
+printf '%s\n' "Fill in the settings for your model provider in $project_root/.env."

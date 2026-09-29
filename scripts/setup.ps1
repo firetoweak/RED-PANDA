@@ -66,8 +66,13 @@ try {
         throw "Failed to install Python dependencies."
     }
 
+    $envFile = Join-Path $projectRoot ".env"
+    if (-not (Test-Path $envFile)) {
+        Copy-Item (Join-Path $projectRoot ".env.example") $envFile
+    }
+
     Write-Host "Setup complete."
-    Write-Host "Copy .env.example to .env and fill in the settings for your model provider."
+    Write-Host "Fill in the settings for your model provider in $envFile."
 }
 finally {
     Pop-Location

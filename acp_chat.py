@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,7 +9,6 @@ from acp import run_agent
 
 from helperme.bootstrap import bootstrap_assistant
 from helperme.channels.acp import HelperMeAcpAgent
-from helperme.config import InitialConfigCreated
 
 
 async def async_main(argv: list[str] | None = None) -> None:
@@ -59,8 +57,6 @@ async def async_main(argv: list[str] | None = None) -> None:
 def main() -> None:
     try:
         asyncio.run(async_main())
-    except InitialConfigCreated as error:
-        print(error, file=sys.stderr)
     except KeyboardInterrupt:
         pass
 

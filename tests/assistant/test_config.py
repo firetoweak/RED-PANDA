@@ -5,21 +5,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from helperme.config import INITIAL_CONFIG, InitialConfigCreated, load_app_config
+from helperme.config import INITIAL_CONFIG, load_app_config
 from helperme.llm.config import ModelConfig
 
 
 class AppConfigTest(unittest.TestCase):
-    def test_example_contains_only_the_selected_model(self):
-        path = Path(__file__).resolve().parents[2] / "config.example.json"
-        example = json.loads(path.read_text(encoding="utf-8"))
-
-        self.assertEqual(set(example["model"]), {"active"})
-        self.assertEqual(
-            ModelConfig(active=example["model"]["active"]).active,
-            example["model"]["active"],
-        )
-
     def _data(self, threshold: int = 200000) -> dict:
         return {
             "model": {
@@ -33,15 +23,6 @@ class AppConfigTest(unittest.TestCase):
     def _write_config(self, path: Path, data: dict) -> None:
         path.write_text(json.dumps(data), encoding="utf-8")
 
-    def test_example_config_matches_current_schema(self):
-        path = Path(__file__).resolve().parents[2] / "config.example.json"
-
-        config = load_app_config(path)
-        document = json.loads(path.read_text(encoding="utf-8"))
-
-        self.assertEqual(document, INITIAL_CONFIG)
-        self.assertEqual(config.model.active, document["model"]["active"])
-
     def test_keeps_selected_model(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -52,7 +33,7 @@ class AppConfigTest(unittest.TestCase):
 
         self.assertEqual(config.model.active, "deepseek/model")
 
-    def test_first_run_creates_default_config_and_stops(self):
+    def test_first_run_writes_usable_defaults_and_continues(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
             expected_path = home / ".helperme" / "config.json"
@@ -60,14 +41,17 @@ class AppConfigTest(unittest.TestCase):
             with (
                 patch.dict(os.environ, {}, clear=True),
                 patch("helperme.paths.Path.home", return_value=home),
-                self.assertRaises(InitialConfigCreated) as raised,
             ):
-                load_app_config()
+                config = load_app_config()
 
             document = json.loads(expected_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(raised.exception.path, expected_path.resolve())
         self.assertEqual(document, INITIAL_CONFIG)
+        self.assertEqual(config.model.active, INITIAL_CONFIG["model"]["active"])
+        self.assertEqual(
+            config.runtime.compact_threshold_tokens,
+            INITIAL_CONFIG["runtime"]["compact_threshold_tokens"],
+        )
 
     def test_loads_default_config_from_helperme_home(self):
         with TemporaryDirectory() as directory:

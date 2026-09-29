@@ -5,8 +5,6 @@ import asyncio
 import sys
 from pathlib import Path
 
-from helperme.config import InitialConfigCreated
-
 
 async def async_main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,8 +24,6 @@ async def async_main(argv: list[str] | None = None) -> None:
 def main(argv: list[str] | None = None) -> None:
     try:
         asyncio.run(async_main(argv))
-    except InitialConfigCreated as exc:
-        print(exc)
     except KeyboardInterrupt:
         print("\n已退出。")
 

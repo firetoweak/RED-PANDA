@@ -23,12 +23,6 @@ INITIAL_CONFIG = {
 }
 
 
-class InitialConfigCreated(RuntimeError):
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        super().__init__(f"已创建初始配置：{path}；请填写后重新启动")
-
-
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     compact_threshold_tokens: int
@@ -63,13 +57,9 @@ def _load_config_data(path: Path | None) -> dict:
     else:
         config_path = HelperMeHome.default().config_path
     if not config_path.is_file():
-        if uses_default_path:
-            _create_initial_config(config_path)
-            raise InitialConfigCreated(config_path)
-        raise FileNotFoundError(
-            f"配置不存在：{config_path}；请复制 "
-            "config.example.json 到该位置并填写真实配置"
-        )
+        if not uses_default_path:
+            raise FileNotFoundError(f"配置不存在：{config_path}")
+        _create_initial_config(config_path)
     with config_path.open("r", encoding="utf-8") as config_file:
         data = json.load(config_file)
     if not isinstance(data, dict):
