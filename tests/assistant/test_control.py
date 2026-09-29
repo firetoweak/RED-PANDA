@@ -29,7 +29,7 @@ from helperme.assistant.decision import JournalBackedLlmDecisionMaker
 from helperme.assistant.delivery import deliver_binding
 from helperme.assistant.sessions import AssistantSessions
 from helperme.assistant.toolsets import ToolSurface
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from helperme.runtime import (
     AgentRuntime,
     DomainFactCommitted,

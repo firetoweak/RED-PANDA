@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from helperme.assistant.assembly import build_assistant_assembly
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from helperme.paths import HelperMeHome
 from helperme.runtime import MemoryJournal
 from helperme.tools.spec import PydanticParameters

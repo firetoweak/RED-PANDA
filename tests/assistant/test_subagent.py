@@ -28,7 +28,7 @@ from helperme.assistant.subagent.subagent import (
     task_fact_arguments,
 )
 from helperme.llm.api import LLMProviderError
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from helperme.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,

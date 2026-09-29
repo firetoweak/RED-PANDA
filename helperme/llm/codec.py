@@ -5,10 +5,14 @@ from __future__ import annotations
 import builtins
 import traceback
 
-from helperme.llm.types import (
+from thinllm import (
     InvalidLLMResponse,
+    LLMAuthenticationError,
     LLMCallResult,
+    LLMContextLengthError,
+    LLMProviderError,
     LLMResponse,
+    LLMTransientError,
     LLMUsage,
     ToolCall,
 )
@@ -69,26 +73,16 @@ def encode_llm_error(error: BaseException) -> dict[str, object]:
 
 
 def decode_llm_error(payload: dict[str, object]) -> BaseException:
-    from helperme.llm.api import (
-        LLMAuthenticationError,
-        LLMContextLengthError,
-        LLMProviderError,
-        LLMTransientError,
-    )
-
     name = payload["exception_type"]
     message = payload["message"]
     known = {
-        "helperme.llm.api.LLMTransientError": LLMTransientError,
-        "helperme.llm.api.LLMContextLengthError": LLMContextLengthError,
-        "helperme.llm.api.LLMProviderError": LLMProviderError,
-        "helperme.llm.api.LLMAuthenticationError": LLMAuthenticationError,
+        "thinllm.errors.LLMTransientError": LLMTransientError,
+        "thinllm.errors.LLMContextLengthError": LLMContextLengthError,
+        "thinllm.errors.LLMProviderError": LLMProviderError,
+        "thinllm.errors.LLMAuthenticationError": LLMAuthenticationError,
         "helperme.llm.codec.LLMRemoteError": LLMRemoteError,
     }
-    if name in {
-        "helperme.llm.api.InvalidLLMResponse",
-        "helperme.llm.types.InvalidLLMResponse",
-    }:
+    if name == "thinllm.errors.InvalidLLMResponse":
         return InvalidLLMResponse(payload["code"], message)
     cls = known.get(name)
     if cls is LLMRemoteError:

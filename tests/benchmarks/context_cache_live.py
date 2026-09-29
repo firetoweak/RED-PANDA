@@ -142,7 +142,7 @@ def build_variants(
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
     from helperme.config import load_app_config
-    from helperme.llm.chat_completions import ChatCompletionsClient
+    from thinllm import ChatCompletionsClient
     from helperme.llm.config import load_endpoint
 
     root = runtime_data_root()

@@ -12,7 +12,7 @@ from helperme.assistant.compact.core import CompactBoundary, save_document
 from helperme.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
 from helperme.assistant.loop_guard_strategies import Action, ConsecutiveActions
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from helperme.paths import HelperMeHome
 from helperme.runtime import (
     Event,

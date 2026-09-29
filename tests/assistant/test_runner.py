@@ -8,7 +8,7 @@ from helperme.assistant.control import AssistantControlPlane
 from helperme.assistant.decision import decision_from_llm
 from helperme.assistant.runner import SessionScheduler
 from helperme.llm.api import InvalidLLMResponse, LLMProviderError
-from helperme.llm.types import LLMResponse, ToolCall
+from helperme.llm.api import LLMResponse, ToolCall
 from helperme.runtime import (
     AgentRuntime,
     MemoryJournal,

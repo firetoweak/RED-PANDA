@@ -6,7 +6,7 @@ import json
 import time
 
 from helperme.config import load_app_config
-from helperme.llm.chat_completions import ChatCompletionsClient
+from thinllm import ChatCompletionsClient
 from helperme.llm.config import load_endpoint
 
 

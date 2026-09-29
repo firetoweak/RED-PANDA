@@ -11,7 +11,7 @@ from helperme.llm.api import (
     encode_llm_error,
     encode_llm_result,
 )
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 class LlmCodecTest(unittest.TestCase):

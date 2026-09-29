@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 import json
 
+from thinllm.errors import InvalidLLMResponse
 
-class InvalidLLMResponse(ValueError):
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
+
+ContentDeltaSink = Callable[[str], Awaitable[None] | None]
 
 
 @dataclass(frozen=True)

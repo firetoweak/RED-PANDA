@@ -1,7 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Protocol
+
+from thinllm import (
+    ContentDeltaSink,
+    InvalidLLMResponse,
+    LLMAuthenticationError,
+    LLMCallResult,
+    LLMContextLengthError,
+    LLMProviderError,
+    LLMResponse,
+    LLMTransientError,
+    LLMUsage,
+    ToolCall,
+)
 
 from helperme.llm.codec import (
     LLMRemoteError,
@@ -11,12 +23,6 @@ from helperme.llm.codec import (
     encode_llm_result,
 )
 from helperme.llm.images import encode_images
-from helperme.llm.types import (
-    InvalidLLMResponse,
-    LLMCallResult,
-    LLMResponse,
-    ToolCall,
-)
 
 
 __all__ = [
@@ -30,6 +36,7 @@ __all__ = [
     "LLMRemoteError",
     "LLMResponse",
     "LLMTransientError",
+    "LLMUsage",
     "ToolCall",
     "decode_llm_error",
     "decode_llm_result",
@@ -37,25 +44,6 @@ __all__ = [
     "encode_llm_error",
     "encode_llm_result",
 ]
-
-
-class LLMTransientError(RuntimeError):
-    pass
-
-
-class LLMContextLengthError(RuntimeError):
-    pass
-
-
-class LLMProviderError(RuntimeError):
-    pass
-
-
-class LLMAuthenticationError(LLMProviderError):
-    pass
-
-
-ContentDeltaSink = Callable[[str], Awaitable[None] | None]
 
 
 class LLMApi(Protocol):

@@ -13,13 +13,13 @@ from helperme.assistant.host.supervisor import HostSupervisor
 from helperme.assistant.conversations import AssistantQueries
 from helperme.assistant.delivery import DeliverySink, PreviewSink
 from helperme.config import AppConfig, assistant_config_from_app, load_app_config
-from helperme.llm.chat_completions import ChatCompletionsClient
 from helperme.llm.config import load_endpoint
 from helperme.paths import HelperMeHome
 from helperme.mcp.composition import build_mcp
 from helperme.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
 from helperme.skills.composition import build_skills
 from helperme.skills.summarizer import LlmSkillDiffSummarizer
+from thinllm import ChatCompletionsClient
 
 
 class UnboundHostLlm:

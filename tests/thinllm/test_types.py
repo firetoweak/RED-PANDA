@@ -1,6 +1,6 @@
 import unittest
 
-from helperme.llm.types import InvalidLLMResponse, LLMResponse, LLMUsage, ToolCall
+from thinllm import InvalidLLMResponse, LLMResponse, LLMUsage, ToolCall
 
 
 class LLMResponseContractTest(unittest.TestCase):

@@ -16,6 +16,7 @@ SANDBOX_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "sandbox"
 CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "channels"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "helperme" / "config.py"
 BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "helperme" / "bootstrap.py"
+THINLLM_ROOT = Path(__file__).resolve().parents[2] / "thinllm"
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -134,14 +135,18 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_bootstrap_not_config_owns_the_concrete_llm_client(self):
-        self.assertNotIn(
-            "helperme.llm.chat_completions",
-            _imported_modules(CONFIG_PATH),
-        )
-        self.assertIn(
-            "helperme.llm.chat_completions",
-            _imported_modules(BOOTSTRAP_PATH),
-        )
+        self.assertNotIn("thinllm", _imported_modules(CONFIG_PATH))
+        self.assertIn("thinllm", _imported_modules(BOOTSTRAP_PATH))
+
+    def test_thinllm_does_not_import_helperme(self):
+        offenders: list[str] = []
+        for path in sorted(THINLLM_ROOT.rglob("*.py")):
+            leaked = sorted(_imports_any(_imported_modules(path), {"helperme"}))
+            if leaked:
+                offenders.append(
+                    f"{path.relative_to(THINLLM_ROOT)}: {', '.join(leaked)}"
+                )
+        self.assertEqual(offenders, [])
 
     def test_worker_config_does_not_construct_the_concrete_llm_client(self):
         import inspect

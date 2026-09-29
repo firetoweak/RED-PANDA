@@ -13,7 +13,7 @@ from helperme.assistant.assembly import build_assistant_assembly
 from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from helperme.assistant.management import LOAD_MANAGEMENT_TOOLS
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from helperme.paths import HelperMeHome
 from helperme.runtime import DecisionCancelled, MemoryJournal, StepCommitted
 from tests.fixtures.workspaces import workspace_record

@@ -9,16 +9,16 @@ import json
 
 import httpx
 
-from helperme.llm.api import (
-    ContentDeltaSink,
+from thinllm.errors import (
+    InvalidLLMResponse,
     LLMAuthenticationError,
     LLMContextLengthError,
     LLMProviderError,
     LLMTransientError,
 )
-from helperme.llm.config import Endpoint
-from helperme.llm.types import (
-    InvalidLLMResponse,
+from thinllm.providers import Endpoint
+from thinllm.types import (
+    ContentDeltaSink,
     LLMCallResult,
     LLMResponse,
     LLMUsage,
@@ -47,7 +47,7 @@ class _Stream:
 
 
 class ChatCompletionsClient:
-    """A Host-owned LLMApi client bound to the selected provider endpoint."""
+    """A streaming chat client bound to one provider endpoint."""
 
     def __init__(
         self,

@@ -10,7 +10,7 @@ import pytest
 from helperme.runtime import MemoryJournal, RuntimeStatus
 from tests.session_scheduler import build_settling_assistant as build_live_assistant
 from helperme.config import assistant_config_from_app, load_app_config
-from helperme.llm.chat_completions import ChatCompletionsClient
+from thinllm import ChatCompletionsClient
 from helperme.llm.config import load_endpoint
 from helperme.paths import HelperMeHome
 from helperme.sandbox.registry import WorkspaceRegistry

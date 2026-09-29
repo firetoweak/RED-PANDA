@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import httpx
 
-from helperme.llm.api import (
+from thinllm import (
+    ChatCompletionsClient,
+    Endpoint,
+    InvalidLLMResponse,
     LLMAuthenticationError,
     LLMContextLengthError,
     LLMTransientError,
 )
-from helperme.llm.chat_completions import ChatCompletionsClient
-from helperme.llm.config import Endpoint
-from helperme.llm.types import InvalidLLMResponse
 
 
 def _endpoint(
@@ -42,7 +42,7 @@ _DONE_OK = _stream(
 
 class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        retry_delays = patch("helperme.llm.chat_completions._RETRY_DELAYS", (0, 0, 0))
+        retry_delays = patch("thinllm.chat_completions._RETRY_DELAYS", (0, 0, 0))
         retry_delays.start()
         self.addCleanup(retry_delays.stop)
 

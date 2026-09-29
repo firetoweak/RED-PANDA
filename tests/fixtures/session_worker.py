@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 class ProcessLlm:

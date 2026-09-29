@@ -8,6 +8,12 @@ Assistant → LLMApi → Worker LLM Port → Host LLM Client → Provider
 
 Worker 通过 Host LLM port 调用，不能直接连接 Provider。
 
+## thinllm 与 HelperMe 的分界
+
+Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `helperme` 平行的独立包 `thinllm` 中。`thinllm` 不 import `helperme`，由 `tests/architecture/` 守住；它只回答「给定 `provider/model` 与一份环境，怎样发出一次流式调用」。
+
+HelperMe 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件编码、项目 `.env` 加载以及面向用户的失败文案。拆分是为了让 Provider 层的膨胀有明确的边界，不是为了单独发布；`thinllm` 不做成通用网关。
+
 ## 模型标识与 Provider 表
 
 模型标识写作 `provider/model`，按第一个 `/` 拆分：前半段选 Provider，后半段原样作为上游模型名。选模型就是选 Provider，HelperMe 不做路由。

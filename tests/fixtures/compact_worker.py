@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 HANDOFF = """## 用户要什么

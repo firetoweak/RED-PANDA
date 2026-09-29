@@ -20,11 +20,11 @@ from helperme.skills.sources import SkillSourceRouter
 from helperme.skills.summarizer import SkillDiffSummarizer
 from helperme.skills.summarizer import InvalidSkillSummaryResponse
 from helperme.llm.api import (
+    InvalidLLMResponse,
     LLMContextLengthError,
     LLMProviderError,
     LLMTransientError,
 )
-from helperme.llm.types import InvalidLLMResponse
 from helperme.skills.install_candidates import SkillInstallCandidateStore
 from helperme.skills.models import SkillInstallCandidate
 from helperme.skills.errors import (

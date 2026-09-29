@@ -23,7 +23,7 @@ from helperme.assistant.subagent.subagent import (
 )
 from helperme.assistant.toolsets import LOAD_TOOLSET
 from helperme.config import AssistantConfig
-from helperme.llm.types import LLMCallResult, LLMResponse, LLMUsage
+from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from helperme.paths import HelperMeHome
 from helperme.runtime import MemoryJournal
 from helperme.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
