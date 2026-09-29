@@ -15,7 +15,7 @@ from helperme.paths import HelperMeHome
 CONFIG_PATH_ENV = "HELPERME_CONFIG"
 INITIAL_CONFIG = {
     "model": {
-        "active": "deepseek-v4-pro",
+        "active": "deepseek/deepseek-v4-pro",
     },
     "runtime": {
         "compact_threshold_tokens": 200000,

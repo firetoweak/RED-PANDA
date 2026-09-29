@@ -1,71 +1,95 @@
-"""Application model selection and project-owned Ferro connection settings."""
+"""Application model selection and built-in provider connection settings."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
 
-FERRO_VERSION = "v1.5.8"
-FERRO_BASE_URL = "http://127.0.0.1:18787/v1"
-FERRO_MASTER_KEY_ENV = "FERRO_MASTER_KEY"
-FERRO_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True, slots=True)
+class Provider:
+    """A built-in OpenAI-compatible provider; base_url_env marks local deployments."""
+
+    api_key_env: str
+    base_url: str | None = None
+    base_url_env: str | None = None
+    api_key_required: bool = True
+    pads_reasoning_content: bool = False
+
+
+PROVIDERS = {
+    "deepseek": Provider(
+        api_key_env="DEEPSEEK_API_KEY",
+        base_url="https://api.deepseek.com/v1",
+        pads_reasoning_content=True,
+    ),
+    "qwen": Provider(
+        api_key_env="QWEN_API_KEY",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    ),
+    "vllm": Provider(
+        api_key_env="VLLM_API_KEY",
+        base_url_env="VLLM_BASE_URL",
+        api_key_required=False,
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
 class ModelConfig:
-    """The HelperMe-selected model name offered by Ferro."""
+    """The HelperMe-selected model, written as provider/model."""
 
     active: str
 
     def __post_init__(self) -> None:
-        if type(self.active) is not str or not self.active.strip():
-            raise ValueError("model.active must be a non-empty str")
-        object.__setattr__(self, "active", self.active.strip())
+        if type(self.active) is not str:
+            raise ValueError("model.active must be a str")
+        active = self.active.strip()
+        provider, _, model = active.partition("/")
+        if provider not in PROVIDERS or not model:
+            raise ValueError(
+                "model.active 必须形如 <provider>/<model>，provider 为 "
+                + "、".join(PROVIDERS)
+            )
+        object.__setattr__(self, "active", active)
+
+    @property
+    def provider(self) -> str:
+        return self.active.partition("/")[0]
 
 
 @dataclass(frozen=True, slots=True)
-class GatewayConfig:
-    """Connection details for the project-local Ferro HTTP service."""
+class Endpoint:
+    """Resolved connection details for the selected provider."""
 
+    provider: str
     base_url: str
-    api_key: str
-
-    def __post_init__(self) -> None:
-        if type(self.base_url) is not str or not self.base_url.strip():
-            raise ValueError("gateway base_url must be a non-empty str")
-        base_url = self.base_url.strip().rstrip("/")
-        parsed = urlsplit(base_url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.netloc
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-            or not parsed.path.rstrip("/").endswith("/v1")
-        ):
-            raise ValueError("gateway base_url must be an HTTP(S) /v1 URL")
-        if type(self.api_key) is not str or not self.api_key.strip():
-            raise ValueError("FERRO_MASTER_KEY must be a non-empty str")
-        object.__setattr__(self, "base_url", base_url)
-        object.__setattr__(self, "api_key", self.api_key.strip())
+    api_key: str | None
+    pads_reasoning_content: bool
 
 
-def load_gateway_config() -> GatewayConfig:
-    """Load the project .env for the HTTP client; OS environment wins."""
-    load_dotenv(FERRO_PROJECT_ROOT / ".env", override=False)
-    api_key = os.environ.get(FERRO_MASTER_KEY_ENV)
-    if api_key is None:
-        raise ValueError(
-            f"请在项目 .env 中设置 {FERRO_MASTER_KEY_ENV}，"
-            "并确保 Ferro 使用同一个 Master Key"
-        )
-    return GatewayConfig(
-        base_url=FERRO_BASE_URL,
+def load_endpoint(model: ModelConfig) -> Endpoint:
+    """Load the project .env for the selected provider; OS environment wins."""
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    provider = PROVIDERS[model.provider]
+    if provider.base_url_env is None:
+        base_url = provider.base_url
+    else:
+        base_url = os.environ.get(provider.base_url_env, "").strip()
+        if not base_url:
+            raise ValueError(f"请在项目 .env 中设置 {provider.base_url_env}")
+    api_key = os.environ.get(provider.api_key_env, "").strip() or None
+    if api_key is None and provider.api_key_required:
+        raise ValueError(f"请在项目 .env 中设置 {provider.api_key_env}")
+    return Endpoint(
+        provider=model.provider,
+        base_url=base_url.rstrip("/"),
         api_key=api_key,
+        pads_reasoning_content=provider.pads_reasoning_content,
     )

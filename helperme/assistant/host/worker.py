@@ -154,6 +154,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_transport=peer.request,
         home=home,
     )
+    config.llm.bind_attachment_reader(assembly.read_attachment)
     async with config.llm, assembly.mcp.client_manager:
         reader = asyncio.create_task(peer.run())
         stopped = asyncio.create_task(stop.wait())

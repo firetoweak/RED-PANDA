@@ -13,8 +13,8 @@ from helperme.assistant.host.supervisor import HostSupervisor
 from helperme.assistant.conversations import AssistantQueries
 from helperme.assistant.delivery import DeliverySink, PreviewSink
 from helperme.config import AppConfig, assistant_config_from_app, load_app_config
-from helperme.llm.config import load_gateway_config
-from helperme.llm.ferro_client import FerroClient
+from helperme.llm.chat_completions import ChatCompletionsClient
+from helperme.llm.config import load_endpoint
 from helperme.paths import HelperMeHome
 from helperme.mcp.composition import build_mcp
 from helperme.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
@@ -66,7 +66,7 @@ async def bootstrap_assistant(
     home = HelperMeHome.default()
     home.initialize()
     store = SessionStore(home.runtime_sessions_root)
-    llm = FerroClient(load_gateway_config())
+    llm = ChatCompletionsClient(load_endpoint(config.model))
     workspaces = WorkspaceRegistry.load(home.workspaces_path)
     # 只有调用方明确给出路径才登记。TUI / ACP 传入启动目录或 --workspace；
     # Web / Telegram 缺省不从进程 cwd 偷建工作区。

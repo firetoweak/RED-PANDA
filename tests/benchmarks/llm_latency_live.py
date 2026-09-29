@@ -6,12 +6,12 @@ import json
 import time
 
 from helperme.config import load_app_config
-from helperme.llm.config import load_gateway_config
-from helperme.llm.ferro_client import FerroClient
+from helperme.llm.chat_completions import ChatCompletionsClient
+from helperme.llm.config import load_endpoint
 
 
 async def _stream_once(
-    client: FerroClient,
+    client: ChatCompletionsClient,
     model: str,
     prompt: str,
     thinking: bool,
@@ -52,8 +52,8 @@ async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
         "temperature": 0,
     }
     client_started = time.perf_counter()
-    async with FerroClient(
-        load_gateway_config(), request_options=request_options
+    async with ChatCompletionsClient(
+        load_endpoint(app.model), request_options=request_options
     ) as client:
         client_created = time.perf_counter()
         rows = []

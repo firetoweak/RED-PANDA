@@ -66,64 +66,8 @@ try {
         throw "Failed to install Python dependencies."
     }
 
-    $envFile = Join-Path $projectRoot ".env"
-    if (Test-Path -LiteralPath $envFile -PathType Leaf) {
-        $envStatus = & $python -c "from dotenv import dotenv_values; v=dotenv_values('.env').get('FERRO_MASTER_KEY'); print('ok' if v and 'replace_with_' not in v.lower() else 'missing')"
-        if ($LASTEXITCODE -ne 0 -or $envStatus -ne "ok") {
-            throw "Set FERRO_MASTER_KEY in .env, then run this script again."
-        }
-    }
-    else {
-        $masterKey = & $python -c "import secrets; print('fgw_' + secrets.token_hex(16))"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to generate the Ferro access key."
-        }
-        $envContent = "FERRO_MASTER_KEY=`"$masterKey`"`n"
-        [System.IO.File]::WriteAllText(
-            $envFile,
-            $envContent,
-            [System.Text.UTF8Encoding]::new($false)
-        )
-    }
-
-    $ferroVersion = & $python -c "from helperme.llm.config import FERRO_VERSION; print(FERRO_VERSION)"
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to read the pinned Ferro version."
-    }
-    $installDir = Join-Path $projectRoot ".tools\ferro"
-    New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-
-    $oldVersion = $env:FERROGW_VERSION
-    $oldInstallDir = $env:FERROGW_INSTALL_DIR
-    $oldNoModifyPath = $env:FERROGW_NO_MODIFY_PATH
-    try {
-        $env:FERROGW_VERSION = $ferroVersion
-        $env:FERROGW_INSTALL_DIR = $installDir
-        $env:FERROGW_NO_MODIFY_PATH = "1"
-        Invoke-RestMethod "https://get.ferrolabs.ai/install.ps1" | Invoke-Expression
-    }
-    finally {
-        if ($null -eq $oldVersion) { Remove-Item Env:FERROGW_VERSION -ErrorAction SilentlyContinue }
-        else { $env:FERROGW_VERSION = $oldVersion }
-        if ($null -eq $oldInstallDir) { Remove-Item Env:FERROGW_INSTALL_DIR -ErrorAction SilentlyContinue }
-        else { $env:FERROGW_INSTALL_DIR = $oldInstallDir }
-        if ($null -eq $oldNoModifyPath) { Remove-Item Env:FERROGW_NO_MODIFY_PATH -ErrorAction SilentlyContinue }
-        else { $env:FERROGW_NO_MODIFY_PATH = $oldNoModifyPath }
-    }
-
-    $binary = Join-Path $installDir "ferrogw.exe"
-    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
-        throw "Ferro install failed: $binary was not found"
-    }
-    $gatewayKey = & $python -c "from dotenv import dotenv_values; print(dotenv_values('.env')['FERRO_MASTER_KEY'])"
-    if ($LASTEXITCODE -ne 0 -or -not $gatewayKey) {
-        throw "Failed to read FERRO_MASTER_KEY."
-    }
     Write-Host "Setup complete."
-    Write-Host "Add DEEPSEEK_API_KEY to .env before starting Ferro."
-    $gatewayLogin = & $python -c "from urllib.parse import urlsplit; from helperme.llm.config import FERRO_BASE_URL; print(f'http://localhost:{urlsplit(FERRO_BASE_URL).port}/login')"
-    Write-Host "Gateway login: $gatewayLogin"
-    Write-Host "Gateway key: $gatewayKey"
+    Write-Host "Copy .env.example to .env and fill in the settings for your model provider."
 }
 finally {
     Pop-Location

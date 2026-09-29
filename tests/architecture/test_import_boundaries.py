@@ -135,11 +135,11 @@ class LayerImportBoundaryTest(unittest.TestCase):
 
     def test_bootstrap_not_config_owns_the_concrete_llm_client(self):
         self.assertNotIn(
-            "helperme.llm.ferro_client",
+            "helperme.llm.chat_completions",
             _imported_modules(CONFIG_PATH),
         )
         self.assertIn(
-            "helperme.llm.ferro_client",
+            "helperme.llm.chat_completions",
             _imported_modules(BOOTSTRAP_PATH),
         )
 
@@ -148,7 +148,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
 
         from helperme.bootstrap import worker_config
 
-        self.assertNotIn("FerroClient", inspect.getsource(worker_config))
+        self.assertNotIn("ChatCompletionsClient", inspect.getsource(worker_config))
 
     def test_assistant_does_not_import_foreign_llm_clients(self):
         offenders: list[str] = []

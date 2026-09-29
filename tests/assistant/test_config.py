@@ -23,7 +23,7 @@ class AppConfigTest(unittest.TestCase):
     def _data(self, threshold: int = 200000) -> dict:
         return {
             "model": {
-                "active": "model",
+                "active": "deepseek/model",
             },
             "runtime": {
                 "compact_threshold_tokens": threshold,
@@ -51,7 +51,7 @@ class AppConfigTest(unittest.TestCase):
 
             config = load_app_config(path)
 
-        self.assertEqual(config.model.active, "model")
+        self.assertEqual(config.model.active, "deepseek/model")
 
     def test_first_run_creates_default_config_and_stops(self):
         with TemporaryDirectory() as directory:
@@ -83,7 +83,7 @@ class AppConfigTest(unittest.TestCase):
             ):
                 config = load_app_config()
 
-        self.assertEqual(config.model.active, "model")
+        self.assertEqual(config.model.active, "deepseek/model")
         self.assertEqual(config.runtime.compact_threshold_tokens, 200000)
         self.assertIsNone(config.channels.telegram)
 
@@ -133,7 +133,7 @@ class AppConfigTest(unittest.TestCase):
             ):
                 config = load_app_config(path)
 
-        self.assertEqual(config.model.active, "model")
+        self.assertEqual(config.model.active, "deepseek/model")
 
     def test_environment_overrides_default_path(self):
         with TemporaryDirectory() as directory:
@@ -143,7 +143,7 @@ class AppConfigTest(unittest.TestCase):
             with patch.dict(os.environ, {"HELPERME_CONFIG": str(path)}):
                 config = load_app_config()
 
-        self.assertEqual(config.model.active, "model")
+        self.assertEqual(config.model.active, "deepseek/model")
 
     def test_explicit_missing_path_is_not_created(self):
         with TemporaryDirectory() as directory:
@@ -163,6 +163,12 @@ class AppConfigTest(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 load_app_config(path)
+
+    def test_rejects_model_without_a_built_in_provider(self):
+        for active in ("deepseek-v4-pro", "openai/gpt", "deepseek/"):
+            with self.subTest(active=active):
+                with self.assertRaisesRegex(ValueError, "<provider>/<model>"):
+                    ModelConfig(active=active)
 
     def test_rejects_gateway_and_model_parameter_config(self):
         with TemporaryDirectory() as directory:

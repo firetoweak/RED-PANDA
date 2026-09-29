@@ -84,6 +84,7 @@ class AssistantAssembly:
     control: AssistantControlPlane
     subagents: SubAgentHost
     catalog: CapabilityCatalog
+    read_attachment: Callable[[str], bytes]
     compact: CompactBoundary | None = None
 
 
@@ -257,13 +258,6 @@ async def build_assistant_assembly(
         projector,
         session_transport,
     )
-    bind_reader = getattr(config.llm, "bind_attachment_reader", None)
-    if bind_reader is not None:
-        bind_reader(
-            compact_context.read_attachment
-            if compact_context.is_reader
-            else attachments.read
-        )
     bindings = {
         **bind_executor_tools(
             builtin_tools,
@@ -379,6 +373,11 @@ async def build_assistant_assembly(
         control=control,
         subagents=subagents,
         catalog=catalog,
+        read_attachment=(
+            compact_context.read_attachment
+            if compact_context.is_reader
+            else attachments.read
+        ),
     )
 
 

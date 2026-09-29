@@ -142,8 +142,8 @@ def build_variants(
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
     from helperme.config import load_app_config
-    from helperme.llm.config import load_gateway_config
-    from helperme.llm.ferro_client import FerroClient
+    from helperme.llm.chat_completions import ChatCompletionsClient
+    from helperme.llm.config import load_endpoint
 
     root = runtime_data_root()
     drawer = Path(args.drawer).resolve() if args.drawer else _default_drawer(root)
@@ -166,8 +166,8 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     salts = {name: secrets.token_urlsafe(32) for name in variants}
     rows: list[dict[str, object]] = []
     clients = {
-        name: FerroClient(
-            load_gateway_config(),
+        name: ChatCompletionsClient(
+            load_endpoint(app.model),
             request_options={
                 "max_tokens": 1,
                 "temperature": 0,

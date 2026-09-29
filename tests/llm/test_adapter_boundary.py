@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -10,15 +11,19 @@ from helperme.llm.api import (
     LLMContextLengthError,
     LLMTransientError,
 )
-from helperme.llm.config import GatewayConfig
-from helperme.llm.ferro_client import FerroClient
+from helperme.llm.chat_completions import ChatCompletionsClient
+from helperme.llm.config import Endpoint
 from helperme.llm.types import InvalidLLMResponse
 
 
-def _config() -> GatewayConfig:
-    return GatewayConfig(
+def _endpoint(
+    *, api_key: str | None = "provider-key", pads_reasoning_content: bool = False
+) -> Endpoint:
+    return Endpoint(
+        provider="test",
         base_url="http://127.0.0.1:8080/v1",
-        api_key="ferro-key",
+        api_key=api_key,
+        pads_reasoning_content=pads_reasoning_content,
     )
 
 
@@ -29,7 +34,18 @@ def _stream(*chunks: dict[str, object]) -> bytes:
     ) + b"data: [DONE]\n\n"
 
 
-class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
+_DONE_OK = _stream(
+    {"choices": [{"delta": {"content": "ok"}}]},
+    {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}},
+)
+
+
+class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        retry_delays = patch("helperme.llm.chat_completions._RETRY_DELAYS", (0, 0, 0))
+        retry_delays.start()
+        self.addCleanup(retry_delays.stop)
+
     async def test_streams_content_reasoning_tools_and_usage(self):
         body = _stream(
             {"choices": [{"delta": {"role": "assistant", "content": "hel"}}]},
@@ -69,8 +85,8 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
                 headers={"content-type": "text/event-stream"},
             )
 
-        client = FerroClient(
-            _config(),
+        client = ChatCompletionsClient(
+            _endpoint(),
             request_options={"reasoning_effort": "high"},
             transport=httpx.MockTransport(handle),
         )
@@ -79,7 +95,7 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
         async with client:
             result = await client.chat(
                 [{"role": "user", "content": "read"}],
-                "logical-model",
+                "test/logical-model",
                 [{"type": "function", "function": {"name": "read_file"}}],
                 on_content_delta=content.append,
                 on_reasoning_delta=reasoning.append,
@@ -88,7 +104,8 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
         request = requests[0]
         payload = json.loads(request.content)
         self.assertEqual(str(request.url), "http://127.0.0.1:8080/v1/chat/completions")
-        self.assertEqual(request.headers["authorization"], "Bearer ferro-key")
+        self.assertEqual(request.headers["authorization"], "Bearer provider-key")
+        self.assertEqual(payload["model"], "logical-model")
         self.assertEqual(payload["reasoning_effort"], "high")
         self.assertTrue(payload["stream"])
         self.assertEqual(payload["stream_options"], {"include_usage": True})
@@ -104,36 +121,49 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.usage.output_tokens, 5)
         self.assertEqual(result.usage.cached_input_tokens, 96)
 
-    async def test_encodes_images_at_the_client_boundary(self):
-        body = _stream(
-            {"choices": [{"delta": {"content": "done"}}]},
-            {"choices": [], "usage": {"prompt_tokens": 2, "completion_tokens": 1}},
-        )
+    async def test_keyless_provider_sends_no_authorization(self):
         requests: list[httpx.Request] = []
 
         def handle(request: httpx.Request) -> httpx.Response:
             requests.append(request)
-            return httpx.Response(200, content=body)
+            return httpx.Response(200, content=_DONE_OK)
 
-        client = FerroClient(
-            _config(),
-            transport=httpx.MockTransport(handle),
+        client = ChatCompletionsClient(
+            _endpoint(api_key=None), transport=httpx.MockTransport(handle)
         )
-        client.bind_attachment_reader(lambda attachment_id: b"image bytes")
         async with client:
-            await client.chat(
-                [{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "look"},
-                        {"type": "image", "id": "image-1", "mime": "image/png"},
-                    ],
-                }],
-                "logical-model",
-            )
+            await client.chat([], "test/logical-model")
 
-        content = json.loads(requests[0].content)["messages"][0]["content"]
-        self.assertEqual(content[1]["image_url"]["url"], "data:image/png;base64,aW1hZ2UgYnl0ZXM=")
+        self.assertNotIn("authorization", requests[0].headers)
+
+    async def test_only_padding_providers_fill_missing_reasoning_content(self):
+        history = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "plain"},
+            {"role": "assistant", "content": "kept", "reasoning_content": "why"},
+        ]
+        for pads in (True, False):
+            with self.subTest(pads_reasoning_content=pads):
+                requests: list[httpx.Request] = []
+
+                def handle(request: httpx.Request) -> httpx.Response:
+                    requests.append(request)
+                    return httpx.Response(200, content=_DONE_OK)
+
+                client = ChatCompletionsClient(
+                    _endpoint(pads_reasoning_content=pads),
+                    transport=httpx.MockTransport(handle),
+                )
+                async with client:
+                    await client.chat(history, "test/logical-model")
+
+                messages = json.loads(requests[0].content)["messages"]
+                self.assertNotIn("reasoning_content", messages[0])
+                if pads:
+                    self.assertEqual(messages[1]["reasoning_content"], "")
+                else:
+                    self.assertNotIn("reasoning_content", messages[1])
+                self.assertEqual(messages[2]["reasoning_content"], "why")
 
     async def test_http_error_codes_map_to_helperme_errors(self):
         cases = (
@@ -143,8 +173,8 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
         )
         for status, code, error_type in cases:
             with self.subTest(status=status, code=code):
-                client = FerroClient(
-                    _config(),
+                client = ChatCompletionsClient(
+                    _endpoint(),
                     transport=httpx.MockTransport(
                         lambda request: httpx.Response(
                             status,
@@ -154,22 +184,37 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
                 )
                 async with client:
                     with self.assertRaisesRegex(error_type, "upstream"):
-                        await client.chat([], "logical-model")
+                        await client.chat([], "test/logical-model")
 
-    async def test_mid_stream_error_is_reported_as_transient(self):
-        body = (
-            b'data: {"error":{"code":"stream_timeout",'
-            b'"message":"gateway timed out"}}\n\n'
-        )
-        client = FerroClient(
-            _config(),
-            transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, content=body)
-            ),
-        )
+    async def test_transient_failure_before_the_stream_is_retried(self):
+        responses = [httpx.Response(503, json={"error": {"message": "busy"}})]
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            return responses.pop(0) if responses else httpx.Response(200, content=_DONE_OK)
+
+        client = ChatCompletionsClient(_endpoint(), transport=httpx.MockTransport(handle))
         async with client:
-            with self.assertRaisesRegex(LLMTransientError, "gateway timed out"):
-                await client.chat([], "logical-model")
+            result = await client.chat([], "test/logical-model")
+
+        self.assertEqual(result.response.content, "ok")
+
+    async def test_failure_after_the_stream_started_is_not_retried(self):
+        requests: list[httpx.Request] = []
+
+        async def interrupted():
+            yield b'data: {"choices":[{"delta":{"content":"par"}}]}\n\n'
+            raise httpx.ReadError("connection reset")
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, content=interrupted())
+
+        client = ChatCompletionsClient(_endpoint(), transport=httpx.MockTransport(handle))
+        async with client:
+            with self.assertRaisesRegex(LLMTransientError, "connection reset"):
+                await client.chat([], "test/logical-model")
+
+        self.assertEqual(len(requests), 1)
 
     async def test_requires_done_marker_and_usage(self):
         cases = (
@@ -178,19 +223,19 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
         )
         for body, message in cases:
             with self.subTest(message=message):
-                client = FerroClient(
-                    _config(),
+                client = ChatCompletionsClient(
+                    _endpoint(),
                     transport=httpx.MockTransport(
                         lambda request, body=body: httpx.Response(200, content=body)
                     ),
                 )
                 async with client:
                     with self.assertRaisesRegex(InvalidLLMResponse, message):
-                        await client.chat([], "logical-model")
+                        await client.chat([], "test/logical-model")
 
     async def test_callback_failure_is_not_wrapped(self):
-        client = FerroClient(
-            _config(),
+        client = ChatCompletionsClient(
+            _endpoint(),
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(200, content=_stream(
                     {"choices": [{"delta": {"content": "shown"}}]},
@@ -204,4 +249,4 @@ class FerroClientStreamingTest(unittest.IsolatedAsyncioTestCase):
 
         async with client:
             with self.assertRaisesRegex(RuntimeError, "preview failed"):
-                await client.chat([], "logical-model", on_content_delta=fail)
+                await client.chat([], "test/logical-model", on_content_delta=fail)

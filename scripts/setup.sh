@@ -75,44 +75,5 @@ fi
 
 "$uv" pip install --python "$python" pip -r requirements.txt
 
-if [ -f .env ]; then
-  env_status=$($python -c 'from dotenv import dotenv_values; v=dotenv_values(".env").get("FERRO_MASTER_KEY"); print("ok" if v and "replace_with_" not in v.lower() else "missing")')
-  if [ "$env_status" != "ok" ]; then
-    printf '%s\n' "Set FERRO_MASTER_KEY in .env, then run this script again." >&2
-    exit 1
-  fi
-else
-  master_key="fgw_$($python -c 'import secrets; print(secrets.token_hex(16))')"
-  umask 077
-  FERRO_SETUP_MASTER_KEY="$master_key" "$python" - <<'PY'
-import os
-from pathlib import Path
-
-value = os.environ["FERRO_SETUP_MASTER_KEY"]
-quoted = '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-Path(".env").write_text(f"FERRO_MASTER_KEY={quoted}\n", encoding="utf-8")
-Path(".env").chmod(0o600)
-PY
-fi
-
-ferro_version=$($python -c 'from helperme.llm.config import FERRO_VERSION; print(FERRO_VERSION)')
-install_dir="$project_root/.tools/ferro"
-mkdir -p "$install_dir"
-installer=$(curl -fsSL https://get.ferrolabs.ai/install.sh)
-printf '%s\n' "$installer" | env \
-  FERROGW_VERSION="$ferro_version" \
-  FERROGW_INSTALL_DIR="$install_dir" \
-  FERROGW_NO_MODIFY_PATH=1 \
-  sh
-
-if [ ! -x "$install_dir/ferrogw" ]; then
-  printf '%s\n' "Ferro install failed: $install_dir/ferrogw was not found" >&2
-  exit 1
-fi
-
-gateway_key=$($python -c 'from dotenv import dotenv_values; print(dotenv_values(".env")["FERRO_MASTER_KEY"])')
 printf '%s\n' "Setup complete."
-printf '%s\n' "Add DEEPSEEK_API_KEY to .env before starting Ferro."
-gateway_login=$($python -c 'from urllib.parse import urlsplit; from helperme.llm.config import FERRO_BASE_URL; print(f"http://localhost:{urlsplit(FERRO_BASE_URL).port}/login")')
-printf '%s\n' "Gateway login: $gateway_login"
-printf '%s\n' "Gateway key: $gateway_key"
+printf '%s\n' "Copy .env.example to .env and fill in the settings for your model provider."
