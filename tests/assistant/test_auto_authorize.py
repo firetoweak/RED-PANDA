@@ -18,7 +18,7 @@ class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
         host._auto_authorize.remember("enabled", True)
         host.selections = {
             "tui": "enabled",
-            "telegram:chat": "disabled",
+            "web": "disabled",
         }
         host.request = AsyncMock()
 

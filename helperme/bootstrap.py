@@ -69,7 +69,7 @@ async def bootstrap_assistant(
     llm = ChatCompletionsClient(load_endpoint(config.model))
     workspaces = WorkspaceRegistry.load(home.workspaces_path)
     # 只有调用方明确给出路径才登记。TUI / ACP 传入启动目录或 --workspace；
-    # Web / Telegram 缺省不从进程 cwd 偷建工作区。
+    # Web 缺省不从进程 cwd 偷建工作区。
     workspace = (
         None if workspace_path is None else workspaces.register_path(workspace_path)
     )

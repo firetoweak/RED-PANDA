@@ -28,7 +28,6 @@ class AppConfigTest(unittest.TestCase):
             "runtime": {
                 "compact_threshold_tokens": threshold,
             },
-            "channels": {},
         }
 
     def _write_config(self, path: Path, data: dict) -> None:
@@ -41,7 +40,7 @@ class AppConfigTest(unittest.TestCase):
         document = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(document, INITIAL_CONFIG)
-        self.assertIsNotNone(config.channels.telegram)
+        self.assertEqual(config.model.active, document["model"]["active"])
 
     def test_keeps_selected_model(self):
         with TemporaryDirectory() as directory:
@@ -85,42 +84,6 @@ class AppConfigTest(unittest.TestCase):
 
         self.assertEqual(config.model.active, "deepseek/model")
         self.assertEqual(config.runtime.compact_threshold_tokens, 200000)
-        self.assertIsNone(config.channels.telegram)
-
-    def test_parses_telegram_config(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            data = self._data()
-            data["channels"] = {
-                "telegram": {
-                    "bot_token": " token ",
-                    "allowed_chat_id": -7,
-                }
-            }
-            self._write_config(path, data)
-
-            telegram = load_app_config(path).channels.telegram
-
-        self.assertIsNotNone(telegram)
-        self.assertEqual(telegram.bot_token, "token")
-        self.assertEqual(telegram.allowed_chat_id, -7)
-
-    def test_allows_unpaired_telegram_config(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            data = self._data()
-            data["channels"] = {
-                "telegram": {
-                    "bot_token": "token",
-                    "allowed_chat_id": None,
-                }
-            }
-            self._write_config(path, data)
-
-            telegram = load_app_config(path).channels.telegram
-
-        self.assertIsNotNone(telegram)
-        self.assertIsNone(telegram.allowed_chat_id)
 
     def test_explicit_path_takes_priority_over_environment(self):
         with TemporaryDirectory() as directory:
@@ -195,23 +158,3 @@ class AppConfigTest(unittest.TestCase):
             data = self._data(123456)
             self._write_config(path, data)
             self.assertEqual(load_app_config(path).runtime.compact_threshold_tokens, 123456)
-
-    def test_rejects_incomplete_telegram_config(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            data = self._data()
-            data["channels"] = {"telegram": {"bot_token": "token"}}
-            self._write_config(path, data)
-
-            with self.assertRaisesRegex(ValueError, "allowed_chat_id"):
-                load_app_config(path)
-
-    def test_rejects_null_telegram_config(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            data = self._data()
-            data["channels"] = {"telegram": None}
-            self._write_config(path, data)
-
-            with self.assertRaisesRegex(ValueError, "必须是映射"):
-                load_app_config(path)

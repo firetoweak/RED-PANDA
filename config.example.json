@@ -4,11 +4,5 @@
   },
   "runtime": {
     "compact_threshold_tokens": 200000
-  },
-  "channels": {
-    "telegram": {
-      "bot_token": "your-bot-token",
-      "allowed_chat_id": null
-    }
   }
 }

@@ -2,7 +2,7 @@
 
 Channel 把外部通信协议映射到 Assistant 的 Session 操作。它不实现模型决策或 Session 推进循环，也不决定本机用哪套环境变量去找程序、跑命令。
 
-TUI / Telegram 的具体行为见[入口与授权](入口与授权.md)；进程驻留和进程身份见[多活跃会话](../运行/多活跃会话.md)；四个 Channel 的平级关系见 [Channel 协议改造](Channel协议改造.md)。
+TUI 的具体行为见[入口与授权](入口与授权.md)；进程驻留和进程身份见[多活跃会话](../运行/多活跃会话.md)；四个 Channel 的平级关系见 [Channel 协议改造](Channel协议改造.md)。
 
 ## 四种 identity
 
@@ -13,7 +13,7 @@ TUI / Telegram 的具体行为见[入口与授权](入口与授权.md)；进程�
 | Delivery | 幂等接纳一条外部消息 |
 | Reply route | 把输出送回正确会话 |
 
-**凭证不是 Conversation identity。** Telegram 用 bot + chat 选择稳定 Conversation，token 只用于访问；进程重启恢复同一 Session，更换 Bot 不复用旧 Session。
+**凭证不是 Conversation identity。** IM 类入口由 Bot 账号与对话共同选择稳定 Conversation，token 只用于访问；进程重启恢复同一 Session，更换 Bot 不复用旧 Session。
 
 每个 Channel 实例还提供稳定 owner identity，通过 `select` / `release` 声明用户当前使用的 Session。这是 Host 的瞬时驻留事实，不写入 Journal，Host 重启后由 Channel 重新选择。**owner 只控制驻留与回复路由，不是 Command 授权身份**；一个 Session 同时存在多个 owner 时也不改变其授权策略。
 

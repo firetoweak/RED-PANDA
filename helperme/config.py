@@ -20,12 +20,6 @@ INITIAL_CONFIG = {
     "runtime": {
         "compact_threshold_tokens": 200000,
     },
-    "channels": {
-        "telegram": {
-            "bot_token": "your-bot-token",
-            "allowed_chat_id": None,
-        }
-    },
 }
 
 
@@ -41,21 +35,9 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class TelegramConfig:
-    bot_token: str
-    allowed_chat_id: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class ChannelsConfig:
-    telegram: TelegramConfig | None
-
-
-@dataclass(frozen=True, slots=True)
 class AppConfig:
     model: ModelConfig
     runtime: RuntimeConfig
-    channels: ChannelsConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +88,8 @@ def _parse_model_config(data: dict) -> ModelConfig:
 
 def load_app_config(path: Path | None = None) -> AppConfig:
     data = _load_config_data(path)
-    if set(data) != {"model", "runtime", "channels"}:
-        raise ValueError("配置字段必须是 model/runtime/channels")
+    if set(data) != {"model", "runtime"}:
+        raise ValueError("配置字段必须是 model/runtime")
 
     runtime = data["runtime"]
     if not isinstance(runtime, dict):
@@ -118,35 +100,11 @@ def load_app_config(path: Path | None = None) -> AppConfig:
     if type(compact_threshold_tokens) is not int or compact_threshold_tokens <= 0:
         raise ValueError("配置 runtime.compact_threshold_tokens 必须是大于 0 的整数")
 
-    channels = data["channels"]
-    if not isinstance(channels, dict):
-        raise ValueError("配置必须包含 channels 映射")
-    if not set(channels) <= {"telegram"}:
-        raise ValueError("channels 配置只允许 telegram")
-    telegram_config = None
-    if "telegram" in channels:
-        telegram = channels["telegram"]
-        if not isinstance(telegram, dict):
-            raise ValueError("channels.telegram 必须是映射")
-        if set(telegram) != {"bot_token", "allowed_chat_id"}:
-            raise ValueError("channels.telegram 字段必须是 bot_token/allowed_chat_id")
-        bot_token = telegram["bot_token"]
-        if not isinstance(bot_token, str) or not bot_token.strip():
-            raise ValueError("配置 channels.telegram.bot_token 不能为空")
-        allowed_chat_id = telegram["allowed_chat_id"]
-        if allowed_chat_id is not None and type(allowed_chat_id) is not int:
-            raise ValueError("配置 channels.telegram.allowed_chat_id 必须是整数或 null")
-        telegram_config = TelegramConfig(
-            bot_token=bot_token.strip(),
-            allowed_chat_id=allowed_chat_id,
-        )
-
     return AppConfig(
         model=_parse_model_config(data),
         runtime=RuntimeConfig(
             compact_threshold_tokens=compact_threshold_tokens,
         ),
-        channels=ChannelsConfig(telegram=telegram_config),
     )
 
 

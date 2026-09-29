@@ -1,5 +1,0 @@
-from helperme.channels.telegram.assistant import main
-
-
-if __name__ == "__main__":
-    main()

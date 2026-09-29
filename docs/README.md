@@ -86,7 +86,7 @@
 | 文档 | 角色 |
 |---|---|
 | [Channel 接入契约](架构/入口/Channel接入契约.md) | 准绳：identity、投递幂等、Event wake、输出路由 |
-| [入口与授权](架构/入口/入口与授权.md) | TUI / Telegram 行为；控制提案的事实形状 |
+| [入口与授权](架构/入口/入口与授权.md) | TUI 行为；控制提案的事实形状 |
 | [Channel 协议改造](架构/入口/Channel协议改造.md) | TUI / Web / ACP / Satori 平级；ACP 取舍；Satori 暂缓 |
 | [Web](架构/入口/Web.md) | Web Channel 与前端状态边界 |
 | [Command 授权](架构/入口/Command授权.md) | Command Authorization 契约；Control Approval 另做 |
