@@ -266,7 +266,7 @@ def _translate_visible_events(
                         "role": "system",
                         "content": (
                             "<message_received_at>"
-                            f"{event.occurred_at.isoformat()}"
+                            f"{event.occurred_at.astimezone().isoformat(timespec='minutes')}"
                             "</message_received_at>"
                         ),
                     },

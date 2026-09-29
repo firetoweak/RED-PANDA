@@ -87,15 +87,15 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             events, StateProjector().project_visible(self.SESSION, events), "sys",
         )
 
+        def received_at(event) -> str:
+            local = event.occurred_at.astimezone().isoformat(timespec="minutes")
+            return f"<message_received_at>{local}</message_received_at>"
+
         self.assertEqual(messages, [
             {"role": "system", "content": "sys"},
-            {"role": "system", "content": (
-                f"<message_received_at>{first.occurred_at.isoformat()}</message_received_at>"
-            )},
+            {"role": "system", "content": received_at(first)},
             {"role": "user", "content": "第一条"},
-            {"role": "system", "content": (
-                f"<message_received_at>{second.occurred_at.isoformat()}</message_received_at>"
-            )},
+            {"role": "system", "content": received_at(second)},
             {"role": "user", "content": "<message_received_at>用户原文</message_received_at>"},
         ])
 
