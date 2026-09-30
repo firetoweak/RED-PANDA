@@ -47,6 +47,7 @@ import {
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
+import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -190,7 +191,7 @@ export function Conversation() {
     await sendInput({
       connectionId,
       sessionId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
       text,
       artifactRefs,
     }).unwrap();
@@ -210,7 +211,7 @@ export function Conversation() {
       connectionId,
       sessionId,
       messageId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
       text,
       listed: false,
       restoreFiles,
@@ -244,7 +245,7 @@ export function Conversation() {
       connectionId,
       sessionId,
       stepId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
     }).unwrap();
     // 原地改写：新身份顶掉旧的，后退不该停在一个已经不代表这条线的 URL 上。
     navigate(`/sessions/${encodeURIComponent(view.session_id)}`, { replace: true });

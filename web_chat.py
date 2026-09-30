@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> None:
             "web_chat:app" if args.dev else create_web_app(
                 workspace_path=args.workspace
             ),
-            host="127.0.0.1",
+            host="0.0.0.0",
             port=args.port,
             reload=args.dev,
             reload_dirs=[str(Path(__file__).parent)] if args.dev else None,
