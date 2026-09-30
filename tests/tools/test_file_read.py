@@ -21,6 +21,7 @@ from helperme.tools.builtin.file_read import (
     GrepInput,
     ReadFileInput,
     _glob_relative_entries,
+    _matches_glob,
     create_file_read_specs,
 )
 
@@ -48,6 +49,17 @@ def _handlers(root: Path):
 
 
 class RgScopeContractTest(unittest.TestCase):
+    def test_glob_double_star_matches_zero_or_multiple_directory_levels(self):
+        for path in ("a.py", "src/a.py", "src/nested/deeper/a.py"):
+            with self.subTest(path=path):
+                self.assertTrue(_matches_glob(path, "**/*.py"))
+                self.assertTrue(_matches_glob(path, "**/a.py"))
+        self.assertTrue(_matches_glob("src/nested/a.py", "src/**/a.py"))
+        self.assertTrue(_matches_glob("src/a.py", "src/**/a.py"))
+        self.assertFalse(_matches_glob("src/nested/a.py", "src/*.py"))
+        self.assertFalse(_matches_glob("other/src/a.py", "src/*.py"))
+        self.assertFalse(_matches_glob("src/a.txt", "**/*.py"))
+
     def test_descriptions_explain_hidden_and_gitignore_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
             specs = _handlers(Path(directory))
