@@ -12,6 +12,7 @@ import pytest
 from helperme.assistant.assembly import build_assistant_assembly
 from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from helperme.assistant.management import LOAD_MANAGEMENT_TOOLS
+from helperme.assistant.work_plan import UPDATE_PLAN, WORK_PLAN_CONTEXT
 from helperme.config import AssistantConfig
 from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from helperme.paths import HelperMeHome
@@ -51,6 +52,11 @@ class CapturingLlm:
                     LOAD_MANAGEMENT_TOOLS,
                     '{"domain":"mcp"}',
                 ),
+                ToolCall("plan", UPDATE_PLAN, json.dumps({"plan": {
+                    "objective": "检查管理能力", "steps": [
+                        {"text": "加载管理域", "status": "in_progress"},
+                    ], "note": None,
+                }}, ensure_ascii=False)),
             )
         return LLMCallResult(
             LLMResponse(
@@ -134,6 +140,8 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                 )
                 try:
                     self.assertIn("restore_workspace", assembly.bindings)
+                    self.assertIn(UPDATE_PLAN, assembly.bindings)
+                    self.assertFalse(assembly.bindings[UPDATE_PLAN].requires_authorization)
                     self.assertFalse(assembly.bindings["restore_workspace"].requires_authorization)
                     self.assertIsNotNone(assembly.scheduler.record_workspace_versions)
                     decision = assembly.runtime.step_runner._decision_maker
@@ -181,7 +189,7 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(
                         [command.effect.name for command in first.step.commands],
-                        [LOAD_MANAGEMENT_TOOLS, "deliver"],
+                        [LOAD_MANAGEMENT_TOOLS, UPDATE_PLAN, "deliver"],
                     )
                     event = next(
                         event
@@ -216,6 +224,12 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(
                         replayed["tool_calls"][0]["id"],
                         first.step.commands[0].command_id,
+                    )
+                    second_event = [e for e in await journal.snapshot(session_id)
+                                    if isinstance(e.payload, StepCommitted)][1]
+                    self.assertEqual(
+                        second_event.payload.decision_metadata[WORK_PLAN_CONTEXT],
+                        llm.requests[1]["messages"][-1]["content"],
                     )
 
                     names = assembly.control.names()

@@ -265,7 +265,9 @@ function ToolCard({
               )}
             </ThemeIcon>
             <Text ff="monospace" fw={600} size="sm" truncate>
-              {tool.name}
+              {tool.name === "update_plan"
+                ? tool.arguments.plan === null ? "结束当前计划" : "更新计划"
+                : tool.name}
             </Text>
           </Group>
           <Badge

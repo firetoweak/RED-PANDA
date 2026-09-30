@@ -649,3 +649,9 @@ body.is-resizing-sidebar {
     padding-bottom: 14px;
   }
 }
+
+.work-plan-toggle {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+}

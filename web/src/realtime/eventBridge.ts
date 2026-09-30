@@ -110,6 +110,13 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         outputId: payload.output_id,
       }),
     );
+    // Tool finish can precede Outcome commit. The next decision observes committed
+    // facts, so refresh the plan and timeline before waiting for model output.
+    dispatch(
+      helpermeApi.util.invalidateTags([
+        { type: "Conversation", id: payload.session_id },
+      ]),
+    );
   });
   source.addEventListener("preview.delta", (event) => {
     const payload = previewDeltaEventSchema.parse(JSON.parse(event.data));

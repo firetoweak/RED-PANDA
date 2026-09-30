@@ -97,6 +97,17 @@ const toolItemSchema = z
   })
   .strict();
 
+export const workPlanSchema = z.object({
+  objective: z.string().min(1),
+  steps: z.array(z.object({
+    text: z.string().min(1),
+    status: z.enum(["pending", "in_progress", "completed"]),
+  }).strict()).min(1),
+  note: z.string().min(1).nullable(),
+}).strict();
+
+export type WorkPlan = z.infer<typeof workPlanSchema>;
+
 export const conversationViewSchema = z
   .object({
     session_id: z.string().min(1),
@@ -136,6 +147,7 @@ export const conversationViewSchema = z
     compact_count: z.number().int().nonnegative(),
     compact_phase: z.enum(["running", "ready", "failed"]).nullable(),
     waiting_until: z.string().datetime({ offset: true }).nullable(),
+    work_plan: workPlanSchema.nullable(),
     workspace_version: z.object({
       workspace_id: z.string().min(1),
       step_id: z.string().min(1).nullable(),

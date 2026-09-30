@@ -22,6 +22,7 @@ from helperme.assistant.subagent.subagent import (
     task_fact_arguments,
 )
 from helperme.assistant.toolsets import LOAD_TOOLSET
+from helperme.assistant.work_plan import WORK_PLAN_TAG
 from helperme.config import AssistantConfig
 from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from helperme.paths import HelperMeHome
@@ -54,6 +55,7 @@ PROSE_VOCABULARY = frozenset(
         "diff",
         "env",
         "false",
+        "null",
         "true",
     }
 )
@@ -205,6 +207,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             | set(TOOL_RESULT_FIELD_NAMES)
             | _externalized_meta_fields()
             | _fact_type_tokens()
+            | {WORK_PLAN_TAG}
         )
 
     def test_default_prompt_names_only_real_tools_and_fields(self):

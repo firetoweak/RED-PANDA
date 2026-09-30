@@ -35,6 +35,9 @@ function stepIntent(step: Pick<VisibleStep, "text">): string | null {
 }
 
 function toolHeading(tool: VisibleTool): string {
+  if (tool.name === "update_plan") {
+    return tool.arguments.plan === null ? "结束当前计划" : "更新计划";
+  }
   const hint = firstStringArgument(tool.arguments);
   return hint === null ? tool.name : `${tool.name}  ${hint}`;
 }

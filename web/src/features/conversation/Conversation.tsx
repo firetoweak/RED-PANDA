@@ -52,6 +52,7 @@ import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { WorkPlanPanel } from "./WorkPlanPanel";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
@@ -428,6 +429,7 @@ export function Conversation() {
           </Button>
         )}
         <Stack className="composer-column" gap={8}>
+        <WorkPlanPanel key={conversation.work_plan === null ? "none" : "active"} plan={conversation.work_plan} />
         {conversation.workspace_version === null ? null : (
           <Text
             className="composer-meta"
