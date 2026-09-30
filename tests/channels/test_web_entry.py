@@ -24,7 +24,7 @@ class WebEntryTests(unittest.TestCase):
         )
         run.assert_called_once_with(
             "web_chat:app",
-            host="0.0.0.0",
+            host="127.0.0.1",
             port=8765,
             reload=True,
             reload_dirs=[str(Path(web_chat.__file__).parent)],
@@ -35,7 +35,8 @@ class WebEntryTests(unittest.TestCase):
 
     @patch("web_chat.uvicorn.run")
     @patch("web_chat.create_web_app")
-    def test_port_option_overrides_default(self, create_web_app, run):
-        web_chat.main(["--port", "8766"])
+    def test_host_and_port_options_override_defaults(self, create_web_app, run):
+        web_chat.main(["--host", "0.0.0.0", "--port", "8766"])
 
+        self.assertEqual(run.call_args.kwargs["host"], "0.0.0.0")
         self.assertEqual(run.call_args.kwargs["port"], 8766)
