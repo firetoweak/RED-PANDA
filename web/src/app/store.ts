@@ -38,12 +38,17 @@ if (savedDrafts !== null && savedDrafts !== "") {
   store.dispatch(hydrateDrafts(readDrafts()));
 }
 
+let persistedDrafts = store.getState().runtime.draftSessions;
 store.subscribe(() => {
-  const runtime = store.getState().runtime;
-  if (Object.keys(runtime.draftSessions).length === 0) {
+  const drafts = store.getState().runtime.draftSessions;
+  if (drafts === persistedDrafts) {
+    return;
+  }
+  persistedDrafts = drafts;
+  if (Object.keys(drafts).length === 0) {
     sessionStorage.removeItem(DRAFT_KEY);
   } else {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(runtime.draftSessions));
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
   }
 });
 

@@ -203,7 +203,13 @@ def project_session_summary(
         session_id=session_id,
         workspace_id=workspace_id,
         title=title,
-        updated_at=events[-1].occurred_at if events else None,
+        updated_at=next(
+            (
+                event.occurred_at for event in reversed(events)
+                if isinstance(event.payload, UserMessageReceived)
+            ),
+            None,
+        ),
         activity=activity,
     )
 

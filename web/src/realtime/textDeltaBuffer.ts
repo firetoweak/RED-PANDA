@@ -8,47 +8,52 @@ export function createTextDeltaBuffer(
   publish: (delta: TextDelta) => void,
   schedule: (flush: () => void) => () => void = scheduleAnimationFrame,
 ) {
-  let pending: TextDelta | null = null;
+  const pending = new Map<string, TextDelta>();
   let cancel: (() => void) | null = null;
 
   function flush() {
     cancel = null;
-    if (pending === null) {
-      return;
+    const deltas = [...pending.values()];
+    pending.clear();
+    for (const delta of deltas) {
+      publish(delta);
     }
-    const delta = pending;
-    pending = null;
-    publish(delta);
   }
 
   function enqueue(delta: TextDelta) {
-    if (
-      pending !== null &&
-      (pending.sessionId !== delta.sessionId ||
-        pending.outputId !== delta.outputId)
-    ) {
-      const previous = pending;
-      pending = delta;
+    const previous = pending.get(delta.sessionId);
+    if (previous !== undefined && previous.outputId !== delta.outputId) {
+      pending.set(delta.sessionId, delta);
       publish(previous);
-    } else if (pending !== null) {
-      pending = {
-        sessionId: pending.sessionId,
-        outputId: pending.outputId,
-        text: pending.text + delta.text,
-      };
+    } else if (previous !== undefined) {
+      pending.set(delta.sessionId, {
+        sessionId: previous.sessionId,
+        outputId: previous.outputId,
+        text: previous.text + delta.text,
+      });
     } else {
-      pending = delta;
+      pending.set(delta.sessionId, delta);
     }
     if (cancel === null) {
       cancel = schedule(flush);
     }
   }
 
-  function flushNow() {
-    if (cancel !== null) {
-      cancel();
+  function flushNow(sessionId?: string) {
+    if (sessionId === undefined) {
+      cancel?.();
+      flush();
+      return;
     }
-    flush();
+    const delta = pending.get(sessionId);
+    pending.delete(sessionId);
+    if (pending.size === 0) {
+      cancel?.();
+      cancel = null;
+    }
+    if (delta !== undefined) {
+      publish(delta);
+    }
   }
 
   return { enqueue, flushNow };

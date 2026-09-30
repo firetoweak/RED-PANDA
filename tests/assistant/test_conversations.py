@@ -273,10 +273,14 @@ class ConversationProjectionTest(unittest.TestCase):
             "命令已被打断，执行结果未知。",
         )
 
-    def test_summary_uses_first_user_message_and_last_event_time(self):
+    def test_summary_uses_first_user_message_and_last_user_message_time(self):
         events = (
             event(1, "user-1", UserMessageReceived("第一行\n第二行")),
             event(2, "user-2", UserMessageReceived("之后")),
+            event(
+                3, "step-2",
+                committed_step("decision-2", "user-2", "回复", ()),
+            ),
         )
 
         summary = project_session_summary(
@@ -287,7 +291,7 @@ class ConversationProjectionTest(unittest.TestCase):
         )
 
         self.assertEqual(summary.title, "第一行")
-        self.assertEqual(summary.updated_at, events[-1].occurred_at)
+        self.assertEqual(summary.updated_at, events[1].occurred_at)
         self.assertEqual(summary.activity, "running")
         self.assertEqual(
             project_session_summary(

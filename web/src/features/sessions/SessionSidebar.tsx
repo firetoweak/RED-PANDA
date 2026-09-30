@@ -323,15 +323,16 @@ function SessionRow({
   onArchivedCurrent: () => void;
 }) {
   const dispatch = useAppDispatch();
-  const runtime = useAppSelector(
-    (state) => state.runtime.sessions[session.session_id],
+  const activity = useAppSelector(
+    (state) => state.runtime.sessions[session.session_id]?.activity ?? session.activity,
+  );
+  const unread = useAppSelector(
+    (state) => state.runtime.sessions[session.session_id]?.unread ?? 0,
   );
   const [archiveSession] = useArchiveSessionMutation();
   const [setSessionTitle] = useSetSessionTitleMutation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title);
-  const activity = runtime?.activity ?? session.activity;
-  const unread = runtime?.unread ?? 0;
   const updatedAt = formatRelativeTime(session.updated_at);
 
   useEffect(() => {
