@@ -18,7 +18,7 @@ import {
   IconArrowDown,
   IconCheck,
   IconCopy,
-  IconGitBranch,
+  IconArrowFork,
   IconMessageCircle,
   IconSparkles,
   IconX,
@@ -695,7 +695,7 @@ function TurnEndActions({
           size="sm"
           variant="subtle"
         >
-          <IconGitBranch size={14} />
+          <IconArrowFork size={14} style={{ transform: "rotate(180deg)" }} />
         </ActionIcon>
       ) : null}
       {time === null ? null : (
