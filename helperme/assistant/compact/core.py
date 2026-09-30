@@ -154,7 +154,10 @@ def latest_input_tokens(events):
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == WINDOW:
             return None
         if isinstance(payload, StepCommitted):
-            usage = payload.decision_metadata[MODEL_USAGE]
+            metadata = payload.decision_metadata
+            if metadata is None:
+                continue
+            usage = metadata[MODEL_USAGE]
             return usage["input_tokens"] if usage["window"] == window else None
     return None
 

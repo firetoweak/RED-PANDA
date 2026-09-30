@@ -85,6 +85,25 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(latest_input_tokens(await runtime.snapshot("b")), 1)
         await check(False)  # Previous calls are not added to the current usage.
 
+    async def test_step_without_usage_is_skipped(self):
+        usage = {"window": None, "input_tokens": 12, "cached_input_tokens": 0}
+        decisions = [
+            RecordedDecision(ModelDecision(content="done"), (), {MODEL_USAGE: usage}),
+            ModelDecision(content="again"),
+        ]
+
+        class Decision:
+            async def decide(self, frame):
+                return decisions.pop(0)
+
+        runtime = AgentRuntime(MemoryJournal(), Decision(), {})
+        await runtime.create_session("b")
+        await runtime.receive_user_message("b", "one", delivery_id="one")
+        await runtime.advance("b")
+        await runtime.receive_user_message("b", "two", delivery_id="two")
+        await runtime.advance("b")
+        self.assertEqual(latest_input_tokens(await runtime.snapshot("b")), 12)
+
     async def test_frozen_bundle_keeps_user_image_blocks(self):
         with TemporaryDirectory() as directory:
             attachments = AttachmentGateway(Path(directory))
