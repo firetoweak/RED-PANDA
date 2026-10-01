@@ -18,7 +18,7 @@ import {
   IconArrowDown,
   IconCheck,
   IconCopy,
-  IconGitBranch,
+  IconArrowFork,
   IconMessageCircle,
   IconSparkles,
   IconX,
@@ -47,11 +47,13 @@ import {
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
+import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { WorkPlanPanel } from "./WorkPlanPanel";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
@@ -189,7 +191,7 @@ export function Conversation() {
     await sendInput({
       connectionId,
       sessionId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
       text,
       artifactRefs,
     }).unwrap();
@@ -209,7 +211,7 @@ export function Conversation() {
       connectionId,
       sessionId,
       messageId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
       text,
       listed: false,
       restoreFiles,
@@ -243,7 +245,7 @@ export function Conversation() {
       connectionId,
       sessionId,
       stepId,
-      deliveryId: `web-${crypto.randomUUID()}`,
+      deliveryId: `web-${createClientId()}`,
     }).unwrap();
     // 原地改写：新身份顶掉旧的，后退不该停在一个已经不代表这条线的 URL 上。
     navigate(`/sessions/${encodeURIComponent(view.session_id)}`, { replace: true });
@@ -428,6 +430,7 @@ export function Conversation() {
           </Button>
         )}
         <Stack className="composer-column" gap={8}>
+        <WorkPlanPanel key={conversation.work_plan === null ? "none" : "active"} plan={conversation.work_plan} />
         {conversation.workspace_version === null ? null : (
           <Text
             className="composer-meta"
@@ -695,7 +698,7 @@ function TurnEndActions({
           size="sm"
           variant="subtle"
         >
-          <IconGitBranch size={14} />
+          <IconArrowFork size={14} style={{ transform: "rotate(180deg)" }} />
         </ActionIcon>
       ) : null}
       {time === null ? null : (

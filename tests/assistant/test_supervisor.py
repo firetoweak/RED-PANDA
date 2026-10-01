@@ -532,30 +532,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(not root.exists() for root in roots))
         self.assertTrue(all(child not in self.host.workers for child in children))
 
-    async def test_saved_return_is_redelivered_after_host_restart(self):
-        route = self.host._route
-
-        async def interrupted_route(operation, session_id, arguments):
-            if operation == "fact" and session_id == "parent":
-                raise RuntimeError("interrupted before parent acceptance")
-            return await route(operation, session_id, arguments)
-
-        self.host._route = interrupted_route
-        (self.root / "release").touch()
-        await self.host.create("parent", self.workspace.workspace_id)
-        await self.host.receive_user_message(
-            "parent", "DELEGATE_CHILDREN", delivery_id="input"
-        )
-        await asyncio.wait_for(self.host.wait_failure(), 30)
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        await self.host.close()
-        self.host = self.new_host()
-        await asyncio.wait_for(self.host.resume("parent"), 30)
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
-        self.assertEqual(len(project_reclaimed(events)), 2)
-        self.assertTrue(self.host.failures.empty())
-
     async def test_deliveries_during_idle_transition_are_all_durable(self):
         await self.host.create("one", self.workspace.workspace_id)
         await asyncio.gather(

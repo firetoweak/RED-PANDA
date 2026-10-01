@@ -30,15 +30,19 @@ WINDOW = "compact.window_rolled_over"
 MODEL_USAGE = "model_usage"
 READ = "read_compact_source"
 SUBMIT = "_accept_handoff"
+HISTORY_PREVIEW_CHARS = 400
+MAX_HISTORY_RECORDS = 50
 PURPOSE = """<self_handoff>
 当前在后台为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
 优先使用已有上下文，仅为关键缺口调用 read_compact_source 回读。其他工具不能执行。
 保持目标、约束、纠正、决定、未完成委派、证据与来源；计划不写成已执行，声明不写成验证。
+关键证据保留真实事件序号和原件引用；文件位置保留相对工作区的完整路径，不省略目录前缀。
+推测、未确认条件与已验证事实保持区分，不把相关性写成因果，不把待验证的解释写成根因闭环。
 相关图片保留原始附件 id 和来源；摘要文字不等于看过图片，业务模型可用 read_image 重新查看。
 不重复读取，不扩展调查；未知内容标明不确定。交接之后新到的消息会接在它后面，可以修正它。
 完成时直接输出非空交接文本，不调用工具。
 </self_handoff>"""
-HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。遇到疑点用 read_compact_source 按其中的 source 回读原始对话，之后的消息可修正它。\n"
+HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。压缩前及分支继承的历史仍可回读：遇到疑点用 read_compact_source，以 view 按序号范围或关键词定位，再用 event 读取对应消息。upto 固定查询切面，续页沿用返回的 upto；以下来源身份仅用于溯源。之后的消息可修正它。\n"
 
 
 def schema(name, description, properties, required):
@@ -59,16 +63,61 @@ def schema(name, description, properties, required):
 
 READ_SCHEMA = schema(
     READ,
-    "回读交接之前的原始对话。view 读取带序号的对话视图；event 按序号读取其中一条；artifact 读取外置保存的工具原文。source 取交接材料里给出的 source；view 的 reference 为空。",
+    "回读会话历史，包含已被压缩移出当前上下文的原始消息。"
+    "view 按 start_sequence/end_sequence（含两端）和 query 定位，返回事件序号及有界原文片段，reference 为空。"
+    "query 对模型消息的字符串字段作区分大小写的字面匹配，空串表示不筛选；按事件顺序返回，不搜索外置 Artifact 正文。"
+    "view 的 offset 是跳过的匹配事件数，limit 最多 50；event/artifact 的 offset 和 limit 按字符计，limit 最多 12000。"
+    "event 的 reference 取 view 中的 sequence 字符串，返回该序号对应的一组完整模型消息（不是原始 Event 对象）；"
+    "artifact 的 reference 取真实 artifact_id，读取外置原文。读取范围由执行侧确定，无需指定会话身份："
+    "后台交接只能回读冻结点以内的历史；业务会话可回读自身完整逻辑历史，包括分支继承的前缀。"
+    "首次省略 upto 采用当前可读截止位置，续页必须带返回的 upto 和 next_offset，并保持筛选条件不变。"
+    "后台交接的 upto 固定为冻结点，较早范围用 end_sequence 筛选。",
     {
-        "source": {"type": "string"},
         "kind": {"enum": ["view", "event", "artifact"]},
         "reference": {"type": "string"},
-        "offset": {"type": "integer", "minimum": 0},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 12000},
+        "offset": {"type": "integer", "minimum": 0, "description": "view 为匹配事件偏移，event/artifact 为字符偏移；首次用 0。"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 12000, "description": "view 最多 50 个事件，event/artifact 最多 12000 字符。"},
+        "start_sequence": {"type": "integer", "minimum": 1, "description": "仅 view：最早事件序号，默认 1。"},
+        "end_sequence": {"type": "integer", "minimum": 1, "description": "仅 view：最晚事件序号，默认 upto。"},
+        "query": {"type": "string", "description": "仅 view：原文关键词，默认空串，不作语义排序。"},
+        "upto": {"type": "integer", "minimum": 0, "description": "固定读取截至此 Journal 位置的事实；首次可省略，续页使用返回值。"},
     },
-    ["source", "kind", "reference", "offset", "limit"],
+    ["kind", "reference", "offset", "limit"],
 )
+
+
+class HistoryPositionError(ValueError):
+    """The requested snapshot is outside this reader's available positions."""
+
+
+def _message_strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in value.values():
+            yield from _message_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _message_strings(child)
+
+
+def _history_record(sequence, messages, query):
+    texts = list(_message_strings(messages))
+    if query:
+        text = next((text for text in texts if query in text), None)
+        if text is None:
+            return None
+        start = max(0, text.index(query) - 80)
+    else:
+        text = "\n".join(texts)
+        start = 0
+    end = min(len(text), start + HISTORY_PREVIEW_CHARS)
+    return {
+        "sequence": sequence,
+        "roles": list(dict.fromkeys(message["role"] for message in messages)),
+        "preview": text[start:end],
+        "preview_truncated": start > 0 or end < len(text),
+    }
 
 
 def compact_seed(events):
@@ -154,7 +203,10 @@ def latest_input_tokens(events):
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == WINDOW:
             return None
         if isinstance(payload, StepCommitted):
-            usage = payload.decision_metadata[MODEL_USAGE]
+            metadata = payload.decision_metadata
+            if metadata is None:
+                continue
+            usage = metadata[MODEL_USAGE]
             return usage["input_tokens"] if usage["window"] == window else None
     return None
 
@@ -230,22 +282,26 @@ class CompactContext:
             SUBMIT: ToolBinding(self.submit, decision_on_outcome=False),
         }
 
-    async def _sources(self):
+    async def _read_source(self, upto):
         if self.is_reader:
             data = self.seed[1]
+            if upto is not None and upto != data["upto"]:
+                raise HistoryPositionError(f"后台来源固定截至 {data['upto']}，请用 end_sequence 筛选更早范围")
             bundle = load_document(
                 self.projector.gateway, data["source"], data["bundle"]
             )
             bundle["artifacts"] = sorted(
                 set(bundle["artifacts"]) | {data["inherited"], data["bundle"]}
             )
-            return {data["source"]: bundle}
+            return data["source"], bundle, data["upto"]
         events = await self.runtime.snapshot(self.session_id)
-        return {
-            self.session_id: frozen_bundle(
-                self.projector, events, self.session_id, self
-            )
-        }
+        available = events[-1].sequence if events else 0
+        upto = available if upto is None else upto
+        if upto > available:
+            raise HistoryPositionError(f"历史截至 {available}，无法读取截至 {upto} 的切面")
+        # 截取执行事实后再投影，不能让截止位置之后的 Outcome 改写旧 Step 的表示。
+        selected = tuple(event for event in events if event.sequence <= upto)
+        return self.session_id, history_bundle(self.projector, selected, self.session_id), upto
 
     async def prepare_reader(self, events, state):
         own = _translate_visible_events(
@@ -282,30 +338,62 @@ class CompactContext:
         )
 
     async def read(self, context, arguments):
-        if set(arguments) != {"source", "kind", "reference", "offset", "limit"}:
+        required = {"kind", "reference", "offset", "limit"}
+        view_fields = {"start_sequence", "end_sequence", "query"}
+        if not required <= set(arguments) or set(arguments) - required - view_fields - {"upto"}:
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "INVALID_ARGUMENT"}
-        source, kind, reference, offset, limit = (
-            arguments[k] for k in ("source", "kind", "reference", "offset", "limit")
+        kind, reference, offset, limit = (
+            arguments[k] for k in ("kind", "reference", "offset", "limit")
         )
+        upto = arguments.get("upto")
+        start_sequence = arguments.get("start_sequence", 1)
+        end_sequence = arguments.get("end_sequence")
+        query = arguments.get("query", "")
         if (
-            type(source) is not str
-            or type(reference) is not str
+            type(reference) is not str
             or type(kind) is not str
             or kind not in {"view", "event", "artifact"}
             or type(offset) is not int
             or offset < 0
             or type(limit) is not int
             or not 1 <= limit <= 12000
+            or ("upto" in arguments and (type(upto) is not int or upto < 0))
+            or type(start_sequence) is not int or start_sequence < 1
+            or ("end_sequence" in arguments and (type(end_sequence) is not int or end_sequence < start_sequence))
+            or type(query) is not str
+            or (kind != "view" and bool(set(arguments) & view_fields))
+            or (kind == "view" and (reference != "" or limit > MAX_HISTORY_RECORDS))
         ):
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "INVALID_ARGUMENT"}
-        sources = await self._sources()
-        if source not in sources:
-            return {"ok": False, "code": "SOURCE_NOT_AUTHORIZED", "error": "SOURCE_NOT_AUTHORIZED"}
-        bundle = sources[source]
+        if offset > 0 and upto is None:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "续读必须提供第一页返回的 upto"}
+        try:
+            source, bundle, upto = await self._read_source(upto)
+        except HistoryPositionError as error:
+            return {"ok": False, "code": "HISTORY_POSITION_OUT_OF_RANGE", "error": str(error)}
         if kind == "view":
-            if reference != "":
-                return {"ok": False, "code": "INVALID_ARGUMENT", "error": "view reference must be empty"}
-            text = json.dumps(bundle["records"], ensure_ascii=False)
+            end_sequence = upto if end_sequence is None else end_sequence
+            if end_sequence > upto:
+                return {"ok": False, "code": "INVALID_ARGUMENT", "error": "end_sequence 不能超过 upto"}
+            records = []
+            for sequence in sorted(bundle["raw"], key=int):
+                if start_sequence <= int(sequence) <= end_sequence:
+                    record = _history_record(int(sequence), bundle["raw"][sequence], query)
+                    if record is not None:
+                        records.append(record)
+            if offset > len(records):
+                return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
+            end = min(len(records), offset + limit)
+            return {
+                "ok": True, "code": "COMPACT_SOURCE_READ",
+                "data": {
+                    "source": source, "upto": upto,
+                    "start_sequence": start_sequence, "end_sequence": end_sequence,
+                    "records": records[offset:end], "offset": offset,
+                    "next_offset": end if end < len(records) else None,
+                    "total_records": len(records),
+                },
+            }
         elif kind == "event":
             if reference not in bundle["raw"]:
                 return {"ok": False, "code": "EVENT_NOT_IN_SOURCE", "error": "EVENT_NOT_IN_SOURCE"}
@@ -319,7 +407,7 @@ class CompactContext:
                 )
             except ArtifactOffsetOutOfRangeError:
                 return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
-            return {"ok": True, "code": "COMPACT_SOURCE_READ", "data": asdict(chunk)}
+            return {"ok": True, "code": "COMPACT_SOURCE_READ", "data": {"source": source, "upto": upto, **asdict(chunk)}}
         if offset > len(text):
             return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
         end = min(len(text), offset + limit)
@@ -328,6 +416,7 @@ class CompactContext:
             "code": "COMPACT_SOURCE_READ",
             "data": {
                 "source": source,
+                "upto": upto,
                 "content": text[offset:end],
                 "offset": offset,
                 "next_offset": end if end < len(text) else None,
@@ -356,6 +445,12 @@ def frozen_bundle(projector, events, session_id, context, prepared=None):
         {"source": session_id, "sequence": seq, "message": message}
         for seq, message in zip(prepared.source_sequences[1:], prepared.messages[1:])
     ]
+    return {"records": records, **history_bundle(projector, events, session_id)}
+
+
+def history_bundle(projector, events, session_id):
+    """Original model messages and referenced artifacts at one Journal position."""
+    whole = StateProjector().project_visible(session_id, events)
     raw = {}
     for item in _translate_visible_events(
         events, whole, "", projector.attachments_for(session_id)
@@ -386,7 +481,7 @@ def frozen_bundle(projector, events, session_id, context, prepared=None):
                 artifacts.update((payload.data["artifact"], payload.data["request"]))
             elif payload.fact_type == WINDOW:
                 artifacts.update((payload.data["context"], payload.data["bundle"]))
-    return {"records": records, "raw": raw, "artifacts": sorted(artifacts)}
+    return {"raw": raw, "artifacts": sorted(artifacts)}
 
 
 def projected_tail(records, p, q):

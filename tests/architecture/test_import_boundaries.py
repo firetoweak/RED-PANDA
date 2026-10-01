@@ -206,6 +206,11 @@ class LayerImportBoundaryTest(unittest.TestCase):
             "cli.py": {"helperme.tools.spec"},
             "skills.py": {"helperme.tools.spec"},
             "tool_results.py": {"helperme.tools.control"},
+            "work_plan.py": {
+                "helperme.tools.executor",
+                "helperme.tools.registry",
+                "helperme.tools.spec",
+            },
             "control.py": {
                 "helperme.tools.control",
                 "helperme.tools.spec",

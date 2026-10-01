@@ -14,6 +14,7 @@ from helperme.assistant.compact.core import (
 )
 from helperme.assistant.artifacts import ArtifactGateway
 from helperme.assistant.loop_guard import LoopGuard, NOTICE
+from helperme.assistant.work_plan import WORK_PLAN_CONTEXT
 from helperme.assistant.control import (
     CONTROL_REQUEST_METADATA,
     AssistantControlPlane,
@@ -511,6 +512,8 @@ class JournalBackedLlmDecisionMaker:
             metadata[MESSAGE_EXTENSIONS] = result.response.message_extensions
         if notice is not None:
             metadata[NOTICE] = notice
+        if prepared.work_plan_context is not None:
+            metadata[WORK_PLAN_CONTEXT] = prepared.work_plan_context
         return RecordedDecision(
             decision,
             (artifact.artifact_id,),

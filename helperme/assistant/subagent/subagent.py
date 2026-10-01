@@ -280,6 +280,7 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "apply_patch",
         "replace_all",
         "restore_workspace",
+        "update_plan",
         REPORT,
     }
 )

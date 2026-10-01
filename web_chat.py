@@ -18,6 +18,11 @@ def main(argv: list[str] | None = None) -> None:
         help="同时启动 Vite 开发服务器",
     )
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Web 监听地址；局域网共享时使用 0.0.0.0",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8765,
@@ -44,7 +49,7 @@ def main(argv: list[str] | None = None) -> None:
             "web_chat:app" if args.dev else create_web_app(
                 workspace_path=args.workspace
             ),
-            host="127.0.0.1",
+            host=args.host,
             port=args.port,
             reload=args.dev,
             reload_dirs=[str(Path(__file__).parent)] if args.dev else None,

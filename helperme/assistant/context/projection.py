@@ -16,6 +16,7 @@ from helperme.assistant.artifacts import (
 from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
 from helperme.assistant.file_attachments import is_file_attachment_id
 from helperme.assistant.delivery import DELIVER_TOOL_NAME
+from helperme.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from helperme.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
 )
@@ -37,7 +38,7 @@ from helperme.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 7
+PROJECTOR_VERSION = 9
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 16_000
 DEFAULT_PREVIEW_CHARS = 1_200
@@ -76,6 +77,7 @@ class PreparedModelContext:
     source_sequences: tuple[int, ...] = ()
     evicted_image_command_ids: tuple[str, ...] = ()
     projector_version: int = PROJECTOR_VERSION
+    work_plan_context: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,6 +332,11 @@ def _project_step(step: StepState) -> list[_Projected]:
 
     metadata = step.decision_metadata
     items: list[_Projected] = []
+    if metadata is not None and WORK_PLAN_CONTEXT in metadata:
+        items.append(_Projected(
+            {"role": "user", "content": metadata[WORK_PLAN_CONTEXT]},
+            "work_plan", sequence=step.sequence,
+        ))
     if metadata is not None and "loop_guard_notice" in metadata:
         items.append(_Projected(
             {"role": "user", "content": metadata["loop_guard_notice"]["text"]},
@@ -624,17 +631,22 @@ class ModelContextProjector:
             *(prefix or []),
             *(item.message for item in items[1:]),
         ]
+        plan_text = render_work_plan(events)
+        if plan_text is not None:
+            messages.append({"role": "user", "content": plan_text})
         return PreparedModelContext(
             messages=messages,
             source_sequences=(
                 0,
                 *((0,) * len(prefix or [])),
                 *(item.sequence for item in items[1:]),
+                *((0,) if plan_text is not None else ()),
             ),
             protection_start_index=protection_start,
             size_externalized_command_ids=tuple(size_ids),
             age_dehydrated_command_ids=tuple(age_ids),
             evicted_image_command_ids=tuple(evicted_ids),
+            work_plan_context=plan_text,
         )
 
     def _evict_images(self, items: list[_Projected]) -> list[str]:

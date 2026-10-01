@@ -274,6 +274,7 @@ body.is-resizing-sidebar {
 
 .conversation {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
   min-height: 0;
@@ -648,4 +649,10 @@ body.is-resizing-sidebar {
     padding-inline: 14px;
     padding-bottom: 14px;
   }
+}
+
+.work-plan-toggle {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
 }

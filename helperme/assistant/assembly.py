@@ -15,6 +15,7 @@ from helperme.assistant.attachments import (
 )
 from helperme.assistant.compact.core import CompactContext, CompactBoundary, READ, SUBMIT
 from helperme.assistant.loop_guard import LoopGuard
+from helperme.assistant.work_plan import UPDATE_PLAN, UPDATE_PLAN_SCHEMA, update_plan_binding
 from helperme.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
@@ -224,6 +225,7 @@ async def build_assistant_assembly(
             ),
             READ_ARTIFACT_SCHEMA,
             READ_IMAGE_SCHEMA,
+            UPDATE_PLAN_SCHEMA,
         ],
         reserved_names=(
             *builtin_tools.names(),
@@ -233,6 +235,7 @@ async def build_assistant_assembly(
             CANCEL_SCHEDULE,
             "read_artifact",
             "read_image",
+            UPDATE_PLAN,
             DELIVER_TOOL_NAME,
             DELEGATE,
             REPORT,
@@ -275,6 +278,7 @@ async def build_assistant_assembly(
         ),
         **read_artifact_binding(gateway),
         **read_image_binding(journal, attachments),
+        UPDATE_PLAN: update_plan_binding(),
         **deliver_binding(delivery_sink, preview),
         **load_toolset_binding(surface),
         **skill_tools.bindings(),

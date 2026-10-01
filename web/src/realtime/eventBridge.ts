@@ -103,12 +103,19 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("preview.started", (event) => {
     const payload = previewStartedEventSchema.parse(JSON.parse(event.data));
-    preview.flushNow();
+    preview.flushNow(payload.session_id);
     dispatch(
       previewStarted({
         sessionId: payload.session_id,
         outputId: payload.output_id,
       }),
+    );
+    // Tool finish can precede Outcome commit. The next decision observes committed
+    // facts, so refresh the plan and timeline before waiting for model output.
+    dispatch(
+      helpermeApi.util.invalidateTags([
+        { type: "Conversation", id: payload.session_id },
+      ]),
     );
   });
   source.addEventListener("preview.delta", (event) => {
@@ -121,7 +128,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("preview.aborted", (event) => {
     const payload = previewAbortedEventSchema.parse(JSON.parse(event.data));
-    preview.flushNow();
+    preview.flushNow(payload.session_id);
     dispatch(
       previewAborted({
         sessionId: payload.session_id,
@@ -131,7 +138,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("thinking.started", (event) => {
     const payload = thinkingStartedEventSchema.parse(JSON.parse(event.data));
-    thinking.flushNow();
+    thinking.flushNow(payload.session_id);
     dispatch(
       thinkingStarted({
         sessionId: payload.session_id,
@@ -149,7 +156,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("thinking.finished", (event) => {
     const payload = thinkingFinishedEventSchema.parse(JSON.parse(event.data));
-    thinking.flushNow();
+    thinking.flushNow(payload.session_id);
     dispatch(
       thinkingClosed({
         sessionId: payload.session_id,
@@ -159,7 +166,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("thinking.aborted", (event) => {
     const payload = thinkingFinishedEventSchema.parse(JSON.parse(event.data));
-    thinking.flushNow();
+    thinking.flushNow(payload.session_id);
     dispatch(
       thinkingClosed({
         sessionId: payload.session_id,
@@ -169,7 +176,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("output_final", (event) => {
     const payload = outputFinalEventSchema.parse(JSON.parse(event.data));
-    preview.flushNow();
+    preview.flushNow(payload.session_id);
     dispatch(
       outputFinal({
         sessionId: payload.session_id,

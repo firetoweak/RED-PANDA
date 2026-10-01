@@ -35,6 +35,7 @@ import {
 import { useAppSelector } from "../../app/hooks";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
+import { createClientId } from "./clientId";
 import {
   composeSendContent,
   parkedPreviewText,
@@ -245,7 +246,7 @@ export function Composer({
     if (connectionId === null || disabled) {
       return;
     }
-    const localId = crypto.randomUUID();
+    const localId = createClientId();
     const kind = ACCEPTED_IMAGE_TYPES.has(normalizeMime(file.type)) ? "image" : "file";
     const previewUrl = kind === "image" ? URL.createObjectURL(file) : null;
     setPending((current) => [
@@ -276,7 +277,7 @@ export function Composer({
         return;
       }
       const chosen = selection.file;
-      const localId = crypto.randomUUID();
+      const localId = createClientId();
       setPending((current) => [
         ...current,
         {
@@ -297,7 +298,7 @@ export function Composer({
       setPending((current) => [
         ...current,
         {
-          localId: crypto.randomUUID(),
+          localId: createClientId(),
           name: "本机文件",
           kind: "file",
           file: null,

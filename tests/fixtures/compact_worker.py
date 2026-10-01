@@ -16,7 +16,7 @@ HANDOFF = """## 用户要什么
 ## 还有什么未解决
 等待用户下一条输入。
 ## 接手所需的证据与入口
-按来源回读旧会话。
+沿当前逻辑历史回读旧消息。
 """
 
 
@@ -57,7 +57,7 @@ class CompactLlm:
                 if len(tool_results) < reads:
                     return LLMCallResult(LLMResponse(content="回读", calls=(ToolCall(
                         "read-source", "read_compact_source", json.dumps({
-                            "source": "chat", "kind": "view", "reference": "", "offset": 0, "limit": 1000
+                            "kind": "view", "reference": "", "offset": 0, "limit": 10
                         })),)), LLMUsage(input_tokens=60000, output_tokens=5))
             if (self.workspace / "write_compact").exists():
                 return LLMCallResult(LLMResponse(content="", calls=(ToolCall(

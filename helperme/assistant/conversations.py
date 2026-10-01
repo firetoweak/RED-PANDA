@@ -9,6 +9,7 @@ from helperme.assistant.control import pending_approval_view, project_control_me
 from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
 from helperme.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from helperme.assistant.delivery import DELIVER_TOOL_NAME
+from helperme.assistant.work_plan import project_work_plan
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.sessions import SessionView, session_view
 from helperme.assistant.subagent.subagent import project_parent, project_pending
@@ -94,6 +95,7 @@ class ConversationView:
     compact_phase: str | None = None
     waiting_until: datetime | None = None
     workspace_version: WorkspaceVersionFact | None = None
+    work_plan: dict | None = None
 
 
 class AssistantQueries:
@@ -201,7 +203,13 @@ def project_session_summary(
         session_id=session_id,
         workspace_id=workspace_id,
         title=title,
-        updated_at=events[-1].occurred_at if events else None,
+        updated_at=next(
+            (
+                event.occurred_at for event in reversed(events)
+                if isinstance(event.payload, UserMessageReceived)
+            ),
+            None,
+        ),
         activity=activity,
     )
 
@@ -275,6 +283,7 @@ def project_conversation(
         items=tuple(items),
         session=session,
         workspace_version=versions[-1] if versions else None,
+        work_plan=project_work_plan(events),
     )
 
 

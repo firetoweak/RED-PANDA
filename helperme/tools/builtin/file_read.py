@@ -29,7 +29,7 @@ GLOB_DESCRIPTION = """
 用途：在工作区内按名称模式查找文件或目录。
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
 默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的路径；结果只包含工作区内的路径。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；结果只包含工作区内的路径。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
 """.strip()
 
@@ -177,7 +177,7 @@ def _matches_glob(path: str, pattern: str) -> bool:
     candidate = PurePosixPath(path)
     if "/" not in pattern:
         return PurePosixPath(candidate.name).match(pattern)
-    return PurePosixPath(f"/{path}").match(f"/{pattern}")
+    return candidate.full_match(pattern)
 
 
 def _glob_relative_entries(
