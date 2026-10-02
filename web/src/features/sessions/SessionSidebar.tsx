@@ -23,6 +23,7 @@ import {
   IconPencil,
   IconPlus,
   IconSparkles,
+  IconAdjustments,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useEffect, useState } from "react";
@@ -144,6 +145,13 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
           variant={sessionId === defaultDraftId ? "filled" : "light"}
         >
           新建会话
+        </Button>
+        <Button
+          fullWidth mt="xs" variant="subtle" justify="flex-start"
+          leftSection={<IconAdjustments size={17} />}
+          onClick={() => { navigate("/settings/models"); onNavigate(); }}
+        >
+          模型配置
         </Button>
       </AppShell.Section>
 

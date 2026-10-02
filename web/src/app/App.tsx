@@ -14,6 +14,7 @@ import {
   writeSidebarWidth,
 } from "./sidebarWidth";
 import { SessionConversation } from "../features/conversation/SessionConversation";
+import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
 import { DraftRedirect } from "../features/sessions/DraftRedirect";
 import { SessionSidebar } from "../features/sessions/SessionSidebar";
 import { openEventBridge } from "../realtime/eventBridge";
@@ -106,6 +107,7 @@ export function App() {
         </ActionIcon>
         <ColorSchemeSwitcher />
         <Routes>
+          <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<DraftRedirect />} />
           <Route
             path="/workspaces/:workspaceId"

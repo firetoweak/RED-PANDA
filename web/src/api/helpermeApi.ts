@@ -12,13 +12,18 @@ import {
   conversationViewSchema,
   directorySelectionSchema,
   fileSelectionSchema,
-  runtimeStatusSchema,
+  modelSettingsSchema,
+  modelTestResultSchema,
+  sessionModelSchema,
   sessionSummarySchema,
   workspaceSchema,
   type ConversationView,
   type DirectorySelection,
   type FileSelection,
-  type RuntimeStatus,
+  type ModelConfig,
+  type ModelSettings,
+  type ModelTestResult,
+  type SessionModel,
   type SessionSummary,
   type Workspace,
 } from "./contracts";
@@ -37,6 +42,7 @@ type SendInput = SelectSession & {
 type EditAndFork = SelectSession & {
   deliveryId: string;
   text: string;
+  artifactRefs: string[];
   messageId: string;
   // 改写顶掉原身份，新分支自己成一条会话线。
   listed: boolean;
@@ -124,11 +130,44 @@ function putConversation(
 export const helpermeApi = createApi({
   reducerPath: "helpermeApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles"],
+  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel"],
   endpoints: (build) => ({
-    getRuntime: build.query<RuntimeStatus, void>({
-      query: () => "/runtime",
-      transformResponse: (value: unknown) => runtimeStatusSchema.parse(value),
+    getModelSettings: build.query<ModelSettings, void>({
+      query: () => "/model-settings",
+      transformResponse: (value: unknown) => modelSettingsSchema.parse(value),
+      providesTags: ["ModelSettings"],
+    }),
+    saveModelSettings: build.mutation<ModelSettings, { connectionId: string; config: ModelConfig }>({
+      query: ({ connectionId, config }) => ({
+        url: "/model-settings", method: "PUT", body: { connection_id: connectionId, config },
+      }),
+      transformResponse: (value: unknown) => modelSettingsSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400 || response.status === 409
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+      invalidatesTags: ["ModelSettings", "SessionModel"],
+    }),
+    testModel: build.mutation<ModelTestResult, { connectionId: string; model: string }>({
+      query: ({ connectionId, model }) => ({
+        url: "/model-settings/test", method: "POST", body: { connection_id: connectionId, model },
+      }),
+      transformResponse: (value: unknown) => modelTestResultSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+    }),
+    getSessionModel: build.query<SessionModel, string>({
+      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/model`,
+      transformResponse: (value: unknown) => sessionModelSchema.parse(value),
+      providesTags: (_result, _error, id) => [{ type: "SessionModel", id }],
+    }),
+    setSessionModel: build.mutation<SessionModel, SelectSession & { model: string }>({
+      query: ({ connectionId, sessionId, model }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/model`, method: "PUT",
+        body: { connection_id: connectionId, model },
+      }),
+      transformResponse: (value: unknown) => sessionModelSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "SessionModel", id: sessionId }],
     }),
     getSessions: build.query<SessionSummary[], void>({
       query: () => "/sessions",
@@ -239,6 +278,7 @@ export const helpermeApi = createApi({
         text,
         listed,
         restoreFiles,
+        artifactRefs,
       }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/forks`,
         method: "POST",
@@ -249,6 +289,7 @@ export const helpermeApi = createApi({
           text,
           listed,
           restore_files: restoreFiles,
+          artifact_refs: artifactRefs,
         },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
@@ -263,6 +304,7 @@ export const helpermeApi = createApi({
                 draft,
                 arg.messageId,
                 arg.text.trim(),
+                arg.artifactRefs,
               );
               draft.items = truncated.items;
             },
@@ -435,7 +477,11 @@ export const helpermeApi = createApi({
 
 export const {
   useCreateSessionMutation,
-  useGetRuntimeQuery,
+  useGetModelSettingsQuery,
+  useSaveModelSettingsMutation,
+  useTestModelMutation,
+  useGetSessionModelQuery,
+  useSetSessionModelMutation,
   useCreateWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,

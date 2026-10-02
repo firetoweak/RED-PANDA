@@ -145,9 +145,14 @@ export const conversationViewSchema = z
     ),
     session: sessionViewSchema,
     compact_count: z.number().int().nonnegative(),
+    context_input_tokens: z.number().int().nonnegative().nullable(),
     compact_phase: z.enum(["running", "ready", "failed"]).nullable(),
     waiting_until: z.string().datetime({ offset: true }).nullable(),
     work_plan: workPlanSchema.nullable(),
+    work_plan_updates: z.array(z.object({
+      step_id: z.string().min(1),
+      plan: workPlanSchema.nullable(),
+    }).strict()),
     workspace_version: z.object({
       workspace_id: z.string().min(1),
       step_id: z.string().min(1).nullable(),
@@ -231,12 +236,41 @@ export const authorizationRequiredEventSchema = z
   })
   .strict();
 
-export const runtimeStatusSchema = z
-  .object({
-    model: z.string().min(1),
-    compact_threshold_tokens: z.number().int().positive(),
-  })
-  .strict();
+export const modelProfileSchema = z.object({
+  model: z.string().min(1),
+  compact_threshold_tokens: z.number().int().positive(),
+}).strict();
+
+export const modelConfigSchema = z.object({
+  model: z.object({
+    default: z.string().nullable(),
+    candidates: modelProfileSchema.array(),
+  }).strict(),
+}).strict();
+
+export const modelSettingsSchema = z.object({
+  config: modelConfigSchema,
+  connections_path: z.string().min(1),
+  providers: z.object({
+    provider: z.string().min(1),
+    configured: z.boolean(),
+    missing: z.string().nullable(),
+    local: z.boolean(),
+  }).strict().array(),
+}).strict();
+
+export const sessionModelSchema = z.object({
+  selected: modelProfileSchema.nullable(),
+  effective: modelProfileSchema.nullable(),
+  pending: z.boolean(),
+}).strict();
+
+export const modelTestResultSchema = z.object({
+  model: z.string().min(1),
+  ok: z.boolean(),
+  message: z.string().min(1),
+  elapsed_ms: z.number().int().nonnegative(),
+}).strict();
 
 export const contextUsageEventSchema = z
   .object({
@@ -258,7 +292,11 @@ export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ConversationView = z.infer<typeof conversationViewSchema>;
 export type ConversationItem = ConversationView["items"][number];
 export type ToolStatus = z.infer<typeof toolStatusSchema>;
-export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
+export type ModelProfile = z.infer<typeof modelProfileSchema>;
+export type ModelConfig = z.infer<typeof modelConfigSchema>;
+export type ModelSettings = z.infer<typeof modelSettingsSchema>;
+export type ModelTestResult = z.infer<typeof modelTestResultSchema>;
+export type SessionModel = z.infer<typeof sessionModelSchema>;
 export type AuthorizationRequiredEvent = z.infer<
   typeof authorizationRequiredEventSchema
 >;

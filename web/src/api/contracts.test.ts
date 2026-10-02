@@ -5,7 +5,7 @@ import {
   conversationStatusEventSchema,
   conversationViewSchema,
   outputFinalEventSchema,
-  runtimeStatusSchema,
+  modelProfileSchema,
   sessionFailedEventSchema,
   toolProgressEventSchema,
 } from "./contracts";
@@ -59,7 +59,7 @@ describe("conversationViewSchema", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, work_plan: null,
+      waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
 
     expect(parsed.items[1]).toMatchObject({
@@ -115,7 +115,7 @@ describe("conversationViewSchema", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, work_plan: null,
+      waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       kind: "user",
@@ -145,7 +145,7 @@ describe("conversation thinking field", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, work_plan: null,
+      waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       text: "world",
@@ -213,7 +213,7 @@ describe("toolProgressEventSchema", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, work_plan: null,
+      waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       tools: [{ command_id: "cmd-1", status: "unknown" }],
@@ -248,7 +248,7 @@ describe("toolProgressEventSchema", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, work_plan: null,
+      waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       kind: "step",
@@ -257,10 +257,10 @@ describe("toolProgressEventSchema", () => {
   });
 });
 
-describe("runtimeStatusSchema", () => {
+describe("modelProfileSchema", () => {
   it("requires a model name and a positive compact threshold", () => {
     expect(
-      runtimeStatusSchema.parse({ model: "assistant", compact_threshold_tokens: 200000 }),
+      modelProfileSchema.parse({ model: "assistant", compact_threshold_tokens: 200000 }),
     ).toEqual({
       model: "assistant",
       compact_threshold_tokens: 200000,
