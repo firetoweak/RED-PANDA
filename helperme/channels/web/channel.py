@@ -153,6 +153,7 @@ class WebChannel:
         message_id: str,
         text: str,
         delivery_id: str,
+        artifact_refs: tuple[str, ...],
         listed: bool = False,
         restore_files: bool = False,
     ):
@@ -166,6 +167,7 @@ class WebChannel:
             if type(value) is not str or not value:
                 raise ValueError(f"{label} must be a non-empty str")
         child_session_id = f"session-{uuid4().hex}"
+        refs = self._require_refs(source_session_id, artifact_refs)
         view = await self._sessions.fork_and_accept_input(
             connection.owner,
             source_session_id,
@@ -173,6 +175,7 @@ class WebChannel:
             content,
             child_session_id=child_session_id,
             delivery_id=delivery_id,
+            artifact_refs=refs,
             source="web",
             listed=bool(listed),
             restore_files=bool(restore_files),
@@ -292,6 +295,13 @@ class WebChannel:
             bool(enabled),
         )
         return await self._queries.conversation(session_id, view=view)
+
+    def model_selection(self, session_id: str):
+        return self._sessions.model_selection(session_id)
+
+    def set_model(self, connection_id: str, session_id: str, model: str):
+        self._require_connection(connection_id)
+        return self._sessions.set_model(session_id, model)
 
     async def set_paused(
         self,

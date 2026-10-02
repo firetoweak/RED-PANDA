@@ -23,6 +23,8 @@ from helperme.assistant.host.session_store import (
 )
 from helperme.assistant.file_attachments import is_file_attachment_id
 from helperme.assistant.host.supervisor import HostSupervisor
+from helperme.assistant.model_connection import check_model_connection
+from helperme.model_settings import ModelConfigurationError, ModelInUseError
 from helperme.assistant.runner import SessionNotFoundError
 from helperme.assistant.workspace_versions import StepNotRewindable
 from helperme.bootstrap import bootstrap_assistant
@@ -61,6 +63,18 @@ class ConnectionRequest(BaseModel):
     connection_id: str
 
 
+class ModelSettingsRequest(ConnectionRequest):
+    config: dict
+
+
+class SessionModelRequest(ConnectionRequest):
+    model: str
+
+
+class ModelTestRequest(ConnectionRequest):
+    model: str
+
+
 class CreateSessionRequest(ConnectionRequest):
     workspace_id: str
 
@@ -83,6 +97,7 @@ class InputRequest(BaseModel):
 
 
 class EditRequest(InputRequest):
+    artifact_refs: list[str]
     message_id: str
     listed: bool = False
     restore_files: bool = False
@@ -154,6 +169,8 @@ def create_web_app(
     hub: WebEventHub | None = None,
     workspace_path: Path | None = None,
     workspaces=None,
+    models=None,
+    model_llm=None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
@@ -162,7 +179,8 @@ def create_web_app(
         app.state.hub = events
         if channel is not None:
             app.state.channel = channel
-            app.state.runtime = {"model": "test", "compact_threshold_tokens": 200000}
+            app.state.models = models
+            app.state.model_llm = model_llm
             app.state.workspaces = workspaces
             yield
             return
@@ -184,10 +202,8 @@ def create_web_app(
                 assistant.queries,
                 AttachmentGateway(assistant.sessions_root),
             )
-            app.state.runtime = {
-                "model": assistant.config.model.active,
-                "compact_threshold_tokens": assistant.config.runtime.compact_threshold_tokens,
-            }
+            app.state.models = assistant.sessions.models
+            app.state.model_llm = assistant.sessions.llm
             app.state.workspaces = assistant.workspaces
             failures = asyncio.create_task(
                 report_worker_failures(assistant.sessions, events),
@@ -200,6 +216,14 @@ def create_web_app(
                 await asyncio.gather(failures, return_exceptions=True)
 
     app = FastAPI(lifespan=lifespan)
+
+    @app.exception_handler(ModelConfigurationError)
+    async def invalid_model_configuration(_request: Request, error: ModelConfigurationError):
+        return JSONResponse(status_code=400, content={"detail": str(error)})
+
+    @app.exception_handler(ModelInUseError)
+    async def model_in_use(_request: Request, error: ModelInUseError):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
 
     @app.exception_handler(SessionNotFoundError)
     async def session_not_found(_request: Request, error: SessionNotFoundError):
@@ -272,9 +296,28 @@ def create_web_app(
             _hub(request).unsubscribe(queue)
             await web.disconnect(connection)
 
-    @app.get("/api/runtime")
-    async def runtime(request: Request):
-        return request.app.state.runtime
+    @app.get("/api/model-settings")
+    async def model_settings(request: Request):
+        return request.app.state.models.view()
+
+    @app.put("/api/model-settings")
+    async def save_model_settings(body: ModelSettingsRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        return request.app.state.models.save(body.config)
+
+    @app.post("/api/model-settings/test")
+    async def test_model_connection(body: ModelTestRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        request.app.state.models.require_candidate(body.model)
+        return await check_model_connection(request.app.state.model_llm, body.model)
+
+    @app.get("/api/sessions/{session_id}/model")
+    async def session_model(session_id: str, request: Request):
+        return _channel(request).model_selection(session_id)
+
+    @app.put("/api/sessions/{session_id}/model")
+    async def set_session_model(session_id: str, body: SessionModelRequest, request: Request):
+        return _channel(request).set_model(body.connection_id, session_id, body.model)
 
     @app.get("/api/sessions")
     async def sessions(request: Request):
@@ -437,6 +480,7 @@ def create_web_app(
             body.message_id,
             body.text,
             body.delivery_id,
+            tuple(body.artifact_refs),
             body.listed,
             body.restore_files,
         )

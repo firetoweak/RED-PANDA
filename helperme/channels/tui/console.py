@@ -20,6 +20,7 @@ from helperme.assistant.runner import SessionNotFoundError
 from helperme.assistant.sessions import SessionView
 from helperme.assistant.toolsets import ToolsetLoadError
 from helperme.bootstrap import bootstrap_assistant
+from helperme.model_settings import ModelConfigurationError
 from helperme.channels.tui.images import ConsoleMessage, ImagePaste
 from helperme.mcp.console import McpCommandError, McpConsoleAdapter
 from helperme.mcp.errors import McpInputError
@@ -257,13 +258,16 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
         ),
         session_failed_sink=lambda _session_id, message: stream_output.note(message),
     ) as app:
-        config = app.config
         image_paste = ImagePaste(AttachmentGateway(app.sessions_root))
         # 只追加粘贴绑定。PromptSession 自己会把它和回车提交绑在一起；
         # 再 merge load_key_bindings() 会盖掉 Enter。
         session.key_bindings = image_paste.bindings
         session.default_buffer.on_text_changed += image_paste.changed
         sessions = app.sessions
+
+        def selected_threshold():
+            profile = sessions.model_selection(session_id)["selected"]
+            return 0 if profile is None else profile["compact_threshold_tokens"]
         mcp_console = McpConsoleAdapter(app.mcp_service)
         skill_console = SkillConsoleAdapter(app.skill_service)
         owner = "tui"
@@ -274,13 +278,13 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
         view = await sessions.select(owner, session_id)
         context_meter.select(
             sessions.conversation_status(session_id),
-            config.runtime.compact_threshold_tokens,
+            selected_threshold(),
             subagent_active=view.has_active_subagents,
         )
         image_paste.bind(session_id)
         input_queue: asyncio.Queue[ConsoleMessage | None] = asyncio.Queue()
         access = "整台电脑" if workspace.full_access else f"工作区 {workspace.name}"
-        print(f"HelperMe 已启动。model={config.model.active}")
+        print(f"HelperMe 已启动。model={sessions.models.selected(session_id)}")
         print(f"工作区：{access}")
         print(f"当前对话：{session_id}")
         print("/new 新对话    /resume <id> 恢复")
@@ -332,7 +336,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                         image_paste.bind(session_id)
                         context_meter.select(
                             sessions.conversation_status(session_id),
-                            config.runtime.compact_threshold_tokens,
+                            selected_threshold(),
                             subagent_active=view.has_active_subagents,
                         )
                         print(f"\n新 Session 已创建：{session_id}")
@@ -355,7 +359,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                         image_paste.bind(session_id)
                         context_meter.select(
                             sessions.conversation_status(session_id),
-                            config.runtime.compact_threshold_tokens,
+                            selected_threshold(),
                             subagent_active=view.has_active_subagents,
                         )
                         print(f"\n已恢复 Session：{session_id}")
@@ -387,6 +391,8 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                     )
                     if view.control_message is not None:
                         _print_runtime_status(view)
+                except ModelConfigurationError as error:
+                    print(f"\n模型配置：{error}")
                 except WorkerFailed as error:
                     print(f"\nSession 运行失败：{error}")
         finally:

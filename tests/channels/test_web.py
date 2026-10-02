@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -21,6 +21,10 @@ from helperme.assistant.conversations import (
     UserItem,
 )
 from helperme.assistant.runner import SessionNotFoundError
+from helperme.model_settings import ModelSettings
+from helperme.config import INITIAL_CONFIG, write_json
+from helperme.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
+from helperme.paths import HelperMeHome
 from helperme.assistant.sessions import SessionView
 from helperme.assistant.workspace_versions import StepNotRewindable
 from helperme.channels.web import app as web_app
@@ -36,6 +40,12 @@ class _Sessions:
         self.queries = queries
         self.calls = []
         self.control_message = None
+
+    def model_selection(self, session_id):
+        return self.models.selection(session_id)
+
+    def set_model(self, session_id, model):
+        return self.models.select(session_id, model)
 
     async def create(self, session_id, workspace_id):
         self.calls.append(("create", session_id, workspace_id))
@@ -171,6 +181,11 @@ class WebFirstSliceTest(unittest.TestCase):
         self._directory = TemporaryDirectory()
         self.queries = _Queries()
         self.sessions = _Sessions(self.queries)
+        home = HelperMeHome(Path(self._directory.name))
+        write_json(home.config_path, INITIAL_CONFIG)
+        self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
+        self.models.initialize_session("session-old")
+        self.sessions.models = self.models
         self.channel = WebChannel(
             self.sessions,
             self.queries,
@@ -178,17 +193,78 @@ class WebFirstSliceTest(unittest.TestCase):
         )
         self.hub = WebEventHub()
         self.connection = self.channel.connect()
+        self.model_llm = SimpleNamespace(chat=AsyncMock(return_value=LLMCallResult(
+            LLMResponse(content="OK"), LLMUsage(input_tokens=8, output_tokens=1),
+        )))
         self.workspaces = WorkspaceRegistry.load(
             Path(self._directory.name) / "workspaces.json"
         )
         self.client = TestClient(
-            create_web_app(self.channel, self.hub, workspaces=self.workspaces)
+            create_web_app(self.channel, self.hub, workspaces=self.workspaces,
+                           models=self.models, model_llm=self.model_llm)
         )
         self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
         self._directory.cleanup()
+
+    def test_model_connection_uses_requested_candidate_without_changing_sessions(self):
+        config = self.models.config().to_dict()
+        config["model"]["candidates"].append(
+            {"model": "ollama/qwen3:8b", "compact_threshold_tokens": 10000}
+        )
+        self.models.save(config)
+        selection = self.models.selection("session-old")
+        response = self.client.post("/api/model-settings/test", json={
+            "connection_id": self.connection.connection_id, "model": "ollama/qwen3:8b",
+        })
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["model"], "ollama/qwen3:8b")
+        self.assertGreaterEqual(result["elapsed_ms"], 0)
+        self.model_llm.chat.assert_awaited_once_with(
+            [{"role": "user", "content": "Reply with OK only."}], "ollama/qwen3:8b", tools=None,
+        )
+        self.assertEqual(self.models.config().to_dict(), config)
+        self.assertEqual(self.models.selection("session-old"), selection)
+        self.assertEqual(self.sessions.calls, [])
+        self.assertEqual(self.queries.accepted, [])
+
+    def test_model_connection_reports_known_failure_without_echoing_credentials(self):
+        self.model_llm.chat.side_effect = LLMAuthenticationError("private-test-key")
+        response = self.client.post("/api/model-settings/test", json={
+            "connection_id": self.connection.connection_id,
+            "model": self.models.config().default_model,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("模型认证失败", response.json()["message"])
+        self.assertNotIn("private-test-key", response.text)
+
+    def test_model_connection_rejects_unsaved_model_before_calling_llm(self):
+        response = self.client.post("/api/model-settings/test", json={
+            "connection_id": self.connection.connection_id, "model": "ollama/unsaved",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.model_llm.chat.assert_not_awaited()
+
+    def test_model_connection_does_not_downgrade_internal_failure(self):
+        self.model_llm.chat.side_effect = RuntimeError("internal failure")
+        with self.assertRaisesRegex(RuntimeError, "internal failure"):
+            self.client.post("/api/model-settings/test", json={
+                "connection_id": self.connection.connection_id,
+                "model": self.models.config().default_model,
+            })
+
+    def test_model_connection_does_not_downgrade_corrupt_persisted_config(self):
+        self.models.path.write_text("{", encoding="utf-8")
+        with self.assertRaises(json.JSONDecodeError):
+            self.client.post("/api/model-settings/test", json={
+                "connection_id": self.connection.connection_id, "model": "ollama/qwen3:8b",
+            })
+        self.model_llm.chat.assert_not_awaited()
 
     def test_lists_sessions_and_creates_selected_conversation(self):
         listed = self.client.get("/api/sessions")
@@ -324,14 +400,32 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertIsNone(response.json()["compact_phase"])
         self.assertEqual(self.sessions.calls, [])
 
-    def test_runtime_exposes_active_model_and_compact_threshold_tokens(self):
-        response = self.client.get("/api/runtime")
+    def test_model_settings_never_exposes_credentials(self):
+        connections = json.loads(self.models.connections_path.read_text(encoding="utf-8"))
+        connections["deepseek"]["api_key"] = "secret-for-test"
+        write_json(self.models.connections_path, connections)
+        response = self.client.get("/api/model-settings")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {"model": "test", "compact_threshold_tokens": 200000},
-        )
+        self.assertEqual(response.json()["config"], INITIAL_CONFIG)
+        self.assertNotIn("secret-for-test", response.text)
+        status = next(item for item in response.json()["providers"] if item["provider"] == "deepseek")
+        self.assertTrue(status["configured"])
+
+    def test_session_model_selection_and_invalid_model_boundary(self):
+        response = self.client.get("/api/sessions/session-old/model")
+        self.assertEqual(response.json()["selected"]["model"], INITIAL_CONFIG["model"]["default"])
+        response = self.client.put("/api/sessions/session-old/model", json={
+            "connection_id": self.connection.connection_id, "model": "unknown/no-model",
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_model_settings_rejects_deleting_referenced_model(self):
+        response = self.client.put("/api/model-settings", json={
+            "connection_id": self.connection.connection_id,
+            "config": {"model": {"default": None, "candidates": []}},
+        })
+        self.assertEqual(response.status_code, 409)
 
     def test_selecting_unknown_session_is_a_client_error(self):
         response = self.client.post(
@@ -462,6 +556,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 "message_id": "user-1",
                 "delivery_id": "edit-1",
                 "text": "  修改后  ",
+                "artifact_refs": [],
             },
         )
 
@@ -481,6 +576,7 @@ class WebFirstSliceTest(unittest.TestCase):
                     {
                         "child_session_id": child_session_id,
                         "delivery_id": "edit-1",
+                        "artifact_refs": (),
                         "source": "web",
                         "listed": False,
                         "restore_files": False,
@@ -488,6 +584,28 @@ class WebFirstSliceTest(unittest.TestCase):
                 )
             ],
         )
+
+    def test_edit_forwards_only_retained_attachment_refs(self):
+        uploaded = self.client.post(
+            "/api/sessions/session-old/attachments",
+            data={"connection_id": self.connection.connection_id},
+            files={"file": ("shot.png", _png_bytes(), "image/png")},
+        )
+        attachment_id = uploaded.json()["attachment_id"]
+        for refs in ([attachment_id], []):
+            with self.subTest(refs=refs):
+                response = self.client.post(
+                    "/api/sessions/session-old/forks",
+                    json={
+                        "connection_id": self.connection.connection_id,
+                        "message_id": "user-1",
+                        "delivery_id": "edited",
+                        "text": "修改后 [Image #1]" if refs else "修改后",
+                        "artifact_refs": refs,
+                    },
+                )
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(self.sessions.calls[-1][-1]["artifact_refs"], tuple(refs))
 
     def test_upload_and_send_image_forwards_session_refs(self):
         uploaded = self.client.post(
