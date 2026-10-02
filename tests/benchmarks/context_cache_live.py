@@ -167,7 +167,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
     rows: list[dict[str, object]] = []
     clients = {
         name: ChatCompletionsClient(
-            load_endpoint(app.model),
+            load_endpoint(app.default),
             request_options={
                 "max_tokens": 1,
                 "temperature": 0,
@@ -189,7 +189,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
                 started = time.perf_counter()
                 completion = await clients[name].chat(
                     request.messages,
-                    app.model.active,
+                    app.default_model,
                     tools=request.tools,
                 )
                 elapsed = time.perf_counter() - started

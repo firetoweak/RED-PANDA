@@ -53,12 +53,12 @@ async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
     }
     client_started = time.perf_counter()
     async with ChatCompletionsClient(
-        load_endpoint(app.model), request_options=request_options
+        load_endpoint(app.default), request_options=request_options
     ) as client:
         client_created = time.perf_counter()
         rows = []
         for index in range(repeats):
-            row = await _stream_once(client, app.model.active, prompt, thinking)
+            row = await _stream_once(client, app.default_model, prompt, thinking)
             row["request"] = index + 1
             rows.append(row)
     return {
@@ -83,7 +83,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         results.append(result)
         print(json.dumps(result, ensure_ascii=False), flush=True)
     return {
-        "model": app.model.active,
+        "model": app.default_model,
         "config_load_seconds": round(config_seconds, 3),
         "results": results,
     }

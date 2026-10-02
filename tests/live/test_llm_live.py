@@ -19,10 +19,10 @@ pytestmark = pytest.mark.live
 class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_chat_roundtrip(self):
         config = load_app_config()
-        async with ChatCompletionsClient(load_endpoint(config.model)) as client:
+        async with ChatCompletionsClient(load_endpoint(config.default)) as client:
             result = await client.chat(
                 [{"role": "user", "content": "Reply with the single digit 2."}],
-                config.model.active,
+                config.default_model,
             )
         self.assertTrue(
             result.response.content.strip() or result.response.calls
@@ -48,10 +48,10 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         }]
-        async with ChatCompletionsClient(load_endpoint(config.model)) as client:
+        async with ChatCompletionsClient(load_endpoint(config.default)) as client:
             first = await client.chat(
                 [{"role": "user", "content": "调用 lookup 查询 key=answer。"}],
-                config.model.active,
+                config.default_model,
                 tools,
             )
             self.assertTrue(first.response.calls)
@@ -81,7 +81,7 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                         "content": '{"answer":42}',
                     },
                 ],
-                config.model.active,
+                config.default_model,
                 tools,
             )
         self.assertTrue(second.response.content.strip() or second.response.calls)

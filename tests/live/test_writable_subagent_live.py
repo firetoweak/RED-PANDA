@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import shutil
 from uuid import uuid4
 
 import pytest
@@ -25,6 +26,7 @@ pytestmark = [pytest.mark.live, pytest.mark.skipif(
 
 def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authorization(tmp_path, monkeypatch):
     app_config = load_app_config()
+    connections_path = HelperMeHome.default().connections_path
     home_root = tmp_path / "home"
     root = tmp_path / "project"
     root.mkdir()
@@ -38,6 +40,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
     user_index = (root / ".git" / "index").read_bytes()
     monkeypatch.setenv("HELPERME_HOME", str(home_root))
     home_root.mkdir(exist_ok=True)
+    shutil.copyfile(connections_path, home_root / "connections.json")
     nonce = "E2E_" + uuid4().hex
     server = home_root / "readonly_server.py"
     server.write_text(
@@ -90,7 +93,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 )
                 activation = await app.mcp_service.test_and_enable(record.id, expected_revision=record.revision)
                 assert activation.succeeded
-            print(f"real model: {app.config.model.active}", flush=True)
+            print(f"real model: {app.config.default_model}", flush=True)
             await host.create("e2e-parent", app.workspace.workspace_id)
             failure = asyncio.create_task(host.wait_failure())
 
@@ -160,7 +163,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 outcomes = {event.payload.command_id: event.payload.outcome for event in parent_events
                             if isinstance(event.payload, CommandOutcomeReceived)}
                 assert outcomes[approvals[0][1]].value["ok"] is True
-                report = {"model": app.config.model.active, "marker": nonce, "child": child_id,
+                report = {"model": app.config.default_model, "marker": nonce, "child": child_id,
                           "authorization": approvals, "tools": progress, "outputs": outputs}
                 (tmp_path / "e2e-result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("E2E assertions passed; evidence:", tmp_path, flush=True)
