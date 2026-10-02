@@ -105,6 +105,7 @@ async def build_assistant_assembly(
     session_failed_sink: Callable[[str, str], Awaitable[None] | None] | None = None,
     scheduler_factory=SessionScheduler,
     session_transport=None,
+    model_selection_source=None,
     home: HelperMeHome | None = None,
 ) -> AssistantAssembly:
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
@@ -155,7 +156,7 @@ async def build_assistant_assembly(
         home,
         diff_summarizer=LlmSkillDiffSummarizer(
             config.llm,
-            config.model_name,
+            lambda: decision.model,
         ),
     )
     cli = build_cli(home)
@@ -328,6 +329,7 @@ async def build_assistant_assembly(
     if session_transport is not None:
         compact = CompactBoundary(
             runtime, decision, compact_context, config, control, session_transport,
+            model_selection_source=model_selection_source,
         )
         compact.scheduler = scheduler
 

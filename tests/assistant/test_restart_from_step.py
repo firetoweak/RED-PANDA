@@ -30,6 +30,7 @@ def version_event(step_id, version):
 
 def host_watching(order):
     host = object.__new__(HostSupervisor)
+    host.models = None
     host._pause = SessionFlagStore(None, "paused.json")
     host._lineage = SessionLineageStore(None, "lineage.json")
     host._with_host_metadata = lambda observed, session_id: observed

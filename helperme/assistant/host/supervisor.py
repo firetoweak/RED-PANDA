@@ -87,6 +87,7 @@ class HostSupervisor:
         sink,
         *,
         llm,
+        models=None,
         context_usage_sink=None,
         subagent_activity_sink=None,
         conversation_status_sink=None,
@@ -104,6 +105,7 @@ class HostSupervisor:
         self.home = home
         self.sink = sink
         self.llm = llm
+        self.models = models
         self.context_usage_sink = context_usage_sink
         self.subagent_activity_sink = subagent_activity_sink
         self.conversation_status_sink = conversation_status_sink
@@ -142,6 +144,10 @@ class HostSupervisor:
         )
 
     async def _route(self, operation, session_id, arguments, *, worker=None):
+        if operation == "model_settings":
+            if self.models is not None:
+                return self.models.for_decision(session_id, apply=arguments["apply"])
+            return None
         if operation == "cancel_schedule":
             code = self.automation.cancel(
                 arguments["command_id"], session_id, arguments["schedule_id"],
@@ -235,6 +241,8 @@ class HostSupervisor:
                         workspace_id=child_workspace_id,
                         initial_fact=initial_fact,
                     )
+                    if self.models is not None:
+                        self.models.initialize_session(session_id, parent=expected_task.parent_session_id)
                 else:
                     events = await SqliteJournal(
                         self.store.require(session_id)
@@ -504,6 +512,8 @@ class HostSupervisor:
             worker.process.close()
             if self.workers.get(session_id) is worker:
                 self.workers.pop(session_id)
+            if self.models is not None:
+                self.models.release_worker(session_id)
             worker.exited.set()
             worker.transition.set()
             worker.changed.set()
@@ -751,6 +761,8 @@ class HostSupervisor:
         async with self.locks.setdefault(session_id, asyncio.Lock()):
             self.workspaces.get(workspace_id)
             await self.store.create(session_id, workspace_id=workspace_id)
+            if self.models is not None:
+                self.models.initialize_session(session_id)
 
     async def fork_and_accept_input(
         self,
@@ -761,16 +773,19 @@ class HostSupervisor:
         *,
         child_session_id,
         delivery_id,
+        artifact_refs,
         source="user",
         listed=False,
         restore_files=False,
     ):
         async with self.locks.setdefault(source_session_id, asyncio.Lock()):
-            original = await self.store.fork_before_message(
+            await self.store.fork_before_message(
                 source_session_id,
                 message_id,
                 child_session_id,
             )
+            if self.models is not None:
+                self.models.initialize_session(child_session_id, parent=source_session_id)
         # ???????????????????????????????
         if not listed:
             self._lineage.supersede(child_session_id, source_session_id)
@@ -786,7 +801,7 @@ class HostSupervisor:
             edited_text,
             delivery_id=delivery_id,
             source=source,
-            artifact_refs=original.artifact_refs,
+            artifact_refs=artifact_refs,
         )
 
     async def branch_after_turn(
@@ -801,6 +816,8 @@ class HostSupervisor:
             await self.store.fork_after_turn(
                 source_session_id, user_message_id, child_session_id
             )
+            if self.models is not None:
+                self.models.initialize_session(child_session_id, parent=source_session_id)
         await self.select(owner, child_session_id)
         return self._with_host_metadata(
             await self.compact.application("view", child_session_id, {}),
@@ -889,6 +906,9 @@ class HostSupervisor:
         )
 
     async def receive_user_message(self, session_id, content, **kwargs):
+        if self.models is not None:
+            self.store.require(session_id)
+            self.models.require_ready(session_id)
         if self._pause.get(session_id):
             self._pause.set(session_id, False)
         await self.compact.application(
@@ -896,6 +916,9 @@ class HostSupervisor:
         )
 
     async def accept_input(self, session_id, content, **kwargs):
+        if self.models is not None:
+            self.store.require(session_id)
+            self.models.require_ready(session_id)
         if self._pause.get(session_id):
             self._pause.set(session_id, False)
         view = await self.compact.application(
@@ -919,6 +942,14 @@ class HostSupervisor:
         self._auto_authorize.set(session_id, enabled)
         view = await self._push_auto_authorize(session_id)
         return self._with_host_metadata(view, session_id)
+
+    def model_selection(self, session_id):
+        self.store.require(session_id)
+        return self.models.selection(session_id)
+
+    def set_model(self, session_id, model):
+        self.store.require(session_id)
+        return self.models.select(session_id, model)
 
     async def set_paused(self, session_id, paused):
         self._pause.set(session_id, bool(paused))
@@ -966,6 +997,8 @@ class HostSupervisor:
 
         async with self.locks.setdefault(session_id, asyncio.Lock()):
             await self.store.fork_after_event(session_id, boundary.event_id, child_session_id)
+            if self.models is not None:
+                self.models.initialize_session(child_session_id, parent=session_id)
         self._lineage.supersede(child_session_id, session_id)
         # 新身份带着完整历史停在那一刻，不许自己往下走，等人给下一句话。
         self._pause.set(child_session_id, True)

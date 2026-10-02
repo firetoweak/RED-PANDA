@@ -49,6 +49,49 @@ async def until(predicate, timeout=30):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_model_switch_waits_for_current_step_and_updates_next_decision(self):
+        import json
+        from helperme.config import write_json
+        from helperme.model_settings import ModelSettings
+        from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+
+        pro = {"model": "deepseek/pro", "compact_threshold_tokens": 200000}
+        flash = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
+        write_json(self.home.config_path, {"model": {"default": pro["model"], "candidates": [pro, flash]}})
+        self.host.models = ModelSettings(self.home, self.store.root, path=self.home.config_path)
+        connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))
+        connections["deepseek"]["api_key"] = "test"
+        write_json(self.home.connections_path, connections)
+        (self.root / "input.txt").write_text("evidence", encoding="utf-8")
+        started, release = asyncio.Event(), asyncio.Event()
+        requests = []
+
+        class Llm:
+            async def chat(client, messages, model, **kwargs):
+                requests.append((model, messages))
+                if len(requests) == 1:
+                    started.set()
+                    await release.wait()
+                    return LLMCallResult(LLMResponse(content="", calls=(
+                        ToolCall("read", "read_file", '{"path":"input.txt"}'),
+                    )), LLMUsage(input_tokens=10, output_tokens=5))
+                return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=20, output_tokens=5))
+
+        self.host.llm = Llm()
+        await self.host.create("switch", self.workspace.workspace_id)
+        await self.host.accept_input("switch", "read evidence", delivery_id="first")
+        await asyncio.wait_for(started.wait(), 30)
+        selection = self.host.set_model("switch", flash["model"])
+        self.assertEqual(selection["effective"], pro)
+        self.assertTrue(selection["pending"])
+        self.assertEqual(len(requests), 1)
+        release.set()
+        await until(lambda: ("switch", "done") in self.output)
+        self.assertEqual([request[0] for request in requests], [pro["model"], flash["model"]])
+        self.assertTrue(any(message["role"] == "tool" for message in requests[1][1]))
+        self.assertTrue(self.host.failures.empty())
+        await until(lambda: not self.host.workers and not self.host.watchers)
+
     async def test_web_can_reject_journal_authorization_after_host_restart(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock

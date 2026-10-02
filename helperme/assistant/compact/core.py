@@ -6,7 +6,7 @@ from helperme.runtime.json_values import thaw_value
 
 import json
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from helperme.assistant.artifacts import (
     is_valid_artifact_id,
@@ -21,7 +21,7 @@ from helperme.assistant.control import project_pending_approval
 from helperme.assistant.subagent.subagent import project_parent, project_returned
 from helperme.assistant.workspaces import SESSION_WORKSPACE_FACT
 from helperme.llm.api import InvalidLLMResponse
-from helperme.runtime import DomainFactCommitted, StepCommitted, ToolBinding
+from helperme.runtime import DomainFactCommitted, StepCommitted, ToolBinding, RuntimeStatus
 from helperme.runtime.state import StateProjector
 
 TASK = "compact.task"
@@ -489,10 +489,11 @@ def projected_tail(records, p, q):
 
 
 class CompactBoundary:
-    def __init__(self, runtime, decision, context, config, control, transport):
+    def __init__(self, runtime, decision, context, config, control, transport, *, model_selection_source=None):
         self.runtime, self.decision, self.context = runtime, decision, context
         self.config, self.control, self.transport = config, control, transport
         self.scheduler = None
+        self.model_selection_source = model_selection_source
 
     async def snapshot(self):
         sid = self.context.session_id
@@ -583,6 +584,12 @@ class CompactBoundary:
         state = self.runtime.projector.project(sid, events).state
         if state.waiting_command_ids or project_pending_approval(events) is not None:
             return True
+        if self.model_selection_source is not None:
+            profile = await self.model_selection_source(state.status is RuntimeStatus.RUNNABLE)
+            if profile is not None:
+                self.config = replace(self.config, model_name=profile["model"],
+                                      compact_threshold_tokens=profile["compact_threshold_tokens"])
+                self.decision.set_model(profile["model"], profile["compact_threshold_tokens"])
         used = latest_input_tokens(events)
         response = await self.transport(
             "compact_boundary",

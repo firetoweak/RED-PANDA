@@ -111,6 +111,9 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     peer = PipePeer(connection, handle, signal)
     config = replace(config, llm=WorkerLlmPort(peer, session_id))
 
+    async def model_selection_source(apply):
+        return await peer.request("model_settings", session_id, {"apply": apply})
+
     async def sink(target, output_id, text):
         await peer.request(
             "output",
@@ -152,6 +155,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         preview_sink=preview_sink,
         thinking_sink=thinking_sink,
         session_transport=peer.request,
+        model_selection_source=model_selection_source,
         home=home,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)

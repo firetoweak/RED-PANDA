@@ -230,6 +230,14 @@ class JournalBackedLlmDecisionMaker:
         self._loop_guard = LoopGuard() if loop_guard is None else loop_guard
         self._preview = PreviewEmitter() if preview is None else preview
 
+    def set_model(self, model: str, compact_threshold_tokens: int) -> None:
+        self._model = model
+        self._compact_threshold_tokens = compact_threshold_tokens
+
+    @property
+    def model(self) -> str:
+        return self._model
+
     def schemas_for(
         self, state, events
     ) -> tuple[list[dict[str, object]], frozenset[str]]:

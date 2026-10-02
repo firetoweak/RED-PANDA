@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Protocol
 
 from helperme.llm.api import LLMApi
@@ -24,7 +25,7 @@ class SkillDiffSummarizer(Protocol):
 class LlmSkillDiffSummarizer:
     """无工具权限的独立更新概括调用。"""
 
-    def __init__(self, llm_client: LLMApi, model: str) -> None:
+    def __init__(self, llm_client: LLMApi, model: str | Callable[[], str]) -> None:
         self.llm_client = llm_client
         self.model = model
 
@@ -62,7 +63,7 @@ class LlmSkillDiffSummarizer:
                     }, ensure_ascii=False),
                 },
             ],
-            self.model,
+            self.model() if callable(self.model) else self.model,
             tools=None,
         )
         if result.response.calls:

@@ -14,6 +14,7 @@ from helperme.assistant.session_metadata import SessionFlagStore
 class HostRetryTest(unittest.IsolatedAsyncioTestCase):
     async def test_retry_clears_pause_otherwise_resumes(self):
         host = object.__new__(HostSupervisor)
+        host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
         host.set_paused = AsyncMock(return_value="unpaused")
         host.resume = AsyncMock(return_value="resumed")
@@ -30,6 +31,7 @@ class HostRetryTest(unittest.IsolatedAsyncioTestCase):
 class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
     async def test_accept_input_clears_host_pause_without_copying_worker(self):
         host = object.__new__(HostSupervisor)
+        host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
         host._pause.remember("session-1", True)
         view = SimpleNamespace(paused=True)
@@ -50,6 +52,7 @@ class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
 class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
     async def test_resume_views_when_paused_otherwise_resumes(self):
         host = object.__new__(HostSupervisor)
+        host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
         host.compact = SimpleNamespace(application=AsyncMock(return_value="view"))
         host._with_host_metadata = lambda observed, session_id: observed
@@ -64,6 +67,7 @@ class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_set_paused_does_not_forward_to_worker(self):
         host = object.__new__(HostSupervisor)
+        host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
         host.compact = SimpleNamespace(application=AsyncMock(return_value="held"))
         host._with_host_metadata = lambda observed, session_id: observed
@@ -81,6 +85,7 @@ class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             host = object.__new__(HostSupervisor)
+            host.models = None
             host._pause = SessionFlagStore(root, "paused.json")
             host.compact = SimpleNamespace(application=AsyncMock())
 
