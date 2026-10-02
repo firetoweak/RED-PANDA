@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -78,15 +79,20 @@ def update_plan_binding() -> ToolBinding:
     return ToolBinding(handler)
 
 
-def _project_plan_update(events: Sequence[Event]) -> UpdatePlanInput | None:
+@dataclass(frozen=True, slots=True)
+class WorkPlanUpdate:
+    step_id: str
+    plan: dict | None
+
+
+def _plan_updates(events: Sequence[Event]) -> Iterator[tuple[str, UpdatePlanInput]]:
     """Use committed outcomes in arrival order, never pending tool arguments."""
-    commands = set()
-    update = None
+    commands = {}
     for event in events:
         payload = event.payload
         if isinstance(payload, StepCommitted):
             commands.update(
-                command.command_id for command in payload.step.commands
+                (command.command_id, payload.step.step_id) for command in payload.step.commands
                 if command.effect.name == UPDATE_PLAN
             )
         elif (
@@ -101,7 +107,21 @@ def _project_plan_update(events: Sequence[Event]) -> UpdatePlanInput | None:
                 if value["code"] != "PLAN_UPDATED":
                     raise ValueError("invalid plan outcome code")
                 update = UpdatePlanInput.model_validate(thaw_value(value["data"]))
+                yield commands[payload.command_id], update
+
+
+def _project_plan_update(events: Sequence[Event]) -> UpdatePlanInput | None:
+    update = None
+    for _, candidate in _plan_updates(events):
+        update = candidate
     return update
+
+
+def project_work_plan_updates(events: Sequence[Event]) -> tuple[WorkPlanUpdate, ...]:
+    return tuple(
+        WorkPlanUpdate(step_id, update.model_dump(mode="json")["plan"])
+        for step_id, update in _plan_updates(events)
+    )
 
 
 def project_work_plan(events: Sequence[Event]) -> dict | None:

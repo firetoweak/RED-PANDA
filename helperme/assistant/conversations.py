@@ -6,10 +6,11 @@ from datetime import datetime
 from typing import Literal
 
 from helperme.assistant.control import pending_approval_view, project_control_message
+from helperme.assistant.compact.core import latest_input_tokens
 from helperme.assistant.attachments import AttachmentGateway, AttachmentStore
 from helperme.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from helperme.assistant.delivery import DELIVER_TOOL_NAME
-from helperme.assistant.work_plan import project_work_plan
+from helperme.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.sessions import SessionView, session_view
 from helperme.assistant.subagent.subagent import project_parent, project_pending
@@ -96,6 +97,8 @@ class ConversationView:
     waiting_until: datetime | None = None
     workspace_version: WorkspaceVersionFact | None = None
     work_plan: dict | None = None
+    work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
+    context_input_tokens: int | None = None
 
 
 class AssistantQueries:
@@ -284,6 +287,8 @@ def project_conversation(
         session=session,
         workspace_version=versions[-1] if versions else None,
         work_plan=project_work_plan(events),
+        work_plan_updates=project_work_plan_updates(events),
+        context_input_tokens=latest_input_tokens(events),
     )
 
 

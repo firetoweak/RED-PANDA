@@ -9,6 +9,8 @@ from helperme.assistant.conversations import (
     project_session_summary,
 )
 from helperme.assistant.workspaces import workspace_binding
+from helperme.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
+from helperme.assistant.compact.core import MODEL_USAGE, WINDOW
 from helperme.assistant.sessions import SessionView
 from helperme.runtime import (
     Command,
@@ -16,6 +18,7 @@ from helperme.runtime import (
     CommandOutcomeReceived,
     CommandRejected,
     DispatchAttemptStarted,
+    DomainFactCommitted,
     Event,
     InvokeTool,
     ModelDecision,
@@ -62,6 +65,83 @@ def committed_step(event_id, trigger, content, commands):
 
 
 class ConversationProjectionTest(unittest.TestCase):
+    def test_plan_history_keeps_step_identity_after_clear_and_replacement(self):
+        completed = {"objective": "第一项任务", "steps": [{"text": "验证", "status": "completed"}], "note": None}
+        active = {"objective": "第二项任务", "steps": [{"text": "调查", "status": "in_progress"}], "note": None}
+        events = [event(1, "user-1", UserMessageReceived("第一项任务"))]
+        for index, plan in enumerate((completed, None, active)):
+            sequence = 2 + index * 3
+            command = Command(f"plan-{index}", InvokeTool(UPDATE_PLAN, (("plan", plan),)))
+            step = committed_step(f"decision-{index}", "user-1", "记录计划", (command,))
+            events.extend((
+                event(sequence, f"step-{index}", StepCommitted(step.step, {
+                    MODEL_USAGE: {"window": None, "input_tokens": 10, "output_tokens": 5, "cached_input_tokens": 0},
+                })),
+                event(sequence + 1, f"dispatch-{index}", DispatchAttemptStarted(f"attempt-{index}", command.command_id),
+                      causation_id=f"step-{index}"),
+                event(sequence + 2, f"outcome-{index}", CommandOutcomeReceived(
+                    command.command_id, f"attempt-{index}", CommandOutcome(OutcomeStatus.SUCCEEDED, value={
+                        "ok": True, "code": "PLAN_UPDATED", "data": {"plan": plan},
+                    }),
+                ), causation_id=f"dispatch-{index}"),
+            ))
+        conversation = project_conversation(
+            "session-1", tuple(events), timeline(tuple(events)),
+            session=SessionView("waiting", ("external_fact",), (), False),
+        )
+        self.assertEqual(conversation.work_plan, active)
+        self.assertEqual(
+            [(update.step_id, update.plan) for update in conversation.work_plan_updates],
+            [("decision-0", completed), ("decision-1", None), ("decision-2", active)],
+        )
+        # 未提交结果的请求不能进入历史计划投影。
+        self.assertEqual(project_work_plan_updates(tuple(events[:3])), ())
+
+    def test_projects_committed_input_usage_including_cached_tokens(self):
+        step = committed_step("decision-1", "user-1", "回复", ())
+        events = (
+            event(1, "user-1", UserMessageReceived("你好")),
+            event(2, "step-1", StepCommitted(step.step, {
+                MODEL_USAGE: {"window": None, "input_tokens": 1500,
+                              "output_tokens": 20, "cached_input_tokens": 1200},
+            })),
+        )
+        conversation = project_conversation(
+            "session-1", events, timeline(events),
+            session=SessionView("waiting", ("external_fact",), (), False),
+        )
+        self.assertEqual(conversation.context_input_tokens, 1500)
+
+    def test_window_rollover_clears_usage_until_new_window_has_a_committed_call(self):
+        step = committed_step("decision-1", "user-1", "回复", ())
+        events = (
+            event(1, "user-1", UserMessageReceived("你好")),
+            event(2, "step-1", StepCommitted(step.step, {
+                MODEL_USAGE: {"window": None, "input_tokens": 1500,
+                              "output_tokens": 20, "cached_input_tokens": 1200},
+            })),
+            event(3, "window-1", DomainFactCommitted(WINDOW, {"id": "w1", "parent": None})),
+        )
+        view = SessionView("waiting", ("external_fact",), (), False)
+        before_call = project_conversation("session-1", events, timeline(events), session=view)
+        self.assertIsNone(before_call.context_input_tokens)
+        new_step = committed_step("decision-2", "user-2", "新的回复", ())
+        events += (
+            event(4, "user-2", UserMessageReceived("继续")),
+            event(5, "step-2", StepCommitted(new_step.step, {
+                MODEL_USAGE: {"window": "w1", "input_tokens": 500,
+                              "output_tokens": 10, "cached_input_tokens": 0},
+            })),
+        )
+        after_call = project_conversation("session-1", events, timeline(events), session=view)
+        self.assertEqual(after_call.context_input_tokens, 500)
+
+    def test_conversation_without_model_calls_has_unknown_usage(self):
+        conversation = project_conversation(
+            "session-1", (), (), session=SessionView("waiting", ("external_fact",), (), False),
+        )
+        self.assertIsNone(conversation.context_input_tokens)
+
     def test_projects_each_decision_as_one_step_with_its_tools(self):
         read = Command("cmd-read", InvokeTool("read_file"))
         deliver = Command("cmd-deliver", InvokeTool("deliver"))
@@ -146,7 +226,9 @@ class ConversationProjectionTest(unittest.TestCase):
                     {
                         "message_extensions": {
                             "reasoning_content": "  先确认目标  ",
-                        }
+                        },
+                        MODEL_USAGE: {"window": None, "input_tokens": 1200,
+                                      "output_tokens": 10, "cached_input_tokens": 1000},
                     },
                 ),
             ),
@@ -605,7 +687,9 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
                                 "tool": "propose_workspace_remove",
                                 "action": "workspace.remove",
                                 "arguments": {"workspace_id": "workspace-1"},
-                            }
+                            },
+                            MODEL_USAGE: {"window": None, "input_tokens": 1500,
+                                          "output_tokens": 10, "cached_input_tokens": 1000},
                         },
                     ),
                     occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
@@ -636,3 +720,4 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(conversation.session.control_approval.risk, "high")
         self.assertEqual(conversation.compact_count, 2)
         self.assertEqual(conversation.compact_phase, "failed")
+        self.assertEqual(conversation.context_input_tokens, 1500)

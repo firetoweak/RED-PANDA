@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from helperme.assistant.context.projection import ModelContextProjector
+from helperme.assistant.compact.core import MODEL_USAGE
 from helperme.assistant.conversations import project_conversation
 from helperme.assistant.sessions import SessionView
 from helperme.assistant.work_plan import (
@@ -47,7 +48,10 @@ def update(sequence, plan, *, snapshot=None, ok=True):
                 f"step{sequence}", f"e{sequence - 1}", sequence - 1, "basis", sequence - 1,
                 ModelDecision("调整计划", (effect,)), (command,),
             ),
-            None if snapshot is None else {WORK_PLAN_CONTEXT: snapshot},
+            {
+                MODEL_USAGE: {"window": None, "input_tokens": 10, "output_tokens": 5, "cached_input_tokens": 0},
+                **({WORK_PLAN_CONTEXT: snapshot} if snapshot is not None else {}),
+            },
         )),
         event(sequence + 1, DispatchAttemptStarted(f"a{sequence}", command.command_id),
               causation_id=f"e{sequence}"),
