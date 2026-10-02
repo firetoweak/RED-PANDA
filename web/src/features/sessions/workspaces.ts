@@ -83,6 +83,7 @@ export function workspaceSessionRows(
             title: draftTitle,
             updated_at: null,
             activity: "idle" as const,
+            has_active_subagents: false,
           },
         ];
   return {

@@ -23,10 +23,25 @@ class WebEventHub:
         self._queues: set[asyncio.Queue[WebEvent]] = set()
         self._previews: dict[str, _Preview] = {}
         self._thoughts: dict[str, _Preview] = {}
+        self._running: set[str] = set()
+        self._tools: dict[tuple[str, str], str] = {}
 
     def subscribe(self) -> asyncio.Queue[WebEvent]:
         queue: asyncio.Queue[WebEvent] = asyncio.Queue()
         self._queues.add(queue)
+        # 本段没有 await：快照先入队，随后到来的增量接在同一队列后面。
+        for session_id in self._running:
+            queue.put_nowait(WebEvent("session_activity", {"session_id": session_id, "activity": "running"}))
+        for (session_id, command_id), name in self._tools.items():
+            queue.put_nowait(WebEvent("tool_progress", {
+                "session_id": session_id, "command_id": command_id, "name": name, "status": "running",
+            }))
+        for stream, previews in (("preview", self._previews), ("thinking", self._thoughts)):
+            for session_id, preview in previews.items():
+                identity = {"session_id": session_id, "output_id": preview.output_id}
+                queue.put_nowait(WebEvent(f"{stream}.started", identity))
+                if preview.text:
+                    queue.put_nowait(WebEvent(f"{stream}.delta", {**identity, "text": preview.text}))
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue[WebEvent]) -> None:
@@ -132,6 +147,11 @@ class WebEventHub:
         )
 
     async def session_activity(self, session_id: str, activity: str) -> None:
+        if activity == "running":
+            self._running.add(session_id)
+        else:
+            self._running.discard(session_id)
+            self._tools = {key: name for key, name in self._tools.items() if key[0] != session_id}
         await self._broadcast(
             "session_activity",
             {"session_id": session_id, "activity": activity},
@@ -201,6 +221,10 @@ class WebEventHub:
             raise ValueError("command_id must be a non-empty str")
         if type(name) is not str or not name:
             raise ValueError("name must be a non-empty str")
+        if phase == "start":
+            self._tools[session_id, command_id] = name
+        else:
+            self._tools.pop((session_id, command_id), None)
         await self._broadcast(
             "tool_progress",
             {

@@ -389,6 +389,50 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(started[3], delta[3])
         self.assertEqual(delta[3], final[2])
 
+    async def test_child_stream_crosses_worker_boundary_only_to_observer(self):
+        from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+
+        observed, thoughts = [], []
+
+        class StreamingChildLlm(ProcessLlm):
+            async def chat(client, messages, model, *, tools=None,
+                           on_content_delta=None, on_reasoning_delta=None):
+                if "report" not in {tool["function"]["name"] for tool in tools}:
+                    return await super().chat(
+                        messages, model, tools=tools,
+                        on_content_delta=on_content_delta,
+                        on_reasoning_delta=on_reasoning_delta,
+                    )
+                await on_reasoning_delta("child reasoning")
+                await on_content_delta("child progress")
+                return LLMCallResult(
+                    LLMResponse(content="child progress", message_extensions={"reasoning_content": "child reasoning"},
+                                calls=(ToolCall("report-one", "report", '{"summary":"child done"}'),)),
+                    LLMUsage(input_tokens=10, output_tokens=5),
+                )
+
+        self.host.llm = StreamingChildLlm(self.root)
+        self.host.subagent_output_sink = lambda *values: observed.append(values)
+        self.host.thinking_sink = lambda *values: thoughts.append(values)
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.persist_child()
+        await self.host.resume(CHILD)
+        await until(lambda: (observed and (PARENT, "done") in self.output)
+                    or not self.host.failures.empty())
+        self.assertTrue(self.host.failures.empty())
+        await until(lambda: not self.host.workers and not self.host.watchers)
+
+        child_final, = observed
+        self.assertEqual((child_final[0], child_final[2]), (CHILD, "child progress"))
+        self.assertEqual(self.output, [(PARENT, "done")])
+        child_delta, = [value for value in self.previews
+                        if value[0] == CHILD and value[1] == "delta"]
+        child_thought, = [value for value in thoughts
+                          if value[0] == CHILD and value[1] == "delta"]
+        self.assertEqual(child_delta[2:], (child_final[1], "child progress"))
+        self.assertEqual(child_thought[2:], (child_final[1], "child reasoning"))
+        self.assertTrue(self.host.failures.empty())
+
     async def test_worker_exit_closes_generation_preview_tools_and_activity(self):
         from tests.fixtures.session_worker import blocking_tool_config
 

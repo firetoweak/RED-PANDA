@@ -334,6 +334,12 @@ function SessionRow({
   const activity = useAppSelector(
     (state) => state.runtime.sessions[session.session_id]?.activity ?? session.activity,
   );
+  const showSpinner = activity === "running" || session.has_active_subagents;
+  const activityLabel = activity === "running"
+    ? "运行中"
+    : session.has_active_subagents
+      ? "等待子 Agent"
+      : "空闲";
   const unread = useAppSelector(
     (state) => state.runtime.sessions[session.session_id]?.unread ?? 0,
   );
@@ -390,10 +396,12 @@ function SessionRow({
       gap={6}
       wrap="nowrap"
     >
-      <span
-        className={`activity-dot activity-dot-${activity}`}
-        aria-label={activity === "running" ? "运行中" : "空闲"}
-      />
+      <Tooltip label={activityLabel} openDelay={400} position="right">
+        <span
+          className={`activity-dot activity-dot-${showSpinner ? "running" : "idle"}`}
+          aria-label={activityLabel}
+        />
+      </Tooltip>
       {editing ? (
         <TextInput
           autoFocus

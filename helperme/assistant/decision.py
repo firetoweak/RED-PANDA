@@ -394,10 +394,6 @@ class JournalBackedLlmDecisionMaker:
         show_preview = (
             self._preview.enabled
             and not (self._compact is not None and self._compact.is_reader)
-            and not (
-                self._subagents is not None
-                and self._subagents.is_subagent(frame.state.session_id)
-            )
         )
         if show_preview:
             await self._preview.start(frame.state.session_id, output_id)

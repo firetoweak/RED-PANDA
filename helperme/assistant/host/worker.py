@@ -124,6 +124,9 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     async def preview_sink(target, phase, output_id, text):
         await peer.send(("preview", target, phase, output_id, text))
 
+    async def subagent_output_sink(target, output_id, text):
+        await peer.request("subagent_output", target, {"output_id": output_id, "text": text})
+
     async def thinking_sink(target, phase, output_id, text):
         await peer.send(("thinking", target, phase, output_id, text))
 
@@ -154,6 +157,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_failed_sink=lambda *values: notify("session_failed", *values),
         preview_sink=preview_sink,
         thinking_sink=thinking_sink,
+        subagent_output_sink=subagent_output_sink,
         session_transport=peer.request,
         model_selection_source=model_selection_source,
         home=home,

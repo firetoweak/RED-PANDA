@@ -294,6 +294,73 @@ body.is-resizing-sidebar {
   box-shadow: 0 0 0 1px var(--hm-border-strong);
 }
 
+.conversation-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.conversation-layout > .conversation {
+  flex: 1;
+  min-width: 0;
+}
+
+.subagent-panel {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 0 0 min(var(--subagent-panel-width), calc(100% - 320px));
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--hm-border);
+  background: var(--hm-canvas);
+}
+
+.subagent-panel-header {
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--hm-border);
+}
+
+.subagent-panel-controls { padding-right: 44px; }
+.subagent-panel-resize {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  z-index: 2;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.subagent-panel-resize::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  width: 2px;
+  height: 100%;
+  background: var(--hm-border-strong);
+}
+.subagent-panel-resize:hover::after,
+.subagent-panel-resize:focus-visible::after,
+.subagent-panel-resize.is-dragging::after { background: var(--hm-accent-ring); }
+body.is-resizing-subagent { cursor: col-resize; user-select: none; }
+.subagent-panel-scroll { min-height: 0; }
+.subagent-panel-content { padding: 16px 12px 48px; }
+.subagent-process .execution-steps { padding-top: 4px; }
+.subagent-jump { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); }
+
+@media (max-width: 64em) {
+  .subagent-panel-resize { display: none; }
+  .subagent-panel-controls { padding-right: 0; }
+  .subagent-panel {
+    position: fixed;
+    z-index: 200;
+    inset: 0 0 0 auto;
+    width: min(var(--subagent-panel-width), 100vw);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  }
+}
+
 .conversation {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -334,6 +401,15 @@ body.is-resizing-sidebar {
   background: var(--hm-card-soft);
   border-color: var(--hm-card-border);
 }
+
+.subagent-turn-marker {
+  padding: 10px 12px;
+  border-left: 3px solid var(--mantine-color-sage-6);
+  border-bottom: 1px solid var(--hm-border);
+  background: var(--hm-hover);
+}
+
+.subagent-turn-task { max-width: min(300px, 100%); min-width: 0; }
 
 .thinking-block {
   overflow: hidden;

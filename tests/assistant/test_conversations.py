@@ -12,6 +12,7 @@ from helperme.assistant.workspaces import workspace_binding
 from helperme.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
 from helperme.assistant.compact.core import MODEL_USAGE, WINDOW
 from helperme.assistant.sessions import SessionView
+from helperme.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
 from helperme.runtime import (
     Command,
     CommandOutcome,
@@ -375,6 +376,7 @@ class ConversationProjectionTest(unittest.TestCase):
         self.assertEqual(summary.title, "第一行")
         self.assertEqual(summary.updated_at, events[1].occurred_at)
         self.assertEqual(summary.activity, "running")
+        self.assertFalse(summary.has_active_subagents)
         self.assertEqual(
             project_session_summary(
                 "session-1",
@@ -385,6 +387,28 @@ class ConversationProjectionTest(unittest.TestCase):
             ).title,
             "我起的名",
         )
+
+    def test_idle_summary_keeps_subagent_active_until_report_is_received(self):
+        child_id = child_session_id("session-1", "delegate-1")
+        command = Command("delegate-1", InvokeTool(DELEGATE, (("task", "调查问题"),)))
+        events = (
+            event(1, "user-1", UserMessageReceived("调查问题")),
+            event(2, "step-1", committed_step("decision-1", "user-1", "", (command,))),
+            event(3, "dispatch-1", DispatchAttemptStarted("attempt-1", command.command_id)),
+            event(4, "outcome-1", CommandOutcomeReceived(
+                command.command_id, "attempt-1", CommandOutcome(OutcomeStatus.SUCCEEDED, value={
+                    "ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id},
+                }),
+            )),
+            event(5, "report-1", DomainFactCommitted(REPORT_FACT, {"child_session_id": child_id})),
+        )
+        for snapshot, active in ((events[:4], True), (events, False)):
+            with self.subTest(active=active):
+                summary = project_session_summary(
+                    "session-1", snapshot, workspace_id="workspace-1", activity="idle",
+                )
+                self.assertEqual(summary.activity, "idle")
+                self.assertEqual(summary.has_active_subagents, active)
 
     def test_user_message_carries_image_refs(self):
         attachment_id = "sha256:" + "a" * 64

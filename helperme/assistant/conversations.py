@@ -13,12 +13,16 @@ from helperme.assistant.delivery import DELIVER_TOOL_NAME
 from helperme.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.sessions import SessionView, session_view
-from helperme.assistant.subagent.subagent import project_parent, project_pending
+from helperme.assistant.subagent.subagent import (
+    RETURN_FACT, project_delegate_intents, project_parent, project_pending,
+)
+from helperme.assistant.runner import SessionNotFoundError
 from helperme.assistant.workspaces import bound_workspace_id
 from helperme.assistant.workspace_versions import WorkspaceVersionFact, project_workspace_versions
 from helperme.runtime import (
     CommandPhase,
     CommandState,
+    DomainFactCommitted,
     Event,
     OutcomeStatus,
     SqliteJournal,
@@ -48,6 +52,7 @@ class SessionSummary:
     title: str
     updated_at: datetime | None
     activity: SessionActivity
+    has_active_subagents: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,12 +106,51 @@ class ConversationView:
     context_input_tokens: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SubagentResult:
+    reported: bool
+    summary: str | None
+    failure: str | None
+    cancelled: bool
+    reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SubagentObservation:
+    session_id: str
+    task: str
+    activity: SessionActivity
+    result: SubagentResult | None
+    conversation: ConversationView | None
+
+
 class AssistantQueries:
     """Read-only Assistant projections for native Channels."""
 
     def __init__(self, store: SessionStore, sessions) -> None:
         self._store = store
         self._sessions = sessions
+
+    async def observe_subagent(self, parent_session_id: str, command_id: str) -> SubagentObservation:
+        events = await SqliteJournal(self._store.require(parent_session_id)).snapshot(parent_session_id)
+        intent = next((item for item in project_delegate_intents(events) if item.command_id == command_id), None)
+        if intent is None:
+            raise SessionNotFoundError(f"委派不存在：{command_id}")
+        child_id = intent.child_session_id
+        # 委派已提交，但 Host 尚未物化子 Journal 时，仍可打开任务说明。
+        if not self._store.path(child_id).parent.exists():
+            return SubagentObservation(child_id, intent.task, "idle", None, None)
+        child_events = await SqliteJournal(self._store.require(child_id)).snapshot(child_id)
+        returned = next((event.payload.data for event in child_events
+                         if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == RETURN_FACT), None)
+        result = None if returned is None else SubagentResult(
+            reported=returned["reported"], summary=returned["summary"], failure=returned["failure"],
+            cancelled=returned["cancelled"], reason=returned["reason"],
+        )
+        return SubagentObservation(
+            child_id, intent.task, self._sessions.activity(child_id), result,
+            await self._conversation(child_id, child_events),
+        )
 
     async def list_sessions(self) -> tuple[SessionSummary, ...]:
         summaries: list[SessionSummary] = []
@@ -157,6 +201,9 @@ class AssistantQueries:
         events = await SqliteJournal(
             self._store.require(session_id)
         ).snapshot(session_id)
+        return await self._conversation(session_id, events, view=view)
+
+    async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
         if view is None:
             view = session_view(
@@ -214,6 +261,7 @@ def project_session_summary(
             None,
         ),
         activity=activity,
+        has_active_subagents=bool(project_pending(events)),
     )
 
 

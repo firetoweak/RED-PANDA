@@ -102,6 +102,7 @@ async def build_assistant_assembly(
     authorization_required_sink=None,
     preview_sink=None,
     thinking_sink=None,
+    subagent_output_sink=None,
     session_failed_sink: Callable[[str, str], Awaitable[None] | None] | None = None,
     scheduler_factory=SessionScheduler,
     session_transport=None,
@@ -205,7 +206,7 @@ async def build_assistant_assembly(
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
-    delivery_sink = subagents.routed_sink(sink)
+    delivery_sink = subagents.routed_sink(sink, subagent_output_sink)
 
     async def report_session_failed(session_id: str, text: str) -> None:
         if subagents.is_subagent(session_id) or session_failed_sink is None:

@@ -661,7 +661,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
         finally:
             await scheduler.close()
 
-    async def test_subagent_output_is_not_routed_anywhere(self):
+    async def test_subagent_output_goes_only_to_observation_sink(self):
         delivered: list[tuple[str, str]] = []
         host, _model, runtime, scheduler = self._build(
             parent_scripts=(
@@ -691,13 +691,16 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             await scheduler.join()
             child_session_id = await self._child_session_id(runtime)
 
+            observed = []
             routed = host.routed_sink(
-                lambda session_id, _output_id, text: delivered.append((session_id, text))
+                lambda session_id, _output_id, text: delivered.append((session_id, text)),
+                lambda *values: observed.append(values),
             )
             await routed(child_session_id, "output-1", "子 Agent 的中间过程")
             await routed(self.PARENT, "output-2", "给用户的结论")
 
             self.assertEqual(delivered, [(self.PARENT, "给用户的结论")])
+            self.assertEqual(observed, [(child_session_id, "output-1", "子 Agent 的中间过程")])
         finally:
             await scheduler.close()
 

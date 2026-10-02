@@ -1,6 +1,7 @@
 import {
   Alert,
   Badge,
+  Button,
   Group,
   Loader,
   Paper,
@@ -43,7 +44,10 @@ const STATUS_COLOR: Record<ToolStatus, string> = {
   rejected: "gray",
 };
 
-export function SubagentCallCard({ tool }: { tool: VisibleTool }) {
+export function SubagentCallCard({ tool, onObserve }: {
+  tool: VisibleTool;
+  onObserve?: (commandId: string) => void;
+}) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const task = subagentTask(tool);
   const childId = subagentChildSessionId(tool);
@@ -89,10 +93,18 @@ export function SubagentCallCard({ tool }: { tool: VisibleTool }) {
             size="xs"
             variant="light"
           >
-            {STATUS_LABEL[tool.status]}
+            {tool.name === "delegate" && tool.status === "succeeded" ? "已派出" : STATUS_LABEL[tool.status]}
           </Badge>
         </Group>
       </UnstyledButton>
+      {tool.name === "delegate" && onObserve !== undefined ? (
+        <Group justify="space-between" gap="xs" mt={6} wrap="nowrap">
+          <Text c="dimmed" fz={12} truncate>{task}</Text>
+          <Button size="compact-xs" variant="subtle"
+            disabled={tool.status === "failed" || tool.status === "rejected"}
+            onClick={() => onObserve(tool.commandId)}>查看过程</Button>
+        </Group>
+      ) : null}
       {detailsOpen && task !== null ? (
         <Text c="dimmed" className="pre-wrap" fz={12} mt={6}>
           {task}

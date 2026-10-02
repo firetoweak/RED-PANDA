@@ -70,6 +70,7 @@ import {
 } from "./timelineTurns";
 import { useFollowOutput } from "./useFollowOutput";
 import { visibleTimeline } from "./visibleTimeline";
+import { SubagentPanel } from "./SubagentPanel";
 
 export function Conversation() {
   const dispatch = useAppDispatch();
@@ -80,6 +81,7 @@ export function Conversation() {
   const ownerSessionId = useAppSelector((state) => state.runtime.ownerSessionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
   const sessionId = routeId;
+  const [observedCommandId, setObservedCommandId] = useState<string | null>(null);
   const runtime = useAppSelector((state) => state.runtime.sessions[sessionId]);
   const selected = useGetConversationQuery(sessionId, {
     skip: routeSessionId === undefined,
@@ -292,6 +294,7 @@ export function Conversation() {
   const activeAuthorization = pendingAuthorizations[0];
 
   return (
+    <Box className="conversation-layout">
     <Box component="section" className="conversation">
       {items.length === 0 ? (
         <Center className="conversation-intro">
@@ -358,6 +361,7 @@ export function Conversation() {
                     onRestart={(stepId) => void restart(stepId)}
                     restartDisabled={connectionId === null || restarting.isLoading}
                     steps={turn.process}
+                    onObserveSubagent={setObservedCommandId}
                   />
                 )}
                 {thinking === null ? null : (
@@ -633,6 +637,10 @@ export function Conversation() {
           </Stack>
         )}
       </Modal>
+    </Box>
+    {observedCommandId === null ? null : <SubagentPanel
+      key={observedCommandId} parentSessionId={sessionId} commandId={observedCommandId}
+      onClose={() => setObservedCommandId(null)} />}
     </Box>
   );
 }

@@ -189,6 +189,7 @@ def create_web_app(
             workspace_path=workspace_path,
             preview_sink=events.preview,
             thinking_sink=events.thinking,
+            subagent_output_sink=events.output_final,
             session_activity_sink=events.session_activity,
             session_failed_sink=events.session_failed,
             schedule_changed_sink=events.schedule_changed,
@@ -334,6 +335,10 @@ def create_web_app(
     @app.post("/api/sessions", status_code=201)
     async def create_session(body: CreateSessionRequest, request: Request):
         return await _channel(request).create(body.connection_id, body.workspace_id)
+
+    @app.get("/api/sessions/{session_id}/subagents/{command_id}")
+    async def observe_subagent(session_id: str, command_id: str, request: Request):
+        return await _channel(request).observe_subagent(session_id, command_id)
 
     @app.get("/api/workspaces")
     async def list_workspaces(request: Request):

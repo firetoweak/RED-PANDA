@@ -47,6 +47,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
+    dispatch(helpermeApi.util.invalidateTags(["Conversation", "Sessions"]));
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));
@@ -226,6 +227,8 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     );
   });
   source.addEventListener("error", () => {
+    preview.flushNow();
+    thinking.flushNow();
     dispatch(disconnected());
   });
 

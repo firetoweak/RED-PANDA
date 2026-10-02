@@ -95,6 +95,7 @@ class HostSupervisor:
         authorization_required_sink=None,
         preview_sink=None,
         thinking_sink=None,
+        subagent_output_sink=None,
         session_activity_sink=None,
         session_failed_sink=None,
         schedule_changed_sink=None,
@@ -113,6 +114,7 @@ class HostSupervisor:
         self.authorization_required_sink = authorization_required_sink
         self.preview_sink = preview_sink
         self.thinking_sink = thinking_sink
+        self.subagent_output_sink = subagent_output_sink
         self.session_activity_sink = session_activity_sink
         self.session_failed_sink = session_failed_sink
         self.schedule_changed_sink = schedule_changed_sink
@@ -195,15 +197,12 @@ class HostSupervisor:
             return await self.compact.boundary(session_id, arguments)
         if operation == "compact_complete":
             return await self.compact.complete(session_id, arguments)
-        if operation == "output":
+        if operation in {"output", "subagent_output"}:
             if self.compact.store.reader_job(session_id) is not None:
                 return None
-            await emit_delivery(
-                self.sink,
-                session_id,
-                arguments["output_id"],
-                arguments["text"],
-            )
+            sink = self.sink if operation == "output" else self.subagent_output_sink
+            if sink is not None:
+                await emit_delivery(sink, session_id, arguments["output_id"], arguments["text"])
             if worker is not None and worker.active_preview == arguments["output_id"]:
                 worker.active_preview = None
             return None
@@ -320,6 +319,7 @@ class HostSupervisor:
 
     async def _start(self, session_id):
         path = self.store.require(session_id)
+        is_subagent = project_parent(await SqliteJournal(path).snapshot(session_id)) is not None
         context = multiprocessing.get_context("spawn")
         local, remote = context.Pipe()
         worker = None
@@ -363,6 +363,8 @@ class HostSupervisor:
                     if isawaitable(emitted):
                         await emitted
             elif kind == "preview":
+                if is_subagent and self.subagent_output_sink is None:
+                    return
                 _, phase, output_id, _ = values
                 if phase == "started":
                     worker.active_preview = output_id
@@ -376,6 +378,8 @@ class HostSupervisor:
                     if isawaitable(emitted):
                         await emitted
             elif kind == "thinking":
+                if is_subagent and self.subagent_output_sink is None:
+                    return
                 _, phase, output_id, _ = values
                 if phase == "started":
                     worker.active_thinking = output_id

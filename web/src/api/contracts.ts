@@ -40,6 +40,7 @@ export const sessionSummarySchema = z
     title: z.string().min(1),
     updated_at: z.string().datetime({ offset: true }).nullable(),
     activity: z.enum(["running", "idle"]),
+    has_active_subagents: z.boolean(),
   })
   .strict();
 
@@ -288,6 +289,18 @@ export const conversationStatusEventSchema = z
   })
   .strict();
 
+export const subagentObservationSchema = z.object({
+  session_id: z.string().min(1),
+  task: z.string().min(1),
+  activity: z.enum(["running", "idle"]),
+  conversation: conversationViewSchema.nullable(),
+  result: z.object({
+    reported: z.boolean(), summary: z.string().nullable(), failure: z.string().nullable(),
+    cancelled: z.boolean(), reason: z.string().nullable(),
+  }).strict().nullable(),
+}).strict();
+
+export type SubagentObservation = z.infer<typeof subagentObservationSchema>;
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ConversationView = z.infer<typeof conversationViewSchema>;
 export type ConversationItem = ConversationView["items"][number];

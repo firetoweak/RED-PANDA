@@ -16,6 +16,7 @@ import {
   modelTestResultSchema,
   sessionModelSchema,
   sessionSummarySchema,
+  subagentObservationSchema,
   workspaceSchema,
   type ConversationView,
   type DirectorySelection,
@@ -25,6 +26,7 @@ import {
   type ModelTestResult,
   type SessionModel,
   type SessionSummary,
+  type SubagentObservation,
   type Workspace,
 } from "./contracts";
 
@@ -220,6 +222,15 @@ export const helpermeApi = createApi({
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       providesTags: (_result, _error, sessionId) => [
         { type: "Conversation", id: sessionId },
+      ],
+    }),
+    observeSubagent: build.query<SubagentObservation, { parentSessionId: string; commandId: string }>({
+      query: ({ parentSessionId, commandId }) =>
+        `/sessions/${encodeURIComponent(parentSessionId)}/subagents/${encodeURIComponent(commandId)}`,
+      transformResponse: (value: unknown) => subagentObservationSchema.parse(value),
+      providesTags: (result, _error, { parentSessionId }) => [
+        { type: "Conversation", id: parentSessionId },
+        ...(result === undefined ? [] : [{ type: "Conversation" as const, id: result.session_id }]),
       ],
     }),
     createSession: build.mutation<
@@ -489,6 +500,7 @@ export const {
   useGetSessionTitlesQuery,
   useGetWorkspacesQuery,
   useGetConversationQuery,
+  useObserveSubagentQuery,
   useSelectSessionMutation,
   useSendInputMutation,
   useEditAndForkMutation,

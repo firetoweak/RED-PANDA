@@ -17,10 +17,12 @@ import {
   IconAlertCircle,
   IconAlertTriangle,
   IconArrowBackUp,
+  IconArrowFork,
   IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconCode,
+  IconEye,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
@@ -28,7 +30,7 @@ import { useEffect, useState } from "react";
 
 import type { ToolStatus } from "../../api/contracts";
 import { stepHeading } from "./stepHeading";
-import { isSubagentTool } from "./subagent";
+import { isSubagentTool, subagentTask } from "./subagent";
 import { SubagentCallCard } from "./SubagentCallCard";
 import type { VisibleStep, VisibleTool } from "./visibleTimeline";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -61,6 +63,7 @@ interface ExecutionProcessProps {
   onAuthorize: (commandId: string, approved: boolean) => void;
   onRestart: (stepId: string) => void;
   restartDisabled: boolean;
+  onObserveSubagent?: (commandId: string) => void;
 }
 
 export function ExecutionProcess({
@@ -70,10 +73,12 @@ export function ExecutionProcess({
   onAuthorize,
   onRestart,
   restartDisabled,
+  onObserveSubagent,
 }: ExecutionProcessProps) {
   const [opened, setOpened] = useState(!complete);
   const running = steps.some(stepStatusIsRunning);
   const toolCount = steps.reduce((count, step) => count + step.tools.length, 0);
+  const subagentTasks = steps.flatMap((step) => step.tools.filter((tool) => tool.name === "delegate"));
 
   useEffect(() => {
     if (complete) {
@@ -83,6 +88,23 @@ export function ExecutionProcess({
 
   return (
     <Paper className="execution-process" radius="md" withBorder>
+      {subagentTasks.length === 0 ? null : (
+        <Group className="subagent-turn-marker" gap="xs" aria-label="本轮子 Agent 任务">
+          <Badge variant="light" leftSection={<IconArrowFork size={13} />}>
+            子 Agent · {subagentTasks.length}
+          </Badge>
+          {subagentTasks.map((tool) => {
+            const task = subagentTask(tool) ?? tool.commandId;
+            return <Button key={tool.commandId} className="subagent-turn-task"
+              size="compact-xs" variant="subtle" title={task}
+              aria-label={`查看子 Agent 过程：${task}`} rightSection={<IconEye size={14} />}
+              disabled={onObserveSubagent === undefined || tool.status === "failed" || tool.status === "rejected"}
+              onClick={() => onObserveSubagent?.(tool.commandId)}>
+              <Text component="span" fz="inherit" truncate>{task}</Text>
+            </Button>;
+          })}
+        </Group>
+      )}
       <UnstyledButton
         aria-expanded={opened}
         className="execution-toggle"
@@ -113,6 +135,7 @@ export function ExecutionProcess({
               onAuthorize={onAuthorize}
               onRestart={onRestart}
               restartDisabled={restartDisabled}
+              onObserveSubagent={onObserveSubagent}
               step={step}
             />
           ))}
@@ -122,33 +145,36 @@ export function ExecutionProcess({
   );
 }
 
-function StepDisclosure({
+export function StepDisclosure({
   index,
   step,
-  authorizationDisabled,
+  authorizationDisabled = false,
   onAuthorize,
   onRestart,
-  restartDisabled,
+  restartDisabled = false,
+  onObserveSubagent,
+  expandRunning = false,
 }: {
   index: number;
   step: VisibleStep;
-  authorizationDisabled: boolean;
-  onAuthorize: (commandId: string, approved: boolean) => void;
-  onRestart: (stepId: string) => void;
-  restartDisabled: boolean;
+  authorizationDisabled?: boolean;
+  onAuthorize?: (commandId: string, approved: boolean) => void;
+  onRestart?: (stepId: string) => void;
+  restartDisabled?: boolean;
+  onObserveSubagent?: (commandId: string) => void;
+  expandRunning?: boolean;
 }) {
   const status = stepStatus(step);
   const awaiting = step.tools.some(
     (tool) => tool.status === "awaiting_authorization",
   );
-  const [opened, setOpened] = useState(awaiting);
+  const autoOpened = awaiting || (expandRunning && stepStatusIsRunning(step));
+  const [opened, setOpened] = useState(autoOpened);
 
   useEffect(() => {
-    // 默认一律折叠：标题已经给出这一步的意图，够用户判断执行有没有走偏；
-    // 想看执行细节（思考块、工具与参数）由用户自己展开。
-    // 只有等待授权这类需要用户操作的状态才自动展开。
-    setOpened(awaiting);
-  }, [awaiting]);
+    // 历史默认折叠；需要授权时展开，观察端还会展开正在执行的步骤。
+    setOpened(autoOpened);
+  }, [autoOpened]);
 
   return (
     <div className="step-panel">
@@ -177,7 +203,7 @@ function StepDisclosure({
             )}
           </Group>
         </UnstyledButton>
-        {step.rewindable && step.stepId !== null ? (
+        {onRestart !== undefined && step.rewindable && step.stepId !== null ? (
           <Tooltip label="从这一步之后重开：截断对话，文件一起退回">
             <ActionIcon
               aria-label="从这一步之后重开"
@@ -194,33 +220,27 @@ function StepDisclosure({
       </Group>
       <Collapse expanded={opened}>
         {opened ? (
-          <Stack className="step-content" gap="xs">
-            {step.text === null ? null : (
-              <MarkdownMessage content={step.text} streaming={step.pending} />
-            )}
-            {step.thinking === null ? null : (
-              <ThinkingBlock
-                streaming={step.thinkingPending}
-                text={step.thinking}
-              />
-            )}
-            {step.tools.map((tool) =>
-              isSubagentTool(tool.name) ? (
-                <SubagentCallCard key={tool.commandId} tool={tool} />
-              ) : (
-                <ToolCard
-                  authorizationDisabled={authorizationDisabled}
-                  key={tool.commandId}
-                  onAuthorize={onAuthorize}
-                  tool={tool}
-                />
-              ),
-            )}
-          </Stack>
+          <StepContent step={step} onAuthorize={onAuthorize}
+            authorizationDisabled={authorizationDisabled} onObserveSubagent={onObserveSubagent} />
         ) : null}
       </Collapse>
     </div>
   );
+}
+
+function StepContent({ step, onAuthorize, authorizationDisabled = false, onObserveSubagent }: {
+  step: VisibleStep;
+  onAuthorize?: (commandId: string, approved: boolean) => void;
+  authorizationDisabled?: boolean;
+  onObserveSubagent?: (commandId: string) => void;
+}) {
+  return <Stack className="step-content" gap="xs">
+    {step.thinking === null ? null : <ThinkingBlock streaming={step.thinkingPending} text={step.thinking} />}
+    {step.text === null ? null : <MarkdownMessage content={step.text} streaming={step.pending} />}
+    {step.tools.map((tool) => isSubagentTool(tool.name)
+      ? <SubagentCallCard key={tool.commandId} tool={tool} onObserve={onObserveSubagent} />
+      : <ToolCard key={tool.commandId} tool={tool} onAuthorize={onAuthorize} authorizationDisabled={authorizationDisabled} />)}
+  </Stack>;
 }
 
 function ToolCard({
@@ -230,7 +250,7 @@ function ToolCard({
 }: {
   tool: VisibleTool;
   authorizationDisabled: boolean;
-  onAuthorize: (commandId: string, approved: boolean) => void;
+  onAuthorize?: (commandId: string, approved: boolean) => void;
 }) {
   const awaiting = tool.status === "awaiting_authorization";
   const hasArguments = Object.keys(tool.arguments).length > 0;
@@ -287,7 +307,7 @@ function ToolCard({
           {formatArguments(tool.arguments)}
         </Text>
       ) : null}
-      {awaiting ? (
+      {awaiting && onAuthorize !== undefined ? (
         <Group gap="xs" mt="xs">
           <Button
             color="sage"

@@ -153,7 +153,7 @@ class _Queries:
 
     async def list_sessions(self):
         return (
-            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle"),
+            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False),
         )
 
     async def conversation(self, session_id, *, view=None):

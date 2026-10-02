@@ -52,6 +52,9 @@ class WebChannel:
             raise ValueError("session_id must be a non-empty str")
         return await self._queries.conversation(session_id)
 
+    async def observe_subagent(self, parent_session_id: str, command_id: str):
+        return await self._queries.observe_subagent(parent_session_id, command_id)
+
     async def create(self, connection_id: str, workspace_id: str):
         connection = self._require_connection(connection_id)
         session_id = f"session-{uuid4().hex}"

@@ -43,6 +43,27 @@ class WebEventHubTest(unittest.IsolatedAsyncioTestCase):
         await self.hub.preview("session-a", "delta", "out-2", "x")
         self.hub.unsubscribe(queue)
 
+    async def test_new_connection_receives_live_prefix_before_later_deltas(self):
+        await self.hub.session_activity("child", "running")
+        await self.hub.tool_progress("child", "start", "cmd", "read_file", None)
+        await self.hub.preview("child", "started", "out", None)
+        await self.hub.preview("child", "delta", "out", "前半段")
+        await self.hub.thinking("child", "started", "out", None)
+        await self.hub.thinking("child", "delta", "out", "思考前半段")
+        queue = self.hub.subscribe()
+        await self.hub.preview("child", "delta", "out", "后半段")
+        events = [queue.get_nowait() for _ in range(queue.qsize())]
+        self.assertEqual([item.name for item in events], [
+            "session_activity", "tool_progress", "preview.started", "preview.delta",
+            "thinking.started", "thinking.delta", "preview.delta",
+        ])
+        self.assertEqual("".join(item.data["text"] for item in events if item.name == "preview.delta"), "前半段后半段")
+        self.hub.unsubscribe(queue)
+        await self.hub.output_final("child", "out", "前半段后半段")
+        await self.hub.thinking("child", "finished", "out", None)
+        await self.hub.session_activity("child", "idle")
+        self.assertTrue(self.hub.subscribe().empty())
+
     async def test_final_of_a_superseded_output_still_lands(self):
         queue = self.hub.subscribe()
 

@@ -88,6 +88,10 @@ const runtimeSlice = createSlice({
       state.connectionId = null;
       state.ownerSessionId = null;
       for (const session of Object.values(state.sessions)) {
+        session.activity = null;
+        session.activePreview = null;
+        session.activeThinking = null;
+        session.committedThinking = {};
         session.tools = {};
       }
     },
