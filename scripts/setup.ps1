@@ -66,13 +66,12 @@ try {
         throw "Failed to install Python dependencies."
     }
 
-    $envFile = Join-Path $projectRoot ".env"
-    if (-not (Test-Path $envFile)) {
-        Copy-Item (Join-Path $projectRoot ".env.example") $envFile
+    & $python -m helperme.initialize
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to initialize personal model configuration."
     }
 
-    Write-Host "Setup complete."
-    Write-Host "Fill in the settings for your model provider in $envFile."
+    Write-Host "Setup complete. Fill provider settings in your personal connections.json."
 }
 finally {
     Pop-Location

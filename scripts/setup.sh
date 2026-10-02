@@ -75,9 +75,6 @@ fi
 
 "$uv" pip install --python "$python" pip -r requirements.txt
 
-if [ ! -e .env ]; then
-  cp .env.example .env
-fi
+"$python" -m helperme.initialize
 
-printf '%s\n' "Setup complete."
-printf '%s\n' "Fill in the settings for your model provider in $project_root/.env."
+printf '%s\n' "Setup complete. Fill provider settings in your personal connections.json."

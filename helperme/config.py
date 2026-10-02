@@ -1,37 +1,39 @@
-"""HelperMe 应用配置。"""
-
+"""个人模型配置；连接凭据单独管理。"""
 from __future__ import annotations
-
+from dataclasses import asdict, dataclass
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from helperme.llm.api import LLMApi
 from helperme.llm.config import ModelConfig
 from helperme.paths import HelperMeHome
 
-
 CONFIG_PATH_ENV = "HELPERME_CONFIG"
-INITIAL_CONFIG = {
-    "model": {
-        "active": "deepseek/deepseek-v4-pro",
-    },
-    "runtime": {
-        "compact_threshold_tokens": 200000,
-    },
-}
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeConfig:
-    compact_threshold_tokens: int
+INITIAL_CONFIG = {"model": {"default": "deepseek/deepseek-v4-pro", "candidates": [
+    {"model": "deepseek/deepseek-v4-pro", "compact_threshold_tokens": 200000},
+]}}
 
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    model: ModelConfig
-    runtime: RuntimeConfig
+    default_model: str | None
+    models: tuple[ModelConfig, ...]
+
+    def get_model(self, model: str) -> ModelConfig:
+        for candidate in self.models:
+            if candidate.model == model:
+                return candidate
+        raise ValueError(f"模型不在候选列表中：{model}")
+
+    @property
+    def default(self) -> ModelConfig | None:
+        return None if self.default_model is None else self.get_model(self.default_model)
+
+    def to_dict(self) -> dict:
+        return {"model": {"default": self.default_model,
+                          "candidates": [asdict(model) for model in self.models]}}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,66 +43,58 @@ class AssistantConfig:
     llm: LLMApi
 
 
-def _create_initial_config(path: Path) -> None:
+def config_path() -> Path:
+    return Path(os.environ[CONFIG_PATH_ENV]) if CONFIG_PATH_ENV in os.environ else HelperMeHome.default().config_path
+
+
+def write_json(path: Path, data: dict) -> None:
+    """完整文档以替换方式发布，读者只会看到完整快照。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as config_file:
-        json.dump(INITIAL_CONFIG, config_file, ensure_ascii=False, indent=2)
-        config_file.write("\n")
+    with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as file:
+        temporary = Path(file.name)
+        try:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        except BaseException:
+            file.close()
+            temporary.unlink()
+            raise
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
-def _load_config_data(path: Path | None) -> dict:
-    uses_default_path = path is None and CONFIG_PATH_ENV not in os.environ
-    if path is not None:
-        config_path = path
-    elif CONFIG_PATH_ENV in os.environ:
-        config_path = Path(os.environ[CONFIG_PATH_ENV])
-    else:
-        config_path = HelperMeHome.default().config_path
-    if not config_path.is_file():
-        if not uses_default_path:
-            raise FileNotFoundError(f"配置不存在：{config_path}")
-        _create_initial_config(config_path)
-    with config_path.open("r", encoding="utf-8") as config_file:
-        data = json.load(config_file)
-    if not isinstance(data, dict):
-        raise ValueError("配置必须是 JSON object")
-    return data
-
-
-def _parse_model_config(data: dict) -> ModelConfig:
+def parse_app_config(data: object) -> AppConfig:
+    if type(data) is not dict or set(data) != {"model"}:
+        raise ValueError("配置字段必须只有 model")
     model = data["model"]
-    if not isinstance(model, dict):
-        raise ValueError("模型配置必须包含 model 映射")
-    if set(model) != {"active"}:
-        raise ValueError("模型配置字段必须只有 active")
-    return ModelConfig(active=model["active"])
+    if type(model) is not dict or set(model) != {"default", "candidates"}:
+        raise ValueError("model 配置字段必须是 default/candidates")
+    if type(model["candidates"]) is not list:
+        raise ValueError("candidates 必须是数组")
+    candidates = tuple(ModelConfig.from_dict(item) for item in model["candidates"])
+    names = [item.model for item in candidates]
+    if len(names) != len(set(names)):
+        raise ValueError("候选模型不能重复")
+    default = model["default"]
+    if default is not None and (type(default) is not str or default not in names):
+        raise ValueError("默认模型必须来自候选列表")
+    if candidates and default is None:
+        raise ValueError("有候选模型时必须选择默认模型")
+    return AppConfig(default, candidates)
 
 
 def load_app_config(path: Path | None = None) -> AppConfig:
-    data = _load_config_data(path)
-    if set(data) != {"model", "runtime"}:
-        raise ValueError("配置字段必须是 model/runtime")
-
-    runtime = data["runtime"]
-    if not isinstance(runtime, dict):
-        raise ValueError("配置必须包含 runtime 映射")
-    if set(runtime) != {"compact_threshold_tokens"}:
-        raise ValueError("runtime 配置字段必须是 compact_threshold_tokens")
-    compact_threshold_tokens = runtime["compact_threshold_tokens"]
-    if type(compact_threshold_tokens) is not int or compact_threshold_tokens <= 0:
-        raise ValueError("配置 runtime.compact_threshold_tokens 必须是大于 0 的整数")
-
-    return AppConfig(
-        model=_parse_model_config(data),
-        runtime=RuntimeConfig(
-            compact_threshold_tokens=compact_threshold_tokens,
-        ),
-    )
+    target = config_path() if path is None else path
+    if not target.is_file():
+        if path is not None or CONFIG_PATH_ENV in os.environ:
+            raise FileNotFoundError(f"配置不存在：{target}")
+        write_json(target, INITIAL_CONFIG)
+    return parse_app_config(json.loads(target.read_text(encoding="utf-8")))
 
 
 def assistant_config_from_app(app: AppConfig, llm: LLMApi) -> AssistantConfig:
-    return AssistantConfig(
-        model_name=app.model.active,
-        compact_threshold_tokens=app.runtime.compact_threshold_tokens,
-        llm=llm,
-    )
+    model = app.default
+    return AssistantConfig("" if model is None else model.model,
+                           200000 if model is None else model.compact_threshold_tokens, llm)

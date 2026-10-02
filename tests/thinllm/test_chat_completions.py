@@ -13,6 +13,7 @@ from thinllm import (
     LLMAuthenticationError,
     LLMContextLengthError,
     LLMTransientError,
+    resolve_endpoint,
 )
 
 
@@ -129,12 +130,19 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, content=_DONE_OK)
 
         client = ChatCompletionsClient(
-            _endpoint(api_key=None), transport=httpx.MockTransport(handle)
+            resolve_endpoint(
+                "ollama/qwen3:8b", {"base_url": "http://127.0.0.1:11434/v1", "api_key": ""}
+            ),
+            transport=httpx.MockTransport(handle),
         )
         async with client:
-            await client.chat([], "test/logical-model")
+            await client.chat([], "ollama/qwen3:8b")
 
         self.assertNotIn("authorization", requests[0].headers)
+        self.assertEqual(
+            str(requests[0].url), "http://127.0.0.1:11434/v1/chat/completions"
+        )
+        self.assertEqual(json.loads(requests[0].content)["model"], "qwen3:8b")
 
     async def test_only_padding_providers_fill_missing_reasoning_content(self):
         history = [

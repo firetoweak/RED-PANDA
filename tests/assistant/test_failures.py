@@ -17,7 +17,7 @@ class ModelFailureMessageTest(unittest.TestCase):
         message = assistant_failure_message(LLMAuthenticationError("401"))
 
         self.assertIn("模型认证失败", message)
-        self.assertIn(".env", message)
+        self.assertIn("connections.json", message)
 
     def test_transient_error_reports_service_availability(self):
         message = assistant_failure_message(LLMTransientError("timeout"))

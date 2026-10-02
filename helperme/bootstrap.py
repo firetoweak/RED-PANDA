@@ -6,20 +6,21 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from thinllm import ChatCompletionsClient
 
 from helperme.assistant.host.process_env import install_host_environment
 from helperme.assistant.host.session_store import SessionStore
 from helperme.assistant.host.supervisor import HostSupervisor
 from helperme.assistant.conversations import AssistantQueries
 from helperme.assistant.delivery import DeliverySink, PreviewSink
-from helperme.config import AppConfig, assistant_config_from_app, load_app_config
-from helperme.llm.config import load_endpoint
+from helperme.config import AppConfig, assistant_config_from_app, load_app_config, config_path, write_json
+from helperme.model_settings import ModelSettings
+from helperme.llm.connections import ModelConnections
 from helperme.paths import HelperMeHome
 from helperme.mcp.composition import build_mcp
 from helperme.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
 from helperme.skills.composition import build_skills
 from helperme.skills.summarizer import LlmSkillDiffSummarizer
-from thinllm import ChatCompletionsClient
 
 
 class UnboundHostLlm:
@@ -66,7 +67,12 @@ async def bootstrap_assistant(
     home = HelperMeHome.default()
     home.initialize()
     store = SessionStore(home.runtime_sessions_root)
-    llm = ChatCompletionsClient(load_endpoint(config.model))
+    if app_config is not None and not config_path().exists():
+        write_json(config_path(), app_config.to_dict())
+    models = ModelSettings(home, store.root)
+    if app_config is not None:
+        models.save(app_config.to_dict())
+    llm = ModelConnections(home.connections_path, client_factory=ChatCompletionsClient)
     workspaces = WorkspaceRegistry.load(home.workspaces_path)
     # 只有调用方明确给出路径才登记。TUI / ACP 传入启动目录或 --workspace；
     # Web 缺省不从进程 cwd 偷建工作区。
@@ -80,6 +86,7 @@ async def bootstrap_assistant(
         sink,
         workspaces=workspaces,
         llm=llm,
+        models=models,
         context_usage_sink=context_usage_sink,
         subagent_activity_sink=subagent_activity_sink,
         conversation_status_sink=conversation_status_sink,
@@ -93,7 +100,7 @@ async def bootstrap_assistant(
     )
     mcp = build_mcp(home)
     skills = build_skills(
-        home, diff_summarizer=LlmSkillDiffSummarizer(llm, config.model.active)
+        home, diff_summarizer=LlmSkillDiffSummarizer(llm, lambda: models.config().default_model or "")
     )
     async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
         host.start_automation(tasks)
