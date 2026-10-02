@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { ConversationView } from "../src/api/contracts";
 import {
   timelineTurns,
+  turnElapsedMs,
+  formatElapsedTime,
   turnCanStartSession,
   turnIsSettled,
   turnNeedsSilentEnd,
@@ -259,6 +261,34 @@ describe("visibleTimeline", () => {
 });
 
 describe("timelineTurns", () => {
+  it("从持久化消息到最终回复计算整轮耗时，包含中间工具步骤", () => {
+    const items = visibleTimeline({ ...conversation, items: [
+      ...conversation.items.slice(0, 1),
+      { ...conversation.items[1], tools: [{ command_id: "cmd-1", name: "read_file",
+        status: "succeeded", error: null, arguments: {} }],
+        occurred_at: "2026-09-15T08:00:10+00:00" },
+      { kind: "step", step_id: "step-2", output_id: "out-final", text: "完成",
+        thinking: null, tools: [], occurred_at: "2026-09-15T08:01:23.400+00:00", rewindable: false },
+    ] }, {}, null, {});
+    const turn = timelineTurns(items)[0];
+    expect(turnElapsedMs(turn, true)).toBe(83400);
+    expect(formatElapsedTime(turnElapsedMs(turn, true)!)).toBe("1 分 23 秒");
+    expect(turnElapsedMs(turn, false)).toBeNull();
+  });
+
+  it("预览和没有用户起点的回复不会生成已完成耗时", () => {
+    const items = visibleTimeline({ ...conversation, items: [conversation.items[0]] },
+      {}, { outputId: "user-1", text: "正在回复" }, {});
+    expect(turnElapsedMs(timelineTurns(items)[0], true)).toBeNull();
+    const orphan = visibleTimeline({ ...conversation, items: [
+      { kind: "step", step_id: "step", output_id: "out", text: "回复",
+        thinking: null, tools: [], occurred_at: "2026-09-15T08:00:01+00:00", rewindable: false },
+    ] }, {}, null, {});
+    expect(turnElapsedMs(timelineTurns(orphan)[0], true)).toBeNull();
+    expect(formatElapsedTime(2300)).toBe("2.3 秒");
+    expect(formatElapsedTime(3723000)).toBe("1 小时 2 分 3 秒");
+  });
+
   it("keeps tool steps in the process and exposes the final no-tool step", () => {
     const items = visibleTimeline(
       {
@@ -308,6 +338,7 @@ describe("turnNeedsThinkingHint", () => {
   const user = {
     key: "user-1",
     kind: "user" as const,
+    occurredAt: "2026-09-15T08:00:00+00:00",
     text: "hi",
     images: [], files: [],
   };
@@ -465,6 +496,7 @@ describe("turnIsSettled", () => {
   const user = {
     key: "user-1",
     kind: "user" as const,
+    occurredAt: "2026-09-15T08:00:00+00:00",
     text: "安装这个 MCP",
     images: [], files: [],
   };
@@ -603,6 +635,7 @@ describe("turnIsSettled", () => {
     const user = {
       key: "user-1",
       kind: "user" as const,
+      occurredAt: "2026-09-15T08:00:00+00:00",
       text: "hi",
       images: [],
       files: [],

@@ -8,6 +8,7 @@ import type {
 export type VisibleUser = {
   key: string;
   kind: "user";
+  occurredAt: string;
   text: string;
   images: string[];
   files: { attachment_id: string; name: string; size: number }[];
@@ -57,6 +58,7 @@ export function visibleTimeline(
       return {
         key: item.message_id,
         kind: "user",
+        occurredAt: item.occurred_at,
         text: item.text,
         images: item.images,
         files: item.files,

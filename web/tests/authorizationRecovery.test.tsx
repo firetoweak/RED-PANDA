@@ -39,7 +39,7 @@ it("submits a recovered pending command with the new connection without an autho
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, work_plan: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],
@@ -110,7 +110,7 @@ it("disables pending authorization buttons while the web connection is down", as
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, work_plan: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],

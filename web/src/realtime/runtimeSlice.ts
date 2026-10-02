@@ -32,7 +32,6 @@ export type SessionRuntime = {
   committedThinking: Record<string, string>;
   tools: Record<string, LiveTool>;
   authorizations: Record<string, PendingAuthorization>;
-  contextUsage: { used: number; compact_threshold_tokens: number } | null;
   controlNotice: string | null;
   conversationStatus: {
     compactCount: number;
@@ -71,7 +70,6 @@ function runtimeOf(state: RuntimeState, sessionId: string): SessionRuntime {
     committedThinking: {},
     tools: {},
     authorizations: {},
-    contextUsage: null,
     controlNotice: null,
     conversationStatus: null,
   };
@@ -130,7 +128,6 @@ const runtimeSlice = createSlice({
       session.committedThinking = {};
       session.tools = {};
       session.authorizations = {};
-      session.contextUsage = null;
       session.controlNotice = null;
       session.conversationStatus = null;
     },
@@ -284,15 +281,6 @@ const runtimeSlice = createSlice({
       const session = runtimeOf(state, action.payload.sessionId);
       delete session.authorizations[action.payload.commandId];
     },
-    contextUsage(
-      state,
-      action: PayloadAction<{ sessionId: string; used: number; compact_threshold_tokens: number }>,
-    ) {
-      runtimeOf(state, action.payload.sessionId).contextUsage = {
-        used: action.payload.used,
-        compact_threshold_tokens: action.payload.compact_threshold_tokens,
-      };
-    },
     conversationStatus(
       state,
       action: PayloadAction<{
@@ -331,7 +319,6 @@ export const {
   toolProgress,
   authorizationRequired,
   authorizationResolved,
-  contextUsage,
   conversationStatus,
 } = runtimeSlice.actions;
 export default runtimeSlice.reducer;

@@ -57,12 +57,12 @@ const conversation: ConversationView = {
   },
   compact_count: 0,
   compact_phase: null,
-  waiting_until: null, workspace_version: null, work_plan: null,
+  waiting_until: null, workspace_version: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
 };
 
 describe("truncateAfterUserMessage", () => {
   it("keeps the edited user message and drops everything after it", () => {
-    const truncated = truncateAfterUserMessage(conversation, "user-1", "edited");
+    const truncated = truncateAfterUserMessage(conversation, "user-1", "edited", []);
     expect(truncated.items).toEqual([
       {
         kind: "user",

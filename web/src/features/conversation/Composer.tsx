@@ -27,12 +27,13 @@ import {
 
 import {
   useAttachLocalFileMutation,
-  useGetRuntimeQuery,
+  useGetSessionModelQuery,
+  useGetModelSettingsQuery,
   useGetWorkspacesQuery,
   useSelectLocalFileMutation,
   useUploadAttachmentMutation,
 } from "../../api/helpermeApi";
-import { useAppSelector } from "../../app/hooks";
+import { ModelSelector } from "../models/ModelSelector";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { createClientId } from "./clientId";
@@ -68,8 +69,7 @@ type ComposerProps = {
   onSend: (text: string, artifactRefs: string[]) => Promise<void>;
   onSetPaused: (paused: boolean) => void;
   onRetry: () => void;
-  compactCount: number;
-  compactPhase: "running" | "ready" | "failed" | null;
+  inputTokens: number | null;
 };
 
 export function Composer({
@@ -89,8 +89,7 @@ export function Composer({
   onSend,
   onSetPaused,
   onRetry,
-  compactCount,
-  compactPhase,
+  inputTokens,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
@@ -103,7 +102,8 @@ export function Composer({
   const onSendRef = useRef(onSend);
   parkedRef.current = parked;
   onSendRef.current = onSend;
-  const { data: runtime } = useGetRuntimeQuery();
+  const { data: selection, error: selectionError } = useGetSessionModelQuery(sessionId, { pollingInterval: 2000 });
+  const { data: settings, error: settingsError } = useGetModelSettingsQuery(undefined, { pollingInterval: 5000 });
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const workspacePath = workspaces.find(
     (workspace) => workspace.workspace_id === workspaceId,
@@ -115,12 +115,14 @@ export function Composer({
   pendingRef.current = pending;
   const parkedPendingRef = useRef(parked?.pending ?? []);
   parkedPendingRef.current = parked?.pending ?? [];
-  const usage = useAppSelector(
-    (state) => state.runtime.sessions[sessionId]?.contextUsage ?? null,
+  const limit = selection?.effective?.compact_threshold_tokens ?? selection?.selected?.compact_threshold_tokens ?? 0;
+  const usagePercent = inputTokens !== null && limit > 0 ? Math.round(inputTokens / limit * 100) : null;
+  const usageTitle = usagePercent !== null ? `${usagePercent}% 已用`
+    : inputTokens === null ? "暂无本窗口用量" : "上下文用量";
+  const usageTokens = `${inputTokens === null ? "—" : formatTokens(inputTokens)} / ${limit > 0 ? formatTokens(limit) : "—"} tokens`;
+  const modelReady = selection?.selected != null && settings?.providers.some(
+    (item) => item.provider === selection.selected?.model.split("/")[0] && item.configured,
   );
-  const used = usage?.used ?? 0;
-  const limit = usage?.compact_threshold_tokens ?? runtime?.compact_threshold_tokens ?? 0;
-  const model = runtime?.model ?? "";
   const uploading = pending.some((item) => item.state === "uploading");
   const ready = pending.filter(
     (item) => item.state === "done" && item.attachmentId !== null,
@@ -128,6 +130,8 @@ export function Composer({
   const busy = disabled || sending || uploading;
   const canSend =
     !busy &&
+    !selectionError && !settingsError &&
+    modelReady &&
     !pending.some((item) => item.state === "error") &&
     parked === null &&
     (text.trim() !== "" || ready.length > 0);
@@ -423,6 +427,7 @@ export function Composer({
   }
 
   return (
+    <>
     <Paper
       component="form"
       className="composer"
@@ -515,19 +520,6 @@ export function Composer({
         </Group>
       )}
       <Group className="composer-top" gap={10} wrap="nowrap" align="flex-end">
-        <Tooltip label="添加本机文件，也可拖入或粘贴">
-          <ActionIcon
-            aria-label="Add attachment"
-            disabled={busy || connectionId === null}
-            onClick={() => void addLocalPath()}
-            radius="xl"
-            size={32}
-            type="button"
-            variant="subtle"
-          >
-            <IconPlus size={16} />
-          </ActionIcon>
-        </Tooltip>
         <Textarea
           aria-label="消息"
           autosize
@@ -538,7 +530,7 @@ export function Composer({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={disabled ? "正在连接…" : "输入消息，Enter 发送，可拖入文件或粘贴图片"}
-          minRows={1}
+          minRows={2}
           maxRows={7}
           variant="unstyled"
           disabled={disabled}
@@ -591,67 +583,67 @@ export function Composer({
           </Tooltip>
         </Group>
       </Group>
-      <Group className="composer-authorize" justify="flex-start" px="xs" py={4}>
-        <Switch
-          checked={autoAuthorize}
-          disabled={autoAuthorizeBusy || connectionId === null}
-          label="自动放行写文件等工具"
-          labelPosition="left"
-          onChange={(event) => onToggleAutoAuthorize(event.currentTarget.checked)}
-          size="xs"
-        />
-      </Group>
-      {runtime === undefined && workspacePath === undefined ? null : (
-        <Group className="composer-meta" justify="space-between" wrap="nowrap">
-          {runtime === undefined ? (
-            <span />
-          ) : (
-            <Group gap={10} wrap="nowrap">
-              <Tooltip label="最近一次实际输入用量 / compact 触发值（包含缓存命中）">
-                <Group gap={6} wrap="nowrap">
-                  <ContextRing used={used} limit={limit} />
-                  <Text c="dimmed" fz={11}>
-                    {formatTokens(used)} / compact {formatTokens(limit)}
-                  </Text>
-                </Group>
-              </Tooltip>
-              <Text c="dimmed" fz={11}>
-                {`compact ${compactCount} 次`}
-                {compactPhase == null
-                  ? ""
-                  : `  ·  compact ${
-                      { running: "整理中", ready: "等待切换", failed: "失败" }[
-                        compactPhase
-                      ]
-                    }`}
-              </Text>
-            </Group>
-          )}
-          {workspacePath === undefined ? (
-            <span />
-          ) : (
-            <Text
-              className="composer-workspace"
-              c="dimmed"
-              ff="monospace"
-              fz={11}
-              title={workspacePath}
-              truncate
+      <Group className="composer-meta" justify="space-between" gap="sm">
+        <Group gap={10} wrap="nowrap">
+          <Tooltip label="添加本机文件，也可拖入或粘贴">
+            <ActionIcon
+              aria-label="Add attachment"
+              disabled={busy || connectionId === null}
+              onClick={() => void addLocalPath()}
+              radius="xl"
+              size={32}
+              type="button"
+              variant="subtle"
             >
-              {workspacePath}
-            </Text>
-          )}
-          <Text c="dimmed" ff="monospace" fz={11} truncate>
-            {model}
-          </Text>
+              <IconPlus size={16} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="自动放行写文件等工具">
+            <span style={{ display: "inline-flex" }}>
+              <Switch
+                aria-label="自动放行写文件等工具"
+                checked={autoAuthorize}
+                disabled={autoAuthorizeBusy || connectionId === null}
+                onChange={(event) => onToggleAutoAuthorize(event.currentTarget.checked)}
+                size="xs"
+              />
+            </span>
+          </Tooltip>
         </Group>
-      )}
+        {workspacePath === undefined ? null : (
+          <Text className="composer-workspace" c="dimmed" ff="monospace" fz={11}
+            title={workspacePath} truncate>
+            {workspacePath}
+          </Text>
+        )}
+        <Group justify="flex-end" gap="sm" style={{ marginLeft: "auto" }}>
+          {selection === undefined ? null : (
+            <Tooltip radius="md" label={<div>
+              <Text size="sm" ta="center">
+                {usagePercent === null ? usageTitle : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span>{usagePercent}%</span><span>已用</span>
+                  </span>
+                )}
+              </Text>
+              <Text size="sm" ta="center" style={{ opacity: 0.65 }}>{usageTokens}</Text>
+            </div>}>
+              <span role="img" aria-label={usageTitle + " · " + usageTokens}
+                style={{ display: "inline-flex", padding: 6 }}>
+                <ContextRing used={inputTokens} limit={limit} />
+              </span>
+            </Tooltip>
+          )}
+          <ModelSelector sessionId={sessionId} connectionId={connectionId} />
+        </Group>
+      </Group>
     </Paper>
+    </>
   );
 }
 
-function ContextRing({ used, limit }: { used: number; limit: number }) {
-  const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
+function ContextRing({ used, limit }: { used: number | null; limit: number }) {
+  const ratio = used !== null && limit > 0 ? Math.min(used / limit, 1) : 0;
   const radius = 5;
   const circumference = 2 * Math.PI * radius;
   return (
@@ -691,9 +683,9 @@ function formatTokens(tokens: number) {
     return String(tokens);
   }
   if (tokens % 1000 === 0) {
-    return `${tokens / 1000}k`;
+    return `${tokens / 1000}K`;
   }
-  return `${(tokens / 1000).toFixed(1)}k`;
+  return `${(tokens / 1000).toFixed(1)}K`;
 }
 
 function normalizeMime(type: string) {

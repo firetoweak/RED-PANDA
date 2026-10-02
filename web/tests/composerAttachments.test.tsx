@@ -13,7 +13,14 @@ const { upload, selectLocal, attachLocal } = vi.hoisted(() => ({
   attachLocal: vi.fn(),
 }));
 vi.mock("../src/api/helpermeApi", () => ({
-  useGetRuntimeQuery: () => ({ data: undefined }),
+  useGetSessionModelQuery: () => ({ data: {
+    selected: { model: "deepseek/test", compact_threshold_tokens: 200000 }, effective: null, pending: true,
+  } }),
+  useGetModelSettingsQuery: () => ({ data: {
+    config: { model: { default: "deepseek/test", candidates: [{ model: "deepseek/test", compact_threshold_tokens: 200000 }] } },
+    providers: [{ provider: "deepseek", configured: true, missing: null, local: false }],
+  } }),
+  useSetSessionModelMutation: () => [vi.fn(), { isLoading: false }],
   useGetWorkspacesQuery: () => ({ data: [] }),
   useUploadAttachmentMutation: () => [upload],
   useSelectLocalFileMutation: () => [selectLocal],
@@ -30,14 +37,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-function showComposer(running = false) {
+function showComposer(running = false, inputTokens: number | null = null) {
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   const onSend = vi.fn(async () => {});
   const props = {
     sessionId: "session", workspaceId: "workspace-test", connectionId: "connection",
     disabled: false, sending: false, running, paused: false, shouldWake: false,
     pauseBusy: false, retryBusy: false, autoAuthorize: false, autoAuthorizeBusy: false,
-    compactCount: 0, compactPhase: null,
+    inputTokens,
     onSend, onSetPaused: vi.fn(), onRetry: vi.fn(), onToggleAutoAuthorize: vi.fn(),
   };
   const ui = (active: boolean) => <Provider store={store}><MantineProvider><Composer {...props} running={active} /></MantineProvider></Provider>;
@@ -105,4 +112,16 @@ it("挂入本机文件只登记路径，不走整件上传", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
+});
+
+it("没有实时用量推送时也显示会话返回的历史用量", () => {
+  showComposer(false, 1500);
+  expect(screen.getByRole("img", { name: /1% 已用.*1.5K \/ 200K tokens/ })).toBeVisible();
+  expect(screen.queryByRole("img", { name: /暂无本窗口用量/ })).not.toBeInTheDocument();
+});
+
+it("没有本窗口调用记录时提示未知用量而不是零", () => {
+  showComposer();
+  expect(screen.getByRole("img", { name: /暂无本窗口用量/ })).toBeVisible();
+  expect(screen.queryByRole("img", { name: /0% 已用/ })).not.toBeInTheDocument();
 });

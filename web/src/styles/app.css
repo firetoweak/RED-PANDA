@@ -234,16 +234,38 @@ body.is-resizing-sidebar {
 }
 
 .activity-dot {
-  display: block;
+  position: relative;
+  flex: 0 0 13px;
+  min-width: 13px;
+  min-height: 13px;
+  width: 13px;
+  height: 13px;
+}
+
+.activity-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
   width: 7px;
   height: 7px;
   border-radius: 999px;
   background: var(--mantine-color-dimmed);
 }
 
-.activity-dot-running {
-  background: var(--mantine-color-sage-4);
-  box-shadow: 0 0 10px rgba(145, 181, 106, 0.6);
+.activity-dot-running::before {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--hm-ring-track);
+  border-top-color: var(--mantine-color-sage-4);
+  background: transparent;
+  animation: activity-spin 0.8s linear infinite;
+}
+
+@keyframes activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .main-pane {
@@ -410,14 +432,13 @@ body.is-resizing-sidebar {
   line-height: 1.55;
 }
 
-.edit-message-button {
-  margin-top: 7px;
+.user-message-action {
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.user-message-row:hover .edit-message-button,
-.edit-message-button:focus-visible {
+.user-message-row:hover .user-message-action,
+.user-message-actions:focus-within .user-message-action {
   opacity: 1;
 }
 
@@ -451,8 +472,13 @@ body.is-resizing-sidebar {
   background: var(--hm-tile);
 }
 
+.attachment-tile-large {
+  width: 240px;
+  max-width: 100%;
+}
+
 .attachment-tile-large .attachment-tile-button {
-  width: min(240px, 100%);
+  width: 100%;
   height: auto;
   max-height: 240px;
 }
@@ -602,7 +628,7 @@ body.is-resizing-sidebar {
 }
 
 .composer-input textarea {
-  padding-block: 7px;
+  padding: 0;
   line-height: 1.55;
 }
 
@@ -614,7 +640,6 @@ body.is-resizing-sidebar {
 .composer-workspace {
   flex: 1;
   min-width: 0;
-  text-align: center;
   user-select: text;
 }
 
@@ -641,7 +666,7 @@ body.is-resizing-sidebar {
     max-width: 92%;
   }
 
-  .edit-message-button {
+  .user-message-action {
     opacity: 1;
   }
 

@@ -4,6 +4,7 @@ export function truncateAfterUserMessage(
   conversation: ConversationView,
   messageId: string,
   text: string,
+  artifactRefs: string[],
 ): ConversationView {
   const index = conversation.items.findIndex(
     (item) => item.kind === "user" && item.message_id === messageId,
@@ -17,6 +18,10 @@ export function truncateAfterUserMessage(
   }
   return {
     ...conversation,
-    items: [...conversation.items.slice(0, index), { ...target, text }],
+    items: [...conversation.items.slice(0, index), {
+      ...target, text,
+      images: target.images.filter((ref) => artifactRefs.includes(ref)),
+      files: target.files.filter((file) => artifactRefs.includes(file.attachment_id)),
+    }],
   };
 }

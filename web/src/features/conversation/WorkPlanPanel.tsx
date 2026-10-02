@@ -3,6 +3,7 @@ import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { useState } from "react";
 
 import type { WorkPlan } from "../../api/contracts";
+import { isPlanCompleted } from "./workPlanPlacement";
 
 const STATUS_LABEL = {
   pending: "待做",
@@ -16,19 +17,20 @@ export function WorkPlanPanel({ plan }: { plan: WorkPlan | null }) {
     return null;
   }
   const completed = plan.steps.filter((step) => step.status === "completed").length;
+  const title = isPlanCompleted(plan) ? "已完成计划" : "当前计划";
   const ongoing = plan.steps.filter((step) => step.status === "in_progress");
 
   return (
     <Paper className="work-plan" radius="md" withBorder>
       <UnstyledButton
         className="work-plan-toggle"
-        aria-label="当前计划"
+        aria-label={title}
         aria-expanded={opened}
         onClick={() => setOpened((value) => !value)}
       >
         <Group justify="space-between" wrap="nowrap" gap="xs">
           <Stack gap={2} style={{ minWidth: 0 }}>
-            <Text size="sm" fw={600} truncate>当前计划 · {plan.objective}</Text>
+            <Text size="sm" fw={600} truncate>{title} · {plan.objective}</Text>
             {ongoing.length === 0 ? null : (
               <Text size="xs" c="dimmed" truncate>
                 进行中：{ongoing.map((step) => step.text).join("、")}

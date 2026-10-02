@@ -51,12 +51,16 @@ import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { formatMessageTime } from "./messageTime";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
+import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
+  turnElapsedMs,
   turnCanStartSession,
   turnIsSettled,
   turnNeedsSilentEnd,
@@ -174,8 +178,6 @@ export function Conversation() {
   );
   const turns = timelineTurns(items);
   const running = runtime?.activity === "running";
-  const compactCount =
-    runtime?.conversationStatus?.compactCount ?? conversation.compact_count;
   const compactPhase =
     runtime?.conversationStatus?.compactPhase ?? conversation.compact_phase;
   const lastTurnKey = turns.at(-1)?.key;
@@ -183,6 +185,8 @@ export function Conversation() {
   const notice =
     runtime?.controlNotice ?? conversation.session.control_message;
   const subagentsActive = conversation.session.has_active_subagents;
+  const activePlan = conversation.work_plan !== null && !isPlanCompleted(conversation.work_plan)
+    ? conversation.work_plan : null;
 
   async function send(text: string, artifactRefs: string[]) {
     if (connectionId === null) {
@@ -203,6 +207,7 @@ export function Conversation() {
     messageId: string,
     text: string,
     restoreFiles: boolean,
+    artifactRefs: string[],
   ) {
     if (connectionId === null) {
       throw new Error("Web connection is not active");
@@ -215,6 +220,7 @@ export function Conversation() {
       text,
       listed: false,
       restoreFiles,
+      artifactRefs,
     }).unwrap();
     navigate(`/sessions/${encodeURIComponent(view.session_id)}`, {
       replace: true,
@@ -318,6 +324,8 @@ export function Conversation() {
                 awaitingControl,
               });
               const reply = turnReply(turn, settled);
+              const elapsedMs = turnElapsedMs(turn, settled);
+              const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
               return (
               <Stack gap="lg" key={turn.key}>
                 {turn.user === null ? null : (
@@ -327,15 +335,21 @@ export function Conversation() {
                       images={turn.user.images}
                       files={turn.user.files}
                       hasLaterWork={turn.key !== lastTurnKey || turn.process.length > 0}
-                      onSave={(text, restoreFiles) =>
-                        edit(turn.user!.key, text, restoreFiles)
+                      onSave={(text, restoreFiles, artifactRefs) =>
+                        edit(turn.user!.key, text, restoreFiles, artifactRefs)
                       }
                       saving={editing.isLoading}
                       sessionId={sessionId}
                       text={turn.user.text}
+                      occurredAt={turn.user.occurredAt}
                     />
                   </Box>
                 )}
+                <TurnTiming
+                  startedAt={turn.user?.occurredAt ?? null}
+                  running={latest && running && connectionId !== null}
+                  elapsedMs={elapsedMs}
+                />
                 {turn.process.length === 0 ? null : (
                   <ExecutionProcess
                     authorizationDisabled={connectionId === null}
@@ -411,6 +425,7 @@ export function Conversation() {
                     replyText={null}
                   />
                 ) : null}
+                {completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />}
               </Stack>
               );
             })}
@@ -430,19 +445,7 @@ export function Conversation() {
           </Button>
         )}
         <Stack className="composer-column" gap={8}>
-        <WorkPlanPanel key={conversation.work_plan === null ? "none" : "active"} plan={conversation.work_plan} />
-        {conversation.workspace_version === null ? null : (
-          <Text
-            className="composer-meta"
-            size="xs"
-            c={conversation.workspace_version.error === null ? "dimmed" : "red"}
-            title={conversation.workspace_version.version ?? undefined}
-          >
-            {conversation.workspace_version.error === null
-              ? `文件版本 ${conversation.workspace_version.version?.slice(0, 12)} · 可在对话中要求回退`
-              : `文件版本未记录：${conversation.workspace_version.error}`}
-          </Text>
-        )}
+        <WorkPlanPanel key={activePlan === null ? "none" : "active"} plan={activePlan} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
@@ -523,8 +526,7 @@ export function Conversation() {
           retryBusy={retrying.isLoading}
           autoAuthorize={conversation.session.auto_authorize}
           autoAuthorizeBusy={autoAuthorizing.isLoading}
-          compactCount={compactCount}
-          compactPhase={compactPhase}
+          inputTokens={conversation.context_input_tokens}
           onToggleAutoAuthorize={toggleAutoAuthorize}
           onSend={send}
           onRetry={() => {
@@ -669,7 +671,7 @@ function TurnEndActions({
   onBranch: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const time = occurredAt === null ? null : formatReplyTime(occurredAt);
+  const time = occurredAt === null ? null : formatMessageTime(occurredAt);
   return (
     <Group className="turn-end-actions" gap={4} justify="flex-start">
       {replyText === null ? null : (
@@ -708,25 +710,6 @@ function TurnEndActions({
       )}
     </Group>
   );
-}
-
-function formatReplyTime(value: string): { short: string; full: string } {
-  const date = new Date(value);
-  const today = new Date();
-  const clock = date.toLocaleTimeString("zh-CN", {
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-  const sameDay = date.getFullYear() === today.getFullYear()
-    && date.getMonth() === today.getMonth()
-    && date.getDate() === today.getDate();
-  let short = clock;
-  if (!sameDay) {
-    short = `${date.getMonth() + 1}/${date.getDate()} ${clock}`;
-  }
-  if (date.getFullYear() !== today.getFullYear()) {
-    short = `${date.getFullYear()}/${short}`;
-  }
-  return { short, full: date.toLocaleString("zh-CN") };
 }
 
 function SilentEndHint() {

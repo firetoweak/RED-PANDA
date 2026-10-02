@@ -95,6 +95,24 @@ export function turnReply(
   };
 }
 
+export function turnElapsedMs(turn: TimelineTurn, settled: boolean): number | null {
+  if (!settled || turn.user === null || turn.final === null || turn.final.occurredAt === null) {
+    return null;
+  }
+  return Date.parse(turn.final.occurredAt) - Date.parse(turn.user.occurredAt);
+}
+
+export function formatElapsedTime(milliseconds: number): string {
+  if (milliseconds < 60000) {
+    return `${Math.round(milliseconds / 100) / 10} 秒`;
+  }
+  const totalSeconds = Math.round(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor(totalSeconds % 3600 / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0 ? `${hours} 小时 ${minutes} 分 ${seconds} 秒` : `${minutes} 分 ${seconds} 秒`;
+}
+
 export function turnNeedsSilentEnd(
   turn: TimelineTurn,
   settled: boolean,

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import reducer, {
   bindOwner,
   connected,
-  contextUsage,
   controlNotice,
   conversationStatus,
   disconnected,
@@ -166,15 +165,6 @@ describe("runtimeSlice", () => {
     expect(state.sessions.s1.lastError).toBeNull();
   });
 
-  it("stores context usage on the owning session", () => {
-    let state = reducer(undefined, viewing("s2"));
-    state = reducer(
-      state,
-      contextUsage({ sessionId: "s1", used: 1200, compact_threshold_tokens: 200000 }),
-    );
-    expect(state.sessions.s1.contextUsage).toEqual({ used: 1200, compact_threshold_tokens: 200000 });
-    expect(state.sessions.s2.contextUsage).toBeNull();
-  });
 
   it("stores compact status on the owning session", () => {
     let state = reducer(

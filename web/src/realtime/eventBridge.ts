@@ -20,7 +20,6 @@ import type { AppDispatch } from "../app/store";
 import {
   authorizationRequired,
   connected,
-  contextUsage,
   conversationStatus,
   disconnected,
   outputFinal,
@@ -84,11 +83,9 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
     dispatch(
-      contextUsage({
-        sessionId: payload.session_id,
-        used: payload.used,
-        compact_threshold_tokens: payload.compact_threshold_tokens,
-      }),
+      helpermeApi.util.invalidateTags([
+        { type: "Conversation", id: payload.session_id },
+      ]),
     );
   });
   source.addEventListener("conversation_status", (event) => {
@@ -99,6 +96,11 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         compactCount: payload.compact_count,
         compactPhase: payload.compact_phase,
       }),
+    );
+    dispatch(
+      helpermeApi.util.invalidateTags([
+        { type: "Conversation", id: payload.session_id },
+      ]),
     );
   });
   source.addEventListener("preview.started", (event) => {
