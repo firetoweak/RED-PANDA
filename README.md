@@ -4,11 +4,11 @@
 
 ## 快速开始
 
-准备 ripgrep，以及一个模型来源：[DeepSeek API Key](https://platform.deepseek.com/api_keys)、阿里云百炼 Qwen API Key，或本地运行的 vLLM。不需要预装 Python 或 Docker。
+准备 ripgrep，以及一个模型来源：[DeepSeek API Key](https://platform.deepseek.com/api_keys)、[OpenAI API Key](https://platform.openai.com/api-keys)、阿里云百炼 Qwen API Key、[阶跃星辰 StepFun API Key](https://platform.stepfun.com/)、[智谱 BigModel API Key](https://bigmodel.cn/)，或本地运行的 vLLM / Ollama。不需要预装 Python 或 Docker。
 
 ### 1. 安装
 
-在仓库目录运行对应平台脚本。脚本会下载项目专用 Python、安装依赖，并在项目根目录创建待填写的 `.env`（已存在则不动）。它不会询问模型密钥。
+在仓库目录运行对应平台脚本。脚本会下载项目专用 Python、安装依赖，并在个人数据目录 `~/.helperme` 创建 `config.json` 与 `connections.json`（已存在则不覆盖）。
 
 Windows（PowerShell）：
 
@@ -24,27 +24,40 @@ sh scripts/setup.sh
 
 ### 2. 写入模型密钥
 
-打开项目根目录的 `.env`，填上所用模型来源的设置。默认模型是 DeepSeek，只需要：
+打开 `~/.helperme/connections.json`，填写所用供应商的 `api_key`；本地 vLLM / Ollama 填写 `base_url`。文件会创建全部支持的供应商配置项。默认 DeepSeek 的部分如下（其余供应商保留在文件中）：
 
-```text
-DEEPSEEK_API_KEY=你的密钥
+```json
+"deepseek": { "api_key": "你的密钥" }
 ```
 
-### 3. 启动
+连接配置热更新，保存后下一次调用直接生效。Web 可以在密钥未填写时启动。
+
+### 3. 启动 Web
+
+首次需要 Node.js 安装并构建前端：
+
+```sh
+cd web
+npm install
+npm run build
+cd ..
+```
 
 Windows（PowerShell）：
 
 ```powershell
-.\helperme-env\Scripts\python.exe console_chat.py
+.\helperme-env\Scripts\python.exe web_chat.py
 ```
 
 macOS / Linux：
 
 ```sh
-./helperme-env/bin/python console_chat.py
+./helperme-env/bin/python web_chat.py
 ```
 
-首次启动会自动创建个人配置 `~/.helperme/config.json` 并直接运行，默认使用 `deepseek/deepseek-v4-pro`。模型切换方法见[模型配置指南](docs/模型配置.md)。Python 环境位于项目目录的 `helperme-env`，可直接删除此目录清理环境；Agent 命令中的 Python 也使用该环境。个人配置和会话保存在 `~/.helperme`。
+浏览器打开 http://127.0.0.1:8765，侧栏进入「模型配置」管理候选模型与新会话默认值，再在会话输入区选择模型。同一供应商可以添加多个模型；切换在下一次决策生效，已有历史保留。详细配置见[模型配置指南](docs/模型配置.md)。
+
+终端入口仍可运行 `console_chat.py`。Python 环境位于项目目录的 `helperme-env`；个人配置和会话保存在 `~/.helperme`，可用 `HELPERME_HOME` 指定其他个人数据目录。
 
 ## 文档
 

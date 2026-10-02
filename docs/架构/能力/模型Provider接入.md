@@ -1,6 +1,6 @@
 # 模型 Provider 接入
 
-HelperMe 只拥有模型调用的窄协议 `LLMApi`。Host 持有一个 OpenAI-compatible Chat Completions 客户端并跨 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
+HelperMe 只拥有模型调用的窄协议 `LLMApi`。Host 按 Provider 持有 OpenAI-compatible Chat Completions 客户端，供选择该 Provider 的 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
 
 ```text
 Assistant → LLMApi → Worker LLM Port → Host LLM Client → Provider
@@ -10,15 +10,21 @@ Worker 通过 Host LLM port 调用，不能直接连接 Provider。
 
 ## thinllm 与 HelperMe 的分界
 
-Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `helperme` 平行的独立包 `thinllm` 中。`thinllm` 不 import `helperme`，由 `tests/architecture/` 守住；它只回答「给定 `provider/model` 与一份环境，怎样发出一次流式调用」。
+Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `helperme` 平行的独立包 `thinllm` 中。`thinllm` 不 import `helperme`，由 `tests/architecture/` 守住；它只回答「给定 `provider/model` 与一份连接设置，怎样发出一次流式调用」。
 
-HelperMe 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件编码、项目 `.env` 加载以及面向用户的失败文案。拆分是为了让 Provider 层的膨胀有明确的边界，不是为了单独发布；`thinllm` 不做成通用网关。
+HelperMe 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件编码、个人连接设置加载以及面向用户的失败文案。拆分是为了让 Provider 层的膨胀有明确的边界，不是为了单独发布；`thinllm` 不做成通用网关。
 
 ## 模型标识与 Provider 表
 
 模型标识写作 `provider/model`，按第一个 `/` 拆分：前半段选 Provider，后半段原样作为上游模型名。选模型就是选 Provider，HelperMe 不做路由。
 
-Provider 是项目内置的一张表，不是用户配置。每项只描述接口地址来源、凭据来源和该 Provider 已知的协议差异。接口地址是项目事实；只有本地部署的 Provider 从环境读取地址。凭据只从项目 `.env` 或进程环境读取，不进入 HelperMe 配置。所选 Provider 缺少必需的地址或凭据时，启动即失败。新增 Provider 意味着加一项表项与对应测试，不开放配置自定义。
+Provider 是项目内置的一张表，不是用户配置。每项只描述接口地址来源、认证要求和该 Provider 已知的协议差异。远程接口地址是项目事实；本地部署地址与凭据从个人数据目录的独立结构化连接文件读取，与用户模型偏好分开。Web 可在连接未配置时启动，选择和调用边界明确报告缺失的必要设置。新增 Provider 意味着加一项表项与对应测试，不开放配置自定义。
+
+## 连接生命周期
+
+连接设置在每次调用边界读取。相同 Provider 与相同连接设置复用客户端；设置变化后，新调用使用新客户端，在途请求保留自己的旧客户端，最后一个请求结束后才释放旧连接。文件损坏或内部错误直接暴露，不以旧连接掩盖失败，也不要求重启应用。
+
+会话的模型与生效边界见[会话模型选择](../入口/会话模型选择.md)。后台 compact 使用启动该任务时捕获的模型，已有任务不会因用户切换而被改写。
 
 ## 协议转换
 
