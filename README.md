@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/red-panda-mark-pixel.png" width="144" alt="RED PANDA 像素小熊猫徽标">
+  <img src="assets/brand/red-panda-full.png" width="240" alt="RED PANDA 折纸小熊猫完整形象">
 </p>
 
 <h1 align="center">RED PANDA</h1>
