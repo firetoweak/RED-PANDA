@@ -8,14 +8,14 @@ import zipfile
 
 import httpx
 
-from helperme.skills.models import SkillSourceRef
-from helperme.skills.approval import (
+from redpanda.skills.models import SkillSourceRef
+from redpanda.skills.approval import (
     SkillInstallProposalInput,
     create_skill_install_proposal_spec,
 )
-from helperme.skills.sources import SkillSourceError, SkillSourceRouter
-from helperme.skills.package import SkillPackageError
-from helperme.tools.control import ControlPreparationFailure
+from redpanda.skills.sources import SkillSourceError, SkillSourceRouter
+from redpanda.skills.package import SkillPackageError
+from redpanda.tools.control import ControlPreparationFailure
 from tests.skills.test_package import write_skill
 
 

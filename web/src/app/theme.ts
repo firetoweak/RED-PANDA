@@ -1,19 +1,20 @@
 import { createTheme } from "@mantine/core";
 
 export const theme = createTheme({
-  primaryColor: "sage",
+  primaryColor: "ember",
+  primaryShade: { light: 7, dark: 5 },
   colors: {
-    sage: [
-      "#f3f7ed",
-      "#e4ecd9",
-      "#c8d9b4",
-      "#aac58c",
-      "#91b56a",
-      "#81ab55",
-      "#76a64a",
-      "#638f3c",
-      "#567f33",
-      "#486d29",
+    ember: [
+      "#fff3ec",
+      "#ffe4d4",
+      "#ffc6a9",
+      "#ffa078",
+      "#f77b4c",
+      "#ed6334",
+      "#d94f25",
+      "#b93e1d",
+      "#963419",
+      "#782b18",
     ],
   },
   fontFamily:
@@ -21,6 +22,7 @@ export const theme = createTheme({
   fontFamilyMonospace:
     '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
   defaultRadius: "md",
+  radius: { xs: "4px", sm: "6px", md: "10px", lg: "14px", xl: "20px" },
   autoContrast: true,
   cursorType: "pointer",
 });

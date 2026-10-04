@@ -15,12 +15,12 @@ from unittest.mock import patch
 
 from pydantic import BaseModel, Field
 
-from helperme.assistant.assembly import build_assistant_assembly
-from helperme.config import AssistantConfig
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from helperme.paths import HelperMeHome
-from helperme.runtime import MemoryJournal
-from helperme.tools.spec import PydanticParameters
+from redpanda.assistant.assembly import build_assistant_assembly
+from redpanda.config import AssistantConfig
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import MemoryJournal
+from redpanda.tools.spec import PydanticParameters
 from tests.fixtures.workspaces import workspace_record
 
 
@@ -136,11 +136,11 @@ class ExposedToolSurfaceTests(unittest.IsolatedAsyncioTestCase):
             workspace.mkdir()
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
-                    return_value=HelperMeHome(root / ".helperme"),
+                    "redpanda.assistant.assembly.RedPandaHome.default",
+                    return_value=RedPandaHome(root / ".redpanda"),
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):

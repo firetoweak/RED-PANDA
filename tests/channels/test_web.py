@@ -13,26 +13,26 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from helperme.assistant.attachments import AttachmentGateway
-from helperme.assistant.host.ipc import ProcessFailure, WorkerFailed
-from helperme.assistant.conversations import (
+from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
+from redpanda.assistant.conversations import (
     ConversationView,
     SessionSummary,
     UserItem,
 )
-from helperme.assistant.runner import SessionNotFoundError
-from helperme.model_settings import ModelSettings
-from helperme.config import INITIAL_CONFIG, write_json
-from helperme.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
-from helperme.paths import HelperMeHome
-from helperme.assistant.sessions import SessionView
-from helperme.assistant.workspace_versions import StepNotRewindable
-from helperme.channels.web import app as web_app
-from helperme.channels.web.app import create_web_app, report_worker_failures
-from helperme.channels.web.channel import WebChannel
-from helperme.channels.web.directory_picker import DirectoryPickerUnavailable
-from helperme.channels.web.hub import WebEventHub
-from helperme.sandbox.registry import WorkspaceRegistry
+from redpanda.assistant.runner import SessionNotFoundError
+from redpanda.model_settings import ModelSettings
+from redpanda.config import INITIAL_CONFIG, write_json
+from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
+from redpanda.paths import RedPandaHome
+from redpanda.assistant.sessions import SessionView
+from redpanda.assistant.workspace_versions import StepNotRewindable
+from redpanda.channels.web import app as web_app
+from redpanda.channels.web.app import create_web_app, report_worker_failures
+from redpanda.channels.web.channel import WebChannel
+from redpanda.channels.web.directory_picker import DirectoryPickerUnavailable
+from redpanda.channels.web.hub import WebEventHub
+from redpanda.sandbox.registry import WorkspaceRegistry
 
 
 class _Sessions:
@@ -181,7 +181,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self._directory = TemporaryDirectory()
         self.queries = _Queries()
         self.sessions = _Sessions(self.queries)
-        home = HelperMeHome(Path(self._directory.name))
+        home = RedPandaHome(Path(self._directory.name))
         write_json(home.config_path, INITIAL_CONFIG)
         self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
         self.models.initialize_session("session-old")

@@ -32,7 +32,7 @@ import {
   useGetWorkspacesQuery,
   useSelectLocalFileMutation,
   useUploadAttachmentMutation,
-} from "../../api/helpermeApi";
+} from "../../api/redpandaApi";
 import { ModelSelector } from "../models/ModelSelector";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
@@ -659,7 +659,7 @@ function ContextRing({ used, limit }: { used: number | null; limit: number }) {
         cy="7"
         fill="none"
         r={radius}
-        stroke="var(--hm-ring-track)"
+        stroke="var(--rp-ring-track)"
         strokeWidth="2"
       />
       <circle
@@ -667,7 +667,7 @@ function ContextRing({ used, limit }: { used: number | null; limit: number }) {
         cy="7"
         fill="none"
         r={radius}
-        stroke="var(--mantine-color-sage-4)"
+        stroke="var(--mantine-color-ember-4)"
         strokeDasharray={circumference}
         strokeDashoffset={circumference * (1 - ratio)}
         strokeLinecap="round"

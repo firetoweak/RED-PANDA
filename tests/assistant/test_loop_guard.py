@@ -6,15 +6,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
-from helperme.assistant.assembly import build_assistant_assembly
-from helperme.assistant.context.projection import project_chat_messages
-from helperme.assistant.compact.core import CompactBoundary, save_document
-from helperme.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
-from helperme.assistant.loop_guard_strategies import Action, ConsecutiveActions
-from helperme.config import AssistantConfig
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from helperme.paths import HelperMeHome
-from helperme.runtime import (
+from redpanda.assistant.assembly import build_assistant_assembly
+from redpanda.assistant.context.projection import project_chat_messages
+from redpanda.assistant.compact.core import CompactBoundary, save_document
+from redpanda.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
+from redpanda.assistant.loop_guard_strategies import Action, ConsecutiveActions
+from redpanda.config import AssistantConfig
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import (
     Event,
     InvokeTool,
     ModelDecision,
@@ -22,9 +22,9 @@ from helperme.runtime import (
     StateProjector,
     StepCommitted,
 )
-from helperme.runtime.json_values import thaw_value
-from helperme.runtime.codec import EVENT_SCHEMA_VERSION
-from helperme.runtime.model import Command, Step
+from redpanda.runtime.json_values import thaw_value
+from redpanda.runtime.codec import EVENT_SCHEMA_VERSION
+from redpanda.runtime.model import Command, Step
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import settle_session
 
@@ -125,7 +125,7 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",
                 workspace=workspace_record(root),
-                home=HelperMeHome(root / "home"),
+                home=RedPandaHome(root / "home"),
             )
             try:
                 await assembly.runtime.receive_user_message("s", "read", delivery_id="u")

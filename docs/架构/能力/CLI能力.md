@@ -52,7 +52,7 @@ Worker 是常驻进程，`os.environ` 是启动时的快照。安装程序修改
 child_env =
     Worker 环境快照
     + PATH 键整体替换为最新 Machine PATH + User PATH 拼接
-    + HelperMe overlay（禁用颜色、分页与交互行为）
+    + RED PANDA overlay（禁用颜色、分页与交互行为）
 ```
 
 **整体替换，不是合并追加**：旧 PATH 条目若继续排前面，CLI 升级换安装位置后会被旧路径遮蔽。其余环境变量键保留 Worker 快照。
@@ -65,7 +65,7 @@ child_env =
 
 不拆两套执行器实现。底层同一个 ProcessRunner，按用途分 profile：normal（普通超时、非交互，agent 日常命令）与 install（长超时、显式非交互参数，包管理器安装）。
 
-install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI Application，不经过 per-Session 的 EnvironmentBinding——包管理器安装与 workspace 无关。依赖方向是 `helperme/cli → helperme/sandbox`。
+install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI Application，不经过 per-Session 的 EnvironmentBinding——包管理器安装与 workspace 无关。依赖方向是 `redpanda/cli → redpanda/sandbox`。
 
 需要管理员提权的包明确失败并提示手动安装：UAC 弹窗会使子进程进入另一安全上下文，输出采集断裂，不做。
 
@@ -119,7 +119,7 @@ manifest 域重新解析路径并重跑体检。包管理器域按登记的版�
 
 ### 安装源
 
-第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，HelperMe 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 作为第二切片，带着 install profile 与候选冻结一起来。
+第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，RED PANDA 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 作为第二切片，带着 install profile 与候选冻结一起来。
 
 ## 不做
 

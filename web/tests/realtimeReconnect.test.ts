@@ -1,6 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { afterEach, expect, it, vi } from "vitest";
-import { helpermeApi } from "../src/api/helpermeApi";
+import { redpandaApi } from "../src/api/redpandaApi";
 import { openEventBridge } from "../src/realtime/eventBridge";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
@@ -13,8 +13,8 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
     close() {}
   });
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [helpermeApi.reducerPath]: helpermeApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(helpermeApi.middleware),
+    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
   });
   const close = openEventBridge(store.dispatch);
   const emit = (name: string, payload: object = {}) => listeners.get(name)!(new MessageEvent(name, { data: JSON.stringify(payload) }));
@@ -38,5 +38,5 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   expect(store.getState().runtime.sessions.child.committed.output).toBe("补齐前缀后续");
   expect(store.getState().runtime.sessions.child.activePreview).toBeNull();
   close();
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });

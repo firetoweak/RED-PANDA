@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.tools.control import ControlApprovalProposal
-from helperme.paths import HelperMeHome
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.approval import (
+from redpanda.tools.control import ControlApprovalProposal
+from redpanda.paths import RedPandaHome
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.approval import (
     SkillSetEnabledApprovalHandler,
     SkillSetEnabledProposalInput,
     SkillInstallApprovalHandler,
@@ -27,7 +27,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_update_proposal_and_approval_use_frozen_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo", body="v1\n")
@@ -49,7 +49,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_already_installed_is_a_deterministic_proposal_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo")
@@ -68,7 +68,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_same_content_from_new_source_keeps_current_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             first_source = root / "first-source"
             current_source = root / "current-source"
@@ -105,7 +105,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_proposal_freezes_candidate_and_approval_installs_exact_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(
@@ -144,7 +144,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Frozen v1", text)
             self.assertNotIn("Drifted v2", text)
             shutil.rmtree(source)
-            from helperme.skills.runtime import LoadSkillInput
+            from redpanda.skills.runtime import LoadSkillInput
             load = next(item for item in service.tool_catalog.tool_specs() if item.name == "load_skill")
             loaded = await load.handler(LoadSkillInput(skill_id="demo"))
             self.assertTrue(loaded["ok"])
@@ -153,7 +153,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_missing_frozen_install_candidate_is_known_execution_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo")
@@ -182,7 +182,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_install_proposal_is_both_approval_boundary_and_exclusive(self):
         with tempfile.TemporaryDirectory() as directory:
-            workspace = HelperMeHome(Path(directory) / ".helperme")
+            workspace = RedPandaHome(Path(directory) / ".redpanda")
             service = SkillApplicationService(workspace)
             spec = create_skill_install_proposal_spec(service)
 
@@ -192,7 +192,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def test_set_enabled_proposal_freezes_revision_and_rejects_drift(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo")
@@ -216,7 +216,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             source = root / "source"
             write_skill(source, name="demo")
-            service = SkillApplicationService(HelperMeHome(root / "home"))
+            service = SkillApplicationService(RedPandaHome(root / "home"))
             await service.install_local(source)
             spec = create_skill_uninstall_proposal_spec(service)
             request = await spec.handler(SkillUninstallProposalInput(skill_id="demo"))
@@ -237,7 +237,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             source = root / "source"
             write_skill(source, name="demo")
-            service = SkillApplicationService(HelperMeHome(root / "home"))
+            service = SkillApplicationService(RedPandaHome(root / "home"))
             await service.install_local(source)
             (service.skills_root / "packages/demo/SKILL.md").write_text("damaged", encoding="utf-8")
             request = await create_skill_set_enabled_proposal_spec(service).handler(
@@ -252,7 +252,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             source = root / "source"
             write_skill(source, name="demo", description="Demo")
-            home = HelperMeHome(root / "home")
+            home = RedPandaHome(root / "home")
             service = SkillApplicationService(home)
             request = await create_skill_install_proposal_spec(service).handler(
                 SkillInstallProposalInput(source_kind="local", locator=str(source))
@@ -269,7 +269,7 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             source = root / "source"
             write_skill(source, name="demo")
-            service = SkillApplicationService(HelperMeHome(root / "home"))
+            service = SkillApplicationService(RedPandaHome(root / "home"))
             await service.install_local(source)
             shutil.rmtree(service.skills_root / "packages/demo")
             request = await create_skill_uninstall_proposal_spec(service).handler(

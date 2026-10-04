@@ -4,7 +4,7 @@ from pathlib import Path
 
 import uvicorn
 
-from helperme.channels.web import create_web_app
+from redpanda.channels.web import create_web_app
 
 
 app = create_web_app()

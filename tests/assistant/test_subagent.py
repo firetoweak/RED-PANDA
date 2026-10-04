@@ -5,10 +5,10 @@ from collections.abc import Awaitable
 import unittest
 from types import SimpleNamespace
 
-from helperme.assistant.control import AssistantControlPlane
-from helperme.assistant.decision import JournalBackedLlmDecisionMaker
-from helperme.assistant.delivery import deliver_binding
-from helperme.assistant.subagent.subagent import (
+from redpanda.assistant.control import AssistantControlPlane
+from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
+from redpanda.assistant.delivery import deliver_binding
+from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     CHILD_BUILTIN_TOOL_NAMES,
     RECLAIM,
@@ -27,9 +27,9 @@ from helperme.assistant.subagent.subagent import (
     return_data,
     task_fact_arguments,
 )
-from helperme.llm.api import LLMProviderError
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from helperme.runtime import (
+from redpanda.llm.api import LLMProviderError
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     CommandPhase,
@@ -41,8 +41,8 @@ from helperme.runtime import (
     RuntimeStatus,
     ToolBinding,
 )
-from helperme.runtime.dispatcher import AttemptContext
-from helperme.runtime.state import DecisionFrame
+from redpanda.runtime.dispatcher import AttemptContext
+from redpanda.runtime.state import DecisionFrame
 from tests.assistant.test_runner import SequentialIds
 from tests.session_scheduler import SettlingScheduler
 
@@ -572,7 +572,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
         await runtime.create_session(child)
         await runtime.receive_domain_fact(child, **task_fact_arguments(intent))
         try:
-            from helperme.assistant.subagent.subagent import record_unexpected_return
+            from redpanda.assistant.subagent.subagent import record_unexpected_return
 
             self.assertIsNone(
                 await record_unexpected_return(
@@ -1323,7 +1323,7 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
 class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
     async def test_external_schemas_bypass_builtin_name_filter(self):
-        from helperme.assistant.toolsets import ToolSurface
+        from redpanda.assistant.toolsets import ToolSurface
         from tests.assistant.test_toolsets import FakeEchoProvider
 
         surface = ToolSurface(providers=(FakeEchoProvider(),), base_schemas=[

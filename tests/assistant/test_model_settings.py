@@ -3,9 +3,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from helperme.config import write_json
-from helperme.model_settings import ModelSettings, ModelConfigurationError, ModelInUseError
-from helperme.paths import HelperMeHome
+from redpanda.config import write_json
+from redpanda.model_settings import ModelSettings, ModelConfigurationError, ModelInUseError
+from redpanda.paths import RedPandaHome
 
 PRO = {"model": "deepseek/pro", "compact_threshold_tokens": 200000}
 FLASH = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
@@ -14,7 +14,7 @@ FLASH = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
 class ModelSettingsTest(unittest.TestCase):
     def setUp(self):
         self.directory = TemporaryDirectory()
-        self.home = HelperMeHome(Path(self.directory.name))
+        self.home = RedPandaHome(Path(self.directory.name))
         write_json(self.home.config_path, {"model": {"default": PRO["model"], "candidates": [PRO, FLASH]}})
         self.models = ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
         connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))

@@ -13,9 +13,9 @@ import time
 
 import uvicorn
 
-from helperme.channels.web.app import create_web_app
-from helperme.channels.web.channel import WebChannel
-from helperme.channels.web.hub import WebEventHub
+from redpanda.channels.web.app import create_web_app
+from redpanda.channels.web.channel import WebChannel
+from redpanda.channels.web.hub import WebEventHub
 
 
 class _Sessions:

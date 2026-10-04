@@ -2,23 +2,24 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
+import unittest
 
 import pytest
 from pydantic import ValidationError
 
-from helperme.assistant.context.projection import ModelContextProjector
-from helperme.assistant.compact.core import MODEL_USAGE
-from helperme.assistant.conversations import project_conversation
-from helperme.assistant.sessions import SessionView
-from helperme.assistant.work_plan import (
+from redpanda.assistant.context.projection import ModelContextProjector
+from redpanda.assistant.compact.core import MODEL_USAGE
+from redpanda.assistant.conversations import project_conversation
+from redpanda.assistant.sessions import SessionView
+from redpanda.assistant.work_plan import (
     UPDATE_PLAN, WORK_PLAN_CONTEXT, project_work_plan, update_plan_binding,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     Command, CommandOutcome, CommandOutcomeReceived, DispatchAttemptStarted,
     Event, InvokeTool, ModelDecision, OutcomeStatus, StateProjector, Step,
     StepCommitted, UserMessageReceived,
 )
-from helperme.runtime.dispatcher import AttemptContext
+from redpanda.runtime.dispatcher import AttemptContext
 
 
 PLAN = {
@@ -65,23 +66,23 @@ def update(sequence, plan, *, snapshot=None, ok=True):
     )
 
 
-@pytest.mark.asyncio
-async def test_update_tool_validates_complete_versions_and_explicit_clear():
-    binding = update_plan_binding()
-    context = AttemptContext("s", "c", "a", 1)
-    assert not binding.requires_authorization
-    for plan in (PLAN, None):
-        result = await binding.handler(context, {"plan": plan})
-        assert result["ok"] is True
-        assert result["data"] == {"plan": plan}
-    bad_status = deepcopy(PLAN)
-    bad_status["steps"][0]["status"] = "blocked"
-    missing_note = {k: v for k, v in PLAN.items() if k != "note"}
-    for arguments in ({}, {"plan": bad_status}, {"plan": missing_note},
-                      {"plan": PLAN, "extra": True}, {"plan": {**PLAN, "steps": []}}):
-        result = await binding.handler(context, arguments)
-        assert result["ok"] is False
-        assert result["code"] == "VALIDATION_ERROR"
+class WorkPlanToolTests(unittest.IsolatedAsyncioTestCase):
+    async def test_update_tool_validates_complete_versions_and_explicit_clear(self):
+        binding = update_plan_binding()
+        context = AttemptContext("s", "c", "a", 1)
+        assert not binding.requires_authorization
+        for plan in (PLAN, None):
+            result = await binding.handler(context, {"plan": plan})
+            assert result["ok"] is True
+            assert result["data"] == {"plan": plan}
+        bad_status = deepcopy(PLAN)
+        bad_status["steps"][0]["status"] = "blocked"
+        missing_note = {k: v for k, v in PLAN.items() if k != "note"}
+        for arguments in ({}, {"plan": bad_status}, {"plan": missing_note},
+                          {"plan": PLAN, "extra": True}, {"plan": {**PLAN, "steps": []}}):
+            result = await binding.handler(context, arguments)
+            assert result["ok"] is False
+            assert result["code"] == "VALIDATION_ERROR"
 
 
 def test_only_successful_committed_outcomes_change_current_plan():

@@ -10,7 +10,7 @@ import { SessionSidebar } from "../src/features/sessions/SessionSidebar";
 import runtimeReducer, { sessionActivity } from "../src/realtime/runtimeSlice";
 
 const queries = vi.hoisted(() => ({ sessions: [] as SessionSummary[] }));
-vi.mock("../src/api/helpermeApi", () => ({
+vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionsQuery: () => ({ data: queries.sessions, isLoading: false }),
   useGetSessionTitlesQuery: () => ({ data: {} }),
   useGetWorkspacesQuery: () => ({ data: [{ workspace_id: "workspace", name: "工作区" }], isLoading: false }),

@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.cli.models import CliHealth, CliRecord, CliSourceRef, utc_now
-from helperme.cli.registry import CliRegistry
+from redpanda.cli.models import CliHealth, CliRecord, CliSourceRef, utc_now
+from redpanda.cli.registry import CliRegistry
 
 
 def make_record(name: str, *, version: str | None = "1.0.0") -> CliRecord:

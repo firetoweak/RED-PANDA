@@ -7,8 +7,9 @@ import {
   useCreateSessionMutation,
   useGetSessionsQuery,
   useGetWorkspacesQuery,
-} from "../../api/helpermeApi";
+} from "../../api/redpandaApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
+import { ConversationWelcome } from "../../app/ConversationWelcome";
 import { bindDraftSession } from "./bindDraft";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import { defaultWorkspaceId, draftSessionId, groupSessions } from "./workspaces";
@@ -88,7 +89,7 @@ export function DraftRedirect() {
       <Center h="100%">
         <Stack align="center" gap="sm">
           <Text c="red" fw={600} size="sm">
-            无法打开 Session
+            无法打开会话
           </Text>
           <Text c="dimmed" maw={420} size="sm" ta="center">
             {openError}
@@ -112,7 +113,7 @@ export function DraftRedirect() {
       <Stack align="center" gap="sm">
         <Loader size="sm" />
         <Text c="dimmed" size="sm">
-          {connectionId === null ? "正在连接后端…" : "正在打开 Session…"}
+          {connectionId === null ? "正在连接…" : "正在打开会话…"}
         </Text>
       </Stack>
     </Center>
@@ -123,20 +124,14 @@ export function DraftRedirect() {
 function NoWorkspaceYet() {
   const [opened, { open, close }] = useDisclosure(false);
   return (
-    <Center h="100%">
-      <Stack align="center" gap="sm">
-        <Text fw={600} size="sm">
-          还没有工作区
-        </Text>
-        <Text c="dimmed" maw={380} size="sm" ta="center">
-          每个会话都跑在一个工作区里，工作区就是它的文件系统边界。先创建一个，
-          再回来新建会话。
-        </Text>
-        <Button onClick={open} variant="light">
-          创建工作区
-        </Button>
-      </Stack>
+    <ConversationWelcome>
+      <Text c="dimmed" maw={380} size="sm" mt="sm">
+        先选择一个文件夹作为工作区，小熊猫会在这里与你处理文件和任务。
+      </Text>
+      <Button onClick={open} variant="light">
+        创建工作区
+      </Button>
       <CreateWorkspaceModal onClose={close} opened={opened} />
-    </Center>
+    </ConversationWelcome>
   );
 }

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { helpermeApi } from "../src/api/helpermeApi";
+import { redpandaApi } from "../src/api/redpandaApi";
 import { CreateWorkspaceModal } from "../src/features/sessions/CreateWorkspaceModal";
 
 beforeEach(() => {
@@ -31,8 +31,8 @@ afterEach(() => {
 
 function showModal() {
   const store = configureStore({
-    reducer: { [helpermeApi.reducerPath]: helpermeApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(helpermeApi.middleware),
+    reducer: { [redpandaApi.reducerPath]: redpandaApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
   });
   const onClose = vi.fn();
   render(
@@ -65,7 +65,7 @@ it("选择目录后回填名称和路径，显式创建时才提交工作区", a
   fireEvent.click(screen.getByRole("button", { name: "创建" }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(submissions).toEqual([{ name: "助手", task_root: "D:\\项目\\助手", full_access: false }]);
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });
 
 it.each([
@@ -82,7 +82,7 @@ it.each([
   expect(screen.getByLabelText("名称")).toHaveValue("我的工作区");
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.queryByText("选择失败")).toBeNull();
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });
 
 it("图形环境不可用时显示后端原因，并保留手填目录的入口", async () => {
@@ -95,5 +95,5 @@ it("图形环境不可用时显示后端原因，并保留手填目录的入口"
   await screen.findByText("当前 Python 未安装 Tcl/Tk，无法打开文件夹选择窗口。");
   expect(screen.getByLabelText("目录")).toBeEnabled();
   expect(screen.getByLabelText("目录")).toHaveValue("");
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });

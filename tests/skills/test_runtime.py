@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.paths import HelperMeHome
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.runtime import (
+from redpanda.paths import RedPandaHome
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.runtime import (
     LOAD_SKILL,
     READ_SKILL_RESOURCE,
     LoadSkillInput,
@@ -17,7 +17,7 @@ class SkillRuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.workspace = HelperMeHome(root / ".helperme")
+        self.workspace = RedPandaHome(root / ".redpanda")
         self.workspace.initialize()
         self.source = root / "source"
         write_skill(

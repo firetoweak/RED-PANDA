@@ -1,9 +1,9 @@
 import { configureStore } from "@reduxjs/toolkit";
 
-import { helpermeApi } from "../api/helpermeApi";
+import { redpandaApi } from "../api/redpandaApi";
 import runtimeReducer, { hydrateDrafts } from "../realtime/runtimeSlice";
 
-const DRAFT_KEY = "helperme.draftSessions";
+const DRAFT_KEY = "redpanda.draftSessions";
 
 function readDrafts(): Record<string, string> {
   const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -26,11 +26,11 @@ function readDrafts(): Record<string, string> {
 
 export const store = configureStore({
   reducer: {
-    [helpermeApi.reducerPath]: helpermeApi.reducer,
+    [redpandaApi.reducerPath]: redpandaApi.reducer,
     runtime: runtimeReducer,
   },
   middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(helpermeApi.middleware),
+    getDefaultMiddleware().concat(redpandaApi.middleware),
 });
 
 const savedDrafts = sessionStorage.getItem(DRAFT_KEY);

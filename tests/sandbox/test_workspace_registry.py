@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.sandbox.registry import (
+from redpanda.sandbox.registry import (
     REGISTRY_VERSION,
     WorkspaceNotFound,
     WorkspacePathTaken,
@@ -12,7 +12,7 @@ from helperme.sandbox.registry import (
     WorkspaceRegistryError,
     workspace_view,
 )
-from helperme.sandbox.workspace import WorkspaceScope
+from redpanda.sandbox.workspace import WorkspaceScope
 
 
 class WorkspaceRegistryTest(unittest.TestCase):
@@ -20,7 +20,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        self.registry_path = self.root / "helperme" / "workspaces.json"
+        self.registry_path = self.root / "redpanda" / "workspaces.json"
 
     def make_project(self, name: str) -> Path:
         project = self.root / name

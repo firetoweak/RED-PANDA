@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     CommandPhase,
     DispatchAttemptStarted,
@@ -15,7 +15,7 @@ from helperme.runtime import (
     SqliteJournal,
     ToolBinding,
 )
-from helperme.runtime.journal.api import LeaseLostError, StepClaimRequest
+from redpanda.runtime.journal.api import LeaseLostError, StepClaimRequest
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

@@ -10,9 +10,9 @@ import unittest
 from PIL import Image
 from mcp.types import CallToolResult, ImageContent, TextContent
 
-from helperme.assistant.attachments import AttachmentStore, is_valid_attachment_id
-from helperme.assistant.mcp import extract_images
-from helperme.mcp.adapter import adapt_call_result
+from redpanda.assistant.attachments import AttachmentStore, is_valid_attachment_id
+from redpanda.assistant.mcp import extract_images
+from redpanda.mcp.adapter import adapt_call_result
 
 
 def png(size: tuple[int, int] = (8, 8), color: str = "red") -> bytes:

@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel, ConfigDict
 
-from helperme.assistant.artifacts import MemoryArtifactStore
-from helperme.assistant.context.projection import ModelContextProjector
-from helperme.assistant.control import (
+from redpanda.assistant.artifacts import MemoryArtifactStore
+from redpanda.assistant.context.projection import ModelContextProjector
+from redpanda.assistant.control import (
     CONTROL_APPROVED,
     CONTROL_CONCLUDED,
     CONTROL_EXECUTION_STARTED,
@@ -25,12 +25,12 @@ from helperme.assistant.control import (
     project_control_message,
     project_pending_approval,
 )
-from helperme.assistant.decision import JournalBackedLlmDecisionMaker
-from helperme.assistant.delivery import deliver_binding
-from helperme.assistant.sessions import AssistantSessions
-from helperme.assistant.toolsets import ToolSurface
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from helperme.runtime import (
+from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
+from redpanda.assistant.delivery import deliver_binding
+from redpanda.assistant.sessions import AssistantSessions
+from redpanda.assistant.toolsets import ToolSurface
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.runtime import (
     AgentRuntime,
     DomainFactCommitted,
     LeaseLostError,
@@ -38,14 +38,14 @@ from helperme.runtime import (
     RuntimeStatus,
     StepCommitted,
 )
-from helperme.runtime.json_values import thaw_value
-from helperme.tools.control import (
+from redpanda.runtime.json_values import thaw_value
+from redpanda.tools.control import (
     ControlApprovalExecution,
     ControlApprovalProposal,
     ControlOperation,
     ControlPreparationFailure,
 )
-from helperme.tools.spec import PydanticParameters, ToolSpec
+from redpanda.tools.spec import PydanticParameters, ToolSpec
 from tests.session_scheduler import settle_session
 
 

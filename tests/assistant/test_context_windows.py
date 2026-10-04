@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 
 from PIL import Image
 
-from helperme.assistant.artifacts import FileArtifactGateway, MemoryArtifactGateway
-from helperme.assistant.attachments import AttachmentGateway
-from helperme.assistant.compact.core import (
+from redpanda.assistant.artifacts import FileArtifactGateway, MemoryArtifactGateway
+from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.compact.core import (
     CompactBoundary,
     CompactContext,
     HANDOFF_PREFIX,
@@ -21,11 +21,11 @@ from helperme.assistant.compact.core import (
     frozen_bundle,
     save_document,
 )
-from helperme.assistant.context.projection import ModelContextProjector
-from helperme.assistant.host.session_store import SessionStore
-from helperme.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
-from helperme.assistant.toolsets import ToolSurface
-from helperme.assistant.workspaces import SESSION_WORKSPACE_FACT
+from redpanda.assistant.context.projection import ModelContextProjector
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
+from redpanda.assistant.toolsets import ToolSurface
+from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
 from tests.assistant.test_toolsets import FakeEchoProvider
 from tests.session_scheduler import settle_session
 

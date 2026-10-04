@@ -4,7 +4,6 @@ import { IconMenu2 } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Route, Routes } from "react-router-dom";
 
-import { ColorSchemeSwitcher } from "./ColorSchemeSwitcher";
 import { useAppDispatch } from "./hooks";
 import {
   MAX_SIDEBAR_WIDTH,
@@ -105,7 +104,6 @@ export function App() {
         >
           <IconMenu2 size={19} />
         </ActionIcon>
-        <ColorSchemeSwitcher />
         <Routes>
           <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<DraftRedirect />} />

@@ -48,7 +48,7 @@ const STATUS_LABEL: Record<ToolStatus, string> = {
 
 const STATUS_COLOR: Record<ToolStatus, string> = {
   queued: "gray",
-  running: "sage",
+  running: "ember",
   succeeded: "gray",
   failed: "red",
   unknown: "yellow",
@@ -113,7 +113,7 @@ export function ExecutionProcess({
         <Group justify="space-between" wrap="nowrap" gap="xs">
           <Group gap={8} wrap="nowrap">
             <ThemeIcon color="gray" radius="sm" size={22} variant="light">
-              {running ? <Loader color="sage" size={12} /> : <IconSparkles size={13} />}
+              {running ? <Loader color="ember" size={12} /> : <IconSparkles size={13} />}
             </ThemeIcon>
             <Text fw={600} size="sm">
               执行过程
@@ -275,7 +275,7 @@ function ToolCard({
               variant="light"
             >
               {tool.status === "running" ? (
-                <Loader color="sage" size={11} />
+                <Loader color="ember" size={11} />
               ) : tool.status === "failed" ? (
                 <IconAlertCircle size={13} />
               ) : tool.status === "unknown" ? (
@@ -310,7 +310,7 @@ function ToolCard({
       {awaiting && onAuthorize !== undefined ? (
         <Group gap="xs" mt="xs">
           <Button
-            color="sage"
+            color="ember"
             disabled={authorizationDisabled}
             leftSection={<IconCheck size={14} />}
             onClick={() => onAuthorize(tool.commandId, true)}

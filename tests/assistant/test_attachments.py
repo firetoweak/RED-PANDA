@@ -7,7 +7,7 @@ import unittest
 
 from PIL import Image
 
-from helperme.assistant.attachments import (
+from redpanda.assistant.attachments import (
     NORMALIZED_MAX_DIMENSION,
     AttachmentGateway,
     AttachmentRejected,
@@ -15,15 +15,15 @@ from helperme.assistant.attachments import (
     is_valid_attachment_id,
     read_image_binding,
 )
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.runtime import (
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.runtime import (
     AgentRuntime,
     InvokeTool,
     MemoryJournal,
     ModelDecision,
     ToolBinding,
 )
-from helperme.runtime.dispatcher import AttemptContext
+from redpanda.runtime.dispatcher import AttemptContext
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import settle_session
 

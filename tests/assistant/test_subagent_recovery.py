@@ -1,10 +1,10 @@
 import asyncio
 import unittest
 
-from helperme.assistant.subagent.subagent import (
+from redpanda.assistant.subagent.subagent import (
     RETURN_FACT, TASK_FACT, persist_return, record_interrupted_return, return_data,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, MemoryJournal,
     ModelDecision, StateProjector, ToolBinding,
 )

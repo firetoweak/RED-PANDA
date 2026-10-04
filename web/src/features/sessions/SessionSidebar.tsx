@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   TextInput,
-  ThemeIcon,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
@@ -22,7 +21,6 @@ import {
   IconMessageCircle,
   IconPencil,
   IconPlus,
-  IconSparkles,
   IconAdjustments,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
@@ -36,9 +34,11 @@ import {
   useGetSessionTitlesQuery,
   useGetWorkspacesQuery,
   useSetSessionTitleMutation,
-} from "../../api/helpermeApi";
+} from "../../api/redpandaApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { lockDraft } from "../../realtime/runtimeSlice";
+import { redPandaMark } from "../../app/brand";
+import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import {
   DRAFT_TITLE,
@@ -59,6 +59,7 @@ type SessionSidebarProps = {
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
+  const modelSettingsActive = useMatch("/settings/models") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<
@@ -119,16 +120,14 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   return (
     <Stack h="100%" gap="md">
       <AppShell.Section>
-        <Group gap="sm" px={6} py={4}>
-          <ThemeIcon radius="md" size={34} variant="light">
-            <IconSparkles size={18} stroke={1.8} />
-          </ThemeIcon>
+        <Group className="sidebar-brand" gap="sm" px={6} py={4} wrap="nowrap">
+          <img className="brand-mark" src={redPandaMark} alt="" width={40} height={40} />
           <Box>
-            <Text fw={700} lh={1.15} size="sm">
-              HelperMe
+            <Text className="brand-name" fw={700} lh={1.15} size="sm">
+              RED PANDA
             </Text>
             <Text c="dimmed" fz={11}>
-              Personal agent
+              你的个人助手
             </Text>
           </Box>
         </Group>
@@ -145,13 +144,6 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
           variant={sessionId === defaultDraftId ? "filled" : "light"}
         >
           新建会话
-        </Button>
-        <Button
-          fullWidth mt="xs" variant="subtle" justify="flex-start"
-          leftSection={<IconAdjustments size={17} />}
-          onClick={() => { navigate("/settings/models"); onNavigate(); }}
-        >
-          模型配置
         </Button>
       </AppShell.Section>
 
@@ -183,7 +175,7 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
             {!workspacesLoading && workspaces.length === 0 ? (
               <Box px={8} py="sm">
                 <Text c="dimmed" fz={12}>
-                  还没有工作区。工作区是会话的文件系统边界，先创建一个。
+                  添加一个工作区，整理会话与相关文件。
                 </Text>
                 <Button
                   fullWidth
@@ -292,7 +284,7 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                           }
                         >
                           <Text c="dimmed" fz={12}>
-                            More · {hiddenCount}
+                            更多 · {hiddenCount}
                           </Text>
                         </UnstyledButton>
                       ) : null}
@@ -305,11 +297,21 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
         </ScrollArea>
       </AppShell.Section>
 
-      <AppShell.Section>
+      <AppShell.Section className="sidebar-footer">
+        <Group gap={8} wrap="nowrap">
+          <Button
+            className="sidebar-settings" variant={modelSettingsActive ? "light" : "subtle"}
+            justify="flex-start" leftSection={<IconAdjustments size={17} />}
+            onClick={() => { navigate("/settings/models"); onNavigate(); }}
+          >
+            模型配置
+          </Button>
+          <ColorSchemeSwitcher />
+        </Group>
         <Group gap="xs" px={8} py={4}>
           <IconMessageCircle size={14} />
           <Text c={connectionId === null ? "orange" : "dimmed"} fz={11}>
-            {connectionId === null ? "正在连接后端…" : "实时连接已建立"}
+            {connectionId === null ? "正在连接…" : "已连接"}
           </Text>
         </Group>
       </AppShell.Section>

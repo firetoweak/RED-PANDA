@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helperme.assistant.host.session_store import SessionStore
-from helperme.assistant.host.supervisor import HostSupervisor, Worker
-from helperme.paths import HelperMeHome
-from helperme.sandbox.registry import WorkspaceRegistry
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.host.supervisor import HostSupervisor, Worker
+from redpanda.paths import RedPandaHome
+from redpanda.sandbox.registry import WorkspaceRegistry
 
 
 class HostActivityTest(unittest.TestCase):
@@ -33,7 +33,7 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
     async def test_select_waiting_session_binds_owner_without_starting_worker(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            home = HelperMeHome(root / "home")
+            home = RedPandaHome(root / "home")
             home.initialize()
             task_root = root / "workspace"
             task_root.mkdir()

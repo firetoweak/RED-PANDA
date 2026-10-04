@@ -174,7 +174,7 @@ export function formatRelativeTime(
   return `${Math.floor(elapsed / DAY)}d`;
 }
 
-const COLLAPSED_STORAGE_KEY = "helperme.collapsedWorkspaces";
+const COLLAPSED_STORAGE_KEY = "redpanda.collapsedWorkspaces";
 
 /** 读取折叠偏好；只认值为 true 的条目，解析失败当作没有偏好。 */
 export function readCollapsedWorkspaces(): Record<string, boolean> {

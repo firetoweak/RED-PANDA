@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from helperme.channels.web.directory_picker import (
+from redpanda.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
     select_file,
@@ -33,7 +33,7 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
                     communicate=lambda: (stdout, stderr),
                 )
                 with patch(
-                    "helperme.channels.web.directory_picker.subprocess.Popen",
+                    "redpanda.channels.web.directory_picker.subprocess.Popen",
                     return_value=process,
                 ):
                     if isinstance(expected, type):
@@ -61,7 +61,7 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
             wait=Mock(return_value=-1),
         )
         with patch(
-            "helperme.channels.web.directory_picker.subprocess.Popen",
+            "redpanda.channels.web.directory_picker.subprocess.Popen",
             return_value=process,
         ):
             task = asyncio.create_task(select_directory())
@@ -79,7 +79,7 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
             communicate=lambda: (json.dumps(str(selected)).encode(), b""),
         )
         with patch(
-            "helperme.channels.web.directory_picker.subprocess.Popen",
+            "redpanda.channels.web.directory_picker.subprocess.Popen",
             return_value=process,
         ) as popen:
             self.assertEqual(await select_file(), selected)

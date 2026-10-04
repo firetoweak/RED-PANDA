@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from helperme.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from helperme.sandbox.workspace import (
+from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
+from redpanda.sandbox.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from helperme.tools.builtin.file_read import (
+from redpanda.tools.builtin.file_read import (
     GlobInput,
     GrepInput,
     ReadFileInput,

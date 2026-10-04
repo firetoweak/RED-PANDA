@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from helperme.assistant.failures import assistant_failure_message
-from helperme.llm.api import (
+from redpanda.assistant.failures import assistant_failure_message
+from redpanda.llm.api import (
     InvalidLLMResponse,
     LLMAuthenticationError,
     LLMContextLengthError,

@@ -5,16 +5,16 @@ import unittest
 
 import pytest
 
-from helperme.config import load_app_config
+from redpanda.config import load_app_config
 from thinllm import ChatCompletionsClient
-from helperme.llm.config import load_endpoint
+from redpanda.llm.config import load_endpoint
 
 pytestmark = pytest.mark.live
 
 
 @unittest.skipUnless(
-    os.environ.get("HELPERME_RUN_LIVE_TESTS") == "1",
-    "设置 HELPERME_RUN_LIVE_TESTS=1 后显式运行 live 测试",
+    os.environ.get("REDPANDA_RUN_LIVE_TESTS") == "1",
+    "设置 REDPANDA_RUN_LIVE_TESTS=1 后显式运行 live 测试",
 )
 class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_chat_roundtrip(self):
@@ -30,8 +30,8 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(result.usage.total_tokens, 1)
 
     @unittest.skipUnless(
-        os.environ.get("HELPERME_RUN_DEEPSEEK_LIVE_TESTS") == "1",
-        "设置 HELPERME_RUN_DEEPSEEK_LIVE_TESTS=1 后运行 DeepSeek 协议回传测试",
+        os.environ.get("REDPANDA_RUN_DEEPSEEK_LIVE_TESTS") == "1",
+        "设置 REDPANDA_RUN_DEEPSEEK_LIVE_TESTS=1 后运行 DeepSeek 协议回传测试",
     )
     async def test_thinking_tool_roundtrip(self):
         config = load_app_config()

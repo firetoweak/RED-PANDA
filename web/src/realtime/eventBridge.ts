@@ -15,7 +15,7 @@ import {
   thinkingStartedEventSchema,
   toolProgressEventSchema,
 } from "../api/contracts";
-import { helpermeApi } from "../api/helpermeApi";
+import { redpandaApi } from "../api/redpandaApi";
 import type { AppDispatch } from "../app/store";
 import {
   authorizationRequired,
@@ -47,7 +47,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(helpermeApi.util.invalidateTags(["Conversation", "Sessions"]));
+    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Sessions"]));
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));
@@ -58,7 +58,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Sessions",
       ]),
@@ -67,7 +67,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("schedule_changed", (event) => {
     const payload = scheduleChangedEventSchema.parse(JSON.parse(event.data));
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -84,7 +84,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -99,7 +99,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -116,7 +116,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     // Tool finish can precede Outcome commit. The next decision observes committed
     // facts, so refresh the plan and timeline before waiting for model output.
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -188,7 +188,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Sessions",
       ]),
@@ -205,7 +205,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -221,7 +221,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      helpermeApi.util.invalidateTags([
+      redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );

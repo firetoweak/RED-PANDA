@@ -7,16 +7,16 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from helperme.assistant.artifacts import FileArtifactGateway
-from helperme.assistant.host.session_store import SessionStore
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.assistant.toolsets import (
+from redpanda.assistant.artifacts import FileArtifactGateway
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     ToolSurface,
     load_toolset_binding,
 )
-from helperme.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, replay
-from helperme.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
+from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, replay
+from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.assistant.test_toolsets import FakeEchoProvider, _schema_names
 from tests.session_scheduler import settle_session

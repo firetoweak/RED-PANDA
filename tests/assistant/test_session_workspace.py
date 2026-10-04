@@ -5,22 +5,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helperme.assistant.conversations import AssistantQueries, recent_workspace_id
-from helperme.assistant.host.session_store import SessionStore
-from helperme.assistant.workspaces import (
+from redpanda.assistant.conversations import AssistantQueries, recent_workspace_id
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.workspaces import (
     SESSION_WORKSPACE_FACT,
     UnboundSessionError,
     bound_workspace,
     bound_workspace_id,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     DeliveryIdentity,
     DomainFactCommitted,
     EventDraft,
     SqliteJournal,
     UserMessageReceived,
 )
-from helperme.sandbox.registry import WorkspaceRegistry
+from redpanda.sandbox.registry import WorkspaceRegistry
 
 
 async def _append_user_message(store, session_id: str, text: str) -> None:

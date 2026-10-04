@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from helperme.assistant.context.projection import project_chat_messages
-from helperme.assistant.workspace_versions import (
+from redpanda.assistant.context.projection import project_chat_messages
+from redpanda.assistant.workspace_versions import (
     WORKSPACE_CARRYOVER_FACT, WorkspaceVersionBoundary, WorkspaceVersionFact,
     project_workspace_versions, workspace_version_event,
 )
-from helperme.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, ToolBinding
+from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.session_scheduler import SettlingScheduler
 
@@ -82,7 +82,7 @@ def test_record_failure_is_a_visible_fact_but_unknown_error_propagates():
 
 
 async def restore_history(recorded):
-    from helperme.sandbox.versions import WorkspaceRestore
+    from redpanda.sandbox.versions import WorkspaceRestore
     async def tool(*_):
         return {"ok": True, "code": "DONE"}
     model = ScriptedDecisionMaker((
@@ -142,8 +142,8 @@ def test_missing_previous_snapshot_does_not_fall_back(failed):
 
 def test_compact_window_cannot_reference_removed_calls():
     async def scenario():
-        from helperme.assistant.compact.core import CompactContext
-        from helperme.assistant.context.projection import ModelContextProjector
+        from redpanda.assistant.compact.core import CompactContext
+        from redpanda.assistant.context.projection import ModelContextProjector
         runtime, boundary, versions, events, visible = await restore_history(["a" * 40] * 4)
         context = CompactContext("s", events, ModelContextProjector(), None)
         # 模拟已发布窗口；实际 visible() 仍负责选择可见调用。
@@ -160,8 +160,8 @@ def test_compact_window_cannot_reference_removed_calls():
 
 def test_partial_restore_retains_rescue_fact_without_exposing_version_addresses():
     async def scenario():
-        from helperme.sandbox.versions import WorkspaceRestoreFailed
-        from helperme.assistant.workspace_versions import WORKSPACE_RESTORE_FACT
+        from redpanda.sandbox.versions import WorkspaceRestoreFailed
+        from redpanda.assistant.workspace_versions import WORKSPACE_RESTORE_FACT
         runtime, boundary, versions, events, visible = await restore_history(["a" * 40] * 4)
         versions.restore.side_effect = WorkspaceRestoreFailed("f" * 40, OSError("disk full"))
         target = visible.steps[0].commands[0].command.command_id

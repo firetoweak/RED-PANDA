@@ -5,13 +5,13 @@ import unittest
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from helperme.assistant.artifacts import MemoryArtifactGateway
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.assistant.context.projection import ModelContextSettings
+from redpanda.assistant.artifacts import MemoryArtifactGateway
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.context.projection import ModelContextSettings
 from tests.session_scheduler import settle_session
-from helperme.assistant.skills import SkillToolAdapter
-from helperme.assistant.catalog import CatalogSkill
-from helperme.runtime import (
+from redpanda.assistant.skills import SkillToolAdapter
+from redpanda.assistant.catalog import CatalogSkill
+from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
@@ -20,10 +20,10 @@ from helperme.runtime import (
     RuntimeStatus,
     StepCommitted,
 )
-from helperme.runtime.state import DecisionFrame
-from helperme.paths import HelperMeHome
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from redpanda.runtime.state import DecisionFrame
+from redpanda.paths import RedPandaHome
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
 from tests.skills.test_package import write_skill
 
 
@@ -79,7 +79,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.workspace = HelperMeHome(root / ".helperme")
+        self.workspace = RedPandaHome(root / ".redpanda")
         self.workspace.initialize()
         source = root / "source"
         write_skill(

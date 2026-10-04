@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from helperme.assistant.compact.store import ConversationStatus
-from helperme.channels.web.hub import WebEventHub
+from redpanda.assistant.compact.store import ConversationStatus
+from redpanda.channels.web.hub import WebEventHub
 
 
 class WebEventHubTest(unittest.IsolatedAsyncioTestCase):

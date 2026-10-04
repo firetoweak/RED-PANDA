@@ -9,17 +9,17 @@ import unittest
 
 from PIL import Image
 
-from helperme.assistant.attachments import AttachmentGateway
+from redpanda.assistant.attachments import AttachmentGateway
 
-from helperme.assistant.artifacts import MemoryArtifactGateway
-from helperme.assistant.context.projection import (
+from redpanda.assistant.artifacts import MemoryArtifactGateway
+from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
     project_chat_messages,
 )
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.runtime import (
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.runtime import (
     AgentRuntime,
     InvokeTool,
     MemoryJournal,

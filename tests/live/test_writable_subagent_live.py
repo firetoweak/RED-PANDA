@@ -9,24 +9,24 @@ from uuid import uuid4
 
 import pytest
 
-from helperme.assistant.subagent.subagent import project_delegate_intents, project_reclaimed
-from helperme.assistant.subagent.workspace import child_layout
-from helperme.assistant.workspace_versions import project_workspace_versions
-from helperme.bootstrap import bootstrap_assistant
-from helperme.config import load_app_config
-from helperme.mcp.adapter import encode_tool_name
-from helperme.paths import HelperMeHome
-from helperme.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, SqliteJournal, StepCommitted
+from redpanda.assistant.subagent.subagent import project_delegate_intents, project_reclaimed
+from redpanda.assistant.subagent.workspace import child_layout
+from redpanda.assistant.workspace_versions import project_workspace_versions
+from redpanda.bootstrap import bootstrap_assistant
+from redpanda.config import load_app_config
+from redpanda.mcp.adapter import encode_tool_name
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, SqliteJournal, StepCommitted
 
 
 pytestmark = [pytest.mark.live, pytest.mark.skipif(
-    os.environ.get("HELPERME_RUN_LIVE_TESTS") != "1", reason="需显式启用 live 测试",
+    os.environ.get("REDPANDA_RUN_LIVE_TESTS") != "1", reason="需显式启用 live 测试",
 )]
 
 
 def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authorization(tmp_path, monkeypatch):
     app_config = load_app_config()
-    connections_path = HelperMeHome.default().connections_path
+    connections_path = RedPandaHome.default().connections_path
     home_root = tmp_path / "home"
     root = tmp_path / "project"
     root.mkdir()
@@ -38,7 +38,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                     "commit", "-m", "baseline"], check=True, capture_output=True)
     user_head = (root / ".git" / "HEAD").read_bytes()
     user_index = (root / ".git" / "index").read_bytes()
-    monkeypatch.setenv("HELPERME_HOME", str(home_root))
+    monkeypatch.setenv("REDPANDA_HOME", str(home_root))
     home_root.mkdir(exist_ok=True)
     shutil.copyfile(connections_path, home_root / "connections.json")
     nonce = "E2E_" + uuid4().hex

@@ -1,7 +1,7 @@
 __pycache__/
 .env
 .tools/
-helperme-env/
+redpanda-env/
 .vscode/
 .pytest_cache/
 .cursor/

@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.cli.approval import (
+from redpanda.cli.approval import (
     CLI_INSTALL_ACTION,
     CLI_UNINSTALL_ACTION,
     CliInstallApprovalHandler,
@@ -12,9 +12,9 @@ from helperme.cli.approval import (
     CliInstallProposalInput,
     CliIdProposalInput,
 )
-from helperme.cli.application import CliApplicationService
-from helperme.paths import HelperMeHome
-from helperme.tools.control import ControlApprovalProposal, ControlPreparationFailure
+from redpanda.cli.application import CliApplicationService
+from redpanda.paths import RedPandaHome
+from redpanda.tools.control import ControlApprovalProposal, ControlPreparationFailure
 from tests.cli.fakes import FakeExecutor, make_result
 
 
@@ -22,7 +22,7 @@ class CliInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = HelperMeHome(root / ".helperme")
+        self.home = RedPandaHome(root / ".redpanda")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()
@@ -95,7 +95,7 @@ class CliUninstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = HelperMeHome(root / ".helperme")
+        self.home = RedPandaHome(root / ".redpanda")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()

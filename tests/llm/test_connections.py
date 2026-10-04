@@ -4,10 +4,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from helperme.config import write_json
-from helperme.llm.config import initial_connections
-from helperme.llm.connections import ModelConnections
-from helperme.llm.api import LLMAuthenticationError
+from redpanda.config import write_json
+from redpanda.llm.config import initial_connections
+from redpanda.llm.connections import ModelConnections
+from redpanda.llm.api import LLMAuthenticationError
 
 
 class ConnectionsTest(unittest.IsolatedAsyncioTestCase):

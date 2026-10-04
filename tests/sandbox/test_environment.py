@@ -1,12 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
-from helperme.sandbox.api import (
+from redpanda.sandbox.api import (
     EnvironmentBinding,
     EnvironmentSelection,
     ExecutionAttachment,
 )
-from helperme.sandbox.workspace import (
+from redpanda.sandbox.workspace import (
     EnvironmentLocation,
     FilesystemPermission,
     PathOutsideWorkspaceView,

@@ -11,7 +11,7 @@ export function ColorSchemeSwitcher() {
     }
     themeColor.setAttribute(
       "content",
-      colorScheme === "light" ? "#f5f6f2" : "#111212",
+      colorScheme === "light" ? "#faf6f0" : "#171412",
     );
   }, [colorScheme]);
   return (
@@ -20,7 +20,7 @@ export function ColorSchemeSwitcher() {
         <ActionIcon
           aria-label="外观"
           className="color-scheme-trigger"
-          radius="xl"
+          radius="md"
           size="lg"
           variant="default"
         >

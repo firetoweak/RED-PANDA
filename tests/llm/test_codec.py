@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from helperme.llm.api import (
+from redpanda.llm.api import (
     InvalidLLMResponse,
     LLMRemoteError,
     LLMTransientError,
@@ -11,7 +11,7 @@ from helperme.llm.api import (
     encode_llm_error,
     encode_llm_result,
 )
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 class LlmCodecTest(unittest.TestCase):

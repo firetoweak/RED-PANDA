@@ -7,9 +7,9 @@ import shutil
 import sys
 import tempfile
 
-from helperme.paths import HelperMeHome
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.models import SkillSourceRef
+from redpanda.paths import RedPandaHome
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.models import SkillSourceRef
 
 
 SOURCE = SkillSourceRef(
@@ -19,9 +19,9 @@ SOURCE = SkillSourceRef(
 
 
 async def run() -> dict:
-    temporary = Path(tempfile.mkdtemp(prefix="helperme-remote-skill-"))
+    temporary = Path(tempfile.mkdtemp(prefix="redpanda-remote-skill-"))
     try:
-        workspace = HelperMeHome(temporary / ".helperme")
+        workspace = RedPandaHome(temporary / ".redpanda")
         workspace.initialize()
         service = SkillApplicationService(workspace)
         record = await service.install_source(SOURCE)

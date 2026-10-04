@@ -6,18 +6,18 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from helperme.assistant.artifacts import MemoryArtifactGateway
-from helperme.assistant.context.projection import ModelContextSettings
-from helperme.assistant.management import ManagementSurface
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.assistant.runner import SessionNotFoundError
-from helperme.assistant.sessions import AssistantSessions, SessionView
-from helperme.assistant.toolsets import (
+from redpanda.assistant.artifacts import MemoryArtifactGateway
+from redpanda.assistant.context.projection import ModelContextSettings
+from redpanda.assistant.management import ManagementSurface
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.runner import SessionNotFoundError
+from redpanda.assistant.sessions import AssistantSessions, SessionView
+from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     ToolSurface,
     load_toolset_binding,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     CommandPhase,
     InvokeTool,

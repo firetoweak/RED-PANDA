@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from collections.abc import Awaitable, Callable, Mapping
 
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from tests.session_scheduler import settle_session
-from helperme.assistant.toolsets import (
+from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     LoadedTool,
     LoadedToolSnapshot,
@@ -14,7 +14,7 @@ from helperme.assistant.toolsets import (
     ToolsetLoadError,
     load_toolset_binding,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
@@ -23,7 +23,7 @@ from helperme.runtime import (
     RuntimeStatus,
     StepCommitted,
 )
-from helperme.runtime.state import DecisionFrame
+from redpanda.runtime.state import DecisionFrame
 
 
 DecisionScript = Callable[

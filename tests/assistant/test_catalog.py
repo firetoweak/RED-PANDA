@@ -1,14 +1,14 @@
 from types import SimpleNamespace
 import unittest
 
-from helperme.assistant.catalog import (
+from redpanda.assistant.catalog import (
     CATALOG,
     CapabilityCatalog,
     project_catalog,
 )
-from helperme.assistant.context.projection import project_chat_messages
-from helperme.assistant.toolsets import ToolsetDescriptor
-from helperme.runtime import (
+from redpanda.assistant.context.projection import project_chat_messages
+from redpanda.assistant.toolsets import ToolsetDescriptor
+from redpanda.runtime import (
     AgentRuntime,
     MemoryJournal,
     DomainFactCommitted,

@@ -11,7 +11,7 @@ import secrets
 import time
 
 import tiktoken
-from helperme.paths import runtime_data_root
+from redpanda.paths import runtime_data_root
 
 
 MANIFEST_SCHEMA = "decision-replay-manifest/v1"
@@ -141,9 +141,9 @@ def build_variants(
 
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
-    from helperme.config import load_app_config
+    from redpanda.config import load_app_config
     from thinllm import ChatCompletionsClient
-    from helperme.llm.config import load_endpoint
+    from redpanda.llm.config import load_endpoint
 
     root = runtime_data_root()
     drawer = Path(args.drawer).resolve() if args.drawer else _default_drawer(root)

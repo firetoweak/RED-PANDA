@@ -18,8 +18,8 @@ from uuid import uuid4
 
 LOG_PATH = Path(
     os.environ.get(
-        "HELPERME_ACP_PROBE_LOG",
-        str(Path(gettempdir()) / "helperme-acp-v1-probe.ndjson"),
+        "REDPANDA_ACP_PROBE_LOG",
+        str(Path(gettempdir()) / "redpanda-acp-v1-probe.ndjson"),
     )
 )
 
@@ -148,8 +148,8 @@ def _handle_request(message: dict[str, object]) -> None:
                 },
                 "authMethods": [],
                 "agentInfo": {
-                    "name": "helperme-acp-probe",
-                    "title": "HelperMe ACP Probe",
+                    "name": "redpanda-acp-probe",
+                    "title": "RED PANDA ACP Probe",
                     "version": "0.1.0",
                 },
             },

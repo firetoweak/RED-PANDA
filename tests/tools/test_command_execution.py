@@ -14,26 +14,26 @@ import pytest
 
 from pydantic import ValidationError
 
-from helperme.sandbox.api import (
+from redpanda.sandbox.api import (
     EnvironmentBinding,
     ExecutionAttachment,
 )
-from helperme.sandbox.command import CaptureLimit, ShellNotFoundError
-from helperme.sandbox.workspace import (
+from redpanda.sandbox.command import CaptureLimit, ShellNotFoundError
+from redpanda.sandbox.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from helperme.tools.registry import ToolRegistry
-from helperme.tools.executor import ToolsExecutor
-from helperme.tools.builtin.command_execution import (
+from redpanda.tools.registry import ToolRegistry
+from redpanda.tools.executor import ToolsExecutor
+from redpanda.tools.builtin.command_execution import (
     ExecuteCommandInput,
     create_command_execution_spec,
 )
-from helperme.tools.spec import EmptyInput, pydantic_tool_spec
-from helperme.sandbox.local.powershell import (
+from redpanda.tools.spec import EmptyInput, pydantic_tool_spec
+from redpanda.sandbox.local.powershell import (
     CommandEnvironmentPolicy,
     PowerShellCommandRunner,
 )
@@ -95,7 +95,7 @@ class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
 
         # PATH 的持久化重读由 test_child_env 覆盖；这里钉住白名单转发语义。
         with patch(
-            "helperme.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             child_env = policy.build({
@@ -113,7 +113,7 @@ class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
         policy = CommandEnvironmentPolicy(forward_names=("helper_allowed",))
 
         with patch(
-            "helperme.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             child_env = policy.build({"HELPER_ALLOWED": "yes"})
@@ -197,7 +197,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 class PowerShellDiscoveryTest(unittest.TestCase):
     def test_prefers_powershell_7(self):
         with patch(
-            "helperme.sandbox.local.powershell.shutil.which",
+            "redpanda.sandbox.local.powershell.shutil.which",
             side_effect=lambda name: {
                 "pwsh.exe": "C:/PowerShell/7/pwsh.exe",
                 "powershell.exe": "C:/Windows/powershell.exe",
@@ -209,7 +209,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
 
     def test_uses_windows_powershell_when_version_7_is_unavailable(self):
         with patch(
-            "helperme.sandbox.local.powershell.shutil.which",
+            "redpanda.sandbox.local.powershell.shutil.which",
             side_effect=lambda name: {
                 "powershell.exe": "C:/Windows/powershell.exe",
             }.get(name),
@@ -220,7 +220,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
 
     def test_fails_when_no_powershell_is_available(self):
         with patch(
-            "helperme.sandbox.local.powershell.shutil.which",
+            "redpanda.sandbox.local.powershell.shutil.which",
             return_value=None,
         ):
             with self.assertRaisesRegex(
@@ -437,7 +437,7 @@ class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_powershell_is_an_expected_boundary_error(self):
         runner = PowerShellCommandRunner(
-            executable="missing-powershell-for-helperme-test.exe"
+            executable="missing-powershell-for-redpanda-test.exe"
         )
 
         with self.assertRaisesRegex(FileNotFoundError, "未找到 Shell"):

@@ -254,7 +254,7 @@ describe("折叠偏好", () => {
   });
 
   it("存的内容不是对象时返回空对象", () => {
-    window.localStorage.setItem("helperme.collapsedWorkspaces", "[1,2]");
+    window.localStorage.setItem("redpanda.collapsedWorkspaces", "[1,2]");
 
     expect(readCollapsedWorkspaces()).toEqual({});
   });

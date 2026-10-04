@@ -36,7 +36,7 @@ const STATUS_LABEL: Record<ToolStatus, string> = {
 
 const STATUS_COLOR: Record<ToolStatus, string> = {
   queued: "gray",
-  running: "sage",
+  running: "ember",
   succeeded: "gray",
   failed: "red",
   unknown: "yellow",
@@ -72,7 +72,7 @@ export function SubagentCallCard({ tool, onObserve }: {
               variant="light"
             >
               {tool.status === "running" ? (
-                <Loader color="sage" size={11} />
+                <Loader color="ember" size={11} />
               ) : tool.status === "failed" ? (
                 <IconAlertCircle size={13} />
               ) : tool.status === "unknown" ? (

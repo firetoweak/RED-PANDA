@@ -3,14 +3,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.cli.application import CliApplicationService
-from helperme.cli.errors import (
+from redpanda.cli.application import CliApplicationService
+from redpanda.cli.errors import (
     CliAlreadyInstalledError,
     CliInputError,
     CliNotFoundError,
     CliSourceError,
 )
-from helperme.paths import HelperMeHome
+from redpanda.paths import RedPandaHome
 from tests.cli.fakes import FakeExecutor, make_result
 
 
@@ -18,7 +18,7 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = HelperMeHome(root / ".helperme")
+        self.home = RedPandaHome(root / ".redpanda")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()

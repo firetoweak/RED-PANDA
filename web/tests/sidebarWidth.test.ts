@@ -28,7 +28,7 @@ describe("sidebarWidth", () => {
     writeSidebarWidth(360);
     expect(readSidebarWidth()).toBe(360);
 
-    window.localStorage.setItem("helperme.sidebarWidth", "不是数字");
+    window.localStorage.setItem("redpanda.sidebarWidth", "不是数字");
     expect(readSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });
 });

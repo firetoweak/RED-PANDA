@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from helperme.sandbox.command import CaptureLimit, ShellNotFoundError
-from helperme.sandbox.local.bash import (
+from redpanda.sandbox.command import CaptureLimit, ShellNotFoundError
+from redpanda.sandbox.local.bash import (
     BashCommandEnvironmentPolicy,
     BashCommandRunner,
 )
-from helperme.sandbox.local.provider import create_local_environment_provider
+from redpanda.sandbox.local.provider import create_local_environment_provider
 
 
 BASH = shutil.which("bash") if os.name == "posix" else None
@@ -52,7 +52,7 @@ class BashCommandEnvironmentPolicyTest(unittest.TestCase):
 class BashDiscoveryTest(unittest.TestCase):
     def test_discovers_bash(self):
         with patch(
-            "helperme.sandbox.local.bash.shutil.which",
+            "redpanda.sandbox.local.bash.shutil.which",
             return_value="/usr/bin/bash",
         ):
             runner = BashCommandRunner()
@@ -61,7 +61,7 @@ class BashDiscoveryTest(unittest.TestCase):
 
     def test_fails_when_bash_is_unavailable(self):
         with patch(
-            "helperme.sandbox.local.bash.shutil.which",
+            "redpanda.sandbox.local.bash.shutil.which",
             return_value=None,
         ):
             with self.assertRaisesRegex(ShellNotFoundError, "bash"):
@@ -71,9 +71,9 @@ class BashDiscoveryTest(unittest.TestCase):
 class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
     def test_selects_bash_for_non_windows(self):
         with (
-            patch("helperme.sandbox.local.provider.os.name", "other"),
+            patch("redpanda.sandbox.local.provider.os.name", "other"),
             patch(
-                "helperme.sandbox.local.bash.BashCommandRunner"
+                "redpanda.sandbox.local.bash.BashCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "/usr/bin/bash"
@@ -85,9 +85,9 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
 
     def test_selects_powershell_for_windows(self):
         with (
-            patch("helperme.sandbox.local.provider.os.name", "nt"),
+            patch("redpanda.sandbox.local.provider.os.name", "nt"),
             patch(
-                "helperme.sandbox.local.powershell.PowerShellCommandRunner"
+                "redpanda.sandbox.local.powershell.PowerShellCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "C:/PowerShell/7/pwsh.exe"
@@ -104,11 +104,11 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "helperme.sandbox.local.bash.shutil.which",
+                "redpanda.sandbox.local.bash.shutil.which",
                 return_value="/usr/bin/bash",
             ),
             patch(
-                "helperme.sandbox.local.bash.asyncio.create_subprocess_exec",
+                "redpanda.sandbox.local.bash.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=RuntimeError("internal bug")),
             ),
         ):
@@ -200,7 +200,7 @@ class BashCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_bash_is_an_expected_boundary_error(self):
         runner = BashCommandRunner(
-            executable="missing-bash-for-helperme-test"
+            executable="missing-bash-for-redpanda-test"
         )
 
         with self.assertRaisesRegex(FileNotFoundError, "未找到 Shell"):

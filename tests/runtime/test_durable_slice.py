@@ -4,12 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.assistant.artifacts import MemoryArtifactGateway
-from helperme.assistant.context.projection import ModelContextSettings
-from helperme.assistant.management import ManagementSurface
-from helperme.assistant.sessions import AssistantSessions
-from helperme.assistant.toolsets import ToolSurface
-from helperme.runtime import (
+from redpanda.assistant.artifacts import MemoryArtifactGateway
+from redpanda.assistant.context.projection import ModelContextSettings
+from redpanda.assistant.management import ManagementSurface
+from redpanda.assistant.sessions import AssistantSessions
+from redpanda.assistant.toolsets import ToolSurface
+from redpanda.runtime import (
     AgentRuntime,
     CommandPhase,
     DispatchAttemptStarted,

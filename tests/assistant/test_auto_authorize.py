@@ -7,8 +7,8 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.session_metadata import SessionFlagStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.session_metadata import SessionFlagStore
 
 
 class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):

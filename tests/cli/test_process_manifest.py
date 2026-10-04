@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from helperme.cli.composition import build_cli
-from helperme.cli.runtime import LOAD_CLI, LoadCliInput
-from helperme.paths import HelperMeHome
+from redpanda.cli.composition import build_cli
+from redpanda.cli.runtime import LOAD_CLI, LoadCliInput
+from redpanda.paths import RedPandaHome
 
 pytestmark = pytest.mark.process
 
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.process
 class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.home = HelperMeHome(Path(self.temporary.name) / ".helperme")
+        self.home = RedPandaHome(Path(self.temporary.name) / ".redpanda")
         self.home.initialize()
         self.assembly = build_cli(self.home)
 
@@ -65,7 +65,7 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
         """PATH 目录新增后，无需重启即可解析到其中的命令。"""
         bin_dir = Path(self.temporary.name) / "freshbin"
         bin_dir.mkdir()
-        shim = bin_dir / "helperme-fake-cli.cmd"
+        shim = bin_dir / "redpanda-fake-cli.cmd"
         shim.write_text(
             "@echo off\r\n"
             "if \"%1\"==\"--version\" (echo fake-cli 9.9.1 & exit /b 0)\r\n"
@@ -96,7 +96,7 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
                     (original + ";" if original else "") + str(bin_dir),
                 )
                 resolved = await self.assembly.service.installer.resolve_path(
-                    "helperme-fake-cli"
+                    "redpanda-fake-cli"
                 )
                 self.assertEqual(Path(resolved), shim)
             finally:

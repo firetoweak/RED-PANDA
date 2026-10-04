@@ -1,4 +1,4 @@
-# HelperMe 文档
+# RED PANDA 文档
 
 当前系统按 **Session / Event / State / Step / Command** 运行。
 
@@ -18,7 +18,7 @@
 | 文档 | 用途 |
 |---|---|
 | [模型配置](模型配置.md) | 个人连接文件、候选模型与 Web 会话切换 |
-| [自举开发](自举开发.md) | 用 HelperMe 开发 HelperMe：双 worktree、数据根与端口隔离 |
+| [自举开发](自举开发.md) | 用 RED PANDA 开发 RED PANDA：双 worktree、数据根与端口隔离 |
 
 ## 架构
 

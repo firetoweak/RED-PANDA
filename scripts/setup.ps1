@@ -37,7 +37,7 @@ try {
         throw "Failed to install project Python $pythonVersion."
     }
 
-    $environmentDir = Join-Path $projectRoot "helperme-env"
+    $environmentDir = Join-Path $projectRoot "redpanda-env"
     $python = Join-Path $environmentDir "Scripts\python.exe"
     $createEnvironment = -not (Test-Path -LiteralPath $python -PathType Leaf)
     if (-not $createEnvironment) {
@@ -58,7 +58,7 @@ try {
     $basePrefix = & $python -c "import sys; print(sys.base_prefix)"
     $pythonRoot = [System.IO.Path]::GetFullPath($managedPythonDir).TrimEnd('\') + '\'
     if ($LASTEXITCODE -ne 0 -or $environmentPythonVersion -ne $pythonVersion -or -not $basePrefix.StartsWith($pythonRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "helperme-env is not using the project Python. Delete helperme-env and run this script again."
+        throw "redpanda-env is not using the project Python. Delete redpanda-env and run this script again."
     }
 
     & $uv pip install --python $python pip -r requirements.txt
@@ -66,7 +66,7 @@ try {
         throw "Failed to install Python dependencies."
     }
 
-    & $python -m helperme.initialize
+    & $python -m redpanda.initialize
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to initialize personal model configuration."
     }

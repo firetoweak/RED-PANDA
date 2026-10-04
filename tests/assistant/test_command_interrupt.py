@@ -5,10 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.assistant.context.projection import outcome_text
-from helperme.assistant.control import AssistantControlPlane
-from helperme.assistant.runner import SessionScheduler
-from helperme.runtime import (
+from redpanda.assistant.context.projection import outcome_text
+from redpanda.assistant.control import AssistantControlPlane
+from redpanda.assistant.runner import SessionScheduler
+from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
@@ -18,20 +18,20 @@ from helperme.runtime import (
     StepContinuationCancelled,
     ToolBinding,
 )
-from helperme.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from helperme.sandbox.command import CapturedOutput, CommandResult
-from helperme.sandbox.workspace import (
+from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
+from redpanda.sandbox.command import CapturedOutput, CommandResult
+from redpanda.sandbox.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from helperme.tools.builtin.command_execution import (
+from redpanda.tools.builtin.command_execution import (
     ExecuteCommandInput,
     create_command_execution_spec,
 )
-from helperme.tools.builtin.command_interrupts import (
+from redpanda.tools.builtin.command_interrupts import (
     CommandInterrupts,
     run_interruptible,
 )

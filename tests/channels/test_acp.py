@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 from acp import PROTOCOL_VERSION, RequestError
 
-from helperme.channels.acp import HelperMeAcpAgent
-from helperme.sandbox.registry import WorkspaceRegistry
+from redpanda.channels.acp import RedPandaAcpAgent
+from redpanda.sandbox.registry import WorkspaceRegistry
 
 
 class _Sessions:
@@ -57,7 +57,7 @@ class AcpChannelTest(unittest.IsolatedAsyncioTestCase):
         self.sessions = _Sessions()
         self.client = _Client()
         self.workspaces = WorkspaceRegistry.load(self.root / "workspaces.json")
-        self.agent = HelperMeAcpAgent(self.sessions, self.workspaces)
+        self.agent = RedPandaAcpAgent(self.sessions, self.workspaces)
         self.agent.on_connect(self.client)
         await self.agent.initialize(PROTOCOL_VERSION)
 

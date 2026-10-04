@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tests.session_scheduler import build_settling_assistant as build_stress_assistant
-from helperme.config import assistant_config_from_app, load_app_config
+from redpanda.config import assistant_config_from_app, load_app_config
 from thinllm import ChatCompletionsClient
-from helperme.llm.config import load_endpoint
-from helperme.paths import HelperMeHome
-from helperme.sandbox.registry import WorkspaceRegistry
-from helperme.runtime import (
+from redpanda.llm.config import load_endpoint
+from redpanda.paths import RedPandaHome
+from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.runtime import (
     CommandOutcomeReceived,
     InvokeTool,
     RuntimeStatus,
@@ -55,7 +55,7 @@ async def main() -> None:
     # 压测会话跑在 .live_workspace：登记进本机 registry（幂等），
     # supervisor 建会话时按归属校验。
     workspace = WorkspaceRegistry.load(
-        HelperMeHome.default().workspaces_path
+        RedPandaHome.default().workspaces_path
     ).register_path(workspace_root)
 
     config = assistant_config_from_app(

@@ -4,8 +4,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.session_metadata import SessionFlagStore, SessionLineageStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.session_metadata import SessionFlagStore, SessionLineageStore
 
 
 def host_watching(order):

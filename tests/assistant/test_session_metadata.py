@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helperme.assistant.session_metadata import (
+from redpanda.assistant.session_metadata import (
     SessionFlagStore,
     SessionLineageStore,
     SessionTextStore,

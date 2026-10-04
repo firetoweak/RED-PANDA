@@ -6,20 +6,20 @@ from tempfile import TemporaryDirectory
 
 from pydantic import BaseModel, ConfigDict
 
-from helperme.assistant.artifacts import FileArtifactGateway
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.assistant.management import (
+from redpanda.assistant.artifacts import FileArtifactGateway
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.management import (
     LOAD_MANAGEMENT_TOOLS,
     ManagementDomain,
     ManagementSurface,
     ResidentTool,
 )
-from helperme.assistant.context.projection import ModelContextSettings
+from redpanda.assistant.context.projection import ModelContextSettings
 from tests.session_scheduler import settle_session
-from helperme.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision
-from helperme.runtime.state import DecisionFrame
-from helperme.tools.control import ControlApprovalExecution, ControlOperation
-from helperme.tools.spec import PydanticParameters, ToolSpec
+from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision
+from redpanda.runtime.state import DecisionFrame
+from redpanda.tools.control import ControlApprovalExecution, ControlOperation
+from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
 class EmptyInput(BaseModel):
@@ -173,11 +173,11 @@ class ManagementProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_loaded_skill_map_describes_every_registered_operation(self):
-        from helperme.paths import HelperMeHome
-        from helperme.skills.composition import build_skills
+        from redpanda.paths import RedPandaHome
+        from redpanda.skills.composition import build_skills
 
         with TemporaryDirectory() as directory:
-            assembly = build_skills(HelperMeHome(Path(directory) / "home"))
+            assembly = build_skills(RedPandaHome(Path(directory) / "home"))
             resident = tuple(
                 ResidentTool(spec.name, spec.description)
                 for spec in assembly.tool_catalog.tool_specs()

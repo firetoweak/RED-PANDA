@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModelSelector } from "../src/features/models/ModelSelector";
 
 const { select } = vi.hoisted(() => ({ select: vi.fn() }));
-vi.mock("../src/api/helpermeApi", () => ({
+vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionModelQuery: () => ({ data: { selected: { model: "deepseek/pro" } } }),
   useGetModelSettingsQuery: () => ({ data: {
     config: { model: { candidates: [{ model: "deepseek/pro" }, { model: "deepseek/flash" }] } },

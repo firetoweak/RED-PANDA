@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from helperme.sandbox.versions import UnknownWorkspaceVersion, WorkspaceVersions
+from redpanda.sandbox.versions import UnknownWorkspaceVersion, WorkspaceVersions
 
 
 pytestmark = pytest.mark.process

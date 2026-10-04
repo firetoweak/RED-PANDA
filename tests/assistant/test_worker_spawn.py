@@ -19,7 +19,7 @@ from multiprocessing import get_context
 from pathlib import Path
 import sys
 
-from helperme.assistant.host.spawn import start_worker
+from redpanda.assistant.host.spawn import start_worker
 from tests.fixtures.spawn_target import write_marker
 
 marker = Path(sys.argv[1])
@@ -44,7 +44,7 @@ from multiprocessing import get_context
 from pathlib import Path
 import sys
 
-from helperme.assistant.host.spawn import start_worker
+from redpanda.assistant.host.spawn import start_worker
 from tests.fixtures.spawn_target import write_path
 
 marker = Path(sys.argv[1])

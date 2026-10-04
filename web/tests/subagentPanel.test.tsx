@@ -10,7 +10,7 @@ import { SubagentCallCard } from "../src/features/conversation/SubagentCallCard"
 import runtimeReducer, { bindOwner, connected, previewDelta, previewStarted, sessionActivity, thinkingDelta, thinkingStarted, toolProgress, viewing } from "../src/realtime/runtimeSlice";
 
 const query = vi.hoisted(() => ({ data: undefined as SubagentObservation | undefined, read: vi.fn() }));
-vi.mock("../src/api/helpermeApi", () => ({
+vi.mock("../src/api/redpandaApi", () => ({
   useObserveSubagentQuery: (args: unknown) => { query.read(args); return { currentData: query.data, isError: false }; },
 }));
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({

@@ -5,8 +5,8 @@ from inspect import isawaitable
 import json
 from pathlib import Path
 
-from helperme.config import AssistantConfig
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.config import AssistantConfig
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 HANDOFF = """## 用户要什么
@@ -43,7 +43,7 @@ class CompactLlm:
                 )
             (self.workspace / "compact_started").touch()
             if (self.workspace / "fail_compact").exists():
-                from helperme.llm.api import LLMProviderError
+                from redpanda.llm.api import LLMProviderError
 
                 raise LLMProviderError("compactor provider failed")
             if (self.workspace / "invalid_handoff").exists():
@@ -151,8 +151,8 @@ def child_config_for(workspace: Path):
 
 
 def tool_config(workspace: Path):
-    from helperme.assistant.host import worker
-    from helperme.runtime import ToolBinding
+    from redpanda.assistant.host import worker
+    from redpanda.runtime import ToolBinding
 
     build = worker.build_assistant_assembly
 

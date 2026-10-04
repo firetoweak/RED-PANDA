@@ -7,13 +7,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from helperme.assistant.artifacts import (
+from redpanda.assistant.artifacts import (
     FileArtifactStore,
     MemoryArtifactGateway,
     read_artifact_binding,
 )
-from helperme.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from helperme.assistant.context.projection import (
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
@@ -21,9 +21,9 @@ from helperme.assistant.context.projection import (
     parse_tool_result_meta,
     project_chat_messages,
 )
-from helperme.assistant.decision import bind_executor_tools
+from redpanda.assistant.decision import bind_executor_tools
 from tests.session_scheduler import settle_session
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
     CommandOutcomeReceived,
@@ -35,8 +35,8 @@ from helperme.runtime import (
     StateProjector,
     ToolBinding,
 )
-from helperme.runtime.dispatcher import AttemptContext, ToolTerminal
-from helperme.runtime.model import MAX_JSON_VALUE_BYTES
+from redpanda.runtime.dispatcher import AttemptContext, ToolTerminal
+from redpanda.runtime.model import MAX_JSON_VALUE_BYTES
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 

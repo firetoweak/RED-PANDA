@@ -11,17 +11,17 @@ import unittest
 import pytest
 from PIL import Image
 
-from helperme.assistant.attachments import AttachmentGateway
-from helperme.assistant.compact.core import (
+from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.compact.core import (
     WINDOW,
 )
-from helperme.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
-from helperme.assistant.host.session_store import SessionStore
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.artifacts import FileArtifactGateway
-from helperme.paths import HelperMeHome
-from helperme.sandbox.registry import WorkspaceRegistry
-from helperme.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
+from redpanda.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.artifacts import FileArtifactGateway
+from redpanda.paths import RedPandaHome
+from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
 from tests.fixtures.compact_worker import CompactLlm, child_config_for, config_for, HANDOFF
 
 pytestmark = pytest.mark.process
@@ -37,7 +37,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.home = HelperMeHome(self.root / "home")
+        self.home = RedPandaHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path

@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     CommandAuthorized,
     CommandPhase,
@@ -28,8 +28,8 @@ from helperme.runtime import (
     diagnose_artifacts,
     replay,
 )
-from helperme.runtime.events import EventPayload
-from helperme.runtime.model import AuthorizationPolicy
+from redpanda.runtime.events import EventPayload
+from redpanda.runtime.model import AuthorizationPolicy
 
 
 NOW = datetime(2026, 8, 21, 14, 0, tzinfo=timezone.utc)

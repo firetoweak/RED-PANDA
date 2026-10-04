@@ -4,13 +4,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.session_metadata import SessionFlagStore, SessionLineageStore
-from helperme.assistant.workspace_versions import (
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.session_metadata import SessionFlagStore, SessionLineageStore
+from redpanda.assistant.workspace_versions import (
     WORKSPACE_VERSION_FACT,
     StepNotRewindable,
 )
-from helperme.runtime.events import DomainFactCommitted
+from redpanda.runtime.events import DomainFactCommitted
 
 
 def version_event(step_id, version):
@@ -55,7 +55,7 @@ def host_watching(order):
 
 def journal_of(*events):
     return patch(
-        "helperme.assistant.host.supervisor.SqliteJournal",
+        "redpanda.assistant.host.supervisor.SqliteJournal",
         lambda path: SimpleNamespace(snapshot=AsyncMock(return_value=events)),
     )
 

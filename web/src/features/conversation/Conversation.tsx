@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   ThemeIcon,
-  Title,
 } from "@mantine/core";
 import {
   IconAlertCircle,
@@ -19,7 +18,6 @@ import {
   IconCheck,
   IconCopy,
   IconArrowFork,
-  IconMessageCircle,
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
@@ -38,8 +36,10 @@ import {
   useSetPausedMutation,
   useRetryTurnMutation,
   useRestartFromStepMutation,
-} from "../../api/helpermeApi";
+} from "../../api/redpandaApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
+import { redPandaMark } from "../../app/brand";
+import { ConversationWelcome } from "../../app/ConversationWelcome";
 import {
   authorizationResolved,
   controlNotice,
@@ -150,7 +150,7 @@ export function Conversation() {
         <Stack align="center" gap="sm">
           <Loader size="sm" />
           <Text c="dimmed" size="sm">
-            正在打开 Session…
+            正在打开会话…
           </Text>
         </Stack>
       </Center>
@@ -164,7 +164,7 @@ export function Conversation() {
     return (
       <Center h="100%" p="xl">
         <Alert color="red" icon={<IconAlertCircle size={18} />} title="无法打开会话">
-          {missing ? "这个 Session 不存在。请从左侧新建或选择会话。" : "Session 加载失败"}
+          {missing ? "这个会话不存在。请从左侧新建或选择会话。" : "会话加载失败"}
         </Alert>
       </Center>
     );
@@ -297,19 +297,7 @@ export function Conversation() {
     <Box className="conversation-layout">
     <Box component="section" className="conversation">
       {items.length === 0 ? (
-        <Center className="conversation-intro">
-          <Stack align="center" gap="sm" ta="center">
-            <ThemeIcon radius="xl" size={48} variant="light">
-              <IconMessageCircle size={23} stroke={1.7} />
-            </ThemeIcon>
-            <Title order={1} fz={24} fw={650}>
-              开始新的会话
-            </Title>
-            <Text c="dimmed" ff="monospace" fz={11}>
-              {shortId(sessionId)}
-            </Text>
-          </Stack>
-        </Center>
+        <ConversationWelcome />
       ) : (
         <ScrollArea
           className="timeline-scroll"
@@ -383,9 +371,7 @@ export function Conversation() {
                     key={reply.key}
                   >
                     <Group align="flex-start" gap="sm" wrap="nowrap">
-                      <ThemeIcon radius="xl" size={28} variant="subtle">
-                        <IconSparkles size={15} />
-                      </ThemeIcon>
+                      <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
                       <Stack className="assistant-reply" gap={6}>
                         <MarkdownMessage
                           content={reply.text}
@@ -579,7 +565,7 @@ export function Conversation() {
                 取消
               </Button>
               <Button
-                color="sage"
+                color="ember"
                 disabled={resolvingControl.isLoading}
                 leftSection={<IconCheck size={14} />}
                 loading={resolvingControl.isLoading}
@@ -625,7 +611,7 @@ export function Conversation() {
                 拒绝
               </Button>
               <Button
-                color="sage"
+                color="ember"
                 disabled={connectionId === null || authorizing.isLoading}
                 leftSection={<IconCheck size={14} />}
                 loading={authorizing.isLoading}
@@ -649,11 +635,9 @@ function RunningHint({ label }: { label: string }) {
   return (
     <Box component="article" className="message message-assistant">
       <Group align="center" gap="sm" wrap="nowrap">
-        <ThemeIcon radius="xl" size={28} variant="subtle">
-          <IconSparkles size={15} />
-        </ThemeIcon>
+        <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
         <Group gap={8} wrap="nowrap">
-          <Loader color="sage" size={12} />
+          <Loader color="ember" size={12} />
           <Text c="dimmed" size="sm">
             {label}
           </Text>
@@ -739,7 +723,7 @@ function ControlNotice({ message }: { message: string }) {
   return (
     <Alert
       className="control-notice"
-      color="sage"
+      color="ember"
       icon={<IconCheck size={16} />}
       title="操作结果"
       variant="light"
@@ -757,10 +741,6 @@ function replyThinking(turn: TimelineTurn) {
     return null;
   }
   return { thinking: step.thinking, thinkingPending: step.thinkingPending };
-}
-
-function shortId(id: string) {
-  return `Session · ${id.slice(-8)}`;
 }
 
 function requestErrorMessage(error: unknown, fallback: string) {

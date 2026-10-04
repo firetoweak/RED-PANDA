@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.runtime import (
+from redpanda.runtime import (
     AgentRuntime,
     DecisionCancelled,
     InvokeTool,

@@ -9,14 +9,14 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import pytest
 
-from helperme.assistant.assembly import build_assistant_assembly
-from helperme.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
-from helperme.assistant.management import LOAD_MANAGEMENT_TOOLS
-from helperme.assistant.work_plan import UPDATE_PLAN, WORK_PLAN_CONTEXT
-from helperme.config import AssistantConfig
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from helperme.paths import HelperMeHome
-from helperme.runtime import DecisionCancelled, MemoryJournal, StepCommitted
+from redpanda.assistant.assembly import build_assistant_assembly
+from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
+from redpanda.assistant.management import LOAD_MANAGEMENT_TOOLS
+from redpanda.assistant.work_plan import UPDATE_PLAN, WORK_PLAN_CONTEXT
+from redpanda.config import AssistantConfig
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import DecisionCancelled, MemoryJournal, StepCommitted
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import (
     SettlingScheduler,
@@ -27,7 +27,7 @@ from tests.session_scheduler import (
 @pytest.fixture(autouse=True)
 def version_backend():
     # 本层验证装配；真实 Git 的文件恢复契约在 sandbox process 测试中。
-    with patch("helperme.sandbox.versions.WorkspaceVersions.record", return_value="a" * 40):
+    with patch("redpanda.sandbox.versions.WorkspaceVersions.record", return_value="a" * 40):
         yield
 
 
@@ -112,14 +112,14 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             workspace = root / "workspace"
             workspace.mkdir()
-            home = HelperMeHome(root / ".helperme")
+            home = RedPandaHome(root / ".redpanda")
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
+                    "redpanda.assistant.assembly.RedPandaHome.default",
                     return_value=home,
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -250,11 +250,11 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             journal = MemoryJournal()
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
-                    return_value=HelperMeHome(root / ".helperme"),
+                    "redpanda.assistant.assembly.RedPandaHome.default",
+                    return_value=RedPandaHome(root / ".redpanda"),
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -315,11 +315,11 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             delivered = []
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
-                    return_value=HelperMeHome(root / ".helperme"),
+                    "redpanda.assistant.assembly.RedPandaHome.default",
+                    return_value=RedPandaHome(root / ".redpanda"),
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -372,17 +372,17 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             workspace = root / "workspace"
             workspace.mkdir()
-            home = HelperMeHome(root / ".helperme")
+            home = RedPandaHome(root / ".redpanda")
             delivered: list[tuple[str, str]] = []
             failed: list[tuple[str, str]] = []
             activity: list[tuple[str, bool]] = []
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
+                    "redpanda.assistant.assembly.RedPandaHome.default",
                     return_value=home,
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -454,11 +454,11 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
 
             with (
                 patch(
-                    "helperme.assistant.assembly.HelperMeHome.default",
-                    return_value=HelperMeHome(root / ".helperme"),
+                    "redpanda.assistant.assembly.RedPandaHome.default",
+                    return_value=RedPandaHome(root / ".redpanda"),
                 ),
                 patch(
-                    "helperme.assistant.assembly.runtime_data_root",
+                    "redpanda.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):

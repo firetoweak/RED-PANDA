@@ -5,9 +5,9 @@ import asyncio
 import json
 import time
 
-from helperme.config import load_app_config
+from redpanda.config import load_app_config
 from thinllm import ChatCompletionsClient
-from helperme.llm.config import load_endpoint
+from redpanda.llm.config import load_endpoint
 
 
 async def _stream_once(

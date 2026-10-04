@@ -1,4 +1,4 @@
-# helperMe
+# RED PANDA
 
 面向个人使用的 AI 助手。
 
@@ -8,7 +8,7 @@
 
 ### 1. 安装
 
-在仓库目录运行对应平台脚本。脚本会下载项目专用 Python、安装依赖，并在个人数据目录 `~/.helperme` 创建 `config.json` 与 `connections.json`（已存在则不覆盖）。
+在仓库目录运行对应平台脚本。脚本会下载项目专用 Python、安装依赖，并在个人数据目录 `~/.redpanda` 创建 `config.json` 与 `connections.json`（已存在则不覆盖）。
 
 Windows（PowerShell）：
 
@@ -24,7 +24,7 @@ sh scripts/setup.sh
 
 ### 2. 写入模型密钥
 
-打开 `~/.helperme/connections.json`，填写所用供应商的 `api_key`；本地 vLLM / Ollama 填写 `base_url`。文件会创建全部支持的供应商配置项。默认 DeepSeek 的部分如下（其余供应商保留在文件中）：
+打开 `~/.redpanda/connections.json`，填写所用供应商的 `api_key`；本地 vLLM / Ollama 填写 `base_url`。文件会创建全部支持的供应商配置项。默认 DeepSeek 的部分如下（其余供应商保留在文件中）：
 
 ```json
 "deepseek": { "api_key": "你的密钥" }
@@ -46,18 +46,18 @@ cd ..
 Windows（PowerShell）：
 
 ```powershell
-.\helperme-env\Scripts\python.exe web_chat.py
+.\redpanda-env\Scripts\python.exe web_chat.py
 ```
 
 macOS / Linux：
 
 ```sh
-./helperme-env/bin/python web_chat.py
+./redpanda-env/bin/python web_chat.py
 ```
 
 浏览器打开 http://127.0.0.1:8765 ，侧栏进入「模型配置」管理候选模型与新会话默认值，再在会话输入区选择模型。同一供应商可以添加多个模型；切换在下一次决策生效，已有历史保留。详细配置见[模型配置指南](docs/模型配置.md)。
 
-终端入口仍可运行 `console_chat.py`。Python 环境位于项目目录的 `helperme-env`；个人配置和会话保存在 `~/.helperme`，可用 `HELPERME_HOME` 指定其他个人数据目录。
+终端入口仍可运行 `console_chat.py`。Python 环境位于项目目录的 `redpanda-env`；个人配置和会话保存在 `~/.redpanda`，可用 `REDPANDA_HOME` 指定其他个人数据目录。
 
 ## 文档
 

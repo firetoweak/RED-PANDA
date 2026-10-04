@@ -45,16 +45,16 @@ TUI 原生接入是正式路径，与 ACP 平级并存**不属于兼容双轨**�
 
 ### 锁定 wire protocol v1
 
-目标客户端是 Obsidian Agent Client，其发布版锁定的 SDK 初始化请求使用协议版本 1。因此 HelperMe 的 ACP 实现以 **v1 为唯一目标**，不按仍在演进的 v2 Prompt 生命周期实现。
+目标客户端是 Obsidian Agent Client，其发布版锁定的 SDK 初始化请求使用协议版本 1。因此 RED PANDA 的 ACP 实现以 **v1 为唯一目标**，不按仍在演进的 v2 Prompt 生命周期实现。
 
-ACP 没有 HelperMe 的 Step，也没有「步骤上下文」方法。一次 prompt 请求挂到 Session 静止为止，中间多个 Step 都落在这一轮里——这只是协议等待与展示投影，**不把「ACP Turn」写成新的 Runtime 状态**。
+ACP 没有 RED PANDA 的 Step，也没有「步骤上下文」方法。一次 prompt 请求挂到 Session 静止为止，中间多个 Step 都落在这一轮里——这只是协议等待与展示投影，**不把「ACP Turn」写成新的 Runtime 状态**。
 
 ### identity 映射
 
-| HelperMe identity | ACP 来源 | 规则 |
+| RED PANDA identity | ACP 来源 | 规则 |
 |---|---|---|
 | Access | 本地 Agent 进程的启动者 | 只支持本地 stdio。操作系统用户跟启动者走；干活用的环境变量不是 Client 进程自带的那份，见[多活跃会话 · 进程身份](../运行/多活跃会话.md#进程身份)。客户端声明只作诊断，不作授权依据 |
-| Conversation | `sessionId` | 由 HelperMe 生成并持久创建 |
+| Conversation | `sessionId` | 由 RED PANDA 生成并持久创建 |
 | Delivery | 一次已接纳的 prompt | ACP 没有跨连接稳定的投递标识；Adapter 在接纳边界生成唯一 ID，支持本地 stdio 的单次请求，不宣称崩溃后重发幂等 |
 | Reply route | 连接 + `sessionId` | 仅为瞬时路由，重连后由新连接重新选择，不写成 Runtime 事实 |
 | Owner | 连接内的会话绑定 | 一条连接可以选择多个 Session，关闭时逐一释放 |
@@ -65,7 +65,7 @@ ACP 没有 HelperMe 的 Step，也没有「步骤上下文」方法。一次 pro
 
 ### 接了什么
 
-初始化、新建会话、prompt、取消四个方法已映射。`cwd` 必须是已存在的绝对目录，按最深匹配复用已登记工作区，找不到则隐式登记；一条会话只绑一个工作区，不能用环境变量改执行环境。客户端注入的 MCP 配置不接受——HelperMe 继续拥有自己的 Registry 与渐进加载。
+初始化、新建会话、prompt、取消四个方法已映射。`cwd` 必须是已存在的绝对目录，按最深匹配复用已登记工作区，找不到则隐式登记；一条会话只绑一个工作区，不能用环境变量改执行环境。客户端注入的 MCP 配置不接受——RED PANDA 继续拥有自己的 Registry 与渐进加载。
 
 取消映射为 `cancel_turn`：终止该 Step 正在执行的 `execute_command`，不终止 Session，不映射成用户消息。
 

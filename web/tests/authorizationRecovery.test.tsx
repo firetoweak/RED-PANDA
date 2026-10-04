@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { helpermeApi } from "../src/api/helpermeApi";
+import { redpandaApi } from "../src/api/redpandaApi";
 import type { ConversationView } from "../src/api/contracts";
 import { Conversation } from "../src/features/conversation/Conversation";
 import runtimeReducer, { connected, disconnected } from "../src/realtime/runtimeSlice";
@@ -69,8 +69,8 @@ it("submits a recovered pending command with the new connection without an autho
     return Response.json(view);
   }));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [helpermeApi.reducerPath]: helpermeApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(helpermeApi.middleware),
+    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
   });
   store.dispatch(connected("old-connection"));
   render(
@@ -89,7 +89,7 @@ it("submits a recovered pending command with the new connection without an autho
   await waitFor(() => expect(submissions).toEqual([{ connection_id: "new-connection", approved: false }]));
   await waitFor(() => expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull());
   cleanup();
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });
 
 it("disables pending authorization buttons while the web connection is down", async () => {
@@ -134,8 +134,8 @@ it("disables pending authorization buttons while the web connection is down", as
     return Response.json(view);
   }));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [helpermeApi.reducerPath]: helpermeApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(helpermeApi.middleware),
+    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
   });
   store.dispatch(connected("connection"));
   render(
@@ -154,5 +154,5 @@ it("disables pending authorization buttons while the web connection is down", as
   expect(submissions).toEqual([]);
   expect(view.session.pending_authorization_ids).toEqual([commandId]);
   cleanup();
-  store.dispatch(helpermeApi.util.resetApiState());
+  store.dispatch(redpandaApi.util.resetApiState());
 });

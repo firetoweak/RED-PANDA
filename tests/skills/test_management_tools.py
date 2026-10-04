@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.paths import HelperMeHome
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.management_tools import SkillIdInput, SkillListInput, create_skill_management_specs
+from redpanda.paths import RedPandaHome
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.management_tools import SkillIdInput, SkillListInput, create_skill_management_specs
 from tests.skills.test_package import write_skill
 
 
@@ -12,7 +12,7 @@ class SkillManagementToolsTest(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_skill_remains_observable_testable_and_diagnosable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo")
@@ -34,12 +34,12 @@ class SkillManagementToolsTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(tested["data"]["enabled"])
 
     async def test_map_and_help_use_the_registered_operation_schemas(self):
-        from helperme.skills.composition import build_skills
-        from helperme.tools.spec import ToolArgumentsError
+        from redpanda.skills.composition import build_skills
+        from redpanda.tools.spec import ToolArgumentsError
 
         with tempfile.TemporaryDirectory() as directory:
-            assembly = build_skills(HelperMeHome(Path(directory)))
-            from helperme.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+            assembly = build_skills(RedPandaHome(Path(directory)))
+            from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
 
             specs = {item.name: item for item in assembly.management_specs}
             specs.update({item.name: item.proposal_spec for item in assembly.control_operations})

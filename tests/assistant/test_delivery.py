@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import unittest
 
-from helperme.assistant.delivery import (
+from redpanda.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
     deliver_binding,
     ensure_deliver,
 )
-from helperme.runtime import (
+from redpanda.runtime import (
     Command,
     InvokeTool,
     ModelDecision,
 )
-from helperme.runtime.dispatcher import AttemptContext
+from redpanda.runtime.dispatcher import AttemptContext
 
 
 class AssistantDeliveryTest(unittest.IsolatedAsyncioTestCase):

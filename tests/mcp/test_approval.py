@@ -4,14 +4,14 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from helperme.mcp.application import McpApplicationService
-from helperme.mcp.client_manager import McpClientManager
-from helperme.mcp.registry import McpRegistry
-from helperme.mcp.secrets import McpSecretStore
-from helperme.paths import HelperMeHome
-from helperme.tools.control import ControlApprovalProposal
-from helperme.tools.spec import ToolArgumentsError
-from helperme.mcp.approval import (
+from redpanda.mcp.application import McpApplicationService
+from redpanda.mcp.client_manager import McpClientManager
+from redpanda.mcp.registry import McpRegistry
+from redpanda.mcp.secrets import McpSecretStore
+from redpanda.paths import RedPandaHome
+from redpanda.tools.control import ControlApprovalProposal
+from redpanda.tools.spec import ToolArgumentsError
+from redpanda.mcp.approval import (
     MCP_INSTALL_ACTION,
     MCP_RECOVER_ACTION,
     MCP_REMOVE_ACTION,
@@ -25,9 +25,9 @@ from helperme.mcp.approval import (
     create_mcp_remove_proposal_spec,
     create_mcp_update_proposal_spec,
 )
-from helperme.mcp.errors import McpRecoveryPreconditionError
-from helperme.mcp.models import McpServerRuntimeState, RuntimeAvailability
-from helperme.mcp.console import McpConsoleAdapter
+from redpanda.mcp.errors import McpRecoveryPreconditionError
+from redpanda.mcp.models import McpServerRuntimeState, RuntimeAvailability
+from redpanda.mcp.console import McpConsoleAdapter
 
 
 class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
@@ -88,7 +88,7 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(request.payload["transport_config"]["args"], tuple)
 
         with TemporaryDirectory() as directory:
-            home = HelperMeHome(Path(directory) / ".helperme")
+            home = RedPandaHome(Path(directory) / ".redpanda")
             home.initialize()
             secrets = McpSecretStore.from_home(home)
             service = McpApplicationService(

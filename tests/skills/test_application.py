@@ -2,11 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.paths import HelperMeHome
-from helperme.llm.api import LLMTransientError
-from helperme.skills.application import SkillApplicationService
-from helperme.skills.console import SkillConsoleAdapter
-from helperme.skills.models import SkillSourceRef
+from redpanda.paths import RedPandaHome
+from redpanda.llm.api import LLMTransientError
+from redpanda.skills.application import SkillApplicationService
+from redpanda.skills.console import SkillConsoleAdapter
+from redpanda.skills.models import SkillSourceRef
 from tests.skills.test_package import write_skill
 
 
@@ -26,7 +26,7 @@ class SkillApplicationServiceTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.workspace = HelperMeHome(root / ".helperme")
+        self.workspace = RedPandaHome(root / ".redpanda")
         self.workspace.initialize()
         self.source = root / "source"
         write_skill(self.source, name="demo", description="Demo skill")
@@ -221,7 +221,7 @@ class SkillConsoleAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def test_local_install_and_management_commands(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = HelperMeHome(root / ".helperme")
+            workspace = RedPandaHome(root / ".redpanda")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo", description="Demo")

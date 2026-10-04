@@ -8,7 +8,7 @@ from pathlib import Path
 
 async def async_main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(encoding="utf-8")
-    from helperme.channels.tui.console import run_runtime_console
+    from redpanda.channels.tui.console import run_runtime_console
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

@@ -51,7 +51,7 @@ export function WorkPlanPanel({ plan }: { plan: WorkPlan | null }) {
           <Stack gap={6} px="sm" pb="sm">
             {plan.steps.map((step, index) => (
               <Group key={index} gap="sm" wrap="nowrap" align="flex-start">
-                <Text size="xs" c={step.status === "in_progress" ? "sage" : "dimmed"} w={42} style={{ flexShrink: 0 }}>
+                <Text size="xs" c={step.status === "in_progress" ? "ember" : "dimmed"} w={42} style={{ flexShrink: 0 }}>
                   {STATUS_LABEL[step.status]}
                 </Text>
                 <Text size="sm" className="pre-wrap">{step.text}</Text>

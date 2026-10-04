@@ -5,17 +5,17 @@ from pathlib import Path
 import unittest
 
 
-RUNTIME_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "runtime"
-ASSISTANT_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "assistant"
-LLM_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "llm"
-MCP_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "mcp"
-SKILLS_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "skills"
-CLI_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "cli"
-TOOLS_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "tools"
-SANDBOX_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "sandbox"
-CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "helperme" / "channels"
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "helperme" / "config.py"
-BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "helperme" / "bootstrap.py"
+RUNTIME_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "runtime"
+ASSISTANT_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "assistant"
+LLM_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "llm"
+MCP_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "mcp"
+SKILLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "skills"
+CLI_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "cli"
+TOOLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "tools"
+SANDBOX_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "sandbox"
+CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "channels"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "config.py"
+BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "bootstrap.py"
 THINLLM_ROOT = Path(__file__).resolve().parents[2] / "thinllm"
 
 
@@ -46,7 +46,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             leaked = sorted(
                 _imports_any(
                     modules,
-                    {"helperme.assistant", "helperme.runtime"},
+                    {"redpanda.assistant", "redpanda.runtime"},
                 )
             )
             if leaked:
@@ -59,12 +59,12 @@ class LayerImportBoundaryTest(unittest.TestCase):
         # cli 声明的对外依赖只有 sandbox（进程执行能力）与 tools（ToolSpec 契约）。
         offenders: list[str] = []
         forbidden = {
-            "helperme.assistant",
-            "helperme.channels",
-            "helperme.llm",
-            "helperme.mcp",
-            "helperme.runtime",
-            "helperme.skills",
+            "redpanda.assistant",
+            "redpanda.channels",
+            "redpanda.llm",
+            "redpanda.mcp",
+            "redpanda.runtime",
+            "redpanda.skills",
         }
         for path in sorted(CLI_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
@@ -82,7 +82,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             leaked = sorted(
                 _imports_any(
                     modules,
-                    {"helperme.assistant", "helperme.runtime"},
+                    {"redpanda.assistant", "redpanda.runtime"},
                 )
             )
             if leaked:
@@ -103,13 +103,13 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 _imports_any(
                     modules,
                     {
-                        "helperme.assistant",
-                        "helperme.channels",
-                        "helperme.cli",
-                        "helperme.mcp",
-                        "helperme.runtime",
-                        "helperme.skills",
-                        "helperme.tools",
+                        "redpanda.assistant",
+                        "redpanda.channels",
+                        "redpanda.cli",
+                        "redpanda.mcp",
+                        "redpanda.runtime",
+                        "redpanda.skills",
+                        "redpanda.tools",
                     },
                 )
             )
@@ -125,8 +125,8 @@ class LayerImportBoundaryTest(unittest.TestCase):
             unexpected = sorted(
                 module
                 for module in _imported_modules(path)
-                if module.startswith("helperme.llm.")
-                and module != "helperme.llm.api"
+                if module.startswith("redpanda.llm.")
+                and module != "redpanda.llm.api"
             )
             if unexpected:
                 offenders.append(
@@ -138,10 +138,10 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertNotIn("thinllm", _imported_modules(CONFIG_PATH))
         self.assertIn("thinllm", _imported_modules(BOOTSTRAP_PATH))
 
-    def test_thinllm_does_not_import_helperme(self):
+    def test_thinllm_does_not_import_redpanda(self):
         offenders: list[str] = []
         for path in sorted(THINLLM_ROOT.rglob("*.py")):
-            leaked = sorted(_imports_any(_imported_modules(path), {"helperme"}))
+            leaked = sorted(_imports_any(_imported_modules(path), {"redpanda"}))
             if leaked:
                 offenders.append(
                     f"{path.relative_to(THINLLM_ROOT)}: {', '.join(leaked)}"
@@ -151,7 +151,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_worker_config_does_not_construct_the_concrete_llm_client(self):
         import inspect
 
-        from helperme.bootstrap import worker_config
+        from redpanda.bootstrap import worker_config
 
         self.assertNotIn("ChatCompletionsClient", inspect.getsource(worker_config))
 
@@ -172,20 +172,20 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_channels_do_not_import_runtime_or_infrastructure_layers(self):
         offenders: list[str] = []
         forbidden = {
-            "helperme.llm",
-            "helperme.runtime",
-            "helperme.tools",
+            "redpanda.llm",
+            "redpanda.runtime",
+            "redpanda.tools",
         }
         # sandbox 对 channels 只开放 registry：WorkspaceRecord / WorkspaceRegistry
         # 是各层共享的工作区元数据定义，不含进程执行能力；执行面
         # （api / command / local / workspace 及包本身）仍然禁止。
-        allowed_sandbox = {"helperme.sandbox.registry"}
+        allowed_sandbox = {"redpanda.sandbox.registry"}
         for path in sorted(CHANNELS_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
             leaked = sorted(_imports_any(modules, forbidden))
             leaked += sorted(
                 module
-                for module in _imports_any(modules, {"helperme.sandbox"})
+                for module in _imports_any(modules, {"redpanda.sandbox"})
                 if module not in allowed_sandbox
             )
             if leaked:
@@ -197,27 +197,27 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_assistant_uses_only_its_explicit_tool_ports(self):
         allowed = {
             "builtin_tools.py": {
-                "helperme.tools.builtin",
-                "helperme.tools.executor",
-                "helperme.tools.registry",
+                "redpanda.tools.builtin",
+                "redpanda.tools.executor",
+                "redpanda.tools.registry",
             },
-            "decision.py": {"helperme.tools.builtin"},
-            "runner.py": {"helperme.tools.builtin"},
-            "cli.py": {"helperme.tools.spec"},
-            "skills.py": {"helperme.tools.spec"},
-            "tool_results.py": {"helperme.tools.control"},
+            "decision.py": {"redpanda.tools.builtin"},
+            "runner.py": {"redpanda.tools.builtin"},
+            "cli.py": {"redpanda.tools.spec"},
+            "skills.py": {"redpanda.tools.spec"},
+            "tool_results.py": {"redpanda.tools.control"},
             "work_plan.py": {
-                "helperme.tools.executor",
-                "helperme.tools.registry",
-                "helperme.tools.spec",
+                "redpanda.tools.executor",
+                "redpanda.tools.registry",
+                "redpanda.tools.spec",
             },
             "control.py": {
-                "helperme.tools.control",
-                "helperme.tools.spec",
+                "redpanda.tools.control",
+                "redpanda.tools.spec",
             },
             "management.py": {
-                "helperme.tools.control",
-                "helperme.tools.spec",
+                "redpanda.tools.control",
+                "redpanda.tools.spec",
             },
         }
         offenders: list[str] = []
@@ -226,7 +226,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             actual = {
                 module
                 for module in _imported_modules(path)
-                if module == "helperme.tools" or module.startswith("helperme.tools.")
+                if module == "redpanda.tools" or module.startswith("redpanda.tools.")
             }
             unexpected = sorted(actual - allowed.get(relative, set()))
             if unexpected:
@@ -236,13 +236,13 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_tools_do_not_import_runtime_or_product_layers(self):
         offenders: list[str] = []
         forbidden = {
-            "helperme.assistant",
-            "helperme.channels",
-            "helperme.cli",
-            "helperme.llm",
-            "helperme.mcp",
-            "helperme.runtime",
-            "helperme.skills",
+            "redpanda.assistant",
+            "redpanda.channels",
+            "redpanda.cli",
+            "redpanda.llm",
+            "redpanda.mcp",
+            "redpanda.runtime",
+            "redpanda.skills",
         }
         for path in sorted(TOOLS_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
@@ -259,7 +259,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             leaked = sorted(
                 _imports_any(
                     _imported_modules(path),
-                    {"helperme.sandbox.local"},
+                    {"redpanda.sandbox.local"},
                 )
             )
             if leaked:
@@ -276,12 +276,12 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 {
                     module
                     for module in modules
-                    if module == "helperme"
+                    if module == "redpanda"
                     or (
-                        module.startswith("helperme.")
+                        module.startswith("redpanda.")
                         and not (
-                            module == "helperme.runtime"
-                            or module.startswith("helperme.runtime.")
+                            module == "redpanda.runtime"
+                            or module.startswith("redpanda.runtime.")
                         )
                     )
                 }
@@ -295,14 +295,14 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_sandbox_does_not_import_product_or_runtime_layers(self):
         offenders: list[str] = []
         forbidden = {
-            "helperme.assistant",
-            "helperme.channels",
-            "helperme.cli",
-            "helperme.llm",
-            "helperme.mcp",
-            "helperme.runtime",
-            "helperme.skills",
-            "helperme.tools",
+            "redpanda.assistant",
+            "redpanda.channels",
+            "redpanda.cli",
+            "redpanda.llm",
+            "redpanda.mcp",
+            "redpanda.runtime",
+            "redpanda.skills",
+            "redpanda.tools",
         }
         for path in SANDBOX_ROOT.rglob("*.py"):
             modules = _imported_modules(path)

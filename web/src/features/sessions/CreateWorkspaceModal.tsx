@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   useCreateWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
-} from "../../api/helpermeApi";
+} from "../../api/redpandaApi";
 
 type CreateWorkspaceModalProps = {
   opened: boolean;

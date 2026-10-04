@@ -7,8 +7,8 @@ from uuid import uuid4
 
 from acp import run_agent
 
-from helperme.bootstrap import bootstrap_assistant
-from helperme.channels.acp import HelperMeAcpAgent
+from redpanda.bootstrap import bootstrap_assistant
+from redpanda.channels.acp import RedPandaAcpAgent
 
 
 async def async_main(argv: list[str] | None = None) -> None:
@@ -20,7 +20,7 @@ async def async_main(argv: list[str] | None = None) -> None:
         help="工作区路径；缺省使用启动目录",
     )
     options = parser.parse_args(argv)
-    agent: HelperMeAcpAgent | None = None
+    agent: RedPandaAcpAgent | None = None
 
     def _push(coro) -> None:
         asyncio.get_running_loop().create_task(coro)
@@ -47,7 +47,7 @@ async def async_main(argv: list[str] | None = None) -> None:
         preview_sink=preview,
         session_failed_sink=session_failed,
     ) as app:
-        agent = HelperMeAcpAgent(app.sessions, app.workspaces)
+        agent = RedPandaAcpAgent(app.sessions, app.workspaces)
         try:
             await run_agent(agent)
         finally:

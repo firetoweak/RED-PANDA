@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from helperme.assistant.control import AssistantControlPlane
-from helperme.assistant.runner import SessionScheduler
-from helperme.runtime import AgentRuntime
-from helperme.runtime.model import CanonicalState
+from redpanda.assistant.control import AssistantControlPlane
+from redpanda.assistant.runner import SessionScheduler
+from redpanda.runtime import AgentRuntime
+from redpanda.runtime.model import CanonicalState
 
 
 class SettlingScheduler(SessionScheduler):
@@ -55,7 +55,7 @@ class SettledSession:
 
 
 async def build_settling_assistant(config, sink, journal, session_id, workspace):
-    from helperme.assistant.assembly import build_assistant_assembly
+    from redpanda.assistant.assembly import build_assistant_assembly
 
     return await build_assistant_assembly(
         config,

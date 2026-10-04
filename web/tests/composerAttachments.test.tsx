@@ -12,7 +12,7 @@ const { upload, selectLocal, attachLocal } = vi.hoisted(() => ({
   selectLocal: vi.fn(),
   attachLocal: vi.fn(),
 }));
-vi.mock("../src/api/helpermeApi", () => ({
+vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionModelQuery: () => ({ data: {
     selected: { model: "deepseek/test", compact_threshold_tokens: 200000 }, effective: null, pending: true,
   } }),

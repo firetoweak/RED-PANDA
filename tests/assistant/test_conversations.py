@@ -3,17 +3,17 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
-from helperme.assistant.conversations import (
+from redpanda.assistant.conversations import (
     UNKNOWN_TOOL_ERROR,
     project_conversation,
     project_session_summary,
 )
-from helperme.assistant.workspaces import workspace_binding
-from helperme.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
-from helperme.assistant.compact.core import MODEL_USAGE, WINDOW
-from helperme.assistant.sessions import SessionView
-from helperme.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
-from helperme.runtime import (
+from redpanda.assistant.workspaces import workspace_binding
+from redpanda.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
+from redpanda.assistant.compact.core import MODEL_USAGE, WINDOW
+from redpanda.assistant.sessions import SessionView
+from redpanda.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
+from redpanda.runtime import (
     Command,
     CommandOutcome,
     CommandOutcomeReceived,
@@ -492,7 +492,7 @@ class Idle:
         return None
 
     def conversation_status(self, session_id):
-        from helperme.assistant.compact.store import ConversationStatus
+        from redpanda.assistant.compact.store import ConversationStatus
 
         return ConversationStatus(session_id, session_id, 0, None)
 
@@ -508,10 +508,10 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.assistant.host.session_store import SessionStore
-        from helperme.runtime import SqliteJournal
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import SqliteJournal
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
@@ -540,10 +540,10 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.assistant.host.session_store import SessionStore
-        from helperme.runtime import SqliteJournal
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import SqliteJournal
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         class Rewritten(Idle):
             superseded = frozenset({"spoken"})
@@ -570,10 +570,10 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.assistant.host.session_store import SessionStore
-        from helperme.runtime import SqliteJournal
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import SqliteJournal
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         class Archived(Idle):
             def is_archived(self, session_id):
@@ -600,10 +600,10 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.assistant.host.session_store import SessionStore
-        from helperme.runtime import SqliteJournal
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import SqliteJournal
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         class Named(Idle):
             def session_title(self, session_id):
@@ -630,15 +630,15 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from helperme.assistant.control import (
+        from redpanda.assistant.control import (
             CONTROL_PROPOSED,
             CONTROL_REQUEST_METADATA,
             CONTROL_SOURCE,
         )
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.assistant.host.session_store import SessionStore
-        from helperme.runtime import DomainFactCommitted, SqliteJournal, StepClaimRequest
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import DomainFactCommitted, SqliteJournal, StepClaimRequest
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         class Host:
             def activity(self, session_id):
@@ -651,7 +651,7 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
                 return None
 
             def conversation_status(self, session_id):
-                from helperme.assistant.compact.store import ConversationStatus
+                from redpanda.assistant.compact.store import ConversationStatus
 
                 return ConversationStatus(session_id, session_id, 2, "failed")
 

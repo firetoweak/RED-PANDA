@@ -7,29 +7,29 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from helperme.assistant.artifacts import MemoryArtifactGateway
-from helperme.assistant.assembly import build_assistant_assembly
-from helperme.assistant.context.projection import externalize_payload
-from helperme.assistant.context.prompt import (
+from redpanda.assistant.artifacts import MemoryArtifactGateway
+from redpanda.assistant.assembly import build_assistant_assembly
+from redpanda.assistant.context.projection import externalize_payload
+from redpanda.assistant.context.prompt import (
     DEFAULT_ASSISTANT_PROMPT,
     SUBAGENT_PROMPT,
 )
-from helperme.assistant.subagent.subagent import (
+from redpanda.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
     REPORT_FACT,
     TASK_FACT,
     DelegateIntent,
     task_fact_arguments,
 )
-from helperme.assistant.toolsets import LOAD_TOOLSET
-from helperme.assistant.work_plan import WORK_PLAN_TAG
-from helperme.config import AssistantConfig
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from helperme.paths import HelperMeHome
-from helperme.runtime import MemoryJournal
-from helperme.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
-from helperme.tools.builtin import create_subagent_workspace_specs
-from helperme.tools.executor import RESERVED_KEYS
+from redpanda.assistant.toolsets import LOAD_TOOLSET
+from redpanda.assistant.work_plan import WORK_PLAN_TAG
+from redpanda.config import AssistantConfig
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import MemoryJournal
+from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from redpanda.tools.builtin import create_subagent_workspace_specs
+from redpanda.tools.executor import RESERVED_KEYS
 from tests.fixtures.workspaces import workspace_record
 
 
@@ -49,7 +49,8 @@ PROSE_VOCABULARY = frozenset(
     {
         "Agent",
         "Git",
-        "HelperMe",
+        "RED",
+        "PANDA",
         "Skill",
         "Toolset",
         "diff",
@@ -153,11 +154,11 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         self._workspace = workspace_record(workspace)
         with (
             patch(
-                "helperme.assistant.assembly.HelperMeHome.default",
-                return_value=HelperMeHome(root / ".helperme"),
+                "redpanda.assistant.assembly.RedPandaHome.default",
+                return_value=RedPandaHome(root / ".redpanda"),
             ),
             patch(
-                "helperme.assistant.assembly.runtime_data_root",
+                "redpanda.assistant.assembly.runtime_data_root",
                 return_value=root / "runtime",
             ),
         ):

@@ -4,25 +4,25 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from helperme.paths import HelperMeHome
+from redpanda.paths import RedPandaHome
 
 
-class HelperMeHomeTest(unittest.TestCase):
-    def test_default_root_is_hidden_helperme_in_user_home(self):
-        with patch("helperme.paths.Path.home", return_value=Path("C:/Users/test")):
-            home = HelperMeHome.default()
+class RedPandaHomeTest(unittest.TestCase):
+    def test_default_root_is_hidden_redpanda_in_user_home(self):
+        with patch("redpanda.paths.Path.home", return_value=Path("C:/Users/test")):
+            home = RedPandaHome.default()
 
-        self.assertEqual(home.root, Path("C:/Users/test/.helperme").resolve())
+        self.assertEqual(home.root, Path("C:/Users/test/.redpanda").resolve())
 
     def test_environment_overrides_default_root(self):
-        with patch.dict(os.environ, {"HELPERME_HOME": "C:/instances/agent"}):
-            home = HelperMeHome.default()
+        with patch.dict(os.environ, {"REDPANDA_HOME": "C:/instances/agent"}):
+            home = RedPandaHome.default()
 
         self.assertEqual(home.root, Path("C:/instances/agent").resolve())
 
     def test_layout_contains_product_data_roots(self):
         with tempfile.TemporaryDirectory() as directory:
-            home = HelperMeHome(Path(directory) / ".helperme")
+            home = RedPandaHome(Path(directory) / ".redpanda")
 
             home.initialize()
 

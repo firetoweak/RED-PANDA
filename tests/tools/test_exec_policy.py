@@ -1,7 +1,7 @@
 import unittest
 
-from helperme.tools.builtin.exec_policy import command_requires_authorization
-from helperme.tools.spec import ToolSpec, PydanticParameters, EmptyInput
+from redpanda.tools.builtin.exec_policy import command_requires_authorization
+from redpanda.tools.spec import ToolSpec, PydanticParameters, EmptyInput
 
 
 class ExecPolicyTest(unittest.TestCase):

@@ -5,8 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from helperme.config import INITIAL_CONFIG, load_app_config
-from helperme.llm.config import ModelConfig
+from redpanda.config import INITIAL_CONFIG, load_app_config
+from redpanda.llm.config import ModelConfig
 
 
 class AppConfigTest(unittest.TestCase):
@@ -37,11 +37,11 @@ class AppConfigTest(unittest.TestCase):
     def test_first_run_writes_usable_defaults_and_continues(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
-            expected_path = home / ".helperme" / "config.json"
+            expected_path = home / ".redpanda" / "config.json"
 
             with (
                 patch.dict(os.environ, {}, clear=True),
-                patch("helperme.paths.Path.home", return_value=home),
+                patch("redpanda.paths.Path.home", return_value=home),
             ):
                 config = load_app_config()
 
@@ -54,16 +54,16 @@ class AppConfigTest(unittest.TestCase):
             INITIAL_CONFIG["model"]["candidates"][0]["compact_threshold_tokens"],
         )
 
-    def test_loads_default_config_from_helperme_home(self):
+    def test_loads_default_config_from_redpanda_home(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
-            config_path = home / ".helperme" / "config.json"
+            config_path = home / ".redpanda" / "config.json"
             config_path.parent.mkdir()
             self._write_config(config_path, self._data())
 
             with (
                 patch.dict(os.environ, {}, clear=True),
-                patch("helperme.paths.Path.home", return_value=home),
+                patch("redpanda.paths.Path.home", return_value=home),
             ):
                 config = load_app_config()
 
@@ -77,7 +77,7 @@ class AppConfigTest(unittest.TestCase):
 
             with patch.dict(
                 os.environ,
-                {"HELPERME_CONFIG": str(path.with_name("missing.json"))},
+                {"REDPANDA_CONFIG": str(path.with_name("missing.json"))},
             ):
                 config = load_app_config(path)
 
@@ -88,7 +88,7 @@ class AppConfigTest(unittest.TestCase):
             path = Path(directory) / "config.json"
             self._write_config(path, self._data())
 
-            with patch.dict(os.environ, {"HELPERME_CONFIG": str(path)}):
+            with patch.dict(os.environ, {"REDPANDA_CONFIG": str(path)}):
                 config = load_app_config()
 
         self.assertEqual(config.default_model, "deepseek/model")

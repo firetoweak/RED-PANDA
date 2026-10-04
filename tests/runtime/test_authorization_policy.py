@@ -1,8 +1,8 @@
 import asyncio
 import unittest
 
-from helperme.runtime import InvokeTool, ModelDecision
-from helperme.runtime.dispatcher import ToolBinding
+from redpanda.runtime import InvokeTool, ModelDecision
+from redpanda.runtime.dispatcher import ToolBinding
 from tests.runtime.test_boundary_slice import (
     RecordingTool,
     ScriptedDecisionMaker,

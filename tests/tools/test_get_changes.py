@@ -6,15 +6,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from helperme.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from helperme.sandbox.workspace import (
+from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
+from redpanda.sandbox.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from helperme.tools.builtin.get_changes import (
+from redpanda.tools.builtin.get_changes import (
     GetChangesInput,
     create_get_changes_specs,
 )
@@ -25,8 +25,8 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
         self._git("init")
-        self._git("config", "user.name", "HelperMe Test")
-        self._git("config", "user.email", "helperme@example.invalid")
+        self._git("config", "user.name", "RED PANDA Test")
+        self._git("config", "user.email", "redpanda@example.invalid")
         view = WorkspaceViewSnapshot((
             RootBinding("project", WorkspaceScope.TASK, self.root),
         ))

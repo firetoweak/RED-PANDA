@@ -1,5 +1,5 @@
 {
-  "name": "helperme-web",
+  "name": "redpanda-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",

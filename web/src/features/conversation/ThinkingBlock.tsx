@@ -25,7 +25,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <Group justify="space-between" wrap="nowrap">
           <Group gap="xs" wrap="nowrap">
             {opened ? <IconChevronDown size={15} /> : <IconChevronRight size={15} />}
-            {streaming ? <Loader color="sage" size={12} /> : null}
+            {streaming ? <Loader color="ember" size={12} /> : null}
             <Text c="dimmed" fw={600} size="sm">
               思考
             </Text>

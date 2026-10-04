@@ -17,7 +17,7 @@ const { testModel, settings } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../src/app/hooks", () => ({ useAppSelector: () => "connection" }));
-vi.mock("../src/api/helpermeApi", () => ({
+vi.mock("../src/api/redpandaApi", () => ({
   useGetModelSettingsQuery: () => ({ data: settings }),
   useSaveModelSettingsMutation: () => [vi.fn(), { isLoading: false }],
   useTestModelMutation: () => [testModel, { isLoading: false }],

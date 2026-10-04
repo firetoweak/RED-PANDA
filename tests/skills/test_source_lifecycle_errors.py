@@ -3,8 +3,8 @@ import unittest
 
 import httpx
 
-from helperme.skills.models import SkillSourceRef
-from helperme.skills.sources import SkillSourceError, SkillSourceRouter
+from redpanda.skills.models import SkillSourceRef
+from redpanda.skills.sources import SkillSourceError, SkillSourceRouter
 from tests.skills.test_sources import skill_zip
 
 

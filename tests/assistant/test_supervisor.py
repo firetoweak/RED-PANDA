@@ -9,16 +9,16 @@ import unittest
 
 import pytest
 
-from helperme.assistant.host.session_store import SessionStore
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.subagent.subagent import (
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.subagent.subagent import (
     DelegateIntent,
     project_delegations,
     project_reclaimed,
     task_fact_arguments,
 )
-from helperme.paths import HelperMeHome
-from helperme.runtime import SqliteJournal
+from redpanda.paths import RedPandaHome
+from redpanda.runtime import SqliteJournal
 from tests.fixtures.session_worker import (
     CancellableProcessLlm,
     ProcessLlm,
@@ -51,9 +51,9 @@ async def until(predicate, timeout=30):
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_model_switch_waits_for_current_step_and_updates_next_decision(self):
         import json
-        from helperme.config import write_json
-        from helperme.model_settings import ModelSettings
-        from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.config import write_json
+        from redpanda.model_settings import ModelSettings
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
         pro = {"model": "deepseek/pro", "compact_threshold_tokens": 200000}
         flash = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
@@ -95,9 +95,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_web_can_reject_journal_authorization_after_host_restart(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
-        from helperme.assistant.conversations import AssistantQueries
-        from helperme.channels.web.channel import WebChannel
-        from helperme.runtime import AgentRuntime, InvokeTool, ModelDecision, ToolBinding
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.channels.web.channel import WebChannel
+        from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, ToolBinding
 
         sid = "authorization-restart"
         await self.host.create(sid, self.workspace.workspace_id)
@@ -131,7 +131,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         import json
         from PIL import Image
         from io import BytesIO
-        from helperme.assistant.attachments import AttachmentGateway
+        from redpanda.assistant.attachments import AttachmentGateway
 
         buffer = BytesIO()
         Image.new("RGB", (16, 16), "red").save(buffer, format="PNG")
@@ -155,8 +155,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from helperme.assistant.subagent.workspace import child_layout, workspace_versions
-        from helperme.runtime.events import (
+        from redpanda.assistant.subagent.workspace import child_layout, workspace_versions
+        from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
             DeliveryIdentity,
@@ -185,7 +185,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         return journal
 
     async def assert_failure_report(self, message):
-        from helperme.runtime import DomainFactCommitted
+        from redpanda.runtime import DomainFactCommitted
 
         failure = await asyncio.wait_for(self.host.wait_failure(), 30)
         self.assertEqual(failure.failure.exception_type, "builtins.RuntimeError")
@@ -202,7 +202,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(message, reports[0].data["failure"])
 
     async def test_failed_reader_still_reports_and_exits(self):
-        from helperme.assistant.host.ipc import WorkerFailed
+        from redpanda.assistant.host.ipc import WorkerFailed
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.persist_child()
@@ -263,7 +263,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             for index in range(3)
         ]
         with (
-            patch("helperme.assistant.host.supervisor.workspace_versions", return_value=Versions()),
+            patch("redpanda.assistant.host.supervisor.workspace_versions", return_value=Versions()),
             patch.object(self.host, "request", new_callable=AsyncMock),
         ):
             await asyncio.gather(*(
@@ -293,7 +293,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("parent", "done"), self.output)
 
     async def assert_startup_failure(self, stage):
-        from helperme.assistant.host.ipc import WorkerFailed
+        from redpanda.assistant.host.ipc import WorkerFailed
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.persist_child()
@@ -312,11 +312,11 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_startup_failure("client")
 
     async def asyncSetUp(self):
-        from helperme.sandbox.registry import WorkspaceRegistry
+        from redpanda.sandbox.registry import WorkspaceRegistry
 
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
-        self.home = HelperMeHome(self.root / "home")
+        self.home = RedPandaHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path
@@ -390,7 +390,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delta[3], final[2])
 
     async def test_child_stream_crosses_worker_boundary_only_to_observer(self):
-        from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
         observed, thoughts = [], []
 
@@ -480,7 +480,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await until(lambda: "one" not in self.host.workers)
 
     async def test_decision_cancel_is_cooperative_and_durable_across_worker_boundary(self):
-        from helperme.runtime import DecisionCancelled
+        from redpanda.runtime import DecisionCancelled
 
         self.host.config_factory = partial(cancellable_config, self.root)
         self.host.llm = CancellableProcessLlm(self.root)
@@ -519,9 +519,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_failed_selection_keeps_previous_owner_mapping(self):
         from datetime import datetime, timezone
 
-        from helperme.assistant.host.ipc import WorkerFailed
-        from helperme.runtime import UserMessageReceived
-        from helperme.runtime.events import DeliveryIdentity, EventDraft
+        from redpanda.assistant.host.ipc import WorkerFailed
+        from redpanda.runtime import UserMessageReceived
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         await self.host.create("old", self.workspace.workspace_id)
         await self.host.select("cli", "old")
@@ -605,7 +605,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
-        from helperme.assistant.subagent.workspace import child_layout
+        from redpanda.assistant.subagent.workspace import child_layout
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")
@@ -630,7 +630,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             )
         )
         await until(lambda: not self.host.workers and not self.host.watchers)
-        from helperme.runtime import UserMessageReceived
+        from redpanda.runtime import UserMessageReceived
 
         events = await SqliteJournal(self.store.require("one")).snapshot("one")
         self.assertEqual(
@@ -639,7 +639,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_recovery_preserves_unfinished_read_and_reports_once(self):
-        from helperme.runtime import DispatchAttemptStarted
+        from redpanda.runtime import DispatchAttemptStarted
 
         self.host.config_factory = partial(interrupted_read_config, self.root)
         (self.root / "release").touch()
@@ -664,8 +664,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after[:len(before)], before)
         self.assertIn(started, {e.event_id for e in after})
         self.assertFalse((self.root / "read-retried").exists())
-        from helperme.runtime import CommandPhase, DomainFactCommitted, StateProjector
-        from helperme.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
+        from redpanda.runtime import CommandPhase, DomainFactCommitted, StateProjector
+        from redpanda.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
         state = StateProjector().project(CHILD, after).state
         self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
         self.assertEqual(sum(
@@ -690,8 +690,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_unexpected_crash_is_reported_then_still_exposed(self):
-        from helperme.runtime import DomainFactCommitted
-        from helperme.assistant.subagent.subagent import REPORT_FACT
+        from redpanda.runtime import DomainFactCommitted
+        from redpanda.assistant.subagent.subagent import REPORT_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(
@@ -715,8 +715,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Traceback", report.data["failure"])
 
     async def test_parent_reclaim_stops_child_and_does_not_resume_it(self):
-        from helperme.runtime import DomainFactCommitted
-        from helperme.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
+        from redpanda.runtime import DomainFactCommitted
+        from redpanda.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(

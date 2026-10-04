@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from helperme.assistant.host.process_env import (
+from redpanda.assistant.host.process_env import (
     host_process_environment,
     install_host_environment,
     user_session_environment,
@@ -26,7 +26,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
             "PATHEXT": ".COM;.EXE",
         }
         with patch(
-            "helperme.assistant.host.process_env.user_session_environment",
+            "redpanda.assistant.host.process_env.user_session_environment",
             return_value=session,
         ):
             built = host_process_environment(
@@ -43,7 +43,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
 
     def test_fills_missing_identity_variable_from_user_session(self):
         with patch(
-            "helperme.assistant.host.process_env.user_session_environment",
+            "redpanda.assistant.host.process_env.user_session_environment",
             return_value={"PATH": r"C:\Windows", "PATHEXT": ".EXE"},
         ):
             built = host_process_environment({"PATH": r"C:\Windows"})
@@ -53,7 +53,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
     def test_leaves_environment_unchanged_when_no_session_block(self):
         current = {"PATH": "/usr/bin", "FOO": "bar"}
         with patch(
-            "helperme.assistant.host.process_env.user_session_environment",
+            "redpanda.assistant.host.process_env.user_session_environment",
             return_value=None,
         ):
             built = host_process_environment(current)
@@ -65,15 +65,15 @@ class HostProcessEnvironmentTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "rg.exe"
             executable.touch()
-            with patch.dict(os.environ, {"PATH": directory, "HELPERME_TEST": "current"}):
+            with patch.dict(os.environ, {"PATH": directory, "REDPANDA_TEST": "current"}):
                 with patch(
-                    "helperme.assistant.host.process_env.user_session_environment",
-                    return_value={"Path": r"C:\Windows", "HelperMe_Test": "session"},
+                    "redpanda.assistant.host.process_env.user_session_environment",
+                    return_value={"Path": r"C:\Windows", "RedPanda_Test": "session"},
                 ):
                     install_host_environment()
 
                 self.assertEqual(Path(shutil.which("rg")), executable)
-                self.assertEqual(os.environ["HELPERME_TEST"], "current")
+                self.assertEqual(os.environ["REDPANDA_TEST"], "current")
                 self.assertEqual(os.environ["PATH"].split(os.pathsep)[0], directory)
                 self.assertIn(r"C:\Windows", os.environ["PATH"].split(os.pathsep))
 

@@ -3,17 +3,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from helperme.sandbox.command import (
+from redpanda.sandbox.command import (
     BoundedTextCapture,
     CaptureLimit,
     strip_terminal_control,
 )
-from helperme.sandbox.local.child_env import (
+from redpanda.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
     with_runtime_python_environment,
 )
-from helperme.sandbox.local.powershell import CommandEnvironmentPolicy
+from redpanda.sandbox.local.powershell import CommandEnvironmentPolicy
 
 
 class ChildEnvOverlayTest(unittest.TestCase):
@@ -24,7 +24,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_is_replaced_with_latest_persistent_value(self):
         with patch(
-            "helperme.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
             return_value="C:\\new;C:\\tools",
         ):
             env = CommandEnvironmentPolicy().build(
@@ -34,7 +34,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_falls_back_to_host_snapshot_without_persistent_value(self):
         with patch(
-            "helperme.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             env = CommandEnvironmentPolicy().build({"PATH": "C:\\old"})
@@ -42,18 +42,18 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_is_added_when_host_snapshot_lacks_it(self):
         with patch(
-            "helperme.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
             return_value="C:\\new",
         ):
             env = CommandEnvironmentPolicy().build({"SYSTEMROOT": "C:\\Windows"})
         self.assertEqual(env["PATH"], "C:\\new")
 
     def test_runtime_python_environment_precedes_host_path(self):
-        environment_root = Path("project/helperme-env")
+        environment_root = Path("project/redpanda-env")
         host_path = os.pathsep.join(("system-tools", "user-tools"))
         with (
-            patch("helperme.sandbox.local.child_env.sys.prefix", str(environment_root)),
-            patch("helperme.sandbox.local.child_env.sys.base_prefix", "system-python"),
+            patch("redpanda.sandbox.local.child_env.sys.prefix", str(environment_root)),
+            patch("redpanda.sandbox.local.child_env.sys.base_prefix", "system-python"),
         ):
             env = with_runtime_python_environment({"PATH": host_path})
 

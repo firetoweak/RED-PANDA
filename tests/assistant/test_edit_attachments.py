@@ -2,8 +2,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
-from helperme.assistant.host.supervisor import HostSupervisor
-from helperme.assistant.session_metadata import SessionLineageStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.session_metadata import SessionLineageStore
 
 
 class EditAttachmentsTest(IsolatedAsyncioTestCase):

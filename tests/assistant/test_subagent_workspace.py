@@ -3,10 +3,10 @@ import os
 
 import pytest
 
-from helperme.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
-from helperme.assistant.subagent.workspace import child_layout, child_workspace
-from helperme.paths import HelperMeHome
-from helperme.sandbox.registry import workspace_view
+from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
+from redpanda.assistant.subagent.workspace import child_layout, child_workspace
+from redpanda.paths import RedPandaHome
+from redpanda.sandbox.registry import workspace_view
 from tests.fixtures.workspaces import workspace_record
 
 
@@ -45,7 +45,7 @@ def test_only_merge_requires_authorization_and_is_exclusive():
 @pytest.mark.skipif(os.name != "nt", reason="Windows 文件路径长度契约")
 def test_generated_child_can_write_with_long_home(tmp_path):
     async def scenario():
-        home = HelperMeHome(tmp_path / "home")
+        home = RedPandaHome(tmp_path / "home")
         child_root, _ = child_layout(home, "parent", "parent/sub-command_" + "a" * 32)
         child_root.mkdir(parents=True)
         runner = await build_builtin_tools(child_workspace(workspace_record(tmp_path), child_root), isolated=True)

@@ -4,19 +4,19 @@ import asyncio
 import unittest
 from collections.abc import Awaitable, Callable
 
-from helperme.assistant.control import AssistantControlPlane
-from helperme.assistant.decision import decision_from_llm
-from helperme.assistant.runner import SessionScheduler
-from helperme.llm.api import InvalidLLMResponse, LLMProviderError
-from helperme.llm.api import LLMResponse, ToolCall
-from helperme.runtime import (
+from redpanda.assistant.control import AssistantControlPlane
+from redpanda.assistant.decision import decision_from_llm
+from redpanda.assistant.runner import SessionScheduler
+from redpanda.llm.api import InvalidLLMResponse, LLMProviderError
+from redpanda.llm.api import LLMResponse, ToolCall
+from redpanda.runtime import (
     AgentRuntime,
     MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     UserMessageReceived,
 )
-from helperme.runtime.state import DecisionFrame
+from redpanda.runtime.state import DecisionFrame
 from tests.session_scheduler import SettlingScheduler
 
 

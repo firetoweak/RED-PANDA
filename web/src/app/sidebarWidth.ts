@@ -2,7 +2,7 @@ export const DEFAULT_SIDEBAR_WIDTH = 288;
 export const MIN_SIDEBAR_WIDTH = 220;
 export const MAX_SIDEBAR_WIDTH = 520;
 
-const STORAGE_KEY = "helperme.sidebarWidth";
+const STORAGE_KEY = "redpanda.sidebarWidth";
 
 export function clampSidebarWidth(width: number): number {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width));

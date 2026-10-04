@@ -3,10 +3,10 @@ import unittest
 import json
 from pathlib import Path
 
-from helperme.paths import HelperMeHome
-from helperme.skills.installer import LocalSkillInstaller
-from helperme.skills.models import SkillRecord, SkillSourceRef
-from helperme.skills.registry import SkillRegistry
+from redpanda.paths import RedPandaHome
+from redpanda.skills.installer import LocalSkillInstaller
+from redpanda.skills.models import SkillRecord, SkillSourceRef
+from redpanda.skills.registry import SkillRegistry
 from tests.skills.test_package import write_skill
 
 
@@ -76,7 +76,7 @@ class SkillRegistryTest(unittest.IsolatedAsyncioTestCase):
 class LocalSkillInstallerTest(unittest.IsolatedAsyncioTestCase):
     async def test_installs_under_frontmatter_name_and_defaults_disabled(self):
         with tempfile.TemporaryDirectory() as directory:
-            workspace = HelperMeHome(Path(directory) / ".helperme")
+            workspace = RedPandaHome(Path(directory) / ".redpanda")
             workspace.initialize()
             skills_root = workspace.skills_root
             source = Path(directory) / "source-directory-name-differs"
@@ -99,7 +99,7 @@ class LocalSkillInstallerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_failure_rolls_back_published_package(self):
         with tempfile.TemporaryDirectory() as directory:
-            workspace = HelperMeHome(Path(directory) / ".helperme")
+            workspace = RedPandaHome(Path(directory) / ".redpanda")
             workspace.initialize()
             skills_root = workspace.skills_root
             source = Path(directory) / "source"
@@ -119,7 +119,7 @@ class LocalSkillInstallerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_orphan_target_is_contract_error_not_silently_adopted(self):
         with tempfile.TemporaryDirectory() as directory:
-            workspace = HelperMeHome(Path(directory) / ".helperme")
+            workspace = RedPandaHome(Path(directory) / ".redpanda")
             workspace.initialize()
             skills_root = workspace.skills_root
             source = Path(directory) / "source"
@@ -136,7 +136,7 @@ class LocalSkillInstallerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_duplicate_registry_record_does_not_replace_package(self):
         with tempfile.TemporaryDirectory() as directory:
-            workspace = HelperMeHome(Path(directory) / ".helperme")
+            workspace = RedPandaHome(Path(directory) / ".redpanda")
             workspace.initialize()
             skills_root = workspace.skills_root
             source = Path(directory) / "source"

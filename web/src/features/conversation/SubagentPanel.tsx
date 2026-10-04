@@ -2,14 +2,14 @@ import { ActionIcon, Alert, Badge, Button, Center, Group, Loader, Paper, ScrollA
 import { IconArrowDown, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react";
 
-import { useObserveSubagentQuery } from "../../api/helpermeApi";
+import { useObserveSubagentQuery } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { StepDisclosure } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { useFollowOutput } from "./useFollowOutput";
 import { visibleTimeline } from "./visibleTimeline";
 
-const WIDTH_KEY = "helperme.subagentPanelWidth";
+const WIDTH_KEY = "redpanda.subagentPanelWidth";
 const DEFAULT_WIDTH = 600;
 const MIN_WIDTH = 320;
 

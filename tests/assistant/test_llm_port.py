@@ -4,10 +4,10 @@ import asyncio
 import multiprocessing
 import unittest
 
-from helperme.assistant.host.ipc import PipePeer
-from helperme.assistant.host.llm_port import WorkerLlmPort, complete_llm_chat
-from helperme.llm.api import LLMTransientError
-from helperme.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from redpanda.assistant.host.ipc import PipePeer
+from redpanda.assistant.host.llm_port import WorkerLlmPort, complete_llm_chat
+from redpanda.llm.api import LLMTransientError
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 
 
 class _FakeLlm:

@@ -5,7 +5,7 @@ import os
 from mcp.server import MCPServer
 
 
-server = MCPServer("helperme-test-server")
+server = MCPServer("redpanda-test-server")
 counter = 0
 
 

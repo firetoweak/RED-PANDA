@@ -43,7 +43,7 @@ fi
 
 "$uv" python install "$python_version" --install-dir "$managed_python_dir" --no-bin
 
-environment_dir="$project_root/helperme-env"
+environment_dir="$project_root/redpanda-env"
 venv_python="$environment_dir/bin/python"
 create_environment=0
 if [ ! -x "$venv_python" ]; then
@@ -64,17 +64,17 @@ base_prefix=$($python -c 'import sys; print(sys.base_prefix)')
 case "$base_prefix/" in
   "$managed_python_dir"/*) ;;
   *)
-    printf '%s\n' "helperme-env is not using the project Python. Delete helperme-env and run this script again." >&2
+    printf '%s\n' "redpanda-env is not using the project Python. Delete redpanda-env and run this script again." >&2
     exit 1
     ;;
 esac
 if [ "$environment_python_version" != "$python_version" ]; then
-  printf '%s\n' "helperme-env must use Python $python_version. Delete helperme-env and run this script again." >&2
+  printf '%s\n' "redpanda-env must use Python $python_version. Delete redpanda-env and run this script again." >&2
   exit 1
 fi
 
 "$uv" pip install --python "$python" pip -r requirements.txt
 
-"$python" -m helperme.initialize
+"$python" -m redpanda.initialize
 
 printf '%s\n' "Setup complete. Fill provider settings in your personal connections.json."
