@@ -99,6 +99,27 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
 
 
 class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
+    async def test_injected_environment_is_independent_of_later_product_changes(self):
+        source = {"PATH": "/project/bin", "JAVA_HOME": "/project/jdk"}
+        runner = BashCommandRunner(
+            executable="/usr/bin/bash", environment=source,
+            environment_policy=BashCommandEnvironmentPolicy(forward_names=tuple(source)),
+        )
+        source["JAVA_HOME"] = "/other/jdk"
+        with (
+            patch.dict(os.environ, {"PATH": "/product/bin", "JAVA_HOME": "/product/jdk"}),
+            patch("redpanda.sandbox.local.bash.shutil.which", return_value="/usr/bin/bash"),
+            patch(
+                "redpanda.sandbox.local.bash.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=RuntimeError("stop after environment capture")),
+            ) as spawn,
+            self.assertRaisesRegex(RuntimeError, "stop after environment capture"),
+        ):
+            await runner.run("printf ok", Path.cwd(), 10)
+        child = spawn.call_args.kwargs["env"]
+        self.assertEqual(child["PATH"], "/project/bin")
+        self.assertEqual(child["JAVA_HOME"], "/project/jdk")
+
     async def test_unknown_process_start_error_passes_through(self):
         runner = BashCommandRunner(executable="/usr/bin/bash")
 

@@ -49,6 +49,70 @@ async def until(predicate, timeout=30):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_workspace_command_keeps_launch_environment_across_worker_spawn(self):
+        import json
+        import os
+        from unittest.mock import patch
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+
+        await self.host.close()
+        original_path = os.environ["PATH"]
+        project_path = str(self.root / "project-tools") + os.pathsep + original_path
+        project_env = {
+            "PATH": project_path,
+            "WORKSPACE_ENV_PROBE": "project",
+            "CONDA_PREFIX": str(self.root / "conda-env"),
+            "JAVA_HOME": str(self.root / "jdk"),
+        }
+        observations = []
+        command = (
+            "[ordered]@{marker=$env:WORKSPACE_ENV_PROBE; path=$env:PATH; "
+            "conda=$env:CONDA_PREFIX; java=$env:JAVA_HOME} | ConvertTo-Json -Compress"
+            if os.name == "nt" else
+            "printf '%s\\n' \"$WORKSPACE_ENV_PROBE\" \"$PATH\" \"$CONDA_PREFIX\" \"$JAVA_HOME\""
+        )
+
+        class Llm:
+            async def chat(client, messages, model, **kwargs):
+                results = [m for m in messages if m["role"] == "tool"]
+                if not results:
+                    return LLMCallResult(LLMResponse(content="", calls=(ToolCall(
+                        "probe", "execute_command", json.dumps({
+                            "command": command, "workspace_effect": "read_only",
+                        }),
+                    ),)), LLMUsage(input_tokens=10, output_tokens=5))
+                observations.append(json.loads(results[-1]["content"])["data"])
+                return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=20, output_tokens=5))
+
+        with patch.dict(os.environ, project_env):
+            self.host = self.new_host()
+            self.host.llm = Llm()
+            with patch.dict(os.environ, {
+                "PATH": original_path, "WORKSPACE_ENV_PROBE": "product",
+                "CONDA_PREFIX": "product-conda", "JAVA_HOME": "product-jdk",
+            }):
+                await self.host.create("env-probe", self.workspace.workspace_id)
+                await self.host.accept_input("env-probe", "probe", delivery_id="probe")
+                await until(lambda: ("env-probe", "done") in self.output)
+                await until(lambda: not self.host.workers and not self.host.watchers)
+                self.assertEqual(os.environ["WORKSPACE_ENV_PROBE"], "product")
+
+        self.assertEqual(observations[0]["exit_code"], 0)
+        stdout = observations[0]["stdout"]["content"]
+        if os.name == "nt":
+            actual = json.loads(stdout)
+            # PowerShell 7 可在启动时添加自己的目录；原始项目 PATH 必须完整保留。
+            self.assertTrue(actual.pop("path").endswith(project_path))
+            self.assertEqual(actual, {
+                "marker": "project",
+                "conda": project_env["CONDA_PREFIX"], "java": project_env["JAVA_HOME"],
+            })
+        else:
+            self.assertEqual(stdout.splitlines(), [
+                "project", project_path, project_env["CONDA_PREFIX"], project_env["JAVA_HOME"],
+            ])
+        self.assertTrue(self.host.failures.empty())
+
     async def test_model_switch_waits_for_current_step_and_updates_next_decision(self):
         import json
         from redpanda.config import write_json

@@ -1,6 +1,5 @@
 import os
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from redpanda.sandbox.command import (
@@ -11,7 +10,6 @@ from redpanda.sandbox.command import (
 from redpanda.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
-    with_runtime_python_environment,
 )
 from redpanda.sandbox.local.powershell import CommandEnvironmentPolicy
 
@@ -48,21 +46,27 @@ class ChildEnvOverlayTest(unittest.TestCase):
             env = CommandEnvironmentPolicy().build({"SYSTEMROOT": "C:\\Windows"})
         self.assertEqual(env["PATH"], "C:\\new")
 
-    def test_runtime_python_environment_precedes_host_path(self):
-        environment_root = Path("project/redpanda-env")
-        host_path = os.pathsep.join(("system-tools", "user-tools"))
-        with (
-            patch("redpanda.sandbox.local.child_env.sys.prefix", str(environment_root)),
-            patch("redpanda.sandbox.local.child_env.sys.base_prefix", "system-python"),
+    def test_explicit_path_override_wins_without_duplicate_windows_names(self):
+        with patch(
+            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            return_value="system-tools",
         ):
-            env = with_runtime_python_environment({"PATH": host_path})
+            env = CommandEnvironmentPolicy(fixed_values={"PATH": "work-tools"}).build({"Path": "host-tools"})
 
-        executable_dir = environment_root / ("Scripts" if os.name == "nt" else "bin")
-        self.assertEqual(
-            env["PATH"],
-            os.pathsep.join((str(executable_dir), host_path)),
-        )
-        self.assertEqual(env["VIRTUAL_ENV"], str(environment_root))
+        self.assertEqual(env["PATH"], "work-tools")
+        self.assertNotIn("Path", env)
+        self.assertNotIn("VIRTUAL_ENV", env)
+
+    def test_workspace_policy_preserves_activation_without_reading_registry(self):
+        source = {"Path": "project-tools;system-tools", "CONDA_PREFIX": "project-env"}
+        with patch("redpanda.sandbox.local.powershell.latest_persistent_path") as refresh:
+            env = CommandEnvironmentPolicy(
+                forward_names=tuple(source), refresh_path=False,
+            ).build(source)
+
+        refresh.assert_not_called()
+        self.assertEqual(env["Path"], source["Path"])
+        self.assertEqual(env["CONDA_PREFIX"], "project-env")
 
     @unittest.skipUnless(os.name == "nt", "Windows 注册表读取")
     def test_reads_real_persistent_path_on_windows(self):

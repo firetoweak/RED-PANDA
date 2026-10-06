@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from redpanda.sandbox.api import (
@@ -60,16 +61,32 @@ class LocalEnvironmentProvider:
         )
 
 
-def create_local_environment_provider() -> LocalEnvironmentProvider:
+def create_local_environment_provider(
+    command_environment: Mapping[str, str] | None = None,
+) -> LocalEnvironmentProvider:
+    # 独立命令来源，包含用户准备的项目变量；不读取随后改变的产品环境。
+    environment = dict(os.environ if command_environment is None else command_environment)
     if os.name == "nt":
-        from redpanda.sandbox.local.powershell import PowerShellCommandRunner
+        from redpanda.sandbox.local.powershell import (
+            CommandEnvironmentPolicy, PowerShellCommandRunner,
+        )
 
-        runner = PowerShellCommandRunner()
+        runner = PowerShellCommandRunner(
+            environment=environment,
+            environment_policy=CommandEnvironmentPolicy(
+                forward_names=tuple(environment), refresh_path=False,
+            ),
+        )
         shell_name = "powershell"
     else:
-        from redpanda.sandbox.local.bash import BashCommandRunner
+        from redpanda.sandbox.local.bash import (
+            BashCommandEnvironmentPolicy, BashCommandRunner,
+        )
 
-        runner = BashCommandRunner()
+        runner = BashCommandRunner(
+            environment=environment,
+            environment_policy=BashCommandEnvironmentPolicy(forward_names=tuple(environment)),
+        )
         shell_name = "bash"
     return LocalEnvironmentProvider(
         runner,

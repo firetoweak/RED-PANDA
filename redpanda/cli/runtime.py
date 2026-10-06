@@ -103,7 +103,8 @@ class CliToolCatalog:
                 },
                 "hint": (
                     "子命令树不预生成；用 execute_command 跑 "
-                    f"`{current.name} --help` 逐层现查，不要猜 flag。"
+                    "resolved_path 指向的可执行文件并传入 --help，逐层现查，不要猜 flag。"
+                    "按 execute_command 指定的 Shell 语法引用该绝对路径。"
                 ),
             }
 

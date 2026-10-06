@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -63,6 +64,7 @@ async def bootstrap_assistant(
     session_failed_sink=None,
     schedule_changed_sink=None,
 ) -> AsyncIterator[BootstrappedAssistant]:
+    command_environment = dict(os.environ)
     install_host_environment()
     config = load_app_config() if app_config is None else app_config
     home = RedPandaHome.default()
@@ -87,6 +89,7 @@ async def bootstrap_assistant(
         sink,
         workspaces=workspaces,
         llm=llm,
+        command_environment=command_environment,
         models=models,
         context_usage_sink=context_usage_sink,
         subagent_activity_sink=subagent_activity_sink,

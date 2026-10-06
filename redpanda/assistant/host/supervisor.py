@@ -87,6 +87,7 @@ class HostSupervisor:
         sink,
         *,
         llm,
+        command_environment=None,
         models=None,
         context_usage_sink=None,
         subagent_activity_sink=None,
@@ -106,6 +107,10 @@ class HostSupervisor:
         self.home = home
         self.sink = sink
         self.llm = llm
+        # 启动来源的副本；不跟随产品 PATH 补全或后续 Worker 环境变化。
+        self.command_environment = dict(
+            os.environ if command_environment is None else command_environment
+        )
         self.models = models
         self.context_usage_sink = context_usage_sink
         self.subagent_activity_sink = subagent_activity_sink
@@ -441,6 +446,7 @@ class HostSupervisor:
                 self.config_factory,
                 self.home.root,
                 admitted,
+                self.command_environment,
             ),
             name=f"session:{session_id}",
         )

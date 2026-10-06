@@ -198,7 +198,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
     def test_prefers_powershell_7(self):
         with patch(
             "redpanda.sandbox.local.powershell.shutil.which",
-            side_effect=lambda name: {
+            side_effect=lambda name, *, path: {
                 "pwsh.exe": "C:/PowerShell/7/pwsh.exe",
                 "powershell.exe": "C:/Windows/powershell.exe",
             }.get(name),
@@ -210,7 +210,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
     def test_uses_windows_powershell_when_version_7_is_unavailable(self):
         with patch(
             "redpanda.sandbox.local.powershell.shutil.which",
-            side_effect=lambda name: {
+            side_effect=lambda name, *, path: {
                 "powershell.exe": "C:/Windows/powershell.exe",
             }.get(name),
         ):

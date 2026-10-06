@@ -1,8 +1,8 @@
 """manifest 安装源：登记本机已安装/手工安装的 CLI。
 
 manifest 源不下载任何二进制——注册 = 解析 resolved_path + 体检 + 登记事实。
-PATH 由用户的手工安装保证；子进程环境在 spawn 前会重新合成最新 PATH
-（见 sandbox/local/child_env.py），因此 where 解析能看到新装的 CLI。
+产品管理命令在 spawn 前刷新持久化安装 PATH，因此路径解析能看到新装 CLI。
+登记后普通调用使用 resolved_path，不改写工作区命令的启动 PATH。
 """
 
 from __future__ import annotations

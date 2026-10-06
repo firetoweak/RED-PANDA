@@ -1,8 +1,8 @@
-"""子进程环境的动态合成：PATH 取最新持久化值，叠加 RED PANDA overlay。
+"""产品命令环境的 PATH 刷新与 Shell 输出约定。
 
 Worker 是常驻进程，`os.environ` 是启动时的快照。安装器（winget 等）修改
 用户/系统 PATH 后，运行中的 Worker 看不到变化。因此 PATH 在每次 spawn 前
-从注册表重新合成，而不是沿用 Worker 生命周期内的固定快照。
+从注册表重新合成。工作区命令保留独立的启动环境，不使用此 PATH 刷新。
 
 已知限制：只刷新 PATH；安装器新设的其他变量（如 `NVM_HOME`）仍需重启
 Worker 才可见。Unix 上包管理器一般装进已在 PATH 的目录，无需刷新。
@@ -11,8 +11,6 @@ Worker 才可见。Unix 上包管理器一般装进已在 PATH 的目录，无�
 from __future__ import annotations
 
 import os
-from pathlib import Path
-import sys
 
 # 禁用颜色、分页与交互行为，让 CLI 输出对模型友好。
 CHILD_ENV_OVERLAY: dict[str, str] = {
@@ -22,23 +20,6 @@ CHILD_ENV_OVERLAY: dict[str, str] = {
     "GH_PAGER": "cat",
     "CI": "1",
 }
-
-
-def with_runtime_python_environment(
-    child_env: dict[str, str],
-) -> dict[str, str]:
-    """Make commands resolve Python from the environment running RED PANDA."""
-    if sys.prefix == sys.base_prefix:
-        return child_env
-
-    environment_root = Path(sys.prefix)
-    executable_dir = environment_root / ("Scripts" if os.name == "nt" else "bin")
-    path = child_env.get("PATH", "")
-    child_env["PATH"] = (
-        f"{executable_dir}{os.pathsep}{path}" if path else str(executable_dir)
-    )
-    child_env["VIRTUAL_ENV"] = str(environment_root)
-    return child_env
 
 
 def latest_persistent_path() -> str | None:

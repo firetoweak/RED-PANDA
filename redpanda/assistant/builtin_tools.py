@@ -65,6 +65,7 @@ async def build_builtin_tools(
     *,
     materials_root: Path | None = None,
     isolated: bool = False,
+    command_environment: Mapping[str, str] | None = None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -73,7 +74,7 @@ async def build_builtin_tools(
             *view.roots,
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
-    provider = create_local_environment_provider()
+    provider = create_local_environment_provider(command_environment)
     binding = await provider.attach(EnvironmentSelection(
         environment_id=provider.environment_id,
         workspace_view=view,

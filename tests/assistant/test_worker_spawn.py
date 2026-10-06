@@ -66,6 +66,46 @@ if process.is_alive():
 
 
 class WorkerSpawnTest(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "需要 Windows 句柄继承")
+    def test_worker_does_not_keep_unrelated_inheritable_pipe_open(self) -> None:
+        from redpanda.assistant.host.spawn import _windows_nul_stdio
+
+        read_fd, write_fd = os.pipe()
+        captured = []
+        with os.fdopen(read_fd, "rb") as source, os.fdopen(write_fd, "wb") as destination:
+            os.set_inheritable(write_fd, True)
+            with _windows_nul_stdio():
+                child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+            reader = threading.Thread(target=lambda: captured.append(source.read()))
+            try:
+                destination.close()
+                reader.start()
+                reader.join(2)
+                self.assertFalse(reader.is_alive(), "Worker 继承了其他子进程的管道写端，阻止 EOF")
+                self.assertEqual(captured, [b""])
+            finally:
+                child.kill()
+                child.wait(timeout=5)
+                reader.join(5)
+
+    @unittest.skipUnless(os.name == "nt", "需要 Windows 进程启动")
+    def test_worker_stdio_redirect_does_not_capture_other_threads_subprocesses(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+        from redpanda.assistant.host.spawn import _windows_nul_stdio
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with _windows_nul_stdio():
+                result = pool.submit(
+                    subprocess.run,
+                    [sys.executable, "-c", "print('other-thread-output')"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=10,
+                ).result(timeout=15)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), b"other-thread-output")
+
     def test_spawn_reaches_target_when_host_stdio_is_piped(self) -> None:
         project = Path(__file__).resolve().parents[2]
         directory = tempfile.TemporaryDirectory()

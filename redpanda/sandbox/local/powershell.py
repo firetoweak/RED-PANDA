@@ -19,7 +19,6 @@ from redpanda.sandbox.command import (
 from redpanda.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
-    with_runtime_python_environment,
 )
 from redpanda.sandbox.local.windows_job import WindowsJob
 
@@ -47,17 +46,20 @@ DEFAULT_ENV_NAMES = (
 
 
 class CommandEnvironmentPolicy:
-    """从宿主环境中选择明确允许传给命令子进程的变量。"""
+    """从给定来源选择命令变量；产品管理可刷新安装路径。"""
 
     def __init__(
         self,
         forward_names: Sequence[str] = (),
         fixed_values: Mapping[str, str] | None = None,
+        *,
+        refresh_path: bool = True,
     ) -> None:
         names = (*DEFAULT_ENV_NAMES, *forward_names)
         if any(not name or not name.strip() for name in names):
             raise ValueError("环境变量名称不能为空")
         self._forward_names = tuple(dict.fromkeys(name.casefold() for name in names))
+        self._refresh_path = refresh_path
         self._fixed_values = {
             "PYTHONIOENCODING": "utf-8",
             "PYTHONUTF8": "1",
@@ -65,21 +67,23 @@ class CommandEnvironmentPolicy:
             **dict({} if fixed_values is None else fixed_values),
         }
 
-    def build(self, host_env: Mapping[str, str]) -> dict[str, str]:
-        indexed = {name.casefold(): (name, value) for name, value in host_env.items()}
+    def build(self, source_env: Mapping[str, str]) -> dict[str, str]:
+        indexed = {name.casefold(): (name, value) for name, value in source_env.items()}
         child_env = {
             indexed[name][0]: indexed[name][1]
             for name in self._forward_names
             if name in indexed
         }
-        # PATH 整体替换为最新持久化值：host_env 里的是 Worker 启动快照，
-        # 安装器写入注册表的新条目必须在 spawn 前重新合成。是替换不是追加，
-        # 否则 CLI 升级换安装位置后会被旧路径遮蔽。
-        fresh_path = latest_persistent_path()
+        # 产品管理操作刷新安装路径；工作区命令保留启动来源中的激活路径。
+        fresh_path = latest_persistent_path() if self._refresh_path else None
         if fresh_path is not None and "path" in self._forward_names:
             key = indexed["path"][0] if "path" in indexed else "PATH"
             child_env[key] = fresh_path
-        child_env.update(self._fixed_values)
+        for name, value in self._fixed_values.items():
+            existing = next((key for key in child_env if key.casefold() == name.casefold()), None)
+            if existing is not None:
+                del child_env[existing]
+            child_env[name] = value
         return child_env
 
 
@@ -91,12 +95,18 @@ class PowerShellCommandRunner:
         executable: str | None = None,
         environment_policy: CommandEnvironmentPolicy | None = None,
         capture_limit: CaptureLimit | None = None,
+        *,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
+        self._environment = (
+            None if environment is None
+            else {name.upper(): value for name, value in environment.items()}
+        )
         if executable is not None and not executable.strip():
             raise ValueError("PowerShell executable 不能为空")
         if executable is None:
             for candidate in ("pwsh.exe", "powershell.exe"):
-                executable = shutil.which(candidate)
+                executable = shutil.which(candidate, path=self._lookup_path())
                 if executable is not None:
                     break
             else:
@@ -114,6 +124,10 @@ class PowerShellCommandRunner:
             CaptureLimit() if capture_limit is None else capture_limit
         )
 
+    def _lookup_path(self) -> str:
+        source = os.environ if self._environment is None else self._environment
+        return source.get("PATH", os.defpath)
+
     async def run(
         self,
         command: str,
@@ -122,12 +136,12 @@ class PowerShellCommandRunner:
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
-        executable = shutil.which(self.executable)
+        executable = shutil.which(self.executable, path=self._lookup_path())
         if executable is None:
             raise ShellNotFoundError("powershell", self.executable)
 
-        child_env = with_runtime_python_environment(
-            self.environment_policy.build(os.environ)
+        child_env = self.environment_policy.build(
+            os.environ if self._environment is None else self._environment
         )
         utf8_command = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"

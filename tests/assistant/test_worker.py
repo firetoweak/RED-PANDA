@@ -23,6 +23,6 @@ class WorkerFailureTest(unittest.IsolatedAsyncioTestCase):
                 self.assertRaises(ExceptionGroup) as caught,
             ):
                 await run_worker(
-                    None, "child", Path(directory) / "journal.sqlite", None, directory
+                    None, "child", Path(directory) / "journal.sqlite", None, directory, {}
                 )
         self.assertEqual(caught.exception.exceptions, (original, reporting))

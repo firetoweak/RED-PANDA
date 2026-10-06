@@ -24,6 +24,7 @@ EXECUTE_COMMAND_DESCRIPTION = """
 用途：使用 {shell_name} 在本机执行 CLI 命令。
 何时使用：用于依赖安装、构建、测试、格式化、静态检查、Git、包管理器和运行脚本；常规文件发现、搜索、读取和修改应使用专用文件工具。
 关键限制：相对 cwd 从工作区开始，绝对 cwd 按本机路径规则；cwd 只决定启动目录，命令本身不受工作区限制，可能改动本机任何位置的文件；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。
+执行环境：各次调用独立，前一次命令中的环境激活、变量修改和目录切换不会自动带入本次调用。需要指定环境时，在 command 中明确调用对应的解释器、环境管理器，或先准备环境再执行；准备失败时不要继续执行后续项目命令。
 CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
 失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；超时或失败时不能假定命令成功，也不要无条件重试可能产生副作用的命令；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
 被用户打断时 code 为 COMMAND_INTERRUPTED，ok 为空，已捕获的 stdout/stderr 只是证据（output_is_result 为 false），执行结果未知，不要按失败重试，也不会自动撤销已经发生的副作用。

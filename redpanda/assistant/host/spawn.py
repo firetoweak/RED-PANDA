@@ -13,8 +13,8 @@ def start_worker(process, extra_handles=()) -> None:
 
     A Worker must be able to boot when the Host has no console, as with ACP
     stdio. Its own stdin/stdout/stderr are attached to the platform null
-    device so Channel framing stays on the Host. The child inherits the host
-    user environment, not a GUI client's leftover PATH.
+    device so Channel framing stays on the Host. The child inherits the product
+    environment; its workspace command environment is passed separately.
     """
     install_host_environment()
     _disinherit_handles((process, *extra_handles))
@@ -56,9 +56,11 @@ def _handle_owners(obj):
 def _windows_nul_stdio():
     import msvcrt
     import subprocess
+    import threading
     import _winapi
 
     original = _winapi.CreateProcess
+    spawning_thread = threading.get_ident()
     nul_in = os.open("NUL", os.O_RDONLY)
     nul_out = os.open("NUL", os.O_WRONLY)
     saved: list[tuple[int, bool]] = []
@@ -83,6 +85,12 @@ def _windows_nul_stdio():
             cwd,
             startupinfo,
         ):
+            # Git 快照等后台线程仍须保留自己的 PIPE，不能被 Worker 的 NUL 吞掉。
+            if threading.get_ident() != spawning_thread:
+                return original(
+                    application_name, command_line, proc_attrs, thread_attrs,
+                    inherit_handles, creation_flags, env, cwd, startupinfo,
+                )
             info = subprocess.STARTUPINFO()
             info.dwFlags = (
                 subprocess.STARTF_USESTDHANDLES
@@ -91,6 +99,8 @@ def _windows_nul_stdio():
             info.hStdInput = msvcrt.get_osfhandle(nul_in)
             info.hStdOutput = msvcrt.get_osfhandle(nul_out)
             info.hStdError = msvcrt.get_osfhandle(nul_out)
+            # 只继承这两个 NUL 句柄，避免持有并发子进程的管道而阻止 EOF。
+            info.lpAttributeList = {"handle_list": [info.hStdInput, info.hStdOutput]}
             return original(
                 application_name,
                 command_line,

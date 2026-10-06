@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from redpanda.assistant.artifacts import (
@@ -96,6 +96,7 @@ async def build_assistant_assembly(
     *,
     session_id: str,
     workspace: WorkspaceRecord,
+    command_environment: Mapping[str, str] | None = None,
     context_usage_sink: Callable[[str, int, int], None] | None = None,
     subagent_activity_sink: Callable[[str, bool], None] | None = None,
     tool_progress_sink=None,
@@ -124,6 +125,7 @@ async def build_assistant_assembly(
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
+        command_environment=command_environment,
     )
     command_interrupts = builtin_tools.command_interrupts
 

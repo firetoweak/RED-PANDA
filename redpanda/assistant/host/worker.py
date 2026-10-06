@@ -20,10 +20,10 @@ from redpanda.runtime import SqliteJournal
 from redpanda.sandbox.registry import WorkspaceRegistry
 
 
-async def run_worker(connection, session_id, path, config_factory, home_root):
+async def run_worker(connection, session_id, path, config_factory, home_root, command_environment):
     journal = SqliteJournal(path)
     try:
-        await _run_session(connection, session_id, journal, config_factory, home_root)
+        await _run_session(connection, session_id, journal, config_factory, home_root, command_environment)
     except Exception as error:
         try:
             returned = await record_unexpected_return(journal, session_id, error)
@@ -37,7 +37,7 @@ async def run_worker(connection, session_id, path, config_factory, home_root):
         raise
 
 
-async def _run_session(connection, session_id, journal, config_factory, home_root):
+async def _run_session(connection, session_id, journal, config_factory, home_root, command_environment):
     # Each process owns execution clients, caches and its single Journal.
     # The model implementation lives on the Host; this Worker only holds a Port.
     home = RedPandaHome(Path(home_root))
@@ -150,6 +150,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         journal,
         session_id=session_id,
         workspace=workspace,
+        command_environment=command_environment,
         context_usage_sink=lambda *values: notify("usage", *values),
         subagent_activity_sink=lambda *values: notify("activity", *values),
         tool_progress_sink=lambda *values: notify("tool", *values),
@@ -227,7 +228,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 await asyncio.gather(*notifications)
 
 
-def worker_main(connection, session_id, path, config_factory, home_root, admitted):
+def worker_main(connection, session_id, path, config_factory, home_root, admitted, command_environment):
     def exit_with_parent():
         multiprocessing.parent_process().join()
         os._exit(1)
@@ -235,7 +236,7 @@ def worker_main(connection, session_id, path, config_factory, home_root, admitte
     threading.Thread(target=exit_with_parent, daemon=True).start()
     try:
         admitted.wait()
-        asyncio.run(run_worker(connection, session_id, path, config_factory, home_root))
+        asyncio.run(run_worker(connection, session_id, path, config_factory, home_root, command_environment))
     except BaseException as error:
         # Process boundary: transport original diagnostics, then let the process fail.
         connection.send(("failure", ProcessFailure.capture(error)))

@@ -19,7 +19,6 @@ from redpanda.sandbox.command import (
 )
 from redpanda.sandbox.local.child_env import (
     CHILD_ENV_OVERLAY,
-    with_runtime_python_environment,
 )
 
 
@@ -71,11 +70,14 @@ class BashCommandRunner:
         executable: str | None = None,
         environment_policy: BashCommandEnvironmentPolicy | None = None,
         capture_limit: CaptureLimit | None = None,
+        *,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
+        self._environment = None if environment is None else dict(environment)
         if executable is not None and not executable.strip():
             raise ValueError("Bash executable 不能为空")
         if executable is None:
-            executable = shutil.which("bash")
+            executable = shutil.which("bash", path=self._lookup_path())
             if executable is None:
                 raise ShellNotFoundError("bash", "bash")
         self.executable = executable
@@ -88,6 +90,10 @@ class BashCommandRunner:
             CaptureLimit() if capture_limit is None else capture_limit
         )
 
+    def _lookup_path(self) -> str:
+        source = os.environ if self._environment is None else self._environment
+        return source.get("PATH", os.defpath)
+
     async def run(
         self,
         command: str,
@@ -96,12 +102,12 @@ class BashCommandRunner:
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
-        executable = shutil.which(self.executable)
+        executable = shutil.which(self.executable, path=self._lookup_path())
         if executable is None:
             raise ShellNotFoundError("bash", self.executable)
 
-        child_env = with_runtime_python_environment(
-            self.environment_policy.build(os.environ)
+        child_env = self.environment_policy.build(
+            os.environ if self._environment is None else self._environment
         )
         started = time.perf_counter()
         try:

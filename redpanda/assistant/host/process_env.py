@@ -1,8 +1,8 @@
-"""Give Host and Worker the current user's session environment.
+"""Prepare the product environment for Host and Worker internal tools.
 
 Channel is transport. A GUI client may start RED PANDA with a leftover PATH.
-The process that runs Sessions must see the user session environment, with
-Channel-declared variables kept as overlays.
+Product processes fill missing user-session paths and keep caller overlays.
+Workspace commands receive a separate launch snapshot captured before this step.
 """
 
 from __future__ import annotations
