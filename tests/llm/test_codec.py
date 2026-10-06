@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import traceback
 
 from redpanda.llm.api import (
     InvalidLLMResponse,
@@ -50,11 +51,12 @@ class LlmCodecTest(unittest.TestCase):
         try:
             raise ProviderBoom("upstream")
         except ProviderBoom as error:
+            original_traceback = "".join(traceback.format_exception(error))
             restored = decode_llm_error(encode_llm_error(error))
         self.assertIsInstance(restored, LLMRemoteError)
         self.assertEqual(
             restored.exception_type,
             "foreign_gateway.exceptions.APIError",
         )
-        self.assertIn("upstream", restored.original_message)
-        self.assertIn("ProviderBoom", restored.remote_traceback)
+        self.assertEqual(restored.original_message, "upstream")
+        self.assertEqual(restored.remote_traceback, original_traceback)
