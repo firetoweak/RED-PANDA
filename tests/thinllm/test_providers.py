@@ -21,7 +21,7 @@ class ResolveEndpointTest(unittest.TestCase):
     def test_hosted_provider_uses_its_official_endpoint_and_key(self):
         for model, variable, base_url in (
             ("openai/gpt-4.1", "api_key", "https://api.openai.com/v1"),
-            ("stepfun/step-3.5-flash", "api_key", "https://api.stepfun.com/v1"),
+            ("stepfun/step-3.5-flash", "api_key", "https://api.stepfun.com/step_plan/v1"),
             ("bigmodel/glm-5.2", "api_key", "https://open.bigmodel.cn/api/paas/v4"),
         ):
             with self.subTest(model=model):

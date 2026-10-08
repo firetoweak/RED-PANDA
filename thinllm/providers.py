@@ -15,7 +15,7 @@ PROVIDERS = {
     "deepseek": Provider("https://api.deepseek.com/v1", pads_reasoning_content=True),
     "openai": Provider("https://api.openai.com/v1"),
     "qwen": Provider("https://dashscope.aliyuncs.com/compatible-mode/v1"),
-    "stepfun": Provider("https://api.stepfun.com/v1"),
+    "stepfun": Provider("https://api.stepfun.com/step_plan/v1"),
     "bigmodel": Provider("https://open.bigmodel.cn/api/paas/v4"),
     "vllm": Provider(api_key_required=False),
     "ollama": Provider(api_key_required=False),
