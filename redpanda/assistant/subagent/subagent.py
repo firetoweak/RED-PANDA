@@ -386,11 +386,54 @@ REPORT_SCHEMA: dict[str, object] = {
 }
 
 
+def _frozen_delegate_child(command_id: str, value: object) -> tuple[str, str] | None:
+    """成功 DELEGATED Outcome 里冻结的 (parent, child)。
+
+    子 id 必须仍是 `{parent}/sub-{command_id}`。父身份可以不是正在读
+    这条线的 Session：分支重放会把事件收成当前身份，Outcome 不会跟着改。
+    """
+
+    if not isinstance(value, Mapping) or value.get("ok") is not True:
+        return None
+    if set(value) != {"ok", "code", "data"} or value.get("code") != "DELEGATED":
+        return None
+    data = value.get("data")
+    if not isinstance(data, Mapping) or set(data) != {"child_session_id"}:
+        return None
+    child_id = data.get("child_session_id")
+    suffix = f"/sub-{command_id}"
+    if type(child_id) is not str or not child_id.endswith(suffix):
+        return None
+    parent = child_id[: -len(suffix)]
+    if not parent:
+        return None
+    return parent, child_id
+
+
+def _frozen_delegate_children(events: Sequence[Event]) -> dict[str, tuple[str, str]]:
+    found: dict[str, tuple[str, str]] = {}
+    for event in events:
+        payload = event.payload
+        if not isinstance(payload, CommandOutcomeReceived):
+            continue
+        if payload.outcome.status is not OutcomeStatus.SUCCEEDED:
+            continue
+        child = _frozen_delegate_child(payload.command_id, payload.outcome.value)
+        if child is not None:
+            found[payload.command_id] = child
+    return found
+
+
 def project_delegate_intents(
     events: Sequence[Event],
 ) -> tuple[DelegateIntent, ...]:
-    """从父 Step 已提交的 delegate Command 冻结全部 child identity。"""
+    """从父 Step 已提交的 delegate Command 冻结全部 child identity。
 
+    已有成功 Outcome 时用里面那份 child id。还没有 Outcome 的命令只会出现
+    在提交它的会话上，这时才用事件上的 session id 派生。
+    """
+
+    frozen = _frozen_delegate_children(events)
     intents: list[DelegateIntent] = []
     for event in events:
         payload = event.payload
@@ -403,11 +446,16 @@ def project_delegate_intents(
                 task = arguments.get("task")
                 if type(task) is not str or not task.strip():
                     continue
+                parent_session_id = event.session_id
+                child_id = child_session_id(parent_session_id, command.command_id)
+                committed = frozen.get(command.command_id)
+                if committed is not None:
+                    parent_session_id, child_id = committed
                 intents.append(
                     DelegateIntent(
                         command.command_id,
-                        event.session_id,
-                        child_session_id(event.session_id, command.command_id),
+                        parent_session_id,
+                        child_id,
                         task.strip(),
                         arguments.get("resolve_conflicts_of"),
                     )
@@ -535,6 +583,52 @@ def project_pending(events: Sequence[Event]) -> frozenset[str]:
         - project_failed_delegations(events)
         - project_reclaimed(events)
     )
+
+
+@dataclass(frozen=True, slots=True)
+class UnreportedChildReturn:
+    """本线 Journal 还没有回收事实，但子会话自己已经写下终局。"""
+
+    command_id: str
+    child_session_id: str
+    reported: bool
+    summary: str | None
+    failure: str | None
+    cancelled: bool
+    reason: str | None
+
+
+def project_unreported_returns(
+    events: Sequence[Event],
+    returns_by_child: Mapping[str, Mapping[str, object]],
+) -> tuple[UnreportedChildReturn, ...]:
+    """待回收集合里，子 Journal 已经有回传的那些。
+
+    回收事实投到提交委派的那条会话。分支只继承截止点之前的前缀，
+    读子会话的回传才能知道它已经结束，不必把后来的回收复制进这条线。
+    """
+
+    intents = {
+        intent.child_session_id: intent for intent in project_delegate_intents(events)
+    }
+    found: list[UnreportedChildReturn] = []
+    for child_id in project_pending(events):
+        data = returns_by_child.get(child_id)
+        if data is None:
+            continue
+        intent = intents[child_id]
+        found.append(
+            UnreportedChildReturn(
+                intent.command_id,
+                child_id,
+                data["reported"],
+                data["summary"],
+                data["failure"],
+                data["cancelled"],
+                data["reason"],
+            )
+        )
+    return tuple(sorted(found, key=lambda item: item.command_id))
 
 
 def project_reclaimed(events: Sequence[Event]) -> frozenset[str]:

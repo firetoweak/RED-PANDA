@@ -403,6 +403,20 @@ export function Conversation() {
                 ) ? (
                   <RunningHint label="子 Agent 执行中" />
                 ) : null}
+                {turn.key === lastTurnKey
+                  ? (conversation.subagent_terminals ?? []).map((terminal) => (
+                    terminal.failure === null ? null : (
+                      <Alert
+                        key={terminal.command_id}
+                        color="red"
+                        icon={<IconAlertCircle size={16} />}
+                        title="子 Agent 执行失败"
+                      >
+                        <Text className="pre-wrap" size="sm">{terminal.failure}</Text>
+                      </Alert>
+                    )
+                  ))
+                  : null}
                 {settled &&
                 reply === null &&
                 turnCanStartSession(turn, settled) ? (
