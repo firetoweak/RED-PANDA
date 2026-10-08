@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
+from datetime import datetime, timezone
 import unittest
 from types import SimpleNamespace
 
@@ -17,10 +18,13 @@ from redpanda.assistant.subagent.subagent import (
     TASK_FACT,
     DelegateIntent,
     SubAgentHost,
+    child_session_id,
+    project_delegate_intents,
     project_delegations,
     project_failed_delegations,
     project_parent,
     project_pending,
+    project_unreported_returns,
     project_reclaimed,
     project_report,
     report_arguments,
@@ -31,14 +35,20 @@ from redpanda.llm.api import LLMProviderError
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.runtime import (
     AgentRuntime,
+    Command,
+    CommandOutcome,
     CommandOutcomeReceived,
     CommandPhase,
     DomainFactCommitted,
+    Event,
     InvokeTool,
     LeaseLostError,
     MemoryJournal,
     ModelDecision,
+    OutcomeStatus,
     RuntimeStatus,
+    Step,
+    StepCommitted,
     ToolBinding,
 )
 from redpanda.runtime.dispatcher import AttemptContext
@@ -1368,3 +1378,99 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
 
     def test_nothing_delegated_means_nothing_pending(self):
         self.assertEqual(project_pending(()), frozenset())
+
+
+def _delegated_events(session_id: str, command_id: str, child_id: str) -> tuple[Event, ...]:
+    """分支重放后的形状：事件身份已换成当前 Session，Outcome 仍是提交时的子 id。"""
+
+    command = Command(command_id, InvokeTool(DELEGATE, (("task", "查清事实"),)))
+    occurred_at = datetime(2026, 10, 8, tzinfo=timezone.utc)
+    return (
+        Event(
+            "step-1",
+            session_id,
+            1,
+            StepCommitted(
+                Step(
+                    "step-1",
+                    "user-1",
+                    1,
+                    "basis",
+                    1,
+                    ModelDecision("", (command.effect,)),
+                    (command,),
+                )
+            ),
+            occurred_at,
+            None,
+            None,
+            5,
+            (),
+        ),
+        Event(
+            "outcome-1",
+            session_id,
+            2,
+            CommandOutcomeReceived(
+                command_id,
+                "attempt-1",
+                CommandOutcome(
+                    OutcomeStatus.SUCCEEDED,
+                    {"ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id}},
+                ),
+            ),
+            occurred_at,
+            None,
+            None,
+            5,
+            (),
+        ),
+    )
+
+
+class InheritedDelegateIdentityTest(unittest.TestCase):
+    def test_rewritten_session_keeps_the_committed_child(self):
+        command_id = "command-1"
+        child_id = child_session_id("session-source", command_id)
+        events = _delegated_events("session-branch", command_id, child_id)
+
+        intent = project_delegate_intents(events)[0]
+        self.assertEqual(intent.parent_session_id, "session-source")
+        self.assertEqual(intent.child_session_id, child_id)
+        self.assertEqual(project_failed_delegations(events), frozenset())
+        self.assertEqual(project_pending(events), frozenset({child_id}))
+
+    def test_outcome_child_must_belong_to_this_command(self):
+        events = _delegated_events(
+            "session-branch",
+            "command-1",
+            child_session_id("session-source", "command-other"),
+        )
+        with self.assertRaisesRegex(ValueError, "child_session_id 与 Command 不一致"):
+            project_failed_delegations(events)
+
+    def test_child_return_ends_the_running_hint_without_a_parent_report(self):
+        command_id = "command-1"
+        child_id = child_session_id("session-source", command_id)
+        events = _delegated_events("session-branch", command_id, child_id)
+        failure = "模型服务暂时不可用：stepfun 429"
+
+        self.assertEqual(project_pending(events), frozenset({child_id}))
+        self.assertEqual(project_unreported_returns(events, {}), ())
+
+        terminals = project_unreported_returns(events, {
+            child_id: {
+                "reported": False,
+                "summary": None,
+                "failure": failure,
+                "cancelled": False,
+                "reason": None,
+            },
+        })
+        self.assertEqual(len(terminals), 1)
+        self.assertEqual(terminals[0].command_id, command_id)
+        self.assertEqual(terminals[0].failure, failure)
+        self.assertEqual(
+            project_pending(events) - {item.child_session_id for item in terminals},
+            frozenset(),
+        )

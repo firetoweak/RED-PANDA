@@ -13,6 +13,7 @@ from redpanda.runtime.model import (
     Command,
     ModelDecision,
     Step,
+    argument_rejection,
 )
 from redpanda.runtime.state import DecisionFrame, StateProjector
 
@@ -98,14 +99,21 @@ class StepRunner:
         commands: list[Command] = []
         for request in decision.command_requests:
             command_id = self._id_factory("command")
-            policy = self._requires_authorization[request.name]
+            if argument_rejection(request) is not None:
+                # 参数没有形成，没有可授权的副作用；结果必须回到模型。
+                requires_authorization = False
+                decision_on_outcome = True
+            else:
+                policy = self._requires_authorization[request.name]
+                requires_authorization = (
+                    policy(request.argument_dict()) if callable(policy) else policy
+                )
+                decision_on_outcome = self._decision_on_outcome[request.name]
             command = Command(
                 command_id=command_id,
                 effect=request,
-                requires_authorization=(
-                    policy(request.argument_dict()) if callable(policy) else policy
-                ),
-                decision_on_outcome=(self._decision_on_outcome[request.name]),
+                requires_authorization=requires_authorization,
+                decision_on_outcome=decision_on_outcome,
             )
             commands.append(command)
         command_tuple = tuple(commands)

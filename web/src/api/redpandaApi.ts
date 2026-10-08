@@ -54,6 +54,7 @@ type EditAndFork = SelectSession & {
 type RestartFromStep = SelectSession & {
   stepId: string;
   deliveryId: string;
+  restoreFiles: boolean;
 };
 
 type BranchAfterTurn = SelectSession & {
@@ -449,13 +450,14 @@ export const redpandaApi = createApi({
       },
     }),
     restartFromStep: build.mutation<ConversationView, RestartFromStep>({
-      query: ({ connectionId, sessionId, stepId, deliveryId }) => ({
+      query: ({ connectionId, sessionId, stepId, deliveryId, restoreFiles }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/restarts`,
         method: "POST",
         body: {
           connection_id: connectionId,
           delivery_id: deliveryId,
           step_id: stepId,
+          restore_files: restoreFiles,
         },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),

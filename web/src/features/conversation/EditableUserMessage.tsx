@@ -1,7 +1,8 @@
 import {
   ActionIcon,
-  Checkbox,
+  Button,
   Group,
+  Modal,
   Paper,
   Stack,
   Text,
@@ -52,7 +53,7 @@ export function EditableUserMessage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(displayText);
   const [retainedRefs, setRetainedRefs] = useState<string[]>([]);
-  const [restoreFiles, setRestoreFiles] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const time = formatMessageTime(occurredAt);
   const canSend = !disabled && !saving && (draft.trim() !== "" || retainedRefs.length > 0);
@@ -84,19 +85,19 @@ export function EditableUserMessage({
       return;
     }
     function cancelOnOutsidePointer() {
-      if (!saving) {
+      if (!saving && !confirmOpen) {
         setEditing(false);
         setDraft(displayText);
       }
     }
     document.addEventListener("pointerdown", cancelOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", cancelOnOutsidePointer);
-  }, [editing, saving, displayText]);
+  }, [editing, saving, displayText, confirmOpen]);
 
   function beginEditing() {
     setDraft(displayText);
     setRetainedRefs([...images, ...files.map((file) => file.attachment_id)]);
-    setRestoreFiles(false);
+    setConfirmOpen(false);
     setEditing(true);
   }
 
@@ -112,14 +113,27 @@ export function EditableUserMessage({
     setDraft(displayText);
   }
 
-  async function save() {
-    const content = composeSendContent(draft, retainedRefs.map((ref) => ({
+  function contentToSend() {
+    return composeSendContent(draft, retainedRefs.map((ref) => ({
       kind: images.includes(ref) ? "image" : "file",
     })));
+  }
+
+  async function save() {
     if (!canSend) {
       return;
     }
-    await onSave(content, hasLaterWork && restoreFiles, retainedRefs);
+    if (hasLaterWork) {
+      setConfirmOpen(true);
+      return;
+    }
+    await onSave(contentToSend(), false, retainedRefs);
+    setEditing(false);
+  }
+
+  async function confirm(restoreFiles: boolean) {
+    setConfirmOpen(false);
+    await onSave(contentToSend(), restoreFiles, retainedRefs);
     setEditing(false);
   }
 
@@ -206,15 +220,30 @@ export function EditableUserMessage({
             </Group>
           </Stack>
         </Paper>
-        {hasLaterWork ? (
-          <Checkbox
-            checked={restoreFiles}
-            disabled={saving}
-            label="同时把工作区文件退回这条消息之前"
-            onChange={(event) => setRestoreFiles(event.currentTarget.checked)}
-            size="xs"
-          />
-        ) : null}
+        <Modal
+          centered
+          closeOnClickOutside={!saving}
+          closeOnEscape={!saving}
+          onClose={() => {
+            if (!saving) setConfirmOpen(false);
+          }}
+          opened={confirmOpen}
+          title="改写这条消息"
+        >
+          <Stack gap="md">
+            <Text size="sm">
+              对话会从这条消息重新开始。工作区文件可以一起退回这条消息之前，也可以保持现在的样子。
+            </Text>
+            <Group justify="flex-end" gap="xs">
+              <Button disabled={saving} onClick={() => void confirm(false)} variant="default">
+                只回滚会话
+              </Button>
+              <Button disabled={saving} onClick={() => void confirm(true)}>
+                会话和文件一起回滚
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       </Stack>
     );
   }

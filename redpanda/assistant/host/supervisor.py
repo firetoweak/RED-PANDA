@@ -150,6 +150,25 @@ class HostSupervisor:
             else WorkspaceRegistry.load(home.workspaces_path)
         )
 
+    async def pause_unfinished_sessions(self) -> None:
+        """进程刚起来时，还会自己往下走的顶层会话先停住。
+
+        选中一条 RUNNABLE 会话会把它的 Worker 拉起来接着跑，子会话也跟着恢复。
+        暂停留在 Host 元数据里，不改 Journal。等人点继续再醒。等外部事实的会话
+        本来就不会自己动，子会话只由父恢复时带起来，这里都不改。
+        """
+
+        for path in self.store.journals():
+            journal = SqliteJournal(path)
+            session_id = await journal.session_identity()
+            if self.is_paused(session_id):
+                continue
+            events = await journal.snapshot(session_id)
+            if project_parent(events) is not None:
+                continue
+            if session_view(replay(session_id, events).state).should_wake:
+                self._pause.set(session_id, True)
+
     async def _route(self, operation, session_id, arguments, *, worker=None):
         if operation == "model_settings":
             if self.models is not None:
@@ -984,7 +1003,7 @@ class HostSupervisor:
         )
 
     async def restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id
+        self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
     ):
         """人点时间线上的一步：从那一刻重开。
 
@@ -1016,7 +1035,7 @@ class HostSupervisor:
         await self.compact.application(
             "settle_forked_workspace",
             child_session_id,
-            dict(restore=True, delivery_id=f"{delivery_id}-workspace"),
+            dict(restore=bool(restore_files), delivery_id=f"{delivery_id}-workspace"),
         )
         return self._with_host_metadata(
             await self.compact.application("view", child_session_id, {}),
@@ -1031,11 +1050,32 @@ class HostSupervisor:
             worker.changed.clear()
             if worker.failure is not None:
                 raise worker.failure
-            if worker.idle_revision is not None and not worker.idle_has_active_subagents:
+            if worker.idle_revision is not None and (
+                not worker.idle_has_active_subagents
+                or not await self._children_still_running(session_id)
+            ):
                 return await self.view(session_id)
             if worker.exited.is_set():
                 return await self.view(session_id)
+            if worker.changed.is_set():
+                continue
             await worker.changed.wait()
+
+    async def _children_still_running(self, session_id) -> bool:
+        """待回收集合里，子 Journal 还没有回传的那些才算还在工作。
+
+        分支可能继承了委派、却没有后来写到来源会话上的回收事实。
+        子会话自己的回传已经说明它停了，再等那份回收不会到来。
+        """
+
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        for child_id in project_pending(events):
+            if not self.store.path(child_id).parent.exists():
+                return True
+            child_events = await SqliteJournal(self.store.require(child_id)).snapshot(child_id)
+            if not project_returned(child_events):
+                return True
+        return False
 
     async def wait_failure(self):
         return await self.failures.get()

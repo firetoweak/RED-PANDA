@@ -71,6 +71,81 @@ def _sdk_error(exc: BaseException) -> McpSdkError:
     return McpSdkError(str(exc) or type(exc).__name__)
 
 
+_OWNER_STOPPED_PREFIX = "MCP connection owner 已停止:"
+_INTERNAL_TRANSPORT_PREFIXES = (
+    _OWNER_STOPPED_PREFIX,
+    "MCP connection invalidated while opening:",
+    "MCP owner 运行失败且关闭失败",
+    "MCP owner 启动失败且清理又失败",
+    "关闭 MCP 连接时发生多个错误",
+)
+
+
+def _task_is_cancelling() -> bool:
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
+def _leaves(exc: BaseException) -> tuple[BaseException, ...]:
+    if isinstance(exc, BaseExceptionGroup):
+        return tuple(leaf for item in exc.exceptions for leaf in _leaves(item))
+    return (exc,)
+
+
+def _is_transport_failure(exc: BaseException) -> bool:
+    """外部传输失败。断线收尾混入的 CancelledError 仍算传输失败。
+
+    当前任务正在被取消时，CancelledError 继续是取消，不收成传输失败。
+    """
+
+    if isinstance(exc, asyncio.CancelledError):
+        return not _task_is_cancelling()
+    if isinstance(exc, BaseExceptionGroup):
+        if _task_is_cancelling():
+            return _is_expected_sdk_error(exc)
+        rest = [
+            leaf
+            for leaf in _leaves(exc)
+            if not isinstance(leaf, asyncio.CancelledError)
+        ]
+        return bool(rest) and all(_is_expected_sdk_error(leaf) for leaf in rest)
+    return _is_expected_sdk_error(exc)
+
+
+def _external_details(
+    exc: BaseException,
+    seen: set[int] | None = None,
+) -> tuple[str, ...]:
+    if seen is None:
+        seen = set()
+    if id(exc) in seen:
+        return ()
+    seen.add(id(exc))
+    if isinstance(exc, BaseExceptionGroup):
+        details: list[str] = []
+        for item in exc.exceptions:
+            details.extend(_external_details(item, seen))
+        return tuple(dict.fromkeys(details))
+    if isinstance(exc, asyncio.CancelledError):
+        return ()
+    if isinstance(exc, McpSdkError) and exc.__cause__ is not None:
+        return _external_details(exc.__cause__, seen)
+    text = " ".join(str(exc).split())
+    if not text or text.startswith(_INTERNAL_TRANSPORT_PREFIXES):
+        if exc.__cause__ is not None:
+            return _external_details(exc.__cause__, seen)
+        return ()
+    return (text,)
+
+
+def _transport_failure_text(server_name: str, exc: BaseException) -> str:
+    text = f"与 {server_name} 的连接中断，这次调用没有完成"
+    details = _external_details(exc)
+    if details:
+        text = f"{text}：{'；'.join(details)}"
+    return text
+
+
 async def _finish_cleanup(cleanup: Awaitable[None]) -> None:
     """即使外层任务正在取消，也等待资源清理真正结束。"""
     task = asyncio.create_task(cleanup)
@@ -225,10 +300,14 @@ class ManagedMcpConnection:
                 await self.close_handler()
             else:
                 await self.stack.aclose()
+        except asyncio.CancelledError as exc:
+            if not _is_transport_failure(exc):
+                raise
+            raise _sdk_error(exc) from exc
         except _EXPECTED_SDK_ERRORS as exc:
             raise _sdk_error(exc) from exc
         except BaseExceptionGroup as exc:
-            if not _is_expected_sdk_error(exc):
+            if not _is_transport_failure(exc):
                 raise
             raise _sdk_error(exc) from exc
 
@@ -353,7 +432,7 @@ class _SdkConnectionOwner:
 
     async def call(self, method: str, *args: Any, **kwargs: Any) -> Any:
         if not self.is_alive():
-            raise ConnectionError(f"MCP connection owner 已停止: {self._record.id}")
+            raise ConnectionError(f"{_OWNER_STOPPED_PREFIX} {self._record.id}")
         result = asyncio.get_running_loop().create_future()
         self._queue.put_nowait(
             _SdkOperation(
@@ -392,12 +471,14 @@ class _SdkConnectionOwner:
         try:
             try:
                 facade = await self._open_facade(stack)
-            except asyncio.CancelledError:
-                raise
+            except asyncio.CancelledError as exc:
+                if not _is_transport_failure(exc):
+                    raise
+                raise _sdk_error(exc) from exc
             except _EXPECTED_SDK_ERRORS as exc:
                 raise _sdk_error(exc) from exc
             except BaseExceptionGroup as exc:
-                if not _is_expected_sdk_error(exc):
+                if not _is_transport_failure(exc):
                     raise
                 raise _sdk_error(exc) from exc
             connection = ManagedMcpConnection(
@@ -422,16 +503,22 @@ class _SdkConnectionOwner:
                 try:
                     value = await operation(*current.args, **current.kwargs)
                 except asyncio.CancelledError as exc:
-                    if not current.result.done():
-                        current.result.set_exception(exc)
-                    raise
+                    if _is_transport_failure(exc):
+                        if not current.result.done():
+                            error = _sdk_error(exc)
+                            error.__cause__ = exc
+                            current.result.set_exception(error)
+                    else:
+                        if not current.result.done():
+                            current.result.set_exception(exc)
+                        raise
                 except _EXPECTED_SDK_ERRORS as exc:
                     if not current.result.done():
                         error = _sdk_error(exc)
                         error.__cause__ = exc
                         current.result.set_exception(error)
                 except BaseExceptionGroup as exc:
-                    if _is_expected_sdk_error(exc):
+                    if _is_transport_failure(exc):
                         if not current.result.done():
                             error = _sdk_error(exc)
                             error.__cause__ = exc
@@ -509,7 +596,7 @@ class _SdkConnectionOwner:
         return _SdkClientFacade(client)
 
     def _fail_pending_operations(self) -> None:
-        error = ConnectionError(f"MCP connection owner 已停止: {self._record.id}")
+        error = ConnectionError(f"{_OWNER_STOPPED_PREFIX} {self._record.id}")
         while not self._queue.empty():
             operation = self._queue.get_nowait()
             if operation is not None and not operation.result.done():
@@ -566,6 +653,16 @@ class McpClientManager:
             secret_values=self.secret_values(record),
         )
 
+    def transport_failure_summary(
+        self,
+        record: McpServerRecord,
+        exc: BaseException,
+    ) -> str:
+        return sanitize_error_summary(
+            _transport_failure_text(record.display_name, exc),
+            secret_values=self.secret_values(record),
+        )
+
     def secret_values(self, record: McpServerRecord) -> tuple[str, ...]:
         return tuple(
             self._secret_store.resolve_many(record.credential_refs).values()
@@ -584,11 +681,13 @@ class McpClientManager:
         try:
             await connection.aclose()
         except McpSdkError as exc:
-            summary = self.sanitized_error(connection.record, exc)
-            self.runtime_state(connection.record.id).mark_unavailable(summary)
+            self.runtime_state(connection.record.id).mark_unavailable(
+                self.transport_failure_summary(connection.record, exc)
+            )
             logging.getLogger(__name__).warning(
                 "MCP 连接已回收，远端关闭失败 [%s]: %s",
-                connection.record.id, summary,
+                connection.record.id,
+                self.sanitized_error(connection.record, exc),
             )
 
     async def aclose(self) -> None:
@@ -767,7 +866,7 @@ class McpClientManager:
         except (OSError, McpClientError) as exc:
             if connection is not None:
                 await self._close_connection(connection)
-            state.mark_unavailable(self.sanitized_error(record, exc))
+            state.mark_unavailable(self.transport_failure_summary(record, exc))
             raise
         except BaseException:
             if connection is not None:
@@ -868,6 +967,6 @@ class McpClientManager:
         try:
             return await _SdkConnectionOwner(record, secrets).start()
         except BaseExceptionGroup as exc:
-            if not _is_expected_sdk_error(exc):
+            if not _is_transport_failure(exc):
                 raise
             raise _sdk_error(exc) from exc

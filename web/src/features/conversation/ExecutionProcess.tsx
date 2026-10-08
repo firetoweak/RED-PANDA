@@ -204,7 +204,7 @@ export function StepDisclosure({
           </Group>
         </UnstyledButton>
         {onRestart !== undefined && step.rewindable && step.stepId !== null ? (
-          <Tooltip label="从这一步之后重开：截断对话，文件一起退回">
+          <Tooltip label="从这一步之后重开">
             <ActionIcon
               aria-label="从这一步之后重开"
               disabled={restartDisabled}

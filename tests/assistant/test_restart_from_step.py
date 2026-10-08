@@ -103,3 +103,21 @@ class HostRestartFromStepTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(order, [])
         self.assertFalse(host.is_paused("session-old"))
+
+    async def test_file_restore_follows_the_callers_choice(self):
+        order: list[str] = []
+        host = host_watching(order)
+        seen: dict[str, bool] = {}
+
+        async def application(operation, session_id, arguments):
+            order.append(f"{operation}:{session_id}")
+            if operation == "settle_forked_workspace":
+                seen["restore"] = arguments["restore"]
+            return "view"
+
+        host.compact.application = AsyncMock(side_effect=application)
+        with journal_of(version_event("step-1", "a" * 40)):
+            await host.restart_from_step(
+                "owner", "session-old", "step-1", "session-new", "web-1", restore_files=False
+            )
+        self.assertIs(seen["restore"], False)

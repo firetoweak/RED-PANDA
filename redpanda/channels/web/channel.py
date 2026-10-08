@@ -220,6 +220,7 @@ class WebChannel:
         session_id: str,
         step_id: str,
         delivery_id: str,
+        restore_files: bool,
     ):
         connection = self._require_connection(connection_id)
         for label, value in (
@@ -236,6 +237,7 @@ class WebChannel:
             step_id,
             child_session_id,
             delivery_id,
+            restore_files=restore_files,
         )
         return await self._queries.conversation(child_session_id, view=view)
 

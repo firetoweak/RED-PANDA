@@ -91,7 +91,7 @@ class McpToolsetProvider:
             anyio.BrokenResourceError,
             anyio.ClosedResourceError,
         ) as exc:
-            summary = self._client_manager.sanitized_error(record, exc)
+            summary = self._client_manager.transport_failure_summary(record, exc)
             self._client_manager.runtime_state(server_id).mark_unavailable(summary)
             await self._client_manager.invalidate(server_id)
             raise ToolsetLoadError(
@@ -222,7 +222,7 @@ class McpToolsetProvider:
                 anyio.BrokenResourceError,
                 anyio.ClosedResourceError,
             ) as exc:
-                summary = self._client_manager.sanitized_error(record, exc)
+                summary = self._client_manager.transport_failure_summary(record, exc)
                 self._client_manager.runtime_state(record_id).mark_unavailable(
                     summary
                 )

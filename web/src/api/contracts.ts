@@ -154,6 +154,15 @@ export const conversationViewSchema = z
       step_id: z.string().min(1),
       plan: workPlanSchema.nullable(),
     }).strict()),
+    subagent_terminals: z.array(z.object({
+      command_id: z.string().min(1),
+      child_session_id: z.string().min(1),
+      reported: z.boolean(),
+      summary: z.string().nullable(),
+      failure: z.string().nullable(),
+      cancelled: z.boolean(),
+      reason: z.string().nullable(),
+    }).strict()).optional(),
     workspace_version: z.object({
       workspace_id: z.string().min(1),
       step_id: z.string().min(1).nullable(),

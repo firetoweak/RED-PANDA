@@ -109,6 +109,7 @@ class RestartRequest(BaseModel):
     connection_id: str
     delivery_id: str
     step_id: str
+    restore_files: bool = True
 
 
 class BranchRequest(ConnectionRequest):
@@ -513,6 +514,7 @@ def create_web_app(
             session_id,
             body.step_id,
             body.delivery_id,
+            body.restore_files,
         )
 
     @app.post("/api/sessions/{session_id}/cancel")

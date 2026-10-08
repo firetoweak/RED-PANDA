@@ -14,7 +14,8 @@ from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, proj
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
 from redpanda.assistant.subagent.subagent import (
-    RETURN_FACT, project_delegate_intents, project_parent, project_pending,
+    RETURN_FACT, UnreportedChildReturn, project_delegate_intents, project_parent,
+    project_pending, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.workspaces import bound_workspace_id
@@ -104,6 +105,7 @@ class ConversationView:
     work_plan: dict | None = None
     work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
     context_input_tokens: int | None = None
+    subagent_terminals: tuple[UnreportedChildReturn, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,15 +173,23 @@ class AssistantQueries:
                 continue
             if self._sessions.is_archived(session_id):
                 continue
-            summaries.append(
-                project_session_summary(
-                    session_id,
-                    events,
-                    workspace_id=workspace_id,
-                    activity=self._sessions.activity(session_id),
-                    title=self._sessions.session_title(session_id),
-                )
+            summary = project_session_summary(
+                session_id,
+                events,
+                workspace_id=workspace_id,
+                activity=self._sessions.activity(session_id),
+                title=self._sessions.session_title(session_id),
             )
+            terminals = project_unreported_returns(
+                events, await self._child_returns(events),
+            )
+            summaries.append(replace(
+                summary,
+                has_active_subagents=bool(
+                    set(project_pending(events))
+                    - {item.child_session_id for item in terminals}
+                ),
+            ))
         return tuple(
             sorted(
                 summaries,
@@ -205,15 +215,21 @@ class AssistantQueries:
 
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
+        terminals = project_unreported_returns(events, await self._child_returns(events))
+        still_running = bool(
+            set(project_pending(events)) - {item.child_session_id for item in terminals}
+        )
         if view is None:
             view = session_view(
                 state,
-                has_active_subagents=bool(project_pending(events)),
+                has_active_subagents=still_running,
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
                 auto_authorize=self._sessions.auto_authorize(session_id),
                 paused=self._sessions.is_paused(session_id),
             )
+        else:
+            view = replace(view, has_active_subagents=still_running)
         status = self._sessions.conversation_status(session_id)
         scheduled = self._sessions.next_scheduled_check(session_id)
         return replace(
@@ -227,7 +243,29 @@ class AssistantQueries:
             compact_count=status.compact_count,
             compact_phase=status.compact_phase,
             waiting_until=None if scheduled is None else scheduled.due_at,
+            subagent_terminals=terminals,
         )
+
+    async def _child_returns(self, events: tuple[Event, ...]) -> dict[str, Mapping[str, object]]:
+        """待回收的子会话里已经写下的回传。没有 Journal 或还没有回传的跳过。"""
+
+        found: dict[str, Mapping[str, object]] = {}
+        for child_id in project_pending(events):
+            if not self._store.path(child_id).parent.exists():
+                continue
+            child_events = await SqliteJournal(self._store.require(child_id)).snapshot(child_id)
+            returned = next(
+                (
+                    event.payload.data
+                    for event in child_events
+                    if isinstance(event.payload, DomainFactCommitted)
+                    and event.payload.fact_type == RETURN_FACT
+                ),
+                None,
+            )
+            if returned is not None:
+                found[child_id] = returned
+        return found
 
 
 def recent_workspace_id(summaries: tuple[SessionSummary, ...]) -> str | None:

@@ -35,6 +35,7 @@ from redpanda.runtime.model import (
     InvokeTool,
     OutcomeStatus,
     StepState,
+    argument_rejection,
 )
 
 
@@ -314,6 +315,15 @@ def _translate_visible_events(
     return _hoist_tool_images(items)
 
 
+def _shown_arguments(effect: InvokeTool) -> str:
+    """参数被拒绝时，模型看到的是它当初发出的原文。"""
+
+    rejection = argument_rejection(effect)
+    if rejection is not None:
+        return rejection["raw"]
+    return json.dumps(effect.argument_dict(), ensure_ascii=False)
+
+
 def _shown_tool(state: CommandState) -> InvokeTool | None:
     """模型看得见的工具调用；deliver 是投递通道，不进对话。"""
 
@@ -363,10 +373,7 @@ def _project_step(step: StepState) -> list[_Projected]:
                 "type": "function",
                 "function": {
                     "name": effect.name,
-                    "arguments": json.dumps(
-                        effect.argument_dict(),
-                        ensure_ascii=False,
-                    ),
+                    "arguments": _shown_arguments(effect),
                 },
             }
             for state, effect in shown
