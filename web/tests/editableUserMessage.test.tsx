@@ -97,10 +97,6 @@ it("点击编辑区域外取消正文和附件修改，区域内的附件、预�
   const input = screen.getByRole("textbox", { name: "编辑消息" });
   fireEvent.pointerDown(input);
   fireEvent.change(input, { target: { value: "临时修改" } });
-  const checkbox = screen.getByRole("checkbox");
-  fireEvent.pointerDown(checkbox);
-  fireEvent.click(checkbox);
-  expect(checkbox).toBeChecked();
   const image = screen.getByRole("button", { name: "图片" });
   fireEvent.pointerDown(image);
   fireEvent.click(image);
@@ -120,7 +116,26 @@ it("点击编辑区域外取消正文和附件修改，区域内的附件、预�
   fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
   expect(screen.getByRole("textbox", { name: "编辑消息" })).toHaveValue("原始消息");
   expect(screen.getByRole("button", { name: "Remove 图片" })).toBeInTheDocument();
-  expect(screen.getByRole("checkbox")).not.toBeChecked();
+});
+
+it("这条消息之后还有工作时，发送才问文件退不退", async () => {
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  render(<MantineProvider><EditableUserMessage
+    sessionId="session" text="原始消息" occurredAt="2026-10-03T08:00:05Z"
+    images={[]} files={[]} disabled={false} saving={false} hasLaterWork onSave={onSave}
+  /></MantineProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "编辑消息" }), { target: { value: "修改后的消息" } });
+  fireEvent.click(screen.getByRole("button", { name: "改写并执行" }));
+  expect(onSave).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole("button", { name: "只回滚会话" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith("修改后的消息", false, []));
+
+  onSave.mockClear();
+  fireEvent.click(screen.getByRole("button", { name: "编辑消息" }));
+  fireEvent.click(screen.getByRole("button", { name: "改写并执行" }));
+  fireEvent.click(await screen.findByRole("button", { name: "会话和文件一起回滚" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith("原始消息", true, []));
 });
 
 it("提交进行中点击外部不取消编辑", () => {

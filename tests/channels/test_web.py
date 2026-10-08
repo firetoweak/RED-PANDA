@@ -70,10 +70,10 @@ class _Sessions:
         return SessionView("runnable", (), (), True)
 
     async def restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id
+        self, owner, session_id, step_id, child_session_id, delivery_id, restore_files=True
     ):
         self.calls.append(
-            ("restart_from_step", owner, session_id, step_id, child_session_id, delivery_id)
+            ("restart_from_step", owner, session_id, step_id, child_session_id, delivery_id, restore_files)
         )
         if step_id == "step-unrecorded":
             raise StepNotRewindable(step_id)

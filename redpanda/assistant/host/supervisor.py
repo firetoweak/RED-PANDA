@@ -997,7 +997,7 @@ class HostSupervisor:
         )
 
     async def restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id
+        self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
     ):
         """人点时间线上的一步：从那一刻重开。
 
@@ -1029,7 +1029,7 @@ class HostSupervisor:
         await self.compact.application(
             "settle_forked_workspace",
             child_session_id,
-            dict(restore=True, delivery_id=f"{delivery_id}-workspace"),
+            dict(restore=bool(restore_files), delivery_id=f"{delivery_id}-workspace"),
         )
         return self._with_host_metadata(
             await self.compact.application("view", child_session_id, {}),

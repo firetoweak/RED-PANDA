@@ -103,6 +103,7 @@ export function Conversation() {
   const [setPaused, pausing] = useSetPausedMutation();
   const [retryTurn, retrying] = useRetryTurnMutation();
   const [restartFromStep, restarting] = useRestartFromStepMutation();
+  const [rewindStepId, setRewindStepId] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(viewing(sessionId === "" ? null : sessionId));
@@ -245,15 +246,17 @@ export function Conversation() {
     }
   }
 
-  async function restart(stepId: string) {
+  async function restart(stepId: string, restoreFiles: boolean) {
     if (connectionId === null) {
       return;
     }
+    setRewindStepId(null);
     const view = await restartFromStep({
       connectionId,
       sessionId,
       stepId,
       deliveryId: `web-${createClientId()}`,
+      restoreFiles,
     }).unwrap();
     // 原地改写：新身份顶掉旧的，后退不该停在一个已经不代表这条线的 URL 上。
     navigate(`/sessions/${encodeURIComponent(view.session_id)}`, { replace: true });
@@ -346,7 +349,7 @@ export function Conversation() {
                     authorizationDisabled={connectionId === null}
                     complete={settled}
                     onAuthorize={authorize}
-                    onRestart={(stepId) => void restart(stepId)}
+                    onRestart={setRewindStepId}
                     restartDisabled={connectionId === null || restarting.isLoading}
                     steps={turn.process}
                     onObserveSubagent={setObservedCommandId}
@@ -552,6 +555,37 @@ export function Conversation() {
         />
         </Stack>
       </Box>
+      <Modal
+        centered
+        closeOnClickOutside={!restarting.isLoading}
+        closeOnEscape={!restarting.isLoading}
+        onClose={() => {
+          if (!restarting.isLoading) setRewindStepId(null);
+        }}
+        opened={rewindStepId !== null}
+        title="从这一步之后重开"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            对话会截到这一步，并从这里换一条走法。工作区文件可以一起退回这一步，也可以保持现在的样子。
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              disabled={restarting.isLoading}
+              onClick={() => void restart(rewindStepId!, false)}
+              variant="default"
+            >
+              只回滚会话
+            </Button>
+            <Button
+              disabled={restarting.isLoading}
+              onClick={() => void restart(rewindStepId!, true)}
+            >
+              会话和文件一起回滚
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         centered
         closeOnClickOutside={false}
