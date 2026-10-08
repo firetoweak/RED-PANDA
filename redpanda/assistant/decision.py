@@ -41,6 +41,7 @@ from redpanda.runtime import (
     RecordedDecision,
     ToolBinding,
 )
+from redpanda.runtime.model import argument_rejection, rejected_tool_arguments
 from redpanda.runtime.model import AuthorizationPolicy
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.tools.builtin import CommandInterrupts, run_interruptible
@@ -103,20 +104,38 @@ def _invoke_requests(
                 "unknown_tool",
                 f"tool {call.name} was not offered in this decision context",
             )
-        try:
-            payload = json.loads(call.arguments)
-        except json.JSONDecodeError as exc:
-            raise InvalidLLMResponse(
-                "invalid_tool_arguments",
-                f"tool {call.name} arguments are not valid JSON",
-            ) from exc
-        if type(payload) is not dict:
-            raise InvalidLLMResponse(
-                "invalid_tool_arguments",
-                f"tool {call.name} arguments must be a JSON object",
-            )
-        requests.append(InvokeTool(call.name, tuple(payload.items())))
+        requests.append(_invoke_tool(call))
     return tuple(requests)
+
+
+def _invoke_tool(call: ToolCall) -> InvokeTool:
+    """参数文本无法成为 JSON object 时，记成该工具的失败，不中断会话。"""
+
+    raw = call.arguments
+    if not raw or not raw.strip():
+        return InvokeTool(call.name, rejected_tool_arguments(
+            raw,
+            code="INVALID_JSON",
+            error="tool arguments 不能为空；无参工具也必须显式传入 {}",
+            hint="传入合法的 JSON object。",
+        ))
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return InvokeTool(call.name, rejected_tool_arguments(
+            raw,
+            code="INVALID_JSON",
+            error=f"invalid json: {exc}",
+            hint="修正工具 arguments 的 JSON 格式后重试。",
+        ))
+    if type(payload) is not dict:
+        return InvokeTool(call.name, rejected_tool_arguments(
+            raw,
+            code="VALIDATION_ERROR",
+            error="tool arguments 必须是 JSON object",
+            hint="按工具 schema 修正参数后重试。",
+        ))
+    return InvokeTool(call.name, tuple(payload.items()))
 
 
 def _schema_name(schema: Mapping[str, object]) -> str:
@@ -307,25 +326,29 @@ class JournalBackedLlmDecisionMaker:
             )
         if control_calls:
             call = control_calls[0]
-            try:
-                arguments = json.loads(call.arguments)
-            except json.JSONDecodeError as exc:
-                raise InvalidLLMResponse(
-                    "invalid_tool_arguments",
-                    f"tool {call.name} arguments are not valid JSON",
-                ) from exc
-            if type(arguments) is not dict:
-                raise InvalidLLMResponse(
-                    "invalid_tool_arguments",
-                    f"tool {call.name} arguments must be a JSON object",
+            tool = _invoke_tool(call)
+            if argument_rejection(tool) is not None:
+                return ModelDecision(
+                    content=response.content,
+                    command_requests=(tool,),
                 )
             try:
-                self._control.stage(frame, call.name, arguments)
+                self._control.stage(frame, call.name, tool.argument_dict())
             except ControlArgumentsError as exc:
-                raise InvalidLLMResponse(
-                    "invalid_tool_arguments",
-                    f"tool {call.name} arguments violate its schema: {exc.details}",
-                ) from exc
+                details = exc.details
+                error = (
+                    details if type(details) is str
+                    else json.dumps(details, ensure_ascii=False)
+                )
+                return ModelDecision(
+                    content=response.content,
+                    command_requests=(InvokeTool(call.name, rejected_tool_arguments(
+                        call.arguments,
+                        code="VALIDATION_ERROR",
+                        error=error,
+                        hint="按工具 schema 修正参数后重试。",
+                    )),),
+                )
             return ModelDecision(
                 content=(
                     response.content or "已提交需要用户确认的操作，等待用户确认。"

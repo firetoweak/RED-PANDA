@@ -36,6 +36,49 @@ def _require_nonnegative_int(value: object, name: str) -> None:
         raise ValueError(f"{name} must be a nonnegative int")
 
 
+# 工具参数文本不是 JSON object 时，Command 仍要入账，但参数里只有这份拒绝。
+# 它不是工具 schema 的字段：Dispatcher 不调用工具，授权也不看它。
+ARGUMENT_REJECTION_KEY = "argument_rejection"
+_ARGUMENT_REJECTION_FIELDS = frozenset({"raw", "code", "error", "hint"})
+
+
+def rejected_tool_arguments(
+    raw: str,
+    *,
+    code: str,
+    error: str,
+    hint: str,
+) -> Arguments:
+    """把无法成为工具参数的原文装进 InvokeTool。"""
+
+    if any(type(item) is not str for item in (raw, code, error, hint)):
+        raise TypeError("argument rejection fields must be str")
+    if not code or not error or not hint:
+        raise ValueError("argument rejection code, error, and hint must not be empty")
+    return ((
+        ARGUMENT_REJECTION_KEY,
+        {"raw": raw, "code": code, "error": error, "hint": hint},
+    ),)
+
+
+def argument_rejection(effect: InvokeTool) -> dict[str, str] | None:
+    """参数拒绝的原文与工具结果；普通参数返回 None。"""
+
+    if len(effect.arguments) != 1:
+        return None
+    key, value = effect.arguments[0]
+    if key != ARGUMENT_REJECTION_KEY:
+        return None
+    payload = thaw_value(value)
+    if type(payload) is not dict or set(payload) != _ARGUMENT_REJECTION_FIELDS:
+        return None
+    if any(type(item) is not str for item in payload.values()):
+        return None
+    if not payload["code"] or not payload["error"] or not payload["hint"]:
+        return None
+    return payload
+
+
 def _require_str_tuple(value: object, name: str) -> None:
     if type(value) is not tuple:
         raise TypeError(f"{name} must be tuple")

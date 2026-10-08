@@ -23,6 +23,7 @@ from redpanda.runtime.model import (
     CommandPhase,
     OutcomeStatus,
     RuntimeStatus,
+    argument_rejection,
 )
 from redpanda.runtime.state import StateProjector
 from redpanda.runtime.step import IdFactory, random_id
@@ -129,7 +130,8 @@ class Dispatcher:
         started: list[str] = []
         for item in pending:
             command = item.command
-            self._binding_for(command)
+            if argument_rejection(command.effect) is None:
+                self._binding_for(command)
             attempt_id = self._id_factory("attempt")
             dispatch_event = await self._journal.start_attempt(
                 EventDraft(
@@ -180,15 +182,25 @@ class Dispatcher:
             name=f"agent-attempt-heartbeat:{payload.attempt_id}",
         )
         try:
-            result = await self._binding_for(command).handler(
-                AttemptContext(
-                    session_id,
-                    command.command_id,
-                    payload.attempt_id,
-                    payload.attempt_number,
-                ),
-                command.effect.argument_dict(),
-            )
+            rejection = argument_rejection(command.effect)
+            if rejection is not None:
+                result = {
+                    "ok": False,
+                    "code": rejection["code"],
+                    "data": None,
+                    "error": rejection["error"],
+                    "hint": rejection["hint"],
+                }
+            else:
+                result = await self._binding_for(command).handler(
+                    AttemptContext(
+                        session_id,
+                        command.command_id,
+                        payload.attempt_id,
+                        payload.attempt_number,
+                    ),
+                    command.effect.argument_dict(),
+                )
             outcome = (
                 result.outcome
                 if isinstance(result, ToolTerminal)

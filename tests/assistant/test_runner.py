@@ -4,6 +4,7 @@ import asyncio
 import unittest
 from collections.abc import Awaitable, Callable
 
+from redpanda.assistant.context.projection import project_chat_messages
 from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.decision import decision_from_llm
 from redpanda.assistant.runner import SessionScheduler
@@ -14,9 +15,11 @@ from redpanda.runtime import (
     MemoryJournal,
     ModelDecision,
     RuntimeStatus,
+    ToolBinding,
     UserMessageReceived,
 )
-from redpanda.runtime.state import DecisionFrame
+from redpanda.runtime.model import argument_rejection
+from redpanda.runtime.state import DecisionFrame, StateProjector
 from tests.session_scheduler import SettlingScheduler
 
 
@@ -222,6 +225,115 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             decision.command_requests[0].argument_dict(),
             {"path": "a.py"},
         )
+
+    def test_invalid_tool_arguments_stay_on_the_tool_call(self):
+        broken = decision_from_llm(
+            LLMResponse(calls=(ToolCall("call-1", "execute_command", "{not json"),)),
+            frozenset({"execute_command"}),
+        )
+        rejection = argument_rejection(broken.command_requests[0])
+        self.assertEqual(broken.command_requests[0].name, "execute_command")
+        self.assertEqual(rejection["raw"], "{not json")
+        self.assertEqual(rejection["code"], "INVALID_JSON")
+
+        array = decision_from_llm(
+            LLMResponse(calls=(ToolCall("call-2", "read_file", "[]"),)),
+            frozenset({"read_file"}),
+        )
+        self.assertEqual(
+            argument_rejection(array.command_requests[0])["code"],
+            "VALIDATION_ERROR",
+        )
+
+        blank = decision_from_llm(
+            LLMResponse(calls=(ToolCall("call-3", "read_file", "  "),)),
+            frozenset({"read_file"}),
+        )
+        self.assertEqual(
+            argument_rejection(blank.command_requests[0])["code"],
+            "INVALID_JSON",
+        )
+
+    async def test_invalid_tool_arguments_return_to_the_model(self):
+        called = False
+
+        async def handler(_context, _arguments):
+            nonlocal called
+            called = True
+            raise AssertionError("invalid arguments must not run the tool")
+
+        def bad_call(_frame):
+            return decision_from_llm(
+                LLMResponse(
+                    calls=(ToolCall("call-1", "execute_command", "{not json"),),
+                ),
+                frozenset({"execute_command"}),
+            )
+
+        seen = {}
+
+        def follow(frame):
+            command = frame.state.commands[0]
+            seen["outcome"] = command.outcome
+            seen["authorized"] = command.command.requires_authorization
+            return ModelDecision(content="continued")
+
+        model = ScriptedDecisionMaker((bad_call, follow))
+        runtime = AgentRuntime(
+            MemoryJournal(),
+            model,
+            {
+                "execute_command": ToolBinding(
+                    handler, requires_authorization=True,
+                ),
+            },
+            SequentialIds(),
+        )
+        failed = []
+        scheduler = SettlingScheduler(
+            runtime,
+            "session",
+            session_failed=lambda _session_id, message: failed.append(message),
+        )
+        await runtime.create_session("session")
+        await runtime.receive_user_message(
+            "session", "read the pdf", delivery_id="user-1",
+        )
+        try:
+            await scheduler.wake("session")
+            await scheduler.join()
+            self.assertEqual(failed, [])
+            self.assertFalse(called)
+            self.assertFalse(seen["authorized"])
+            self.assertEqual(seen["outcome"].value["ok"], False)
+            self.assertEqual(seen["outcome"].value["code"], "INVALID_JSON")
+            self.assertEqual(
+                (await runtime.state("session")).status,
+                RuntimeStatus.WAITING,
+            )
+            events = await runtime.snapshot("session")
+            messages = project_chat_messages(
+                events,
+                StateProjector().project_visible("session", events),
+                "sys",
+            )
+            arguments = [
+                call["function"]["arguments"]
+                for message in messages
+                if message.get("tool_calls")
+                for call in message["tool_calls"]
+            ]
+            self.assertEqual(arguments, ["{not json"])
+            tool_results = [
+                message["content"]
+                for message in messages
+                if message["role"] == "tool"
+            ]
+            self.assertEqual(len(tool_results), 1)
+            self.assertIn("INVALID_JSON", tool_results[0])
+            self.assertIn("invalid json", tool_results[0])
+        finally:
+            await scheduler.close()
 
     async def test_user_event_wakes_one_step_and_session_remains_open(self):
         model = ScriptedDecisionMaker((lambda _frame: ModelDecision(content="done"),))
