@@ -57,6 +57,7 @@ class ExecutionAttachment:
     environment_instance_id: str
     command_executor: EnvironmentCommandExecutor
     process_sandbox: str = "unavailable"
+    filesystem: object | None = None
 
     def __post_init__(self) -> None:
         if not self.environment_instance_id.strip():

@@ -1,0 +1,40 @@
+.vscode
+# General
+.DS_Store
+__MACOSX/
+.AppleDouble
+.LSOverride
+Icon?
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+.vfs
+.agentfs
+target/
+
+# Python bytecode cache
+__pycache__/
+
+# Large benchmark fixtures - regenerate via 'git clone --bare openai/codex'
+.agents/benchmarks/fixtures/
+.agents/missions/
+
+# agent session notes
+.agents/

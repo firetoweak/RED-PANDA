@@ -141,6 +141,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 assert all(session_id == "e2e-parent" for session_id, _ in outputs)
                 await host.resolve_authorization("e2e-parent", approvals[0][1], approved=True)
                 await wait_for(completed)
+                await host.wait_quiescent("e2e-parent")
                 assert (root / "result.txt").read_text(encoding="utf-8") == nonce + "\n"
                 assert protected.read_text(encoding="utf-8") == "parent-only\n"
                 assert (root / ".git" / "HEAD").read_bytes() == user_head
@@ -163,6 +164,12 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 outcomes = {event.payload.command_id: event.payload.outcome for event in parent_events
                             if isinstance(event.payload, CommandOutcomeReceived)}
                 assert outcomes[approvals[0][1]].value["ok"] is True
+                git_checks = [outcomes[command.command_id].value for event in parent_events
+                              if isinstance(event.payload, StepCommitted)
+                              for command in event.payload.step.commands
+                              if isinstance(command.effect, InvokeTool) and command.effect.name == "get_changes"]
+                assert git_checks and all(result["ok"] for result in git_checks), git_checks
+                assert any("result.txt" in result["data"]["untracked_paths"] for result in git_checks)
                 report = {"model": app.config.default_model, "marker": nonce, "child": child_id,
                           "authorization": approvals, "tools": progress, "outputs": outputs}
                 (tmp_path / "e2e-result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

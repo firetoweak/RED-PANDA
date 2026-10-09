@@ -219,6 +219,14 @@ class WorkspacePathResolver:
     def __init__(self, binding: EnvironmentBinding) -> None:
         self.binding = binding
 
+    def resolve_native(self, native_path: str | Path) -> ResolvedEnvironmentPath:
+        """Translate native discovery results before applying logical permissions."""
+        path = Path(native_path)
+        projection = self.binding.execution_attachment.filesystem
+        if projection is not None:
+            path = projection.logical_path(path)
+        return self.resolve(str(path))
+
     def resolve(
         self,
         raw_path: str,
@@ -242,7 +250,11 @@ class WorkspacePathResolver:
         if access == "write" and permission is not FilesystemPermission.READ_WRITE:
             raise EnvironmentPermissionDenied(raw_path, access)
         return ResolvedEnvironmentPath(
-            native_path=resolved,
+            native_path=(
+                self.binding.execution_attachment.filesystem.native_path(resolved)
+                if membership.scope is WorkspaceScope.TASK and self.binding.execution_attachment.filesystem is not None
+                else resolved
+            ),
             location=EnvironmentLocation(
                 environment_id=(
                     self.binding.execution_attachment.environment_instance_id

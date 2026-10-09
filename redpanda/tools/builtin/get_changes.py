@@ -34,6 +34,7 @@ async def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
     proc = await asyncio.create_subprocess_exec(
         "git",
         "--no-optional-locks",
+        "-c", "core.longpaths=true",
         "-c", "diff.autoRefreshIndex=false",
         *args,
         cwd=cwd,
@@ -136,7 +137,7 @@ def create_get_changes_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
             repo_path = repo_stdout.strip()
             if not repo_path:
                 raise ValueError("git rev-parse 返回空路径")
-            resolved_repo = resolver.resolve(repo_path)
+            resolved_repo = resolver.resolve_native(repo_path)
         except EnvironmentInputError as exc:
             return environment_error(exc)
         repo_root = resolved_repo.native_path

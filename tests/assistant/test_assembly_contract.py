@@ -26,8 +26,15 @@ from tests.session_scheduler import (
 
 @pytest.fixture(autouse=True)
 def version_backend():
-    # 本层验证装配；真实 Git 的文件恢复契约在 sandbox process 测试中。
-    with patch("redpanda.sandbox.versions.WorkspaceVersions.record", return_value="a" * 40):
+    # 本层验证装配；真实 VFS 文件恢复在 process 层。
+    async def execute(self, identity, callback):
+        return await callback()
+    with (
+        patch("redpanda.sandbox.versions.WorkspaceVersions.record", return_value="a" * 64),
+        patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute),
+        patch("redpanda.sandbox.versions.WorkspaceVersions.native_path", lambda self, path: path),
+        patch("redpanda.sandbox.versions.WorkspaceVersions.logical_path", lambda self, path: path),
+    ):
         yield
 
 

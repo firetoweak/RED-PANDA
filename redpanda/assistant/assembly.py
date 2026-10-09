@@ -36,7 +36,7 @@ from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.workspace import (
-    ChildWorkspaceReview, child_layout, child_workspace, workspace_versions,
+    ChildWorkspaceReview, child_layout, child_workspace, workspace_versions, review_worktrees,
 )
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
@@ -55,6 +55,7 @@ from redpanda.automation.tool import (
 )
 from redpanda.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool, subagent_review_tools
 from redpanda.sandbox.registry import WorkspaceRecord
+from redpanda.sandbox.versions import SandboxUnavailable, operation_id
 from redpanda.assistant.cli import CliToolAdapter
 from redpanda.assistant.mcp import McpToolsetAdapter
 from redpanda.assistant.management import (
@@ -115,25 +116,25 @@ async def build_assistant_assembly(
     task = project_task(await journal.snapshot(session_id))
     versions = workspace_versions(home, workspace)
     if task is not None:
-        parent_root = workspace.task_root
-        child_root, ref = child_layout(home, task.parent_session_id, session_id)
+        child_root, _ = child_layout(home, task.parent_session_id, session_id)
         if not child_root.is_dir():
             raise ValueError(f"child workspace missing: {child_root}")
         workspace = child_workspace(workspace, child_root)
-        versions = workspace_versions(home, workspace, ref=ref, ignore_root=parent_root)
+        versions = workspace_versions(home, workspace)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
         command_environment=command_environment,
+        sandbox=versions,
     )
     command_interrupts = builtin_tools.command_interrupts
 
-    async def restore_workspace(command_id, target):
+    async def restore_workspace(command_id, target, policy):
         events = await runtime.snapshot(session_id)
         state = runtime.projector.project_visible(session_id, events)
         visible = compact_context.visible(events, state)
-        return await version_boundary.restore(command_id, target, events, visible)
+        return await version_boundary.restore(command_id, target, events, visible, policy)
 
     restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(
         restore_workspace, isolated=task is not None,
@@ -292,6 +293,16 @@ async def build_assistant_assembly(
         **compact_context.bindings(),
     }
     bindings = _with_tool_progress(bindings, tool_progress_sink)
+    for name in (*builtin_tools.names(), *review_bindings):
+        binding = bindings[name]
+        async def projected(context, arguments, _handler=binding.handler):
+            try:
+                return await versions.execute(operation_id(context.session_id, context.command_id),
+                                              lambda: _handler(context, arguments))
+            except SandboxUnavailable as error:
+                return {"ok": False, "code": "SANDBOX_UNAVAILABLE", "error": str(error)}
+        bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,
+                                     requires_authorization=binding.requires_authorization)
     decision = JournalBackedLlmDecisionMaker(
         journal,
         config.llm,
@@ -314,7 +325,7 @@ async def build_assistant_assembly(
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
-    child_review = ChildWorkspaceReview(runtime, session_id, versions, home, session_transport)
+    child_review = ChildWorkspaceReview(runtime, session_id, review_worktrees(home, workspace), home, session_transport, versions)
     surface.attach(runtime)
     compact_context.runtime = runtime
     scheduler = scheduler_factory(

@@ -166,7 +166,7 @@ export const conversationViewSchema = z
     workspace_version: z.object({
       workspace_id: z.string().min(1),
       step_id: z.string().min(1).nullable(),
-      version: z.string().regex(/^[0-9a-f]{40}$/).nullable(),
+      version: z.string().regex(/^(initial|[0-9a-f]{64})$/).nullable(),
       error: z.string().min(1).nullable(),
     }).strict().nullable(),
   })

@@ -344,7 +344,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
         matches = []
         for relative, candidate_kind in page:
             try:
-                resolved_candidate = resolver.resolve(str(search_root / relative))
+                resolved_candidate = resolver.resolve_native(search_root / relative)
             except EnvironmentInputError:
                 continue
             matches.append({
@@ -510,7 +510,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
                         if hits and page_chars + len(content) > MAX_GREP_PAGE_CHARS:
                             truncated = True
                             break
-                        hit_path = resolver.resolve(path_data["text"])
+                        hit_path = resolver.resolve_native(path_data["text"])
                         hits.append({
                             "file": hit_path.workspace_membership.display_path,
                             **hit_path.result_fields(),

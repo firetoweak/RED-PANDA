@@ -219,7 +219,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.assistant.subagent.workspace import child_layout, workspace_versions
+        from redpanda.assistant.subagent.workspace import child_layout, review_worktrees
         from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
@@ -227,7 +227,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
 
         root, ref = child_layout(self.home, PARENT, CHILD)
-        await workspace_versions(self.home, self.workspace).fork(root, ref)
+        await review_worktrees(self.home, self.workspace).fork(root, ref)
         await self.store.create(CHILD, workspace_id=self.workspace.workspace_id)
         journal = SqliteJournal(self.store.require(CHILD))
         await journal.accept_delivery(
@@ -327,7 +327,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             for index in range(3)
         ]
         with (
-            patch("redpanda.assistant.host.supervisor.workspace_versions", return_value=Versions()),
+            patch("redpanda.assistant.host.supervisor.review_worktrees", return_value=Versions()),
             patch.object(self.host, "request", new_callable=AsyncMock),
         ):
             await asyncio.gather(*(
@@ -379,8 +379,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         from redpanda.sandbox.registry import WorkspaceRegistry
 
         self.directory = tempfile.TemporaryDirectory()
-        self.root = Path(self.directory.name)
-        self.home = RedPandaHome(self.root / "home")
+        self.root = Path(self.directory.name) / "project"
+        self.root.mkdir()
+        self.home = RedPandaHome(Path(self.directory.name) / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path

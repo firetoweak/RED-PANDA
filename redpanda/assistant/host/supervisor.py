@@ -45,8 +45,7 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.assistant.subagent.workspace import child_layout, workspace_versions
-from redpanda.assistant.workspace_versions import project_workspace_versions
+from redpanda.assistant.subagent.workspace import child_layout, review_worktrees, child_workspace
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
@@ -255,7 +254,7 @@ class HostSupervisor:
                 async with self.workspace_creation_locks.setdefault(
                     child_workspace_id, asyncio.Lock()
                 ):
-                    await workspace_versions(self.home, parent_workspace).fork(
+                    await review_worktrees(self.home, parent_workspace).fork(
                         root, ref, conflict_from=conflict_from
                     )
                 if not self.store.path(session_id).parent.exists():
@@ -292,10 +291,11 @@ class HostSupervisor:
             if not any(isinstance(event.payload, DomainFactCommitted)
                        and event.payload.fact_type == RETURN_FACT for event in events):
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
-            versions = project_workspace_versions(events)
-            if not versions or versions[-1].version is None:
-                return {"ok": False, "code": "CHILD_VERSION_UNAVAILABLE", "error": "子会话的最终文件状态没有保存下来，无法比较或合入。"}
-            return {"ok": True, "version": versions[-1].version}
+            workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
+            root, ref = child_layout(self.home, task.parent_session_id, session_id)
+            version = await review_worktrees(self.home, child_workspace(workspace, root), ref=ref,
+                                            ignore_root=workspace.task_root).record()
+            return {"ok": True, "version": version}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
             return None

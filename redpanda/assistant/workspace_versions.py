@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-import re
 
 from redpanda.runtime import DomainFactCommitted
 from redpanda.runtime.model import CommandPhase
-from redpanda.sandbox.versions import WorkspaceRestoreFailed, WorkspaceVersions
+from redpanda.sandbox.versions import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceVersions, operation_id, validate_version
 
 
 WORKSPACE_VERSION_FACT = "assistant.workspace_version"
@@ -44,8 +43,8 @@ class WorkspaceVersionFact:
 def _validate_version_result(version, error):
     if (version is None) == (error is None):
         raise ValueError("workspace version must contain either version or error")
-    if version is not None and (type(version) is not str or re.fullmatch(r"[0-9a-f]{40}", version) is None):
-        raise ValueError("workspace version identity invalid")
+    if version is not None:
+        validate_version(version)
     if error is not None and (type(error) is not str or not error):
         raise ValueError("workspace version error invalid")
 
@@ -89,11 +88,25 @@ def project_workspace_restores(events):
         for key in ("command_id", "tool_call_id", "before_version"):
             if type(data[key]) is not str or not data[key]:
                 raise ValueError(f"workspace restore {key} invalid")
-        if re.fullmatch(r"[0-9a-f]{40}", data["before_version"]) is None:
-            raise ValueError("workspace restore rescue version invalid")
+        validate_version(data["before_version"])
         _validate_version_result(data["version"], data["error"])
         restores[data["command_id"]] = data
     return restores
+
+
+def branch_baseline(events, marker, through):
+    """A branch starts from the settled files, including preserved user values."""
+    version = WorkspaceVersionFact.parse(marker.payload.data).version
+    for event in events:
+        payload = event.payload
+        if marker.sequence < event.sequence <= through and isinstance(payload, DomainFactCommitted) and payload.fact_type == WORKSPACE_RESCUE_FACT:
+            data = payload.data
+            if not isinstance(data, Mapping) or set(data) != {"step_id", "before_version", "version", "error"}:
+                raise ValueError("workspace branch baseline fields invalid")
+            validate_version(data["before_version"])
+            _validate_version_result(data["version"], data["error"])
+            version = data["version"] if data["error"] is None else data["before_version"]
+    return version
 
 
 class WorkspaceVersionBoundary:
@@ -123,7 +136,7 @@ class WorkspaceVersionBoundary:
     async def _record(self, step_id: str | None, cause: str | None) -> None:
         try:
             version = await self.versions.record()
-        except OSError as exc:
+        except SandboxUnavailable as exc:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, None, str(exc))
         else:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, version, None)
@@ -146,9 +159,13 @@ class WorkspaceVersionBoundary:
         if not recorded:
             return
         target = recorded[-1]
-        if await self.versions.record() == target.version:
+        marker = workspace_version_event(events, target.step_id)
+        target_version = branch_baseline(events, marker, events[-1].sequence)
+        current = await self.versions.record()
+        if current == target_version:
             return
         if not restore:
+            await self._record_rescue(delivery_id + "-baseline", target.step_id, current, current, None)
             await self.runtime.receive_domain_fact(
                 self.session_id, WORKSPACE_CARRYOVER_FACT,
                 {"note": "工作区文件保持现状，没有退回这条分支的历史位置；"
@@ -157,7 +174,7 @@ class WorkspaceVersionBoundary:
             )
             return
         try:
-            restored = await self.versions.restore(target.version)
+            restored = await self.versions.restore(target_version, identity=operation_id(self.session_id, delivery_id))
         except WorkspaceRestoreFailed as error:
             await self._record_rescue(
                 delivery_id, target.step_id, error.before_version, None, str(error)
@@ -180,7 +197,7 @@ class WorkspaceVersionBoundary:
             delivery_id=delivery_id, source=WORKSPACE_RESCUE_FACT,
         )
 
-    async def restore(self, command_id, target, events, visible):
+    async def restore(self, command_id, target, events, visible, policy="preserve"):
         target_step = next((step for step in visible.steps
                             if any(c.command.command_id == target for c in step.commands)), None)
         if target_step is None:
@@ -194,18 +211,18 @@ class WorkspaceVersionBoundary:
         if previous is None or previous.version is None:
             return {"ok": False, "code": "WORKSPACE_VERSION_UNAVAILABLE",
                     "error": "无法回退到该调用之前：那时的文件状态没有保存下来。"}
-        version = previous.version
-        # 回退调用自身有精确的执行前救援快照，包含两步之间的手工修改。
+        version = branch_baseline(events, workspace_version_event(events, previous_id), target_step.sequence)
+        # 恢复本身是普通操作；其执行前引用用于反向撤销实际恢复结果。
         restore = project_workspace_restores(events).get(target)
         if restore is not None:
             version = restore["before_version"]
         try:
-            restored = await self.versions.restore(version)
+            restored = await self.versions.restore(version, identity=operation_id(self.session_id, command_id), policy=policy)
         except WorkspaceRestoreFailed as error:
             await self._record_restore(command_id, target, error.before_version, None, str(error))
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error),
-                    "hint": "恢复前的文件已保存，可引用本次回退调用 id 撤销这次恢复。"}
-        except OSError as error:
+                    "hint": "文件恢复计划存在冲突，未创建恢复候选；检查用户变化后再选择策略。"}
+        except SandboxUnavailable as error:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error)}
         await self._record_restore(command_id, target, restored.before_version, restored.version, None)
         return {"ok": True, "code": "WORKSPACE_RESTORED", "tool_call_id": target}

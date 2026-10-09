@@ -1,0 +1,129 @@
+use super::*;
+
+impl OverlayFS {
+    /// Check if a path is whiteout (deleted from base).
+    pub(super) fn is_whiteout(&self, path: &str) -> bool {
+        let whiteouts = self.whiteouts.read();
+        // Check path and all ancestors.
+        let mut current = String::new();
+        for component in path.split('/').filter(|s| !s.is_empty()) {
+            current = format!("{current}/{component}");
+            if whiteouts
+                .iter()
+                .any(|hidden| self.base.names_equal(hidden, &current))
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Create a whiteout for a path.
+    pub(super) async fn create_whiteout(&self, path: &str) -> Result<()> {
+        let conn = self.delta.get_connection().await?;
+        let mut txn =
+            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
+        let parent_path = parent_path_for_whiteout(path);
+        let (now, _) = current_timestamp()?;
+
+        let result: Result<()> = async {
+            conn.execute(
+                "INSERT OR REPLACE INTO fs_whiteout (path, parent_path, created_at) VALUES (?, ?, ?)",
+                (path, parent_path.as_str(), now),
+            )
+            .await?;
+            self.maybe_fail_whiteout_for_test()?;
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => {
+                txn.record(super::super::vfs::JournalDelta::whiteout_upsert(
+                    "whiteout",
+                    path,
+                    &parent_path,
+                    now,
+                ));
+                txn.commit().await?;
+                self.whiteouts.write().insert(path.to_string());
+                Ok(())
+            }
+            Err(error) => {
+                let _ = txn.rollback().await;
+                Err(error)
+            }
+        }
+    }
+
+    /// Remove a whiteout.
+    pub(super) async fn remove_whiteout(&self, path: &str) -> Result<()> {
+        let matched = self
+            .whiteouts
+            .read()
+            .iter()
+            .find(|hidden| self.base.names_equal(hidden, path))
+            .cloned();
+        let Some(matched) = matched else {
+            return Ok(());
+        };
+        let path = matched.as_str();
+
+        let conn = self.delta.get_connection().await?;
+        let mut txn =
+            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
+        let result: Result<()> = async {
+            conn.execute("DELETE FROM fs_whiteout WHERE path = ?", (path,))
+                .await?;
+            self.maybe_fail_whiteout_for_test()?;
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => {
+                txn.record(super::super::vfs::JournalDelta::whiteout_delete(
+                    "whiteout_remove",
+                    path,
+                ));
+                txn.commit().await?;
+                self.whiteouts.write().remove(path);
+                Ok(())
+            }
+            Err(error) => {
+                let _ = txn.rollback().await;
+                Err(error)
+            }
+        }
+    }
+
+    /// Get child whiteouts for a directory.
+    pub(super) fn get_child_whiteouts(&self, dir_path: &str) -> HashSet<String> {
+        let whiteouts = self.whiteouts.read();
+        whiteouts
+            .iter()
+            .filter_map(|path| {
+                let (parent, name) = path.rsplit_once('/').unwrap();
+                let parent = if parent.is_empty() { "/" } else { parent };
+                self.base
+                    .names_equal(parent, dir_path)
+                    .then(|| name.to_owned())
+            })
+            .collect()
+    }
+
+    #[cfg(all(test, unix))]
+    pub(super) fn fail_next_whiteout_for_test(&self, reason: &str) {
+        *self.whiteout_fault.lock() = Some(reason.to_string());
+    }
+
+    fn maybe_fail_whiteout_for_test(&self) -> Result<()> {
+        #[cfg(test)]
+        {
+            if let Some(reason) = self.whiteout_fault.lock().take() {
+                return Err(Error::Internal(reason));
+            }
+        }
+        Ok(())
+    }
+}

@@ -17,6 +17,10 @@ def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: boo
         f"系统：{platform.system()}",
         workspace,
         f"相对路径从工作区开始；{access}",
+        "工作区文件工具与命令 cwd 使用独立文件投影，已完成操作会写回工作区；命令内修改项目文件使用相对路径。",
+        "回撤只撤销助手经投影造成的变化；用户其他文件保持现状，.gitignore 不排除捕获。",
+        "这是文件视图，不是系统安全隔离：命令仍可访问投影外的路径，绝对宿主路径修改、安装、缓存和网络不在回撤范围。",
+        "当前不支持目录重命名、只改大小写重命名、硬链接路径修改、ACL、ADS 和 reparse。",
         "</environment>",
     ))
 

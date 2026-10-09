@@ -66,6 +66,7 @@ async def build_builtin_tools(
     materials_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
+    sandbox=None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -80,6 +81,7 @@ async def build_builtin_tools(
         workspace_view=view,
         cwd=str(workspace.task_root),
     ))
+    binding = replace(binding, execution_attachment=replace(binding.execution_attachment, filesystem=sandbox))
     if materials_root is not None:
         binding = replace(
             binding,
@@ -105,7 +107,7 @@ async def build_builtin_tools(
 
 
 def workspace_restore_tool(
-    operation: Callable[[str, str], Awaitable[dict]],
+    operation: Callable[[str, str, str], Awaitable[dict]],
     *,
     isolated: bool = False,
 ):
@@ -113,8 +115,8 @@ def workspace_restore_tool(
     from redpanda.runtime import ToolBinding
 
     def executor(command_id):
-        async def restore(target):
-            return await operation(command_id, target)
+        async def restore(target, policy):
+            return await operation(command_id, target, policy)
         spec = create_workspace_restore_spec(restore, isolated=isolated)
         registry = ToolRegistry()
         registry.register(spec)

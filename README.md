@@ -44,6 +44,8 @@ RED PANDA 从对话出发，在你的工作区里阅读文件、修改内容、�
 
 安装脚本会下载项目专用的 Python 3.13 并安装依赖，不需要预装 Python 或 Docker。
 
+此分支的工作区文件执行与回退采用内置 VFS，目前仅验证 Windows x64。启动前还需安装 WinFsp 并构建原生沙箱，见下方步骤；macOS / Linux 的文件视图接入尚未实现。
+
 ```sh
 git clone https://github.com/firetoweak/RED-PANDA.git
 cd RED-PANDA
@@ -75,9 +77,17 @@ sh scripts/setup.sh
 
 保存后，下一次模型调用直接使用新连接，无需重启。Web 可以在密钥未填写时启动，密钥由个人连接文件管理。完整示例与模型 ID 的填写方式见[模型配置指南](docs/模型配置.md)。
 
-### 4. 构建并启动 Web
+### 4. 构建原生沙箱和 Web
 
-先安装前端依赖并构建：
+Windows 下先准备 Rust、WinFsp 驱动与 SDK、C++ 工具链，再在仓库根目录执行：
+
+```powershell
+.\redpanda-env\Scripts\python.exe scripts/build_sandbox.py
+```
+
+默认构建 MSVC release target；本机已验证的是 GNU LLVM debug target。具体准备条件、可选参数与已验证的构建方式见[原生 sandbox 说明](native/sandbox/README.md)。VFS 源码随本仓库提供，无需另行克隆。Python 安装脚本不会安装 WinFsp 驱动或编译 Rust；缺少原生程序时文件工具会明确返回沙箱不可用。
+
+然后安装前端依赖并构建：
 
 ```sh
 cd web
@@ -115,6 +125,12 @@ cd ..
 个人配置与会话数据保存在 `~/.redpanda`。`REDPANDA_HOME` 可以更换整个个人数据目录，`REDPANDA_CONFIG` 可以单独指定模型候选配置文件；详细说明见[模型配置](docs/模型配置.md)。
 
 ## 开发与测试
+
+Windows 的文件工具、命令和文件回退通过 VFS 文件视图执行。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。安装 WinFsp 和构建工具后，执行 `python scripts/build_sandbox.py`；程序与运行库生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见[原生 sandbox 说明](native/sandbox/README.md)。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。当前以 Windows 为主，缺少原生程序时明确报错。
+
+日常回退捕获助手造成的文件变化，`.gitignore` 不影响捕获。模型可选择保留用户后续值或恢复助手改变位置的原值；Web 时间旅行默认保留用户后续值。系统安装、挂载外命令写入及其他外部副作用不在回退范围内。子任务复制与成果比较、合入仍使用独立的 Git 业务端口，不参加日常 Step 记录。
+
+本机接入、真实编码与回撤的验证结果，以及当前能力边界，见[Windows VFS 接入验证](docs/验证/VFS接入.md)。
 
 完成安装与前端依赖准备后，可以用 Web 开发模式同时启动后端热重载与 Vite：
 

@@ -1,0 +1,24 @@
+[package]
+name = "redpanda-sandbox"
+version = "0.4.1"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+vfs-core = { path = "../vfs/crates/vfs-core" }
+vfs-mount = { path = "../vfs/crates/vfs-mount", features = ["winfsp"] }
+
+[patch.crates-io]
+turso = { path = "../vfs/third_party/turso" }
+turso_sdk_kit = { path = "../vfs/third_party/turso_sdk_kit" }
+turso_core = { path = "../vfs/third_party/turso_core" }
+
+[lints.clippy]
+await_holding_lock = "deny"

@@ -36,8 +36,9 @@ async def until(predicate, timeout=45):
 class CompactTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = TemporaryDirectory()
-        self.root = Path(self.temp.name)
-        self.home = RedPandaHome(self.root / "home")
+        self.root = Path(self.temp.name) / "project"
+        self.root.mkdir()
+        self.home = RedPandaHome(Path(self.temp.name) / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path

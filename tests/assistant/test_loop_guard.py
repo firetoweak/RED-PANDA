@@ -121,6 +121,11 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
             (root / "a.txt").write_text("same evidence", encoding="utf-8")
             llm = RepeatingLlm()
             journal = SqliteJournal(root / "journal.sqlite")
+            # 本层守循环提示契约；真实投影在 sandbox process 层验证。
+            async def execute(self, identity, callback):
+                return await callback()
+            self.enterContext(patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute))
+            self.enterContext(patch("redpanda.sandbox.versions.WorkspaceVersions.native_path", lambda self, path: path))
             assembly = await build_assistant_assembly(
                 AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",
@@ -156,7 +161,8 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 with patch.object(journal, "snapshot", AsyncMock(return_value=prefix)):
                     with self.assertRaisesRegex(RuntimeError, "provider broke"):
                         await maker.decide(frame)
-                    self.assertEqual(llm.requests[-1][-1]["content"], first["text"])
+                # 已完成批次的工具结果可以跟在历史提示之后；重放仍须保留唯一原文。
+                self.assertEqual(sum(m.get("content") == first["text"] for m in llm.requests[-1]), 1)
                 self.assertEqual(LoopGuard().inspect(prefix, first["covered_through"]), first)
                 llm.fail_next = False
                 with (

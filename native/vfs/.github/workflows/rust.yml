@@ -1,0 +1,294 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: nightly-2026-08-07
+
+jobs:
+  workspace:
+    name: Workspace (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+        components: rustfmt, clippy
+
+    - name: Install system dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: ./scripts/install-deps.sh
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-workspace-${{ hashFiles('Cargo.lock') }}
+
+    - name: Check formatting
+      if: matrix.os == 'ubuntu-latest'
+      run: cargo +"$RUST_TOOLCHAIN" fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets -- -D warnings
+
+    - name: Build
+      run: cargo +"$RUST_TOOLCHAIN" build --workspace --verbose
+
+    - name: Run tests
+      run: cargo +"$RUST_TOOLCHAIN" test --workspace --verbose
+
+  # The gate's runtime phases all need the same release binary. Building it
+  # once here keeps that build off the critical path of every shard, which
+  # otherwise each pay for it.
+  gate-binary:
+    name: Gate binary
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+    - name: Install system dependencies
+      run: ./scripts/install-deps.sh
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-gate-${{ hashFiles('Cargo.lock') }}
+
+    - name: Build release binary
+      run: cargo +"$RUST_TOOLCHAIN" build --release --workspace --bins
+
+    - name: Upload vfs binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: vfs-release-binary
+        path: target/release/vfs
+        retention-days: 1
+        if-no-files-found: error
+
+  gate-shell:
+    name: Gate shell ${{ matrix.shard }}/4
+    needs: gate-binary
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: ./scripts/install-deps.sh
+
+    - name: Download vfs binary
+      uses: actions/download-artifact@v4
+      with:
+        name: vfs-release-binary
+        path: target/release
+
+    - name: Allow unprivileged user namespaces
+      run: |
+        # Ubuntu 24.04 runner images gate unprivileged user namespaces behind
+        # AppArmor; without this the vfs run suites SKIP and the strict
+        # gate goes red instead of exercising the sandbox for real.
+        chmod +x target/release/vfs
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+    - name: Run shell gate shard
+      env:
+        # The runner kernel ships FUSE-over-io_uring disabled
+        # (/sys/module/fuse/parameters/enable_uring reads N), so the kernel
+        # refuses ring registration and the panic-census uring leg can never
+        # run here. That one SKIP is allowlisted; every other SKIP still
+        # fails the strict gate. The corruption-torture uring leg needs no
+        # entry: with enable_uring=N the mount falls back to the legacy
+        # channel and the leg passes.
+        VFS_GATE_ALLOWED_SKIPS: fuse-sigint-panic-census
+        VFS_GATE_SHARD: ${{ matrix.shard }}/4
+      run: scripts/gate.sh --phases shell
+
+  gate-python:
+    name: Honest milestone gate (python, canon, pjdfstest)
+    needs: gate-binary
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: ./scripts/install-deps.sh
+
+    - name: Download vfs binary
+      uses: actions/download-artifact@v4
+      with:
+        name: vfs-release-binary
+        path: target/release
+
+    - name: Allow unprivileged user namespaces
+      run: |
+        chmod +x target/release/vfs
+        sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+    - name: Build pjdfstest
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake make gcc perl
+        git clone --depth 1 https://github.com/pjd/pjdfstest.git /tmp/pjdfstest
+        cd /tmp/pjdfstest
+        autoreconf -ifs
+        ./configure
+        make pjdfstest
+
+    - name: Run Python gate and consistency canon
+      run: |
+        # phase8-validation.py --smoke includes the noopen/flush/base-drift
+        # coherence harnesses; the canon census is the structural gate.
+        scripts/gate.sh --phases python,canon
+
+    - name: Run pjdfstest phase5-ci
+      run: |
+        scripts/validation/posix/run-pjdfstest.sh \
+          --vfs-bin "$PWD/target/release/vfs" \
+          --pjdfstest-dir /tmp/pjdfstest \
+          --profile phase5-ci
+
+  # Real macOS runtime coverage: the NFS mount path, the Seatbelt read-scoping
+  # posture, and the remote-tier suites all execute here, not just compile.
+  # macos-latest runners allow unprivileged /sbin/mount_nfs against the
+  # session's loopback NFS server, so no sudo is involved. A suite SKIP is
+  # red: a runner that cannot run these legs must fail loudly, not pass green.
+  macos-runtime:
+    name: macOS runtime gate
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-macos-runtime-${{ hashFiles('Cargo.lock') }}
+
+    - name: Put GNU coreutils on PATH
+      # The shell suites use sha256sum and truncate; stock macOS ships neither.
+      run: |
+        brew list coreutils >/dev/null 2>&1 || brew install coreutils
+        echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+
+    - name: Build release binary
+      run: cargo +"$RUST_TOOLCHAIN" build --release -p vfs-cli
+
+    - name: NFS and Seatbelt runtime validation
+      run: scripts/validation/macos-nfs-git-validation.sh --vfs-bin "$PWD/target/release/vfs"
+
+    - name: Remote checkpoint e2e
+      env:
+        VFS_BIN: ${{ github.workspace }}/target/release/vfs
+      run: |
+        set -o pipefail
+        crates/vfs-cli/tests/test-remote-checkpoint-e2e.sh 2>&1 | tee /tmp/remote-checkpoint.log
+        ! grep -q '^SKIP:' /tmp/remote-checkpoint.log
+
+    - name: Remote adopt e2e
+      env:
+        VFS_BIN: ${{ github.workspace }}/target/release/vfs
+      run: |
+        set -o pipefail
+        crates/vfs-cli/tests/test-remote-adopt-e2e.sh 2>&1 | tee /tmp/remote-adopt.log
+        ! grep -q '^SKIP:' /tmp/remote-adopt.log
+
+  build-linux-arm64:
+    name: Build (Linux arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: ./scripts/install-deps.sh
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo index
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('Cargo.lock') }}
+
+    - name: Cache cargo build
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-arm64-${{ hashFiles('Cargo.lock') }}
+
+    - name: Build workspace
+      run: cargo +"$RUST_TOOLCHAIN" build --workspace --verbose
+
+    - name: Run tests
+      run: cargo +"$RUST_TOOLCHAIN" test --workspace --verbose

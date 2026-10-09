@@ -70,7 +70,7 @@ class HostRestartFromStepTest(unittest.IsolatedAsyncioTestCase):
         order: list[str] = []
         host = host_watching(order)
 
-        with journal_of(version_event("step-1", "a" * 40)):
+        with journal_of(version_event("step-1", "a" * 64)):
             view = await host.restart_from_step(
                 "owner", "session-old", "step-1", "session-new", "web-1"
             )
@@ -116,7 +116,7 @@ class HostRestartFromStepTest(unittest.IsolatedAsyncioTestCase):
             return "view"
 
         host.compact.application = AsyncMock(side_effect=application)
-        with journal_of(version_event("step-1", "a" * 40)):
+        with journal_of(version_event("step-1", "a" * 64)):
             await host.restart_from_step(
                 "owner", "session-old", "step-1", "session-new", "web-1", restore_files=False
             )
