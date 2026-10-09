@@ -148,4 +148,4 @@ python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_works
 
 结果为 79 passed、3 skipped、19 subtests passed，约 36 秒。跳过的是 Windows PowerShell 工作流、Windows 独占共享，以及大小写仅有差别的重命名。`tests/sandbox/test_linux_workspace_execute.py` 的发布、冲突和两种恢复都通过。本轮没有跑真实模型测试，也没有在 CentOS 上复跑。
 
-同一环境下默认 `python -m pytest` 为 699 passed、1 failed、5 skipped，168 个 process 测试被默认排除。失败项是 `tests/assistant/test_process_env.py` 的 `test_keeps_current_path_prefix_and_appends_missing_session_dirs`：它用 `os.pathsep` 切分带盘符的 Windows 路径，Linux 上盘符里的冒号被当成路径分隔符。该文件不在这次改动里。
+同一环境下默认 `python -m pytest` 为 700 passed、5 skipped，168 个 process 测试被默认排除，约 11 秒。`test_keeps_current_path_prefix_and_appends_missing_session_dirs` 原先失败是因为测试把带盘符的 Windows 路径交给 `os.pathsep` 切分；合并实现按平台分隔符工作，Windows 上分隔符是分号，盘符冒号不会被切开。Linux 用例改为不含冒号的路径，Windows 用例仍使用原来的盘符路径。
