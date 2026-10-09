@@ -155,6 +155,32 @@ fn mount_backend() -> Backend {
         Backend::Fuse
     }
 }
+fn unsupported(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::Unsupported)
+    })
+}
+#[cfg(target_os = "linux")]
+fn clear_stale_mount(point: &Path) -> Result<()> {
+    match std::fs::read_dir(point) {
+        Err(error) if error.raw_os_error() == Some(libc::ENOTCONN) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+        Ok(_) => return Ok(()),
+    }
+    let status = std::process::Command::new("fusermount3")
+        .args(["-u", "-z"])
+        .arg(point)
+        .status()
+        .context("fusermount3")?;
+    ensure!(
+        status.success(),
+        "fusermount3 failed to clear a stale mount"
+    );
+    Ok(())
+}
 fn artifact_is_busy(error: &std::io::Error) -> bool {
     match error.raw_os_error() {
         #[cfg(windows)]
@@ -292,6 +318,8 @@ impl Service {
             .await?;
         // One active candidate owns this point; Command directories hold evidence only.
         let point = local_path(&self.store)?.join("mount");
+        #[cfg(target_os = "linux")]
+        clear_stale_mount(&point)?;
         #[cfg(unix)]
         std::fs::create_dir_all(&point)?;
         candidate.mount = Some(
@@ -375,6 +403,8 @@ impl Service {
                 || before.size != after.size
                 || before.blocks != after.blocks
                 || before.identity != after.identity
+                || before.mode != after.mode
+                || before.target != after.target
             {
                 changes.push(Change {
                     path: path.clone(),
@@ -402,7 +432,18 @@ impl Service {
         if let Some(mount) = c.mount {
             mount.unmount().await?;
         }
-        self.finish_candidate(&c.id, c.sdk, c.fs).await
+        match self.finish_candidate(&c.id, c.sdk, c.fs).await {
+            Ok(value) => Ok(value),
+            Err(error) if unsupported(&error) => {
+                let reason = format!("{error:#}");
+                storage::atomic_json(
+                    &self.command(&c.id)?.join("rejected.json"),
+                    &json!({"error": reason}),
+                )?;
+                Ok(json!({"status":"rejected","command_id":c.id,"error":reason}))
+            }
+            Err(error) => Err(error),
+        }
     }
     async fn recover(&mut self, id: &str) -> Result<Value> {
         if self.active.is_some() {
@@ -410,6 +451,9 @@ impl Service {
         }
         let dir = self.command(id)?;
         if dir.join("sealed.json").exists() {
+            return self.status(id);
+        }
+        if dir.join("rejected.json").exists() {
             return self.status(id);
         }
         let begin: Begin = storage::read_json(&dir.join("begin.json"))?;
@@ -455,6 +499,8 @@ impl Service {
             "discarded"
         } else if dir.join("sealed.json").exists() {
             "sealed"
+        } else if dir.join("rejected.json").exists() {
+            "rejected"
         } else {
             "unknown"
         };
@@ -476,6 +522,9 @@ impl Service {
             return self.status(id);
         }
         let dir = self.command(id)?;
+        if dir.join("rejected.json").exists() {
+            return self.status(id);
+        }
         if !dir.join("sealed.json").exists() {
             return Ok(json!({"status":"not_sealed","command_id":id}));
         }
@@ -727,7 +776,10 @@ async fn main() -> Result<()> {
             }
         };
         let stop = matches!(r, Request::Shutdown {});
-        let result = service.request(r).await?;
+        let result = match service.request(r).await {
+            Ok(value) => value,
+            Err(error) => json!({"status":"error","error":format!("{error:#}")}),
+        };
         emit(&result)?;
         if stop {
             break;

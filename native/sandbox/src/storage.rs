@@ -156,6 +156,8 @@ pub struct Image {
     pub chunk_size: u64,
     pub complete: bool,
     pub blocks: std::collections::BTreeMap<u64, Option<String>>,
+    pub mode: Option<u32>,
+    pub target: Option<String>,
 }
 impl Image {
     pub fn missing() -> Self {
@@ -166,6 +168,8 @@ impl Image {
             chunk_size: vfs_core::config::DEFAULT_CHUNK_SIZE as u64,
             complete: true,
             blocks: Default::default(),
+            mode: None,
+            target: None,
         }
     }
 }
@@ -178,6 +182,19 @@ pub async fn resolve(fs: &dyn FileSystem, path: &str) -> vfs_core::error::Result
         ino = s.ino;
     }
     Ok(Some(ino))
+}
+fn file_mode(mode: u32) -> Option<u32> {
+    // Windows publication does not chmod. Recording a mode there would make
+    // every host file look changed.
+    #[cfg(unix)]
+    {
+        Some(mode & 0o777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        None
+    }
 }
 pub async fn metadata(
     fs: &dyn FileSystem,
@@ -196,10 +213,35 @@ pub async fn metadata(
         image.chunk_size = chunk_size;
         return Ok(image);
     }
+    if stats.is_symlink() {
+        #[cfg(unix)]
+        {
+            let target = fs.readlink(ino).await?.ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "symlink target missing")
+            })?;
+            let mut image = Image::missing();
+            image.kind = "symlink".into();
+            image.size = target.len() as u64;
+            image.identity = identity;
+            image.chunk_size = chunk_size;
+            image.mode = Some(stats.mode & 0o777);
+            image.target = Some(target);
+            return Ok(image);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = identity;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "only regular files and directories are supported",
+            )
+            .into());
+        }
+    }
     if !stats.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "only regular files and directories are supported",
+            "only regular files, directories, and symlinks are supported",
         )
         .into());
     }
@@ -210,6 +252,8 @@ pub async fn metadata(
         chunk_size,
         complete: false,
         blocks: Default::default(),
+        mode: file_mode(stats.mode),
+        target: None,
     })
 }
 pub fn save_block(cas: &Path, bytes: &[u8]) -> vfs_core::error::Result<String> {

@@ -64,6 +64,7 @@ fn validate(image: &Image) -> Result<()> {
     }
     match image.kind.as_str() {
         "file" => {
+            ensure!(image.target.is_none(), "file image has a symlink target");
             for (&key, value) in &image.blocks {
                 let offset = key
                     .checked_mul(image.chunk_size)
@@ -80,8 +81,15 @@ fn validate(image: &Image) -> Result<()> {
                 }
             }
         }
+        "symlink" => {
+            let target = image.target.as_deref().context("symlink target absent")?;
+            ensure!(
+                image.blocks.is_empty() && image.complete && image.size == target.len() as u64,
+                "invalid symlink image"
+            );
+        }
         "missing" | "directory" => ensure!(
-            image.size == 0 && image.blocks.is_empty() && image.complete,
+            image.size == 0 && image.blocks.is_empty() && image.complete && image.target.is_none(),
             "invalid non-file image"
         ),
         _ => anyhow::bail!("invalid image kind"),
@@ -175,6 +183,7 @@ fn choose(
     }
     let mut desired = current.clone();
     desired.size = destination.size;
+    let mut preserved = false;
     for key in keys {
         let source_bytes = block(cas, source, key)?;
         let mut result = block(cas, destination, key)?;
@@ -183,6 +192,12 @@ fn choose(
             if source_bytes[index] == result[index]
                 || (matches!(policy, Policy::Preserve) && data[index] != source_bytes[index])
             {
+                if matches!(policy, Policy::Preserve)
+                    && source_bytes[index] != result[index]
+                    && data[index] != source_bytes[index]
+                {
+                    preserved = true;
+                }
                 result[index] = data[index];
             }
         }
@@ -197,6 +212,9 @@ fn choose(
         if key * desired.chunk_size >= desired.size {
             *hash = None;
         }
+    }
+    if !preserved {
+        desired.mode = destination.mode;
     }
     validate(&desired)?;
     Ok(Ok(desired))

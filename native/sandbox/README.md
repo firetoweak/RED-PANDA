@@ -24,7 +24,11 @@ Rust 为 `nightly-2026-08-07`（rustc `1.99.0-nightly`）。`native/sandbox/rust
 
 ### Windows
 
-需要 WinFsp 驱动和 SDK。仅安装 WinFsp 运行时不包含 SDK 的头文件与链接库。默认 MSVC target 需要 Visual Studio C++ 工具链，在其开发者终端运行构建。GNU LLVM target 需要 LLVM MinGW 的编译器和链接器在 PATH，并配置对应的 Cargo linker，以及所选 Windows target。
+需要 WinFsp 驱动和 SDK。仅安装 WinFsp 运行时不包含 SDK 的头文件与链接库。默认 MSVC target 需要 Visual Studio C++ 工具链，在其开发者终端运行构建。GNU LLVM target 需要 LLVM MinGW 的编译器和链接器在 PATH，并配置对应的 Cargo linker。`native/sandbox/rust-toolchain.toml` 声明了 `x86_64-pc-windows-msvc` 和 `x86_64-pc-windows-gnullvm`。rustup 在能联网时会随工具链安装这两个 target。离线构建前先在有网络的机器上执行：
+
+```powershell
+rustup target add x86_64-pc-windows-msvc x86_64-pc-windows-gnullvm --toolchain nightly-2026-08-07
+```
 
 ### Linux
 

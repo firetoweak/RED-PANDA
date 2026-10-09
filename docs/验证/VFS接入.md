@@ -85,7 +85,7 @@ RED PANDA 历史重放测试同时修正了一处顺序假设：完成批次的�
 
 ## Linux 接入
 
-Linux 使用仓库里已有的 FUSE 后端（`vfs-mount` 的 `Backend::Fuse`），不链接 libfuse。Windows 的 WinFsp 路径保持原样。宿主文件身份在 Linux 上是 `unix:{st_dev:016x}:{st_ino:016x}`，与 Python 发布端一致。
+Linux 使用仓库里已有的 FUSE 后端（`vfs-mount` 的 `Backend::Fuse`），不链接 libfuse。Windows 的 WinFsp 路径保持原样。宿主文件身份在 Linux 上是 `unix:{st_dev:016x}:{st_ino:016x}:{birth_ns:016x}`，与 Python 发布端一致。`birth_ns` 来自 `statx` 的出生时间，chmod 和写入不会改变它；inode 被复用且时钟往前走时，新文件会得到新的出生时间。没有把 `ctime` 放进身份，因为写入和 chmod 会改它，原地编辑就会被当成换了文件。本机 overlay 上 `FS_IOC_GETVERSION` 返回 `ENOTTY`，所以没有用 inode generation。文件系统不提供出生时间时该字段为 0。ext4、xfs、btrfs 和当前内核上的 tmpfs 会提供出生时间。overlay 的时间粒度较粗，同一时刻删了再建成时出生时间可能不变，这时同设备、同 inode 的身份仍会撞上。`st_dev` 可能在重启后变化，身份比较只在同一次启动内进行。
 
 ### 构建与运行前提
 
@@ -121,10 +121,10 @@ sudo yum install -y fuse3 fuse3-devel pkgconfig gcc
 进程测试：
 
 ```sh
-python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/assistant/test_vfs_coding_process.py
+python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/sandbox/test_linux_sandbox_edges.py tests/assistant/test_vfs_coding_process.py
 ```
 
-`tests/sandbox/test_linux_workspace_execute.py` 覆盖一次工具调用经 `versions.execute` 的写入、修改、删除、接受并发布到宿主目录、用户改写后的冲突，以及 `original` / `preserve` 两种恢复。
+`tests/sandbox/test_linux_workspace_execute.py` 覆盖一次工具调用经 `versions.execute` 的写入、修改、删除、接受并发布到宿主目录、用户改写后的冲突，以及 `original` / `preserve` 两种恢复。`tests/sandbox/test_linux_sandbox_edges.py` 覆盖符号链接与可执行位、发布期间的 rename 保存、fifo 拒绝后服务仍可用、SIGKILL 后的挂载清理，以及 `setsid` 子进程。
 
 ### 与 Windows 语义的差异
 
@@ -134,18 +134,22 @@ python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_works
 - 删除已打开文件在 Linux 上通常成功，所以清理忙碌产物不会得到 Windows 的 sharing violation（错误 32）。
 - 大小写仅有差别的重命名在大小写敏感的文件系统上是一次真实重命名。Windows 上的拒绝测试在 Linux 跳过。
 - 硬链接命名空间改动仍会被拒绝。Linux 在 unlink/rename/replace 时把错误交回命令进程；WinFsp 在 Cleanup 里提交删除且不能返回错误，所以 Windows 的 unlink 要到 finish 才让服务失败。
-- 宿主上先删除再按不同长度重建时，inode 可能被立刻复用，冲突原因可以是 `length_changed` 或 `identity_changed`。
+- 宿主上先删除再重建时，若出生时间不同，冲突原因是 `identity_changed`。不提供出生时间的文件系统上，同长度重建仍可能只报 `length_changed`。
 - 未按页对齐的写入会让 FUSE 先读覆盖该范围的页。块证据测试因此允许比 Windows 多两页的宿主读取，仍然不读取整个大文件。
-- 进程被 SIGKILL 时挂载不会自动卸下。`auto_unmount` 在未设置 `allow_other` 时会由 FUSE 传输层补上 `allow_other`，因此沙箱不启用它。正常 `shutdown` 会卸载。残留挂载用 `fusermount3 -u <挂载点>` 卸下。
+- 符号链接会进入证据并按链接本身发布和恢复，不跟随到目标。父目录路径上的符号链接仍然拒绝。Windows 上的 reparse point 仍整段拒绝。fifo 等其他类型会写成 `rejected.json`，`finish` 返回 `rejected`，服务进程不退出。其他请求错误返回 `{"status":"error"}`，同样不退出。
+- 发布写入后会再比较打开句柄和路径的身份。编辑器若在写入期间用 rename 换掉文件，事务记为冲突，用户文件保留。
+- 文件权限位进入证据。Linux 发布和回退时对打开的句柄 `fchmod`。Windows 不记录、不修改权限位。
+- 命令进程是子收割者。`setsid` 离开进程组后，父进程一死就被收割者杀掉，僵尸由收割者 `wait`。leader 是否已退出看 `/proc` 里的状态，`killpg` 发生在 `wait` 回收该 pid 之前。本机 `waitpid`/`waitid` 的 `WNOWAIT` 返回 `EINVAL`，所以没有用它。
+- 进程被 SIGKILL 后，下一次 `begin` 若发现挂载点返回 `ENOTCONN`，会执行 `fusermount3 -u -z` 再挂载。`auto_unmount` 仍不启用，因为它会连带打开 `allow_other`。
 
 ### 本机结果
 
 Ubuntu 24.04，当前用户可读写 `/dev/fuse`（`crw-rw-rw-`），`fusermount3` 可用，沙箱挂载没有设置 `allow_other`。在 `native/sandbox` 执行 `cargo clippy --locked --all-targets -- -D warnings` 通过。该包没有 Rust 单测。
 
 ```sh
-python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/assistant/test_vfs_coding_process.py
+python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/sandbox/test_linux_sandbox_edges.py tests/assistant/test_vfs_coding_process.py
 ```
 
-结果为 79 passed、3 skipped、19 subtests passed，约 36 秒。跳过的是 Windows PowerShell 工作流、Windows 独占共享，以及大小写仅有差别的重命名。`tests/sandbox/test_linux_workspace_execute.py` 的发布、冲突和两种恢复都通过。本轮没有跑真实模型测试，也没有在 CentOS 上复跑。
+结果待本轮复跑后填写。跳过的是 Windows PowerShell 工作流、Windows 独占共享，以及大小写仅有差别的重命名。本轮没有跑真实模型测试，也没有在 CentOS 上复跑。
 
 同一环境下默认 `python -m pytest` 为 700 passed、5 skipped，168 个 process 测试被默认排除，约 11 秒。`test_keeps_current_path_prefix_and_appends_missing_session_dirs` 原先失败是因为测试把带盘符的 Windows 路径交给 `os.pathsep` 切分；合并实现按平台分隔符工作，Windows 上分隔符是分号，盘符冒号不会被切开。Linux 用例改为不含冒号的路径，Windows 用例仍使用原来的盘符路径。

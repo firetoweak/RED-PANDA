@@ -18,6 +18,31 @@ use super::common::{stat_to_stats, HostFSFile};
 /// Root inode number (matches FUSE convention)
 pub const ROOT_INO: i64 = 1;
 
+/// Birth time from statx. Zero when the filesystem does not report one.
+/// Content and chmod updates do not change it; a reused inode gets a new one.
+fn birth_ns(fd: RawFd) -> Result<u64> {
+    let mut buf: libc::statx = unsafe { std::mem::zeroed() };
+    let path = CString::new("").unwrap();
+    let rc = unsafe {
+        libc::statx(
+            fd,
+            path.as_ptr(),
+            libc::AT_EMPTY_PATH | libc::AT_SYMLINK_NOFOLLOW,
+            libc::STATX_BTIME,
+            &mut buf,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if buf.stx_mask & libc::STATX_BTIME == 0 || buf.stx_btime.tv_sec < 0 {
+        return Ok(0);
+    }
+    Ok((buf.stx_btime.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(buf.stx_btime.tv_nsec as u64))
+}
+
 /// Source file identity (inode + device), used to detect hardlinks
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct SrcId {
@@ -297,9 +322,10 @@ impl FileSystem for HostFS {
     fn file_identity(&self, ino: i64) -> Result<String> {
         let inodes = self.inodes.read().unwrap();
         let inode = inodes.get(&ino).ok_or(FsError::NotFound)?;
+        let birth = birth_ns(inode.fd.as_raw_fd())?;
         Ok(format!(
-            "unix:{:016x}:{:016x}",
-            inode.src_dev, inode.src_ino
+            "unix:{:016x}:{:016x}:{:016x}",
+            inode.src_dev, inode.src_ino, birth
         ))
     }
 

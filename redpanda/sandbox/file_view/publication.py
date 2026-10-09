@@ -50,10 +50,14 @@ def valid_operation(value):
     else: raise ValueError('unknown operation kind')
 
 def valid_image(value):
-    fields(value,('kind','size','identity','chunk_size','complete','blocks'))
-    if value['kind'] not in ('file','directory','missing') or type(value['size']) is not int or value['size']<0 or type(value['chunk_size']) is not int or value['chunk_size']<=0 or type(value['complete']) is not bool or type(value['blocks']) is not dict: raise ValueError('invalid image')
+    fields(value,('kind','size','identity','chunk_size','complete','blocks','mode','target'))
+    if value['kind'] not in ('file','directory','missing','symlink') or type(value['size']) is not int or value['size']<0 or type(value['chunk_size']) is not int or value['chunk_size']<=0 or type(value['complete']) is not bool or type(value['blocks']) is not dict: raise ValueError('invalid image')
     if value['identity'] is not None and type(value['identity']) is not str: raise ValueError('invalid identity')
-    if value['kind']!='file' and (value['size'] or value['blocks'] or not value['complete']): raise ValueError('invalid non-file image')
+    if value['mode'] is not None and (type(value['mode']) is not int or not 0<=value['mode']<=0o777): raise ValueError('invalid mode')
+    if value['kind']=='symlink':
+        if type(value['target']) is not str or value['blocks'] or not value['complete']: raise ValueError('invalid symlink')
+    elif value['target'] is not None: raise ValueError('invalid target')
+    elif value['kind']!='file' and (value['size'] or value['blocks'] or not value['complete']): raise ValueError('invalid non-file image')
     for key,hash_value in value['blocks'].items():
         if type(key) is not str or not key.isascii() or not key.isdigit() or str(int(key))!=key: raise ValueError('invalid block index')
         if int(key)*value['chunk_size']>=value['size']:
@@ -64,8 +68,8 @@ def valid_image(value):
         if any(str(i) not in value['blocks'] for i in range(count)): raise ValueError('incomplete full image')
     return value
 
-def image(kind='missing',size=0,identity=None,chunk_size=65536,complete=True,blocks=None):
-    return {'kind':kind,'size':size,'identity':identity,'chunk_size':chunk_size,'complete':complete,'blocks':{} if blocks is None else blocks}
+def image(kind='missing',size=0,identity=None,chunk_size=65536,complete=True,blocks=None,mode=None,target=None):
+    return {'kind':kind,'size':size,'identity':identity,'chunk_size':chunk_size,'complete':complete,'blocks':{} if blocks is None else blocks,'mode':mode,'target':target}
 
 def blob(store, value, key):
     offset=int(key)*value['chunk_size']
@@ -113,13 +117,13 @@ def target(base, relative):
     parts=relative[1:].split('/')
     if any(not p or p in ('.','..') or any(c in p for c in '\\:') for p in parts): raise ValueError('invalid view path')
     path=base
-    for part in parts:
+    for index,part in enumerate(parts):
         path=path/part
         try: info=path.lstat()
         except FileNotFoundError: continue
         if os.name=='nt':
             if info.st_file_attributes&0x400: raise Conflict('reparse path')
-        elif stat.S_ISLNK(info.st_mode): raise Conflict('reparse path')
+        elif stat.S_ISLNK(info.st_mode) and index!=len(parts)-1: raise Conflict('reparse path')
     return path
 
 def coverage(a,b):
@@ -130,10 +134,14 @@ def actual(base,relative,template=None,store=None):
     path=target(base,relative)
     chunk_size=65536 if template is None else template['chunk_size']
     try:
+        if path.is_symlink():
+            info=path.lstat()
+            return image('symlink',len(os.fsencode(os.readlink(path))),native.directory_identity(path),chunk_size,True,mode=stat.S_IMODE(info.st_mode),target=os.readlink(path)),None
         if path.is_dir(): return image('directory',identity=native.directory_identity(path),chunk_size=chunk_size),None
         with native.open_file(path) as file:
-            size=os.fstat(file.fileno()).st_size
-            value=image('file',size,native.identity(file),chunk_size,False)
+            held=os.fstat(file.fileno())
+            size=held.st_size
+            value=image('file',size,native.identity(file),chunk_size,False,mode=None if os.name=='nt' else stat.S_IMODE(held.st_mode))
             if template is not None and size==template['size']:
                 indexes=range((size+chunk_size-1)//chunk_size) if template['complete'] else sorted(map(int,template['blocks']))
                 for index in indexes:
@@ -152,7 +160,7 @@ def actual(base,relative,template=None,store=None):
         raise
 
 def same(a,b):
-    return a['kind']==b['kind'] and a['size']==b['size'] and {k:v for k,v in a['blocks'].items() if v is not None}=={k:v for k,v in b['blocks'].items() if v is not None}
+    return a['kind']==b['kind'] and a['size']==b['size'] and a['mode']==b['mode'] and a['target']==b['target'] and {k:v for k,v in a['blocks'].items() if v is not None}=={k:v for k,v in b['blocks'].items() if v is not None}
 
 def choose(store,before,after,current,mode):
     for value in (before,after,current): valid_image(value)
@@ -173,7 +181,8 @@ def choose(store,before,after,current,mode):
                 else: restored+=1
             restored+=abs(len(a)-len(b))
             blocks[key]=save_block(store,bytes(result)) if result else None
-        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks),{'changed_bytes':restored,'preserved_bytes':preserved}
+        wanted=current['mode'] if mode=='preserve' and preserved else destination['mode']
+        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks,mode=wanted),{'changed_bytes':restored,'preserved_bytes':preserved}
     if same(source,current): return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
     if mode=='preserve': return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
     if mode=='original' and current['kind']==source['kind'] and current['size']==source['size']: return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
@@ -222,7 +231,7 @@ def build_plan(client,changes,mode,expected_bindings):
         source,destination=(before,after) if mode=='publish' else (after,before)
         current,_=actual(client.base,path,coverage(source,destination),client.store)
         expected=expected_bindings.get(path)
-        if current['kind'] in ('file','directory') and expected is not None and current['identity']!=expected: raise Conflict('file identity changed')
+        if current['kind'] in ('file','directory','symlink') and expected is not None and current['identity']!=expected: raise Conflict('file identity changed')
         if mode=='publish' and before['kind']=='file':
             identity=before['identity']
             if identity is not None and not identity.startswith('vfs:') and current['kind']=='file' and current['identity']!=identity: raise Conflict('file identity changed')
@@ -249,7 +258,9 @@ def mixed(store,current,expected,desired):
     return True
 
 def matches_open(file,store,value):
-    if os.fstat(file.fileno()).st_size!=value['size'] or native.identity(file)!=value['identity']: return False
+    held=os.fstat(file.fileno())
+    if held.st_size!=value['size'] or native.identity(file)!=value['identity']: return False
+    if value['mode'] is not None and stat.S_IMODE(held.st_mode)!=value['mode']: return False
     for key in value['blocks']:
         expected=blob(store,value,key)
         if not expected: continue
@@ -264,7 +275,7 @@ def apply_step(client,transaction,step,path):
     if current['kind']=='file' and current['size']==desired['size'] and current['size']!=expected['size']:
         template['size']=desired['size'];current,_=actual(client.base,step['path'],template,client.store)
     owned_identity=step['created_identity'] or expected['identity']
-    if current['kind'] in ('file','directory') and owned_identity is not None and current['identity']!=owned_identity: raise Conflict('file identity changed during transaction')
+    if current['kind'] in ('file','directory','symlink') and owned_identity is not None and current['identity']!=owned_identity: raise Conflict('file identity changed during transaction')
     if same(current,desired): step['state']='done';atomic(path,transaction);return
     if not same(current,expected):
         if step['state']!='applying' or not mixed(client.store,current,expected,desired): raise Conflict('transaction state changed externally')
@@ -272,6 +283,11 @@ def apply_step(client,transaction,step,path):
     target_path=target(client.base,step['path'])
     if desired['kind']=='directory':
         target_path.mkdir()
+        step['created_identity']=native.directory_identity(target_path);atomic(path,transaction)
+    elif desired['kind']=='symlink':
+        if current['kind']=='directory': target_path.rmdir()
+        elif current['kind']!='missing': target_path.unlink()
+        os.symlink(desired['target'],target_path)
         step['created_identity']=native.directory_identity(target_path);atomic(path,transaction)
     elif desired['kind']=='missing':
         if current['kind']=='directory':
@@ -281,6 +297,9 @@ def apply_step(client,transaction,step,path):
                     if error.winerror==145: raise Conflict('directory contains user children') from error
                 elif error.errno==errno.ENOTEMPTY: raise Conflict('directory contains user children') from error
                 raise
+        elif current['kind']=='symlink':
+            if not target_path.is_symlink() or os.readlink(target_path)!=current['target']: raise Conflict('file changed before deletion')
+            target_path.unlink()
         elif current['kind']=='file':
             with native.open_file(target_path,write=True) as file:
                 if not matches_open(file,client.store,current): raise Conflict('file changed before deletion')
@@ -296,7 +315,12 @@ def apply_step(client,transaction,step,path):
                 if not data or (not create and desired['blocks'][key]==current['blocks'].get(key)): continue
                 file.seek(int(key)*desired['chunk_size']);file.write(data)
             if create or current['size']!=desired['size']: file.truncate(desired['size'])
+            if os.name!='nt' and desired['mode'] is not None: os.fchmod(file.fileno(),desired['mode'])
             file.flush();os.fsync(file.fileno())
+            try: live=os.lstat(file.name)
+            except FileNotFoundError: raise Conflict('file identity changed during write') from None
+            held=os.fstat(file.fileno())
+            if (held.st_dev,held.st_ino)!=(live.st_dev,live.st_ino): raise Conflict('file identity changed during write')
     step['state']='done';atomic(path,transaction)
 
 def execute(client,path):
@@ -310,7 +334,7 @@ def execute(client,path):
             if step['state']=='done':
                 current,_=actual(client.base,step['path'],step['desired'],client.store)
                 identity=step['created_identity'] or step['expected']['identity']
-                if not same(current,step['desired']) or (current['kind'] in ('file','directory') and identity is not None and current['identity']!=identity): raise Conflict('completed step changed externally')
+                if not same(current,step['desired']) or (current['kind'] in ('file','directory','symlink') and identity is not None and current['identity']!=identity): raise Conflict('completed step changed externally')
             else: apply_step(client,transaction,step,path)
     except Conflict as error:
         transaction['state']='conflict';atomic(path,transaction)
@@ -326,7 +350,7 @@ def execute(client,path):
         elif command in index['active']: raise ValueError('undo ordering changed')
     for step in transaction['steps']:
         value,_=actual(client.base,step['path'])
-        if value['kind'] in ('file','directory'): index['bindings'][step['path']]=value['identity']
+        if value['kind'] in ('file','directory','symlink'): index['bindings'][step['path']]=value['identity']
         else: index['bindings'].pop(step['path'],None)
     atomic(client.store/'host-index.json',index)
     info=client.request('info')
