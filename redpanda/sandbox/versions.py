@@ -15,7 +15,10 @@ INITIAL = "initial"
 
 def native_executable() -> Path:
     configured = os.environ.get("REDPANDA_SANDBOX_EXECUTABLE")
-    return Path(configured) if configured is not None else Path(__file__).with_name("bin") / "redpanda-sandbox.exe"
+    if configured is not None:
+        return Path(configured)
+    name = "redpanda-sandbox.exe" if os.name == "nt" else "redpanda-sandbox"
+    return Path(__file__).with_name("bin") / name
 
 def validate_version(version: str) -> None:
     if type(version) is not str or (version != INITIAL and re.fullmatch(r"[0-9a-f]{64}", version) is None):

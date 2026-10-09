@@ -105,7 +105,7 @@ are application responsibilities.
 The first consolidation was verified on Windows x64 with 208 core unit tests,
 eight native filesystem contract tests and one explicitly enabled real WinFsp
 mount test. The core/mount library Clippy check and workspace format check passed.
-This result covers the `x86_64-pc-windows-gnullvm` build, not an MSVC build.
+This result covers the `x86_64-pc-windows-gnullvm` build.
 
 Run the native core suite and explicitly enable the real WinFsp test on a machine
 with the runtime. Unix CLI, Linux FUSE and macOS NFS need their own platform gate;

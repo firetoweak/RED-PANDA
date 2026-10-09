@@ -13,7 +13,12 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 vfs-core = { path = "../vfs/crates/vfs-core" }
+
+[target.'cfg(windows)'.dependencies]
 vfs-mount = { path = "../vfs/crates/vfs-mount", features = ["winfsp"] }
+
+[target.'cfg(unix)'.dependencies]
+vfs-mount = { path = "../vfs/crates/vfs-mount" }
 
 [patch.crates-io]
 turso = { path = "../vfs/third_party/turso" }

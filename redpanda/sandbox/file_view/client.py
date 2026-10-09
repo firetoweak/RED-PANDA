@@ -19,8 +19,11 @@ class Client:
         self.store.mkdir(parents=True,exist_ok=True)
         self.command_environment = dict(os.environ if command_environment is None else command_environment)
         self.log = (self.store/'service.log').open('ab')
+        popen = {}
+        if os.name == 'nt':
+            popen['creationflags'] = 0x08000000
         self.process = subprocess.Popen([str(executable),str(self.store),str(self.base)],cwd=self.store,
-            env=dict(os.environ if service_environment is None else service_environment),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',creationflags=0x08000000)
+            env=dict(os.environ if service_environment is None else service_environment),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',**popen)
         self.replies = queue.Queue()
         self.lock = threading.Lock()
         def read():

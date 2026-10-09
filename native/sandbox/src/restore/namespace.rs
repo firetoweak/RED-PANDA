@@ -62,6 +62,7 @@ struct Transaction {
 }
 
 fn native_identity(native: &str) -> Result<()> {
+    #[cfg(windows)]
     ensure!(
         native.len() == 48
             && native
@@ -69,6 +70,29 @@ fn native_identity(native: &str) -> Result<()> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
         "invalid native binding"
     );
+    #[cfg(unix)]
+    {
+        let mut parts = native.split(':');
+        let (prefix, dev, ino, birth, rest) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        );
+        let hex = |value: Option<&str>| {
+            value.is_some_and(|text| {
+                text.len() == 16
+                    && text
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+        };
+        ensure!(
+            prefix == Some("unix") && hex(dev) && hex(ino) && hex(birth) && rest.is_none(),
+            "invalid native binding"
+        );
+    }
     Ok(())
 }
 fn bind(result: &mut BTreeMap<String, String>, logical: &str, native: &str) -> Result<()> {
@@ -146,7 +170,10 @@ pub fn bindings(store: &Path) -> Result<BTreeMap<String, String>> {
                     ensure!(
                         step.state != "prepared"
                             && step.expected.kind == "missing"
-                            && matches!(step.desired.kind.as_str(), "file" | "directory"),
+                            && matches!(
+                                step.desired.kind.as_str(),
+                                "file" | "directory" | "symlink"
+                            ),
                         "invalid created identity state"
                     );
                     native_identity(native)?;
@@ -213,7 +240,9 @@ fn merge(target: &mut Option<Image>, image: &Image) -> Result<()> {
             value.kind == image.kind
                 && value.size == image.size
                 && value.identity == image.identity
-                && value.chunk_size == image.chunk_size,
+                && value.chunk_size == image.chunk_size
+                && value.mode == image.mode
+                && value.target == image.target,
             "alias metadata differs"
         );
         for (&key, hash) in &image.blocks {
@@ -230,6 +259,8 @@ fn merge(target: &mut Option<Image>, image: &Image) -> Result<()> {
 fn same_content(a: &Image, b: &Image) -> bool {
     a.kind == b.kind
         && a.size == b.size
+        && a.mode == b.mode
+        && a.target == b.target
         && a.blocks
             .iter()
             .filter(|(_, v)| v.is_some())
@@ -588,10 +619,14 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
     }
     let moving: BTreeSet<_> = plan.moves.iter().map(|(from, _)| from).collect();
     for (path, entry) in &plan.paths {
-        if entry.expected.kind == "file"
+        let remove_file = entry.expected.kind == "file"
             && (entry.desired.kind != "file" || entry.expected.identity != entry.desired.identity)
-            && !moving.contains(path)
-        {
+            && !moving.contains(path);
+        let remove_link = entry.expected.kind == "symlink"
+            && (entry.desired.kind != "symlink"
+                || entry.expected.target != entry.desired.target
+                || entry.expected.mode != entry.desired.mode);
+        if remove_file || remove_link {
             let (parent, name) = location(fs, path).await?;
             fs.unlink(parent, &name).await?;
         }
@@ -683,6 +718,30 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
             file.truncate(entry.desired.size).await?;
         }
         file.fsync().await?;
+        if let Some(mode) = entry.desired.mode {
+            let ino = storage::resolve(fs, path)
+                .await?
+                .context("file absent after write")?;
+            fs.chmod(ino, mode).await?;
+        }
+    }
+    for (path, entry) in &plan.paths {
+        if entry.desired.kind != "symlink" {
+            continue;
+        }
+        if entry.expected.kind == "symlink"
+            && entry.expected.target == entry.desired.target
+            && entry.expected.mode == entry.desired.mode
+        {
+            continue;
+        }
+        let target = entry
+            .desired
+            .target
+            .as_deref()
+            .context("symlink target absent")?;
+        let (parent, name) = location(fs, path).await?;
+        fs.symlink(parent, &name, target, 0, 0).await?;
     }
     fs.finalize().await?;
     Ok(())

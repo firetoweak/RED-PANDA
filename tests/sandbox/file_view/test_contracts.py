@@ -13,8 +13,8 @@ from redpanda.sandbox.versions import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
-if os.name != "nt" or not EXE.is_file():
-    pytest.skip("需要已构建的 Windows sandbox 与 WinFsp", allow_module_level=True)
+if not EXE.is_file():
+    pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.sandbox.file_view import Client, ServiceFailure
 from redpanda.sandbox.file_view import publication as pub
@@ -126,7 +126,8 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             h=client.request('info')['digest'];artifact=store/'artifacts'/(h+'.db')
             with self.assertRaises(OSError): artifact.open('r+b')
-            with self.assertRaises(OSError): artifact.rename(artifact.with_suffix('.moved'))
+            if os.name == 'nt':
+                with self.assertRaises(OSError): artifact.rename(artifact.with_suffix('.moved'))
             self.assertEqual(client.begin('c2')['parent_hashed_bytes'],0)
             client.request('finish');client.request('discard',command_id='c2')
         with artifact.open('r+b') as file:
@@ -380,6 +381,7 @@ class Contracts(unittest.TestCase):
         (store/'HEAD').write_text(path.stem,encoding='utf-8')
         with self.assertRaisesRegex(ServiceFailure,'invalid commit kind'): self.client(store,base)
 
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell 工作流")
     def test_real_powershell_python_git_workflow(self):
         _,base,store=self.fixture('workflow')
         powershell=shutil.which('pwsh') or shutil.which('powershell');git=shutil.which('git')

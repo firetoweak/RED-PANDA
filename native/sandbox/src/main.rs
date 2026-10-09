@@ -4,11 +4,14 @@ mod tracking;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
 use std::{
     collections::BTreeMap,
     fs::{File, OpenOptions},
     io::{BufRead, Write},
-    os::windows::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
@@ -108,15 +111,84 @@ struct Service {
     paused: bool,
     _owner: File,
 }
+#[cfg(not(any(windows, target_os = "linux")))]
+compile_error!("redpanda-sandbox mounts on Windows (WinFsp) and Linux (FUSE)");
+
 fn local_path(path: &Path) -> Result<PathBuf> {
     let p = path.canonicalize()?;
-    let value = p.to_str().context("UTF-8 local path")?;
-    let value = value.strip_prefix(r"\\?\").unwrap_or(value);
+    #[cfg(windows)]
+    {
+        let value = p.to_str().context("UTF-8 local path")?;
+        let value = value.strip_prefix(r"\\?\").unwrap_or(value);
+        ensure!(
+            value.as_bytes().get(1) == Some(&b':'),
+            "a local drive path is required"
+        );
+        return Ok(PathBuf::from(value));
+    }
+    #[cfg(unix)]
+    {
+        ensure!(p.is_absolute(), "an absolute path is required");
+        let _ = p.to_str().context("UTF-8 local path")?;
+        Ok(p)
+    }
+}
+fn lock_owner(path: &Path) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    options.share_mode(0);
+    let file = options.open(path).context("owner lock")?;
+    #[cfg(unix)]
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(std::io::Error::last_os_error()).context("owner lock");
+    }
+    Ok(file)
+}
+fn mount_backend() -> Backend {
+    #[cfg(windows)]
+    {
+        Backend::WinFsp
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Backend::Fuse
+    }
+}
+fn unsupported(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::Unsupported)
+    })
+}
+#[cfg(target_os = "linux")]
+fn clear_stale_mount(point: &Path) -> Result<()> {
+    match std::fs::read_dir(point) {
+        Err(error) if error.raw_os_error() == Some(libc::ENOTCONN) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+        Ok(_) => return Ok(()),
+    }
+    let status = std::process::Command::new("fusermount3")
+        .args(["-u", "-z"])
+        .arg(point)
+        .status()
+        .context("fusermount3")?;
     ensure!(
-        value.as_bytes().get(1) == Some(&b':'),
-        "a local drive path is required"
+        status.success(),
+        "fusermount3 failed to clear a stale mount"
     );
-    Ok(PathBuf::from(value))
+    Ok(())
+}
+fn artifact_is_busy(error: &std::io::Error) -> bool {
+    match error.raw_os_error() {
+        #[cfg(windows)]
+        Some(32) => true,
+        #[cfg(unix)]
+        Some(libc::EBUSY) => true,
+        _ => false,
+    }
 }
 impl Service {
     async fn open(store: PathBuf, base: PathBuf) -> Result<Self> {
@@ -129,13 +201,7 @@ impl Service {
         );
         // Native database and mount APIs need a verbatim path beyond MAX_PATH.
         let store = store.canonicalize()?;
-        let owner = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .share_mode(0)
-            .open(store.join("owner.lock"))?;
+        let owner = lock_owner(&store.join("owner.lock"))?;
         let config_path = store.join("config.json");
         let config = if config_path.exists() {
             let c: Config = storage::read_json(&config_path)?;
@@ -252,10 +318,14 @@ impl Service {
             .await?;
         // One active candidate owns this point; Command directories hold evidence only.
         let point = local_path(&self.store)?.join("mount");
+        #[cfg(target_os = "linux")]
+        clear_stale_mount(&point)?;
+        #[cfg(unix)]
+        std::fs::create_dir_all(&point)?;
         candidate.mount = Some(
             mount_fs(
                 Arc::new(TrackingFS(candidate.fs.clone())),
-                MountOpts::new(point.clone(), Backend::WinFsp),
+                MountOpts::new(point.clone(), mount_backend()),
             )
             .await?,
         );
@@ -333,6 +403,8 @@ impl Service {
                 || before.size != after.size
                 || before.blocks != after.blocks
                 || before.identity != after.identity
+                || before.mode != after.mode
+                || before.target != after.target
             {
                 changes.push(Change {
                     path: path.clone(),
@@ -360,7 +432,18 @@ impl Service {
         if let Some(mount) = c.mount {
             mount.unmount().await?;
         }
-        self.finish_candidate(&c.id, c.sdk, c.fs).await
+        match self.finish_candidate(&c.id, c.sdk, c.fs).await {
+            Ok(value) => Ok(value),
+            Err(error) if unsupported(&error) => {
+                let reason = format!("{error:#}");
+                storage::atomic_json(
+                    &self.command(&c.id)?.join("rejected.json"),
+                    &json!({"error": reason}),
+                )?;
+                Ok(json!({"status":"rejected","command_id":c.id,"error":reason}))
+            }
+            Err(error) => Err(error),
+        }
     }
     async fn recover(&mut self, id: &str) -> Result<Value> {
         if self.active.is_some() {
@@ -368,6 +451,9 @@ impl Service {
         }
         let dir = self.command(id)?;
         if dir.join("sealed.json").exists() {
+            return self.status(id);
+        }
+        if dir.join("rejected.json").exists() {
             return self.status(id);
         }
         let begin: Begin = storage::read_json(&dir.join("begin.json"))?;
@@ -413,6 +499,8 @@ impl Service {
             "discarded"
         } else if dir.join("sealed.json").exists() {
             "sealed"
+        } else if dir.join("rejected.json").exists() {
+            "rejected"
         } else {
             "unknown"
         };
@@ -434,6 +522,9 @@ impl Service {
             return self.status(id);
         }
         let dir = self.command(id)?;
+        if dir.join("rejected.json").exists() {
+            return self.status(id);
+        }
         if !dir.join("sealed.json").exists() {
             return Ok(json!({"status":"not_sealed","command_id":id}));
         }
@@ -631,7 +722,7 @@ impl Service {
                             removed += 1;
                             bytes += size;
                         }
-                        Err(e) if e.raw_os_error() == Some(32) => busy += 1,
+                        Err(e) if artifact_is_busy(&e) => busy += 1,
                         Err(e) => return Err(e.into()),
                     }
                 }
@@ -685,7 +776,10 @@ async fn main() -> Result<()> {
             }
         };
         let stop = matches!(r, Request::Shutdown {});
-        let result = service.request(r).await?;
+        let result = match service.request(r).await {
+            Ok(value) => value,
+            Err(error) => json!({"status":"error","error":format!("{error:#}")}),
+        };
         emit(&result)?;
         if stop {
             break;

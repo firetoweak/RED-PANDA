@@ -1,6 +1,9 @@
 use crate::error::{Error, Result};
-use crate::fs::{BoxedFile, DirEntry, FileSystem, FilesystemStats, FsError, Stats, TimeChange};
+use crate::fs::{
+    BoxedFile, DirEntry, File, FileSystem, FilesystemStats, FsError, Stats, TimeChange,
+};
 use async_trait::async_trait;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
@@ -14,6 +17,31 @@ use super::common::{stat_to_stats, HostFSFile};
 
 /// Root inode number (matches FUSE convention)
 pub const ROOT_INO: i64 = 1;
+
+/// Birth time from statx. Zero when the filesystem does not report one.
+/// Content and chmod updates do not change it; a reused inode gets a new one.
+fn birth_ns(fd: RawFd) -> Result<u64> {
+    let mut buf: libc::statx = unsafe { std::mem::zeroed() };
+    let path = CString::new("").unwrap();
+    let rc = unsafe {
+        libc::statx(
+            fd,
+            path.as_ptr(),
+            libc::AT_EMPTY_PATH | libc::AT_SYMLINK_NOFOLLOW,
+            libc::STATX_BTIME,
+            &mut buf,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if buf.stx_mask & libc::STATX_BTIME == 0 || buf.stx_btime.tv_sec < 0 {
+        return Ok(0);
+    }
+    Ok((buf.stx_btime.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(buf.stx_btime.tv_nsec as u64))
+}
 
 /// Source file identity (inode + device), used to detect hardlinks
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,6 +63,49 @@ struct Inode {
     nlookup: AtomicU64,
 }
 
+#[derive(Default)]
+struct Counters {
+    metadata_opens: AtomicU64,
+    directory_enumerations: AtomicU64,
+    data_read_requests: AtomicU64,
+    data_read_bytes: AtomicU64,
+}
+
+struct ObservedFile {
+    inner: HostFSFile,
+    counters: Arc<Counters>,
+}
+
+#[async_trait]
+impl File for ObservedFile {
+    async fn pread(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
+        self.counters
+            .data_read_requests
+            .fetch_add(1, Ordering::Relaxed);
+        let bytes = self.inner.pread(offset, size).await?;
+        self.counters
+            .data_read_bytes
+            .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        Ok(bytes)
+    }
+
+    async fn pwrite(&self, offset: u64, data: &[u8]) -> Result<()> {
+        self.inner.pwrite(offset, data).await
+    }
+
+    async fn truncate(&self, size: u64) -> Result<()> {
+        self.inner.truncate(size).await
+    }
+
+    async fn fsync(&self) -> Result<()> {
+        self.inner.fsync().await
+    }
+
+    async fn fstat(&self) -> Result<Stats> {
+        self.inner.fstat().await
+    }
+}
+
 /// A filesystem backed by a host directory (passthrough) using O_PATH file descriptors
 ///
 /// This implementation follows the architecture of libfuse's passthrough_hp.cc:
@@ -53,6 +124,7 @@ pub struct HostFS {
     src_to_ino: RwLock<HashMap<SrcId, i64>>,
     /// Next inode number to allocate
     next_ino: AtomicU64,
+    counters: Arc<Counters>,
     /// FUSE mountpoint inode to avoid deadlock when overlaying
     #[cfg(target_family = "unix")]
     fuse_mountpoint_inode: Option<u64>,
@@ -124,7 +196,22 @@ impl HostFS {
             inodes: RwLock::new(inodes),
             src_to_ino: RwLock::new(src_to_ino),
             next_ino: AtomicU64::new(2), // 1 is root
+            counters: {
+                let counters = Arc::new(Counters::default());
+                counters.metadata_opens.store(1, Ordering::Relaxed);
+                counters
+            },
             fuse_mountpoint_inode: None,
+        })
+    }
+
+    pub fn observations(&self) -> Value {
+        json!({
+            "cached_inodes": self.inodes.read().unwrap().len(),
+            "metadata_opens": self.counters.metadata_opens.load(Ordering::Relaxed),
+            "directory_enumerations": self.counters.directory_enumerations.load(Ordering::Relaxed),
+            "data_read_requests": self.counters.data_read_requests.load(Ordering::Relaxed),
+            "data_read_bytes": self.counters.data_read_bytes.load(Ordering::Relaxed),
         })
     }
 
@@ -235,9 +322,10 @@ impl FileSystem for HostFS {
     fn file_identity(&self, ino: i64) -> Result<String> {
         let inodes = self.inodes.read().unwrap();
         let inode = inodes.get(&ino).ok_or(FsError::NotFound)?;
+        let birth = birth_ns(inode.fd.as_raw_fd())?;
         Ok(format!(
-            "unix:{:016x}:{:016x}",
-            inode.src_dev, inode.src_ino
+            "unix:{:016x}:{:016x}:{:016x}",
+            inode.src_dev, inode.src_ino, birth
         ))
     }
 
@@ -273,6 +361,7 @@ impl FileSystem for HostFS {
             }
             return Err(err.into());
         }
+        self.counters.metadata_opens.fetch_add(1, Ordering::Relaxed);
 
         let child_fd = unsafe { OwnedFd::from_raw_fd(child_fd) };
 
@@ -350,6 +439,9 @@ impl FileSystem for HostFS {
             Err(_) => return Ok(None),
         };
 
+        self.counters
+            .directory_enumerations
+            .fetch_add(1, Ordering::Relaxed);
         // Open a real fd for reading directory
         let dir_fd = Self::open_real_fd(fd, libc::O_RDONLY | libc::O_DIRECTORY)?;
 
@@ -403,6 +495,9 @@ impl FileSystem for HostFS {
             Err(_) => return Ok(None),
         };
 
+        self.counters
+            .directory_enumerations
+            .fetch_add(1, Ordering::Relaxed);
         // Open a real fd for reading directory
         let dir_fd = Self::open_real_fd(fd, libc::O_RDONLY | libc::O_DIRECTORY)?;
         let dir_fd_raw = dir_fd.as_raw_fd();
@@ -576,7 +671,10 @@ impl FileSystem for HostFS {
         // Open real fd via /proc/self/fd with the requested flags
         let real_fd = Self::open_real_fd(fd, flags)?;
 
-        Ok(Arc::new(HostFSFile { fd: real_fd }))
+        Ok(Arc::new(ObservedFile {
+            inner: HostFSFile { fd: real_fd },
+            counters: self.counters.clone(),
+        }))
     }
 
     async fn mkdir(
@@ -649,7 +747,10 @@ impl FileSystem for HostFS {
         let mut stats = stat_to_stats(&stat);
         stats.ino = ino;
 
-        let file: BoxedFile = Arc::new(HostFSFile { fd: real_fd });
+        let file: BoxedFile = Arc::new(ObservedFile {
+            inner: HostFSFile { fd: real_fd },
+            counters: self.counters.clone(),
+        });
         Ok((stats, file))
     }
 

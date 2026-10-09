@@ -1,10 +1,13 @@
 use anyhow::{ensure, Context, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use std::os::unix::{fs::PermissionsExt, io::AsRawFd};
+#[cfg(windows)]
+use std::os::windows::{ffi::OsStrExt, fs::OpenOptionsExt};
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Write},
-    os::windows::{ffi::OsStrExt, fs::OpenOptionsExt},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -36,10 +39,12 @@ pub fn durable(path: &Path, bytes: &[u8]) -> Result<()> {
     file.sync_all()?;
     Ok(())
 }
+#[cfg(windows)]
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn MoveFileExW(a: *const u16, b: *const u16, flags: u32) -> i32;
 }
+#[cfg(windows)]
 pub fn replace(from: &Path, to: &Path) -> Result<()> {
     let a: Vec<_> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let b: Vec<_> = to.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -63,6 +68,58 @@ pub fn replace(from: &Path, to: &Path) -> Result<()> {
         result = attempt();
     }
     result.with_context(|| format!("replace internal metadata {}", to.display()))
+}
+#[cfg(unix)]
+pub fn replace(from: &Path, to: &Path) -> Result<()> {
+    std::fs::rename(from, to).with_context(|| format!("replace internal metadata {}", to.display()))
+}
+pub struct Pin {
+    file: File,
+    #[cfg(unix)]
+    path: PathBuf,
+    #[cfg(unix)]
+    mode: u32,
+}
+impl std::io::Read for &Pin {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        (&self.file).read(buf)
+    }
+}
+impl Drop for Pin {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            let _ =
+                std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(self.mode));
+        }
+    }
+}
+fn open_shared_read(path: &Path) -> std::io::Result<Pin> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    options.share_mode(1);
+    let file = options.open(path)?;
+    #[cfg(unix)]
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Mode bits are the Linux stand-in for Windows exclusive sharing: a live
+    // pin clears write bits so a same-user read-write open fails, then restores
+    // the captured mode. Rename in a writable directory is unaffected.
+    #[cfg(unix)]
+    let mode = {
+        let mode = std::fs::metadata(path)?.permissions().mode();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode & !0o222))?;
+        mode
+    };
+    Ok(Pin {
+        file,
+        #[cfg(unix)]
+        path: path.to_owned(),
+        #[cfg(unix)]
+        mode,
+    })
 }
 pub fn atomic_json(path: &Path, value: &impl Serialize) -> Result<()> {
     let temp = path.with_extension(format!("{}.next", uuid::Uuid::new_v4()));
@@ -99,6 +156,8 @@ pub struct Image {
     pub chunk_size: u64,
     pub complete: bool,
     pub blocks: std::collections::BTreeMap<u64, Option<String>>,
+    pub mode: Option<u32>,
+    pub target: Option<String>,
 }
 impl Image {
     pub fn missing() -> Self {
@@ -109,6 +168,8 @@ impl Image {
             chunk_size: vfs_core::config::DEFAULT_CHUNK_SIZE as u64,
             complete: true,
             blocks: Default::default(),
+            mode: None,
+            target: None,
         }
     }
 }
@@ -121,6 +182,19 @@ pub async fn resolve(fs: &dyn FileSystem, path: &str) -> vfs_core::error::Result
         ino = s.ino;
     }
     Ok(Some(ino))
+}
+fn file_mode(mode: u32) -> Option<u32> {
+    // Windows publication does not chmod. Recording a mode there would make
+    // every host file look changed.
+    #[cfg(unix)]
+    {
+        Some(mode & 0o777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        None
+    }
 }
 pub async fn metadata(
     fs: &dyn FileSystem,
@@ -139,10 +213,35 @@ pub async fn metadata(
         image.chunk_size = chunk_size;
         return Ok(image);
     }
+    if stats.is_symlink() {
+        #[cfg(unix)]
+        {
+            let target = fs.readlink(ino).await?.ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "symlink target missing")
+            })?;
+            let mut image = Image::missing();
+            image.kind = "symlink".into();
+            image.size = target.len() as u64;
+            image.identity = identity;
+            image.chunk_size = chunk_size;
+            image.mode = Some(stats.mode & 0o777);
+            image.target = Some(target);
+            return Ok(image);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = identity;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "only regular files and directories are supported",
+            )
+            .into());
+        }
+    }
     if !stats.is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "only regular files and directories are supported",
+            "only regular files, directories, and symlinks are supported",
         )
         .into());
     }
@@ -153,6 +252,8 @@ pub async fn metadata(
         chunk_size,
         complete: false,
         blocks: Default::default(),
+        mode: file_mode(stats.mode),
+        target: None,
     })
 }
 pub fn save_block(cas: &Path, bytes: &[u8]) -> vfs_core::error::Result<String> {
@@ -242,7 +343,7 @@ pub async fn after_image(
 pub struct Parent {
     pub fs: Arc<dyn FileSystem>,
     pub host: Arc<HostFS>,
-    pub pins: Vec<File>,
+    pub pins: Vec<Pin>,
     pub artifacts: Vec<String>,
     pub depth: usize,
     pub hashed_bytes: u64,
@@ -266,7 +367,7 @@ impl Parent {
             digest(&h)?;
             let path = store.join("artifacts").join(format!("{h}.db"));
             // Keep the exact native file immutable while its validated SDK view is reusable.
-            let pin = OpenOptions::new().read(true).share_mode(1).open(&path)?;
+            let pin = open_shared_read(&path)?;
             let (actual, length) = hash_reader(&pin)?;
             ensure!(actual == h, "artifact digest mismatch");
             parent.hashed_bytes += length;
@@ -283,7 +384,7 @@ impl Parent {
         }
         Ok(parent)
     }
-    pub async fn append(&mut self, sdk: Vfs, pin: File, h: String) -> Result<()> {
+    pub async fn append(&mut self, sdk: Vfs, pin: Pin, h: String) -> Result<()> {
         let overlay = Arc::new(OverlayFS::new_with_partial_origin_policy(
             self.fs.clone(),
             sdk.fs.clone(),
@@ -306,14 +407,10 @@ pub async fn seal(store: &Path, sdk: &Vfs) -> Result<String> {
     std::fs::rename(&tmp, store.join("artifacts").join(format!("{h}.db")))?;
     Ok(h)
 }
-pub fn artifact_pin(store: &Path, h: &str) -> Result<(File, PathBuf)> {
+pub fn artifact_pin(store: &Path, h: &str) -> Result<(Pin, PathBuf)> {
     digest(h)?;
     let p = store.join("artifacts").join(format!("{h}.db"));
-    let f = OpenOptions::new()
-        .read(true)
-        .share_mode(1)
-        .open(&p)
-        .with_context(|| format!("pin {h}"))?;
+    let f = open_shared_read(&p).with_context(|| format!("pin {h}"))?;
     ensure!(hash_reader(&f)?.0 == h, "artifact digest mismatch");
     Ok((f, p))
 }

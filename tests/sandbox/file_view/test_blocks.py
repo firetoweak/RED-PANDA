@@ -11,8 +11,8 @@ from redpanda.sandbox.versions import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
-if os.name != "nt" or not EXE.is_file():
-    pytest.skip("需要已构建的 Windows sandbox 与 WinFsp", allow_module_level=True)
+if not EXE.is_file():
+    pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.sandbox.file_view import Client,ServiceFailure
 from redpanda.sandbox.file_view import publication as pub
@@ -61,7 +61,10 @@ class Blocks(unittest.TestCase):
                 self.assertFalse(before['complete']);self.assertFalse(after['complete'])
                 self.assertEqual(set(before['blocks']),{'0','1'});self.assertEqual(set(after['blocks']),{'0','1'})
                 host=client.request('info')['host']
-                self.assertLessEqual(host['data_read_bytes'],4*CHUNK)
+                # An unaligned write makes FUSE read the covering pages before
+                # the chunk evidence. Windows does not add that read.
+                page = os.sysconf('SC_PAGE_SIZE') if os.name != 'nt' else 0
+                self.assertLessEqual(host['data_read_bytes'],4*CHUNK+2*page)
                 evidence=sum(p.stat().st_size for p in (store/'cas').iterdir())
                 self.assertLessEqual(evidence,4*CHUNK)
                 with (base/'large').open('r+b') as file:
