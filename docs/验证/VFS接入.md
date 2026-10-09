@@ -50,7 +50,7 @@ Flash 证据位于 `tests/.live_workspace/sandbox-live-flash-01`，Pro 位于 `s
 
 Rust 应用在 `native/sandbox/`，Python 客户端与发布编排在 `redpanda/sandbox/file_view/`，原来的 65 项契约归入 `tests/sandbox/file_view/` 的 process 层。通用 COW 与 Windows 挂载源码也已合入 RED PANDA 的 `native/vfs/`，保留独立的 Cargo workspace 与模块职责，不再需要外部 Factory checkout。构建方式见[原生 sandbox 说明](../../native/sandbox/README.md)。
 
-VFS 导入来源是已发布的 `firetoweak/vfs` 提交 `87701622d9068fed65cc7fdbaef093dd20bf79d3`，保留源码、测试、文档和现有声明，排除 `.agents/` 历史实验目录，不带 `.git` 或本机构建输出，见[来源记录](../../native/vfs/SOURCE.md)。`scripts/build_sandbox.py` 直接构建仓库内源码，生成默认程序、同目录运行库和当前源码／输出的 SHA256；无需 Junction、外部源码路径或本地 Git 元数据。本机验证 GNU LLVM debug target，尚未验证 MSVC target。
+VFS 导入来源是已发布的 `firetoweak/vfs` 提交 `87701622d9068fed65cc7fdbaef093dd20bf79d3`，保留源码、测试、文档和现有声明，排除 `.agents/` 历史实验目录，不带 `.git` 或本机构建输出，见[来源记录](../../native/vfs/SOURCE.md)。`scripts/build_sandbox.py` 直接构建仓库内源码，生成默认程序、同目录运行库和当前源码／输出的 SHA256；无需 Junction、外部源码路径或本地 Git 元数据。本机验证的是 GNU LLVM debug target。
 
 重新构建后的 32 层测试暴露叠层名称查询重复向基底查找的问题。修正在 Factory 的名称解析与 lookup 中：一次查找复用已经解析的基底结果，不按 inode 映射反推名称，因为硬链接的多个名字可以共享 inode。新增独立的 32 层缺失名称查询和硬链接名字契约，覆盖复杂度与别名语义。
 
@@ -71,7 +71,7 @@ RED PANDA 历史重放测试同时修正了一处顺序假设：完成批次的�
 
 `native/vfs/` 的 605 个导入文件逐字核对已发布 fork 提交，另有本仓库新增的来源记录；上游 `.agents/` 历史材料未纳入源码。Cargo metadata 确认 sandbox、VFS 和 Turso 补丁的全部本地依赖都解析到 RED PANDA 的 `native/` 内。旧 `.tools/factory-vfs` Junction 已移除，独立 `D:\work\vfs` fork 未修改。
 
-从仓库内源码以 GNU LLVM debug target 重新构建，通过两个 Rust workspace 的格式检查和 sandbox 的 Clippy `-D warnings`；`BUILD.json` 中当前源码及输出文件 hash 已逐项复核。新程序以默认路径运行文件视图、工作区版本和 Assistant 编码／模型恢复进程测试，结果为 78 passed、19 subtests passed，约 77 秒。本轮未再次运行完整 Python 回归、真实模型调用或 MSVC 构建；此前结果见上节。证据在 `tests/.live_workspace/sandbox-vfs-in-tree-01`。
+从仓库内源码以 GNU LLVM debug target 重新构建，通过两个 Rust workspace 的格式检查和 sandbox 的 Clippy `-D warnings`；`BUILD.json` 中当前源码及输出文件 hash 已逐项复核。新程序以默认路径运行文件视图、工作区版本和 Assistant 编码／模型恢复进程测试，结果为 78 passed、19 subtests passed，约 77 秒。本轮未再次运行完整 Python 回归或真实模型调用；此前结果见上节。证据在 `tests/.live_workspace/sandbox-vfs-in-tree-01`。
 
 ## 本地试用与边界
 

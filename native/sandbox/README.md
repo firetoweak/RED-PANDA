@@ -24,10 +24,10 @@ Rust 为 `nightly-2026-08-07`（rustc `1.99.0-nightly`）。`native/sandbox/rust
 
 ### Windows
 
-需要 WinFsp 驱动和 SDK。仅安装 WinFsp 运行时不包含 SDK 的头文件与链接库。默认 MSVC target 需要 Visual Studio C++ 工具链，在其开发者终端运行构建。GNU LLVM target 需要 LLVM MinGW 的编译器和链接器在 PATH，并配置对应的 Cargo linker。`native/sandbox/rust-toolchain.toml` 声明了 `x86_64-pc-windows-msvc` 和 `x86_64-pc-windows-gnullvm`。rustup 在能联网时会随工具链安装这两个 target。离线构建前先在有网络的机器上执行：
+需要 WinFsp 驱动和 SDK。仅安装 WinFsp 运行时不包含 SDK 的头文件与链接库。Windows 构建使用 GNU LLVM target `x86_64-pc-windows-gnullvm`：LLVM MinGW 的编译器和链接器要在 PATH 里，并配置对应的 Cargo linker。`native/sandbox/rust-toolchain.toml` 声明了这个 target。rustup 在能联网时会随工具链安装它。离线构建前先在有网络的机器上执行：
 
 ```powershell
-rustup target add x86_64-pc-windows-msvc x86_64-pc-windows-gnullvm --toolchain nightly-2026-08-07
+rustup target add x86_64-pc-windows-gnullvm --toolchain nightly-2026-08-07
 ```
 
 ### Linux
@@ -59,11 +59,11 @@ sudo yum install -y fuse3 fuse3-devel pkgconfig gcc
 - 普通用户通过 `fusermount3` 挂载，不需要 root。
 - 沙箱挂载的 `allow_other` 默认为关闭，不读取 `user_allow_other`。只有挂载点要给其他用户访问时，才在 `/etc/fuse.conf` 取消 `user_allow_other` 的注释。
 
-在 RED PANDA 根目录执行 `python scripts/build_sandbox.py`。Linux 构建宿主 target 的 release 程序。Windows 默认使用 `x86_64-pc-windows-msvc` release 构建，需要相应 Rust target 和 Visual Studio C++ 工具链。SDK 不在安装目录时，通过 `--winfsp-include`、`--winfsp-lib` 显式指定；也可使用 `WINFSP_INCLUDE_DIR`、`WINFSP_LIB_DIR`。
+在 RED PANDA 根目录执行 `python scripts/build_sandbox.py`。Linux 构建宿主 target 的 release 程序。Windows 默认使用 `x86_64-pc-windows-gnullvm` release 构建。SDK 不在安装目录时，通过 `--winfsp-include`、`--winfsp-lib` 显式指定；也可使用 `WINFSP_INCLUDE_DIR`、`WINFSP_LIB_DIR`。
 
-本机已实际验证的是 `x86_64-pc-windows-gnullvm` debug 构建，使用 LLVM MinGW、对应 target 的 WinFsp 链接库，以及 `--runtime-dir <LLVM工具链bin目录>`。MSVC 构建尚未在本机验证。`--target`、`--debug`、`--offline` 可显式选择构建方式。
+本机已实际验证的是该 target 的 debug 构建，使用 LLVM MinGW、对应 target 的 WinFsp 链接库，以及 `--runtime-dir <LLVM工具链bin目录>`。`--debug`、`--offline` 可显式选择构建方式。
 
-GNU LLVM 的构建参数示例（SDK 和运行库路径由调用方提供，Rust/C 编译器仍需提前准备）：
+构建参数示例（SDK 和运行库路径由调用方提供，LLVM MinGW 仍需提前准备）：
 
 ```powershell
 python scripts/build_sandbox.py --target x86_64-pc-windows-gnullvm --debug `

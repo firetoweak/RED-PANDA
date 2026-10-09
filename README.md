@@ -83,13 +83,13 @@ Windows 与 Linux 都要先构建原生沙箱。macOS 的文件视图尚未实�
 
 **Windows**
 
-先准备 Rust、WinFsp 驱动与 SDK、C++ 工具链，再在仓库根目录执行：
+先准备 Rust、WinFsp 驱动与 SDK、LLVM MinGW，再在仓库根目录执行：
 
 ```powershell
 .\redpanda-env\Scripts\python.exe scripts/build_sandbox.py
 ```
 
-默认构建 MSVC release target；本机已验证的是 GNU LLVM debug target。具体准备条件、可选参数与已验证的构建方式见[原生 sandbox 说明](native/sandbox/README.md)。
+默认构建 GNU LLVM（`x86_64-pc-windows-gnullvm`）release target；本机已验证的是同一 target 的 debug 构建。具体准备条件、可选参数与已验证的构建方式见[原生 sandbox 说明](native/sandbox/README.md)。
 
 **Linux**
 

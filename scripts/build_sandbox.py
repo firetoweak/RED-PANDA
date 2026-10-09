@@ -27,7 +27,7 @@ def source_digest(root: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--target", default="x86_64-pc-windows-msvc" if os.name == "nt" else None)
+    parser.add_argument("--target", default="x86_64-pc-windows-gnullvm" if os.name == "nt" else None)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--winfsp-include", type=Path)
