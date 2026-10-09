@@ -177,9 +177,8 @@ class RestoreContracts(unittest.TestCase):
             hash_value = next(iter(receipt['changes'][0]['before']['blocks'].values()))
             with (store/'cas'/hash_value).open('r+b') as file:
                 file.write(b'!')
-            result = client.restore('undo', ['edit'], 'original')
-            self.assertEqual(result['status'], 'error')
-            self.assertIn('CAS evidence digest differs', result['error'])
+            with self.assertRaisesRegex(ServiceFailure, 'CAS evidence digest differs'):
+                client.restore('undo', ['edit'], 'original')
             self.assertFalse((store/'commands/undo').exists())
             self.assertEqual((store/'HEAD').read_bytes(), head)
             self.assertEqual(client.request('info')['version'], 3)

@@ -317,7 +317,7 @@ def apply_step(client,transaction,step,path):
             if create or current['size']!=desired['size']: file.truncate(desired['size'])
             if os.name!='nt' and desired['mode'] is not None: os.fchmod(file.fileno(),desired['mode'])
             file.flush();os.fsync(file.fileno())
-            try: live=os.lstat(file.name)
+            try: live=os.lstat(target_path)
             except FileNotFoundError: raise Conflict('file identity changed during write') from None
             held=os.fstat(file.fileno())
             if (held.st_dev,held.st_ino)!=(live.st_dev,live.st_ino): raise Conflict('file identity changed during write')

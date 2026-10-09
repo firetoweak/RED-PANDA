@@ -52,6 +52,7 @@ class Client:
             raise ServiceFailure(f'service exit {self.process.returncode}: '+(self.store/'service.log').read_text(encoding='utf-8',errors='replace'))
         value = json.loads(line)
         if type(value) is not dict: raise ServiceFailure('response must be an object')
+        if value.get('status') == 'error': raise ServiceFailure(value['error'])
         return value
 
     def request(self, op, **fields):
