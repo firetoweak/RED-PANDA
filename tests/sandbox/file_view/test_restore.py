@@ -168,7 +168,7 @@ class RestoreContracts(unittest.TestCase):
             self.assertEqual(client.request('discard', command_id='undo')['status'], 'discarded')
             self.assertEqual(self.read(client, 'probe'), b'XXX')
 
-    def test_corrupt_evidence_is_fatal_before_a_candidate_is_created(self):
+    def test_corrupt_evidence_is_rejected_before_a_candidate_is_created(self):
         base, store = self.fixture('restore_corrupt')
         client = Client(EXE, store, base)
         try:
@@ -177,10 +177,12 @@ class RestoreContracts(unittest.TestCase):
             hash_value = next(iter(receipt['changes'][0]['before']['blocks'].values()))
             with (store/'cas'/hash_value).open('r+b') as file:
                 file.write(b'!')
-            with self.assertRaisesRegex(ServiceFailure, 'CAS evidence digest differs'):
-                client.restore('undo', ['edit'], 'original')
+            result = client.restore('undo', ['edit'], 'original')
+            self.assertEqual(result['status'], 'error')
+            self.assertIn('CAS evidence digest differs', result['error'])
             self.assertFalse((store/'commands/undo').exists())
             self.assertEqual((store/'HEAD').read_bytes(), head)
+            self.assertEqual(client.request('info')['version'], 3)
         finally:
             client.close()
 
