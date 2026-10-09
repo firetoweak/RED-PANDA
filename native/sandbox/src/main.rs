@@ -4,11 +4,14 @@ mod tracking;
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
 use std::{
     collections::BTreeMap,
     fs::{File, OpenOptions},
     io::{BufRead, Write},
-    os::windows::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
@@ -108,15 +111,58 @@ struct Service {
     paused: bool,
     _owner: File,
 }
+#[cfg(not(any(windows, target_os = "linux")))]
+compile_error!("redpanda-sandbox mounts on Windows (WinFsp) and Linux (FUSE)");
+
 fn local_path(path: &Path) -> Result<PathBuf> {
     let p = path.canonicalize()?;
-    let value = p.to_str().context("UTF-8 local path")?;
-    let value = value.strip_prefix(r"\\?\").unwrap_or(value);
-    ensure!(
-        value.as_bytes().get(1) == Some(&b':'),
-        "a local drive path is required"
-    );
-    Ok(PathBuf::from(value))
+    #[cfg(windows)]
+    {
+        let value = p.to_str().context("UTF-8 local path")?;
+        let value = value.strip_prefix(r"\\?\").unwrap_or(value);
+        ensure!(
+            value.as_bytes().get(1) == Some(&b':'),
+            "a local drive path is required"
+        );
+        return Ok(PathBuf::from(value));
+    }
+    #[cfg(unix)]
+    {
+        ensure!(p.is_absolute(), "an absolute path is required");
+        let _ = p.to_str().context("UTF-8 local path")?;
+        Ok(p)
+    }
+}
+fn lock_owner(path: &Path) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(windows)]
+    options.share_mode(0);
+    let file = options.open(path).context("owner lock")?;
+    #[cfg(unix)]
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(std::io::Error::last_os_error()).context("owner lock");
+    }
+    Ok(file)
+}
+fn mount_backend() -> Backend {
+    #[cfg(windows)]
+    {
+        Backend::WinFsp
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Backend::Fuse
+    }
+}
+fn artifact_is_busy(error: &std::io::Error) -> bool {
+    match error.raw_os_error() {
+        #[cfg(windows)]
+        Some(32) => true,
+        #[cfg(unix)]
+        Some(libc::EBUSY) => true,
+        _ => false,
+    }
 }
 impl Service {
     async fn open(store: PathBuf, base: PathBuf) -> Result<Self> {
@@ -129,13 +175,7 @@ impl Service {
         );
         // Native database and mount APIs need a verbatim path beyond MAX_PATH.
         let store = store.canonicalize()?;
-        let owner = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .share_mode(0)
-            .open(store.join("owner.lock"))?;
+        let owner = lock_owner(&store.join("owner.lock"))?;
         let config_path = store.join("config.json");
         let config = if config_path.exists() {
             let c: Config = storage::read_json(&config_path)?;
@@ -252,10 +292,12 @@ impl Service {
             .await?;
         // One active candidate owns this point; Command directories hold evidence only.
         let point = local_path(&self.store)?.join("mount");
+        #[cfg(unix)]
+        std::fs::create_dir_all(&point)?;
         candidate.mount = Some(
             mount_fs(
                 Arc::new(TrackingFS(candidate.fs.clone())),
-                MountOpts::new(point.clone(), Backend::WinFsp),
+                MountOpts::new(point.clone(), mount_backend()),
             )
             .await?,
         );
@@ -631,7 +673,7 @@ impl Service {
                             removed += 1;
                             bytes += size;
                         }
-                        Err(e) if e.raw_os_error() == Some(32) => busy += 1,
+                        Err(e) if artifact_is_busy(&e) => busy += 1,
                         Err(e) => return Err(e.into()),
                     }
                 }

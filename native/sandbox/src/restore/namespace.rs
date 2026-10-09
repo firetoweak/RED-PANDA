@@ -62,6 +62,7 @@ struct Transaction {
 }
 
 fn native_identity(native: &str) -> Result<()> {
+    #[cfg(windows)]
     ensure!(
         native.len() == 48
             && native
@@ -69,6 +70,23 @@ fn native_identity(native: &str) -> Result<()> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
         "invalid native binding"
     );
+    #[cfg(unix)]
+    {
+        let mut parts = native.split(':');
+        let (prefix, dev, ino, rest) = (parts.next(), parts.next(), parts.next(), parts.next());
+        let hex = |value: Option<&str>| {
+            value.is_some_and(|text| {
+                text.len() == 16
+                    && text
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+        };
+        ensure!(
+            prefix == Some("unix") && hex(dev) && hex(ino) && rest.is_none(),
+            "invalid native binding"
+        );
+    }
     Ok(())
 }
 fn bind(result: &mut BTreeMap<String, String>, logical: &str, native: &str) -> Result<()> {

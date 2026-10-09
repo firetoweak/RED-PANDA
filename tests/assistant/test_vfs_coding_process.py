@@ -3,6 +3,7 @@ import asyncio
 from collections import deque
 import json
 import os
+import shlex
 import sys
 
 import pytest
@@ -19,8 +20,8 @@ from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
-    os.name != "nt" or not native_executable().is_file(),
-    reason="需要已构建的 Windows sandbox 与 WinFsp",
+    not native_executable().is_file(),
+    reason="需要已构建的原生 sandbox",
 )]
 
 
@@ -61,7 +62,7 @@ def test_native_coding_and_model_restore_are_one_history(tmp_path):
                 ("read_file", {"path": "maths.py"}),
                 ("apply_patch", {"path": "maths.py", "old_block": "return a - b", "new_block": "return a + b"}),
                 ("write_file", {"path": "test_maths.py", "content": "import unittest\nfrom maths import add\nclass TestAdd(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n"}),
-                ("execute_command", {"command": f"& '{sys.executable}' -B -m unittest test_maths", "workspace_effect": "read_only"}),
+                ("execute_command", {"command": f"& '{sys.executable}' -B -m unittest test_maths" if os.name == "nt" else f"{shlex.quote(sys.executable)} -B -m unittest test_maths", "workspace_effect": "read_only"}),
             )
             assert "return a + b" in (root / "maths.py").read_text()
             commands = [command for e in events if isinstance(e.payload, StepCommitted) for command in e.payload.step.commands if isinstance(command.effect, InvokeTool)]

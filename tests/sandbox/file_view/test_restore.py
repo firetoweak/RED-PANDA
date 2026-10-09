@@ -10,8 +10,8 @@ from redpanda.sandbox.versions import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
-if os.name != "nt" or not EXE.is_file():
-    pytest.skip("需要已构建的 Windows sandbox 与 WinFsp", allow_module_level=True)
+if not EXE.is_file():
+    pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.sandbox.file_view import Client, ServiceFailure
 from redpanda.sandbox.file_view import publication as pub

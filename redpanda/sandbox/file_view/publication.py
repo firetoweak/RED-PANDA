@@ -1,9 +1,11 @@
 """Explicit host transactions over the same block evidence used by Command tracking."""
 from __future__ import annotations
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import uuid
 import time
 from . import native
@@ -113,9 +115,11 @@ def target(base, relative):
     path=base
     for part in parts:
         path=path/part
-        try: attrs=path.lstat().st_file_attributes
+        try: info=path.lstat()
         except FileNotFoundError: continue
-        if attrs&0x400: raise Conflict('reparse path')
+        if os.name=='nt':
+            if info.st_file_attributes&0x400: raise Conflict('reparse path')
+        elif stat.S_ISLNK(info.st_mode): raise Conflict('reparse path')
     return path
 
 def coverage(a,b):
@@ -142,7 +146,9 @@ def actual(base,relative,template=None,store=None):
         return value,None
     except FileNotFoundError: return image(chunk_size=chunk_size),None
     except OSError as error:
-        if error.winerror==32: raise Conflict('file is busy') from error
+        if os.name=='nt':
+            if error.winerror==32: raise Conflict('file is busy') from error
+        elif error.errno in (errno.EAGAIN, errno.EBUSY, errno.EWOULDBLOCK): raise Conflict('file is busy') from error
         raise
 
 def same(a,b):
@@ -271,7 +277,9 @@ def apply_step(client,transaction,step,path):
         if current['kind']=='directory':
             try: target_path.rmdir()
             except OSError as error:
-                if error.winerror==145: raise Conflict('directory contains user children') from error
+                if os.name=='nt':
+                    if error.winerror==145: raise Conflict('directory contains user children') from error
+                elif error.errno==errno.ENOTEMPTY: raise Conflict('directory contains user children') from error
                 raise
         elif current['kind']=='file':
             with native.open_file(target_path,write=True) as file:

@@ -82,3 +82,57 @@ RED PANDA 历史重放测试同时修正了一处顺序假设：完成批次的�
 这一阶段提供文件视图与文件结果回退，进程启动、事务编排和宿主发布仍由 Python 负责。命令继承调用方真实 Python、PowerShell、CLI 和 PATH；挂载外的绝对路径写入、安装、缓存、系统配置和网络不在回退范围内，也没有因此获得操作系统安全隔离。当前不支持目录重命名、仅大小写重命名、硬链接命名空间改动、ACL、ADS、reparse 和完整 mmap 一致性。这些限制已进入模型环境说明。
 
 同一任务根共享历史，从一个位置撤销后续操作可能涉及其间其他会话的助手变化。`preserve` 默认保护用户后续值，但结果 X→H→X 仍可撤销，因为归因基于当前结果与操作证据，不监测自然人身份。没有在本轮新增证据自动回收、完整环境快照或进程安全沙箱。
+
+## Linux 接入
+
+Linux 使用仓库里已有的 FUSE 后端（`vfs-mount` 的 `Backend::Fuse`），不链接 libfuse。Windows 的 WinFsp 路径保持原样。宿主文件身份在 Linux 上是 `unix:{st_dev:016x}:{st_ino:016x}`，与 Python 发布端一致。
+
+### 构建与运行前提
+
+Ubuntu / Debian：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y fuse3 libfuse3-dev pkg-config build-essential
+```
+
+CentOS / RHEL / Fedora：
+
+```sh
+sudo dnf install -y fuse3 fuse3-devel pkgconf-pkg-config gcc
+```
+
+仍使用 yum 的发行版：
+
+```sh
+sudo yum install -y fuse3 fuse3-devel pkgconfig gcc
+```
+
+另外需要 rustup 的 `nightly-2026-08-07`。在仓库根目录执行 `python scripts/build_sandbox.py`。程序写到 `redpanda/sandbox/bin/redpanda-sandbox`。
+
+非特权挂载：
+
+- `/dev/fuse` 必须存在且当前用户可读写。`ls -l /dev/fuse` 在本机是 `crw-rw-rw-`。节点缺失时执行 `sudo modprobe fuse`。若权限是 `crw-rw----` 且属组为 `fuse`，执行 `sudo usermod -aG fuse "$USER"` 并重新登录。
+- `fusermount3` 由 `fuse3` 提供。普通用户用它挂载，不需要 root。
+- 沙箱挂载不设置 `allow_other`，因此不需要 `/etc/fuse.conf` 里的 `user_allow_other`。该选项只在挂载点要给其他用户访问时才取消注释。
+
+没有 `/dev/fuse` 或没有挂载权限时，文件视图进程测试会在挂载阶段失败。不依赖挂载的默认测试仍用 `python -m pytest` 运行。
+
+进程测试：
+
+```sh
+python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/assistant/test_vfs_coding_process.py
+```
+
+`tests/sandbox/test_linux_workspace_execute.py` 覆盖一次工具调用经 `versions.execute` 的写入、修改、删除、接受并发布到宿主目录、用户改写后的冲突，以及 `original` / `preserve` 两种恢复。
+
+### 与 Windows 语义的差异
+
+这些差异留在平台边界上，不改 Windows 行为。
+
+- 已接受的产物在钉住期间去掉写权限位，同一用户的 `open(r+b)` 会失败；释放钉后恢复原来的权限。可写目录里的 `rename` 仍会成功，Windows 的独占共享能拦住这次重命名。
+- 删除已打开文件在 Linux 上通常成功，所以清理忙碌产物不会得到 Windows 的 sharing violation（错误 32）。
+- 大小写仅有差别的重命名在大小写敏感的文件系统上是一次真实重命名。Windows 上的拒绝测试在 Linux 跳过。
+- 硬链接命名空间改动仍会被拒绝。Linux 在 unlink/rename/replace 时把错误交回命令进程；WinFsp 在 Cleanup 里提交删除且不能返回错误，所以 Windows 的 unlink 要到 finish 才让服务失败。
+- 宿主上先删除再按不同长度重建时，inode 可能被立刻复用，冲突原因可以是 `length_changed` 或 `identity_changed`。
+- 未按页对齐的写入会让 FUSE 先读覆盖该范围的页。块证据测试因此允许比 Windows 多两页的宿主读取，仍然不读取整个大文件。

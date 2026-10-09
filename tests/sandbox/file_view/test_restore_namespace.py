@@ -1,4 +1,4 @@
-"""Structural restoration contracts on actual Windows mounts, run serially."""
+"""Structural restoration contracts on actual mounts, run serially."""
 import json
 import os
 from pathlib import Path
@@ -12,8 +12,8 @@ from redpanda.sandbox.versions import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
-if os.name != "nt" or not EXE.is_file():
-    pytest.skip("需要已构建的 Windows sandbox 与 WinFsp", allow_module_level=True)
+if not EXE.is_file():
+    pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.sandbox.file_view import Client, ServiceFailure
 from redpanda.sandbox.file_view import publication as pub
@@ -191,6 +191,8 @@ class NamespaceRestoration(unittest.TestCase):
             self.publish(client)
 
     def test_case_only_rename_is_rejected_before_mutation(self):
+        if os.name != 'nt':
+            self.skipTest('大小写不敏感的名称拒绝只属于 Windows')
         base, store = self.fixture('namespace_case', 100)
         with Client(support.EXE, store, base) as client:
             result = client.run('edit', [sys.executable, '-c', "from pathlib import Path;Path('file').rename('FILE')"])
@@ -228,7 +230,7 @@ class NamespaceRestoration(unittest.TestCase):
                 (base/'other').write_bytes(b'OTHER')
                 with Client(support.EXE, store, base) as client:
                     code = "from pathlib import Path;Path('alias').unlink()" if action == 'unlink' else "from pathlib import Path;Path('alias').rename('renamed')" if action == 'rename' else "import os;os.replace('other','alias')"
-                    if action == 'unlink':
+                    if os.name == 'nt' and action == 'unlink':
                         # WinFsp commits delete during Cleanup, which has no error
                         # return. The mount owner must expose the failure at finish.
                         with self.assertRaisesRegex(ServiceFailure, 'hard-link namespace changes'):
@@ -239,7 +241,7 @@ class NamespaceRestoration(unittest.TestCase):
                         self.assertEqual(result['files']['receipt']['changes'], [])
                         client.request('accept', command_id='edit')
                         self.assertEqual(self.view(client, 'probe')[0], {'file': b'A'*100, 'alias': b'A'*100, 'other': b'OTHER'})
-                if action == 'unlink':
+                if os.name == 'nt' and action == 'unlink':
                     with Client(support.EXE, store, base) as client:
                         self.assertEqual(client.request('status', command_id='edit')['status'], 'unknown')
                         client.request('discard', command_id='edit')

@@ -2,6 +2,7 @@
 import asyncio
 import os
 import subprocess
+import sys
 import threading
 from types import SimpleNamespace
 from pathlib import Path
@@ -12,8 +13,8 @@ import pytest
 from redpanda.sandbox.versions import INITIAL, WorkspaceVersions, native_executable, operation_id
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
-    os.name != "nt" or not native_executable().is_file(),
-    reason="需要已构建的 Windows sandbox 与 WinFsp",
+    not native_executable().is_file(),
+    reason="需要已构建的原生 sandbox",
 )]
 
 
@@ -78,9 +79,12 @@ def test_command_effects_policies_and_retry(tmp_path, policy, expected):
             calls.append(1)
             native = view.native_path(logical)
             native.write_text("X-Z", encoding="utf-8")
+            if os.name == "nt":
+                command = ["powershell.exe", "-NoProfile", "-Command", "[IO.File]::WriteAllText('ignored.txt', 'command')"]
+            else:
+                command = [sys.executable, "-c", "from pathlib import Path; Path('ignored.txt').write_text('command')"]
             result = await asyncio.to_thread(subprocess.run,
-                ["powershell.exe", "-NoProfile", "-Command", "[IO.File]::WriteAllText('ignored.txt', 'command')"],
-                cwd=native.parent, capture_output=True, check=True)
+                command, cwd=native.parent, capture_output=True, check=True)
             return {"ok": True, "returncode": result.returncode}
         expected_result = await view.execute(identity, edit)
         assert await view.execute(identity, edit) == expected_result
@@ -192,6 +196,7 @@ def test_discovery_paths_are_logical_and_git_reads_projected_files(tmp_path, dee
     asyncio.run(scenario())
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows 共享模式会拒绝正在打开的内部元数据替换")
 def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persistent_lock(tmp_path):
     from redpanda.sandbox.file_view import publication
     path = tmp_path / "metadata.json"
