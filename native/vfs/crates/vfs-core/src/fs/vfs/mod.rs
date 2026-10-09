@@ -151,8 +151,6 @@ pub struct Vfs {
     /// Async drain/enqueue surface. Code holding a pooled connection must not
     /// have access to this surface.
     write_drain: Option<BatcherDrain>,
-    /// Captured at open because full hydration is offline-only.
-    chunk_resolver: store::ChunkResolver,
     /// Concrete batcher retained only for white-box unit tests.
     #[cfg(test)]
     write_batcher: Option<Arc<VfsWriteBatcher>>,
@@ -203,15 +201,6 @@ impl Vfs {
         Self::from_pool_with_path_and_config(pool, None, config).await
     }
 
-    async fn from_pool_with_path_and_config(
-        pool: ConnectionPool,
-        db_path: Option<PathBuf>,
-        config: CoreConfig,
-    ) -> Result<Self> {
-        Self::from_pool_with_path_config_and_reap_hooks(pool, db_path, config, Vec::new(), None)
-            .await
-    }
-
     pub(crate) async fn from_read_only_pool(
         pool: ConnectionPool,
         db_path: PathBuf,
@@ -224,7 +213,6 @@ impl Vfs {
 
         let chunk_size = Self::read_chunk_size(&conn).await?;
         let inline_threshold = Self::read_inline_threshold(&conn).await?;
-        let hollow = schema::chunks_hollow(&conn).await?;
         config.geometry = Geometry {
             chunk_size,
             inline_threshold,
@@ -245,7 +233,6 @@ impl Vfs {
             attr_cache: Arc::new(AttrCache::new(ATTR_CACHE_MAX_SIZE)),
             pending_view: None,
             write_drain: None,
-            chunk_resolver: store::ChunkResolver::new(hollow, None),
             #[cfg(test)]
             write_batcher: None,
             #[cfg(test)]
@@ -257,24 +244,24 @@ impl Vfs {
         })
     }
 
-    pub(crate) async fn from_pool_with_path_config_and_reap_hooks(
+    pub(crate) async fn from_pool_with_path_and_config(
         pool: ConnectionPool,
         db_path: Option<PathBuf>,
         mut config: CoreConfig,
-        reap_hooks: Vec<Arc<dyn ReapHook>>,
-        chunk_source: Option<Arc<dyn schema::ChunkSource>>,
     ) -> Result<Self> {
         // finalize() resolves this path for sidecar removal long after the
         // caller may have changed the working directory (mount teardown
         // chdirs to `/`), so a relative path would silently miss the -wal.
         let db_path = db_path.map(std::path::absolute).transpose()?;
-        let conn = pool.get_connection().await?;
+        let mut conn = pool.get_connection().await?;
 
-        // Initialize or migrate schema first. The schema module owns DDL and
+        // Initialize or validate schema first. The schema module owns DDL and
         // stamps SQLite's user-version inside the DDL transaction.
         let journal = journal::JournalCtx::new(config.journal_enabled);
-        let hollow =
-            Self::initialize_schema(&conn, journal.clone(), chunk_source.is_some()).await?;
+        if let Err(error) = Self::initialize_schema(&conn, journal.clone()).await {
+            conn.mark_unhealthy_if_fatal(&error);
+            return Err(error);
+        }
         let filesystem_id = schema::filesystem_identity(&conn).await?;
         super::history::reconcile_epoch(&conn, config.journal_enabled).await?;
 
@@ -286,12 +273,9 @@ impl Vfs {
             inline_threshold,
         };
         let core_config = Arc::new(config);
-        let chunk_resolver = store::ChunkResolver::new(hollow, chunk_source);
 
         let attr_cache = Arc::new(AttrCache::new(ATTR_CACHE_MAX_SIZE));
-        // Tier Three Axis D: default the write batcher to ON. CLI callers pass
-        // the FUSE writeback decision through VfsOptions, while SDK callers
-        // can supply CoreConfig directly.
+        // Batching policy comes from typed core configuration.
         let (pending_view, write_drain, _write_batcher) = if core_config.batcher.enabled {
             let invalidate = {
                 let attr_cache = Arc::clone(&attr_cache);
@@ -304,7 +288,6 @@ impl Vfs {
                 invalidate,
                 &core_config.batcher,
                 journal.clone(),
-                chunk_resolver.clone(),
             ));
             let (pending_view, write_drain) = VfsWriteBatcher::split(&batcher);
             (Some(pending_view), Some(write_drain), Some(batcher))
@@ -313,9 +296,7 @@ impl Vfs {
         };
 
         let lifecycle = Arc::new(Lifecycle::default());
-        for hook in reap_hooks {
-            lifecycle.register_reap_hook(hook);
-        }
+
         lifecycle
             .sweep_mount_orphans(&conn, journal.clone())
             .await?;
@@ -335,7 +316,6 @@ impl Vfs {
             attr_cache,
             pending_view,
             write_drain,
-            chunk_resolver,
             #[cfg(test)]
             write_batcher: _write_batcher,
             #[cfg(test)]
@@ -370,10 +350,6 @@ impl Vfs {
         self.journal.clone()
     }
 
-    pub(in crate::fs) fn chunk_resolver(&self) -> &store::ChunkResolver {
-        &self.chunk_resolver
-    }
-
     /// Configured journal retention horizon, in retained operations.
     pub fn journal_retention_ops(&self) -> usize {
         self.core_config.journal_retention_ops
@@ -399,12 +375,8 @@ impl Vfs {
     }
 
     /// Initialize the database schema
-    async fn initialize_schema(
-        conn: &Connection,
-        journal: journal::JournalCtx,
-        has_chunk_source: bool,
-    ) -> Result<bool> {
-        let hollow = schema::require_current(conn, has_chunk_source).await?;
+    async fn initialize_schema(conn: &Connection, journal: journal::JournalCtx) -> Result<()> {
+        schema::ensure_current(conn).await?;
         let mut txn = MutationTxn::begin(conn, journal).await?;
 
         // Ensure root directory exists with correct ownership
@@ -482,7 +454,7 @@ impl Vfs {
             }
             None => txn.rollback().await?,
         }
-        Ok(hollow)
+        Ok(())
     }
 
     /// Read chunk size from config
@@ -1008,7 +980,7 @@ impl Vfs {
     /// Resolve a path to its parent directory inode and final component name.
     ///
     /// This is the canonical parent/name resolver backing every path-based
-    /// mutation helper; external path consumers (e.g. the CLI MCP server)
+    /// mutation helper; external path consumers
     /// must use it rather than re-deriving parent inodes.
     pub async fn resolve_parent_and_name(&self, path: &str) -> Result<(i64, String)> {
         let path = self.normalize_path(path);
@@ -1157,7 +1129,6 @@ impl Vfs {
             attr_cache: self.attr_cache.clone(),
             pending_view: self.pending_view.clone(),
             write_drain: self.write_drain.clone(),
-            chunk_resolver: self.chunk_resolver.clone(),
             overlay_reads: self.overlay_reads,
             journal: self.journal_ctx(),
             _open_guard: Some(self.lifecycle.guard(ino)),

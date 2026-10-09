@@ -26,6 +26,6 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         std::path::PathBuf::from(lib).display()
     );
-    println!("cargo:rustc-link-lib=winfsp_x64");
+    println!("cargo:rustc-link-lib=winfsp-x64");
     println!("cargo:rustc-link-lib=advapi32");
 }

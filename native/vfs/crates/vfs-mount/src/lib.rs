@@ -1,7 +1,7 @@
 //! Platform mount lifecycle; filesystem semantics belong to vfs-core.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod unix;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub use unix::*;
 #[cfg(all(windows, feature = "winfsp"))]
 mod windows;

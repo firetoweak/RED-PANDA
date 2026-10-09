@@ -223,7 +223,6 @@ impl File for OverlayPartialFile {
                 self.delta_ino,
                 self.geometry(),
                 &range_refs,
-                self.delta.chunk_resolver(),
                 &hooks,
             )
             .await
@@ -270,7 +269,6 @@ impl File for OverlayPartialFile {
                 self.delta_ino,
                 self.geometry(),
                 size,
-                self.delta.chunk_resolver(),
                 &hooks,
             )
             .await?;
@@ -480,7 +478,6 @@ impl OverlayPartialFile {
                 conn,
                 self.delta_ino,
                 self.geometry(),
-                self.delta.chunk_resolver(),
                 chunk_start,
                 self.chunk_size as u64,
             )

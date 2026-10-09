@@ -30,14 +30,6 @@ pub enum Error {
     #[error(transparent)]
     Fs(#[from] crate::fs::FsError),
 
-    /// Invalid agent ID format
-    #[error("invalid agent ID '{0}': agent IDs must contain only alphanumeric characters, hyphens, and underscores")]
-    InvalidAgentId(String),
-
-    /// Agent not found
-    #[error("agent '{id}' not found at '{path}'")]
-    AgentNotFound { id: String, path: String },
-
     /// Database file path does not exist
     #[error("database not found: {0}")]
     DatabaseNotFound(String),
@@ -54,17 +46,9 @@ pub enum Error {
     #[error("path is not a directory: {0}")]
     NotADirectory(String),
 
-    /// Tool call not found
-    #[error("tool call not found")]
-    ToolCallNotFound,
-
     /// Connection pool timeout - no connections available
     #[error("connection pool timeout: no connections available")]
     ConnectionPoolTimeout,
-
-    /// Invalid encryption key
-    #[error("invalid encryption key: {0}")]
-    InvalidEncryptionKey(String),
 
     /// Internal error (for unexpected conditions)
     #[error("{0}")]
@@ -73,20 +57,6 @@ pub enum Error {
     /// Schema version mismatch - database schema version doesn't match expected version
     #[error("schema version mismatch: database is version {found}, expected {expected}")]
     SchemaVersionMismatch { found: String, expected: String },
-
-    /// A hollow database contains metadata but not its content-addressed chunk bytes.
-    #[error(
-        "database is a remote metadata artifact whose chunk bytes are not present; hydrate it before opening writable"
-    )]
-    ChunksHollow,
-
-    /// A chunk source returned bytes that do not match the requested digest.
-    #[error("hydrated chunk {digest} does not match its BLAKE3 digest")]
-    ChunkDigestMismatch { digest: String },
-
-    /// A stored chunk digest cannot identify a BLAKE3 object.
-    #[error("stored chunk digest has length {length}, expected 32 bytes")]
-    InvalidChunkDigest { length: usize },
 
     /// Durable history markers record a journaling gap.
     #[error(

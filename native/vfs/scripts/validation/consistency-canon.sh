@@ -38,11 +38,9 @@ check_python "dag" - <<'PY'
 import json, subprocess, sys
 
 expected = {
-    "vfs-cli": {"vfs-core", "vfs-mount"},
     "vfs-core": set(),
     "vfs-fuse": {"vfs-core"},
-    "vfs-nfs": {"vfs-core"},
-    "vfs-mount": {"vfs-core", "vfs-fuse", "vfs-nfs"},
+    "vfs-mount": {"vfs-core", "vfs-fuse"},
 }
 
 meta = json.loads(
@@ -63,7 +61,7 @@ for name, wanted in expected.items():
     if actual != wanted:
         print(f"{name} first-party deps {sorted(actual)} != expected {sorted(wanted)}")
         sys.exit(1)
-print("five-crate workspace; first-party edges match architecture.md section 3")
+print("three-crate workspace; first-party edges match README.md")
 PY
 
 # --- sealed transport surfaces ----------------------------------------------
@@ -80,17 +78,10 @@ if fuse_pubs != ["pub use adapter::{mount, FuseMountOptions, SessionHandle};"]:
 if re.search(r"^pub mod", fuse, re.M):
     problems.append("fuse lib.rs exposes a pub mod")
 
-nfs = Path("crates/vfs-nfs/src/lib.rs").read_text(encoding="utf-8")
-nfs_items = re.findall(r"^pub (?:async )?(?:struct|fn|enum|trait|mod|use) (\w+)", nfs, re.M)
-if sorted(nfs_items) != ["NfsServeOptions", "ServerHandle", "serve"]:
-    problems.append(f"nfs lib.rs pub surface drifted: {sorted(nfs_items)}")
-if re.search(r"^pub mod", nfs, re.M):
-    problems.append("nfs lib.rs exposes a pub mod")
-
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print("fuse={mount, FuseMountOptions, SessionHandle}; nfs={serve, NfsServeOptions, ServerHandle}")
+print("fuse={mount, FuseMountOptions, SessionHandle}")
 PY
 
 # --- shared cfg(test)-aware scanner used by the next three checks -----------
@@ -165,15 +156,9 @@ from pathlib import Path
 
 exec(os.environ["CANON_SCAN_HELPER"])
 
-# eprintln!/println! are user-facing CLI output only: cmd/, the single
-# reporter in main.rs, plus build scripts (canon section 7 item 2).
+# Libraries use tracing; only build scripts emit print macros.
 def allowed(path):
-    p = path.as_posix()
-    return (
-        p.startswith("crates/vfs-cli/src/cmd/")
-        or p == "crates/vfs-cli/src/main.rs"
-        or path.name == "build.rs"
-    )
+    return path.name == "build.rs"
 
 offenders = []
 for path in sorted(Path("crates").rglob("*.rs")):
@@ -186,9 +171,9 @@ for path in sorted(Path("crates").rglob("*.rs")):
         if re.search(r"\b(eprintln!|println!|eprint!|print!)\(", line):
             offenders.append(f"{path}:{lineno}")
 if offenders:
-    print(f"print macros outside cmd/ and main.rs reporter: {', '.join(offenders)}")
+    print(f"print macros outside build scripts: {', '.join(offenders)}")
     sys.exit(1)
-print("print macros confined to cli cmd/, main.rs reporter, build scripts, and test code")
+print("print macros confined to build scripts and test code")
 PY
 
 # --- env reads at the config edge ---------------------------------------------
@@ -202,7 +187,6 @@ exec(os.environ["CANON_SCAN_HELPER"])
 ALLOWED_PREFIXES = (
     "crates/vfs-core/src/config/",
     "crates/vfs-fuse/src/adapter/config.rs",
-    "crates/vfs-cli/src/config.rs",
 )
 
 offenders = []
@@ -221,23 +205,6 @@ if offenders:
 print("runtime env reads confined to config modules")
 PY
 
-# --- EnvFilter coverage --------------------------------------------------------
-check_python "envfilter-coverage" - <<'PY'
-import sys
-from pathlib import Path
-
-logging = Path("crates/vfs-cli/src/logging.rs").read_text(encoding="utf-8")
-missing = [
-    target for target in
-    ("vfs=", "vfs_cli=", "vfs_core=", "vfs_fuse=", "vfs_nfs=", "vfs_mount=")
-    if target not in logging
-]
-if missing:
-    print(f"DEFAULT_ENV_FILTER missing crate targets: {missing}")
-    sys.exit(1)
-print("DEFAULT_ENV_FILTER names every first-party crate target")
-PY
-
 # --- await_holding_lock lint -----------------------------------------------------
 check_python "await-holding-lock" - <<'PY'
 import sys
@@ -248,7 +215,7 @@ if 'await_holding_lock = "deny"' not in root:
     print("workspace lints table does not deny clippy::await_holding_lock")
     sys.exit(1)
 missing = [
-    crate for crate in ("vfs-cli", "vfs-core", "vfs-fuse", "vfs-nfs", "vfs-mount")
+    crate for crate in ("vfs-core", "vfs-fuse", "vfs-mount")
     if "workspace = true" not in Path(f"crates/{crate}/Cargo.toml").read_text(encoding="utf-8").split("[lints]")[-1]
     or "[lints]" not in Path(f"crates/{crate}/Cargo.toml").read_text(encoding="utf-8")
 ]
@@ -285,7 +252,7 @@ import sys
 from pathlib import Path
 
 problems = []
-for doc in ("MANUAL.md", "TESTING.md", "SPEC.md", "KNOBS.md"):
+for doc in ("TESTING.md", "SPEC.md", "WINDOWS.md"):
     if not Path("docs", doc).is_file():
         problems.append(f"docs/{doc} missing")
     if Path(doc).exists():
@@ -293,7 +260,7 @@ for doc in ("MANUAL.md", "TESTING.md", "SPEC.md", "KNOBS.md"):
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print("user docs live under docs/ (MANUAL, TESTING, SPEC, KNOBS)")
+print("user docs live under docs/ (TESTING, SPEC, WINDOWS)")
 PY
 
 # --- schema DDL centralization (VAL-CORE-014) ---------------------------------------

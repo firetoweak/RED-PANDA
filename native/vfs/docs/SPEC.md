@@ -1,16 +1,13 @@
-# Agent Filesystem Specification
+# RED PANDA VFS 文件存储格式
 
-**Version:** 0.10
+**Version:** 0.11
 
 ## Introduction
 
-The Agent Filesystem Specification defines a SQLite schema for representing agent filesystem state. The fork's v0.10 format preserves content-addressed storage and replayable history, with persistent base identities and UUID namespaces for files born in different deltas. It accepts only v0.10 databases; older formats are refused without guessing origin ownership. The specification consists of five main components:
-
-1. **Tool Call Audit Trail**: Captures tool invocations, parameters, and results for debugging, auditing, and performance analysis
-2. **Virtual Filesystem**: Stores agent artifacts (files, documents, outputs) using a Unix-like inode design with support for hard links, proper metadata, and efficient file operations
-3. **Session Handoff Metadata**: Stores the monotonic pack generation and future seed provenance inside the transferable database
-4. **Replayable History**: Records committed table-row post-images and immutable root snapshots without duplicating chunk bytes
-5. **Key-Value Store**: Provides simple get/set operations for agent context, preferences, and structured state that doesn't fit into the filesystem model
+This local format stores filesystem state, overlay lineage and replayable history.
+Only version 0.11 is accepted. Independent KV/tool state, session-handoff APIs
+and remote chunk resolution have been removed. Filesystem history semantics
+remain unchanged pending a separate design discussion.
 
 All timestamps in this specification use Unix epoch format (seconds since 1970-01-01 00:00:00 UTC) with optional nanosecond precision via separate `_nsec` columns.
 
@@ -43,8 +40,7 @@ before the mutation is considered visible to the caller.
 
 The subsections below describe the acceleration structures the reference
 implementation actually ships and the invariants each one must preserve.
-Every one of them has a declared kill switch or policy knob in the generated
-knob ledger (`docs/KNOBS.md`).
+Configuration is declared in the core and FUSE config modules.
 
 ### Write Batching and Durability
 
@@ -115,115 +111,6 @@ are contractual:
    and MUST fail rather than silently mix bytes from a drifted base file
    (see Partial-Origin Overlay Mode).
 
-## Tool Calls
-
-The tool call tracking schema captures tool invocations for debugging, auditing, and analysis.
-
-### Schema
-
-#### Table: `tool_calls`
-
-Stores individual tool invocations with parameters and results. This is an insert-only audit log.
-
-```sql
-CREATE TABLE tool_calls (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  parameters TEXT,
-  result TEXT,
-  error TEXT,
-  started_at INTEGER NOT NULL,
-  completed_at INTEGER NOT NULL,
-  duration_ms INTEGER NOT NULL
-)
-
-CREATE INDEX idx_tool_calls_name ON tool_calls(name)
-CREATE INDEX idx_tool_calls_started_at ON tool_calls(started_at)
-```
-
-**Fields:**
-
-- `id` - Unique tool call identifier
-- `name` - Tool name (e.g., 'read_file', 'web_search', 'execute_code')
-- `parameters` - JSON-serialized input parameters (NULL if no parameters)
-- `result` - JSON-serialized result (NULL if error)
-- `error` - Error message (NULL if success)
-- `started_at` - Invocation timestamp (Unix timestamp, seconds)
-- `completed_at` - Completion timestamp (Unix timestamp, seconds)
-- `duration_ms` - Execution duration in milliseconds
-
-### Operations
-
-#### Record Tool Call
-
-```sql
-INSERT INTO tool_calls (name, parameters, result, error, started_at, completed_at, duration_ms)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-```
-
-**Note:** Insert once when the tool call completes. Either `result` or `error` should be set, not both.
-
-#### Query Tool Calls by Name
-
-```sql
-SELECT * FROM tool_calls
-WHERE name = ?
-ORDER BY started_at DESC
-```
-
-#### Query Recent Tool Calls
-
-```sql
-SELECT * FROM tool_calls
-WHERE started_at > ?
-ORDER BY started_at DESC
-```
-
-#### Analyze Tool Performance
-
-```sql
-SELECT
-  name,
-  COUNT(*) as total_calls,
-  SUM(CASE WHEN error IS NULL THEN 1 ELSE 0 END) as successful,
-  SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) as failed,
-  AVG(duration_ms) as avg_duration_ms
-FROM tool_calls
-GROUP BY name
-ORDER BY total_calls DESC
-```
-
-### Consistency Rules
-
-1. Exactly one of `result` or `error` SHOULD be non-NULL (mutual exclusion)
-2. `completed_at` MUST always be set (no NULL values)
-3. `duration_ms` MUST always be set and equal to `(completed_at - started_at) * 1000`
-4. Parameters and results MUST be valid JSON strings when present
-5. Records MUST NOT be updated or deleted (insert-only audit log)
-
-### Implementation Notes
-
-- This is an insert-only audit log - no updates or deletes
-- Insert the record once when the tool call completes
-- Set either `result` (on success) or `error` (on failure), but not both
-- `parameters`, `result`, and `error` are stored as JSON-serialized strings
-- `duration_ms` should be computed as `(completed_at - started_at) * 1000`
-- Use indexes for efficient queries by name or time
-- Consider periodic archival of old tool call records to a separate table
-
-### Extension Points
-
-Implementations MAY extend the tool call schema with additional functionality:
-
-- Session/conversation grouping (add `session_id` field)
-- User attribution (add `user_id` field)
-- Cost tracking (add `cost` field for API calls)
-- Parent/child relationships for nested tool calls
-- Token usage tracking
-- Input/output size metrics
-
-Such extensions SHOULD use separate tables to maintain referential integrity.
-
 ## Virtual Filesystem
 
 The virtual filesystem provides POSIX-like file operations for agent artifacts. The filesystem separates namespace (paths and names) from data (file content and metadata) using a Unix-like inode design. This enables hard links (multiple paths to the same file), efficient file operations, proper file metadata (permissions, timestamps), and chunked content storage.
@@ -250,7 +137,7 @@ CREATE TABLE fs_config (
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `schema_version` | On-disk schema version | `0.10` |
+| `schema_version` | On-disk schema version | `0.11` |
 | `filesystem_id` | Immutable UUID v4 creation namespace of this delta | Generated once at database creation |
 | `chunk_size` | Size of data chunks in bytes | `65536` |
 | `inline_threshold` | Maximum dense regular-file size stored inline in `fs_inode.data_inline` | `16384` |
@@ -261,7 +148,7 @@ CREATE TABLE fs_config (
 **Notes:**
 
 - `chunk_size` determines the fixed size of data chunks in `fs_data`
-- New v0.7+ filesystems use 64 KiB chunks by default; legacy databases retain their recorded chunk size until copy-migrated
+- New filesystems use 64 KiB chunks by default
 - `inline_threshold` determines when dense regular files may avoid `fs_data` rows entirely
 - Schema and geometry keys are immutable after initialization; the history
   epoch, validity, and floor keys are runtime-managed durable markers
@@ -636,7 +523,7 @@ When creating a new agent database, initialize the filesystem configuration and 
 
 ```sql
 -- Initialize filesystem configuration
-INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.10');
+INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.11');
 INSERT INTO fs_config (key, value) VALUES ('chunk_size', '65536');
 INSERT INTO fs_config (key, value) VALUES ('inline_threshold', '16384');
 INSERT INTO fs_config (key, value) VALUES ('history_epoch', '1');
@@ -656,11 +543,10 @@ history root containing inode 1 at epoch 1 through sequence 0.
 
 ### Format Boundary
 
-`PRAGMA user_version = 10` identifies this fork's baseline. `MIN_SUPPORTED` is
-0.10. Initialization, writable open and read-only open MUST refuse any older
-format before running schema DDL. Old physical or delta ownership cannot be
-recovered from ambiguous origin references. Neither in-place
-nor copy migration may fabricate identities or discard origin relationships.
+`PRAGMA user_version = 11` identifies the local-only filesystem format. `MIN_SUPPORTED` is
+0.11. Initialization, writable open and read-only open MUST refuse any older
+format before running schema DDL. The older application tables and remote-chunk
+layouts are outside this local filesystem contract; no migration path is provided.
 A current database with missing or incompatible identity columns is corrupt
 and MUST be refused, rather than repaired as a legacy layout.
 
@@ -769,48 +655,16 @@ CREATE TABLE fs_overlay_config (
 |-----|-------------|
 | `parent_artifact` | sha256 (64 lowercase hex chars) of the frozen parent artifact a branch delta reads through |
 
-Copy migration MUST preserve this table when migrating an overlay delta database. Without it, a migrated overlay database would mount as a plain Vfs database and lose base-layer visibility.
 
-### Branch Deltas and the Artifact Store
+### Frozen parent artifacts
 
-`vfs branch` forks a run session by snapshotting the parent database
-(`VACUUM INTO` through a read transaction, drained first, so a live parent
-is never stopped), publishing the snapshot as an immutable content-addressed
-artifact at `~/.vfs/artifacts/<sha256>.db` (chmod `0444`, published by
-same-filesystem rename after the bytes are durable), and creating a new
-session whose delta records the artifact digest under `parent_artifact`.
-Because the store is content-addressed, branches taken at the same parent
-state share one artifact.
-
-A delta carrying `parent_artifact` mounts as a stacked overlay:
-
-```
-overlay(branch delta, overlay(parent artifact, ... , host base))
-```
-
-Every mount surface resolves the chain the same way (one shared stack
-builder). Chain semantics:
-
-- Parent artifacts are opened strictly read-only; their `finalize`/drain are
-  no-ops and nothing in-process may hold a writable handle to the store.
-- Before opening, each artifact is re-hashed and compared against the digest
-  recorded by its child. A missing or drifted artifact refuses the mount
-  (invariant: the branched state is reproduced exactly, or not at all).
-  `vfs run` reports this refusal with the invalid-session exit status `5`.
-- Chains recurse (a parent may itself record `parent_artifact`) up to a
-  depth of 8, refused beyond that.
-- Partial-origin copy-up is forced Off on branch mounts: partial-origin rows
-  fingerprint real base files, and a branch's base is a virtual stack.
-- Packed artifacts never carry `parent_artifact`: `vfs pack` materializes the
-  parent chain into the staged database, so the handoff wire contract and
-  `artifactVersion` are unchanged by branching.
-- Store GC (`vfs prune artifacts`) deletes only artifacts unreachable from
-  any installed session's chain. Reachability is computed conservatively —
-  inactive sessions read under the exclusive session lock, live sessions
-  answered over the control socket, anything unclassifiable aborts the
-  prune — and an advisory lock on the store directory serializes GC against
-  in-flight branch publication (a fork holds it shared from artifact install
-  until the referencing session is installed).
+A child delta records its immutable parent under `parent_artifact`; `base_path`
+records the scoped host base. The application resolves and verifies the parent
+chain before building layered overlays. Parent artifacts are opened strictly
+read-only, and their reads/finalize must not modify the database file family.
+`snapshot_into` drains acknowledged writes and creates a durable single-file
+database through a consistent SQLite snapshot. Artifact naming, ownership,
+publication and collection belong to RED PANDA, outside this library.
 
 ### Operations
 
@@ -939,32 +793,12 @@ pass with the policy enabled.
 7. Legacy overlay formats MUST be refused before current-format schema operations
 8. Partial-origin sidecars MUST survive while an unlinked private inode has open handles and be collected when that inode is reaped
 
-## Session Handoff Metadata
+## Retained history metadata
 
-Transfer preparation state is stored inside the database so a packed
-`delta.db` carries its own double-resume guard and future seed provenance.
-
-### Table: `fs_session_metadata`
-
-```sql
-CREATE TABLE fs_session_metadata (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-)
-```
-
-**Defined keys:**
-
-| Key | Encoding | Description |
-|-----|----------|-------------|
-| `generation` | Base-10 unsigned integer text | Monotonic counter incremented by each successful `vfs pack` |
-| `seeded_paths` | JSON string array | Paths materialized by the future seed operation; defaults to `[]` |
-| `seed_pin` | Full git commit hash text | Base provenance recorded by `vfs seed`; `vfs adopt` verifies the receiving base checkout's `HEAD` against it |
-
-`vfs pack` updates metadata only in its private database copy. The new
-generation becomes authoritative when the compacted copy is atomically
-published as the session's `delta.db`. A failed pack MUST leave both metadata
-keys and all filesystem rows at their pre-pack values.
+`fs_session_metadata` and the seed provenance handled by snapshots/replay
+remain as internal history dependencies for this pruning pass. There is no
+public session-handoff, pack-generation or seeding API. Their removal or
+replacement must be decided together with the history mechanism.
 
 ## Operation Journal
 
@@ -1077,7 +911,7 @@ inside one transaction; it does not hydrate file contents through runtime
 filesystem read APIs.
 
 A new database starts with an `init` snapshot at epoch 1 through sequence 0.
-The fork does not migrate pre-0.10 history. New databases establish
+Older database formats are rejected. New databases establish
 `history_epoch=1`, `history_valid=1`, and `history_floor_seq=0`.
 
 ## History Range, Epochs, and Reconstruction
@@ -1113,9 +947,8 @@ replaces these live tables:
 
 For `fs_overlay_config`, replay replaces only `parent_artifact`; `base_path`
 belongs to the receiving staging database and MUST remain unchanged. Snapshot
-provenance restores `seed_pin` and `seeded_paths`. `kv_store`, `tool_calls`,
-and session `generation` are outside filesystem-history scope and MUST remain
-untouched.
+provenance restores `seed_pin` and `seeded_paths`. Session `generation` is outside
+filesystem-history scope and remains untouched.
 
 Inline inode bytes are rematerialized from `fs_chunk` through
 `data_inline_digest`. Reconstruction MUST fail if any inline or `fs_data`
@@ -1156,7 +989,7 @@ environment:
 No target from an invalidated or prior epoch remains available after
 revalidation.
 
-### Snapshot-covered retention and pack floors
+### Snapshot-covered retention and fresh floors
 
 Journal collection computes the sequence horizon as
 `history_head_seq - VFS_JOURNAL_RETENTION_OPS` and chooses the greatest
@@ -1167,221 +1000,19 @@ journal groups through the boundary and older/superseded roots in one
 transaction. Therefore every advertised target always has a covering root and
 a contiguous journal suffix.
 
-`vfs pack` is a generation boundary. On its private staging database it first
-materializes any branch-parent chain and applies configured prunes, then
-captures a `pack` root at the current head, removes all older journal targets
-and snapshots, and sets that root as the fresh floor. Pre-pack targets are
-intentionally unavailable from the packed generation.
-
-## Key-Value Data
-
-The key-value store provides simple get/set operations for agent context and state.
-
-### Schema
-
-#### Table: `kv_store`
-
-Stores arbitrary key-value pairs with automatic timestamping.
-
-```sql
-CREATE TABLE kv_store (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  created_at INTEGER DEFAULT (unixepoch()),
-  updated_at INTEGER DEFAULT (unixepoch())
-)
-
-CREATE INDEX idx_kv_store_created_at ON kv_store(created_at)
-```
-
-**Fields:**
-
-- `key` - Unique key identifier
-- `value` - JSON-serialized value
-- `created_at` - Creation timestamp (Unix timestamp, seconds)
-- `updated_at` - Last update timestamp (Unix timestamp, seconds)
-
-### Operations
-
-#### Set a Value
-
-```sql
-INSERT INTO kv_store (key, value, updated_at)
-VALUES (?, ?, unixepoch())
-ON CONFLICT(key) DO UPDATE SET
-  value = excluded.value,
-  updated_at = unixepoch()
-```
-
-#### Get a Value
-
-```sql
-SELECT value FROM kv_store WHERE key = ?
-```
-
-#### Delete a Value
-
-```sql
-DELETE FROM kv_store WHERE key = ?
-```
-
-#### List All Keys
-
-```sql
-SELECT key, created_at, updated_at FROM kv_store ORDER BY key ASC
-```
-
-### Consistency Rules
-
-1. Keys MUST be unique (enforced by PRIMARY KEY)
-2. Values MUST be valid JSON strings
-3. Timestamps MUST use Unix epoch format (seconds)
-
-### Implementation Notes
-
-- Values are stored as JSON strings; serialize before storing, deserialize after retrieving
-- Use `ON CONFLICT` clause for upsert operations
-- Indexes on `created_at` support temporal queries
-- Updates automatically refresh the `updated_at` timestamp
-- Keys can use any naming convention (e.g., namespaced: `user:preferences`, `session:state`)
-
-### Extension Points
-
-Implementations MAY extend the key-value store schema with additional functionality:
-
-- Namespaced keys with hierarchy support
-- Value versioning/history
-- TTL (time-to-live) for automatic expiration
-- Value size limits and quotas
-
-Such extensions SHOULD use separate tables to maintain referential integrity.
-
-## Remote Tier
-
-The remote tier replicates a session to S3-compatible object storage (or a
-`file://` root, which is the same wire) as three object kinds under one
-configured prefix:
-
-```text
-chunks/<blake3-hex>                 immutable raw chunk bytes
-sessions/<id>/meta/<sha256>.db      immutable hollowed metadata artifact
-sessions/<id>/manifest.json         mutable per-session head pointer
-```
-
-Chunk objects are keyed by the lowercase hex of the raw 32-byte BLAKE3 digest
-that identifies the same bytes in `fs_chunk`, so identical content
-deduplicates across sessions sharing a prefix, and uploads are idempotent by
-construction. Object contents are verified against their key digest on every
-consumption; a mismatch MUST refuse the object.
-
-### Hollow metadata artifact
-
-A metadata artifact is the complete session database — inodes, namespace,
-inline bytes, journal, root snapshots, overlay and provenance configuration,
-key-value rows, and tool calls — with every `fs_chunk.data` value replaced by
-the empty blob and the `fs_config` key `chunks_hollow` set to `1`. Digests
-and refcounts are preserved. It is content-addressed by the SHA-256 of the
-published single-file form, mirroring the whole-artifact contracts used by
-the local artifact store.
-
-The hollow state is a wire shape with exactly one live exception:
-
-- A mutation-capable open MUST refuse a hollow database unless the opener
-  injects a `ChunkSource` (the lazy-session contract below). The refusal is
-  one open-gate decision; migration and other maintenance normalization MUST
-  preserve the marker rather than refuse, and migrations MUST NOT depend on
-  chunk bytes. Read-only opens remain valid.
-- `integrity` MUST report the state (`storage.chunks_hollow`, counting the
-  rows still empty); portable-mode verification MUST fail it. While the
-  marker is set, non-empty chunk rows MUST still verify against their
-  digests; an empty chunk body without the marker is corruption.
-- `backup` MUST refuse a hollow source unless it materializes
-  (`--materialize` hydrates through the same conversion path as
-  `materialize --output`).
-- Hydration (`hydrate_chunks`) refills every still-empty chunk from a
-  `ChunkSource`, verifies each against its digest, and clears the marker in
-  the same transaction; a hollow database becomes a normal database only
-  through it. The single legitimately zero-length row, the BLAKE3 digest of
-  the empty input, is complete by definition.
-
-### Checkpoint protocol
-
-`vfs checkpoint` publishes one consistent point:
-
-1. Acquire a drained snapshot of the session database (control socket for a
-   live session, exclusive lock otherwise). Every write acknowledged before
-   the call MUST be covered.
-2. On the private staging copy: materialize any branch parent chain and clear
-   `parent_artifact` (the remote wire is branch-agnostic, matching `pack`),
-   refusing on a missing or drifted parent.
-3. Upload chunk objects the remote lacks, then the metadata artifact, then
-   the manifest. The manifest PUT is the single commit point; the writer MUST
-   read it back and verify it before reporting success. Objects uploaded
-   before a failed manifest write are orphans, harmless by content
-   addressing.
-4. Report the journal head sequence as the checkpoint token.
-
-The manifest carries `sessionId`, `headSeq`, `historyEpoch`, `historyValid`,
-`generation`, `artifactVersion`, optional `seedPin`, the metadata object
-reference (`key`, `sha256`, `bytes`), `chunkCount`, `chunkBytes`,
-`createdAtMs`, and `vfsVersion`. Fields are additive; consumers MUST ignore
-unknown fields. A checkpoint of a session whose journaling was disabled MUST
-publish `historyValid:false` rather than letting a maintenance open
-revalidate the epoch on staging.
-
-Sessions with local at-rest encryption MUST refuse to checkpoint: chunk
-objects are plaintext, and publishing them would silently downgrade the
-encryption boundary.
-
-### Background streamer
-
-A mount owner configured with a remote MAY stream chunk objects ahead of any
-checkpoint to amortize upload latency. The streamer writes only
-`chunks/<digest>` objects, never the manifest or metadata: explicit
-checkpoints are the only consistency points. Its state MUST be
-reconstructible from the database plus one remote listing — losing it costs
-at most redundant idempotent uploads. The streamer MUST NOT publish an empty
-chunk body: an empty object under a real digest key corrupts the shared
-namespace for every session using the prefix, and the checkpoint command
-MUST refuse a hollow session for the same reason.
-
-### Lazy remote adopt
-
-`vfs adopt --remote` installs a session from the remote tier alone:
-
-1. GET the session manifest; verify the requested session ID and that
-   `artifactVersion` lies within the supported range (a future version MUST
-   refuse with upgrade guidance; an older supported one forward-migrates).
-2. GET the metadata object named by the manifest; verify its exact byte
-   length and SHA-256 before any use.
-3. Stage, integrity-check, and forward-migrate through the ordinary adopt
-   spine (the marker survives migration). Cross-check the manifest's
-   `generation`, `seedPin`, history markers, `headSeq`, and `chunkCount`
-   against the staged database before publication; `chunkBytes` is not
-   locally recomputable from a hollow database and is informational.
-4. Durably record the remote locator in the session store after the base
-   path and before the rename commit: no installed database may exist
-   without the source its reads need. The rename remains the commit point.
-
-The installed session is *lazy*. Every consumer of chunk bytes resolves
-through one canonical path: a non-empty row passes through; an empty row in
-a hollow database fetches by digest from the recorded remote, MUST verify
-BLAKE3 before use, and backfills the row as a cache fill that MUST NOT
-produce journal rows (content-addressed bytes carry no logical state). A
-fetch failure or an empty row with no source MUST surface as an explicit
-read error — never silent zeros. Partial writes and truncations MUST resolve
-the chunks they modify before mutating, so untouched remote bytes are
-preserved. The ambient remote configuration is never consulted at read time;
-the recorded locator is the session's one fault source.
-
-Lazy state cannot leave the machine: `pack`, `branch`, `revert`,
-`checkpoint`, and plain `backup` MUST refuse while the marker is set.
-`materialize --in-place` completes hydration offline under the exclusive
-session lock, removes the recorded locator (the dependency is gone), and is
-idempotent. These refusals are the documented relaxation points if a later
-phase teaches transfer commands to carry lazy state.
+Establishing a fresh history floor remains an explicit core operation.
+It captures the current head and removes earlier replay targets.
 
 ## Revision History
+
+Older entries describe the upstream history, including features removed by this fork.
+
+### Version 0.11 (RED PANDA)
+
+Filesystem-only local format: no KV/tool tables, encryption opening options,
+remote chunk source or public handoff API. Version 0.10 and earlier are refused.
+Journal, root snapshots, replay and internal history metadata are retained.
+
 
 ### Version 0.10 (fork)
 

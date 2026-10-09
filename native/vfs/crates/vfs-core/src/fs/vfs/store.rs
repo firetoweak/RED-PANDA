@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use turso::{Connection, Value};
@@ -7,22 +6,9 @@ use turso::{Connection, Value};
 use crate::config::Geometry;
 use crate::error::{Error, Result};
 use crate::fs::{FsError, Stats};
-use crate::schema::ChunkSource;
 
 use super::batcher::{write_commit_time_sets, PendingTimeChange};
 use super::{current_timestamp, InodeRow, STORAGE_CHUNKED, STORAGE_INLINE};
-
-#[derive(Clone, Default)]
-pub(in crate::fs) struct ChunkResolver {
-    hollow: bool,
-    source: Option<Arc<dyn ChunkSource>>,
-}
-
-impl ChunkResolver {
-    pub(in crate::fs) fn new(hollow: bool, source: Option<Arc<dyn ChunkSource>>) -> Self {
-        Self { hollow, source }
-    }
-}
 
 pub(super) struct FileStorage {
     pub(super) inode: InodeRow,
@@ -231,12 +217,11 @@ pub(in crate::fs) async fn read(
     conn: &Connection,
     ino: i64,
     geometry: Geometry,
-    resolver: &ChunkResolver,
     offset: u64,
     size: u64,
 ) -> Result<Vec<u8>> {
     let metadata = file_storage(conn, ino).await?;
-    read_from_storage(conn, ino, geometry, &metadata, resolver, offset, size).await
+    read_from_storage(conn, ino, geometry, &metadata, offset, size).await
 }
 
 pub(super) async fn read_from_storage(
@@ -244,7 +229,6 @@ pub(super) async fn read_from_storage(
     ino: i64,
     geometry: Geometry,
     metadata: &FileStorage,
-    resolver: &ChunkResolver,
     offset: u64,
     size: u64,
 ) -> Result<Vec<u8>> {
@@ -271,7 +255,7 @@ pub(super) async fn read_from_storage(
         return Ok(result);
     }
 
-    read_chunked(conn, ino, geometry, resolver, offset, size).await
+    read_chunked(conn, ino, geometry, offset, size).await
 }
 
 /// Splices ordered chunk rows into one read buffer, zero-filling sparse gaps.
@@ -349,7 +333,6 @@ async fn read_chunked(
     conn: &Connection,
     ino: i64,
     geometry: Geometry,
-    resolver: &ChunkResolver,
     offset: u64,
     size: u64,
 ) -> Result<Vec<u8>> {
@@ -359,50 +342,7 @@ async fn read_chunked(
     let mut assembler = ChunkAssembler::new(offset, size, chunk_size);
     crate::telemetry::record_chunk_read_query();
 
-    // The hollow session is the exceptional branch of the same read: it must
-    // materialize the digests and finish the row stream before any remote
-    // fetch, while the ordinary path streams rows straight into the buffer
-    // without ever decoding a digest.
-    if resolver.hollow {
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT d.chunk_index, c.digest, c.data
-                 FROM fs_data d
-                 JOIN fs_chunk c ON c.digest = d.digest
-                 WHERE d.ino = ? AND d.chunk_index BETWEEN ? AND ?
-                 ORDER BY d.chunk_index",
-            )
-            .await?;
-        let mut rows = stmt
-            .query((ino, start_chunk as i64, end_chunk as i64))
-            .await?;
-
-        let mut chunk_rows = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let chunk_index = required_u64(&row, 0, "fs_data.chunk_index")?;
-            let digest = match row.get_value(1) {
-                Ok(Value::Blob(digest)) => digest,
-                Ok(_) | Err(_) => return Err(corrupt_column("fs_chunk.digest", "expected blob")),
-            };
-            let data = match row.get_value(2) {
-                Ok(Value::Blob(data)) => data,
-                Ok(_) | Err(_) => return Err(corrupt_column("fs_chunk.data", "expected blob")),
-            };
-            chunk_rows.push((chunk_index, digest, data));
-        }
-        drop(rows);
-        drop(stmt);
-
-        // Remote I/O starts only after the row stream is gone. The caller's
-        // pooled connection remains checked out so verified bytes can
-        // backfill through the same connection; pool occupancy during faults
-        // is the accepted tradeoff, while holding a live Turso statement
-        // across a fetch is not.
-        for (chunk_index, digest, data) in chunk_rows {
-            let chunk_data = resolve_chunk_bytes(conn, resolver, digest, data).await?;
-            assembler.append(chunk_index, &chunk_data);
-        }
-    } else {
+    {
         let mut stmt = conn
             .prepare_cached(
                 "SELECT d.chunk_index, c.data
@@ -427,44 +367,6 @@ async fn read_chunked(
     }
 
     Ok(assembler.finish())
-}
-
-async fn resolve_chunk_bytes(
-    conn: &Connection,
-    resolver: &ChunkResolver,
-    digest: Vec<u8>,
-    data: Vec<u8>,
-) -> Result<Vec<u8>> {
-    if !data.is_empty() || !resolver.hollow {
-        return Ok(data);
-    }
-    let source = resolver.source.as_deref().ok_or(Error::ChunksHollow)?;
-    let length = digest.len();
-    let digest = <[u8; 32]>::try_from(digest).map_err(|_| Error::InvalidChunkDigest { length })?;
-    let bytes = source.fetch(&digest).await?;
-    if blake3::hash(&bytes).as_bytes() != &digest {
-        return Err(Error::ChunkDigestMismatch {
-            digest: blake3::Hash::from_bytes(digest).to_hex().to_string(),
-        });
-    }
-
-    // This is a physical CAS cache fill, not a logical filesystem mutation:
-    // row-delta journal entries are emitted explicitly by mutation paths, so
-    // this plain UPDATE must stay outside their recording vocabulary.
-    match conn
-        .execute(
-            "UPDATE fs_chunk SET data = ? WHERE digest = ? AND length(data) = 0",
-            (
-                Value::Blob(bytes.clone()),
-                Value::Blob(digest.as_slice().to_vec()),
-            ),
-        )
-        .await
-    {
-        Ok(_) | Err(turso::Error::Busy(_)) => {}
-        Err(error) => return Err(error.into()),
-    }
-    Ok(bytes)
 }
 
 fn digest_chunk(data: &[u8]) -> Vec<u8> {
@@ -630,13 +532,6 @@ struct WriteOptions<'a> {
     explicit_times: Option<&'a PendingTimeChange>,
     hooks: Option<&'a dyn ChunkWriteHooks>,
     force_chunked: bool,
-    resolver: &'a ChunkResolver,
-}
-
-#[derive(Clone, Copy)]
-struct ChunkMutation<'a> {
-    resolver: &'a ChunkResolver,
-    hooks: Option<&'a dyn ChunkWriteHooks>,
 }
 
 pub(super) async fn write_ranges(
@@ -644,7 +539,6 @@ pub(super) async fn write_ranges(
     ino: i64,
     geometry: Geometry,
     ranges: &[WriteRangeRef<'_>],
-    resolver: &ChunkResolver,
     preserve_times: bool,
     explicit_times: Option<&PendingTimeChange>,
 ) -> Result<StorageChanges> {
@@ -658,7 +552,6 @@ pub(super) async fn write_ranges(
             explicit_times,
             hooks: None,
             force_chunked: false,
-            resolver,
         },
     )
     .await
@@ -669,7 +562,6 @@ pub(in crate::fs) async fn write_ranges_with_chunk_hooks(
     ino: i64,
     geometry: Geometry,
     ranges: &[WriteRangeRef<'_>],
-    resolver: &ChunkResolver,
     hooks: &dyn ChunkWriteHooks,
 ) -> Result<StorageChanges> {
     write_ranges_inner(
@@ -682,7 +574,6 @@ pub(in crate::fs) async fn write_ranges_with_chunk_hooks(
             explicit_times: None,
             hooks: Some(hooks),
             force_chunked: true,
-            resolver,
         },
     )
     .await
@@ -773,10 +664,7 @@ async fn write_ranges_inner(
         ino,
         geometry,
         &chunked_ranges,
-        ChunkMutation {
-            resolver: options.resolver,
-            hooks: options.hooks,
-        },
+        options.hooks,
         &mut data_deltas,
     )
     .await?;
@@ -809,9 +697,8 @@ pub(super) async fn truncate(
     ino: i64,
     geometry: Geometry,
     new_size: u64,
-    resolver: &ChunkResolver,
 ) -> Result<StorageChanges> {
-    truncate_inner(conn, ino, geometry, new_size, resolver, false, None).await
+    truncate_inner(conn, ino, geometry, new_size, false, None).await
 }
 
 pub(in crate::fs) async fn truncate_with_chunk_hooks(
@@ -819,10 +706,9 @@ pub(in crate::fs) async fn truncate_with_chunk_hooks(
     ino: i64,
     geometry: Geometry,
     new_size: u64,
-    resolver: &ChunkResolver,
     hooks: &dyn ChunkWriteHooks,
 ) -> Result<StorageChanges> {
-    truncate_inner(conn, ino, geometry, new_size, resolver, true, Some(hooks)).await
+    truncate_inner(conn, ino, geometry, new_size, true, Some(hooks)).await
 }
 
 async fn truncate_inner(
@@ -830,7 +716,6 @@ async fn truncate_inner(
     ino: i64,
     geometry: Geometry,
     new_size: u64,
-    resolver: &ChunkResolver,
     force_chunked: bool,
     hooks: Option<&dyn ChunkWriteHooks>,
 ) -> Result<StorageChanges> {
@@ -873,23 +758,15 @@ async fn truncate_inner(
 
         let mut inline_data = metadata.inline_data().unwrap_or_default();
         inline_data.resize(metadata.size() as usize, 0);
-        transition_inline_to_chunked(
-            conn,
-            ino,
-            geometry,
-            &inline_data,
-            resolver,
-            hooks,
-            &mut data_deltas,
-        )
-        .await?;
+        transition_inline_to_chunked(conn, ino, geometry, &inline_data, hooks, &mut data_deltas)
+            .await?;
         truncate_chunked_data(
             conn,
             ino,
             geometry,
             metadata.size(),
             new_size,
-            ChunkMutation { resolver, hooks },
+            hooks,
             &mut data_deltas,
         )
         .await?;
@@ -902,7 +779,7 @@ async fn truncate_inner(
 
     if !force_chunked && new_size <= geometry.inline_threshold as u64 {
         if let Some(inline_data) =
-            read_dense_prefix_for_inline(conn, ino, geometry, new_size, resolver).await?
+            read_dense_prefix_for_inline(conn, ino, geometry, new_size).await?
         {
             data_deltas.extend(delete_all_chunk_mappings(conn, ino).await?);
             let (now_secs, now_nsec) = current_timestamp()?;
@@ -940,7 +817,7 @@ async fn truncate_inner(
         geometry,
         metadata.size(),
         new_size,
-        ChunkMutation { resolver, hooks },
+        hooks,
         &mut data_deltas,
     )
     .await?;
@@ -956,23 +833,13 @@ async fn transition_inline_to_chunked(
     ino: i64,
     geometry: Geometry,
     inline_data: &[u8],
-    resolver: &ChunkResolver,
     hooks: Option<&dyn ChunkWriteHooks>,
     data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     data_deltas.extend(delete_all_chunk_mappings(conn, ino).await?);
 
     if !inline_data.is_empty() {
-        write_data_at_offset(
-            conn,
-            ino,
-            geometry,
-            0,
-            inline_data,
-            ChunkMutation { resolver, hooks },
-            data_deltas,
-        )
-        .await?;
+        write_data_at_offset(conn, ino, geometry, 0, inline_data, hooks, data_deltas).await?;
     }
 
     conn.execute(
@@ -989,7 +856,6 @@ async fn read_dense_prefix_for_inline(
     ino: i64,
     geometry: Geometry,
     new_size: u64,
-    resolver: &ChunkResolver,
 ) -> Result<Option<Vec<u8>>> {
     if new_size == 0 {
         return Ok(Some(Vec::new()));
@@ -1001,7 +867,7 @@ async fn read_dense_prefix_for_inline(
 
     let mut stmt = conn
         .prepare_cached(
-            "SELECT c.digest, c.data
+            "SELECT c.data
              FROM fs_data d
              JOIN fs_chunk c ON c.digest = d.digest
              WHERE d.ino = ? AND d.chunk_index = ?",
@@ -1013,16 +879,12 @@ async fn read_dense_prefix_for_inline(
         let Some(row) = rows.next().await? else {
             return Ok(None);
         };
-        let digest = match row.get_value(0) {
-            Ok(Value::Blob(digest)) => digest,
-            _ => return Ok(None),
-        };
-        let data = match row.get_value(1) {
+        let data = match row.get_value(0) {
             Ok(Value::Blob(data)) => data,
             _ => return Ok(None),
         };
         drop(rows);
-        let chunk_data = resolve_chunk_bytes(conn, resolver, digest, data).await?;
+        let chunk_data = data;
         let remaining = new_size as usize - inline_data.len();
         let needed = std::cmp::min(geometry.chunk_size, remaining);
         if chunk_data.len() < needed {
@@ -1040,7 +902,7 @@ async fn truncate_chunked_data(
     geometry: Geometry,
     current_size: u64,
     new_size: u64,
-    mutation: ChunkMutation<'_>,
+    hooks: Option<&dyn ChunkWriteHooks>,
     data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let chunk_size = geometry.chunk_size as u64;
@@ -1056,7 +918,7 @@ async fn truncate_chunked_data(
         if end_in_last_chunk < chunk_size as usize {
             let mut stmt = conn
                 .prepare_cached(
-                    "SELECT c.digest, c.data
+                    "SELECT c.data
                      FROM fs_data d
                      JOIN fs_chunk c ON c.digest = d.digest
                      WHERE d.ino = ? AND d.chunk_index = ?",
@@ -1065,18 +927,12 @@ async fn truncate_chunked_data(
             let mut rows = stmt.query((ino, last_chunk_idx as i64)).await?;
 
             if let Some(row) = rows.next().await? {
-                let digest = match row.get_value(0) {
-                    Ok(Value::Blob(digest)) => digest,
-                    Ok(_) | Err(_) => {
-                        return Err(corrupt_column("fs_chunk.digest", "expected blob"))
-                    }
-                };
-                let data = match row.get_value(1) {
+                let data = match row.get_value(0) {
                     Ok(Value::Blob(data)) => data,
                     Ok(_) | Err(_) => return Err(corrupt_column("fs_chunk.data", "expected blob")),
                 };
                 drop(rows);
-                let chunk_data = resolve_chunk_bytes(conn, mutation.resolver, digest, data).await?;
+                let chunk_data = data;
                 if chunk_data.len() > end_in_last_chunk {
                     insert_chunk_mapping_inner(
                         conn,
@@ -1086,7 +942,7 @@ async fn truncate_chunked_data(
                         Some(data_deltas),
                     )
                     .await?;
-                    if let Some(hooks) = mutation.hooks {
+                    if let Some(hooks) = hooks {
                         hooks
                             .chunk_written(conn, ino, last_chunk_idx as i64)
                             .await?;
@@ -1105,7 +961,7 @@ async fn truncate_chunked_data(
         if let Some(last_idx) = last_existing_chunk {
             let mut stmt = conn
                 .prepare_cached(
-                    "SELECT c.digest, c.data
+                    "SELECT c.data
                      FROM fs_data d
                      JOIN fs_chunk c ON c.digest = d.digest
                      WHERE d.ino = ? AND d.chunk_index = ?",
@@ -1114,18 +970,12 @@ async fn truncate_chunked_data(
             let mut rows = stmt.query((ino, last_idx as i64)).await?;
 
             if let Some(row) = rows.next().await? {
-                let digest = match row.get_value(0) {
-                    Ok(Value::Blob(digest)) => digest,
-                    Ok(_) | Err(_) => {
-                        return Err(corrupt_column("fs_chunk.digest", "expected blob"))
-                    }
-                };
-                let data = match row.get_value(1) {
+                let data = match row.get_value(0) {
                     Ok(Value::Blob(data)) => data,
                     Ok(_) | Err(_) => return Err(corrupt_column("fs_chunk.data", "expected blob")),
                 };
                 drop(rows);
-                let chunk_data = resolve_chunk_bytes(conn, mutation.resolver, digest, data).await?;
+                let chunk_data = data;
                 let current_chunk_len = chunk_data.len();
                 let needed_len = if last_idx == last_new_chunk {
                     ((new_size - 1) % chunk_size + 1) as usize
@@ -1144,7 +994,7 @@ async fn truncate_chunked_data(
                         Some(data_deltas),
                     )
                     .await?;
-                    if let Some(hooks) = mutation.hooks {
+                    if let Some(hooks) = hooks {
                         hooks.chunk_written(conn, ino, last_idx as i64).await?;
                     }
                 }
@@ -1161,7 +1011,7 @@ async fn truncate_chunked_data(
             let zeros = vec![0u8; chunk_len];
             insert_chunk_mapping_inner(conn, ino, chunk_idx as i64, &zeros, Some(data_deltas))
                 .await?;
-            if let Some(hooks) = mutation.hooks {
+            if let Some(hooks) = hooks {
                 hooks.chunk_written(conn, ino, chunk_idx as i64).await?;
             }
         }
@@ -1205,12 +1055,12 @@ async fn write_data_at_offset(
     geometry: Geometry,
     offset: u64,
     data: &[u8],
-    mutation: ChunkMutation<'_>,
+    hooks: Option<&dyn ChunkWriteHooks>,
     data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let ranges = [WriteRangeRef { offset, data }];
     let ranges = normalize_write_ranges(&ranges)?;
-    write_ranges_chunked(conn, ino, geometry, &ranges, mutation, data_deltas).await
+    write_ranges_chunked(conn, ino, geometry, &ranges, hooks, data_deltas).await
 }
 
 async fn write_ranges_chunked(
@@ -1218,7 +1068,7 @@ async fn write_ranges_chunked(
     ino: i64,
     geometry: Geometry,
     ranges: &[NormalizedWriteRange],
-    mutation: ChunkMutation<'_>,
+    hooks: Option<&dyn ChunkWriteHooks>,
     data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let chunk_size = geometry.chunk_size as u64;
@@ -1229,7 +1079,7 @@ async fn write_ranges_chunked(
 
     let mut select_stmt = conn
         .prepare_cached(
-            "SELECT c.digest, c.data
+            "SELECT c.data
              FROM fs_data d
              JOIN fs_chunk c ON c.digest = d.digest
              WHERE d.ino = ? AND d.chunk_index = ?",
@@ -1259,27 +1109,21 @@ async fn write_ranges_chunked(
             if let std::collections::btree_map::Entry::Vacant(entry) = chunks.entry(chunk_index) {
                 let mut rows = select_stmt.query((ino, chunk_index)).await?;
                 let existing_chunk = if let Some(row) = rows.next().await? {
-                    let digest = match row.get_value(0) {
-                        Ok(Value::Blob(digest)) => digest,
-                        Ok(_) | Err(_) => {
-                            return Err(corrupt_column("fs_chunk.digest", "expected blob"))
-                        }
-                    };
-                    let data = match row.get_value(1) {
+                    let data = match row.get_value(0) {
                         Ok(Value::Blob(data)) => data,
                         Ok(_) | Err(_) => {
                             return Err(corrupt_column("fs_chunk.data", "expected blob"))
                         }
                     };
-                    Some((digest, data))
+                    Some(data)
                 } else {
                     None
                 };
                 drop(rows);
                 select_stmt.reset()?;
-                let chunk_data = if let Some((digest, data)) = existing_chunk {
-                    resolve_chunk_bytes(conn, mutation.resolver, digest, data).await?
-                } else if let Some(hooks) = mutation.hooks {
+                let chunk_data = if let Some(data) = existing_chunk {
+                    data
+                } else if let Some(hooks) = hooks {
                     hooks
                         .seed_missing_chunk(conn, ino, geometry, chunk_index)
                         .await?
@@ -1305,7 +1149,7 @@ async fn write_ranges_chunked(
     let chunks_written = chunks.len() as u64;
     for (chunk_index, chunk_data) in chunks {
         insert_chunk_mapping_inner(conn, ino, chunk_index, &chunk_data, Some(data_deltas)).await?;
-        if let Some(hooks) = mutation.hooks {
+        if let Some(hooks) = hooks {
             hooks.chunk_written(conn, ino, chunk_index).await?;
         }
     }

@@ -2,7 +2,7 @@
 name = "vfs-mount"
 version.workspace = true
 edition.workspace = true
-description = "Mount lifecycle and supervision for Vfs"
+description = "Mount lifecycle for Vfs"
 license.workspace = true
 
 [lints]
@@ -14,7 +14,6 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 libc = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -25,9 +24,6 @@ tempfile = { workspace = true }
 
 [features]
 winfsp = []
-
-[target.'cfg(unix)'.dependencies]
-vfs-nfs = { workspace = true }
 
 [build-dependencies]
 cc = "1"

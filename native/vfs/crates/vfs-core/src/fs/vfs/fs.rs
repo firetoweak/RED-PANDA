@@ -1,7 +1,7 @@
 //! Canonical `FileSystem` trait implementation for Vfs.
 //!
-//! This module is the only Vfs mutation implementation. Path helpers, CLI
-//! surfaces, FUSE, and NFS resolve into these inode-oriented operations so
+//! This module is the only Vfs mutation implementation. Path helpers,
+//! FUSE and WinFsp resolve into these inode-oriented operations so
 //! namespace, metadata, lifecycle, and batcher semantics cannot diverge.
 
 use async_trait::async_trait;
@@ -642,7 +642,6 @@ impl FileSystem for Vfs {
             attr_cache: self.attr_cache.clone(),
             pending_view: self.pending_view.clone(),
             write_drain: self.write_drain.clone(),
-            chunk_resolver: self.chunk_resolver.clone(),
             overlay_reads: self.overlay_reads,
             journal: self.journal_ctx(),
             _open_guard: Some(self.lifecycle.guard(ino)),
@@ -857,7 +856,6 @@ impl FileSystem for Vfs {
             attr_cache: self.attr_cache.clone(),
             pending_view: self.pending_view.clone(),
             write_drain: self.write_drain.clone(),
-            chunk_resolver: self.chunk_resolver.clone(),
             overlay_reads: self.overlay_reads,
             journal: self.journal_ctx(),
             _open_guard: Some(self.lifecycle.guard(ino)),

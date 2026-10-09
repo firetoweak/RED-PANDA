@@ -1,5 +1,12 @@
 # Changelog
 
+## RED PANDA local filesystem pruning
+
+- Keep core, Linux FUSE, Windows WinFsp and macOS HostFS.
+- Remove standalone CLI/NFS, KV/tool tracking, handoff APIs, encryption options and remote chunks.
+- Format 0.11 accepts only the current local filesystem shape; older databases are rejected.
+- Retain journal, snapshots and replay semantics for a separate discussion.
+
 ## [Unreleased] - Windows filesystem foundation
 
 - Map Windows read-only attributes to existing core mode bits, preserving host

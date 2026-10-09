@@ -13,7 +13,7 @@
 
 从该提交导入 Cargo workspace、第三方源码、测试、文档和现有许可证声明；排除上游 `.agents/` 历史实验目录（包含旧基准二进制和实验记录），不包含 `.git`、本机构建输出或实验数据。VFS 声明采用 MIT 许可，见 `Cargo.toml` 和 `README.md`；现有第三方声明保留在 `licenses/` 及第三方目录内。
 
-Windows 支持范围以 `docs/WINDOWS.md` 为准。原上游 AGENTS 和 Unix 文档中“仅支持 Linux/macOS”的描述属于原始上游背景，不能覆盖本 fork 已实现的 Windows core 与 WinFsp 能力。
+Windows 支持范围以 `docs/WINDOWS.md` 为准。本地裁剪后保留 core、Linux FUSE、Windows WinFsp 与 macOS HostFS；独立 CLI、NFS、会话交接、KV、工具记录、加密配置和远端 chunk 源已移除。构建和测试入口见 `docs/TESTING.md`。
 
 VFS 负责通用文件系统机制；RED PANDA 的候选操作、变化证据、接受与恢复应用在相邻的 `../sandbox/`，Python 事务编排在 `redpanda/sandbox/`。源码在一个仓库内，职责仍分开。
 

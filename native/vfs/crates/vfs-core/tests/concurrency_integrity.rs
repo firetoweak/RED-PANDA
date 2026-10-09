@@ -1,4 +1,3 @@
-use serde_json::{json, Value};
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -24,8 +23,6 @@ async fn concurrent_sdk_operations_preserve_database_integrity() -> Result<()> {
     let mut handles = Vec::new();
     for worker in 0..WORKERS {
         let fs = agent.fs.clone();
-        let kv = agent.kv.clone();
-        let tools = agent.tools.clone();
         let start_barrier = start_barrier.clone();
         let active_workers = active_workers.clone();
 
@@ -66,29 +63,6 @@ async fn concurrent_sdk_operations_preserve_database_integrity() -> Result<()> {
                     let stat = fs.stat(&file_path).await?.unwrap();
                     assert!(stat.is_file());
                     assert_eq!(stat.size, expected.len() as i64);
-
-                    let checksum = checksum(&expected);
-                    let key = format!("worker:{worker}:iter:{iteration}");
-                    let value = json!({
-                        "worker": worker,
-                        "iteration": iteration,
-                        "len": expected.len(),
-                        "checksum": checksum,
-                    });
-                    kv.set(&key, &value).await?;
-                    let fetched: Option<Value> = kv.get(&key).await?;
-                    assert_eq!(fetched, Some(value));
-
-                    tools
-                        .record(
-                            "concurrency_integrity_worker",
-                            1_800_000_000 + worker as i64 * 100 + iteration as i64,
-                            1_800_000_001 + worker as i64 * 100 + iteration as i64,
-                            Some(json!({ "worker": worker, "iteration": iteration })),
-                            Some(json!({ "checksum": checksum })),
-                            None,
-                        )
-                        .await?;
 
                     tokio::task::yield_now().await;
                 }
@@ -171,38 +145,8 @@ async fn assert_final_state(agent: &Vfs) -> Result<()> {
             assert_eq!(read_back, expected);
             let stats = agent.fs.stat(&file_path).await?.unwrap();
             assert_inline_inode_has_no_chunks(agent, stats.ino, &expected).await?;
-
-            let key = format!("worker:{worker}:iter:{iteration}");
-            let value: Option<Value> = agent.kv.get(&key).await?;
-            assert_eq!(
-                value,
-                Some(json!({
-                    "worker": worker,
-                    "iteration": iteration,
-                    "len": expected.len(),
-                    "checksum": checksum(&expected),
-                }))
-            );
         }
     }
-
-    let mut keys = agent.kv.keys().await?;
-    keys.sort();
-    assert_eq!(keys.len(), WORKERS * ITERATIONS);
-    for worker in 0..WORKERS {
-        for iteration in 0..ITERATIONS {
-            assert!(keys.contains(&format!("worker:{worker}:iter:{iteration}")));
-        }
-    }
-
-    let stats = agent
-        .tools
-        .stats_for("concurrency_integrity_worker")
-        .await?
-        .unwrap();
-    assert_eq!(stats.total_calls, (WORKERS * ITERATIONS) as i64);
-    assert_eq!(stats.successful, (WORKERS * ITERATIONS) as i64);
-    assert_eq!(stats.failed, 0);
 
     Ok(())
 }
@@ -249,10 +193,4 @@ fn payload_bytes(worker: usize, iteration: usize) -> Vec<u8> {
                 .wrapping_add((index / 251) as u8)
         })
         .collect()
-}
-
-fn checksum(bytes: &[u8]) -> u64 {
-    bytes
-        .iter()
-        .fold(0_u64, |sum, byte| sum.wrapping_add(*byte as u64))
 }

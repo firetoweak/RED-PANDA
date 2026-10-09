@@ -1,8 +1,7 @@
-use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use vfs_core::error::Result;
 use vfs_core::fs::{FileSystem, FsError, Vfs as VfsCore};
-use vfs_core::{ToolCallStatus, Vfs, VfsOptions, DEFAULT_FILE_MODE};
+use vfs_core::{Vfs, VfsOptions, DEFAULT_FILE_MODE};
 
 const ROOT_INO: i64 = 1;
 
@@ -20,12 +19,6 @@ struct SnapshotCase {
     sparse_tail: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
-struct ToolIds {
-    success: i64,
-    failure: i64,
-}
-
 #[tokio::test]
 async fn snapshot_restore_preserves_one_file_agent_state_after_checkpoint() -> Result<()> {
     let temp_dir = tempfile::tempdir()?;
@@ -38,13 +31,11 @@ async fn snapshot_restore_preserves_one_file_agent_state_after_checkpoint() -> R
     agent.fs.mkdir("/workspace", 0, 0).await?;
 
     let mut cases = Vec::new();
-    let mut tool_ids = Vec::new();
     for seed in 0..3 {
         cases.push(create_snapshot_case(&agent, chunk_size, seed).await?);
-        tool_ids.push(record_tool_calls(&agent, seed).await?);
     }
 
-    assert_generated_state(&agent, &cases, &tool_ids).await?;
+    assert_generated_state(&agent, &cases).await?;
     assert_integrity_check_ok(&agent).await?;
 
     agent.fs.fsync().await?;
@@ -55,7 +46,7 @@ async fn snapshot_restore_preserves_one_file_agent_state_after_checkpoint() -> R
 
     let restored = Vfs::open(VfsOptions::with_path(restored_db.to_string_lossy())).await?;
     assert_eq!(restored.fs.chunk_size(), chunk_size);
-    assert_generated_state(&restored, &cases, &tool_ids).await?;
+    assert_generated_state(&restored, &cases).await?;
     assert_integrity_check_ok(&restored).await?;
 
     Ok(())
@@ -121,22 +112,6 @@ async fn create_snapshot_case(agent: &Vfs, chunk_size: usize, seed: usize) -> Re
     )
     .await?;
 
-    agent
-        .kv
-        .set(
-            &format!("snapshot:{seed}:metadata"),
-            &json!({
-                "seed": seed,
-                "crossing_len": crossing_data.len(),
-                "sparse_offset": sparse_offset,
-            }),
-        )
-        .await?;
-    agent
-        .kv
-        .set(&format!("snapshot:{seed}:label"), &format!("case-{seed}"))
-        .await?;
-
     Ok(SnapshotCase {
         seed,
         crossing_path,
@@ -151,40 +126,7 @@ async fn create_snapshot_case(agent: &Vfs, chunk_size: usize, seed: usize) -> Re
     })
 }
 
-async fn record_tool_calls(agent: &Vfs, seed: usize) -> Result<ToolIds> {
-    let started_at = 1_700_000_000 + seed as i64 * 10;
-    let success = agent
-        .tools
-        .record(
-            "snapshot_restore_success",
-            started_at,
-            started_at + 2,
-            Some(json!({ "seed": seed, "op": "copy-main-db" })),
-            Some(json!({ "ok": true, "seed": seed })),
-            None,
-        )
-        .await?;
-
-    let failure = agent
-        .tools
-        .record(
-            "snapshot_restore_error",
-            started_at + 3,
-            started_at + 4,
-            Some(json!({ "seed": seed, "op": "negative-path" })),
-            None,
-            Some("expected test error"),
-        )
-        .await?;
-
-    Ok(ToolIds { success, failure })
-}
-
-async fn assert_generated_state(
-    agent: &Vfs,
-    cases: &[SnapshotCase],
-    tool_ids: &[ToolIds],
-) -> Result<()> {
+async fn assert_generated_state(agent: &Vfs, cases: &[SnapshotCase]) -> Result<()> {
     let workspace = agent.fs.stat("/workspace").await?.unwrap();
     assert!(workspace.is_directory());
 
@@ -249,70 +191,7 @@ async fn assert_generated_state(
         );
         let followed_symlink = agent.fs.stat(&case.symlink_path).await?.unwrap();
         assert_eq!(followed_symlink.ino, crossing_stats.ino);
-
-        let metadata: Option<Value> = agent
-            .kv
-            .get(&format!("snapshot:{}:metadata", case.seed))
-            .await?;
-        assert_eq!(
-            metadata,
-            Some(json!({
-                "seed": case.seed,
-                "crossing_len": case.crossing_data.len(),
-                "sparse_offset": case.sparse_offset,
-            }))
-        );
-
-        let label: Option<String> = agent
-            .kv
-            .get(&format!("snapshot:{}:label", case.seed))
-            .await?;
-        assert_eq!(label, Some(format!("case-{}", case.seed)));
     }
-
-    let mut keys = agent.kv.keys().await?;
-    keys.sort();
-    assert_eq!(
-        keys,
-        vec![
-            "snapshot:0:label",
-            "snapshot:0:metadata",
-            "snapshot:1:label",
-            "snapshot:1:metadata",
-            "snapshot:2:label",
-            "snapshot:2:metadata",
-        ]
-    );
-
-    for ids in tool_ids {
-        let success = agent.tools.get(ids.success).await?.unwrap();
-        assert_eq!(success.name, "snapshot_restore_success");
-        assert_eq!(success.status, ToolCallStatus::Success);
-        assert!(success.error.is_none());
-
-        let failure = agent.tools.get(ids.failure).await?.unwrap();
-        assert_eq!(failure.name, "snapshot_restore_error");
-        assert_eq!(failure.status, ToolCallStatus::Error);
-        assert_eq!(failure.error.as_deref(), Some("expected test error"));
-    }
-
-    let success_stats = agent
-        .tools
-        .stats_for("snapshot_restore_success")
-        .await?
-        .unwrap();
-    assert_eq!(success_stats.total_calls, cases.len() as i64);
-    assert_eq!(success_stats.successful, cases.len() as i64);
-    assert_eq!(success_stats.failed, 0);
-
-    let error_stats = agent
-        .tools
-        .stats_for("snapshot_restore_error")
-        .await?
-        .unwrap();
-    assert_eq!(error_stats.total_calls, cases.len() as i64);
-    assert_eq!(error_stats.successful, 0);
-    assert_eq!(error_stats.failed, cases.len() as i64);
 
     Ok(())
 }

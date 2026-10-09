@@ -9,6 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
+if sys.platform != "linux":
+    pytest.skip("需要 Linux 与可用的 FUSE", allow_module_level=True)
+
 from redpanda.sandbox.file_view import Client
 from redpanda.sandbox.file_view import publication as pub
 from redpanda.sandbox.file_view.native_posix import identity, open_file

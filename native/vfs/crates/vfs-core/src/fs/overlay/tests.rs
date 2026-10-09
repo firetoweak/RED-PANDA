@@ -1423,10 +1423,16 @@
         let crash_db = crash_dir.path().join("crash.db");
         let crash_db_path = crash_db.to_string_lossy().into_owned();
         {
-            let agent = crate::Vfs::open(
-                crate::VfsOptions::with_path(crash_db_path.clone()).with_base(base_dir.path()),
-            )
-            .await?;
+            let agent = crate::Vfs::open(crate::VfsOptions::with_path(crash_db_path.clone()))
+                .await?;
+            {
+                let conn = agent.get_connection().await?;
+                OverlayFS::init_schema(
+                    &conn,
+                    base_dir.path().canonicalize()?.to_str().unwrap(),
+                )
+                .await?;
+            }
             let (stats, file) = FileSystem::create_file(
                 &agent.fs,
                 ROOT_INO,
@@ -1443,9 +1449,7 @@
             std::mem::forget(file);
         }
 
-        let reopened_agent =
-            crate::Vfs::open(crate::VfsOptions::with_path(crash_db_path).with_base(base_dir.path()))
-        .await?;
+        let reopened_agent = crate::Vfs::open(crate::VfsOptions::with_path(crash_db_path)).await?;
         let reopened_base = Arc::new(HostFS::new(base_dir.path())?);
         let reopened = OverlayFS::new_with_partial_origin(reopened_base, reopened_agent.fs, true);
         reopened.load().await?;

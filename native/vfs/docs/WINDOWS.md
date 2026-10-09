@@ -3,7 +3,7 @@
 This fork owns general filesystem semantics in `vfs-core` and transport/lifecycle
 in `vfs-mount`. It does not own Command IDs, before/after evidence, publication,
 undo policies or receipts. Those belong to an application using this library.
-RED PANDA integration is deliberately outside this change.
+RED PANDA integration lives in the adjacent sandbox and Python adapter.
 
 ## Core contracts
 
@@ -22,7 +22,8 @@ uses size/write/change time and persistent identity; an explicit application con
 validator may use hashes instead. This is chunk COW, not byte-range ownership.
 The application captures Command intervals separately.
 
-Schema 0.10 is a breaking fork format. Older databases are refused before DDL;
+Schema 0.11 accepts only local filesystem storage and refuses older formats
+before DDL. It retains the persistent namespaces introduced in 0.10;
 old process-local or unnamespaced inode identities cannot be rebound reliably.
 Each fresh delta persists a UUID namespace; its own file identities include that
 namespace and inode. Independent files in different layers remain distinct, while
@@ -40,7 +41,7 @@ its base path and checks the authoritative `fs_origin.base_identity`.
 Enable the `winfsp` feature on `vfs-mount` for x64 Windows. Install the WinFsp
 runtime and obtain its SDK separately. Set `WINFSP_INCLUDE_DIR` to the directory
 containing `winfsp/winfsp.h`, and `WINFSP_LIB_DIR` to the directory containing
-`winfsp_x64.lib`. These are build settings; production runtime code does not read
+`winfsp-x64.lib`. These are build settings; production runtime code does not read
 the environment for backend policy. A C compiler supported by `cc` is required.
 The WinFsp runtime DLL must be discoverable when running the resulting program.
 
@@ -108,7 +109,7 @@ mount test. The core/mount library Clippy check and workspace format check passe
 This result covers the `x86_64-pc-windows-gnullvm` build.
 
 Run the native core suite and explicitly enable the real WinFsp test on a machine
-with the runtime. Unix CLI, Linux FUSE and macOS NFS need their own platform gate;
+with the runtime. Linux FUSE and macOS HostFS need their own platform verification;
 a Windows library build is not evidence that those gates passed.
 
 ## Process-crash validation

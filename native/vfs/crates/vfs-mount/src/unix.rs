@@ -1,13 +1,6 @@
-#[path = "daemon.rs"]
-pub mod daemon;
 #[cfg(target_os = "linux")]
 #[path = "fuse.rs"]
 mod fuse;
-#[path = "nfs.rs"]
-mod nfs;
-#[path = "supervise.rs"]
-pub mod supervise;
-
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,7 +8,6 @@ use std::time::Duration;
 
 /// Default timeout for mount to become ready.
 const DEFAULT_MOUNT_TIMEOUT: Duration = Duration::from_secs(10);
-const DEFAULT_UNMOUNT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(target_os = "linux")]
 fn get_runtime() -> tokio::runtime::Runtime {
@@ -27,22 +19,11 @@ fn get_runtime() -> tokio::runtime::Runtime {
 pub enum Backend {
     /// FUSE filesystem (Linux only).
     Fuse,
-    /// NFS over localhost.
-    Nfs,
 }
 
-// Platform-specific default: FUSE on Linux, NFS elsewhere.
-#[allow(clippy::derivable_impls)]
 impl Default for Backend {
     fn default() -> Self {
-        #[cfg(target_os = "linux")]
-        {
-            Backend::Fuse
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            Backend::Nfs
-        }
+        Self::Fuse
     }
 }
 
@@ -50,14 +31,12 @@ impl std::fmt::Display for Backend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Backend::Fuse => write!(f, "fuse"),
-            Backend::Nfs => write!(f, "nfs"),
         }
     }
 }
 
 /// Options for mounting a filesystem.
 ///
-/// This struct provides a unified configuration for both FUSE and NFS backends.
 /// Use `MountOpts::new()` to create default options, then customize as needed.
 #[derive(Debug, Clone)]
 pub struct MountOpts {
@@ -107,73 +86,6 @@ impl Default for MountOpts {
     }
 }
 
-/// Options for serving Vfs over NFS without mounting it locally.
-#[derive(Debug, Clone)]
-pub struct NfsServerOptions {
-    /// IP address or hostname to bind.
-    bind: String,
-    /// TCP port to bind. Use `0` to request an ephemeral port.
-    port: u32,
-}
-
-impl NfsServerOptions {
-    /// Create NFS server options for the given bind host and port.
-    pub fn new(bind: impl Into<String>, port: u32) -> Self {
-        Self {
-            bind: bind.into(),
-            port,
-        }
-    }
-}
-
-impl Default for NfsServerOptions {
-    fn default() -> Self {
-        Self::new("127.0.0.1", 0)
-    }
-}
-
-/// Handle for a standalone NFS server owned by the mount lifecycle crate.
-pub struct NfsServerHandle {
-    inner: vfs_nfs::ServerHandle,
-}
-
-impl NfsServerHandle {
-    /// Listening address chosen by the OS.
-    pub fn local_addr(&self) -> std::net::SocketAddr {
-        self.inner.local_addr()
-    }
-
-    /// Listening TCP port chosen by the OS.
-    pub fn local_port(&self) -> u16 {
-        self.inner.local_port()
-    }
-
-    /// Request cooperative server shutdown.
-    pub fn cancel(&self) {
-        self.inner.cancel();
-    }
-
-    /// Wait for the server task to stop and surface shutdown errors.
-    pub async fn join(mut self) -> Result<()> {
-        self.inner.join().await
-    }
-}
-
-/// Serve a filesystem over NFS through the mount lifecycle crate's sealed edge.
-pub async fn serve_nfs(
-    fs: Arc<dyn vfs_core::FileSystem>,
-    opts: NfsServerOptions,
-) -> Result<NfsServerHandle> {
-    let shutdown = tokio_util::sync::CancellationToken::new();
-    let inner = vfs_nfs::serve(
-        fs,
-        vfs_nfs::NfsServeOptions::new(opts.bind, opts.port),
-        shutdown,
-    )
-    .await?;
-    Ok(NfsServerHandle { inner })
-}
-
 /// A mounted filesystem handle.
 ///
 /// This handle represents an active mount. Prefer calling [`MountHandle::unmount`]
@@ -191,9 +103,6 @@ pub(crate) enum MountHandleInner {
     Fuse {
         session: Option<vfs_fuse::SessionHandle>,
     },
-    Nfs {
-        server_handle: Option<vfs_nfs::ServerHandle>,
-    },
 }
 
 impl MountHandle {
@@ -202,28 +111,11 @@ impl MountHandle {
         &self.mountpoint
     }
 
-    /// Whether the backend-owned serving task has stopped.
-    fn is_finished(&self) -> bool {
-        match &self.inner {
-            #[cfg(target_os = "linux")]
-            MountHandleInner::Fuse { session } => session
-                .as_ref()
-                .map(vfs_fuse::SessionHandle::is_finished)
-                .unwrap_or(true),
-            MountHandleInner::Nfs { server_handle } => server_handle
-                .as_ref()
-                .map(vfs_nfs::ServerHandle::is_finished)
-                .unwrap_or(true),
-        }
-    }
-
     /// Unmount and join all backend-owned work.
     ///
     /// FUSE teardown requests the session unmount, joins the session thread
     /// (which drains FUSE dispatch workers and uring queue threads), then
-    /// verifies the mountpoint is no longer mounted. NFS teardown cancels the
-    /// server token, unmounts the client mount, and awaits the server task so
-    /// acknowledged writes drain and `finalize()` runs.
+    /// verifies the mountpoint is no longer mounted.
     pub async fn unmount(mut self) -> Result<()> {
         self.unmount_inner_async().await
     }
@@ -270,48 +162,6 @@ impl MountHandle {
                             self.mountpoint.display()
                         ),
                     );
-                }
-            }
-            MountHandleInner::Nfs { server_handle } => {
-                if let Some(handle) = server_handle.as_ref() {
-                    handle.cancel();
-                }
-                if is_mountpoint(&self.mountpoint) {
-                    if let Err(error) = unmount(&self.mountpoint, self.backend, self.lazy_unmount) {
-                        remember_error(&mut first_error, error);
-                    }
-                }
-                if let Some(mut handle) = server_handle.take() {
-                    match tokio::time::timeout(DEFAULT_UNMOUNT_TIMEOUT, handle.join()).await {
-                        Ok(Ok(())) => {}
-                        Ok(Err(error)) => remember_error(&mut first_error, error),
-                        Err(_) => {
-                            let timeout_error = anyhow::anyhow!(
-                                "NFS server did not stop gracefully for {} within {:?}",
-                                self.mountpoint.display(),
-                                DEFAULT_UNMOUNT_TIMEOUT
-                            );
-                            tracing::warn!(
-                                mountpoint = %self.mountpoint.display(),
-                                timeout = ?DEFAULT_UNMOUNT_TIMEOUT,
-                                "NFS server did not stop gracefully; aborting task"
-                            );
-                            handle.abort();
-                            match tokio::time::timeout(Duration::from_secs(1), handle.join()).await
-                            {
-                                Ok(Ok(())) => {}
-                                Ok(Err(error)) => tracing::warn!(
-                                    %error,
-                                    "NFS server task reported an error after abort"
-                                ),
-                                Err(_) => tracing::warn!(
-                                    mountpoint = %self.mountpoint.display(),
-                                    "NFS server task did not join after abort"
-                                ),
-                            }
-                            remember_error(&mut first_error, timeout_error);
-                        }
-                    }
                 }
             }
         }
@@ -367,36 +217,6 @@ impl MountHandle {
                     );
                 }
             }
-            MountHandleInner::Nfs { server_handle } => {
-                if let Some(handle) = server_handle.as_ref() {
-                    handle.cancel();
-                }
-
-                if is_mountpoint(&self.mountpoint) {
-                    if let Err(error) = unmount(&self.mountpoint, self.backend, self.lazy_unmount) {
-                        tracing::warn!(
-                            mountpoint = %self.mountpoint.display(),
-                            %error,
-                            "failed to unmount NFS filesystem"
-                        );
-                    }
-                }
-
-                if let Some(mut handle) = server_handle.take() {
-                    let deadline = std::time::Instant::now() + DEFAULT_UNMOUNT_TIMEOUT;
-                    while !handle.is_finished() && std::time::Instant::now() < deadline {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    if !handle.is_finished() {
-                        tracing::warn!(
-                            mountpoint = %self.mountpoint.display(),
-                            timeout = ?DEFAULT_UNMOUNT_TIMEOUT,
-                            "NFS server did not stop gracefully; aborting task"
-                        );
-                        handle.abort();
-                    }
-                }
-            }
         }
     }
 }
@@ -409,7 +229,6 @@ impl Drop for MountHandle {
 
 /// Unmount a filesystem at the given mountpoint.
 ///
-/// This function handles unmounting for both FUSE and NFS backends.
 /// If `lazy` is true, uses lazy unmount which detaches immediately even if busy.
 pub fn unmount(mountpoint: &Path, backend: Backend, lazy: bool) -> Result<()> {
     match backend {
@@ -417,28 +236,7 @@ pub fn unmount(mountpoint: &Path, backend: Backend, lazy: bool) -> Result<()> {
         Backend::Fuse => fuse::unmount_fuse(mountpoint, lazy),
         #[cfg(not(target_os = "linux"))]
         Backend::Fuse => anyhow::bail!("FUSE is not supported on this platform"),
-        Backend::Nfs => nfs::unmount_nfs(mountpoint, lazy),
     }
-}
-
-/// Detach a mount left behind by a process that died before normal teardown.
-///
-/// Callers must establish separately that no live owner exists. This helper
-/// owns the backend-specific forced-unmount operation and verifies that the
-/// mount table entry disappeared before returning.
-pub fn recover_stale_mount(mountpoint: &Path, backend: Backend) -> Result<bool> {
-    if !is_mountpoint(mountpoint) {
-        return Ok(false);
-    }
-
-    unmount(mountpoint, backend, true)?;
-    if is_mountpoint(mountpoint) {
-        anyhow::bail!(
-            "stale mountpoint {} is still mounted after forced teardown",
-            mountpoint.display()
-        );
-    }
-    Ok(true)
 }
 
 /// Mount a filesystem with the given options.
@@ -449,21 +247,6 @@ pub fn recover_stale_mount(mountpoint: &Path, backend: Backend) -> Result<bool> 
 pub async fn mount_fs(fs: Arc<dyn vfs_core::FileSystem>, opts: MountOpts) -> Result<MountHandle> {
     match opts.backend {
         Backend::Fuse => fuse::mount_fuse(fs, opts),
-        Backend::Nfs => nfs::mount_nfs(fs, opts).await,
-    }
-}
-
-/// Mount a filesystem with the given options (macOS version).
-#[cfg(target_os = "macos")]
-pub async fn mount_fs(fs: Arc<dyn vfs_core::FileSystem>, opts: MountOpts) -> Result<MountHandle> {
-    match opts.backend {
-        Backend::Fuse => {
-            anyhow::bail!(
-                "FUSE mounting is not supported on macOS.\n\
-                 Use --backend nfs (default) instead."
-            );
-        }
-        Backend::Nfs => nfs::mount_nfs(fs, opts).await,
     }
 }
 
@@ -473,35 +256,8 @@ fn remember_error(slot: &mut Option<anyhow::Error>, error: anyhow::Error) {
     }
 }
 
-/// Resolve when SIGTERM, SIGINT, or SIGHUP is delivered.
-///
-/// Mount-owning commands must tear down through this rather than the default
-/// signal disposition: dying without unmounting leaves a dead mount table
-/// entry (ENOTCONN for every later visitor) and skips `MountHandle`'s Drop.
-#[cfg(unix)]
-async fn termination_signal() -> std::io::Result<i32> {
-    use tokio::signal::unix::{signal, SignalKind};
-    let mut term = signal(SignalKind::terminate())?;
-    let mut int = signal(SignalKind::interrupt())?;
-    let mut hup = signal(SignalKind::hangup())?;
-    let signo = tokio::select! {
-        _ = term.recv() => libc::SIGTERM,
-        _ = int.recv() => libc::SIGINT,
-        _ = hup.recv() => libc::SIGHUP,
-    };
-    Ok(signo)
-}
-
-/// Resolve when SIGTERM, SIGINT, or SIGHUP is delivered.
-#[cfg(unix)]
-async fn shutdown_signal() -> std::io::Result<()> {
-    termination_signal().await.map(|_| ())
-}
-
 /// Wait for a path to become a mountpoint.
 ///
-/// Only the Linux FUSE backend polls for mount readiness; the macOS NFS
-/// backend learns readiness from its own server loop.
 #[cfg(target_os = "linux")]
 pub(crate) fn wait_for_mount(path: &Path, timeout: Duration) -> bool {
     let start = std::time::Instant::now();

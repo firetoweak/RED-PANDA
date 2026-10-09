@@ -4,8 +4,6 @@
 //! path to the canonical inode-oriented `FileSystem` trait operation so
 //! metadata, batching, and mutation semantics have one implementation.
 
-use std::path::Path;
-
 use crate::fs::FileSystem;
 
 use super::*;
@@ -33,9 +31,10 @@ impl Vfs {
             current_path = if target.starts_with('/') {
                 target
             } else {
-                let base_path = Path::new(&current_path);
-                let parent = base_path.parent().unwrap_or(Path::new("/"));
-                parent.join(&target).to_string_lossy().into_owned()
+                let (parent, _) = current_path
+                    .rsplit_once('/')
+                    .expect("normalized virtual path");
+                format!("{parent}/{target}")
             };
             current_path = self.normalize_path(&current_path);
         }
