@@ -71,7 +71,7 @@ pub(super) fn mount_fuse(
 
     // The readiness probe stats the mountpoint, which can block indefinitely
     // when a fresh fuse-over-io_uring mount races the kernel-side drain of a
-    // just-closed connection and post-INIT requests stall (docs/MANUAL.md,
+    // just-closed connection and post-INIT requests stall (docs/SPEC.md,
     // "FUSE-over-io_uring"). Probing from a helper thread keeps this wait
     // bounded either way, so a wedged mount surfaces as an error.
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();

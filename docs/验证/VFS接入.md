@@ -48,7 +48,7 @@ Flash 证据位于 `tests/.live_workspace/sandbox-live-flash-01`，Pro 位于 `s
 
 ## 源码收敛与重建
 
-Rust 应用在 `native/sandbox/`，Python 客户端与发布编排在 `redpanda/sandbox/file_view/`，原来的 65 项契约归入 `tests/sandbox/file_view/` 的 process 层。通用 COW 与 Windows 挂载源码也已合入 RED PANDA 的 `native/vfs/`，保留独立的 Cargo workspace 与模块职责，不再需要外部 Factory checkout。构建方式见[原生 sandbox 说明](../../native/sandbox/README.md)。
+Rust 应用在 `native/sandbox/`，Python 客户端与发布编排在 `redpanda/sandbox/file_view/`，原来的 65 项契约归入 `tests/sandbox/file_view/` 的 process 层。通用 COW 与 Windows 挂载源码也已合入 RED PANDA 的 `native/vfs/`，保留独立的 Cargo workspace 与模块职责，不再需要外部 Factory checkout。构建方式见 `scripts/build_sandbox.py`。
 
 VFS 导入来源是已发布的 `firetoweak/vfs` 提交 `87701622d9068fed65cc7fdbaef093dd20bf79d3`，保留源码、测试、文档和现有声明，排除 `.agents/` 历史实验目录，不带 `.git` 或本机构建输出，见[来源记录](../../native/vfs/SOURCE.md)。`scripts/build_sandbox.py` 直接构建仓库内源码，生成默认程序、同目录运行库和当前源码／输出的 SHA256；无需 Junction、外部源码路径或本地 Git 元数据。本机验证的是 GNU LLVM debug target。
 

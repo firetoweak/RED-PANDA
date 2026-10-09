@@ -89,7 +89,7 @@ Windows 与 Linux 都要先构建原生沙箱。macOS 的文件视图尚未实�
 .\redpanda-env\Scripts\python.exe scripts/build_sandbox.py
 ```
 
-默认构建 GNU LLVM（`x86_64-pc-windows-gnullvm`）release target；本机已验证的是同一 target 的 debug 构建。具体准备条件、可选参数与已验证的构建方式见[原生 sandbox 说明](native/sandbox/README.md)。
+默认构建 GNU LLVM（`x86_64-pc-windows-gnullvm`）release target；本机已验证的是同一 target 的 debug 构建。具体准备条件、可选参数与已验证的构建方式见 `scripts/build_sandbox.py`。
 
 **Linux**
 
@@ -167,7 +167,7 @@ cd ..
 
 ## 开发与测试
 
-Windows 与 Linux 的文件工具、命令和文件回退通过 VFS 文件视图执行。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。Windows 安装 WinFsp 和构建工具后，Linux 安装上方的 FUSE 包后，执行 `python scripts/build_sandbox.py`；程序生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见[原生 sandbox 说明](native/sandbox/README.md)。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。缺少原生程序时明确报错。macOS 尚未实现。
+Windows 与 Linux 的文件工具、命令和文件回退通过 VFS 文件视图执行。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。Windows 安装 WinFsp 和构建工具后，Linux 安装上方的 FUSE 包后，执行 `python scripts/build_sandbox.py`；程序生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见上方的构建说明。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。缺少原生程序时明确报错。macOS 尚未实现。
 
 日常回退捕获助手造成的文件变化，`.gitignore` 不影响捕获。模型可选择保留用户后续值或恢复助手改变位置的原值；Web 时间旅行默认保留用户后续值。系统安装、挂载外命令写入及其他外部副作用不在回退范围内。子任务复制与成果比较、合入仍使用独立的 Git 业务端口，不参加日常 Step 记录。
 

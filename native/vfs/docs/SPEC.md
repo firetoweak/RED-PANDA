@@ -81,10 +81,7 @@ Consequences that MUST hold:
    written back dirty pages before close; durability is promised only by
    `fsync` (see the durability contract above).
 3. Both behaviors retain kill switches (`VFS_FUSE_NOOPEN`,
-   `VFS_FUSE_NOFLUSH`) and dedicated coherence gates
-   (`scripts/validation/noopen-coherence.py`,
-   `scripts/validation/flush-coherence.py`) that validate the default and
-   disabled legs.
+   `VFS_FUSE_NOFLUSH`) that select the default and disabled legs.
 
 ### FUSE-over-io_uring Transport
 

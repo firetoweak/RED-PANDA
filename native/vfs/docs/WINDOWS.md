@@ -108,9 +108,16 @@ eight native filesystem contract tests and one explicitly enabled real WinFsp
 mount test. The core/mount library Clippy check and workspace format check passed.
 This result covers the `x86_64-pc-windows-gnullvm` build.
 
-Run the native core suite and explicitly enable the real WinFsp test on a machine
-with the runtime. Linux FUSE and macOS HostFS need their own platform verification;
-a Windows library build is not evidence that those gates passed.
+The follow-up rounds added real WinFsp attribute, I/O error and execution-crash
+suites, the core-only write-crash suite and a process-level rerun of the Python
+product flow. The execution-crash suite alone terminates owner and command
+processes without Drop or unmount at fourteen checkpoints; every phase recovers
+committed bytes, hard-link identity and a reusable mountpoint.
+
+Run the native core suite and explicitly enable the real WinFsp tests on a
+machine with the runtime. Linux FUSE and macOS HostFS need their own platform
+verification; a Windows library build is not evidence that those gates passed.
+The Python product-flow rerun skips the Linux/FUSE-only contracts on Windows.
 
 ## Process-crash validation
 

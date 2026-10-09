@@ -20,7 +20,7 @@
 |---|---|
 | [模型配置](模型配置.md) | 个人连接文件、候选模型与 Web 会话切换 |
 | [自举开发](自举开发.md) | 用 RED PANDA 开发 RED PANDA：双 worktree、数据根与端口隔离 |
-| [原生 sandbox 构建与分发](../native/sandbox/README.md) | 仓库内 VFS 与 Rust 应用的调用关系、Windows 构建、运行库和验证入口 |
+| [原生 sandbox 构建与分发](../../scripts/build_sandbox.py) | 原生 sandbox 构建脚本：宿主工具链、可选参数与产物位置 |
 
 ## 架构
 
