@@ -136,3 +136,16 @@ python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_works
 - 硬链接命名空间改动仍会被拒绝。Linux 在 unlink/rename/replace 时把错误交回命令进程；WinFsp 在 Cleanup 里提交删除且不能返回错误，所以 Windows 的 unlink 要到 finish 才让服务失败。
 - 宿主上先删除再按不同长度重建时，inode 可能被立刻复用，冲突原因可以是 `length_changed` 或 `identity_changed`。
 - 未按页对齐的写入会让 FUSE 先读覆盖该范围的页。块证据测试因此允许比 Windows 多两页的宿主读取，仍然不读取整个大文件。
+- 进程被 SIGKILL 时挂载不会自动卸下。`auto_unmount` 在未设置 `allow_other` 时会由 FUSE 传输层补上 `allow_other`，因此沙箱不启用它。正常 `shutdown` 会卸载。残留挂载用 `fusermount3 -u <挂载点>` 卸下。
+
+### 本机结果
+
+Ubuntu 24.04，当前用户可读写 `/dev/fuse`（`crw-rw-rw-`），`fusermount3` 可用，沙箱挂载没有设置 `allow_other`。在 `native/sandbox` 执行 `cargo clippy --locked --all-targets -- -D warnings` 通过。该包没有 Rust 单测。
+
+```sh
+python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_workspace_process.py tests/sandbox/test_linux_workspace_execute.py tests/assistant/test_vfs_coding_process.py
+```
+
+结果为 79 passed、3 skipped、19 subtests passed，约 36 秒。跳过的是 Windows PowerShell 工作流、Windows 独占共享，以及大小写仅有差别的重命名。`tests/sandbox/test_linux_workspace_execute.py` 的发布、冲突和两种恢复都通过。本轮没有跑真实模型测试，也没有在 CentOS 上复跑。
+
+同一环境下默认 `python -m pytest` 为 699 passed、1 failed、5 skipped，168 个 process 测试被默认排除。失败项是 `tests/assistant/test_process_env.py` 的 `test_keeps_current_path_prefix_and_appends_missing_session_dirs`：它用 `os.pathsep` 切分带盘符的 Windows 路径，Linux 上盘符里的冒号被当成路径分隔符。该文件不在这次改动里。
