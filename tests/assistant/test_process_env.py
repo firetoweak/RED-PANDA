@@ -16,13 +16,18 @@ from redpanda.assistant.host.process_env import (
 
 class HostProcessEnvironmentTest(unittest.TestCase):
     def test_keeps_current_path_prefix_and_appends_missing_session_dirs(self):
+        # Drive-letter paths contain ":", which is os.pathsep on Linux.
+        # Windows PATH uses ";", so the same strings stay one entry there.
+        if os.name == "nt":
+            prefix, shared, extra = (
+                r"C:\conda\env",
+                r"C:\Windows\system32",
+                r"C:\Windows\System32\WindowsPowerShell\v1.0",
+            )
+        else:
+            prefix, shared, extra = ("/opt/conda/env", "/usr/bin", "/usr/lib/powershell")
         session = {
-            "PATH": os.pathsep.join(
-                (
-                    r"C:\Windows\System32\WindowsPowerShell\v1.0",
-                    r"C:\Windows\system32",
-                )
-            ),
+            "PATH": os.pathsep.join((extra, shared)),
             "PATHEXT": ".COM;.EXE",
         }
         with patch(
@@ -31,15 +36,16 @@ class HostProcessEnvironmentTest(unittest.TestCase):
         ):
             built = host_process_environment(
                 {
-                    "PATH": os.pathsep.join((r"C:\conda\env", r"C:\Windows\system32")),
+                    "PATH": os.pathsep.join((prefix, shared)),
                     "EXTRA_X": "1",
                 }
             )
 
         parts = built["PATH"].split(os.pathsep)
         self.assertEqual(built["EXTRA_X"], "1")
-        self.assertEqual(parts[0], r"C:\conda\env")
-        self.assertIn(r"C:\Windows\System32\WindowsPowerShell\v1.0", parts)
+        self.assertEqual(parts[0], prefix)
+        self.assertIn(extra, parts)
+        self.assertEqual(parts.count(shared), 1)
 
     def test_fills_missing_identity_variable_from_user_session(self):
         with patch(
