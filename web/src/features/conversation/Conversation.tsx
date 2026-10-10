@@ -49,6 +49,8 @@ import {
 import { Composer } from "./Composer";
 import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
+import { effectReviewSampleEnabled, resolveEffectReview } from "./effectReview";
+import { EffectReviewCanvas } from "./EffectReviewCanvas";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatMessageTime } from "./messageTime";
@@ -104,6 +106,9 @@ export function Conversation() {
   const [retryTurn, retrying] = useRetryTurnMutation();
   const [restartFromStep, restarting] = useRestartFromStepMutation();
   const [rewindStepId, setRewindStepId] = useState<string | null>(null);
+  const [effectReviewSample] = useState(() =>
+    effectReviewSampleEnabled(window.location.search, window.localStorage),
+  );
 
   useEffect(() => {
     dispatch(viewing(sessionId === "" ? null : sessionId));
@@ -318,6 +323,9 @@ export function Conversation() {
                 awaitingControl,
               });
               const reply = turnReply(turn, settled);
+              const effectReview = resolveEffectReview(turn.final, {
+                sample: effectReviewSample && latest && settled,
+              });
               const elapsedMs = turnElapsedMs(turn, settled);
               const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
               return (
@@ -367,6 +375,36 @@ export function Conversation() {
                   settled,
                 }) ? (
                   <RunningHint label="思考中" />
+                ) : effectReview !== null && turn.final !== null ? (
+                  <Box
+                    component="article"
+                    className="message message-assistant"
+                    key={turn.final.key}
+                  >
+                    <Group align="flex-start" gap="sm" wrap="nowrap">
+                      <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
+                      <Stack className="assistant-reply" gap={6}>
+                        <EffectReviewCanvas
+                          disabled={connectionId === null}
+                          onAuthorize={authorize}
+                          onRestore={setRewindStepId}
+                          prose={turn.final.text}
+                          review={effectReview.review}
+                          source={effectReview.source}
+                        />
+                        {settled ? (
+                          <TurnEndActions
+                            branchBusy={branching.isLoading}
+                            branchDisabled={connectionId === null}
+                            canBranch={turnCanStartSession(turn, settled)}
+                            onBranch={() => void branch(turn.user!.key)}
+                            occurredAt={turn.final.occurredAt}
+                            replyText={turn.final.text}
+                          />
+                        ) : null}
+                      </Stack>
+                    </Group>
+                  </Box>
                 ) : reply !== null ? (
                   <Box
                     component="article"

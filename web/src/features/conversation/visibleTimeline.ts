@@ -1,4 +1,4 @@
-import type { ConversationView, ToolStatus } from "../../api/contracts";
+import type { ConversationView, EffectReview, ToolStatus } from "../../api/contracts";
 import type {
   ActivePreview,
   LiveTool,
@@ -35,6 +35,8 @@ export type VisibleStep = {
   thinkingPending: boolean;
   pending: boolean;
   tools: VisibleTool[];
+  // 只有已提交的 step 才带效果核对。预览和未落 Journal 的正文保持 null。
+  effectReview: EffectReview | null;
 };
 
 export type VisibleItem = VisibleUser | VisibleStep;
@@ -88,6 +90,7 @@ export function visibleTimeline(
           arguments: tool.arguments,
         };
       }),
+      effectReview: item.effect_review ?? null,
       ...resolveThinking(item.output_id, item.thinking, committedThinking, liveThinking),
     };
   });
@@ -108,6 +111,7 @@ export function visibleTimeline(
       text,
       pending: true,
       tools: [],
+      effectReview: null,
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
   }
@@ -126,6 +130,7 @@ export function visibleTimeline(
       text: preview.text,
       pending: true,
       tools: [],
+      effectReview: null,
       ...resolveThinking(preview.outputId, null, committedThinking, liveThinking),
     });
   }
@@ -146,6 +151,7 @@ export function visibleTimeline(
       text: null,
       pending: true,
       tools: [],
+      effectReview: null,
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
   }
