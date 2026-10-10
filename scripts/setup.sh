@@ -8,6 +8,10 @@ if ! command -v rg >/dev/null 2>&1; then
   printf '%s\n' "Install ripgrep first: https://github.com/BurntSushi/ripgrep#installation" >&2
   exit 1
 fi
+if ! command -v fd >/dev/null 2>&1 && ! command -v fdfind >/dev/null 2>&1; then
+  printf '%s\n' "Install fd first: https://github.com/sharkdp/fd#installation" >&2
+  exit 1
+fi
 
 python_version=$(tr -d '\r\n' < .python-version)
 uv_version=0.12.19

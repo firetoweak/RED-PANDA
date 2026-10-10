@@ -20,6 +20,7 @@ from redpanda.tools.executor import ToolsExecutor
 from redpanda.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
 from redpanda.tools.builtin import (
     CommandInterrupts,
+    READ_ONLY_WORKSPACE_TOOLS,
     create_environment_tool_specs,
     create_workspace_restore_spec,
     create_subagent_workspace_specs,
@@ -31,6 +32,11 @@ class BuiltinToolRunner:
     schemas: tuple[dict[str, object], ...]
     command_interrupts: CommandInterrupts
     _executor: ToolsExecutor
+
+    def reads_published_workspace(self, name: str, arguments: Mapping[str, object]) -> bool:
+        return name in READ_ONLY_WORKSPACE_TOOLS or (
+            name == "execute_command" and arguments.get("workspace_effect") == "read_only"
+        )
 
     async def execute(self, name: str, arguments: Mapping[str, object]) -> object:
         return runtime_tool_result(

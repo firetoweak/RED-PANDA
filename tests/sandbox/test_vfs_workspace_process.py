@@ -148,6 +148,77 @@ def test_two_owners_serialize_and_read_preceding_publication(tmp_path):
     asyncio.run(scenario())
 
 
+def test_read_overlaps_candidate_and_sees_only_published_files(tmp_path):
+    async def scenario():
+        view = backend(tmp_path)
+        logical = view.root / "file.txt"
+        logical.write_text("published")
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def write():
+            view.native_path(logical).write_text("candidate")
+            entered.set()
+            await release.wait()
+            return {"ok": True}
+        task = asyncio.create_task(view.execute(operation_id("s", "write"), write))
+        try:
+            await asyncio.wait_for(entered.wait(), 10)
+            async def read():
+                return view.native_path(logical).read_text()
+            assert await asyncio.wait_for(view.read(read), 5) == "published"
+            assert not task.done()
+        finally:
+            release.set()
+            await task
+        assert await view.read(read) == "candidate"
+        assert await view.record() == operation_id("s", "write")
+    asyncio.run(scenario())
+
+
+def test_publication_in_another_process_waits_for_reader(tmp_path):
+    async def scenario():
+        view = backend(tmp_path)
+        logical = view.root / "file.txt"
+        logical.write_text("published")
+        source = """
+import asyncio, sys
+from pathlib import Path
+from redpanda.sandbox.versions import WorkspaceVersions
+async def main():
+    view = WorkspaceVersions(Path(sys.argv[1]), Path(sys.argv[2]))
+    view._publish = lambda _: (view.root / 'file.txt').write_text('next')
+    print('waiting', flush=True)
+    await view._publish_pending(None)
+asyncio.run(main())
+"""
+        async def read():
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-c", source, str(view.root), str(view.storage),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                cwd=Path(__file__).resolve().parents[2],
+            )
+            try:
+                assert (await asyncio.wait_for(process.stdout.readline(), 5)).strip() == b"waiting"
+                with pytest.raises(TimeoutError):
+                    await asyncio.wait_for(process.wait(), 0.1)
+                assert view.native_path(logical).read_text() == "published"
+                return process
+            except BaseException:
+                if process.returncode is None:
+                    process.kill()
+                await process.wait()
+                raise
+        process = await view.read(read)
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
+            assert process.returncode == 0, (stdout, stderr)
+            assert logical.read_text() == "next"
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await process.wait()
+    asyncio.run(scenario())
+
+
 def test_noop_restore_retry_cannot_undo_later_commands(tmp_path):
     async def scenario():
         view = backend(tmp_path)

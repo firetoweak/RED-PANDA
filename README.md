@@ -40,7 +40,7 @@ RED PANDA 从对话出发，在你的工作区里阅读文件、修改内容、�
 
 ### 1. 准备环境与获取项目
 
-需要 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)，以及一个可用的模型来源。Web 还需要 Node.js 与 npm，当前前端依赖支持 Node.js 22.x（至少 22.13）或 24.x。
+需要 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)、[fd](https://github.com/sharkdp/fd#installation)，以及一个可用的模型来源。文件内容搜索使用 ripgrep，文件与目录查找使用 fd（Linux 上也支持命令名 fdfind）。Web 还需要 Node.js 与 npm，当前前端依赖支持 Node.js 22.x（至少 22.13）或 24.x。
 
 安装脚本会下载项目专用的 Python 3.13 并安装依赖，不需要预装 Python 或 Docker。
 
@@ -167,7 +167,7 @@ cd ..
 
 ## 开发与测试
 
-Windows 与 Linux 的文件工具、命令和文件回退通过 VFS 文件视图执行。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。Windows 安装 WinFsp 和构建工具后，Linux 安装上方的 FUSE 包后，执行 `python scripts/build_sandbox.py`；程序生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见上方的构建说明。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。缺少原生程序时明确报错。macOS 尚未实现。
+Windows 与 Linux 的文件修改、可能写入的命令和文件回退通过 VFS 文件视图执行；只读文件工具与声明 `read_only` 的命令直接查询已发布工作区，不捕获误标造成的写入。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。Windows 安装 WinFsp 和构建工具后，Linux 安装上方的 FUSE 包后，执行 `python scripts/build_sandbox.py`；程序生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见上方的构建说明。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。缺少原生程序时明确报错。macOS 尚未实现。
 
 日常回退捕获助手造成的文件变化，`.gitignore` 不影响捕获。模型可选择保留用户后续值或恢复助手改变位置的原值；Web 时间旅行默认保留用户后续值。系统安装、挂载外命令写入及其他外部副作用不在回退范围内。子任务复制与成果比较、合入仍使用独立的 Git 业务端口，不参加日常 Step 记录。
 

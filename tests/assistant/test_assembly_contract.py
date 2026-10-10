@@ -17,6 +17,7 @@ from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import DecisionCancelled, MemoryJournal, StepCommitted
+from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import (
     SettlingScheduler,
@@ -247,6 +248,53 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
+    async def test_workspace_route_follows_each_command_effect(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            (workspace / "file.txt").write_text("published")
+            home = RedPandaHome(root / ".redpanda")
+            routes = []
+            async def read(self, callback):
+                routes.append("read")
+                return await callback()
+            async def execute(self, identity, callback):
+                routes.append("candidate")
+                return await callback()
+            with (
+                patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=home),
+                patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
+                patch("redpanda.sandbox.versions.WorkspaceVersions.read", read),
+                patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute),
+            ):
+                assembly = await build_assistant_assembly(
+                    AssistantConfig(model_name="test", compact_threshold_tokens=200_000,
+                                    llm=CapturingLlm()),
+                    lambda *_: None, MemoryJournal(), session_id="entry",
+                    workspace=workspace_record(workspace),
+                )
+                try:
+                    context = AttemptContext("entry", "read", "attempt-read", 1)
+                    result = await assembly.bindings["read_file"].handler(context, {"path": "file.txt"})
+                    self.assertTrue(result["ok"])
+                    self.assertEqual(routes, ["read"])
+                    cases = (
+                        ({"command": "", "workspace_effect": "read_only"}, "EMPTY_COMMAND", "read"),
+                        ({"command": "", "workspace_effect": "may_write"}, "EMPTY_COMMAND", "candidate"),
+                        ({"command": ""}, "EMPTY_COMMAND", "candidate"),
+                        ({"command": 42, "workspace_effect": "read_only"}, "VALIDATION_ERROR", "read"),
+                        ({"command": "", "workspace_effect": "unknown"}, "VALIDATION_ERROR", "candidate"),
+                    )
+                    for index, (arguments, code, route) in enumerate(cases):
+                        with self.subTest(arguments=arguments):
+                            context = AttemptContext("entry", f"command-{index}", f"attempt-{index}", 1)
+                            result = await assembly.bindings["execute_command"].handler(context, arguments)
+                            self.assertEqual(result["code"], code)
+                            self.assertEqual(routes.pop(), route)
+                finally:
+                    await assembly.scheduler.close()
+
     async def test_cancelled_model_call_aborts_its_preview(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

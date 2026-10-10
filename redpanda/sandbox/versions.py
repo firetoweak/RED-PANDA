@@ -55,6 +55,38 @@ async def settled(function, *args):
             raise BaseExceptionGroup("sandbox operation failed during cancellation", [cancelled, error]) from None
         raise
 
+@asynccontextmanager
+async def _sqlite_lock(path: Path, *, shared: bool = False):
+    def acquire():
+        connection = sqlite3.connect(path, timeout=0)
+        try:
+            connection.execute("CREATE TABLE IF NOT EXISTS lock_guard (id INTEGER PRIMARY KEY)")
+            connection.execute("BEGIN" if shared else "BEGIN EXCLUSIVE")
+            # A deferred transaction holds no read lock until its first read.
+            if shared:
+                connection.execute("SELECT id FROM lock_guard LIMIT 1").fetchone()
+            return connection
+        except BaseException:
+            connection.close()
+            raise
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 300
+    while True:
+        try:
+            connection = acquire()
+        except sqlite3.OperationalError as error:
+            if getattr(error, "sqlite_errorcode", None) != sqlite3.SQLITE_BUSY or loop.time() >= deadline:
+                raise
+            # Never occupy an executor thread while waiting for another task
+            # to release a lock. Only lock acquisition is retried.
+            await asyncio.sleep(0.01)
+        else:
+            break
+    try:
+        yield
+    finally:
+        connection.close()
+
 class WorkspaceVersions:
     """One ordered operation history per task root, shared by its Session workers."""
     def __init__(self, root: Path, storage: Path, *, executable: Path | None = None):
@@ -82,25 +114,21 @@ class WorkspaceVersions:
     async def _owner(self):
         async with self._serial:
             self.storage.mkdir(parents=True, exist_ok=True)
-            def acquire():
-                connection = sqlite3.connect(self.storage / "operation-lock.sqlite", timeout=300, check_same_thread=False)
-                try:
-                    connection.execute("BEGIN IMMEDIATE")
-                except BaseException:
-                    connection.close()
-                    raise
-                return connection
-            acquisition = asyncio.create_task(asyncio.to_thread(acquire))
-            try:
-                connection = await asyncio.shield(acquisition)
-            except asyncio.CancelledError:
-                connection = await acquisition
-                await settled(connection.close)
-                raise
-            try:
+            async with _sqlite_lock(self.storage / "operation-lock.sqlite"):
                 yield
+
+    async def read(self, callback):
+        """Read published files concurrently; never expose an executing candidate."""
+        from redpanda.sandbox.file_view.publication import unfinished
+        self.storage.mkdir(parents=True, exist_ok=True)
+        async with _sqlite_lock(self.storage / "publication-lock.sqlite", shared=True):
+            if await settled(unfinished, self.storage):
+                raise RuntimeError("unfinished host transaction requires reconciliation")
+            token = self._mount.set(self.root)
+            try:
+                return await callback()
             finally:
-                await settled(connection.close)
+                self._mount.reset(token)
 
     def _history(self):
         head = self.storage / "HEAD"
@@ -149,6 +177,10 @@ class WorkspaceVersions:
         if result.get("status") != "no_pending_commands" and not result.get("finalized"):
             raise RuntimeError(f"sandbox publication conflict: {result}")
 
+    async def _publish_pending(self, client):
+        async with _sqlite_lock(self.storage / "publication-lock.sqlite"):
+            await settled(self._publish, client)
+
     async def execute(self, identity: str, callback):
         """Authorized operations retain actual effects, even for failed tool results."""
         validate_version(identity)
@@ -156,7 +188,7 @@ class WorkspaceVersions:
         async with self._owner():
             client = self._client()
             try:
-                await settled(self._publish, client)
+                await self._publish_pending(client)
                 begin = await settled(client.begin, identity)
                 if begin["status"] == "existing_command":
                     begin = begin["receipt"]
@@ -166,7 +198,7 @@ class WorkspaceVersions:
                     if begin["status"] == "sealed":
                         accepted = await settled(lambda: client.request("accept", command_id=identity))
                         if accepted["status"] != "accepted": raise RuntimeError(accepted)
-                    await settled(self._publish, client)
+                    await self._publish_pending(client)
                     return result
                 if begin["status"] != "active":
                     raise RuntimeError(f"sandbox operation requires explicit recovery: {begin}")
@@ -181,7 +213,7 @@ class WorkspaceVersions:
                 await settled(atomic, result_path, result)
                 accepted = await settled(lambda: client.request("accept", command_id=identity))
                 if accepted["status"] != "accepted": raise RuntimeError(accepted)
-                await settled(self._publish, client)
+                await self._publish_pending(client)
                 return result
             finally:
                 await settled(client.close)
@@ -204,7 +236,7 @@ class WorkspaceVersions:
                 return WorkspaceRestore(saved["version"], saved["version"])
             client = self._client()
             try:
-                await settled(self._publish, client)
+                await self._publish_pending(client)
                 history = await settled(self._history)
                 existing = await settled(lambda: client.request("status", command_id=identity))
                 if existing["status"] == "accepted":
@@ -227,7 +259,7 @@ class WorkspaceVersions:
                     raise RuntimeError(f"sandbox restoration requires explicit recovery: {result}")
                 accepted = await settled(lambda: client.request("accept", command_id=identity))
                 if accepted["status"] != "accepted": raise RuntimeError(accepted)
-                await settled(self._publish, client)
+                await self._publish_pending(client)
                 return WorkspaceRestore(before, identity)
             finally:
                 await settled(client.close)

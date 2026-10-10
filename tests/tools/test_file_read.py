@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,7 +22,6 @@ from redpanda.tools.builtin.file_read import (
     GlobInput,
     GrepInput,
     ReadFileInput,
-    _glob_relative_entries,
     _matches_glob,
     create_file_read_specs,
 )
@@ -48,7 +49,7 @@ def _handlers(root: Path):
     return specs
 
 
-class RgScopeContractTest(unittest.TestCase):
+class FileSearchContractTest(unittest.TestCase):
     def test_glob_double_star_matches_zero_or_multiple_directory_levels(self):
         for path in ("a.py", "src/a.py", "src/nested/deeper/a.py"):
             with self.subTest(path=path):
@@ -70,17 +71,59 @@ class RgScopeContractTest(unittest.TestCase):
             self.assertIn("include_hidden", text)
             self.assertIn("include_ignored", text)
 
-    def test_relative_entries_keep_parent_dirs_within_max_depth(self):
-        root = Path("/tmp/project")
-        entries = _glob_relative_entries(
-            [root / "src" / "nested" / "a.py"],
-            root,
-            1,
-        )
-        self.assertEqual(entries, [("src", "dir")])
-
 
 class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_glob_missing_dependency_is_an_explicit_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("redpanda.tools.builtin.file_read.shutil.which", return_value=None):
+                result = await _handlers(Path(directory))["glob"].handler(GlobInput(pattern="*"))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "GLOB_NOT_FOUND")
+        self.assertNotIn("matches", result)
+
+    async def test_glob_traversal_errors_do_not_report_partial_results_as_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            proc = SimpleNamespace(
+                returncode=0,
+                communicate=AsyncMock(return_value=(b"./visible.py\0", b"permission denied")),
+            )
+            with (
+                patch("redpanda.tools.builtin.file_read.shutil.which", return_value="fd"),
+                patch("redpanda.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
+            ):
+                result = await _handlers(Path(directory))["glob"].handler(GlobInput(pattern="*"))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "GLOB_FAILED")
+        self.assertEqual(result["error"], "permission denied")
+        self.assertNotIn("matches", result)
+
+    async def test_glob_resolves_only_the_selected_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "docs").mkdir()
+            for name in ("a.md", "b.md"):
+                (root / "docs" / name).write_text(name)
+            discovered = [(f"unrelated/{index}.py", "file") for index in range(1000)]
+            discovered += [("docs/a.md", "file"), ("docs/b.md", "file")]
+            resolve = Path.resolve
+            resolved = []
+            def checked(path, *args, **kwargs):
+                assert "unrelated" not in path.parts
+                resolved.append(path)
+                return resolve(path, *args, **kwargs)
+            with (
+                patch("redpanda.tools.builtin.file_read._fd_entries",
+                      return_value={"ok": True, "entries": discovered}),
+                patch("redpanda.tools.builtin.file_read.shutil.which", return_value="fd"),
+                patch.object(Path, "resolve", checked),
+            ):
+                result = await _handlers(root)["glob"].handler(
+                    GlobInput(pattern="docs/*.md", max_results=1))
+            self.assertEqual([item["path"] for item in result["matches"]], ["docs/a.md"])
+            self.assertTrue(result["truncated"])
+            self.assertEqual(result["next_offset"], 1)
+            self.assertNotIn(root / "docs" / "b.md", resolved)
+
     async def test_read_file_does_not_reject_by_total_size(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -171,6 +214,47 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         paths = self._match_paths(result)
         self.assertIn("ignored/secret.py", paths)
         self.assertIn("src/keep.py", paths)
+
+    async def test_glob_enumerates_empty_dirs_and_dirs_with_only_ignored_files(self):
+        (self.root / "empty").mkdir()
+        (self.root / "cache").mkdir()
+        (self.root / "cache" / "only.tmp").write_text("ignored")
+        with (self.root / ".gitignore").open("a") as stream:
+            stream.write("*.tmp\n")
+        result = await self.glob(GlobInput(pattern="*", kind="dir", max_results=100))
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._match_paths(result), {"src", "empty", "cache"})
+        self.assertTrue(all(item["kind"] == "dir" for item in result["matches"]))
+
+    async def test_glob_max_depth_keeps_directories_with_deeper_files(self):
+        (self.root / "src" / "nested").mkdir()
+        (self.root / "src" / "nested" / "a.py").write_text("deep")
+        result = await self.glob(GlobInput(pattern="*", max_depth=1, max_results=100))
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._match_paths(result), {"src"})
+        self.assertEqual(result["matches"][0]["kind"], "dir")
+
+    async def test_glob_relative_patterns_and_pages_are_stable(self):
+        (self.root / "src" / "nested").mkdir()
+        (self.root / "src" / "nested" / "a.py").write_text("deep")
+        (self.root / "src" / "A.py").write_text("upper")
+        (self.root / "src" / "中文 文件.py").write_text("unicode")
+        shallow = await self.glob(GlobInput(pattern="src/*.py", kind="file", max_results=100))
+        self.assertEqual(self._match_paths(shallow), {"src/keep.py", "src/A.py", "src/中文 文件.py"})
+        expected = ["src/A.py", "src/keep.py", "src/nested/a.py", "src/中文 文件.py"]
+        for offset, path in enumerate(expected):
+            with self.subTest(offset=offset):
+                result = await self.glob(GlobInput(pattern="**/*.py", kind="file", offset=offset, max_results=1))
+                self.assertEqual([item["path"] for item in result["matches"]], [path])
+                self.assertEqual(result["next_offset"], offset + 1 if offset < len(expected) - 1 else None)
+
+    async def test_glob_uses_fd_ignore_rules_without_overriding_gitignore(self):
+        (self.root / ".fdignore").write_text("src/\n")
+        result = await self.glob(GlobInput(pattern="*.py", max_results=100))
+        self.assertTrue(result["ok"])
+        self.assertEqual(self._match_paths(result), set())
+        included = await self.glob(GlobInput(pattern="*.py", include_ignored=True, max_results=100))
+        self.assertEqual(self._match_paths(included), {"src/keep.py", "ignored/secret.py"})
 
     async def test_explicit_path_searches_hidden_directories(self):
         for path, filename, query, include_hidden in (

@@ -18,6 +18,8 @@ from redpanda.tools.builtin.workspace_restore import create_workspace_restore_sp
 from redpanda.tools.builtin.subagent_workspace import create_subagent_workspace_specs
 from redpanda.tools.spec import ToolSpec
 
+READ_ONLY_WORKSPACE_TOOLS = frozenset({"glob", "grep", "read_file", "get_changes"})
+
 
 def create_environment_tool_specs(
     binding: EnvironmentBinding,

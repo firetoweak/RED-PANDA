@@ -23,14 +23,15 @@ from redpanda.sandbox.workspace import (
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
-RG_NOT_FOUND_HINT = "本机缺少 ripgrep，glob/grep 暂不可用；已知路径时改用 read_file，并告诉用户需要安装 ripgrep。"
+RG_NOT_FOUND_HINT = "本机缺少 ripgrep，grep 暂不可用；已知路径时改用 read_file，并告诉用户需要安装 ripgrep。"
+FD_NOT_FOUND_HINT = "本机缺少 fd，glob 暂不可用；已知路径时改用 read_file，并告诉用户需要安装 fd。"
 
 GLOB_DESCRIPTION = """
 用途：在工作区内按名称模式查找文件或目录。
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
-默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；结果只包含工作区内的路径。
-失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
+默认范围：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .fdignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接；结果只包含工作区内的路径。
+失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
 """.strip()
 
 GREP_DESCRIPTION = """
@@ -57,6 +58,7 @@ MAX_GREP_SUBMATCHES = 100
 MAX_RG_ERROR_CHARS = 4_000
 GREP_TIMEOUT_SECONDS = 30
 GREP_SHUTDOWN_TIMEOUT_SECONDS = 5
+GLOB_TIMEOUT_SECONDS = 30
 
 
 class GlobInput(BaseModel):
@@ -70,7 +72,7 @@ class GlobInput(BaseModel):
     )
     include_ignored: bool = Field(
         default=False,
-        description="为 true 时包含 gitignore / .ignore / .rgignore 匹配项；默认跳过。把 path 指到被忽略目录也会进入",
+        description="为 true 时包含 gitignore / .ignore / .fdignore 匹配项；默认跳过。把 path 指到被忽略目录也会进入",
     )
     offset: int = Field(default=0, ge=0, description="跳过的匹配结果数量，从 0 开始")
     max_results: int = Field(default=10, ge=1, le=100, description="最多返回的结果数量，范围 1 到 100")
@@ -180,35 +182,6 @@ def _matches_glob(path: str, pattern: str) -> bool:
     return candidate.full_match(pattern)
 
 
-def _glob_relative_entries(
-    file_paths: list[Path],
-    search_root: Path,
-    max_depth: int | None,
-) -> list[tuple[str, Literal["file", "dir"]]]:
-    files: set[str] = set()
-    dirs: set[str] = set()
-    root = search_root.resolve()
-    for path in file_paths:
-        try:
-            relative = path.resolve().relative_to(root)
-        except ValueError:
-            continue
-        parts = relative.parts
-        if not parts:
-            continue
-        if max_depth is None or len(parts) <= max_depth:
-            files.add(relative.as_posix())
-        for depth in range(1, len(parts)):
-            if max_depth is None or depth <= max_depth:
-                dirs.add(PurePosixPath(*parts[:depth]).as_posix())
-    entries: list[tuple[str, Literal["file", "dir"]]] = [
-        *((item, "dir") for item in dirs),
-        *((item, "file") for item in files),
-    ]
-    entries.sort(key=lambda item: item[0])
-    return entries
-
-
 async def _stop_process(proc: asyncio.subprocess.Process) -> None:
     if proc.returncode is not None:
         return
@@ -226,26 +199,38 @@ async def _stop_process(proc: asyncio.subprocess.Process) -> None:
         await proc.wait()
 
 
-async def _rg_file_paths(search_root: Path, scope_args: list[str]) -> dict[str, Any]:
+async def _fd_entries(executable: str, search_root: Path, raw: GlobInput) -> dict[str, Any]:
+    args = ["--print0", "--color", "never", "--show-errors"]
+    if raw.include_hidden:
+        args.append("--hidden")
+    if raw.include_ignored:
+        args.append("--no-ignore")
+    if not _is_within_git_dir(search_root):
+        args.extend(["--exclude", ".git"])
+    kinds = ("file", "directory") if raw.kind == "any" else (raw.kind,)
+    for kind in kinds:
+        args.extend(["--type", kind])
+    if raw.max_depth is not None:
+        args.extend(["--max-depth", str(raw.max_depth)])
     try:
         proc = await asyncio.create_subprocess_exec(
-            "rg",
-            "--files",
-            "-0",
-            *scope_args,
+            executable,
+            *args,
             "--",
-            str(search_root),
+            ".",
+            ".",
+            cwd=search_root,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             limit=RG_STREAM_LIMIT_BYTES,
         )
     except OSError as exc:
-        return _filesystem_failure("RG_FAILED", str(search_root), exc)
+        return _filesystem_failure("GLOB_FAILED", str(search_root), exc)
     timed_out = False
     try:
         try:
-            async with asyncio.timeout(GREP_TIMEOUT_SECONDS):
+            async with asyncio.timeout(GLOB_TIMEOUT_SECONDS):
                 stdout, stderr = await proc.communicate()
         except TimeoutError:
             timed_out = True
@@ -261,25 +246,24 @@ async def _rg_file_paths(search_root: Path, scope_args: list[str]) -> dict[str, 
     if timed_out:
         return {
             "ok": False,
-            "code": "RG_TIMEOUT",
-            "error": f"rg 搜索超过 {GREP_TIMEOUT_SECONDS} 秒",
+            "code": "GLOB_TIMEOUT",
+            "error": f"路径搜索超过 {GLOB_TIMEOUT_SECONDS} 秒",
         }
     stderr_text = stderr.decode("utf-8", errors="replace").strip()[:MAX_RG_ERROR_CHARS]
-    if proc.returncode == 2:
+    if proc.returncode != 0 or stderr_text:
         return {
             "ok": False,
-            "code": "RG_FAILED",
-            "error": stderr_text or "rg 执行失败",
+            "code": "GLOB_FAILED",
+            "error": stderr_text or f"路径搜索失败，退出码 {proc.returncode}",
         }
-    paths: list[Path] = []
-    for raw in stdout.split(b"\0"):
-        if not raw:
+    entries: list[tuple[str, Literal["file", "dir"]]] = []
+    for entry in stdout.split(b"\0"):
+        if not entry:
             continue
-        candidate = Path(os.fsdecode(raw))
-        if not candidate.is_absolute():
-            candidate = search_root / candidate
-        paths.append(candidate)
-    return {"ok": True, "paths": paths}
+        # fd's unformatted output marks directories with the native separator.
+        kind = "dir" if entry.endswith(os.fsencode(os.sep)) else "file"
+        entries.append((Path(os.fsdecode(entry)).as_posix(), kind))
+    return {"ok": True, "entries": entries}
 
 
 def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
@@ -312,33 +296,26 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
                 "code": "EMPTY_PATTERN",
                 **resolved_search.result_fields(),
             }
-        if shutil.which("rg") is None:
-            return {"ok": False, "code": "RG_NOT_FOUND", "error": "未找到 rg", "hint": RG_NOT_FOUND_HINT}
+        executable = shutil.which("fd") or shutil.which("fdfind")
+        if executable is None:
+            return {"ok": False, "code": "GLOB_NOT_FOUND", "error": "未找到 fd", "hint": FD_NOT_FOUND_HINT}
 
         search_root = resolved_search.native_path
-        scope_args = _rg_scope_args(
-            search_root,
-            include_hidden=raw.include_hidden,
-            include_ignored=raw.include_ignored,
-        )
-        listed = await _rg_file_paths(search_root, scope_args)
-        if not listed.get("ok"):
+        listed = await _fd_entries(executable, search_root, raw)
+        if not listed["ok"]:
             return {
                 **listed,
                 "path": raw.path,
                 **resolved_search.result_fields(),
             }
 
-        selected = [
-            item
-            for item in _glob_relative_entries(
-                listed["paths"],
-                search_root,
-                raw.max_depth,
+        def select():
+            return sorted(
+                item
+                for item in listed["entries"]
+                if _matches_glob(item[0], pattern)
             )
-            if (raw.kind == "any" or item[1] == raw.kind)
-            and _matches_glob(item[0], pattern)
-        ]
+        selected = await asyncio.to_thread(select)
         page = selected[raw.offset:raw.offset + raw.max_results]
         truncated = len(selected) > raw.offset + raw.max_results
         matches = []

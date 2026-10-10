@@ -6,6 +6,9 @@ try {
     if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
         throw "Install ripgrep first: winget install --id BurntSushi.ripgrep.MSVC --exact"
     }
+    if (-not (Get-Command fd -ErrorAction SilentlyContinue) -and -not (Get-Command fdfind -ErrorAction SilentlyContinue)) {
+        throw "Install fd first: winget install --id sharkdp.fd --exact"
+    }
 
     $pythonVersion = (Get-Content (Join-Path $projectRoot ".python-version") -Raw).Trim()
     $uvVersion = "0.12.19"

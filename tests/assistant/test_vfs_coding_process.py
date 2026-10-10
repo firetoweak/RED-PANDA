@@ -11,11 +11,13 @@ import pytest
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.workspace_versions import project_workspace_versions, workspace_version_event, WORKSPACE_RESCUE_FACT
 from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.subagent.workspace import workspace_versions
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.sandbox.versions import native_executable
 from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, MemoryJournal, SqliteJournal, StepCommitted
+from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
 
@@ -33,6 +35,59 @@ class CodingModel:
         action = self.actions.popleft()
         calls = () if action is None else (ToolCall("provider-call", action[0], json.dumps(action[1])),)
         return LLMCallResult(LLMResponse(content="done", calls=calls), LLMUsage(1, 1))
+
+
+def test_read_only_shell_commands_overlap_without_native_operations(tmp_path, monkeypatch):
+    monkeypatch.setenv("REDPANDA_SANDBOX_EXECUTABLE", str(tmp_path / "absent-sandbox"))
+    async def scenario():
+        root = tmp_path / "project"
+        root.mkdir()
+        (root / "value").write_text("published")
+        home = RedPandaHome(tmp_path / "home")
+        workspace = workspace_record(root)
+        view = workspace_versions(home, workspace)
+        script = tmp_path / "rendezvous.py"
+        # The rendezvous writes only test controls outside the workspace.
+        script.write_text(
+            "import json, sys, time\n"
+            "from pathlib import Path\n"
+            "mine, other = map(Path, sys.argv[1:])\n"
+            "mine.touch()\n"
+            "deadline = time.monotonic() + 10\n"
+            "while not other.exists():\n"
+            "    if time.monotonic() > deadline: raise TimeoutError('commands did not overlap')\n"
+            "    time.sleep(0.01)\n"
+            "print(json.dumps({'cwd': str(Path.cwd()), 'value': Path('value').read_text()}))\n"
+        )
+        def command(*arguments):
+            argv = [sys.executable, "-B", str(script), *map(str, arguments)]
+            if os.name == "nt":
+                return "& " + " ".join("'" + item.replace("'", "''") + "'" for item in argv)
+            return shlex.join(argv)
+        assembly = await build_assistant_assembly(
+            AssistantConfig("test", 200000, CodingModel()), lambda *args: None,
+            MemoryJournal(), session_id="reads", workspace=workspace, home=home,
+            scheduler_factory=SettlingScheduler,
+        )
+        try:
+            queries = [
+                assembly.bindings["execute_command"].handler(
+                    AttemptContext("reads", f"read-{index}", f"attempt-{index}", 1),
+                    {"command": command(tmp_path / f"ready-{index}", tmp_path / f"ready-{1-index}"),
+                     "workspace_effect": "read_only", "timeout_seconds": 20},
+                )
+                for index in range(2)
+            ]
+            results = await asyncio.wait_for(asyncio.gather(*queries), 30)
+            for result in results:
+                assert result["ok"] and result["data"]["exit_code"] == 0, result
+                output = json.loads(result["data"]["stdout"]["content"])
+                assert output == {"cwd": str(root), "value": "published"}
+            assert not (view.storage / "commands").exists()
+            assert not (view.storage / "HEAD").exists()
+        finally:
+            await assembly.scheduler.close()
+    asyncio.run(scenario())
 
 
 def test_native_coding_and_model_restore_are_one_history(tmp_path):

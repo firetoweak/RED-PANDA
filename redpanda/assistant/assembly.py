@@ -295,8 +295,11 @@ async def build_assistant_assembly(
     bindings = _with_tool_progress(bindings, tool_progress_sink)
     for name in (*builtin_tools.names(), *review_bindings):
         binding = bindings[name]
-        async def projected(context, arguments, _handler=binding.handler):
+        async def projected(context, arguments, _handler=binding.handler,
+                            _name=name):
             try:
+                if builtin_tools.reads_published_workspace(_name, arguments):
+                    return await versions.read(lambda: _handler(context, arguments))
                 return await versions.execute(operation_id(context.session_id, context.command_id),
                                               lambda: _handler(context, arguments))
             except SandboxUnavailable as error:
