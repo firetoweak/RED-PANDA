@@ -33,6 +33,7 @@ import { stepHeading } from "./stepHeading";
 import { isSubagentTool, subagentTask } from "./subagent";
 import { SubagentCallCard } from "./SubagentCallCard";
 import type { VisibleStep, VisibleTool } from "./visibleTimeline";
+import { EffectReviewCanvas } from "./EffectReviewCanvas";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -220,7 +221,7 @@ export function StepDisclosure({
       </Group>
       <Collapse expanded={opened}>
         {opened ? (
-          <StepContent step={step} onAuthorize={onAuthorize}
+          <StepContent step={step} onAuthorize={onAuthorize} onRestore={onRestart}
             authorizationDisabled={authorizationDisabled} onObserveSubagent={onObserveSubagent} />
         ) : null}
       </Collapse>
@@ -228,15 +229,27 @@ export function StepDisclosure({
   );
 }
 
-function StepContent({ step, onAuthorize, authorizationDisabled = false, onObserveSubagent }: {
+function StepContent({ step, onAuthorize, onRestore, authorizationDisabled = false, onObserveSubagent }: {
   step: VisibleStep;
   onAuthorize?: (commandId: string, approved: boolean) => void;
+  onRestore?: (stepId: string) => void;
   authorizationDisabled?: boolean;
   onObserveSubagent?: (commandId: string) => void;
 }) {
   return <Stack className="step-content" gap="xs">
     {step.thinking === null ? null : <ThinkingBlock streaming={step.thinkingPending} text={step.thinking} />}
-    {step.text === null ? null : <MarkdownMessage content={step.text} streaming={step.pending} />}
+    {step.effectReview !== null ? (
+      <EffectReviewCanvas
+        disabled={authorizationDisabled}
+        onAuthorize={onAuthorize}
+        onRestore={onRestore}
+        prose={step.pending ? null : step.text}
+        review={step.effectReview}
+        source="projection"
+      />
+    ) : step.text === null ? null : (
+      <MarkdownMessage content={step.text} streaming={step.pending} />
+    )}
     {step.tools.map((tool) => isSubagentTool(tool.name)
       ? <SubagentCallCard key={tool.commandId} tool={tool} onObserve={onObserveSubagent} />
       : <ToolCard key={tool.commandId} tool={tool} onAuthorize={onAuthorize} authorizationDisabled={authorizationDisabled} />)}

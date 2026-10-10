@@ -257,6 +257,65 @@ describe("toolProgressEventSchema", () => {
   });
 });
 
+describe("effect review on a step", () => {
+  const envelope = (step: Record<string, unknown>) => ({
+    session_id: "session-1",
+    workspace_id: "workspace-1",
+    revision: 1,
+    items: [step],
+    session,
+    compact_count: 0,
+    compact_phase: null,
+    waiting_until: null,
+    workspace_version: null,
+    work_plan: null,
+    work_plan_updates: [],
+    context_input_tokens: null,
+  });
+
+  const step = {
+    kind: "step",
+    step_id: "step-event",
+    output_id: "user-event",
+    text: "启动已经更快。",
+    thinking: null,
+    tools: [],
+    occurred_at: "2026-09-15T08:00:01+00:00",
+    rewindable: true,
+  };
+
+  it("accepts a structured effect review and still accepts a step without one", () => {
+    const review = {
+      conclusion: "启动耗时从 1.8s 降到 0.4s。",
+      metrics: [{ label: "启动耗时", before: "1.8", after: "0.4", unit: "s" }],
+      changes: [{ path: "web/src/main.tsx", reason: "去掉重复初始化" }],
+      actions: [
+        { kind: "authorize", label: "允许检查", command_id: "cmd-1", approved: true },
+        { kind: "restore", label: "从这一步之后重开", step_id: "step-event" },
+        { kind: "todo", label: "接受并发布", note: "还没有对应的 Host 接口。" },
+      ],
+    };
+    expect(conversationViewSchema.parse(envelope({ ...step, effect_review: review })).items[0])
+      .toMatchObject({ effect_review: review });
+    expect(conversationViewSchema.parse(envelope(step)).items[0])
+      .toMatchObject({ kind: "step", text: "启动已经更快。" });
+    expect(conversationViewSchema.parse(envelope({ ...step, effect_review: null })).items[0])
+      .toMatchObject({ effect_review: null });
+  });
+
+  it("rejects an action that is not an existing host call or an explicit todo", () => {
+    expect(() => conversationViewSchema.parse(envelope({
+      ...step,
+      effect_review: {
+        conclusion: "完成",
+        metrics: [],
+        changes: [],
+        actions: [{ kind: "tool", label: "直接改文件", name: "write_file" }],
+      },
+    }))).toThrow();
+  });
+});
+
 describe("modelProfileSchema", () => {
   it("requires a model name and a positive compact threshold", () => {
     expect(

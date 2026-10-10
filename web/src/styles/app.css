@@ -784,6 +784,33 @@ body.is-resizing-subagent { cursor: col-resize; user-select: none; }
   border-left: 3px solid var(--mantine-color-ember-5);
 }
 
+.effect-review {
+  width: 100%;
+  background: var(--rp-card);
+  border-color: var(--rp-card-border);
+}
+
+.effect-review-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.effect-review-metric {
+  background: var(--rp-card-soft);
+  border-color: var(--rp-card-border-soft);
+}
+
+.effect-review-path {
+  font-family: var(--mantine-font-family-monospace);
+  overflow-wrap: anywhere;
+}
+
+.effect-review-changes-toggle,
+.effect-review-prose-toggle {
+  padding: 2px 0;
+}
+
 @media (max-height: 600px) {
   .conversation-intro { padding-block: 20px; }
   .welcome-mascot { width: 90px; }

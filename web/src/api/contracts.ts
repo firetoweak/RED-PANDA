@@ -109,6 +109,59 @@ export const workPlanSchema = z.object({
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
 
+const effectReviewMetricSchema = z
+  .object({
+    label: z.string().min(1),
+    before: z.string().min(1),
+    after: z.string().min(1),
+    unit: z.string().min(1).nullable(),
+  })
+  .strict();
+
+const effectReviewChangeSchema = z
+  .object({
+    path: z.string().min(1),
+    reason: z.string().min(1),
+  })
+  .strict();
+
+const effectReviewActionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("authorize"),
+      label: z.string().min(1),
+      command_id: z.string().min(1),
+      approved: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("restore"),
+      label: z.string().min(1),
+      step_id: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("todo"),
+      label: z.string().min(1),
+      note: z.string().min(1),
+    })
+    .strict(),
+]);
+
+// 效果核对是 step 上的可选投影。缺省或 null 时回复仍走正文；不从正文里猜结构。
+export const effectReviewSchema = z
+  .object({
+    conclusion: z.string().min(1),
+    metrics: z.array(effectReviewMetricSchema),
+    changes: z.array(effectReviewChangeSchema),
+    actions: z.array(effectReviewActionSchema),
+  })
+  .strict();
+
+export type EffectReview = z.infer<typeof effectReviewSchema>;
+
 export const conversationViewSchema = z
   .object({
     session_id: z.string().min(1),
@@ -140,6 +193,7 @@ export const conversationViewSchema = z
             tools: z.array(toolItemSchema),
             occurred_at: z.string().datetime({ offset: true }),
             rewindable: z.boolean(),
+            effect_review: effectReviewSchema.nullable().optional(),
           })
           .strict(),
       ]),

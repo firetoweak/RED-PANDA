@@ -680,6 +680,50 @@ describe("turnIsSettled", () => {
   });
 });
 
+describe("effect review projection", () => {
+  it("keeps a committed effect review on the step and leaves preview text unstructured", () => {
+    const review = {
+      conclusion: "启动更快",
+      metrics: [],
+      changes: [],
+      actions: [],
+    };
+    const visible = visibleTimeline(
+      {
+        ...conversation,
+        items: [
+          conversation.items[0],
+          {
+            kind: "step",
+            step_id: "step-1",
+            output_id: "user-1",
+            text: "journal",
+            thinking: null,
+            tools: [],
+            occurred_at: "2026-09-15T08:00:01+00:00",
+            rewindable: true,
+            effect_review: review,
+          },
+        ],
+      },
+      {},
+      { outputId: "preview", text: "{\"conclusion\":\"不要把预览当事实\"}" },
+      {},
+    );
+    expect(visible[1]).toMatchObject({
+      kind: "step",
+      pending: false,
+      effectReview: review,
+    });
+    expect(visible[2]).toMatchObject({
+      kind: "step",
+      pending: true,
+      text: "{\"conclusion\":\"不要把预览当事实\"}",
+      effectReview: null,
+    });
+  });
+});
+
 function toolOnlyTurn(user: TimelineTurn["user"]): TimelineTurn {
   return {
     key: "user-1",
