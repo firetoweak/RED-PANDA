@@ -143,7 +143,7 @@ def create_command_execution_spec(
             return {
                 "ok": False,
                 "code": "COMMAND_START_FAILED",
-                "error": str(exc),
+                "error": "命令未能启动，请检查 Shell、启动目录、访问权限和可用资源。",
                 "execution_location": resolved_cwd.location.to_dict(),
                 "workspace_membership": (
                     resolved_cwd.workspace_membership.to_dict()

@@ -58,7 +58,7 @@ def test_handoff_hashes_only_changed_files_and_reuses_frozen_result(tmp_path, un
             (root / "human").write_text("human")
             parent = workspace_files(home, workspace)
             async def merge():
-                assert await files.merge("parent", "child", parent) == ()
+                assert (await files.merge("parent", "child", parent)).conflicts == ()
                 return {"ok": True}
             await parent.execute(operation_id("parent", "merge"), merge)
             assert hashes == ["src/code", "src/code"]
@@ -156,13 +156,13 @@ def test_file_directory_replacement_is_complete(tmp_path, directory):
         await files.finish("parent", "child")
         parent = workspace_files(home, workspace)
         async def merge():
-            assert await files.merge("parent", "child", parent) == ()
+            assert (await files.merge("parent", "child", parent)).conflicts == ()
             return {"ok": True}
         await parent.execute(operation_id("parent", "merge"), merge)
         assert ((root / "node") if directory else (root / "node" / "new")).read_text() == "new"
         if not directory:
             (root / "node" / "human").write_text("human")
-            with pytest.raises(WorkspaceRestoreFailed, match="directory_contains_user_children"):
+            with pytest.raises(WorkspaceRestoreFailed, match="目录包含"):
                 await parent.restore(INITIAL, identity=operation_id("parent", "blocked"), policy="original")
             assert (root / "node" / "human").read_text() == "human"
             assert (root / "node" / "new").read_text() == "new"
@@ -183,7 +183,7 @@ def test_conflict_result_can_seed_an_independent_resolution_child(tmp_path):
         (root / "file").write_text("parent\n")
         parent = workspace_files(home, workspace)
         async def merge():
-            assert await files.merge("parent", "child", parent) == ("file",)
+            assert (await files.merge("parent", "child", parent)).conflicts == ("file",)
             return {"ok": False}
         await parent.execute(operation_id("parent", "conflict"), merge)
         assert (root / "file").read_text() == "parent\n"
@@ -193,7 +193,7 @@ def test_conflict_result_can_seed_an_independent_resolution_child(tmp_path):
         await edit(resolution_view, "resolve", lambda mount: (mount / "file").write_text("resolved\n"))
         await files.finish("parent", "resolve")
         async def accept():
-            assert await files.merge("parent", "resolve", parent) == ()
+            assert (await files.merge("parent", "resolve", parent)).conflicts == ()
             return {"ok": True}
         await parent.execute(operation_id("parent", "accept"), accept)
         assert (root / "file").read_text() == "resolved\n"

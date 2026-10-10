@@ -20,6 +20,8 @@ from redpanda.sandbox.workspace import (
     ResolvedEnvironmentPath,
     WorkspacePathResolver,
 )
+from redpanda.sandbox.files import read_text
+from redpanda.sandbox.api import file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -45,7 +47,7 @@ GREP_DESCRIPTION = """
 READ_FILE_DESCRIPTION = """
 用途：读取工作区内已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；offset 从 1 开始；单次最多 2000 行和 8000 字符。文件体积不是拒绝条件。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换；文件体积不是拒绝条件。
 失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
 """.strip()
 
@@ -555,86 +557,20 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
 
     async def read_file(raw: ReadFileInput) -> dict[str, Any]:
         try:
-            resolved_path, err = _require_existing(
-                resolver, raw.path, expect="file"
-            )
+            resolved_path = resolver.resolve(raw.path)
         except EnvironmentInputError as exc:
             return environment_error(exc)
         except OSError as exc:
             return _filesystem_failure("FILE_READ_FAILED", raw.path, exc)
-        if err:
-            return err
-        assert resolved_path is not None
         path = resolved_path.native_path
         relative_path = resolved_path.workspace_membership.display_path
-        selected: list[str] = []
-        content_length = 0
-        end_line = raw.offset - 1
-        truncated_by = None
-        next_offset = None
-        last_seen_line = 0
-
         try:
-            with path.open("r", encoding="utf-8") as handle:
-                for line_number, line in enumerate(handle, start=1):
-                    last_seen_line = line_number
-                    if line_number < raw.offset:
-                        continue
-                    if len(selected) >= raw.limit:
-                        truncated_by = "lines"
-                        next_offset = line_number
-                        break
-                    if content_length + len(line) > MAX_READ_CHARS:
-                        if selected:
-                            truncated_by = "chars"
-                            next_offset = line_number
-                            break
-                        return {
-                            "ok": False,
-                            "code": "LINE_TOO_LONG",
-                            "error": f"第 {line_number} 行超过单次字符上限: {relative_path}",
-                            "path": relative_path,
-                            "line": line_number,
-                            "preview": line[:MAX_READ_CHARS],
-                            "max_chars": MAX_READ_CHARS,
-                            **resolved_path.result_fields(),
-                        }
-                    selected.append(line)
-                    content_length += len(line)
-                    end_line = line_number
+            result = await read_text(path, offset=raw.offset, limit=raw.limit, max_chars=MAX_READ_CHARS)
         except UnicodeDecodeError:
-            return {
-                "ok": False,
-                "code": "NOT_A_TEXT_FILE",
-                "error": f"无法以 UTF-8 文本读取: {relative_path}",
-                "path": relative_path,
-                **resolved_path.result_fields(),
-            }
+            result = {"ok": False, "code": "NOT_A_TEXT_FILE"}
         except OSError as exc:
-            return _filesystem_failure("FILE_READ_FAILED", relative_path, exc)
-
-        if not selected and last_seen_line < raw.offset:
-            if not (raw.offset == 1 and last_seen_line == 0):
-                return {
-                    "ok": False,
-                    "code": "OFFSET_OUT_OF_RANGE",
-                    "error": f"起始行号超出文件末尾: {relative_path}",
-                    "path": relative_path,
-                    **resolved_path.result_fields(),
-                }
-
-        return {
-            "ok": True,
-            "code": "FILE_READ",
-            "path": relative_path,
-            **resolved_path.result_fields(),
-            "content": "".join(selected),
-            "start_line": raw.offset,
-            "end_line": end_line,
-            "next_offset": next_offset,
-            "truncated": truncated_by is not None,
-            "truncated_by": truncated_by,
-        }
+            result = _filesystem_failure("FILE_READ_FAILED", relative_path, exc)
+        return {**result, "path": relative_path, **resolved_path.result_fields()}
 
     return [
         ToolSpec(
@@ -662,6 +598,6 @@ def _filesystem_failure(code: str, path: str, exc: OSError) -> dict[str, Any]:
     return {
         "ok": False,
         "code": code,
-        "error": f"文件系统操作失败: {type(exc).__name__}: {exc}",
+        "error": file_error_message(exc),
         "path": path,
     }

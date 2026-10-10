@@ -509,7 +509,18 @@ impl Service {
         } else {
             None
         };
-        Ok(json!({"status":state,"receipt":receipt}))
+        let summary = if receipt
+            .as_ref()
+            .is_some_and(|r| matches!(&r.operation, restore::Operation::Restore { .. }))
+        {
+            Some(
+                storage::read_json::<restore::Completed>(&dir.join("restore-complete.json"))?
+                    .summary,
+            )
+        } else {
+            None
+        };
+        Ok(json!({"status":state,"receipt":receipt,"restore_summary":summary}))
     }
     async fn accept(&mut self, id: &str) -> Result<Value> {
         if self.paused {
@@ -638,10 +649,12 @@ impl Service {
             &serde_json::to_vec(&restore::Completed {
                 command_id: id.clone(),
                 parent_commit: self.tip.clone(),
+                summary: plan.summary.clone(),
             })?,
         )?;
         self.finish_candidate(&id, candidate.sdk, candidate.fs)
-            .await
+            .await?;
+        self.status(&id)
     }
     async fn request(&mut self, r: Request) -> Result<Value> {
         match r {

@@ -43,9 +43,9 @@ def directory_identity(path):
     try: return identity_handle(handle)
     finally: checked(close_handle(handle))
 
-def open_file(path: Path, *, create=False, write=False):
+def open_file(path: Path, *, create=False, write=False, shared_read=False):
     # OPEN_REPARSE_POINT prevents treating a link as an ordinary file.
-    handle = create_file(str(path),0x80000000 | (0x40000000 | 0x10000 if write else 0),0,None,1 if create else 3,0x200000,None)
+    handle = create_file(str(path),0x80000000 | (0x40000000 | 0x10000 if write else 0),1 if shared_read else 0,None,1 if create else 3,0x200000,None)
     if handle == INVALID:
         raise c.WinError(c.get_last_error())
     fd = msvcrt.open_osfhandle(handle,os.O_BINARY | (os.O_RDWR if write else os.O_RDONLY))

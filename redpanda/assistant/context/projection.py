@@ -301,8 +301,12 @@ def _translate_visible_events(
                 if fact.error is None:
                     continue
             # Protocol has four roles; identify application facts explicitly.
+            shown_data = thaw_value(payload.data)
+            if payload.fact_type == WORKSPACE_RESCUE_FACT:
+                shown_data = {"note": "文件没有成功回退到所选位置，请核对当前文件后继续。",
+                              "error": payload.data["error"]}
             content = json.dumps(
-                {"fact": payload.fact_type, "data": thaw_value(payload.data)},
+                {"fact": payload.fact_type, "data": shown_data},
                 ensure_ascii=False,
             )
             if payload.fact_type == "assistant.catalog":

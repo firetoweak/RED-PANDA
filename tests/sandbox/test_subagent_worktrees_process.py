@@ -23,6 +23,37 @@ def test_materialization_retries_preserve_started_child(tmp_path):
     asyncio.run(scenario())
 
 
+def test_large_child_diff_can_be_read_to_the_end_and_merge_reports_actual_files(tmp_path):
+    async def scenario():
+        root = tmp_path / "parent"
+        root.mkdir()
+        (root / "file").write_bytes(b"A" * 130_000 + b"\n")
+        parent = ReviewWorktrees(root, tmp_path / "versions")
+        base = await parent.snapshot()
+        child_root = tmp_path / "child"
+        await parent.materialize(child_root, base)
+        (child_root / "file").write_bytes(b"B" * 130_000 + b"\n")
+        child = ReviewWorktrees(child_root, parent.storage, ignore_root=root)
+        version = await child.record(base, ("file",))
+        pages, offset = [], 0
+        while True:
+            result = await parent.compare(base, version, ("file",), offset=offset)
+            pages.append(result["diff"])
+            following = result["next_offset"]
+            if following is None:
+                break
+            assert following > offset
+            offset = following
+        patch = "".join(pages)
+        assert len(pages) > 1
+        assert "-" + "A" * 130_000 in patch and "+" + "B" * 130_000 in patch
+        merged = await parent.merge(base, version)
+        assert merged.conflicts == () and merged.changed_paths == ("file",)
+        assert (root / "file").read_bytes() == b"B" * 130_000 + b"\n"
+        assert (await parent.merge(base, version)).changed_paths == ()
+    asyncio.run(scenario())
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows 长工作树路径契约")
 def test_child_review_reads_files_beyond_windows_normal_path_limit(tmp_path):
     async def scenario():
@@ -40,7 +71,7 @@ def test_child_review_reads_files_beyond_windows_normal_path_limit(tmp_path):
         child = ReviewWorktrees(child_root, parent.storage, ignore_root=root)
         (child.root / relative).write_text("child")
         version = await child.record(base, (relative.as_posix(),))
-        assert await parent.merge(base, version) == ()
+        assert (await parent.merge(base, version)).conflicts == ()
         assert source.read_text() == "child"
     asyncio.run(scenario())
 
@@ -87,7 +118,7 @@ def test_merge_preserves_parent_edits_and_compare_can_select_files(tmp_path):
         assert listing == {"files": [{"status": "A", "path": "new"}, {"status": "M", "path": "one"}]}
         patch = await parent.compare(base, version, ("one",))
         assert "+child" in patch["diff"] and "diff --git a/new" not in patch["diff"]
-        assert await parent.merge(base, version) == ()
+        assert (await parent.merge(base, version)).conflicts == ()
         assert (root / "one").read_text() == "child"
         assert (root / "two").read_text() == "parent"
         assert (root / "new").read_text() == "new"
@@ -107,7 +138,7 @@ def test_merge_conflicts_leave_parent_files_intact_and_can_seed_another_child(tm
         (child_root / "file").write_text("child\n")
         child = ReviewWorktrees(child_root, parent.storage, ignore_root=root)
         version = await child.record(base, ("file",))
-        assert await parent.merge(base, version) == ("file",)
+        assert (await parent.merge(base, version)).conflicts == ("file",)
         assert (root / "file").read_text() == "parent\n"
         resolving_root = tmp_path / "resolving"
         current = await parent.snapshot()

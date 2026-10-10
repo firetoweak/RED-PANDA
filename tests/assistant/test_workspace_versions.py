@@ -74,7 +74,8 @@ def test_record_failure_is_a_visible_fact_but_unknown_error_propagates():
         await boundary.sync()
         facts = project_workspace_versions(await runtime.snapshot("s"))
         assert facts[0].version is None
-        assert facts[0].error == "native program missing"
+        assert facts[0].error is not None
+        assert "native program missing" not in facts[0].error
         await runtime.create_session("other")
         versions.record.side_effect = RuntimeError("corrupt repository")
         with pytest.raises(RuntimeError, match="corrupt"):
@@ -117,7 +118,9 @@ def test_call_resolves_to_previous_step_not_its_own_snapshot(step_index, command
         runtime, boundary, versions, events, visible = await restore_history(["a" * 64, "b" * 64, "c" * 64, "c" * 64])
         target = visible.steps[step_index].commands[command_index].command.command_id
         result = await boundary.restore("restore", target, events, visible)
-        assert result == {"ok": True, "code": "WORKSPACE_RESTORED", "tool_call_id": target}
+        assert result["ok"] and result["code"] == "WORKSPACE_RESTORED"
+        assert result["tool_call_id"] == target
+        assert result["data"]["effect"] == "unchanged"
         versions.restore.assert_awaited_once_with(expected * 64, identity=operation_id("s", "restore"), policy="preserve")
         all_events = await runtime.snapshot("s")
         messages = project_chat_messages(all_events, runtime.projector.project_visible("s", all_events))
@@ -137,7 +140,8 @@ def test_missing_previous_snapshot_does_not_fall_back(failed):
         assert result["code"] == "WORKSPACE_VERSION_UNAVAILABLE"
         versions.restore.assert_not_awaited()
         messages = project_chat_messages(events, visible)
-        assert "snapshot failed" in json.dumps(messages)
+        assert "snapshot failed" not in json.dumps(messages)
+        assert "assistant.workspace_version" in json.dumps(messages)
         assert "a" * 64 not in json.dumps(messages)
     asyncio.run(scenario())
 
@@ -176,6 +180,19 @@ def test_partial_restore_retains_rescue_fact_without_exposing_version_addresses(
         versions.restore.side_effect = RuntimeError("corrupt")
         with pytest.raises(RuntimeError, match="corrupt"):
             await boundary.restore("other", target, events, visible)
+    asyncio.run(scenario())
+
+
+def test_failed_time_travel_exposes_observable_failure_without_file_version_coordinates():
+    async def scenario():
+        runtime, boundary, _, _, _ = await restore_history(["a" * 64] * 4)
+        await boundary._record_rescue("travel", "step", "f" * 64, None, "文件已被替换，无法回退。")
+        events = await runtime.snapshot("s")
+        assert events[-1].payload.data["before_version"] == "f" * 64
+        visible = runtime.projector.project_visible("s", events)
+        messages = json.dumps(project_chat_messages(events, visible), ensure_ascii=False)
+        assert "文件已被替换" in messages
+        assert "before_version" not in messages and "f" * 64 not in messages
     asyncio.run(scenario())
 
 

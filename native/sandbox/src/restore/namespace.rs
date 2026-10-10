@@ -16,6 +16,7 @@ pub struct Entry {
 pub struct Plan {
     paths: BTreeMap<String, Entry>,
     moves: Vec<(String, String)>,
+    pub summary: super::Summary,
 }
 #[derive(Default)]
 struct Effect {
@@ -278,6 +279,7 @@ fn reverse(
     changes: &[Change],
     cas: &Path,
     policy: &Policy,
+    preserved: &mut BTreeSet<String>,
 ) -> Result<std::result::Result<(), Conflict>> {
     let mut effects: BTreeMap<String, Effect> = BTreeMap::new();
     let mut blocked = BTreeSet::new();
@@ -342,6 +344,13 @@ fn reverse(
     let mut removals = BTreeSet::new();
     let mut values = BTreeMap::new();
     let mut contents = BTreeMap::new();
+    for path in &blocked {
+        if changes.iter().any(|change| {
+            change.path == *path && !same_content(&paths[path].desired, &change.before)
+        }) {
+            preserved.insert(path.clone());
+        }
+    }
     for (identity, effect) in effects {
         if effect
             .before_names
@@ -367,7 +376,13 @@ fn reverse(
                         after: after.clone(),
                     };
                     match choose(cas, &change, current, policy)? {
-                        Ok(value) => value,
+                        Ok((value, kept)) => {
+                            if kept {
+                                preserved.extend(effect.before_names.iter().cloned());
+                                preserved.extend(effect.after_names.iter().cloned());
+                            }
+                            value
+                        }
                         Err(error) => return Ok(Err(error)),
                     }
                 }
@@ -478,8 +493,9 @@ pub async fn plan(
             },
         );
     }
+    let mut preserved = BTreeSet::new();
     for changes in normalized.iter().rev() {
-        if let Err(error) = reverse(&mut paths, changes, cas, policy)? {
+        if let Err(error) = reverse(&mut paths, changes, cas, policy, &mut preserved)? {
             return Ok(Err(error));
         }
     }
@@ -502,6 +518,7 @@ pub async fn plan(
                 if matches!(policy, Policy::Preserve) {
                     let entry = paths.get_mut(&path).unwrap();
                     entry.desired = entry.expected.clone();
+                    preserved.insert(path.clone());
                     break;
                 }
                 return Ok(Err(conflict("directory_contains_user_children", &path)));
@@ -580,9 +597,21 @@ pub async fn plan(
         moves.remove(&from);
         ordered.push((from, to));
     }
+    let summary = super::Summary {
+        changed_paths: paths
+            .iter()
+            .filter(|(_, entry)| {
+                !same_content(&entry.expected, &entry.desired)
+                    || entry.expected.identity != entry.desired.identity
+            })
+            .map(|(path, _)| path.clone())
+            .collect(),
+        preserved_paths: preserved.into_iter().collect(),
+    };
     Ok(Ok(Plan {
         paths,
         moves: ordered,
+        summary,
     }))
 }
 

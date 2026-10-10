@@ -1356,7 +1356,11 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("execute_command", names)
 
     def test_child_builtin_names_exclude_execution_and_recursion(self):
+        for name in ("read_content", "find_history", "get_changes"):
+            with self.subTest(tool=name):
+                self.assertIn(name, CHILD_BUILTIN_TOOL_NAMES)
         for name in (
+            "read_artifact",
             "execute_command",
             DELEGATE,
             RECLAIM,

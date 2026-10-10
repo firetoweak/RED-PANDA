@@ -275,6 +275,7 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "read_file",
         "read_content",
         "find_history",
+        "get_changes",
         "load_skill",
         "read_skill_resource",
         "write_file",
@@ -288,9 +289,9 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
 """子 Session 能看见的内建工具；外部工具从只读 Server 目录渐进加载。
 
 显式列举：新增任何工具默认进不来，要进必须有人明确加。
-`execute_command` 不在其中——执行等进程沙箱。`get_changes` 不在其中——子工作树
-没有用户 Git 仓库，比较由父按会话拉取。`DELEGATE` 也不在其中，递归委派因此被
-同一份名单挡住。
+`get_changes` 核对子的自身修改，不代替父的成果验收。
+`execute_command` 不在其中——执行等进程沙箱。`DELEGATE` 也不在其中，
+递归委派因此被同一份名单挡住。
 """
 
 
