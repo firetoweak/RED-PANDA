@@ -316,6 +316,7 @@ async def build_assistant_assembly(
         control=control,
         management=management,
         compact_threshold_tokens=config.compact_threshold_tokens,
+        reasoning_effort=config.reasoning_effort,
         context_usage_sink=context_usage_sink,
         subagents=subagents,
         compact=compact_context,

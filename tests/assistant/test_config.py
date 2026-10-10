@@ -143,3 +143,15 @@ class AppConfigTest(unittest.TestCase):
             data = self._data(123456)
             self._write_config(path, data)
             self.assertEqual(load_app_config(path).default.compact_threshold_tokens, 123456)
+
+    def test_step5_reasoning_effort_is_optional_and_limited_to_supported_tiers(self):
+        for effort in (None, "low", "medium", "high"):
+            with self.subTest(effort=effort):
+                model = ModelConfig("stepfun/step-5-preview", 200000, effort)
+                self.assertEqual(ModelConfig.from_dict(model.to_dict()), model)
+                self.assertEqual("reasoning_effort" in model.to_dict(), effort is not None)
+        for effort in ("none", "xhigh", "", True, [], 1):
+            with self.subTest(effort=effort), self.assertRaisesRegex(ValueError, "reasoning_effort"):
+                ModelConfig("stepfun/step-5-preview", 200000, effort)
+        with self.assertRaisesRegex(ValueError, "目前只支持"):
+            ModelConfig("stepfun/step-3.5-flash", 200000, "high")

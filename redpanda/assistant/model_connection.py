@@ -14,12 +14,14 @@ from redpanda.llm.api import (
 )
 
 
-async def check_model_connection(llm: LLMApi, model: str) -> dict:
+async def check_model_connection(llm: LLMApi, model: str, *, reasoning_effort: str | None = None) -> dict:
     started = perf_counter()
     ok, message = True, "模型可用"
+    options = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
     try:
         await llm.chat(
             [{"role": "user", "content": "Reply with OK only."}], model, tools=None,
+            **options,
         )
     except (
         LLMAuthenticationError, LLMContextLengthError, LLMProviderError,

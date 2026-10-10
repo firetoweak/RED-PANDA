@@ -1,6 +1,6 @@
 """模型标识与个人连接文件的外部边界。"""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,6 +14,7 @@ from redpanda.paths import RedPandaHome
 class ModelConfig:
     model: str
     compact_threshold_tokens: int
+    reasoning_effort: str | None = None
 
     def __post_init__(self):
         if type(self.model) is not str:
@@ -23,11 +24,23 @@ class ModelConfig:
             raise ValueError("model 必须形如 <provider>/<model>，provider 为 " + "、".join(PROVIDERS))
         if type(self.compact_threshold_tokens) is not int or self.compact_threshold_tokens <= 0:
             raise ValueError("compact_threshold_tokens 必须是大于 0 的整数")
+        if self.reasoning_effort is not None:
+            if self.model != "stepfun/step-5-preview":
+                raise ValueError("reasoning_effort 目前只支持 stepfun/step-5-preview")
+            if type(self.reasoning_effort) is not str or self.reasoning_effort not in ("low", "medium", "high"):
+                raise ValueError("reasoning_effort 必须是 low/medium/high")
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        if self.reasoning_effort is None:
+            del data["reasoning_effort"]
+        return data
 
     @classmethod
     def from_dict(cls, data: object) -> "ModelConfig":
-        if type(data) is not dict or set(data) != {"model", "compact_threshold_tokens"}:
-            raise ValueError("候选模型字段必须是 model/compact_threshold_tokens")
+        required = {"model", "compact_threshold_tokens"}
+        if type(data) is not dict or not required <= set(data) or set(data) - required - {"reasoning_effort"}:
+            raise ValueError("候选模型字段必须是 model/compact_threshold_tokens，可选 reasoning_effort")
         return cls(**data)
 
 

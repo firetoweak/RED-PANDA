@@ -82,6 +82,7 @@ class ChatCompletionsClient:
         *,
         on_content_delta: ContentDeltaSink | None = None,
         on_reasoning_delta: ContentDeltaSink | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMCallResult:
         if self._endpoint.pads_reasoning_content:
             messages = [
@@ -103,6 +104,8 @@ class ChatCompletionsClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
+        if reasoning_effort is not None:
+            payload["reasoning_effort"] = reasoning_effort
 
         attempt = 0
         while True:

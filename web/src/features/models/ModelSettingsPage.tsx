@@ -15,6 +15,7 @@ export function ModelSettingsPage() {
   const [provider, setProvider] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [threshold, setThreshold] = useState<string | number>(200000);
+  const [reasoningEffort, setReasoningEffort] = useState<ModelProfile["reasoning_effort"]>();
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
 
@@ -30,6 +31,7 @@ export function ModelSettingsPage() {
     setProvider(profile === "new" ? data?.providers[0]?.provider ?? null : profile.model.split("/")[0]);
     setName(profile === "new" ? "" : profile.model.slice(profile.model.indexOf("/") + 1));
     setThreshold(profile === "new" ? 200000 : profile.compact_threshold_tokens);
+    setReasoningEffort(profile === "new" ? undefined : profile.reasoning_effort);
     setFormError("");
   }
 
@@ -39,7 +41,10 @@ export function ModelSettingsPage() {
     if (!name.trim() || !Number.isSafeInteger(tokens) || tokens <= 0) {
       setFormError("请输入模型名称和正整数 compact 触发值。"); return;
     }
-    const profile = { model: provider + "/" + name.trim(), compact_threshold_tokens: tokens };
+    const profile: ModelProfile = { model: provider + "/" + name.trim(), compact_threshold_tokens: tokens };
+    if (profile.model === "stepfun/step-5-preview" && reasoningEffort !== undefined) {
+      profile.reasoning_effort = reasoningEffort;
+    }
     const oldName = editing === "new" || editing === null ? null : editing.model;
     if (draft.model.candidates.some((item) => item.model === profile.model && item.model !== oldName)) {
       setFormError("候选列表已经包含这个模型。"); return;
@@ -73,13 +78,16 @@ export function ModelSettingsPage() {
         <Text fw={600} mb="xs">候选模型</Text>
         {draft.model.candidates.length === 0 ? <Text c="dimmed">先添加一个模型，再开始会话。</Text> :
         <Table.ScrollContainer minWidth={760}><Table verticalSpacing="sm">
-          <Table.Thead><Table.Tr><Table.Th>新会话默认</Table.Th><Table.Th>模型</Table.Th><Table.Th>compact 触发值</Table.Th><Table.Th>连接</Table.Th><Table.Th>操作</Table.Th></Table.Tr></Table.Thead>
+          <Table.Thead><Table.Tr><Table.Th>新会话默认</Table.Th><Table.Th>模型</Table.Th><Table.Th>推理程度</Table.Th><Table.Th>compact 触发值</Table.Th><Table.Th>连接</Table.Th><Table.Th>操作</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{draft.model.candidates.map((profile) => {
             const state = data?.providers.find((item) => item.provider === profile.model.split("/")[0]);
             return <Table.Tr key={profile.model}>
               <Table.Td><Radio aria-label={"默认模型 " + profile.model} checked={draft.model.default === profile.model}
                 onChange={() => { setDraft({ model: { ...draft.model, default: profile.model } }); setNotice(""); }} /></Table.Td>
               <Table.Td><Text size="sm" ff="monospace">{profile.model}</Text></Table.Td>
+              <Table.Td>{profile.reasoning_effort === undefined
+                ? (profile.model === "stepfun/step-5-preview" ? "供应商默认" : "—")
+                : { low: "低", medium: "中", high: "高" }[profile.reasoning_effort]}</Table.Td>
               <Table.Td>{profile.compact_threshold_tokens.toLocaleString()}</Table.Td>
               <Table.Td><Badge color={state?.configured ? "green" : "gray"} variant="light">{state?.configured ? "已配置" : "待配置"}</Badge></Table.Td>
               <Table.Td><Group gap={4} wrap="nowrap" align="flex-start">
@@ -112,6 +120,12 @@ export function ModelSettingsPage() {
       <Stack>
         <Select label="供应商" data={data?.providers.map((item) => ({ value: item.provider, label: item.provider })) ?? []} value={provider} onChange={setProvider} allowDeselect={false} />
         <TextInput label="模型名称" description="填写服务接受的模型 ID；同一供应商可以添加多个模型。" value={name} onChange={(event) => setName(event.currentTarget.value)} />
+        {provider === "stepfun" && name.trim() === "step-5-preview" ? <Select
+          label="推理程度" description="更高的程度允许更深入的推理，响应可能更慢。供应商默认不指定程度。"
+          data={[{ value: "default", label: "供应商默认" }, { value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }]}
+          value={reasoningEffort ?? "default"} allowDeselect={false}
+          onChange={(value) => setReasoningEffort(value === "low" || value === "medium" || value === "high" ? value : undefined)}
+        /> : null}
         <NumberInput label="compact 触发值（输入 tokens）" description="按模型的上下文容量设置，达到阈值时整理上下文。" value={threshold} onChange={setThreshold} min={1} allowDecimal={false} allowNegative={false} />
         {formError ? <Text size="sm" c="red">{formError}</Text> : null}
         <Button onClick={applyEdit}>加入待保存配置</Button>

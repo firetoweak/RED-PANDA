@@ -119,12 +119,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         from redpanda.model_settings import ModelSettings
         from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
-        pro = {"model": "deepseek/pro", "compact_threshold_tokens": 200000}
+        pro = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
+               "reasoning_effort": "high"}
         flash = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
         write_json(self.home.config_path, {"model": {"default": pro["model"], "candidates": [pro, flash]}})
         self.host.models = ModelSettings(self.home, self.store.root, path=self.home.config_path)
         connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))
         connections["deepseek"]["api_key"] = "test"
+        connections["stepfun"]["api_key"] = "test"
         write_json(self.home.connections_path, connections)
         (self.root / "input.txt").write_text("evidence", encoding="utf-8")
         started, release = asyncio.Event(), asyncio.Event()
@@ -132,7 +134,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         class Llm:
             async def chat(client, messages, model, **kwargs):
-                requests.append((model, messages))
+                requests.append((model, messages, kwargs.get("reasoning_effort")))
                 if len(requests) == 1:
                     started.set()
                     await release.wait()
@@ -152,6 +154,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         release.set()
         await until(lambda: ("switch", "done") in self.output)
         self.assertEqual([request[0] for request in requests], [pro["model"], flash["model"]])
+        self.assertEqual([request[2] for request in requests], ["high", None])
         self.assertTrue(any(message["role"] == "tool" for message in requests[1][1]))
         self.assertTrue(self.host.failures.empty())
         await until(lambda: not self.host.workers and not self.host.watchers)

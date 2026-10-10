@@ -524,6 +524,7 @@ class CompactBoundary:
                 sid,
                 {
                     "model": self.config.model_name,
+                    "reasoning_effort": self.config.reasoning_effort,
                     "messages": prepared.messages,
                     "tools": tools,
                 },
@@ -572,8 +573,10 @@ class CompactBoundary:
             profile = await self.model_selection_source(state.status is RuntimeStatus.RUNNABLE)
             if profile is not None:
                 self.config = replace(self.config, model_name=profile["model"],
-                                      compact_threshold_tokens=profile["compact_threshold_tokens"])
-                self.decision.set_model(profile["model"], profile["compact_threshold_tokens"])
+                                      compact_threshold_tokens=profile["compact_threshold_tokens"],
+                                      reasoning_effort=profile.get("reasoning_effort"))
+                self.decision.set_model(profile["model"], profile["compact_threshold_tokens"],
+                                        profile.get("reasoning_effort"))
         used = latest_input_tokens(events)
         response = await self.transport(
             "compact_boundary",

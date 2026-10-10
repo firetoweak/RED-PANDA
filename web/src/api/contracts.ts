@@ -249,6 +249,7 @@ export const authorizationRequiredEventSchema = z
 export const modelProfileSchema = z.object({
   model: z.string().min(1),
   compact_threshold_tokens: z.number().int().positive(),
+  reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
 }).strict();
 
 export const modelConfigSchema = z.object({

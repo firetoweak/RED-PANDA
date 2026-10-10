@@ -224,6 +224,7 @@ class JournalBackedLlmDecisionMaker:
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
         projector: ModelContextProjector | None = None,
         compact_threshold_tokens: int,
+        reasoning_effort: str | None = None,
         context_usage_sink: Callable[[str, int, int], None] | None = None,
         subagents: SubAgentHost | None = None,
         compact: CompactContext | None = None,
@@ -235,6 +236,7 @@ class JournalBackedLlmDecisionMaker:
         self._journal = journal
         self._llm = llm
         self._model = model
+        self._reasoning_effort = reasoning_effort
         self._system_prompt = system_prompt
         self._environment = environment
         self._projector = ModelContextProjector() if projector is None else projector
@@ -250,9 +252,10 @@ class JournalBackedLlmDecisionMaker:
         self._loop_guard = LoopGuard() if loop_guard is None else loop_guard
         self._preview = PreviewEmitter() if preview is None else preview
 
-    def set_model(self, model: str, compact_threshold_tokens: int) -> None:
+    def set_model(self, model: str, compact_threshold_tokens: int, reasoning_effort: str | None = None) -> None:
         self._model = model
         self._compact_threshold_tokens = compact_threshold_tokens
+        self._reasoning_effort = reasoning_effort
 
     @property
     def model(self) -> str:
@@ -414,6 +417,12 @@ class JournalBackedLlmDecisionMaker:
             if self._compact is not None and self._compact.is_reader
             else self._model
         )
+        effort = (
+            self._compact.request["reasoning_effort"]
+            if self._compact is not None and self._compact.is_reader
+            else self._reasoning_effort
+        )
+        options = {} if effort is None else {"reasoning_effort": effort}
         output_id = frame.trigger_event.event_id
         show_preview = (
             self._preview.enabled
@@ -439,12 +448,14 @@ class JournalBackedLlmDecisionMaker:
                     tools=schemas or None,
                     on_content_delta=on_content_delta,
                     on_reasoning_delta=on_reasoning_delta,
+                    **options,
                 )
             else:
                 result = await self._llm.chat(
                     prepared.messages,
                     model,
                     tools=schemas or None,
+                    **options,
                 )
         except BaseException as error:
             try:

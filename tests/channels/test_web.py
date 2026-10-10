@@ -232,6 +232,22 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(self.sessions.calls, [])
         self.assertEqual(self.queries.accepted, [])
 
+    def test_model_connection_uses_saved_reasoning_effort(self):
+        config = self.models.config().to_dict()
+        config["model"]["candidates"].append({
+            "model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
+            "reasoning_effort": "low",
+        })
+        self.models.save(config)
+        response = self.client.post("/api/model-settings/test", json={
+            "connection_id": self.connection.connection_id, "model": "stepfun/step-5-preview",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.model_llm.chat.assert_awaited_once_with(
+            [{"role": "user", "content": "Reply with OK only."}], "stepfun/step-5-preview",
+            tools=None, reasoning_effort="low",
+        )
+
     def test_model_connection_reports_known_failure_without_echoing_credentials(self):
         self.model_llm.chat.side_effect = LLMAuthenticationError("private-test-key")
         response = self.client.post("/api/model-settings/test", json={

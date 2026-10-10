@@ -62,5 +62,6 @@ class LLMApi(Protocol):
         *,
         on_content_delta: ContentDeltaSink | None = None,
         on_reasoning_delta: ContentDeltaSink | None = None,
+        reasoning_effort: str | None = None,
     ) -> LLMCallResult:
         ...

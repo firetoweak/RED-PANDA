@@ -1,6 +1,6 @@
 """个人模型配置；连接凭据单独管理。"""
 from __future__ import annotations
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -33,7 +33,7 @@ class AppConfig:
 
     def to_dict(self) -> dict:
         return {"model": {"default": self.default_model,
-                          "candidates": [asdict(model) for model in self.models]}}
+                          "candidates": [model.to_dict() for model in self.models]}}
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +41,7 @@ class AssistantConfig:
     model_name: str
     compact_threshold_tokens: int
     llm: LLMApi
+    reasoning_effort: str | None = None
 
 
 def config_path() -> Path:
@@ -97,4 +98,5 @@ def load_app_config(path: Path | None = None) -> AppConfig:
 def assistant_config_from_app(app: AppConfig, llm: LLMApi) -> AssistantConfig:
     model = app.default
     return AssistantConfig("" if model is None else model.model,
-                           200000 if model is None else model.compact_threshold_tokens, llm)
+                           200000 if model is None else model.compact_threshold_tokens, llm,
+                           None if model is None else model.reasoning_effort)

@@ -1,6 +1,5 @@
 """候选模型、会话选择与页面可见的连接状态。"""
 from __future__ import annotations
-from dataclasses import asdict
 import json
 from pathlib import Path
 
@@ -55,7 +54,7 @@ class ModelSettings:
 
     def selection(self, session_id: str) -> dict:
         selected = self.selected(session_id)
-        profile = None if selected is None else asdict(self.config().get_model(selected))
+        profile = None if selected is None else self.config().get_model(selected).to_dict()
         return {"selected": profile, "effective": self._applied.get(session_id),
                 "pending": profile != self._applied.get(session_id)}
 
@@ -65,7 +64,7 @@ class ModelSettings:
             if not apply:
                 return None
             raise ModelConfigurationError("请先为会话选择模型")
-        profile = asdict(self.config().get_model(model))
+        profile = self.config().get_model(model).to_dict()
         if apply:
             self._applied[session_id] = profile
         return profile

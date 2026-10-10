@@ -53,6 +53,21 @@ class ModelSettingsTest(unittest.TestCase):
         self.models.select("session", FLASH["model"])
         self.models.save({"model": {"default": FLASH["model"], "candidates": [FLASH]}})
 
+    def test_reasoning_effort_changes_apply_only_at_the_next_decision(self):
+        step5 = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
+                 "reasoning_effort": "high"}
+        self.models.save({"model": {"default": step5["model"], "candidates": [PRO, FLASH, step5]}})
+        self.models.initialize_session("step5")
+        captured = self.models.for_decision("step5")
+        updated = {**step5, "reasoning_effort": "low"}
+        self.models.save({"model": {"default": step5["model"], "candidates": [PRO, FLASH, updated]}})
+        self.assertEqual(captured, step5)
+        self.assertEqual(self.models.selection("step5"), {
+            "selected": updated, "effective": step5, "pending": True,
+        })
+        self.assertEqual(self.models.for_decision("step5"), updated)
+        self.assertFalse(self.models.selection("step5")["pending"])
+
     def test_unconfigured_candidate_is_rejected_before_selection_is_written(self):
         self.models.initialize_session("session")
         connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))

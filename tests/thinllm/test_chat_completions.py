@@ -144,6 +144,23 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(json.loads(requests[0].content)["model"], "qwen3:8b")
 
+    async def test_reasoning_effort_is_sent_per_call_and_does_not_leak_to_the_next_call(self):
+        payloads = []
+
+        def handle(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(200, content=_DONE_OK)
+
+        async with ChatCompletionsClient(
+            resolve_endpoint("stepfun/step-5-preview", {"api_key": "test"}),
+            transport=httpx.MockTransport(handle),
+        ) as client:
+            for effort in ("low", "medium", "high", None):
+                await client.chat([], "stepfun/step-5-preview", reasoning_effort=effort)
+        self.assertEqual([p.get("reasoning_effort") for p in payloads], ["low", "medium", "high", None])
+        self.assertNotIn("reasoning_effort", payloads[-1])
+        self.assertTrue(all(p["model"] == "step-5-preview" for p in payloads))
+
     async def test_only_padding_providers_fill_missing_reasoning_content(self):
         history = [
             {"role": "user", "content": "hi"},

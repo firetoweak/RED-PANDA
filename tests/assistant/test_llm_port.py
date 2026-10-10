@@ -11,6 +11,9 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 
 
 class _FakeLlm:
+    def __init__(self):
+        self.efforts = []
+
     async def chat(
         self,
         messages,
@@ -19,7 +22,9 @@ class _FakeLlm:
         *,
         on_content_delta=None,
         on_reasoning_delta=None,
+        reasoning_effort=None,
     ):
+        self.efforts.append(reasoning_effort)
         if model == "fail":
             raise LLMTransientError("provider timeout")
         if on_reasoning_delta is not None:
@@ -43,6 +48,7 @@ class LlmPortTest(unittest.IsolatedAsyncioTestCase):
     async def test_port_streams_deltas_and_reconstructs_errors(self):
         left, right = multiprocessing.Pipe()
         host_box: list[PipePeer] = []
+        llm = _FakeLlm()
 
         async def host_handle(operation, session_id, arguments):
             self.assertEqual(operation, "llm_chat")
@@ -57,7 +63,7 @@ class LlmPortTest(unittest.IsolatedAsyncioTestCase):
                 )
 
             return await complete_llm_chat(
-                _FakeLlm(), arguments, on_delta, on_reasoning_delta
+                llm, arguments, on_delta, on_reasoning_delta
             )
 
         async def unused_handle(operation, session_id, arguments):
@@ -80,12 +86,14 @@ class LlmPortTest(unittest.IsolatedAsyncioTestCase):
                 "assistant",
                 on_content_delta=deltas.append,
                 on_reasoning_delta=thoughts.append,
+                reasoning_effort="high",
             )
             self.assertEqual(result.response.content, "hello")
             self.assertEqual(deltas, ["hel", "lo"])
             self.assertEqual(thoughts, ["想"])
             with self.assertRaises(LLMTransientError):
                 await port.chat([{"role": "user", "content": "hi"}], "fail")
+            self.assertEqual(llm.efforts, ["high", None])
         finally:
             await host.close(RuntimeError("done"))
             await worker.close(RuntimeError("done"))

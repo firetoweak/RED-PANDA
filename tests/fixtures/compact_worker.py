@@ -30,13 +30,13 @@ class CompactLlm:
     async def __aexit__(self, *args):
         return None
 
-    async def chat(self, messages, model, *, tools=None, on_content_delta=None, on_reasoning_delta=None):
+    async def chat(self, messages, model, *, tools=None, on_content_delta=None, on_reasoning_delta=None, reasoning_effort=None):
         if any("<self_handoff>" in str(m["content"]) for m in messages):
             request = self.workspace / "handoff_request.json"
             if not request.exists():
                 request.write_text(
                     json.dumps(
-                        {"messages": messages, "tools": tools},
+                        {"messages": messages, "tools": tools, "reasoning_effort": reasoning_effort},
                         ensure_ascii=False,
                     ),
                     encoding="utf-8",
@@ -139,11 +139,12 @@ class ChildCompactLlm(CompactLlm):
         )
 
 
-def config_for(workspace: Path):
+def config_for(workspace: Path, *, reasoning_effort=None):
     return AssistantConfig(
         model_name="compact-test",
         compact_threshold_tokens=60000,
         llm=CompactLlm(workspace),
+        reasoning_effort=reasoning_effort,
     )
 
 

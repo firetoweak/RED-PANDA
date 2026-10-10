@@ -310,8 +310,9 @@ def create_web_app(
     @app.post("/api/model-settings/test")
     async def test_model_connection(body: ModelTestRequest, request: Request):
         _channel(request)._require_connection(body.connection_id)
-        request.app.state.models.require_candidate(body.model)
-        return await check_model_connection(request.app.state.model_llm, body.model)
+        profile = request.app.state.models.require_candidate(body.model)
+        return await check_model_connection(request.app.state.model_llm, body.model,
+                                            reasoning_effort=profile.reasoning_effort)
 
     @app.get("/api/sessions/{session_id}/model")
     async def session_model(session_id: str, request: Request):

@@ -71,6 +71,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
     async def test_background_rollover_preserves_session_tail_and_delivery_identity(
         self,
     ):
+        self.host.config_factory = partial(config_for, self.root, reasoning_effort="high")
         await self.start()
         job = self.host.compact.store.job("chat")
         material = json.loads(job["bundle"])
@@ -84,6 +85,8 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
             (self.root / "handoff_request.json").read_text(encoding="utf-8")
         )
         self.assertEqual(request["tools"], frozen["tools"])
+        self.assertEqual(frozen["reasoning_effort"], "high")
+        self.assertEqual(request["reasoning_effort"], frozen["reasoning_effort"])
         self.assertEqual(
             request["messages"][: len(frozen["messages"])], frozen["messages"]
         )

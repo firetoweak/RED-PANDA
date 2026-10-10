@@ -36,6 +36,7 @@ class WorkerLlmPort:
         *,
         on_content_delta=None,
         on_reasoning_delta=None,
+        reasoning_effort=None,
     ):
         request_messages = encode_images(messages, self._read_attachment)
 
@@ -62,6 +63,7 @@ class WorkerLlmPort:
                 "tools": tools,
                 "stream": on_content_delta is not None,
                 "stream_reasoning": on_reasoning_delta is not None,
+                "reasoning_effort": reasoning_effort,
             },
             on_delta=on_delta if on_content_delta is not None else None,
             on_reasoning_delta=(
@@ -74,6 +76,7 @@ class WorkerLlmPort:
 
 
 async def complete_llm_chat(llm, arguments, on_delta, on_reasoning_delta=None):
+    options = {} if arguments["reasoning_effort"] is None else {"reasoning_effort": arguments["reasoning_effort"]}
     try:
         result = await llm.chat(
             arguments["messages"],
@@ -83,6 +86,7 @@ async def complete_llm_chat(llm, arguments, on_delta, on_reasoning_delta=None):
             on_reasoning_delta=(
                 on_reasoning_delta if arguments.get("stream_reasoning") else None
             ),
+            **options,
         )
     except Exception as error:
         return {"ok": False, "error": encode_llm_error(error)}
