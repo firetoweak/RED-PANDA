@@ -21,5 +21,5 @@ VFS 负责通用文件系统机制；RED PANDA 的候选操作、变化证据、
 
 数据库执行层已本地替换为 tokio-rusqlite / rusqlite 与 bundled SQLite。
 首次导入的 `third_party/turso*` 源码及 Cargo patch 已移除；VFS 的持久格式、
-CoW、Journal 和重放职责保留。当前版本以 Cargo.lock 为准，新增依赖的许可证
+CoW 与冻结制品保留；底层行级 Journal 和重放已移除，操作历史由 Sandbox 文件管理层持有。当前版本以 Cargo.lock 为准，新增依赖的许可证
 及 SQLite 源码中的 public-domain 声明随原生程序一起分发。

@@ -30,55 +30,6 @@ async fn empty_chunk_with_nonempty_digest_is_corruption() -> Result<()> {
 }
 
 #[tokio::test]
-async fn capture_root_normalizes_and_pins_inline_bytes() -> Result<()> {
-    let dir = tempdir()?;
-    let db_path = dir.path().join("capture-root-inline.db");
-    let conn = Connection::open(db_path.to_str().unwrap())?;
-    ensure_current(&conn)?;
-
-    let inline = b"snapshot-inline".to_vec();
-    let digest = blake3::hash(&inline).as_bytes().to_vec();
-    conn.execute(
-        "INSERT INTO fs_inode (
-                ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind
-             ) VALUES (2, ?, 1, 1, 2, ?, 1, 1, 1, 0, 0, 0, 0, ?, 1)",
-        (
-            S_IFREG | DEFAULT_FILE_MODE as i64,
-            inline.len() as i64,
-            Value::Blob(inline.clone()),
-        ),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES ('inline.txt', 1, 2)",
-        (),
-    )?;
-
-    let snapshot_id = capture_root_raw(&conn, "test", 1, 1)?;
-    let mut statement_0 = conn.prepare(
-        "SELECT data_inline_digest
-                 FROM fs_snapshot_inode
-                 WHERE snapshot_id = ? AND ino = 2",
-    )?;
-    let mut rows = statement_0.query((snapshot_id,))?;
-    let row = rows.next()?.expect("snapshot inode must exist");
-    assert_eq!(row.get::<_, Vec<u8>>(0)?, digest);
-    drop(rows);
-
-    let mut statement_1 = conn.prepare(
-        "SELECT c.data, c.refcount
-                 FROM fs_snapshot_chunk sc
-                 JOIN fs_chunk c ON c.digest = sc.digest
-                 WHERE sc.snapshot_id = ? AND sc.digest = ?",
-    )?;
-    let mut rows = statement_1.query((snapshot_id, Value::Blob(digest)))?;
-    let row = rows.next()?.expect("inline snapshot digest must be pinned");
-    assert_eq!(row.get::<_, Vec<u8>>(0)?, inline);
-    assert_eq!(row.get::<_, i64>(1)?, 0);
-    Ok(())
-}
-
-#[tokio::test]
 async fn open_paths_reject_old_schema_without_upgrading() -> Result<()> {
     for version in [
         SchemaVersion::V0_0,
@@ -90,6 +41,7 @@ async fn open_paths_reject_old_schema_without_upgrading() -> Result<()> {
         SchemaVersion::V0_8,
         SchemaVersion::V0_9,
         SchemaVersion::V0_10,
+        SchemaVersion::V0_11,
     ] {
         let dir = tempdir()?;
         let db_path = dir.path().join(format!("old-{}.db", version.as_str()));

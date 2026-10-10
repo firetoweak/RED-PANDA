@@ -1,11 +1,9 @@
-//! Immutable artifacts, overlay lineage and history maintenance.
+//! Immutable artifacts, overlay lineage and current-state maintenance.
 
 use std::path::Path;
-
-use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{types::Value, Connection, Transaction, TransactionBehavior};
 
 use crate::error::{Error, Result};
-use crate::fs::vfs::{JournalDelta, MutationTxn};
 use crate::Vfs;
 
 /// Key in `fs_overlay_config` recording the sha256 of the frozen parent
@@ -34,17 +32,13 @@ impl Vfs {
                 let _keepalive = &owned;
                 let digest = digest.as_str();
 
-                let mut txn = MutationTxn::begin(conn, owned.fs.journal_ctx())?;
-                txn.conn().execute(
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                txn.execute(
                     "INSERT INTO fs_overlay_config (key, value) VALUES (?, ?)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     (PARENT_ARTIFACT_KEY, digest.to_ascii_lowercase()),
                 )?;
-                txn.record(JournalDelta::overlay_config_upsert(
-                    "parent_artifact",
-                    PARENT_ARTIFACT_KEY,
-                    &digest.to_ascii_lowercase(),
-                ));
+
                 txn.commit()?;
                 Ok(())
             })
@@ -66,17 +60,11 @@ impl Vfs {
             .execute(move |conn| {
                 let _keepalive = &owned;
 
-                let mut txn = MutationTxn::begin(conn, owned.fs.journal_ctx())?;
-                let changed = txn.conn().execute(
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                txn.execute(
                     "DELETE FROM fs_overlay_config WHERE key = ?",
                     (PARENT_ARTIFACT_KEY,),
                 )?;
-                if changed > 0 {
-                    txn.record(JournalDelta::overlay_config_delete(
-                        "parent_artifact_clear",
-                        PARENT_ARTIFACT_KEY,
-                    ));
-                }
                 txn.commit()?;
                 Ok(())
             })
@@ -139,27 +127,13 @@ let mut rows = query_statement_1.query((key,))
             .await
     }
 
-    /// Truncate the op journal to the configured retention horizon and
-    /// collect zero-refcount chunks no surviving journal entry pins.
-    ///
-    /// Pending batched writes are drained first so every acknowledged
-    /// write is journaled before the horizon is computed.
-    pub async fn collect_journal(&self) -> Result<()> {
+    /// Reclaim chunks no current file mapping references. Frozen artifacts
+    /// and operation evidence have independent ownership and are unaffected.
+    pub async fn collect_unused_chunks(&self) -> Result<usize> {
         self.check_background()?;
-
         self.fs.drain_all().await?;
-
-        let owned = self.clone();
         self.pool
-            .execute(move |conn| {
-                let _keepalive = &owned;
-
-                crate::fs::journal_gc(conn, owned.fs.journal_retention_ops())?;
-                // GC may have deleted zero-ref chunks the known-digest cache vouches
-                // for; a stale entry would let a later commit pin a missing digest.
-                owned.fs.journal_ctx().forget_chunks();
-                Ok(())
-            })
+            .execute(|conn| Ok(conn.execute("DELETE FROM fs_chunk WHERE refcount = 0", [])?))
             .await
     }
 }

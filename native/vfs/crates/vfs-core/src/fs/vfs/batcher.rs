@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 use crate::config::{BatcherConfig, Geometry};
 use crate::error::{Error, Result};
@@ -20,7 +21,6 @@ use crate::fs::{FsError, Stats, WriteRange};
 use crate::pool::ConnectionPool;
 
 use super::current_timestamp;
-use super::journal::{InodeRow, JournalCtx, MutationTxn};
 use super::store::{self, normalize_write_ranges, NormalizedWriteRange, WriteRangeRef};
 
 pub(super) type Invalidate = Arc<dyn Fn(i64) + Send + Sync + 'static>;
@@ -155,17 +155,10 @@ impl PendingTimeChange {
 /// one, mtime/ctime are stamped with the commit time unless `preserve_times`
 /// (an explicit setattr landed after the writes and its values must not be
 /// clobbered); atime is only ever written explicitly.
-#[derive(Debug, Clone, Copy, Default)]
-pub(super) struct ResolvedWriteTimes {
-    pub(super) atime: Option<(i64, i64)>,
-    pub(super) mtime: Option<(i64, i64)>,
-    pub(super) ctime: Option<(i64, i64)>,
-}
-
 pub(super) fn write_commit_time_sets(
     preserve_times: bool,
     explicit_times: Option<&PendingTimeChange>,
-) -> Result<(Vec<&'static str>, Vec<Value>, ResolvedWriteTimes)> {
+) -> Result<(Vec<&'static str>, Vec<Value>)> {
     let explicit_atime = explicit_times.and_then(|t| t.atime);
     let explicit_mtime = explicit_times.and_then(|t| t.mtime);
     let explicit_ctime = explicit_times.and_then(|t| t.ctime);
@@ -176,29 +169,25 @@ pub(super) fn write_commit_time_sets(
     };
     let mut sets = Vec::new();
     let mut values = Vec::new();
-    let mut resolved = ResolvedWriteTimes::default();
     if let Some((secs, nsec)) = explicit_atime {
         sets.push("atime = ?");
         values.push(Value::Integer(secs));
         sets.push("atime_nsec = ?");
         values.push(Value::Integer(nsec));
-        resolved.atime = Some((secs, nsec));
     }
     if let Some((secs, nsec)) = explicit_mtime.or(stamp) {
         sets.push("mtime = ?");
         values.push(Value::Integer(secs));
         sets.push("mtime_nsec = ?");
         values.push(Value::Integer(nsec));
-        resolved.mtime = Some((secs, nsec));
     }
     if let Some((secs, nsec)) = explicit_ctime.or(stamp) {
         sets.push("ctime = ?");
         values.push(Value::Integer(secs));
         sets.push("ctime_nsec = ?");
         values.push(Value::Integer(nsec));
-        resolved.ctime = Some((secs, nsec));
     }
-    Ok((sets, values, resolved))
+    Ok((sets, values))
 }
 
 /// Apply a stashed `PendingTimeChange` to fs_inode using the drain
@@ -210,8 +199,7 @@ fn apply_pending_times_with_conn(
     conn: &Connection,
     ino: i64,
     times: &PendingTimeChange,
-    journaling: bool,
-) -> Result<Option<InodeRow>> {
+) -> Result<()> {
     let mut updates = Vec::new();
     let mut values: Vec<Value> = Vec::new();
     if let Some((secs, nsec)) = times.atime {
@@ -233,28 +221,12 @@ fn apply_pending_times_with_conn(
         values.push(Value::Integer(nsec));
     }
     if updates.is_empty() {
-        return Ok(None);
+        return Ok(());
     }
     values.push(Value::Integer(ino));
-    // The post-image exists only to feed the journal; with the kill switch on
-    // the RETURNING clause (and shipping data_inline back per row) is waste.
-    if !journaling {
-        let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", updates.join(", "));
-        conn.execute(&sql, tokio_rusqlite::rusqlite::params_from_iter(values))?;
-        return Ok(None);
-    }
-    let sql = format!(
-        "UPDATE fs_inode SET {} WHERE ino = ?
-         RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                   atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-        updates.join(", ")
-    );
-    let mut statement = conn.prepare_cached(&sql)?;
-    let mut rows = statement.query(tokio_rusqlite::rusqlite::params_from_iter(values))?;
-    match rows.next()? {
-        Some(row) => Ok(Some(InodeRow::from_row(row, 0)?)),
-        None => Ok(None),
-    }
+    let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", updates.join(", "));
+    conn.execute(&sql, tokio_rusqlite::rusqlite::params_from_iter(values))?;
+    Ok(())
 }
 
 struct PendingInodeWrites {
@@ -455,7 +427,7 @@ pub(super) struct VfsWriteBatcher {
     /// Per-transaction pending-bytes bound for batched drains
     /// (`VFS_BATCH_TXN_BYTES`). See `drain_pending_batched`.
     txn_max_bytes: usize,
-    journal: JournalCtx,
+
     /// Tier 4 mitigation: parking_lot `RwLock` so `peek_pending` /
     /// `peek_pending_max_end` can acquire read-only access without contending
     /// with writers. The lock is never held across an `.await`, so a sync
@@ -496,7 +468,6 @@ impl VfsWriteBatcher {
         inline_threshold: usize,
         invalidate: Invalidate,
         config: &BatcherConfig,
-        journal: JournalCtx,
     ) -> Self {
         Self {
             runtime: tokio::runtime::Handle::current(),
@@ -509,7 +480,7 @@ impl VfsWriteBatcher {
             batch_global_bytes: config.global_bytes,
             txn_max_inodes: config.txn_max_inodes.max(1),
             txn_max_bytes: config.txn_max_bytes.max(1),
-            journal,
+
             state: RwLock::new(VfsWriteBatcherState::default()),
             commit_lock: Arc::new(AsyncMutex::new(())),
             scheduler: crate::scheduler::DrainScheduler::default(),
@@ -758,7 +729,7 @@ impl VfsWriteBatcher {
 
         let started = Instant::now();
 
-        let mut txn = MutationTxn::begin(conn, self.journal.clone())?;
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
 
         // Read times_explicit and the stashed explicit times only AFTER the
         // IMMEDIATE transaction holds the SQLite write lock: explicit
@@ -799,7 +770,6 @@ impl VfsWriteBatcher {
 
         for (ino, _count, normalized) in &to_commit {
             let mut inode_missing = false;
-            let mut storage_changes = None;
             if !normalized.is_empty() {
                 let normalized_refs: Vec<_> = normalized
                     .iter()
@@ -813,14 +783,14 @@ impl VfsWriteBatcher {
                     inline_threshold: self.inline_threshold,
                 };
                 match store::write_ranges(
-                    txn.conn(),
+                    &txn,
                     *ino,
                     geometry,
                     &normalized_refs,
                     preserve_times.get(ino).copied().unwrap_or(false),
                     pending_times.get(ino),
                 ) {
-                    Ok(changes) => storage_changes = Some(changes),
+                    Ok(()) => {}
                     // The file was unlinked / renamed-over while its writes were
                     // still pending (git lock and temp files routinely live and
                     // die within the batch window). Its data is moot: skip it and
@@ -849,14 +819,8 @@ impl VfsWriteBatcher {
             if !inode_missing {
                 if let Some(times) = pending_times.get(ino) {
                     if normalized.is_empty() {
-                        match apply_pending_times_with_conn(conn, *ino, times, txn.journaling()) {
-                            Ok(Some(inode)) => {
-                                if let Err(error) = txn.record_inode("setattr", inode) {
-                                    txn.rollback()?;
-                                    return Err(error);
-                                }
-                            }
-                            Ok(None) => {}
+                        match apply_pending_times_with_conn(conn, *ino, times) {
+                            Ok(()) => {}
                             Err(error) => {
                                 txn.rollback()?;
                                 return Err(error);
@@ -864,12 +828,6 @@ impl VfsWriteBatcher {
                         }
                     }
                     applied_times.push((*ino, *times));
-                }
-            }
-
-            if !inode_missing {
-                if let Some(changes) = storage_changes {
-                    txn.record_storage_changes("write", changes)?;
                 }
             }
         }

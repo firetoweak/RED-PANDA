@@ -1,4 +1,5 @@
 use super::*;
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 impl OverlayFS {
     /// Check if a path is whiteout (deleted from base).
@@ -29,8 +30,7 @@ impl OverlayFS {
         let _keepalive = &owned;
         let path = path.as_str();
 
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
         let parent_path = parent_path_for_whiteout(path);
         let (now, _) = current_timestamp()?;
 
@@ -46,12 +46,7 @@ impl OverlayFS {
 
         match result {
             Ok(()) => {
-                txn.record(super::super::vfs::JournalDelta::whiteout_upsert(
-                    "whiteout",
-                    path,
-                    &parent_path,
-                    now,
-                ));
+
                 txn.commit()?;
                 owned.whiteouts.write().insert(path.to_string());
                 Ok(())
@@ -85,8 +80,7 @@ impl OverlayFS {
                 let _keepalive = &owned;
                 let path = matched.as_str();
 
-                let mut txn =
-                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
                 let result: Result<()> = (|| {
                     conn.execute("DELETE FROM fs_whiteout WHERE path = ?", (path,))?;
                     owned.maybe_fail_whiteout_for_test()?;
@@ -95,10 +89,6 @@ impl OverlayFS {
 
                 match result {
                     Ok(()) => {
-                        txn.record(super::super::vfs::JournalDelta::whiteout_delete(
-                            "whiteout_remove",
-                            path,
-                        ));
                         txn.commit()?;
                         owned.whiteouts.write().remove(path);
                         Ok(())

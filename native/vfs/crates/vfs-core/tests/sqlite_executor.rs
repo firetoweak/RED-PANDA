@@ -47,7 +47,6 @@ async fn canonical_windows_paths_open_the_same_immutable_artifact() {
 async fn actual_vfs() -> vfs_core::fs::Vfs {
     let mut config = vfs_core::config::CoreConfig::default();
     config.batcher.enabled = false;
-    config.journal_enabled = true;
     vfs_core::fs::Vfs::from_pool_with_config(ConnectionPool::memory(), config)
         .await
         .unwrap()
@@ -163,26 +162,19 @@ async fn sdk_snapshot_drains_acknowledged_bytes_and_remains_an_immutable_single_
         .unwrap();
     let data = vec![3; 131072];
     file.pwrite(0, &data).await.unwrap();
-    let root = source.capture_root("before").await.unwrap();
     let output = directory.path().join("中文 #' snapshot.db");
     source.snapshot_into(&output).await.unwrap();
     let before = family(&output);
     let frozen = Vfs::open_read_only(&output).await.unwrap();
     let opened = frozen.fs.open("/file").await.unwrap();
     assert_eq!(opened.pread(0, 131072).await.unwrap(), data);
-    assert_eq!(
-        frozen.history_status().await.unwrap().head_seq,
-        root.through_seq
-    );
+
     assert!(opened.pwrite(0, b"reject").await.is_err());
     assert_eq!(opened.pread(0, 131072).await.unwrap(), data);
     frozen.fs.finalize().await.unwrap();
     assert_eq!(family(&output), before);
     let stage = directory.path().join("stage.db");
     std::fs::copy(&output, &stage).unwrap();
-    Vfs::reconstruct_to(&stage, root.through_seq).await.unwrap();
-    // The staging worker is explicitly closed before return, so the result
-    // may immediately be reopened with immutable single-file flags.
     let replay = Vfs::open_read_only(&stage).await.unwrap();
     assert_eq!(
         replay

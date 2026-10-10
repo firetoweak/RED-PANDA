@@ -356,10 +356,6 @@ fn expected_rejection(error: &Error) -> bool {
                 | rusqlite::ErrorCode::DatabaseLocked
                 | rusqlite::ErrorCode::ReadOnly
         ),
-        Error::HistoryInvalid { .. }
-        | Error::HistoryTargetOutOfRange { .. }
-        | Error::HistoryTargetMidTransaction { .. }
-        | Error::HistorySnapshotMissing { .. } => true,
         _ => false,
     }
 }

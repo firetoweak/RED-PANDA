@@ -188,7 +188,7 @@ pub struct OverlayFS {
     maps: Arc<Mutex<OverlayMaps>>,
     /// Set of whiteout paths (deleted from base)
     whiteouts: Arc<RwLock<HashSet<String>>>,
-    /// Persisted base identity -> delta inode, rebuilt after history restoration.
+    /// Persisted base identity -> delta inode, rebuilt when opening the view.
     origin_map: Arc<RwLock<HashMap<String, i64>>>,
     /// Explicit policy for chunk-granularity base fallback.
     partial_origin_policy: PartialOriginPolicy,

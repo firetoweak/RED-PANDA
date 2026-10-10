@@ -7,6 +7,7 @@
 
 use crate::fs::{File, FsError, Stats, WriteRange};
 use async_trait::async_trait;
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 use super::batcher::EnqueueOutcome;
 use super::store::WriteRangeRef;
@@ -28,7 +29,7 @@ pub struct VfsFile {
     /// Same semantics as the field on `Vfs`; cloned at open time so the
     /// hot read/write path doesn't have to chase an extra indirection.
     pub(super) overlay_reads: bool,
-    pub(super) journal: JournalCtx,
+
     /// Present for user-visible handles so unlink defers inode reaping while
     /// they live. This remains optional until lifecycle extraction flattens
     /// the handle construction API.
@@ -124,22 +125,15 @@ impl File for VfsFile {
         let owned = self.clone();
         self.pool
             .execute(move |conn| {
-                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
                 let ranges = [WriteRangeRef {
                     offset,
                     data: &data,
                 }];
-                let result = store::write_ranges(
-                    txn.conn(),
-                    owned.ino,
-                    owned.geometry(),
-                    &ranges,
-                    false,
-                    None,
-                );
+                let result =
+                    store::write_ranges(&txn, owned.ino, owned.geometry(), &ranges, false, None);
                 match result {
-                    Ok(changes) => {
-                        txn.record_storage_changes("write", changes)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.attr_cache.remove(owned.ino);
                         Ok(())
@@ -172,7 +166,7 @@ impl File for VfsFile {
         let owned = self.clone();
         self.pool
             .execute(move |conn| {
-                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
                 let range_refs: Vec<_> = ranges
                     .iter()
                     .map(|range| WriteRangeRef {
@@ -181,7 +175,7 @@ impl File for VfsFile {
                     })
                     .collect();
                 let result = store::write_ranges(
-                    txn.conn(),
+                    &txn,
                     owned.ino,
                     owned.geometry(),
                     &range_refs,
@@ -189,8 +183,7 @@ impl File for VfsFile {
                     None,
                 );
                 match result {
-                    Ok(changes) => {
-                        txn.record_storage_changes("write", changes)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.attr_cache.remove(owned.ino);
                         Ok(())
@@ -238,11 +231,10 @@ impl File for VfsFile {
         let owned = self.clone();
         self.pool
             .execute(move |conn| {
-                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
-                let result = store::truncate(txn.conn(), owned.ino, owned.geometry(), new_size);
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result = store::truncate(&txn, owned.ino, owned.geometry(), new_size);
                 match result {
-                    Ok(changes) => {
-                        txn.record_storage_changes("truncate", changes)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.attr_cache.remove(owned.ino);
                         Ok(())

@@ -2,14 +2,7 @@ use super::*;
 use crate::error::Error;
 use std::{collections::HashMap, sync::Arc};
 use tokio_rusqlite::rusqlite::types::Value;
-struct JournalImport {
-    inode: InodeRow,
-    dentry_id: i64,
-    parent_ino: i64,
-    name: String,
-    symlink_target: Option<String>,
-    data: Vec<(i64, Vec<u8>)>,
-}
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 /// One node accepted by [`ImportSession::import_chunk`]. `path` is relative to
 /// the import root and '/'-separated; parents must precede their children.
@@ -130,9 +123,7 @@ impl Vfs {
         let mut parent_stmt = conn.prepare_cached(
             "UPDATE fs_inode
                  SET nlink = nlink + ?, ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
-                 WHERE ino = ?
-                 RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                           atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                 WHERE ino = ?",
         )?;
 
         results.reserve(entries.len());
@@ -152,13 +143,12 @@ impl Vfs {
             // Cache fills staged until after a successful commit so a rolled
             // back batch never leaves phantom dentries/attrs behind.
             let mut staged: Vec<(i64, String, Stats)> = Vec::with_capacity(batch_end - idx);
-            let mut journal_imports: Vec<JournalImport> = Vec::with_capacity(batch_end - idx);
             // parent ino -> nlink bump from new subdirectories ("..").
             let mut parent_bumps: HashMap<i64, i64> = HashMap::new();
 
             let mut batch_dirs = dir_inos.clone();
             let mut batch_results = Vec::new();
-            let mut txn = MutationTxn::begin(conn, self.journal_ctx())?;
+            let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
             for entry in &entries[idx..batch_end] {
                 let (parent_path, name) = match entry.path.rsplit_once('/') {
                     Some((parent, name)) => (parent, name),
@@ -226,43 +216,34 @@ impl Vfs {
                     }
                     Err(error) => return Err(error.into()),
                 }
-                let dentry_id = conn.last_insert_rowid();
 
-                let (journal_digests, symlink_target) = match kind {
+                match kind {
                     S_IFDIR => {
                         batch_dirs.insert(entry.path.clone(), ino);
                         *parent_bumps.entry(parent_ino).or_insert(0) += 1;
-                        (Some(Vec::new()), None)
                     }
                     S_IFLNK => {
                         let target = std::str::from_utf8(&entry.data)
                             .map_err(|_| Error::Fs(FsError::InvalidPath))?;
                         symlink_stmt.execute((ino, target))?;
                         parent_bumps.entry(parent_ino).or_insert(0);
-                        (Some(Vec::new()), Some(target.to_string()))
                     }
                     _ => {
-                        let digests = if storage_kind == STORAGE_CHUNKED {
-                            let mut digests =
-                                Vec::with_capacity(entry.data.len().div_ceil(self.chunk_size));
+                        if storage_kind == STORAGE_CHUNKED {
                             for (chunk_index, chunk) in
                                 entry.data.chunks(self.chunk_size).enumerate()
                             {
-                                digests.push(super::store::insert_chunk_mapping(
+                                super::store::insert_chunk_mapping(
                                     conn,
                                     ino,
                                     chunk_index as i64,
                                     chunk,
-                                )?);
+                                )?;
                             }
-                            Some(digests)
-                        } else {
-                            None
-                        };
+                        }
                         parent_bumps.entry(parent_ino).or_insert(0);
-                        (digests, None)
                     }
-                };
+                }
 
                 let stats = Stats {
                     ino,
@@ -279,25 +260,6 @@ impl Vfs {
                     ctime_nsec: ts_nsec as u32,
                     rdev: 0,
                 };
-                if txn.journaling() {
-                    journal_imports.push(JournalImport {
-                        inode: InodeRow::from_stats(
-                            &stats,
-                            (storage_kind == STORAGE_INLINE).then(|| entry.data.clone()),
-                            storage_kind,
-                        ),
-                        dentry_id,
-                        parent_ino,
-                        name: name.to_string(),
-                        symlink_target,
-                        data: journal_digests
-                            .unwrap_or_default()
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, digest)| (index as i64, digest))
-                            .collect(),
-                    });
-                }
 
                 staged.push((parent_ino, name.to_string(), stats));
                 batch_results.push(ImportedEntry {
@@ -308,40 +270,12 @@ impl Vfs {
                 });
             }
 
-            let mut parent_rows = Vec::with_capacity(parent_bumps.len());
             for (parent_ino, bump) in &parent_bumps {
-                let mut single_row_query =
-                    parent_stmt.query((*bump, ts_secs, ts_secs, ts_nsec, ts_nsec, *parent_ino))?;
-                let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
-                if txn.journaling() {
-                    parent_rows.push(InodeRow::from_row(row, 0)?);
+                if parent_stmt.execute((*bump, ts_secs, ts_secs, ts_nsec, ts_nsec, *parent_ino))?
+                    == 0
+                {
+                    return Err(FsError::NotFound.into());
                 }
-            }
-
-            for import in journal_imports {
-                let ino = import.inode.ino;
-                txn.record_inode("import", import.inode)?;
-                txn.record(JournalDelta::dentry_upsert(
-                    "import",
-                    import.dentry_id,
-                    import.parent_ino,
-                    &import.name,
-                    ino,
-                ));
-                if let Some(target) = import.symlink_target {
-                    txn.record(JournalDelta::symlink_upsert("import", ino, &target));
-                }
-                for (chunk_index, digest) in import.data {
-                    txn.record(JournalDelta::data_upsert(
-                        "import",
-                        ino,
-                        chunk_index,
-                        digest,
-                    ));
-                }
-            }
-            for parent in parent_rows {
-                txn.record_inode("import", parent)?;
             }
             txn.commit()?;
             *dir_inos = batch_dirs;

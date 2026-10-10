@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::fs::{FileSystem, FsError};
 use std::collections::HashMap;
 use tokio_rusqlite::rusqlite::Connection;
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 /// Which layer an inode belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -237,7 +238,7 @@ impl OverlayFS {
         })
     }
 
-    /// Persist the native base identity through the existing origin journal.
+    /// Persist the native base identity in the origin mapping.
     pub(super) async fn add_origin_mapping(&self, delta_ino: i64, base_ino: i64) -> Result<()> {
         self.delta.get_pool().check_ready()?;
 
@@ -249,14 +250,9 @@ impl OverlayFS {
             .execute(move |conn| {
                 let _keepalive = &owned;
 
-                let mut txn =
-                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
-                Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &identity)?;
-                txn.record(super::super::vfs::JournalDelta::origin_upsert(
-                    "origin_map",
-                    delta_ino,
-                    &identity,
-                ));
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                Self::add_origin_mapping_with_conn(&txn, delta_ino, &identity)?;
+
                 txn.commit()?;
                 owned.origin_map.write().insert(identity, delta_ino);
                 Ok(())

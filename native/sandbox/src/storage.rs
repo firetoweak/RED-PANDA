@@ -402,6 +402,7 @@ pub async fn seal(store: &Path, sdk: &Vfs) -> Result<String> {
     let tmp = store
         .join("artifacts")
         .join(format!("{}.tmp", uuid::Uuid::new_v4()));
+    sdk.collect_unused_chunks().await?;
     sdk.snapshot_into(&tmp).await?;
     let (h, _) = hash_reader(File::open(&tmp)?)?;
     std::fs::rename(&tmp, store.join("artifacts").join(format!("{h}.db")))?;

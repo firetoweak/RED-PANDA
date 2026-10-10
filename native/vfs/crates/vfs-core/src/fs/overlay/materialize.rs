@@ -1,5 +1,6 @@
 use super::*;
 use crate::fs::{FileSystem, FsError, Stats};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 impl OverlayFS {
     /// Copy inherited overlay state into this overlay's writable delta.
@@ -204,19 +205,16 @@ impl OverlayFS {
             .execute(move |conn| {
                 let _keepalive = &owned;
 
-                let mut txn =
-                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
                 let mut restored = Vec::with_capacity(metadata.len());
                 for (ino, stats) in metadata {
                     let mut query_statement_0 = conn.prepare_cached(
                         "UPDATE fs_inode
                  SET mode = ?, uid = ?, gid = ?, atime = ?, mtime = ?, ctime = ?,
                      atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, rdev = ?
-                 WHERE ino = ?
-                 RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                           atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                 WHERE ino = ?",
                     )?;
-                    let mut rows = query_statement_0.query((
+                    let changed = query_statement_0.execute((
                         stats.mode as i64,
                         stats.uid as i64,
                         stats.gid as i64,
@@ -229,10 +227,10 @@ impl OverlayFS {
                         stats.rdev as i64,
                         ino,
                     ))?;
-                    let row = rows.next()?.ok_or(FsError::NotFound)?;
-                    let inode = super::super::vfs::InodeRow::from_row(row, 0)?;
-                    drop(rows);
-                    txn.record_inode("materialize_meta", inode)?;
+                    if changed == 0 {
+                        return Err(FsError::NotFound.into());
+                    }
+
                     restored.push(ino);
                 }
                 txn.commit()?;

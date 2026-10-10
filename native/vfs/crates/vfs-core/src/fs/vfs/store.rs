@@ -7,43 +7,26 @@ use crate::error::{Error, Result};
 use crate::fs::{FsError, Stats};
 
 use super::batcher::{write_commit_time_sets, PendingTimeChange};
-use super::{current_timestamp, InodeRow, STORAGE_CHUNKED, STORAGE_INLINE};
+use super::{current_timestamp, STORAGE_CHUNKED, STORAGE_INLINE};
 
 pub(super) struct FileStorage {
-    pub(super) inode: InodeRow,
+    size: u64,
+    data_inline: Option<Vec<u8>>,
+    storage_kind: i64,
 }
 
 impl FileStorage {
     pub(super) fn size(&self) -> u64 {
-        self.inode.size as u64
+        self.size
     }
 
     fn storage_kind(&self) -> i64 {
-        self.inode.storage_kind
+        self.storage_kind
     }
 
     fn inline_data(&self) -> Option<Vec<u8>> {
-        self.inode.data_inline.clone()
+        self.data_inline.clone()
     }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) enum DataDelta {
-    Upsert {
-        ino: i64,
-        chunk_index: i64,
-        digest: Vec<u8>,
-    },
-    Delete {
-        ino: i64,
-        chunk_index: i64,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct StorageChanges {
-    pub(crate) inode: InodeRow,
-    pub(crate) data: Vec<DataDelta>,
 }
 
 pub(in crate::fs) struct WriteRangeRef<'a> {
@@ -181,25 +164,33 @@ pub(super) fn dense_after_inline_write_batch(
 
 pub(super) fn file_storage(conn: &Connection, ino: i64) -> Result<FileStorage> {
     let mut stmt = conn.prepare_cached(
-        "SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                    atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind
+        "SELECT size, data_inline, storage_kind
              FROM fs_inode WHERE ino = ?",
     )?;
     let mut rows = stmt.query((ino,))?;
 
     if let Some(row) = rows.next()? {
-        let inode = InodeRow::from_row(row, 0)?;
-        let storage_kind = inode.storage_kind;
+        let size = required_u64(row, 0, "size")?;
+        let data_inline = match row.get::<_, Value>(1)? {
+            Value::Blob(data) => Some(data),
+            Value::Null => None,
+            _ => return Err(corrupt_column("data_inline", "expected blob or null")),
+        };
+        let storage_kind = required_i64(row, 2, "storage_kind")?;
         if storage_kind != STORAGE_CHUNKED && storage_kind != STORAGE_INLINE {
             return Err(corrupt_column("storage_kind", "unknown storage kind"));
         }
-        if storage_kind == STORAGE_INLINE && inode.data_inline.is_none() {
+        if storage_kind == STORAGE_INLINE && data_inline.is_none() {
             return Err(corrupt_column(
                 "data_inline",
                 "inline file missing inline data",
             ));
         }
-        Ok(FileStorage { inode })
+        Ok(FileStorage {
+            size,
+            data_inline,
+            storage_kind,
+        })
     } else {
         Err(FsError::NotFound.into())
     }
@@ -235,7 +226,7 @@ pub(super) fn read_from_storage(
     let size = std::cmp::min(size, metadata.size() - offset);
     if metadata.storage_kind() == STORAGE_INLINE {
         let mut result = Vec::with_capacity(size as usize);
-        let inline_data = metadata.inode.data_inline.as_deref().unwrap_or_default();
+        let inline_data = metadata.data_inline.as_deref().unwrap_or_default();
         let start = offset as usize;
         let requested = size as usize;
 
@@ -402,16 +393,6 @@ pub(super) fn insert_chunk_mapping(
     chunk_index: i64,
     data: &[u8],
 ) -> Result<Vec<u8>> {
-    insert_chunk_mapping_inner(conn, ino, chunk_index, data, None)
-}
-
-fn insert_chunk_mapping_inner(
-    conn: &Connection,
-    ino: i64,
-    chunk_index: i64,
-    data: &[u8],
-    mut deltas: Option<&mut Vec<DataDelta>>,
-) -> Result<Vec<u8>> {
     let digest = digest_chunk(data);
     let old_digest = mapping_digest(conn, ino, chunk_index)?;
     if old_digest.as_deref() == Some(digest.as_slice()) {
@@ -426,13 +407,7 @@ fn insert_chunk_mapping_inner(
     if let Some(old_digest) = old_digest {
         decrement_chunk_refcount(conn, &old_digest, 1)?;
     }
-    if let Some(deltas) = &mut deltas {
-        deltas.push(DataDelta::Upsert {
-            ino,
-            chunk_index,
-            digest: digest.clone(),
-        });
-    }
+
     Ok(digest)
 }
 
@@ -455,16 +430,14 @@ fn mapped_rows(
     Ok(mappings)
 }
 
-pub(super) fn delete_all_chunk_mappings(conn: &Connection, ino: i64) -> Result<Vec<DataDelta>> {
+pub(super) fn delete_all_chunk_mappings(conn: &Connection, ino: i64) -> Result<()> {
     let mappings = mapped_rows(
         conn,
         "SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index",
         (ino,),
     )?;
-    let mut deltas = Vec::with_capacity(mappings.len());
     let mut counts = BTreeMap::<Vec<u8>, i64>::new();
-    for (chunk_index, digest) in mappings {
-        deltas.push(DataDelta::Delete { ino, chunk_index });
+    for (_, digest) in mappings {
         *counts.entry(digest).or_insert(0) += 1;
     }
     // Refcounts move first so every mapping deletion has a matching decrement
@@ -473,14 +446,10 @@ pub(super) fn delete_all_chunk_mappings(conn: &Connection, ino: i64) -> Result<V
         decrement_chunk_refcount(conn, &digest, count)?;
     }
     conn.execute("DELETE FROM fs_data WHERE ino = ?", (ino,))?;
-    Ok(deltas)
+    Ok(())
 }
 
-fn delete_chunk_mappings_after(
-    conn: &Connection,
-    ino: i64,
-    last_chunk_index: i64,
-) -> Result<Vec<DataDelta>> {
+fn delete_chunk_mappings_after(conn: &Connection, ino: i64, last_chunk_index: i64) -> Result<()> {
     let mappings = mapped_rows(
         conn,
         "SELECT chunk_index, digest
@@ -489,10 +458,8 @@ fn delete_chunk_mappings_after(
          ORDER BY chunk_index",
         (ino, last_chunk_index),
     )?;
-    let mut deltas = Vec::with_capacity(mappings.len());
     let mut counts = BTreeMap::<Vec<u8>, i64>::new();
-    for (chunk_index, digest) in mappings {
-        deltas.push(DataDelta::Delete { ino, chunk_index });
+    for (_, digest) in mappings {
         *counts.entry(digest).or_insert(0) += 1;
     }
     for (digest, count) in counts {
@@ -502,7 +469,7 @@ fn delete_chunk_mappings_after(
         "DELETE FROM fs_data WHERE ino = ? AND chunk_index > ?",
         (ino, last_chunk_index),
     )?;
-    Ok(deltas)
+    Ok(())
 }
 
 /// `preserve_times`: when true (deferred batcher commits racing an explicit
@@ -523,7 +490,7 @@ pub(super) fn write_ranges(
     ranges: &[WriteRangeRef<'_>],
     preserve_times: bool,
     explicit_times: Option<&PendingTimeChange>,
-) -> Result<StorageChanges> {
+) -> Result<()> {
     write_ranges_inner(
         conn,
         ino,
@@ -544,7 +511,7 @@ pub(in crate::fs) fn write_ranges_with_chunk_hooks(
     geometry: Geometry,
     ranges: &[WriteRangeRef<'_>],
     hooks: &dyn ChunkWriteHooks,
-) -> Result<StorageChanges> {
+) -> Result<()> {
     write_ranges_inner(
         conn,
         ino,
@@ -565,7 +532,7 @@ fn write_ranges_inner(
     geometry: Geometry,
     ranges: &[WriteRangeRef<'_>],
     options: WriteOptions<'_>,
-) -> Result<StorageChanges> {
+) -> Result<()> {
     let ranges = normalize_write_ranges(ranges)?;
     if ranges.is_empty() {
         return Err(Error::Internal(
@@ -573,8 +540,7 @@ fn write_ranges_inner(
         ));
     }
 
-    let mut metadata = file_storage(conn, ino)?;
-    let mut data_deltas = Vec::new();
+    let metadata = file_storage(conn, ino)?;
     let write_end = ranges
         .iter()
         .map(NormalizedWriteRange::end)
@@ -595,35 +561,29 @@ fn write_ranges_inner(
             inline_data[start..start + range.data.len()].copy_from_slice(&range.data);
         }
 
-        data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+        delete_all_chunk_mappings(conn, ino)?;
         let mut sets = vec!["size = ?", "data_inline = ?", "storage_kind = ?"];
         let mut values: Vec<Value> = vec![
             Value::Integer(new_size as i64),
             Value::Blob(inline_data.clone()),
             Value::Integer(STORAGE_INLINE),
         ];
-        let (time_sets, time_values, resolved_times) =
+        let (time_sets, time_values) =
             write_commit_time_sets(options.preserve_times, options.explicit_times)?;
         sets.extend(time_sets);
         values.extend(time_values);
         values.push(Value::Integer(ino));
         let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", sets.join(", "));
         conn.execute(&sql, tokio_rusqlite::rusqlite::params_from_iter(values))?;
-        metadata.inode.size = new_size as i64;
-        metadata.inode.data_inline = Some(inline_data);
-        metadata.inode.storage_kind = STORAGE_INLINE;
-        apply_resolved_times(&mut metadata.inode, resolved_times);
-        return Ok(StorageChanges {
-            inode: metadata.inode,
-            data: data_deltas,
-        });
+
+        return Ok(());
     }
 
     let mut chunked_ranges = Vec::new();
     if metadata.storage_kind() == STORAGE_INLINE {
         let mut inline_data = metadata.inline_data().unwrap_or_default();
         inline_data.resize(metadata.size() as usize, 0);
-        data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+        delete_all_chunk_mappings(conn, ino)?;
         if !inline_data.is_empty() {
             chunked_ranges.push(NormalizedWriteRange {
                 offset: 0,
@@ -638,21 +598,14 @@ fn write_ranges_inner(
     }
 
     chunked_ranges.extend(ranges);
-    write_ranges_chunked(
-        conn,
-        ino,
-        geometry,
-        &chunked_ranges,
-        options.hooks,
-        &mut data_deltas,
-    )?;
+    write_ranges_chunked(conn, ino, geometry, &chunked_ranges, options.hooks)?;
 
     let mut sets = vec!["size = ?", "data_inline = NULL", "storage_kind = ?"];
     let mut values: Vec<Value> = vec![
         Value::Integer(new_size as i64),
         Value::Integer(STORAGE_CHUNKED),
     ];
-    let (time_sets, time_values, resolved_times) =
+    let (time_sets, time_values) =
         write_commit_time_sets(options.preserve_times, options.explicit_times)?;
     sets.extend(time_sets);
     values.extend(time_values);
@@ -660,14 +613,7 @@ fn write_ranges_inner(
     let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", sets.join(", "));
     conn.execute(&sql, tokio_rusqlite::rusqlite::params_from_iter(values))?;
 
-    metadata.inode.size = new_size as i64;
-    metadata.inode.data_inline = None;
-    metadata.inode.storage_kind = STORAGE_CHUNKED;
-    apply_resolved_times(&mut metadata.inode, resolved_times);
-    Ok(StorageChanges {
-        inode: metadata.inode,
-        data: data_deltas,
-    })
+    Ok(())
 }
 
 pub(super) fn truncate(
@@ -675,7 +621,7 @@ pub(super) fn truncate(
     ino: i64,
     geometry: Geometry,
     new_size: u64,
-) -> Result<StorageChanges> {
+) -> Result<()> {
     truncate_inner(conn, ino, geometry, new_size, false, None)
 }
 
@@ -685,7 +631,7 @@ pub(in crate::fs) fn truncate_with_chunk_hooks(
     geometry: Geometry,
     new_size: u64,
     hooks: &dyn ChunkWriteHooks,
-) -> Result<StorageChanges> {
+) -> Result<()> {
     truncate_inner(conn, ino, geometry, new_size, true, Some(hooks))
 }
 
@@ -696,16 +642,15 @@ fn truncate_inner(
     new_size: u64,
     force_chunked: bool,
     hooks: Option<&dyn ChunkWriteHooks>,
-) -> Result<StorageChanges> {
-    let mut metadata = file_storage(conn, ino)?;
-    let mut data_deltas = Vec::new();
+) -> Result<()> {
+    let metadata = file_storage(conn, ino)?;
 
     if metadata.storage_kind() == STORAGE_INLINE {
         if !force_chunked && new_size <= geometry.inline_threshold as u64 {
             let mut inline_data = metadata.inline_data().unwrap_or_default();
             inline_data.resize(metadata.size() as usize, 0);
             inline_data.resize(new_size as usize, 0);
-            data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+            delete_all_chunk_mappings(conn, ino)?;
             let (now_secs, now_nsec) = current_timestamp()?;
             conn.execute(
                 "UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ? WHERE ino = ?",
@@ -721,41 +666,21 @@ fn truncate_inner(
                 ),
             )
             ?;
-            metadata.inode.size = new_size as i64;
-            metadata.inode.data_inline = Some(inline_data);
-            metadata.inode.storage_kind = STORAGE_INLINE;
-            metadata.inode.mtime = now_secs;
-            metadata.inode.ctime = now_secs;
-            metadata.inode.mtime_nsec = now_nsec;
-            metadata.inode.ctime_nsec = now_nsec;
-            return Ok(StorageChanges {
-                inode: metadata.inode,
-                data: data_deltas,
-            });
+
+            return Ok(());
         }
 
         let mut inline_data = metadata.inline_data().unwrap_or_default();
         inline_data.resize(metadata.size() as usize, 0);
-        transition_inline_to_chunked(conn, ino, geometry, &inline_data, hooks, &mut data_deltas)?;
-        truncate_chunked_data(
-            conn,
-            ino,
-            geometry,
-            metadata.size(),
-            new_size,
-            hooks,
-            &mut data_deltas,
-        )?;
-        update_chunked_truncate_metadata(conn, &mut metadata.inode, new_size)?;
-        return Ok(StorageChanges {
-            inode: metadata.inode,
-            data: data_deltas,
-        });
+        transition_inline_to_chunked(conn, ino, geometry, &inline_data, hooks)?;
+        truncate_chunked_data(conn, ino, geometry, metadata.size(), new_size, hooks)?;
+        update_chunked_truncate_metadata(conn, ino, new_size)?;
+        return Ok(());
     }
 
     if !force_chunked && new_size <= geometry.inline_threshold as u64 {
         if let Some(inline_data) = read_dense_prefix_for_inline(conn, ino, geometry, new_size)? {
-            data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+            delete_all_chunk_mappings(conn, ino)?;
             let (now_secs, now_nsec) = current_timestamp()?;
             conn.execute(
                 "UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ? WHERE ino = ?",
@@ -771,34 +696,14 @@ fn truncate_inner(
                 ),
             )
             ?;
-            metadata.inode.size = new_size as i64;
-            metadata.inode.data_inline = Some(inline_data);
-            metadata.inode.storage_kind = STORAGE_INLINE;
-            metadata.inode.mtime = now_secs;
-            metadata.inode.ctime = now_secs;
-            metadata.inode.mtime_nsec = now_nsec;
-            metadata.inode.ctime_nsec = now_nsec;
-            return Ok(StorageChanges {
-                inode: metadata.inode,
-                data: data_deltas,
-            });
+
+            return Ok(());
         }
     }
 
-    truncate_chunked_data(
-        conn,
-        ino,
-        geometry,
-        metadata.size(),
-        new_size,
-        hooks,
-        &mut data_deltas,
-    )?;
-    update_chunked_truncate_metadata(conn, &mut metadata.inode, new_size)?;
-    Ok(StorageChanges {
-        inode: metadata.inode,
-        data: data_deltas,
-    })
+    truncate_chunked_data(conn, ino, geometry, metadata.size(), new_size, hooks)?;
+    update_chunked_truncate_metadata(conn, ino, new_size)?;
+    Ok(())
 }
 
 fn transition_inline_to_chunked(
@@ -807,12 +712,11 @@ fn transition_inline_to_chunked(
     geometry: Geometry,
     inline_data: &[u8],
     hooks: Option<&dyn ChunkWriteHooks>,
-    data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
-    data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+    delete_all_chunk_mappings(conn, ino)?;
 
     if !inline_data.is_empty() {
-        write_data_at_offset(conn, ino, geometry, 0, inline_data, hooks, data_deltas)?;
+        write_data_at_offset(conn, ino, geometry, 0, inline_data, hooks)?;
     }
 
     conn.execute(
@@ -872,20 +776,15 @@ fn truncate_chunked_data(
     current_size: u64,
     new_size: u64,
     hooks: Option<&dyn ChunkWriteHooks>,
-    data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let chunk_size = geometry.chunk_size as u64;
 
     if new_size == 0 {
-        data_deltas.extend(delete_all_chunk_mappings(conn, ino)?);
+        delete_all_chunk_mappings(conn, ino)?;
     } else if new_size < current_size {
         let last_chunk_idx = (new_size - 1) / chunk_size;
 
-        data_deltas.extend(delete_chunk_mappings_after(
-            conn,
-            ino,
-            last_chunk_idx as i64,
-        )?);
+        delete_chunk_mappings_after(conn, ino, last_chunk_idx as i64)?;
 
         let end_in_last_chunk = ((new_size - 1) % chunk_size + 1) as usize;
         if end_in_last_chunk < chunk_size as usize {
@@ -905,12 +804,11 @@ fn truncate_chunked_data(
                 drop(rows);
                 let chunk_data = data;
                 if chunk_data.len() > end_in_last_chunk {
-                    insert_chunk_mapping_inner(
+                    insert_chunk_mapping(
                         conn,
                         ino,
                         last_chunk_idx as i64,
                         &chunk_data[..end_in_last_chunk],
-                        Some(data_deltas),
                     )?;
                     if let Some(hooks) = hooks {
                         hooks.chunk_written(conn, ino, last_chunk_idx as i64)?;
@@ -952,13 +850,7 @@ fn truncate_chunked_data(
                 if needed_len > current_chunk_len {
                     let mut padded = chunk_data.clone();
                     padded.resize(needed_len, 0);
-                    insert_chunk_mapping_inner(
-                        conn,
-                        ino,
-                        last_idx as i64,
-                        &padded,
-                        Some(data_deltas),
-                    )?;
+                    insert_chunk_mapping(conn, ino, last_idx as i64, &padded)?;
                     if let Some(hooks) = hooks {
                         hooks.chunk_written(conn, ino, last_idx as i64)?;
                     }
@@ -974,7 +866,7 @@ fn truncate_chunked_data(
                 chunk_size as usize
             };
             let zeros = vec![0u8; chunk_len];
-            insert_chunk_mapping_inner(conn, ino, chunk_idx as i64, &zeros, Some(data_deltas))?;
+            insert_chunk_mapping(conn, ino, chunk_idx as i64, &zeros)?;
             if let Some(hooks) = hooks {
                 hooks.chunk_written(conn, ino, chunk_idx as i64)?;
             }
@@ -984,11 +876,7 @@ fn truncate_chunked_data(
     Ok(())
 }
 
-fn update_chunked_truncate_metadata(
-    conn: &Connection,
-    inode: &mut InodeRow,
-    new_size: u64,
-) -> Result<()> {
+fn update_chunked_truncate_metadata(conn: &Connection, ino: i64, new_size: u64) -> Result<()> {
     let (now_secs, now_nsec) = current_timestamp()?;
     conn.execute(
         "UPDATE fs_inode SET size = ?, data_inline = NULL, storage_kind = ?, mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ? WHERE ino = ?",
@@ -999,17 +887,10 @@ fn update_chunked_truncate_metadata(
             now_secs,
             now_nsec,
             now_nsec,
-            inode.ino,
+            ino,
         ),
     )
     ?;
-    inode.size = new_size as i64;
-    inode.data_inline = None;
-    inode.storage_kind = STORAGE_CHUNKED;
-    inode.mtime = now_secs;
-    inode.ctime = now_secs;
-    inode.mtime_nsec = now_nsec;
-    inode.ctime_nsec = now_nsec;
     Ok(())
 }
 
@@ -1020,11 +901,10 @@ fn write_data_at_offset(
     offset: u64,
     data: &[u8],
     hooks: Option<&dyn ChunkWriteHooks>,
-    data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let ranges = [WriteRangeRef { offset, data }];
     let ranges = normalize_write_ranges(&ranges)?;
-    write_ranges_chunked(conn, ino, geometry, &ranges, hooks, data_deltas)
+    write_ranges_chunked(conn, ino, geometry, &ranges, hooks)
 }
 
 fn write_ranges_chunked(
@@ -1033,7 +913,6 @@ fn write_ranges_chunked(
     geometry: Geometry,
     ranges: &[NormalizedWriteRange],
     hooks: Option<&dyn ChunkWriteHooks>,
-    data_deltas: &mut Vec<DataDelta>,
 ) -> Result<()> {
     let chunk_size = geometry.chunk_size as u64;
 
@@ -1106,7 +985,7 @@ fn write_ranges_chunked(
 
     let chunks_written = chunks.len() as u64;
     for (chunk_index, chunk_data) in chunks {
-        insert_chunk_mapping_inner(conn, ino, chunk_index, &chunk_data, Some(data_deltas))?;
+        insert_chunk_mapping(conn, ino, chunk_index, &chunk_data)?;
         if let Some(hooks) = hooks {
             hooks.chunk_written(conn, ino, chunk_index)?;
         }
@@ -1114,21 +993,6 @@ fn write_ranges_chunked(
 
     crate::telemetry::record_chunk_write_chunks(chunks_written);
     Ok(())
-}
-
-fn apply_resolved_times(inode: &mut InodeRow, times: super::batcher::ResolvedWriteTimes) {
-    if let Some((secs, nsec)) = times.atime {
-        inode.atime = secs;
-        inode.atime_nsec = nsec;
-    }
-    if let Some((secs, nsec)) = times.mtime {
-        inode.mtime = secs;
-        inode.mtime_nsec = nsec;
-    }
-    if let Some((secs, nsec)) = times.ctime {
-        inode.ctime = secs;
-        inode.ctime_nsec = nsec;
-    }
 }
 
 pub(super) fn link_count(conn: &Connection, ino: i64) -> Result<u32> {

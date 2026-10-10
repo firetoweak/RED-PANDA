@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 use tokio_rusqlite::rusqlite::types::Value;
 
@@ -57,7 +58,6 @@ impl FileSystem for Vfs {
         self.pool.execute(move |conn| {
         let _keepalive = &owned;
         let name = name.as_str();
-
 
         // Handle ".." by finding the parent of parent_ino
         if name == ".." {
@@ -256,7 +256,6 @@ impl FileSystem for Vfs {
         self.pool.execute(move |conn| {
         let _keepalive = &owned;
 
-
         // Check if inode exists and is a directory
         if let Some(mode) = store::mode(conn, ino)? {
             if (mode & S_IFMT) != super::S_IFDIR {
@@ -311,7 +310,6 @@ impl FileSystem for Vfs {
         let owned = self.clone();
         self.pool.execute(move |conn| {
         let _keepalive = &owned;
-
 
         // Check if inode exists and is a directory
         if let Some(mode) = store::mode(conn, ino)? {
@@ -404,8 +402,8 @@ impl FileSystem for Vfs {
                 // BEGIN IMMEDIATE so this serialises with concurrent batcher drain
                 // transactions instead of racing them as an autocommit statement
                 // and waiting on SQLite's writer lock.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<InodeRow> = (|| {
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<()> = (|| {
                     // Get current mode to preserve file type bits
                     let current_mode = store::mode(conn, ino)?.ok_or(FsError::NotFound)?;
 
@@ -417,18 +415,16 @@ impl FileSystem for Vfs {
                     let now_nsec = dur.subsec_nanos() as i64;
                     let mut query_statement_0 = conn.prepare_cached(
                         "UPDATE fs_inode SET mode = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                     RETURNING ino",
                     )?;
                     let mut rows =
                         query_statement_0.query((new_mode as i64, now_secs, now_nsec, ino))?;
-                    let row = rows.next()?.ok_or(FsError::NotFound)?;
-                    InodeRow::from_row(row, 0)
+                    rows.next()?.ok_or(FsError::NotFound)?;
+                    Ok(())
                 })();
 
                 match result {
-                    Ok(inode) => {
-                        txn.record_inode("setattr", inode)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.invalidate_attr(ino);
                         Ok(())
@@ -457,8 +453,8 @@ impl FileSystem for Vfs {
 
                 // BEGIN IMMEDIATE: see `chmod` — avoid autocommit write/write races
                 // with concurrent batcher drain transactions.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<InodeRow> = (|| {
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<()> = (|| {
                     // Verify inode exists
                     let mut stmt = conn.prepare_cached("SELECT ino FROM fs_inode WHERE ino = ?")?;
                     let mut rows = stmt.query((ino,))?;
@@ -490,21 +486,16 @@ impl FileSystem for Vfs {
 
                     values.push(Value::Integer(ino));
                     let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", updates.join(", "));
-                    let sql = format!(
-                        "{} RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                 atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                        sql
-                    );
+                    let sql = format!("{} RETURNING ino", sql);
                     let mut query_statement_0 = conn.prepare_cached(&sql)?;
                     let mut rows = query_statement_0
                         .query(tokio_rusqlite::rusqlite::params_from_iter(values))?;
-                    let row = rows.next()?.ok_or(FsError::NotFound)?;
-                    InodeRow::from_row(row, 0)
+                    rows.next()?.ok_or(FsError::NotFound)?;
+                    Ok(())
                 })();
 
                 match result {
-                    Ok(inode) => {
-                        txn.record_inode("setattr", inode)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.invalidate_attr(ino);
                         Ok(())
@@ -568,8 +559,8 @@ impl FileSystem for Vfs {
 
                 // BEGIN IMMEDIATE: see `chmod` — avoid autocommit write/write races
                 // with concurrent batcher drain transactions.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<InodeRow> = (|| {
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<()> = (|| {
                     // Verify inode exists
                     let mut stmt = conn.prepare_cached("SELECT ino FROM fs_inode WHERE ino = ?")?;
                     let mut rows = stmt.query((ino,))?;
@@ -616,21 +607,16 @@ impl FileSystem for Vfs {
 
                     values.push(Value::Integer(ino));
                     let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", updates.join(", "));
-                    let sql = format!(
-                        "{} RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                 atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                        sql
-                    );
+                    let sql = format!("{} RETURNING ino", sql);
                     let mut query_statement_0 = conn.prepare_cached(&sql)?;
                     let mut rows = query_statement_0
                         .query(tokio_rusqlite::rusqlite::params_from_iter(values))?;
-                    let row = rows.next()?.ok_or(FsError::NotFound)?;
-                    InodeRow::from_row(row, 0)
+                    rows.next()?.ok_or(FsError::NotFound)?;
+                    Ok(())
                 })();
 
                 match result {
-                    Ok(inode) => {
-                        txn.record_inode("setattr", inode)?;
+                    Ok(()) => {
                         txn.commit()?;
                         owned.invalidate_attr(ino);
                         Ok(())
@@ -669,7 +655,7 @@ impl FileSystem for Vfs {
                     pending_view: owned.pending_view.clone(),
                     write_drain: owned.write_drain.clone(),
                     overlay_reads: owned.overlay_reads,
-                    journal: owned.journal_ctx(),
+
                     _open_guard: Some(Arc::new(owned.lifecycle.guard(ino))),
                 }) as BoxedFile)
             })
@@ -699,8 +685,8 @@ impl FileSystem for Vfs {
         // BEGIN IMMEDIATE: see `chmod` — multi-statement metadata mutations
         // must not run as autocommit statements that race the write batcher's
         // drain transactions by waiting on SQLite's writer lock.
-        let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-        let result: Result<(Stats, InodeRow, i64)> = (|| {
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+        let result: Result<Stats> = (|| {
             // Check if already exists
             if owned.lookup_child(conn, parent_ino, name)?.is_some() {
                 return Err(FsError::AlreadyExists.into());
@@ -739,7 +725,6 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
                 .prepare_cached("INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)")
                 ?;
             stmt.execute((name, parent_ino, ino))?;
-            let dentry_id = conn.last_insert_rowid();
 
             // Set nlink to 2 for new directory (owned "." + parent's dentry)
             let mut stmt = conn
@@ -751,17 +736,12 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
             let mut query_statement_0 = conn.prepare_cached("UPDATE fs_inode
                      SET nlink = nlink + 1, ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind")?;
+                     RETURNING ino")?;
 let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))
                 ?;
-            let parent = InodeRow::from_row(
-                rows.next()?.ok_or(FsError::NotFound)?,
-                0,
-            )?;
+            rows.next()?.ok_or(FsError::NotFound)?;
 
-            Ok((
-                Stats {
+            Ok(Stats {
                     ino,
                     mode: dir_mode,
                     nlink: 2,
@@ -775,20 +755,12 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
                     rdev: 0,
-                },
-                parent,
-                dentry_id,
-            ))
+                })
         })();
 
         match result {
-            Ok((stats, parent, dentry_id)) => {
-                txn.record_inode("mkdir", InodeRow::from_stats(&stats, None, STORAGE_CHUNKED))
-                    ?;
-                txn.record(JournalDelta::dentry_upsert(
-                    "mkdir", dentry_id, parent_ino, name, stats.ino,
-                ));
-                txn.record_inode("mkdir", parent)?;
+            Ok(stats) => {
+
                 txn.commit()?;
                 // Populate dentry cache only after the transaction is durable.
                 owned.cache_dentry(parent_ino, name, stats.ino);
@@ -831,15 +803,15 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                 // rolls back the inode row). Saves one SELECT on the synchronous
                 // create path that every git-clone file pays.
 
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
 
                 // Parent mtime/ctime: stash into the batcher overlay (committed by the
                 // next group drain, served immediately via merge_pending_view) instead
                 // of paying an UPDATE on the synchronous create path. Falls back to
                 // the in-transaction UPDATE when the overlay cannot serve reads.
                 let stash_parent_times = owned.overlay_reads && owned.write_drain.is_some();
-                let (stats, parent, dentry_id) = owned.create_file_with_conn(
-                    txn.conn(),
+                let stats = owned.create_file_with_conn(
+                    &txn,
                     parent_ino,
                     name,
                     mode,
@@ -848,20 +820,6 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                 )?;
                 let ino = stats.ino;
 
-                txn.record_inode(
-                    "create_file",
-                    InodeRow::from_stats(&stats, Some(Vec::new()), STORAGE_INLINE),
-                )?;
-                txn.record(JournalDelta::dentry_upsert(
-                    "create_file",
-                    dentry_id,
-                    parent_ino,
-                    name,
-                    ino,
-                ));
-                if let Some(parent) = parent {
-                    txn.record_inode("create_file", parent)?;
-                }
                 txn.commit()?;
 
                 if stash_parent_times {
@@ -891,7 +849,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     pending_view: owned.pending_view.clone(),
                     write_drain: owned.write_drain.clone(),
                     overlay_reads: owned.overlay_reads,
-                    journal: owned.journal_ctx(),
+
                     _open_guard: Some(Arc::new(owned.lifecycle.guard(ino))),
                 });
 
@@ -923,8 +881,8 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
 
         // BEGIN IMMEDIATE: see `mkdir` — never race the batcher's drain
         // transactions with autocommit metadata writes.
-        let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-        let result: Result<(Stats, InodeRow, i64)> = (|| {
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+        let result: Result<Stats> = (|| {
             // Check if already exists
             if owned.lookup_child(conn, parent_ino, name)?.is_some() {
                 return Err(FsError::AlreadyExists.into());
@@ -963,7 +921,6 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
                 .prepare_cached("INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)")
                 ?;
             stmt.execute((name, parent_ino, ino))?;
-            let dentry_id = conn.last_insert_rowid();
 
             // Increment link count
             let mut stmt = conn
@@ -975,17 +932,12 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
             let mut query_statement_0 = conn.prepare_cached("UPDATE fs_inode
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind")?;
+                     RETURNING ino")?;
 let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))
                 ?;
-            let parent = InodeRow::from_row(
-                rows.next()?.ok_or(FsError::NotFound)?,
-                0,
-            )?;
+            rows.next()?.ok_or(FsError::NotFound)?;
 
-            Ok((
-                Stats {
+            Ok(Stats {
                     ino,
                     mode,
                     nlink: 1,
@@ -999,20 +951,12 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
                     rdev,
-                },
-                parent,
-                dentry_id,
-            ))
+                })
         })();
 
         match result {
-            Ok((stats, parent, dentry_id)) => {
-                txn.record_inode("mknod", InodeRow::from_stats(&stats, None, STORAGE_CHUNKED))
-                    ?;
-                txn.record(JournalDelta::dentry_upsert(
-                    "mknod", dentry_id, parent_ino, name, stats.ino,
-                ));
-                txn.record_inode("mknod", parent)?;
+            Ok(stats) => {
+
                 txn.commit()?;
                 // Populate dentry cache only after the transaction is durable.
                 owned.cache_dentry(parent_ino, name, stats.ino);
@@ -1052,8 +996,8 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
 
         // BEGIN IMMEDIATE: see `mkdir` — never race the batcher's drain
         // transactions with autocommit metadata writes.
-        let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-        let result: Result<(Stats, InodeRow, i64)> = (|| {
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+        let result: Result<Stats> = (|| {
             // Check if entry already exists
             if owned.lookup_child(conn, parent_ino, name)?.is_some() {
                 return Err(FsError::AlreadyExists.into());
@@ -1095,7 +1039,6 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
                 (name, parent_ino, ino),
             )
             ?;
-            let dentry_id = conn.last_insert_rowid();
 
             // Increment link count
             conn.execute(
@@ -1108,17 +1051,12 @@ let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
             let mut query_statement_0 = conn.prepare_cached("UPDATE fs_inode
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind")?;
+                     RETURNING ino")?;
 let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))
                 ?;
-            let parent = InodeRow::from_row(
-                rows.next()?.ok_or(FsError::NotFound)?,
-                0,
-            )?;
+            rows.next()?.ok_or(FsError::NotFound)?;
 
-            Ok((
-                Stats {
+            Ok(Stats {
                     ino,
                     mode,
                     nlink: 1,
@@ -1132,24 +1070,12 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
                     rdev: 0,
-                },
-                parent,
-                dentry_id,
-            ))
+                })
         })();
 
         match result {
-            Ok((stats, parent, dentry_id)) => {
-                txn.record_inode(
-                    "symlink",
-                    InodeRow::from_stats(&stats, None, STORAGE_CHUNKED),
-                )
-                ?;
-                txn.record(JournalDelta::symlink_upsert("symlink", stats.ino, target));
-                txn.record(JournalDelta::dentry_upsert(
-                    "symlink", dentry_id, parent_ino, name, stats.ino,
-                ));
-                txn.record_inode("symlink", parent)?;
+            Ok(stats) => {
+
                 txn.commit()?;
                 // Populate dentry cache only after the transaction is durable.
                 owned.cache_dentry(parent_ino, name, stats.ino);
@@ -1185,83 +1111,72 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                 // raced the write batcher's drain transactions (git unlinking
                 // `.git/config.lock` during a clone). The transaction also makes the
                 // dentry/nlink/inode removal atomic.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<(i64, InodeRow, InodeRow, Option<lifecycle::ReapChanges>)> =
-                    (|| {
-                        // Look up the child inode
-                        let ino = owned
-                            .lookup_child(conn, parent_ino, name)?
-                            .ok_or(FsError::NotFound)?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<(i64, bool)> = (|| {
+                    // Look up the child inode
+                    let ino = owned
+                        .lookup_child(conn, parent_ino, name)?
+                        .ok_or(FsError::NotFound)?;
 
-                        // Check if it's a directory (use rmdir for directories)
-                        if let Some(mode) = store::mode(conn, ino)? {
-                            if (mode & S_IFMT) == super::S_IFDIR {
-                                return Err(FsError::IsADirectory.into());
-                            }
-                        } else {
-                            return Err(FsError::NotFound.into());
+                    // Check if it's a directory (use rmdir for directories)
+                    if let Some(mode) = store::mode(conn, ino)? {
+                        if (mode & S_IFMT) == super::S_IFDIR {
+                            return Err(FsError::IsADirectory.into());
                         }
+                    } else {
+                        return Err(FsError::NotFound.into());
+                    }
 
-                        // Delete the directory entry
-                        let mut stmt = conn.prepare_cached(
-                            "DELETE FROM fs_dentry WHERE parent_ino = ? AND name = ?",
-                        )?;
-                        stmt.execute((parent_ino, name))?;
+                    // Delete the directory entry
+                    let mut stmt = conn.prepare_cached(
+                        "DELETE FROM fs_dentry WHERE parent_ino = ? AND name = ?",
+                    )?;
+                    stmt.execute((parent_ino, name))?;
 
-                        // Update parent directory mtime and ctime
-                        let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;
-                        let now_secs = dur.as_secs() as i64;
-                        let now_nsec = dur.subsec_nanos() as i64;
-                        let mut query_statement_0 = conn.prepare_cached(
-                            "UPDATE fs_inode
+                    // Update parent directory mtime and ctime
+                    let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;
+                    let now_secs = dur.as_secs() as i64;
+                    let now_nsec = dur.subsec_nanos() as i64;
+                    let mut query_statement_0 = conn.prepare_cached(
+                        "UPDATE fs_inode
                      SET mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                        )?;
-                        let mut rows = query_statement_0
-                            .query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))?;
-                        let parent = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
-                        drop(rows);
+                     RETURNING ino",
+                    )?;
+                    let mut rows = query_statement_0
+                        .query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
+                    drop(rows);
 
-                        // Decrement link count and update ctime
-                        let mut query_statement_1 = conn.prepare_cached(
-                            "UPDATE fs_inode
+                    // Decrement link count and update ctime
+                    let mut query_statement_1 = conn.prepare_cached(
+                        "UPDATE fs_inode
                      SET nlink = nlink - 1, ctime = ?, ctime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                        )?;
-                        let mut rows = query_statement_1.query((now_secs, now_nsec, ino))?;
-                        let inode = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
-                        drop(rows);
+                     RETURNING ino",
+                    )?;
+                    let mut rows = query_statement_1.query((now_secs, now_nsec, ino))?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
+                    drop(rows);
 
-                        // Check if this was the last link to the inode. POSIX: while
-                        // open handles exist the nlink=0 rows stay alive; the last
-                        // handle drop queues the orphan for process_deferred_reaps.
-                        let link_count = owned.get_link_count(conn, ino)?;
-                        let removed = link_count == 0 && !owned.lifecycle.defer_reap_if_open(ino);
-                        let reap_changes = if removed {
-                            owned.reap_inode_with_conn(conn, ino)?
-                        } else {
-                            None
-                        };
+                    // Check if this was the last link to the inode. POSIX: while
+                    // open handles exist the nlink=0 rows stay alive; the last
+                    // handle drop queues the orphan for process_deferred_reaps.
+                    let link_count = owned.get_link_count(conn, ino)?;
+                    let removed = link_count == 0 && !owned.lifecycle.defer_reap_if_open(ino);
+                    let reap_changes = if removed {
+                        owned.reap_inode_with_conn(conn, ino)?
+                    } else {
+                        false
+                    };
 
-                        Ok((ino, inode, parent, reap_changes))
-                    })();
+                    Ok((ino, reap_changes))
+                })();
 
                 match result {
-                    Ok((ino, inode, parent, reap_changes)) => {
-                        txn.record(JournalDelta::dentry_delete("unlink", parent_ino, name));
-                        txn.record_inode("unlink", parent)?;
-                        let reaped_ino = reap_changes.as_ref().map(|_| ino);
-                        if let Some(changes) = reap_changes {
-                            for delta in changes.deltas {
-                                txn.record(delta);
-                            }
-                        } else {
-                            txn.record_inode("unlink", inode)?;
-                        }
+                    Ok((ino, reap_changes)) => {
+                        let reaped_ino = reap_changes.then_some(ino);
+
                         txn.commit()?;
                         if let Some(reaped_ino) = reaped_ino {
                             owned.discard_pending_for_reaped_inode(reaped_ino);
@@ -1298,8 +1213,8 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
 
                 // BEGIN IMMEDIATE: see `unlink` — never race the batcher's drain
                 // transactions with autocommit metadata writes.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<(i64, InodeRow)> = (|| {
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<i64> = (|| {
                     // Look up the child inode
                     let ino = owned
                         .lookup_child(conn, parent_ino, name)?
@@ -1339,7 +1254,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     // Removing an empty directory drops both its parent dentry and its
                     // synthetic "." link. No live namespace path can reference the
                     // inode afterward, so retaining it at nlink=1 would create an
-                    // unreachable inode that history reconstruction correctly rejects.
+                    // unreachable inode that integrity checks correctly reject.
                     conn.execute("DELETE FROM fs_inode WHERE ino = ?", (ino,))?;
 
                     // Decrement parent nlink (removed directory's ".." link) and update timestamps
@@ -1350,22 +1265,18 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                         "UPDATE fs_inode
                      SET nlink = nlink - 1, ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                     RETURNING ino",
                     )?;
                     let mut rows = query_statement_0
                         .query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))?;
-                    let parent = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
                     drop(rows);
 
-                    Ok((ino, parent))
+                    Ok(ino)
                 })();
 
                 match result {
-                    Ok((ino, parent)) => {
-                        txn.record(JournalDelta::dentry_delete("rmdir", parent_ino, name));
-                        txn.record(JournalDelta::inode_delete("rmdir", ino));
-                        txn.record_inode("rmdir", parent)?;
+                    Ok(ino) => {
                         txn.commit()?;
                         owned.invalidate_dentry(parent_ino, name);
                         owned.invalidate_parent_attr(parent_ino);
@@ -1398,8 +1309,8 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
 
                 // BEGIN IMMEDIATE: see `unlink` — never race the batcher's drain
                 // transactions with autocommit metadata writes.
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
-                let result: Result<(Stats, InodeRow, InodeRow, i64)> = (|| {
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let result: Result<Stats> = (|| {
                     // Check if source inode exists and is not a directory
                     if let Some(mode) = store::mode(conn, ino)? {
                         if (mode & S_IFMT) == super::S_IFDIR {
@@ -1419,7 +1330,6 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                         "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)",
                         (newname, newparent_ino, ino),
                     )?;
-                    let dentry_id = conn.last_insert_rowid();
 
                     // Increment link count and update ctime
                     let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;
@@ -1430,12 +1340,12 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                      SET nlink = nlink + 1, ctime = ?, ctime_nsec = ?
                      WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                               atime_nsec, mtime_nsec, ctime_nsec",
                     )?;
                     let mut rows = query_statement_0.query((now_secs, now_nsec, ino))?;
                     let row = rows.next()?.ok_or(FsError::NotFound)?;
                     let stats = store::stats_from_row(row)?;
-                    let inode = InodeRow::from_row(row, 0)?;
+
                     drop(rows);
 
                     // Update parent directory ctime and mtime
@@ -1444,7 +1354,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                               atime_nsec, mtime_nsec, ctime_nsec",
                     )?;
                     let mut rows = query_statement_1.query((
                         now_secs,
@@ -1453,22 +1363,13 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                         now_nsec,
                         newparent_ino,
                     ))?;
-                    let parent = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
 
-                    Ok((stats, inode, parent, dentry_id))
+                    Ok(stats)
                 })();
 
                 match result {
-                    Ok((stats, inode, parent, dentry_id)) => {
-                        txn.record(JournalDelta::dentry_upsert(
-                            "link",
-                            dentry_id,
-                            newparent_ino,
-                            newname,
-                            ino,
-                        ));
-                        txn.record_inode("link", inode)?;
-                        txn.record_inode("link", parent)?;
+                    Ok(stats) => {
                         txn.commit()?;
                         // Populate dentry cache only after the transaction is durable.
                         owned.cache_dentry(newparent_ino, newname, ino);
@@ -1537,20 +1438,11 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     .getattr_with_conn(conn, src_ino)?
                     .ok_or(FsError::NotFound)?;
 
-                let mut txn = MutationTxn::begin(conn, owned.journal_ctx())?;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
 
-                let result: Result<(
-                    Option<i64>,
-                    Option<InodeRow>,
-                    Option<lifecycle::ReapChanges>,
-                    InodeRow,
-                    InodeRow,
-                    Option<InodeRow>,
-                    i64,
-                )> = (|| {
+                let result: Result<(Option<i64>, bool)> = (|| {
                     let mut replaced_dst_ino = None;
-                    let mut replaced_inode = None;
-                    let mut reap_changes = None;
+                    let mut reap_changes = false;
 
                     if src_stats.is_directory() {
                         let mut ancestor_ino = newparent_ino;
@@ -1623,14 +1515,10 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                             "UPDATE fs_inode
                          SET nlink = nlink - 1, ctime = ?, ctime_nsec = ?
                          WHERE ino = ?
-                         RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                                   atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                         RETURNING ino",
                         )?;
                         let mut rows = query_statement_0.query((now_dec, now_dec_nsec, dst_ino))?;
-                        replaced_inode = Some(InodeRow::from_row(
-                            rows.next()?.ok_or(FsError::NotFound)?,
-                            0,
-                        )?);
+                        rows.next()?.ok_or(FsError::NotFound)?;
                         drop(rows);
 
                         // Clean up destination inode if no more links (deferred while
@@ -1648,7 +1536,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                      WHERE parent_ino = ? AND name = ?
                      RETURNING id",
                     )?;
-                    let dentry_id: i64 = stmt
+                    let _: i64 = stmt
                         .query_row((newparent_ino, newname, oldparent_ino, oldname), |row| {
                             row.get(0)
                         })?;
@@ -1676,11 +1564,10 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
 
                     let mut query_statement_1 = conn.prepare_cached(
                         "UPDATE fs_inode SET ctime = ?, ctime_nsec = ? WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                     RETURNING ino",
                     )?;
                     let mut rows = query_statement_1.query((now_secs, now_nsec, src_ino))?;
-                    let source = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
                     drop(rows);
 
                     // Update source parent directory timestamps
@@ -1688,8 +1575,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                         "UPDATE fs_inode
                      SET mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                     RETURNING ino",
                     )?;
                     let mut rows = query_statement_2.query((
                         now_secs,
@@ -1698,17 +1584,16 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                         now_nsec,
                         oldparent_ino,
                     ))?;
-                    let old_parent = InodeRow::from_row(rows.next()?.ok_or(FsError::NotFound)?, 0)?;
+                    rows.next()?.ok_or(FsError::NotFound)?;
                     drop(rows);
 
                     // Update destination parent directory timestamps
-                    let new_parent = if newparent_ino != oldparent_ino {
+                    if newparent_ino != oldparent_ino {
                         let mut query_statement_3 = conn.prepare_cached(
                             "UPDATE fs_inode
                          SET mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ?
                          WHERE ino = ?
-                         RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                                   atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                         RETURNING ino",
                         )?;
                         let mut rows = query_statement_3.query((
                             now_secs,
@@ -1717,67 +1602,16 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                             now_nsec,
                             newparent_ino,
                         ))?;
-                        Some(InodeRow::from_row(
-                            rows.next()?.ok_or(FsError::NotFound)?,
-                            0,
-                        )?)
-                    } else {
-                        None
-                    };
+                        rows.next()?.ok_or(FsError::NotFound)?;
+                    }
 
-                    Ok((
-                        replaced_dst_ino,
-                        replaced_inode,
-                        reap_changes,
-                        source,
-                        old_parent,
-                        new_parent,
-                        dentry_id,
-                    ))
+                    Ok((replaced_dst_ino, reap_changes))
                 })();
 
                 match result {
-                    Ok((
-                        replaced_dst_ino,
-                        replaced_inode,
-                        reap_changes,
-                        source,
-                        old_parent,
-                        new_parent,
-                        dentry_id,
-                    )) => {
-                        if replaced_dst_ino.is_some() {
-                            txn.record(JournalDelta::dentry_delete(
-                                "rename",
-                                newparent_ino,
-                                newname,
-                            ));
-                        }
-                        txn.record(JournalDelta::dentry_delete(
-                            "rename",
-                            oldparent_ino,
-                            oldname,
-                        ));
-                        txn.record(JournalDelta::dentry_upsert(
-                            "rename",
-                            dentry_id,
-                            newparent_ino,
-                            newname,
-                            src_ino,
-                        ));
-                        txn.record_inode("rename", source)?;
-                        txn.record_inode("rename", old_parent)?;
-                        if let Some(new_parent) = new_parent {
-                            txn.record_inode("rename", new_parent)?;
-                        }
-                        let reaped_dst_ino = reap_changes.as_ref().and(replaced_dst_ino);
-                        if let Some(changes) = reap_changes {
-                            for delta in changes.deltas {
-                                txn.record(delta);
-                            }
-                        } else if let Some(inode) = replaced_inode {
-                            txn.record_inode("rename", inode)?;
-                        }
+                    Ok((replaced_dst_ino, reap_changes)) => {
+                        let reaped_dst_ino = if reap_changes { replaced_dst_ino } else { None };
+
                         txn.commit()?;
                         if let Some(reaped_dst_ino) = reaped_dst_ino {
                             owned.discard_pending_for_reaped_inode(reaped_dst_ino);

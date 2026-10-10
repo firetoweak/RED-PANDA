@@ -7,24 +7,20 @@ pub mod integrity;
 
 use crate::config::{DEFAULT_CHUNK_SIZE, DEFAULT_INLINE_THRESHOLD};
 use crate::error::{Error, Result};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_rusqlite::rusqlite::{types::Value, Connection};
 use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 /// Current schema version.
-pub const CURRENT: SchemaVersion = SchemaVersion::V0_11;
+pub const CURRENT: SchemaVersion = SchemaVersion::V0_12;
 
 /// Only the current local filesystem format is accepted.
-pub const MIN_SUPPORTED: SchemaVersion = SchemaVersion::V0_11;
+pub const MIN_SUPPORTED: SchemaVersion = SchemaVersion::V0_12;
 
 /// Current persisted format marker.
 pub const VFS_SCHEMA_VERSION: &str = CURRENT.as_str();
 pub const CONFIG_SCHEMA_VERSION_KEY: &str = "schema_version";
 pub const CONFIG_CHUNK_SIZE_KEY: &str = "chunk_size";
 pub const CONFIG_INLINE_THRESHOLD_KEY: &str = "inline_threshold";
-pub const CONFIG_HISTORY_EPOCH_KEY: &str = "history_epoch";
-pub const CONFIG_HISTORY_VALID_KEY: &str = "history_valid";
-pub const CONFIG_HISTORY_FLOOR_SEQ_KEY: &str = "history_floor_seq";
 pub(crate) const CONFIG_FILESYSTEM_ID_KEY: &str = "filesystem_id";
 
 /// Detected schema version. Legacy markers are recognized only to reject old
@@ -51,6 +47,8 @@ pub enum SchemaVersion {
     V0_10,
     /// Filesystem-only local storage; KV, tool tracking and remote chunks removed.
     V0_11,
+    /// Current filesystem state; operation history belongs to Sandbox.
+    V0_12,
 }
 
 impl std::fmt::Display for SchemaVersion {
@@ -73,6 +71,7 @@ impl SchemaVersion {
             SchemaVersion::V0_9 => "0.9",
             SchemaVersion::V0_10 => "0.10",
             SchemaVersion::V0_11 => "0.11",
+            SchemaVersion::V0_12 => "0.12",
         }
     }
 
@@ -89,6 +88,7 @@ impl SchemaVersion {
             SchemaVersion::V0_9 => 9,
             SchemaVersion::V0_10 => 10,
             SchemaVersion::V0_11 => 11,
+            SchemaVersion::V0_12 => 12,
         }
     }
 
@@ -110,6 +110,7 @@ impl SchemaVersion {
             "0.9" => Some(SchemaVersion::V0_9),
             "0.10" => Some(SchemaVersion::V0_10),
             "0.11" => Some(SchemaVersion::V0_11),
+            "0.12" => Some(SchemaVersion::V0_12),
             _ => None,
         }
     }
@@ -126,6 +127,7 @@ impl SchemaVersion {
             9 => Some(SchemaVersion::V0_9),
             10 => Some(SchemaVersion::V0_10),
             11 => Some(SchemaVersion::V0_11),
+            12 => Some(SchemaVersion::V0_12),
             _ => None,
         }
     }
@@ -196,110 +198,6 @@ mod ddl {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         )",
-        "CREATE TABLE IF NOT EXISTS fs_session_metadata (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )",
-        // The op journal deliberately carries no secondary index and no pin
-        // table: every mutating commit would pay their B-tree writes, and
-        // both are derivable — txn_id equals the group's first seq (groups
-        // are contiguous in the primary key), and the digests history
-        // references are parsed from retained rows by offline collection.
-        JOURNAL_V2_DDL,
-        "CREATE TABLE IF NOT EXISTS fs_snapshot (
-            snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            through_seq INTEGER NOT NULL,
-            created_at_ms INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            history_epoch INTEGER NOT NULL,
-            UNIQUE(history_epoch, through_seq)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_inode (
-            snapshot_id INTEGER NOT NULL,
-            ino INTEGER NOT NULL,
-            mode INTEGER NOT NULL,
-            nlink INTEGER NOT NULL,
-            uid INTEGER NOT NULL,
-            gid INTEGER NOT NULL,
-            size INTEGER NOT NULL,
-            atime INTEGER NOT NULL,
-            mtime INTEGER NOT NULL,
-            ctime INTEGER NOT NULL,
-            rdev INTEGER NOT NULL,
-            atime_nsec INTEGER NOT NULL,
-            mtime_nsec INTEGER NOT NULL,
-            ctime_nsec INTEGER NOT NULL,
-            data_inline_digest BLOB,
-            storage_kind INTEGER NOT NULL,
-            PRIMARY KEY (snapshot_id, ino)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_dentry (
-            snapshot_id INTEGER NOT NULL,
-            id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            parent_ino INTEGER NOT NULL,
-            ino INTEGER NOT NULL,
-            PRIMARY KEY (snapshot_id, id),
-            UNIQUE(snapshot_id, parent_ino, name)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_data (
-            snapshot_id INTEGER NOT NULL,
-            ino INTEGER NOT NULL,
-            chunk_index INTEGER NOT NULL,
-            digest BLOB NOT NULL,
-            PRIMARY KEY (snapshot_id, ino, chunk_index)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_symlink (
-            snapshot_id INTEGER NOT NULL,
-            ino INTEGER NOT NULL,
-            target TEXT NOT NULL,
-            PRIMARY KEY (snapshot_id, ino)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_whiteout (
-            snapshot_id INTEGER NOT NULL,
-            path TEXT NOT NULL,
-            parent_path TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            PRIMARY KEY (snapshot_id, path)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_origin (
-            snapshot_id INTEGER NOT NULL,
-            delta_ino INTEGER NOT NULL,
-            base_identity TEXT NOT NULL,
-            PRIMARY KEY (snapshot_id, delta_ino)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_partial_origin (
-            snapshot_id INTEGER NOT NULL,
-            delta_ino INTEGER NOT NULL,
-            base_ino INTEGER NOT NULL,
-            base_path TEXT NOT NULL,
-            base_size INTEGER NOT NULL,
-            base_fingerprint_size INTEGER NOT NULL,
-            base_mtime INTEGER NOT NULL,
-            base_mtime_nsec INTEGER NOT NULL,
-            base_ctime INTEGER NOT NULL,
-            base_ctime_nsec INTEGER NOT NULL,
-            created_at INTEGER NOT NULL,
-            PRIMARY KEY (snapshot_id, delta_ino)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_chunk_override (
-            snapshot_id INTEGER NOT NULL,
-            delta_ino INTEGER NOT NULL,
-            chunk_index INTEGER NOT NULL,
-            PRIMARY KEY (snapshot_id, delta_ino, chunk_index)
-        )",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_chunk (
-            snapshot_id INTEGER NOT NULL,
-            digest BLOB NOT NULL,
-            PRIMARY KEY (snapshot_id, digest)
-        )",
-        "CREATE INDEX IF NOT EXISTS idx_fs_snapshot_chunk_digest ON fs_snapshot_chunk(digest)",
-        "CREATE TABLE IF NOT EXISTS fs_snapshot_meta (
-            snapshot_id INTEGER NOT NULL,
-            key TEXT NOT NULL,
-            value TEXT NOT NULL,
-            PRIMARY KEY (snapshot_id, key)
-        )",
         "CREATE TABLE IF NOT EXISTS fs_origin (
             delta_ino INTEGER PRIMARY KEY,
             base_identity TEXT NOT NULL UNIQUE
@@ -322,16 +220,6 @@ mod ddl {
             PRIMARY KEY (delta_ino, chunk_index)
         )",
     ];
-
-    pub(crate) const JOURNAL_V2_DDL: &str = "CREATE TABLE IF NOT EXISTS fs_op_journal (
-        seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        txn_id INTEGER NOT NULL,
-        label TEXT NOT NULL,
-        tbl TEXT NOT NULL,
-        verb TEXT NOT NULL,
-        row TEXT NOT NULL,
-        wallclock_ms INTEGER NOT NULL
-    )";
 }
 
 #[derive(Debug)]
@@ -354,13 +242,6 @@ struct ColumnSpec {
 const CURRENT_COLUMN_SPECS: &[ColumnSpec] = &[
     ColumnSpec {
         table_name: "fs_origin",
-        column_name: "base_identity",
-        type_name: "TEXT",
-        not_null: true,
-        default_value: None,
-    },
-    ColumnSpec {
-        table_name: "fs_snapshot_origin",
         column_name: "base_identity",
         type_name: "TEXT",
         not_null: true,
@@ -422,34 +303,6 @@ const CURRENT_COLUMN_SPECS: &[ColumnSpec] = &[
         not_null: true,
         default_value: None,
     },
-    ColumnSpec {
-        table_name: "fs_op_journal",
-        column_name: "label",
-        type_name: "TEXT",
-        not_null: true,
-        default_value: None,
-    },
-    ColumnSpec {
-        table_name: "fs_op_journal",
-        column_name: "tbl",
-        type_name: "TEXT",
-        not_null: true,
-        default_value: None,
-    },
-    ColumnSpec {
-        table_name: "fs_op_journal",
-        column_name: "verb",
-        type_name: "TEXT",
-        not_null: true,
-        default_value: None,
-    },
-    ColumnSpec {
-        table_name: "fs_op_journal",
-        column_name: "row",
-        type_name: "TEXT",
-        not_null: true,
-        default_value: None,
-    },
 ];
 
 const REQUIRED_CURRENT_TABLES: &[&str] = &[
@@ -461,19 +314,6 @@ const REQUIRED_CURRENT_TABLES: &[&str] = &[
     "fs_symlink",
     "fs_whiteout",
     "fs_overlay_config",
-    "fs_session_metadata",
-    "fs_op_journal",
-    "fs_snapshot",
-    "fs_snapshot_inode",
-    "fs_snapshot_dentry",
-    "fs_snapshot_data",
-    "fs_snapshot_symlink",
-    "fs_snapshot_whiteout",
-    "fs_snapshot_origin",
-    "fs_snapshot_partial_origin",
-    "fs_snapshot_chunk_override",
-    "fs_snapshot_chunk",
-    "fs_snapshot_meta",
     "fs_origin",
     "fs_partial_origin",
     "fs_chunk_override",
@@ -587,9 +427,6 @@ pub fn ensure_current(conn: &Connection) -> Result<()> {
             )?;
         }
         ensure_config_defaults(conn)?;
-        if detected.is_none() {
-            capture_root_raw(conn, "init", 1, 0)?;
-        }
         set_user_version(conn, CURRENT)?;
         Ok(())
     })();
@@ -655,255 +492,6 @@ fn ensure_config_defaults(conn: &Connection) -> Result<()> {
             CONFIG_INLINE_THRESHOLD_KEY,
             DEFAULT_INLINE_THRESHOLD.min(chunk_size).to_string(),
         ),
-    )?;
-    initialize_history_markers(conn)?;
-    Ok(())
-}
-
-fn initialize_history_markers(conn: &Connection) -> Result<()> {
-    for (key, value) in [
-        (CONFIG_HISTORY_EPOCH_KEY, "1"),
-        (CONFIG_HISTORY_VALID_KEY, "1"),
-        (CONFIG_HISTORY_FLOOR_SEQ_KEY, "0"),
-    ] {
-        conn.execute(
-            "INSERT OR IGNORE INTO fs_config (key, value) VALUES (?, ?)",
-            (key, value),
-        )?;
-    }
-    Ok(())
-}
-
-/// Replace the schema-created empty init root after Vfs installs inode 1.
-///
-/// Raw schema creation leaves live filesystem rows empty. A normal writable
-/// Vfs open then creates inode 1. Only that pristine state may rewrite the
-/// sequence-0 root; repaired/corrupt databases with any journal or populated
-/// snapshot state keep their existing lineage.
-pub(crate) fn refresh_empty_initial_root(conn: &Connection) -> Result<()> {
-    let mut query_statement_0 = conn.prepare_cached(
-        "SELECT
-                 (SELECT COUNT(*) FROM fs_op_journal),
-                 (SELECT COUNT(*) FROM fs_snapshot),
-                 (SELECT COUNT(*) FROM fs_snapshot_inode),
-                 (SELECT COUNT(*) FROM fs_snapshot
-                  WHERE history_epoch = 1 AND through_seq = 0 AND reason = 'init')",
-    )?;
-    let mut rows = query_statement_0.query([])?;
-    let row = rows
-        .next()?
-        .ok_or_else(|| Error::Internal("failed to inspect the initial history root".to_string()))?;
-    let journal_rows: i64 = row.get(0)?;
-    let snapshot_rows: i64 = row.get(1)?;
-    let snapshot_inode_rows: i64 = row.get(2)?;
-    let matching_init_rows: i64 = row.get(3)?;
-    drop(rows);
-    if (
-        journal_rows,
-        snapshot_rows,
-        snapshot_inode_rows,
-        matching_init_rows,
-    ) != (0, 1, 0, 1)
-    {
-        return Ok(());
-    }
-
-    let mut query_statement_1 = conn.prepare_cached(
-        "SELECT snapshot_id FROM fs_snapshot
-             WHERE history_epoch = 1 AND through_seq = 0 AND reason = 'init'",
-    )?;
-    let mut rows = query_statement_1.query([])?;
-    let snapshot_id: i64 = rows
-        .next()?
-        .ok_or_else(|| Error::Internal("initial history root disappeared".to_string()))?
-        .get(0)?;
-    drop(rows);
-
-    for table in [
-        "fs_snapshot_inode",
-        "fs_snapshot_dentry",
-        "fs_snapshot_data",
-        "fs_snapshot_symlink",
-        "fs_snapshot_whiteout",
-        "fs_snapshot_origin",
-        "fs_snapshot_partial_origin",
-        "fs_snapshot_chunk_override",
-        "fs_snapshot_chunk",
-        "fs_snapshot_meta",
-    ] {
-        conn.execute(
-            &format!("DELETE FROM {table} WHERE snapshot_id = ?"),
-            (snapshot_id,),
-        )?;
-    }
-    conn.execute(
-        "DELETE FROM fs_snapshot WHERE snapshot_id = ?",
-        (snapshot_id,),
-    )?;
-    capture_root_raw(conn, "init", 1, 0)?;
-    Ok(())
-}
-
-/// Capture the live filesystem and overlay root inside the caller's
-/// transaction. This helper neither drains pending writes nor acquires a
-/// session lock; callers own the consistency boundary.
-pub fn capture_root_raw(
-    conn: &Connection,
-    reason: &str,
-    epoch: i64,
-    through_seq: i64,
-) -> Result<i64> {
-    let created_at_ms = i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())
-        .map_err(|_| Error::Internal("snapshot timestamp overflow".to_string()))?;
-    conn.execute(
-        "INSERT INTO fs_snapshot
-         (through_seq, created_at_ms, reason, history_epoch)
-         VALUES (?, ?, ?, ?)",
-        (through_seq, created_at_ms, reason, epoch),
-    )?;
-    let snapshot_id = conn.last_insert_rowid();
-
-    conn.execute(
-        "INSERT INTO fs_snapshot_inode (
-            snapshot_id, ino, mode, nlink, uid, gid, size, atime, mtime, ctime,
-            rdev, atime_nsec, mtime_nsec, ctime_nsec, data_inline_digest, storage_kind
-         )
-         SELECT ?, ino, mode, nlink, uid, gid, size, atime, mtime, ctime,
-                rdev, atime_nsec, mtime_nsec, ctime_nsec, NULL, storage_kind
-         FROM fs_inode",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_dentry
-         (snapshot_id, id, name, parent_ino, ino)
-         SELECT ?, id, name, parent_ino, ino FROM fs_dentry",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_data
-         (snapshot_id, ino, chunk_index, digest)
-         SELECT ?, ino, chunk_index, digest FROM fs_data",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_symlink (snapshot_id, ino, target)
-         SELECT ?, ino, target FROM fs_symlink",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_whiteout
-         (snapshot_id, path, parent_path, created_at)
-         SELECT ?, path, parent_path, created_at FROM fs_whiteout",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_origin (snapshot_id, delta_ino, base_identity)
-         SELECT ?, delta_ino, base_identity FROM fs_origin",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_partial_origin (
-            snapshot_id, delta_ino, base_ino, base_path, base_size,
-            base_fingerprint_size, base_mtime, base_mtime_nsec,
-            base_ctime, base_ctime_nsec, created_at
-         )
-         SELECT ?, delta_ino, base_ino, base_path, base_size,
-                base_fingerprint_size, base_mtime, base_mtime_nsec,
-                base_ctime, base_ctime_nsec, created_at
-         FROM fs_partial_origin",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_chunk_override
-         (snapshot_id, delta_ino, chunk_index)
-         SELECT ?, delta_ino, chunk_index FROM fs_chunk_override",
-        (snapshot_id,),
-    )?;
-    conn.execute(
-        "INSERT INTO fs_snapshot_chunk (snapshot_id, digest)
-         SELECT ?, digest FROM fs_data GROUP BY digest",
-        (snapshot_id,),
-    )?;
-
-    let mut query_statement_2 = conn.prepare_cached(
-        "SELECT ino, data_inline
-             FROM fs_inode
-             WHERE data_inline IS NOT NULL
-             ORDER BY ino",
-    )?;
-    let mut rows = query_statement_2.query([])?;
-    let mut inline_rows = Vec::new();
-    while let Some(row) = rows.next()? {
-        inline_rows.push((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?));
-    }
-    drop(rows);
-    for (ino, data) in inline_rows {
-        let digest = blake3::hash(&data).as_bytes().to_vec();
-        conn.execute(
-            "INSERT INTO fs_chunk (digest, data, refcount)
-             VALUES (?, ?, 0)
-             ON CONFLICT(digest) DO NOTHING",
-            (Value::Blob(digest.clone()), Value::Blob(data)),
-        )?;
-        conn.execute(
-            "UPDATE fs_snapshot_inode
-             SET data_inline_digest = ?
-             WHERE snapshot_id = ? AND ino = ?",
-            (Value::Blob(digest.clone()), snapshot_id, ino),
-        )?;
-        conn.execute(
-            "INSERT OR IGNORE INTO fs_snapshot_chunk (snapshot_id, digest)
-             VALUES (?, ?)",
-            (snapshot_id, Value::Blob(digest)),
-        )?;
-    }
-
-    for (meta_key, table, source_key) in [
-        ("seed_pin", "fs_session_metadata", "seed_pin"),
-        ("seeded_paths", "fs_session_metadata", "seeded_paths"),
-        ("parent_artifact", "fs_overlay_config", "parent_artifact"),
-    ] {
-        let sql = format!(
-            "INSERT INTO fs_snapshot_meta (snapshot_id, key, value)
-             SELECT ?, ?, value FROM {table} WHERE key = ?"
-        );
-        conn.execute(&sql, (snapshot_id, meta_key, source_key))?;
-    }
-
-    Ok(snapshot_id)
-}
-
-/// Rebuild the retained row-delta journal so its AUTOINCREMENT allocator
-/// resumes immediately after `through_seq`.
-///
-/// Historical reconstruction trims a future suffix. Rebuild the retained rows
-/// and their allocator together so the next group cannot leave a false gap.
-pub fn rebuild_journal_allocator(conn: &Connection, through_seq: i64) -> Result<()> {
-    conn.execute(
-        "CREATE TABLE fs_op_journal_rebuilt (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            txn_id INTEGER NOT NULL,
-            label TEXT NOT NULL,
-            tbl TEXT NOT NULL,
-            verb TEXT NOT NULL,
-            row TEXT NOT NULL,
-            wallclock_ms INTEGER NOT NULL
-        )",
-        [],
-    )?;
-    conn.execute(
-        "INSERT INTO fs_op_journal_rebuilt
-         (seq, txn_id, label, tbl, verb, row, wallclock_ms)
-         SELECT seq, txn_id, label, tbl, verb, row, wallclock_ms
-         FROM fs_op_journal
-         WHERE seq <= ?
-         ORDER BY seq",
-        (through_seq,),
-    )?;
-    conn.execute("DROP TABLE fs_op_journal", [])?;
-    conn.execute(
-        "ALTER TABLE fs_op_journal_rebuilt RENAME TO fs_op_journal",
-        [],
     )?;
     Ok(())
 }

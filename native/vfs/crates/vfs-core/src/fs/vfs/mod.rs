@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 use super::{
     BoxedFile, FilesystemStats, FsError, Stats, DEFAULT_DIR_MODE, MAX_NAME_LEN, S_IFDIR, S_IFLNK,
@@ -31,7 +32,6 @@ mod caches;
 mod file;
 mod fs;
 mod import;
-pub(crate) mod journal;
 mod lifecycle;
 mod path_api;
 pub(in crate::fs) mod store;
@@ -42,9 +42,6 @@ use batcher::{
 use caches::{AttrCache, DentryCache, NegativeDentryCache};
 pub use file::VfsFile;
 pub use import::{ImportEntry, ImportOptions, ImportSession, ImportedEntry};
-pub use journal::journal_gc;
-pub(in crate::fs) use journal::JournalCtx;
-pub(crate) use journal::{InodeRow, JournalDelta, MutationTxn, PartialOriginRow};
 pub use lifecycle::ReapHook;
 use lifecycle::{Lifecycle, OpenInodeGuard};
 
@@ -94,8 +91,7 @@ pub struct Vfs {
     overlay_reads: bool,
     /// Typed runtime configuration captured once when the filesystem opens.
     core_config: Arc<CoreConfig>,
-    /// Kill-switch state plus the shared next-seq hint for journal commits.
-    journal: journal::JournalCtx,
+
     /// Open-handle registry, deferred orphan queue, and reap hooks.
     lifecycle: Arc<Lifecycle>,
 }
@@ -171,7 +167,7 @@ impl Vfs {
             import_commit_sizes: Arc::new(Mutex::new(Vec::new())),
             overlay_reads: config.overlay_reads,
             core_config: Arc::new(config),
-            journal: journal::JournalCtx::new(false),
+
             lifecycle: Arc::new(Lifecycle::default()),
         })
     }
@@ -185,17 +181,16 @@ impl Vfs {
         // caller may have changed the working directory (mount teardown
         // chdirs to `/`), so a relative path would silently miss the -wal.
         let db_path = db_path.map(std::path::absolute).transpose()?;
-        let journal = journal::JournalCtx::new(config.journal_enabled);
+
         let lifecycle = Arc::new(Lifecycle::default());
-        let setup_journal = journal.clone();
+
         let setup_lifecycle = lifecycle.clone();
-        let journaling = config.journal_enabled;
+
         let (filesystem_id, chunk_size, inline_threshold) = pool
             .execute(move |conn| {
-                Self::initialize_schema(conn, setup_journal.clone())?;
+                Self::initialize_schema(conn)?;
                 let identity = schema::filesystem_identity(conn)?;
-                super::history::reconcile_epoch(conn, journaling)?;
-                setup_lifecycle.sweep_mount_orphans(conn, setup_journal)?;
+                setup_lifecycle.sweep_mount_orphans(conn)?;
                 Ok((
                     identity,
                     Self::read_chunk_size(conn)?,
@@ -222,7 +217,6 @@ impl Vfs {
                 inline_threshold,
                 invalidate,
                 &core_config.batcher,
-                journal.clone(),
             ));
             let (pending_view, write_drain) = VfsWriteBatcher::split(&batcher);
             (Some(pending_view), Some(write_drain), Some(batcher))
@@ -250,7 +244,7 @@ impl Vfs {
             import_commit_sizes: Arc::new(Mutex::new(Vec::new())),
             overlay_reads,
             core_config,
-            journal,
+
             lifecycle,
         };
         Ok(fs)
@@ -274,15 +268,6 @@ impl Vfs {
         self.core_config.partial_origin
     }
 
-    pub(crate) fn journal_ctx(&self) -> journal::JournalCtx {
-        self.journal.clone()
-    }
-
-    /// Configured journal retention horizon, in retained operations.
-    pub fn journal_retention_ops(&self) -> usize {
-        self.core_config.journal_retention_ops
-    }
-
     pub(crate) fn register_reap_hook(&self, hook: Arc<dyn ReapHook>) -> bool {
         self.lifecycle.register_reap_hook(hook)
     }
@@ -298,9 +283,9 @@ impl Vfs {
     }
 
     /// Initialize the database schema
-    fn initialize_schema(conn: &Connection, journal: journal::JournalCtx) -> Result<()> {
+    fn initialize_schema(conn: &Connection) -> Result<()> {
         schema::ensure_current(conn)?;
-        let mut txn = MutationTxn::begin(conn, journal)?;
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
 
         // Ensure root directory exists with correct ownership
         let mut query_statement_0 =
@@ -319,60 +304,23 @@ impl Vfs {
         #[cfg(not(unix))]
         let (uid, gid) = (0u32, 0u32);
 
-        let changed = if root_ownership.is_none() {
+        if root_ownership.is_none() {
             let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;
             let now_secs = dur.as_secs() as i64;
             let now_nsec = dur.subsec_nanos() as i64;
-            txn.conn().execute(
+            txn.execute(
                 "INSERT INTO fs_inode (ino, mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec)
                 VALUES (?, ?, 2, ?, ?, 0, ?, ?, ?, ?, ?, ?)",
                 (ROOT_INO, DEFAULT_DIR_MODE as i64, uid, gid, now_secs, now_secs, now_secs, now_nsec, now_nsec, now_nsec),
             )
             ?;
-            schema::refresh_empty_initial_root(txn.conn())?;
-            Some(InodeRow {
-                ino: ROOT_INO,
-                mode: DEFAULT_DIR_MODE as i64,
-                nlink: 2,
-                uid: uid as i64,
-                gid: gid as i64,
-                size: 0,
-                atime: now_secs,
-                mtime: now_secs,
-                ctime: now_secs,
-                rdev: 0,
-                atime_nsec: now_nsec,
-                mtime_nsec: now_nsec,
-                ctime_nsec: now_nsec,
-                data_inline: None,
-                storage_kind: STORAGE_CHUNKED,
-            })
         } else if root_ownership != Some((uid, gid)) {
-            // Update existing root inode ownership to current user
-            let mut query_statement_1 = conn.prepare_cached(
-                "UPDATE fs_inode SET uid = ?, gid = ? WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+            conn.execute(
+                "UPDATE fs_inode SET uid = ?, gid = ? WHERE ino = ?",
+                (uid, gid, ROOT_INO),
             )?;
-            let mut rows = query_statement_1.query((uid, gid, ROOT_INO))?;
-            let row = rows.next()?.ok_or_else(|| {
-                Error::Internal("root ownership update returned no row".to_string())
-            })?;
-            Some(InodeRow::from_row(row, 0)?)
-        } else {
-            None
-        };
-
-        // A no-change open only read; committing it would count as a
-        // mutating commit (and, with journaling disabled, durably mark the
-        // history epoch invalid for a maintenance open that touched nothing).
-        match changed {
-            Some(root) => {
-                txn.record_inode("root_init", root)?;
-                txn.commit()?;
-            }
-            None => txn.rollback()?,
         }
+        txn.commit()?;
         Ok(())
     }
 
@@ -650,12 +598,9 @@ impl Vfs {
         let owned = self.clone();
         self.pool
             .execute(move |conn| {
-                let reaped =
-                    owned
-                        .lifecycle
-                        .process_deferred_reaps(conn, owned.journal_ctx(), |ino| {
-                            owned.discard_pending_for_reaped_inode(ino);
-                        })?;
+                let reaped = owned.lifecycle.process_deferred_reaps(conn, |ino| {
+                    owned.discard_pending_for_reaped_inode(ino);
+                })?;
                 for ino in reaped {
                     owned.invalidate_attr(ino);
                 }
@@ -664,11 +609,7 @@ impl Vfs {
             .await
     }
 
-    fn reap_inode_with_conn(
-        &self,
-        conn: &Connection,
-        ino: i64,
-    ) -> Result<Option<lifecycle::ReapChanges>> {
+    fn reap_inode_with_conn(&self, conn: &Connection, ino: i64) -> Result<bool> {
         self.lifecycle.reap_inode_with_conn(conn, ino)
     }
 
@@ -710,7 +651,7 @@ impl Vfs {
         mode: u32,
         ownership: (u32, u32),
         update_parent_times: bool,
-    ) -> Result<(Stats, Option<InodeRow>, i64)> {
+    ) -> Result<Stats> {
         let (uid, gid) = ownership;
         let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;
         let now_secs = dur.as_secs() as i64;
@@ -752,45 +693,36 @@ impl Vfs {
             }
             Err(error) => return Err(error.into()),
         }
-        let dentry_id = conn.last_insert_rowid();
 
-        let parent = if update_parent_times {
+        if update_parent_times {
             let mut query_statement_0 = conn.prepare_cached(
                 "UPDATE fs_inode
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
-                     RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
+                     RETURNING ino",
             )?;
             let mut rows =
                 query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))?;
-            let row = rows.next()?.ok_or_else(|| {
+            rows.next()?.ok_or_else(|| {
                 Error::Internal("create parent update returned no row".to_string())
             })?;
-            Some(InodeRow::from_row(row, 0)?)
-        } else {
-            None
-        };
+        }
 
-        Ok((
-            Stats {
-                ino,
-                mode: file_mode,
-                nlink: 1,
-                uid,
-                gid,
-                size: 0,
-                atime: now_secs,
-                mtime: now_secs,
-                ctime: now_secs,
-                atime_nsec: now_nsec as u32,
-                mtime_nsec: now_nsec as u32,
-                ctime_nsec: now_nsec as u32,
-                rdev: 0,
-            },
-            parent,
-            dentry_id,
-        ))
+        Ok(Stats {
+            ino,
+            mode: file_mode,
+            nlink: 1,
+            uid,
+            gid,
+            size: 0,
+            atime: now_secs,
+            mtime: now_secs,
+            ctime: now_secs,
+            atime_nsec: now_nsec as u32,
+            mtime_nsec: now_nsec as u32,
+            ctime_nsec: now_nsec as u32,
+            rdev: 0,
+        })
     }
 
     pub(crate) fn publish_created_file(&self, parent_ino: i64, name: &str, stats: &Stats) {
@@ -1050,7 +982,7 @@ impl Vfs {
             pending_view: self.pending_view.clone(),
             write_drain: self.write_drain.clone(),
             overlay_reads: self.overlay_reads,
-            journal: self.journal_ctx(),
+
             _open_guard: Some(Arc::new(self.lifecycle.guard(ino))),
         }))
     }

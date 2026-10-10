@@ -1,5 +1,14 @@
 # Changelog
 
+## RED PANDA file-management boundary
+
+- Format 0.12 stores current filesystem state and overlay lineage; reject
+  older formats without mutation or implicit migration.
+- Remove core row journals, relational snapshots, replay APIs and history
+  configuration. Sandbox owns operation evidence and file restoration.
+- Preserve SQLite transactions, WAL recovery, immutable artifacts and live
+  chunk references. Collect unused chunks before sealing a new artifact.
+
 ## RED PANDA SQLite executor migration
 
 - Replace Turso and its vendored engine patches with tokio-rusqlite, rusqlite

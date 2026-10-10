@@ -1,13 +1,12 @@
 # RED PANDA VFS 文件存储格式
 
-**Version:** 0.11
+**Version:** 0.12
 
 ## Introduction
 
-This local format stores filesystem state, overlay lineage and replayable history.
-Only version 0.11 is accepted. Independent KV/tool state, session-handoff APIs
-and remote chunk resolution have been removed. Filesystem history semantics
-remain unchanged pending a separate design discussion.
+This local format stores current filesystem state and overlay lineage.
+Only version 0.12 is accepted. File-operation history belongs to Sandbox's
+file-management layer; core provides current-state transactions and frozen artifacts.
 
 All timestamps in this specification use Unix epoch format (seconds since 1970-01-01 00:00:00 UTC) with optional nanosecond precision via separate `_nsec` columns.
 
@@ -134,21 +133,17 @@ CREATE TABLE fs_config (
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `schema_version` | On-disk schema version | `0.11` |
+| `schema_version` | On-disk schema version | `0.12` |
 | `filesystem_id` | Immutable UUID v4 creation namespace of this delta | Generated once at database creation |
 | `chunk_size` | Size of data chunks in bytes | `65536` |
 | `inline_threshold` | Maximum dense regular-file size stored inline in `fs_inode.data_inline` | `16384` |
-| `history_epoch` | Identity of the current replay lineage | `1` |
-| `history_valid` | Whether replay from the retained root and journal is valid | `1` |
-| `history_floor_seq` | Lowest retained sequence boundary | `0` |
 
 **Notes:**
 
 - `chunk_size` determines the fixed size of data chunks in `fs_data`
 - New filesystems use 64 KiB chunks by default
 - `inline_threshold` determines when dense regular files may avoid `fs_data` rows entirely
-- Schema and geometry keys are immutable after initialization; the history
-  epoch, validity, and floor keys are runtime-managed durable markers
+- Schema and geometry keys are immutable after initialization
 - Implementations MAY define additional configuration keys
 
 #### Table: `fs_inode`
@@ -318,13 +313,8 @@ CREATE TABLE fs_chunk (
 **Notes:**
 
 - Equal chunk bytes MUST share one row.
-- `refcount` counts live mappings only; journal retention is derived from
-  the digests named by retained `fs_op_journal` rows, not tracked in a
-  separate relation.
-- A zero-refcount row MAY remain while a retained journal entry or root
-  snapshot references its digest. Garbage collection MUST remove it only
-  after the live mapping count is zero, no retained journal row names it,
-  and no `fs_snapshot_chunk` row pins it.
+- `refcount` counts live mappings only. Zero-refcount chunks may be reclaimed
+  independently of Sandbox operation history. Frozen artifacts own their bytes.
 - Digest computation and insertion MUST occur in the same transaction as the
   corresponding `fs_data` mapping change.
 
@@ -487,8 +477,7 @@ To read `length` bytes starting at byte offset `offset`:
    DELETE FROM fs_inode WHERE ino = ?
    DELETE FROM fs_data WHERE ino = ?
    ```
-6. Garbage-collect zero-refcount `fs_chunk` rows only when no retained
-   journal row names their digest and no `fs_snapshot_chunk` row pins it.
+6. Garbage-collect only zero-refcount `fs_chunk` rows after acknowledged writes drain.
 
 #### Creating a Hard Link
 
@@ -520,28 +509,23 @@ When creating a new agent database, initialize the filesystem configuration and 
 
 ```sql
 -- Initialize filesystem configuration
-INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.11');
+INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.12');
 INSERT INTO fs_config (key, value) VALUES ('chunk_size', '65536');
 INSERT INTO fs_config (key, value) VALUES ('inline_threshold', '16384');
-INSERT INTO fs_config (key, value) VALUES ('history_epoch', '1');
-INSERT INTO fs_config (key, value) VALUES ('history_valid', '1');
-INSERT INTO fs_config (key, value) VALUES ('history_floor_seq', '0');
 
 -- Initialize root directory
 INSERT INTO fs_inode (ino, mode, nlink, uid, gid, size, atime, mtime, ctime)
 VALUES (1, 16877, 2, 0, 0, 0, unixepoch(), unixepoch(), unixepoch());
 ```
 
-Where `16877` = `0o040755` (directory with rwxr-xr-x permissions). Before the
-first writable open completes, initialization captures an immutable `init`
-history root containing inode 1 at epoch 1 through sequence 0.
+Where `16877` = `0o040755` (directory with rwxr-xr-x permissions).
 
 **Note:** The `chunk_size` and `inline_threshold` values can be customized at filesystem creation time but MUST NOT be changed afterward. The root directory starts at `nlink=2` for its synthetic `.` and `..` references.
 
 ### Format Boundary
 
-`PRAGMA user_version = 11` identifies the local-only filesystem format. `MIN_SUPPORTED` is
-0.11. Initialization, writable open and read-only open MUST refuse any older
+`PRAGMA user_version = 12` identifies the local-only filesystem format. `MIN_SUPPORTED` is
+0.12. Initialization, writable open and read-only open MUST refuse any older
 format before running schema DDL. The older application tables and remote-chunk
 layouts are outside this local filesystem contract; no migration path is provided.
 A current database with missing or incompatible identity columns is corrupt
@@ -551,7 +535,7 @@ and MUST be refused, rather than repaired as a legacy layout.
 transaction. Files created in that delta have identity `vfs:<filesystem_id>:<ino>`.
 Independent deltas therefore do not alias when their inode numbers coincide.
 Hard links share identity; overlay copy-up retains the originating identity.
-Snapshots, compaction and history reconstruction preserve `filesystem_id`.
+Frozen artifacts and writable copies preserve `filesystem_id`.
 Current databases with a missing or malformed namespace MUST be refused without
 regenerating it. Content digests validate bytes; they do not identify independent files.
 
@@ -586,7 +570,7 @@ Implementations MAY extend the filesystem schema with additional functionality:
 - Extended attributes table
 - File ACLs and advanced permissions
 - Quota tracking per user/group
-- Version history and snapshots
+- Operation history (owned by the Sandbox file-management layer)
 - Content deduplication
 - Compression metadata
 - File checksums/hashes
@@ -724,7 +708,7 @@ CREATE TABLE fs_origin (
 A base adapter supplies an opaque stable identity within its configured base.
 Windows HostFS uses the volume serial number and the complete 128-bit native
 file ID. Unix HostFS uses device/inode identity; a Vfs base uses its durable
-inode ID. Identity is preserved in origin journal post-images and root snapshots.
+inode ID. Identity is preserved in origin rows and frozen artifacts.
 An overlay used as another base preserves its origin identity across copy-up.
 
 ### Partial-Origin Overlay Mode
@@ -790,219 +774,28 @@ pass with the policy enabled.
 7. Legacy overlay formats MUST be refused before current-format schema operations
 8. Partial-origin sidecars MUST survive while an unlinked private inode has open handles and be collected when that inode is reaped
 
-## Retained history metadata
+## File history ownership
 
-`fs_session_metadata` and the seed provenance handled by snapshots/replay
-remain as internal history dependencies for this pruning pass. There is no
-public session-handoff, pack-generation or seeding API. Their removal or
-replacement must be decided together with the history mechanism.
+The core stores current file state, overlay lineage and immutable SQLite artifacts.
+Sandbox's file-management layer owns operation evidence, restore decisions and
+child-view exchange. Core mutations have no row journal or relational history
+snapshots. SQLite transactions, WAL and crash recovery remain required.
 
-## Operation Journal
-
-The v0.8 journal is an ordered row-delta stream. Each row identifies one live
-filesystem table row that was inserted, replaced, or deleted by a committed
-SQLite transaction. Replaying a root snapshot followed by complete transaction
-groups reconstructs the live filesystem state without interpreting
-operation-specific payloads.
-
-### Table: `fs_op_journal`
-
-```sql
-CREATE TABLE fs_op_journal (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  txn_id INTEGER NOT NULL,
-  label TEXT NOT NULL,
-  tbl TEXT NOT NULL,
-  verb TEXT NOT NULL,
-  row TEXT NOT NULL,
-  wallclock_ms INTEGER NOT NULL
-)
-```
-
-The journal carries no secondary index. Groups are contiguous in `seq` and
-`txn_id` equals the group's first `seq`, so every `txn_id` lookup is a `seq`
-range scan; the queries that group by transaction run only on offline paths
-(GC, reconstruction, `vfs history`) where a scan is acceptable, and an index
-would cost every mutating commit an extra B-tree write.
-
-**Fields:**
-
-- `seq` - Monotonic journal sequence number and total operation order
-- `txn_id` - Identifier shared by every row delta committed in one
-  SQLite transaction; it equals the `seq` of the group's first row
-- `label` - Diagnostic operation label such as `write`, `rename`, or `reap`;
-  replay does not branch on this value
-- `tbl` - One of `fs_inode`, `fs_dentry`, `fs_data`, `fs_symlink`,
-  `fs_whiteout`, `fs_origin`, `fs_partial_origin`, `fs_chunk_override`, or
-  `fs_overlay_config`
-- `verb` - `upsert` for a complete post-image or `delete` for a primary-key
-  tombstone
-- `row` - JSON object containing the complete replayable row shape. Binary
-  content is represented by lowercase hexadecimal BLAKE3 digests, never
-  embedded bytes. An `fs_inode` upsert carries every inode column except raw
-  `data_inline`; inline bytes are normalized to `data_inline_digest`.
-  `fs_dentry` upserts include the stable dentry `id` as well as
-  `(parent_ino,name,ino)`.
-- `wallclock_ms` - Commit-associated Unix epoch timestamp in milliseconds
-
-One logical mutation may produce several row deltas. Deltas from one commit
-MUST share one `txn_id`, and journal rows MUST commit atomically with the live
-rows they describe. Consumers replay commits in `seq` order and MUST treat all
-rows with one `txn_id` as a unit. Writers construct post-images from mutation
-inputs and mutation-statement results inside the transaction; they MUST NOT
-issue follow-up reads merely to build journal rows.
-
-Transaction IDs need no separate allocator state: a group's `txn_id` is the
-`seq` AUTOINCREMENT assigns to its first row. Writers maintain an optimistic
-next-sequence hint, verify it against the assigned first `seq`, and repair a
-stale hint inside the same exclusive transaction. A cold writer finds the
-head with `ORDER BY seq DESC LIMIT 1`; it does not run an aggregate on the hot
-commit path.
-
-### Journal chunk retention
-
-Journal rows are the retention relation for the digests they name: an
-`fs_data` upsert carries its chunk `digest` and an `fs_inode` upsert carries
-`data_inline_digest`. There is no separate pin table — a write-time pin would
-cost every mutating commit extra B-tree writes to record facts the journal
-rows already state. Garbage collection derives the referenced set by scanning
-retained upsert rows; an `fs_chunk` row is eligible for collection only when
-its live refcount is zero and neither a retained journal row nor a root
-snapshot names its digest. `fs_chunk.refcount` continues to equal the number
-of live `fs_data` mappings.
-
-## Root Snapshots
-
-A root snapshot is an immutable relational copy of replayable filesystem
-state at a sequence boundary.
-
-```sql
-CREATE TABLE fs_snapshot (
-  snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  through_seq INTEGER NOT NULL,
-  created_at_ms INTEGER NOT NULL,
-  reason TEXT NOT NULL,
-  history_epoch INTEGER NOT NULL,
-  UNIQUE(history_epoch, through_seq)
-)
-```
-
-Snapshot row tables mirror the replayable live tables and prefix their keys
-with `snapshot_id`:
-
-- `fs_snapshot_inode`
-- `fs_snapshot_dentry`
-- `fs_snapshot_data`
-- `fs_snapshot_symlink`
-- `fs_snapshot_whiteout`
-- `fs_snapshot_origin`
-- `fs_snapshot_partial_origin`
-- `fs_snapshot_chunk_override`
-
-`fs_snapshot_inode` stores `data_inline_digest` rather than raw inline bytes.
-`fs_snapshot_chunk(snapshot_id, digest)` pins every digest needed by snapshot
-inode and data rows. `fs_snapshot_meta(snapshot_id, key, value)` captures
-replay provenance including `seed_pin`, `seeded_paths`, and
-`parent_artifact`. Snapshot capture runs as direct SQL over the live tables
-inside one transaction; it does not hydrate file contents through runtime
-filesystem read APIs.
-
-A new database starts with an `init` snapshot at epoch 1 through sequence 0.
-Older database formats are rejected. New databases establish
-`history_epoch=1`, `history_valid=1`, and `history_floor_seq=0`.
-
-## History Range, Epochs, and Reconstruction
-
-`history_floor_seq` and the current journal/snapshot head define the inclusive
-advertised range. A target is replayable only when all of the following hold:
-
-1. `history_valid=1`;
-2. the target is within `[history_floor_seq, history_head_seq]`;
-3. the target equals the final `seq` of a complete transaction group, or is
-   exactly the floor root;
-4. a current-epoch snapshot exists at or before the target; and
-5. journal rows after that snapshot through the target are contiguous and
-   contain only whole transaction groups.
-
-Consumers MUST reject targets outside the range, targets inside a transaction,
-invalid epochs, missing roots, and journal gaps. They MUST NOT silently choose
-the nearest available state.
-
-Reconstruction operates only on a private writable staging database. It loads
-the nearest current-epoch root at or before the target into isolated replay
-state, applies complete row-delta groups in ascending `seq`, then atomically
-replaces these live tables:
-
-- `fs_inode`
-- `fs_dentry`
-- `fs_data`
-- `fs_symlink`
-- `fs_whiteout`
-- `fs_origin`
-- `fs_partial_origin`
-- `fs_chunk_override`
-
-For `fs_overlay_config`, replay replaces only `parent_artifact`; `base_path`
-belongs to the receiving staging database and MUST remain unchanged. Snapshot
-provenance restores `seed_pin` and `seeded_paths`. Session `generation` is outside
-filesystem-history scope and remains untouched.
-
-Inline inode bytes are rematerialized from `fs_chunk` through
-`data_inline_digest`. Reconstruction MUST fail if any inline or `fs_data`
-digest is missing. After replay it removes future journal rows and snapshots,
-rebuilds the journal AUTOINCREMENT table so the next group begins at
-`target+1`, recomputes every chunk refcount from live `fs_data`, and collects
-only chunks satisfying the three-way rule:
-
-```text
-refcount == 0
-AND no retained journal upsert names the digest
-AND no fs_snapshot_chunk pin
-```
-
-The inode allocator MUST remain above every inode that appeared anywhere in
-the retained pre-reconstruction live state, snapshots, or journal, so a
-reverted lineage never reuses an inode identity. Before publication,
-reconstruction MUST pass current-schema integrity checks and a visible-tree
-walk from inode 1.
-
-### Durable epoch invalidation
-
-The journaling kill switch is recorded durably, not inferred from the current
-environment:
-
-- the first mutation committed with journaling disabled changes
-  `history_valid` from `1` to `0`, in the same transaction as the mutation it
-  fails to journal; later unjournaled mutations do not rewrite the marker;
-- opens that mutate nothing never change the marker, so maintenance
-  operations (snapshot reads, staged reconstruction) under a disabled journal
-  leave a valid history valid;
-- read-only opens never change history markers;
-- the first writable open after journaling is re-enabled increments
-  `history_epoch`, removes the stale journal and snapshots, captures an
-  `epoch` root at the current state, publishes that root as the new floor, and
-  sets `history_valid=1`.
-
-No target from an invalidated or prior epoch remains available after
-revalidation.
-
-### Snapshot-covered retention and fresh floors
-
-Journal collection computes the sequence horizon as
-`history_head_seq - VFS_JOURNAL_RETENTION_OPS` and chooses the greatest
-complete transaction boundary at or below it. If that boundary advances the
-floor, collection reconstructs state at the boundary in isolated replay
-state, captures a new `gc` root there, publishes the new floor, then removes
-journal groups through the boundary and older/superseded roots in one
-transaction. Therefore every advertised target always has a covering root and
-a contiguous journal suffix.
-
-Establishing a fresh history floor remains an explicit core operation.
-It captures the current head and removes earlier replay targets.
+Unmapped content has `fs_chunk.refcount = 0`. `collect_unused_chunks` drains
+acknowledged writes and deletes only these chunks; live mappings retain their
+references. A frozen database owns its own rows and is never edited by collection
+in the writable source. Collection is separate from operation-history retention.
 
 ## Revision History
 
 Older entries describe the upstream history, including features removed by this fork.
+
+### Version 0.12 (RED PANDA)
+
+Remove internal row journals, relational root snapshots, replay APIs and their
+configuration. Keep current-state SQLite transactions and immutable artifacts.
+File history is owned by the Sandbox file-management layer. Versions 0.11 and
+earlier are refused. Unused chunk collection is independent of history retention.
 
 ### Version 0.11 (RED PANDA)
 

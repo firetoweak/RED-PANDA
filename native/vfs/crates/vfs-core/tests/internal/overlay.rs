@@ -3266,15 +3266,6 @@ async fn overlay_whiteout_failures_roll_back() -> Result<()> {
         0,
         "failed unlink must not leave a half-applied whiteout"
     );
-    assert_eq!(
-        scalar_i64(
-            &overlay,
-            "SELECT COUNT(*) FROM fs_op_journal WHERE label = 'whiteout'"
-        )
-        .await?,
-        0,
-        "failed whiteout mutation must roll back its journal row"
-    );
 
     overlay.fail_next_whiteout_for_test("rmdir injected whiteout failure");
     let rmdir_result = overlay.rmdir(ROOT_INO, "empty-dir").await;
@@ -3396,107 +3387,6 @@ async fn assert_no_orphan_sidecars(overlay: &OverlayFS, context: &str) -> Result
             "{context} should not leave orphan rows in {table}"
         );
     }
-    Ok(())
-}
-
-#[tokio::test]
-async fn journal_partial_copy_up_and_whiteout_share_logical_transactions() -> Result<()> {
-    let base_dir = tempdir()?;
-    let delta_dir = tempdir()?;
-    let db_path = delta_dir.path().join("delta.db");
-    let delta = Vfs::new(db_path.to_str().unwrap()).await?;
-    let chunk_size = delta.chunk_size();
-    std::fs::write(
-        base_dir.path().join("partial.bin"),
-        patterned_bytes(chunk_size * 2 + 9, 0x41),
-    )?;
-    std::fs::write(base_dir.path().join("hidden.txt"), b"hidden")?;
-    let overlay =
-        OverlayFS::new_with_partial_origin(Arc::new(HostFS::new(base_dir.path())?), delta, true);
-    overlay.init(base_dir.path().to_str().unwrap()).await?;
-
-    let baseline = scalar_i64(&overlay, "SELECT COALESCE(MAX(seq), 0) FROM fs_op_journal").await?;
-    let stats = overlay.lookup(ROOT_INO, "partial.bin").await?.unwrap();
-    let file = overlay.open(stats.ino, libc::O_RDWR).await?;
-
-    let conn = Connection::open(&db_path)?;
-    let mut statement_1 =
-        conn.prepare("SELECT txn_id, label FROM fs_op_journal WHERE seq > ? ORDER BY seq")?;
-    let mut rows = statement_1.query((baseline,))?;
-    let mut copy_up = Vec::new();
-    while let Some(row) = rows.next()? {
-        copy_up.push((row.get::<_, i64>(0)?, row.get::<_, String>(1)?));
-    }
-    let copy_up_txns = copy_up
-        .iter()
-        .filter(|(_, label)| matches!(label.as_str(), "copyup" | "origin_map" | "partial_origin"))
-        .map(|(txn_id, _)| *txn_id)
-        .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(
-        copy_up_txns.len(),
-        1,
-        "partial copy-up must be one SQLite txn"
-    );
-
-    let write_baseline =
-        scalar_i64(&overlay, "SELECT COALESCE(MAX(seq), 0) FROM fs_op_journal").await?;
-    file.pwrite(chunk_size as u64 + 3, b"journal").await?;
-    let mut statement_2 =
-        conn.prepare("SELECT txn_id, label FROM fs_op_journal WHERE seq > ? ORDER BY seq")?;
-    let mut rows = statement_2.query((write_baseline,))?;
-    let mut write_rows = Vec::new();
-    while let Some(row) = rows.next()? {
-        write_rows.push((row.get::<_, i64>(0)?, row.get::<_, String>(1)?));
-    }
-    assert!(write_rows.iter().any(|(_, op)| op == "write"));
-    assert!(write_rows.iter().any(|(_, op)| op == "chunk_override"));
-    assert_eq!(
-        write_rows
-            .iter()
-            .map(|(txn_id, _)| *txn_id)
-            .collect::<std::collections::BTreeSet<_>>()
-            .len(),
-        1
-    );
-
-    let whiteout_baseline =
-        scalar_i64(&overlay, "SELECT COALESCE(MAX(seq), 0) FROM fs_op_journal").await?;
-    overlay.unlink(ROOT_INO, "hidden.txt").await?;
-    let mut statement_3 =
-        conn.prepare("SELECT label FROM fs_op_journal WHERE seq > ? ORDER BY seq")?;
-    let mut rows = statement_3.query((whiteout_baseline,))?;
-    let mut ops = Vec::new();
-    while let Some(row) = rows.next()? {
-        ops.push(row.get::<_, String>(0)?);
-    }
-    assert!(ops.contains(&"whiteout".to_string()));
-    Ok(())
-}
-
-#[tokio::test]
-async fn journal_kill_switch_covers_overlay_mutations() -> Result<()> {
-    let base_dir = tempdir()?;
-    std::fs::write(base_dir.path().join("base.bin"), vec![5; 128 * 1024])?;
-    let delta_dir = tempdir()?;
-    let db_path = delta_dir.path().join("delta.db");
-    let pool = crate::pool::ConnectionPool::writable(db_path.clone(), 8);
-    let config = crate::CoreConfig {
-        journal_enabled: false,
-        ..crate::CoreConfig::default()
-    };
-    let delta = Vfs::from_pool_with_config(pool, config).await?;
-    let overlay =
-        OverlayFS::new_with_partial_origin(Arc::new(HostFS::new(base_dir.path())?), delta, true);
-    overlay.init(base_dir.path().to_str().unwrap()).await?;
-
-    let stats = overlay.lookup(ROOT_INO, "base.bin").await?.unwrap();
-    let file = overlay.open(stats.ino, libc::O_RDWR).await?;
-    file.pwrite(17, b"off").await?;
-    overlay.unlink(ROOT_INO, "base.bin").await?;
-    assert_eq!(
-        scalar_i64(&overlay, "SELECT COUNT(*) FROM fs_op_journal").await?,
-        0
-    );
     Ok(())
 }
 

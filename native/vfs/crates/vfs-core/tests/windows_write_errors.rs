@@ -1,4 +1,4 @@
-//! Failed COW reads and SQL mutations leave the committed file and journal intact.
+//! Failed COW reads and SQL mutations leave the committed file state intact.
 #![cfg(windows)]
 use std::{
     path::Path,
@@ -29,7 +29,7 @@ async fn summary(sdk: &Vfs) -> Result<Vec<i64>> {
     sdk.get_pool()
         .execute(|conn| {
             let mut counts = Vec::new();
-            for table in ["fs_data", "fs_chunk", "fs_chunk_override", "fs_op_journal"] {
+            for table in ["fs_data", "fs_chunk", "fs_chunk_override"] {
                 let mut statement_0 = conn.prepare(&format!("SELECT COUNT(*) FROM {table}"))?;
                 let mut rows = statement_0.query(())?;
                 counts.push(rows.next()?.unwrap().get(0)?);
@@ -62,7 +62,7 @@ fn changes() -> Vec<WriteRange> {
 }
 
 #[tokio::test]
-async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result<()> {
+async fn failed_multichunk_write_preserves_data_and_metadata() -> Result<()> {
     for sql_failure in [false, true] {
         let dir = tempfile::tempdir()?;
         let base = dir.path().join("base");
@@ -145,7 +145,7 @@ async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result
         assert_eq!(
             summary(&sdk).await?,
             counts,
-            "failed write leaked storage or journal rows"
+            "failed write leaked storage rows"
         );
         // A fresh transaction must work after removing the fault.
         file.pwrite_ranges(changes()).await?;

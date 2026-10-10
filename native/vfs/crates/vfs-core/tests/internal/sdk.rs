@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::Error;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 #[cfg(unix)]

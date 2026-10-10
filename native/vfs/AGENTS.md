@@ -19,7 +19,7 @@ Windows 挂载实现位于 vfs-mount。macOS HostFS 保留。
 - 生产 Rust 文件不超过 2500 行非测试代码。不要引入旧设计兼容层。
 
 当前范围不包含独立 CLI、NFS、KV、工具审计、会话交接、加密配置和远端 chunk 获取。
-内部 journal/快照/历史重放机制本次保持，调整前与用户单独讨论。
+文件操作历史统一由 Sandbox 的文件管理层持有。底层只管理当前文件状态、SQLite 事务持久化与冻结制品，不保留独立的行级 journal、关系快照和历史重放。SQLite 自身的 WAL 与崩溃恢复必须保留。
 
 测试命令和平台边界见 [docs/TESTING.md](docs/TESTING.md)。Linux 可运行
 `scripts/gate.sh`；结构检查仍由 `scripts/validation/consistency-canon.sh` 和 DDL census 执行。

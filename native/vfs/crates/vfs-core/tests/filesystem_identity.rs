@@ -174,7 +174,7 @@ async fn separate_deltas_and_equal_content_files_keep_distinct_identity() -> Res
 }
 
 #[tokio::test]
-async fn identity_survives_snapshot_path_changes_and_history_reconstruction() -> Result<()> {
+async fn identity_survives_snapshot_path_changes_and_writable_copy() -> Result<()> {
     let dir = tempdir()?;
     let sdk = open(&dir.path().join("writer.db")).await?;
     let (stats, f) = FileSystem::create_file(&sdk.fs, 1, "original", 0o644, 0, 0).await?;
@@ -182,7 +182,6 @@ async fn identity_survives_snapshot_path_changes_and_history_reconstruction() ->
     f.fsync().await?;
     drop(f);
     let id = sdk.fs.file_identity(stats.ino)?;
-    let root = sdk.capture_root("identity").await?;
     sdk.fs.rename(1, "original", 1, "renamed").await?;
     assert_eq!(sdk.fs.file_identity(stats.ino)?, id);
     let image = dir.path().join("immutable.db");
@@ -192,12 +191,11 @@ async fn identity_survives_snapshot_path_changes_and_history_reconstruction() ->
     let reader = Vfs::open_read_only(&relocated).await?;
     let renamed = reader.fs.lookup(1, "renamed").await?.unwrap();
     assert_eq!(reader.fs.file_identity(renamed.ino)?, id);
-    let staging = dir.path().join("reconstruct.db");
+    let staging = dir.path().join("writable-copy.db");
     sdk.snapshot_into(&staging).await?;
-    Vfs::reconstruct_to(&staging, root.through_seq).await?;
     let restored = open(&staging).await?;
-    assert!(restored.fs.lookup(1, "renamed").await?.is_none());
-    let original = restored.fs.lookup(1, "original").await?.unwrap();
+    assert!(restored.fs.lookup(1, "original").await?.is_none());
+    let original = restored.fs.lookup(1, "renamed").await?.unwrap();
     assert_eq!(restored.fs.file_identity(original.ino)?, id);
     assert_eq!(
         FileSystem::open(&restored.fs, original.ino, libc::O_RDONLY)

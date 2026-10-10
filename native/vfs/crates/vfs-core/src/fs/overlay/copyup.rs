@@ -1,5 +1,6 @@
 use super::*;
 use crate::fs::{BoxedFile, FsError};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 impl OverlayFS {
     pub(super) async fn resolve_base_path(&self, path: &str) -> Result<Option<Stats>> {
@@ -65,45 +66,16 @@ impl OverlayFS {
                 }
                 drop(rows);
 
-                let mut txn =
-                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
-                let origin_changed = txn
-                    .conn()
-                    .execute("DELETE FROM fs_origin WHERE delta_ino = ?", (delta_ino,))?;
-                let mut query_statement_1 = conn.prepare_cached(
-                    "DELETE FROM fs_chunk_override
-                 WHERE delta_ino = ?
-                 RETURNING chunk_index",
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                txn.execute("DELETE FROM fs_origin WHERE delta_ino = ?", (delta_ino,))?;
+                txn.execute(
+                    "DELETE FROM fs_chunk_override WHERE delta_ino = ?",
+                    (delta_ino,),
                 )?;
-                let mut override_rows = query_statement_1.query((delta_ino,))?;
-                let mut override_indexes = Vec::new();
-                while let Some(row) = override_rows.next()? {
-                    override_indexes.push(row.get::<_, i64>(0)?);
-                }
-                drop(override_rows);
-                let partial_changed = txn.conn().execute(
+                txn.execute(
                     "DELETE FROM fs_partial_origin WHERE delta_ino = ?",
                     (delta_ino,),
                 )?;
-                if origin_changed > 0 {
-                    txn.record(super::super::vfs::JournalDelta::origin_delete(
-                        "partial_cleanup",
-                        delta_ino,
-                    ));
-                }
-                for chunk_index in override_indexes {
-                    txn.record(super::super::vfs::JournalDelta::chunk_override_delete(
-                        "partial_cleanup",
-                        delta_ino,
-                        chunk_index,
-                    ));
-                }
-                if partial_changed > 0 {
-                    txn.record(super::super::vfs::JournalDelta::partial_origin_delete(
-                        "partial_cleanup",
-                        delta_ino,
-                    ));
-                }
                 txn.commit()?;
                 owned
                     .origin_map
@@ -371,12 +343,11 @@ impl OverlayFS {
         let info = &info;
         let name = name.as_str();
 
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
-        let (stats, parent, dentry_id) = owned
+        let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+        let stats = owned
             .delta
             .create_file_with_conn(
-                txn.conn(),
+                &txn,
                 parent_ino,
                 name,
                 base_stats.mode,
@@ -385,7 +356,7 @@ impl OverlayFS {
             )
             ?;
         let delta_ino = stats.ino;
-        txn.conn().execute(
+        txn.execute(
             "UPDATE fs_inode
              SET mode = ?, uid = ?, gid = ?, size = ?, atime = ?, mtime = ?, ctime = ?,
                  atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, data_inline = NULL, storage_kind = ?
@@ -407,10 +378,10 @@ impl OverlayFS {
         )
         ?;
         let base_identity = owned.base.file_identity(info.underlying_ino)?;
-        Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &base_identity)?;
+        Self::add_origin_mapping_with_conn(&txn, delta_ino, &base_identity)?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
         Self::add_partial_origin_mapping_with_conn(
-            txn.conn(),
+            &txn,
             delta_ino,
             info.underlying_ino,
             &info.path,
@@ -418,52 +389,6 @@ impl OverlayFS {
             now,
         )
         ?;
-        let final_stats = Stats {
-            ino: delta_ino,
-            mode: base_stats.mode,
-            nlink: stats.nlink,
-            uid: base_stats.uid,
-            gid: base_stats.gid,
-            size: base_stats.size,
-            atime: base_stats.atime,
-            mtime: base_stats.mtime,
-            ctime: base_stats.ctime,
-            atime_nsec: base_stats.atime_nsec,
-            mtime_nsec: base_stats.mtime_nsec,
-            ctime_nsec: base_stats.ctime_nsec,
-            rdev: stats.rdev,
-        };
-        txn.record_inode(
-            "copyup",
-            super::super::vfs::InodeRow::from_stats(&final_stats, None, STORAGE_CHUNKED),
-        )
-        ?;
-        txn.record(super::super::vfs::JournalDelta::dentry_upsert(
-            "copyup", dentry_id, parent_ino, name, delta_ino,
-        ));
-        if let Some(parent) = parent {
-            txn.record_inode("copyup", parent)?;
-        }
-        txn.record(super::super::vfs::JournalDelta::origin_upsert(
-            "origin_map",
-            delta_ino,
-            &base_identity,
-        ));
-        txn.record(super::super::vfs::JournalDelta::partial_origin_upsert(
-            "partial_origin",
-            &super::super::vfs::PartialOriginRow {
-                delta_ino,
-                base_ino: info.underlying_ino,
-                base_path: info.path.clone(),
-                base_size: base_stats.size,
-                base_fingerprint_size: base_stats.size,
-                base_mtime: base_stats.mtime,
-                base_mtime_nsec: base_stats.mtime_nsec as i64,
-                base_ctime: base_stats.ctime,
-                base_ctime_nsec: base_stats.ctime_nsec as i64,
-                created_at: now,
-            },
-        ));
         txn.commit()?;
 
         owned.delta.publish_created_file(parent_ino, name, &stats);
