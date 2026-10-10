@@ -10,6 +10,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::{
     error::Result,
     fs::BaseValidator,
@@ -160,17 +161,16 @@ async fn verify(root: &Path, seed: bool) -> Result<()> {
     }
     assert_eq!(std::fs::read_dir(root.join("base"))?.count(), 2);
     let db = root.join("delta.db");
-    let sdk = Vfs::open(VfsOptions::with_path(db.to_string_lossy())).await?;
-    let conn = sdk.get_connection().await?;
-    let report = check(&conn, &CheckOpts::new(db).check_base(true)).await?;
+    let _sdk = Vfs::open(VfsOptions::with_path(db.to_string_lossy())).await?;
+    let conn = Connection::open(&db)?;
+    let report = check(&conn, &CheckOpts::new(db).check_base(true))?;
     assert!(report.ok, "post-crash integrity: {report:?}");
     if seed {
         for table in ["fs_data", "fs_chunk_override"] {
-            let mut rows = conn
-                .query(format!("SELECT COUNT(*) FROM {table}"), ())
-                .await?;
+            let mut statement_0 = conn.prepare(&format!("SELECT COUNT(*) FROM {table}"))?;
+            let mut rows = statement_0.query(())?;
             assert_eq!(
-                rows.next().await?.unwrap().get::<i64>(0)?,
+                rows.next()?.unwrap().get::<_, i64>(0)?,
                 0,
                 "uncommitted chunk survived in {table}"
             );

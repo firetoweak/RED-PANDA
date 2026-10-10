@@ -73,7 +73,7 @@ python scripts/build_sandbox.py --target x86_64-pc-windows-gnullvm --debug `
 
 SDK include 目录应包含 `winfsp/winfsp.h`，lib 目录应包含当前 linker 能使用的 `winfsp_x64` 链接库；运行库目录应包含 `libunwind.dll`，其上一级应包含 LLVM 的 `LICENSE.TXT`。`--offline` 仅适用于 Cargo 依赖已下载的环境。
 
-Cargo 直接使用 `../vfs/` 的仓库内路径依赖，第三方 Turso 补丁也来自该目录；没有外部源码路径、子模块或 Junction。构建临时目录在本项目 `.tools/` 内；`CARGO_TARGET_DIR` 可指定其他构建输出位置。
+Cargo 直接使用 `../vfs/` 的仓库内路径依赖，数据库由 tokio-rusqlite 与随包编译的 SQLite 提供；没有外部源码路径、子模块或 Junction。构建临时目录在本项目 `.tools/` 内；`CARGO_TARGET_DIR` 可指定其他构建输出位置。
 
 ## 运行与分发
 

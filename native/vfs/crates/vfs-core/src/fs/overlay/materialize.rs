@@ -196,21 +196,27 @@ impl OverlayFS {
     }
 
     async fn restore_materialized_metadata(&self, metadata: HashMap<i64, Stats>) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let mut restored = Vec::with_capacity(metadata.len());
-        for (ino, stats) in metadata {
-            let mut rows = txn
-                .conn()
-                .query(
-                    "UPDATE fs_inode
+        self.delta.get_pool().check_ready()?;
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let mut restored = Vec::with_capacity(metadata.len());
+                for (ino, stats) in metadata {
+                    let mut query_statement_0 = conn.prepare_cached(
+                        "UPDATE fs_inode
                  SET mode = ?, uid = ?, gid = ?, atime = ?, mtime = ?, ctime = ?,
                      atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, rdev = ?
                  WHERE ino = ?
                  RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
                            atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                    (
+                    )?;
+                    let mut rows = query_statement_0.query((
                         stats.mode as i64,
                         stats.uid as i64,
                         stats.gid as i64,
@@ -222,19 +228,19 @@ impl OverlayFS {
                         stats.ctime_nsec as i64,
                         stats.rdev as i64,
                         ino,
-                    ),
-                )
-                .await?;
-            let row = rows.next().await?.ok_or(FsError::NotFound)?;
-            let inode = super::super::vfs::InodeRow::from_row(&row, 0)?;
-            drop(rows);
-            txn.record_inode("materialize_meta", inode).await?;
-            restored.push(ino);
-        }
-        txn.commit().await?;
-        for ino in restored {
-            self.delta.invalidate_attr(ino);
-        }
-        Ok(())
+                    ))?;
+                    let row = rows.next()?.ok_or(FsError::NotFound)?;
+                    let inode = super::super::vfs::InodeRow::from_row(row, 0)?;
+                    drop(rows);
+                    txn.record_inode("materialize_meta", inode)?;
+                    restored.push(ino);
+                }
+                txn.commit()?;
+                for ino in restored {
+                    owned.delta.invalidate_attr(ino);
+                }
+                Ok(())
+            })
+            .await
     }
 }

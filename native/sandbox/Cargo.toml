@@ -20,10 +20,5 @@ vfs-mount = { path = "../vfs/crates/vfs-mount", features = ["winfsp"] }
 [target.'cfg(unix)'.dependencies]
 vfs-mount = { path = "../vfs/crates/vfs-mount" }
 
-[patch.crates-io]
-turso = { path = "../vfs/third_party/turso" }
-turso_sdk_kit = { path = "../vfs/third_party/turso_sdk_kit" }
-turso_core = { path = "../vfs/third_party/turso_core" }
-
 [lints.clippy]
 await_holding_lock = "deny"

@@ -21,6 +21,7 @@ vfs-fuse = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio-rusqlite = { workspace = true }
 
 [features]
 winfsp = []

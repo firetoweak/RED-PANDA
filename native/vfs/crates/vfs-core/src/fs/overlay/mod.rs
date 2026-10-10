@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use turso::{Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
 
 use super::{vfs::Vfs, BoxedFile, File, FileSystem, Stats, WriteRange};
 
@@ -178,23 +178,24 @@ pub trait BaseValidator: Send + Sync {
 /// behavior. The `resolves_to_visible_base_directory` signal must stay shared
 /// by both readdir base-child merging and the rename guard if opacity is ever
 /// revisited.
+#[derive(Clone)]
 pub struct OverlayFS {
     /// The underlying read-only base filesystem
     base: Arc<dyn FileSystem>,
     /// The delta layer where modifications go
     delta: Vfs,
     /// Overlay inode maps, reverse maps, path maps, allocator, and lookup refs.
-    maps: Mutex<OverlayMaps>,
+    maps: Arc<Mutex<OverlayMaps>>,
     /// Set of whiteout paths (deleted from base)
-    whiteouts: RwLock<HashSet<String>>,
+    whiteouts: Arc<RwLock<HashSet<String>>>,
     /// Persisted base identity -> delta inode, rebuilt after history restoration.
-    origin_map: RwLock<HashMap<String, i64>>,
+    origin_map: Arc<RwLock<HashMap<String, i64>>>,
     /// Explicit policy for chunk-granularity base fallback.
     partial_origin_policy: PartialOriginPolicy,
     base_validator: Option<Arc<dyn BaseValidator>>,
     /// Test-only fault injection for whiteout transaction rollback coverage.
     #[cfg(test)]
-    whiteout_fault: Mutex<Option<String>>,
+    whiteout_fault: Arc<Mutex<Option<String>>>,
 }
 
 impl OverlayFS {
@@ -239,36 +240,49 @@ impl OverlayFS {
         Self {
             base,
             delta,
-            maps: Mutex::new(OverlayMaps::new()),
-            whiteouts: RwLock::new(HashSet::new()),
-            origin_map: RwLock::new(HashMap::new()),
+            maps: Arc::new(Mutex::new(OverlayMaps::new())),
+            whiteouts: Arc::new(RwLock::new(HashSet::new())),
+            origin_map: Arc::new(RwLock::new(HashMap::new())),
             partial_origin_policy,
             base_validator: None,
             #[cfg(test)]
-            whiteout_fault: Mutex::new(None),
+            whiteout_fault: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Initialize the overlay filesystem schema
-    pub async fn init_schema(conn: &Connection, base_path: &str) -> Result<()> {
-        schema::set_overlay_base_path(conn, base_path).await
+    pub fn init_schema(conn: &Connection, base_path: &str) -> Result<()> {
+        schema::set_overlay_base_path(conn, base_path)
     }
 
     /// Initialize the overlay filesystem
     pub async fn init(&self, base_path: &str) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        Self::init_schema(&conn, base_path).await?;
-        self.load_whiteouts(&conn).await?;
-        self.load_origins(&conn).await?;
-        Ok(())
+        self.delta.get_pool().check_ready()?;
+
+        let base_path = base_path.to_owned();
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let base_path = base_path.as_str();
+
+                Self::init_schema(conn, base_path)?;
+                owned.load_whiteouts(conn)?;
+                owned.load_origins(conn)?;
+                Ok(())
+            })
+            .await
     }
 
     /// Load whiteouts from database into memory
-    async fn load_whiteouts(&self, conn: &Connection) -> Result<()> {
-        let mut rows = conn.query("SELECT path FROM fs_whiteout", ()).await?;
+    fn load_whiteouts(&self, conn: &Connection) -> Result<()> {
+        let mut query_statement_0 = conn.prepare_cached("SELECT path FROM fs_whiteout")?;
+        let mut rows = query_statement_0.query([])?;
         let mut paths = Vec::new();
-        while let Some(row) = rows.next().await? {
-            paths.push(row.get::<String>(0)?);
+        while let Some(row) = rows.next()? {
+            paths.push(row.get::<_, String>(0)?);
         }
         let mut whiteouts = self.whiteouts.write();
         for path in paths {
@@ -279,26 +293,44 @@ impl OverlayFS {
 
     /// Load existing whiteouts (public interface)
     pub async fn load_whiteouts_public(&self) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        self.load_whiteouts(&conn).await
+        self.delta.get_pool().check_ready()?;
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                owned.load_whiteouts(conn)
+            })
+            .await
     }
 
     /// Load persisted state (whiteouts and origin mappings) from database.
     /// Call this after creating an OverlayFS for an existing database.
     pub async fn load(&self) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        self.load_whiteouts(&conn).await?;
-        self.load_origins(&conn).await?;
-        Ok(())
+        self.delta.get_pool().check_ready()?;
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                owned.load_whiteouts(conn)?;
+                owned.load_origins(conn)?;
+                Ok(())
+            })
+            .await
     }
 
     /// Load origin mappings from database.
-    async fn load_origins(&self, conn: &Connection) -> Result<()> {
-        let mut rows = conn
-            .query("SELECT delta_ino, base_identity FROM fs_origin", ())
-            .await?;
+    fn load_origins(&self, conn: &Connection) -> Result<()> {
+        let mut query_statement_0 =
+            conn.prepare_cached("SELECT delta_ino, base_identity FROM fs_origin")?;
+        let mut rows = query_statement_0.query([])?;
         let mut mappings = Vec::new();
-        while let Some(row) = rows.next().await? {
+        while let Some(row) = rows.next()? {
             let delta_ino: i64 = row.get(0)?;
             let base_identity: String = row.get(1)?;
             mappings.push((base_identity, delta_ino));
@@ -323,7 +355,5 @@ impl OverlayFS {
 }
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
-// Keep the extracted test body byte-for-byte; this feature is a pure move.
-#[rustfmt::skip]
-#[path = "tests.rs"]
+#[path = "../../../tests/internal/overlay.rs"]
 mod overlay_tests;

@@ -11,6 +11,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::{
     error::{Error, Result as CoreResult},
     schema::integrity::{check, CheckOpts},
@@ -312,8 +313,8 @@ async fn native_errors_preserve_failure_and_durability_contracts() -> Result<()>
                 == expected,
             "unexpected data after I/O failure"
         );
-        let conn = sdk.get_connection().await?;
-        let report = check(&conn, &CheckOpts::new(db)).await?;
+        let conn = Connection::open(&db)?;
+        let report = check(&conn, &CheckOpts::new(db))?;
         ensure!(report.ok, "post-I/O-error integrity: {report:?}");
         println!("PASS {operation:?}/{code}: native failure, teardown and integrity");
     }

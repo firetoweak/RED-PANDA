@@ -2,7 +2,7 @@ use super::{OverlayFS, ROOT_INO};
 use crate::error::Result;
 use crate::fs::{FileSystem, FsError};
 use std::collections::HashMap;
-use turso::Connection;
+use tokio_rusqlite::rusqlite::Connection;
 
 /// Which layer an inode belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -239,22 +239,32 @@ impl OverlayFS {
 
     /// Persist the native base identity through the existing origin journal.
     pub(super) async fn add_origin_mapping(&self, delta_ino: i64, base_ino: i64) -> Result<()> {
+        self.delta.get_pool().check_ready()?;
+
         let identity = self.base.file_identity(base_ino)?;
-        let conn = self.delta.get_connection().await?;
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &identity).await?;
-        txn.record(super::super::vfs::JournalDelta::origin_upsert(
-            "origin_map",
-            delta_ino,
-            &identity,
-        ));
-        txn.commit().await?;
-        self.origin_map.write().insert(identity, delta_ino);
-        Ok(())
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &identity)?;
+                txn.record(super::super::vfs::JournalDelta::origin_upsert(
+                    "origin_map",
+                    delta_ino,
+                    &identity,
+                ));
+                txn.commit()?;
+                owned.origin_map.write().insert(identity, delta_ino);
+                Ok(())
+            })
+            .await
     }
 
-    pub(super) async fn add_origin_mapping_with_conn(
+    pub(super) fn add_origin_mapping_with_conn(
         conn: &Connection,
         delta_ino: i64,
         identity: &str,
@@ -262,8 +272,7 @@ impl OverlayFS {
         conn.execute(
             "INSERT INTO fs_origin (delta_ino,base_identity) VALUES (?,?)",
             (delta_ino, identity),
-        )
-        .await?;
+        )?;
         Ok(())
     }
 

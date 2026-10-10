@@ -62,3 +62,14 @@ scripts/gate.sh
 
 该入口运行格式、Clippy、库测试和结构检查。原生挂载/产品流程仍须在构建 sandbox 后
 显式运行上述 process 测试。macOS 仅保留核心 HostFS；本地 Windows 验证不覆盖它。
+
+## SQLite 构建约定
+
+项目根 `.cargo/config.toml` 与 sandbox 构建脚本固定
+`LIBSQLITE3_FLAGS=-DSQLITE_DIRECT_OVERFLOW_READ=0`。64 KiB chunk 读取必须走
+SQLite 页缓存；启用 direct overflow read 会绕过缓存，使重复读取明显变慢。
+在本仓库目录外调用 Cargo 时，也须设置同一变量；构建记录保存实际编译参数。
+
+数据库回归包括执行器取消、首次连接打开失败、原始 panic/错误交付、导入回滚、
+并发快照和历史重放。未知错误使当前执行器停止；故障恢复检查须显式重新打开。
+这不替代上面的真实挂载、进程终止恢复与 Python process 测试。

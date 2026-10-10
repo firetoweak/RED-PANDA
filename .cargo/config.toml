@@ -1,0 +1,3 @@
+[env]
+# Chunk reads use SQLite's page cache; direct overflow reads regress 64 KiB blobs.
+LIBSQLITE3_FLAGS = { value = "-DSQLITE_DIRECT_OVERFLOW_READ=0", force = true }

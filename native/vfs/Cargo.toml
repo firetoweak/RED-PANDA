@@ -48,22 +48,12 @@ tempfile = "3.23.0"
 thiserror = "1.0"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.44"
-# default-features would also pull `fts` (a tantivy full-text-search engine
-# nothing in Vfs queries); keep the 0.5-era feature set: mimalloc only.
-turso = { version = "0.7", default-features = false, features = ["mimalloc"] }
+tokio-rusqlite = { version = "=0.8.0", features = ["bundled", "hooks"] }
+mimalloc = "=0.1.52"
+futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 
-# Ensure transitive `aegis` (pulled in by `turso`) builds on macOS arm64 by
-# forcing the `pure-rust` feature, which skips the C/NEON backend that fails
-# with Apple clang (`veor3q_u8` in `aegis128l_neon_sha3.c`).
-aegis = { version = "0.9.6", features = ["pure-rust"] }
-
-
-[patch.crates-io]
-turso = { path = "third_party/turso" }
-turso_sdk_kit = { path = "third_party/turso_sdk_kit" }
-turso_core = { path = "third_party/turso_core" }
 
 [profile.bench]
 debug = true

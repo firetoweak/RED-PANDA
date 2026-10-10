@@ -96,17 +96,20 @@ impl Vfs {
     /// maintaining high performance for normal operations.
     ///
     pub async fn fsync(&self) -> Result<()> {
+        self.check_background()?;
+
         FileSystem::drain_all(self).await?;
-        let conn = self.pool.get_connection().await?;
-        conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)
-            .await?
-            .execute(())
-            .await?;
-        checkpoint_wal(&conn).await?;
-        conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)
-            .await?
-            .execute(())
-            .await?;
-        Ok(())
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)?.execute([])?;
+                owned.pool.checkpoint(conn)?;
+                conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)?.execute([])?;
+                Ok(())
+            })
+            .await
     }
 }

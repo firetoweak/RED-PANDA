@@ -389,12 +389,6 @@ pub(crate) fn record_connection_drop_discard() {
     }
 }
 
-pub(crate) fn record_connection_health_eviction() {
-    if is_enabled() {
-        CORE_COUNTERS.connection_health_evictions.increment();
-    }
-}
-
 pub(crate) fn record_lookup() {
     if is_enabled() {
         CORE_COUNTERS.lookup_count.increment();

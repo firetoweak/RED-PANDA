@@ -1,17 +1,7 @@
-//! Bulk import session for Vfs clone and import flows.
-//!
-//! Import keeps one pooled connection and a directory inode map across chunks,
-//! committing entries in bounded transactions sized by the batcher config.
-//! The transaction chunking defaults are clone-performance-sensitive.
-
-use std::collections::HashMap;
-
-use turso::Value;
-
-use crate::error::Error;
-
 use super::*;
-
+use crate::error::Error;
+use std::{collections::HashMap, sync::Arc};
+use tokio_rusqlite::rusqlite::types::Value;
 struct JournalImport {
     inode: InodeRow,
     dentry_id: i64,
@@ -52,49 +42,45 @@ pub struct ImportOptions {
     pub timestamp: (i64, i64),
 }
 
-/// A streaming bulk import started by [`Vfs::begin_import`]. Holds one
-/// pooled connection plus the directory-path -> ino map across
-/// [`ImportSession::import_chunk`] calls, so a producer can feed entries as
-/// they become available (e.g. as `git cat-file --batch` emits blobs)
-/// instead of buffering the whole tree in memory. Every parent directory must
-/// appear in an earlier chunk or before its children in the same chunk.
-pub struct ImportSession {
-    fs: Vfs,
-    conn: crate::pool::PooledConnection,
-    dest_parent: i64,
-    opts: ImportOptions,
+#[derive(Default)]
+struct ImportState {
     dir_inos: HashMap<String, i64>,
     results: Vec<ImportedEntry>,
 }
-
+pub struct ImportSession {
+    fs: Vfs,
+    dest_parent: i64,
+    opts: ImportOptions,
+    state: Arc<parking_lot::Mutex<ImportState>>,
+    order: Arc<tokio::sync::Mutex<()>>,
+}
 impl ImportSession {
-    /// Import one batch of entries. Parent directories imported by earlier
-    /// chunks (or earlier in this chunk) resolve normally; a parent that has
-    /// never been imported yields `FsError::NotFound`.
     pub async fn import_chunk(&mut self, entries: &[ImportEntry]) -> Result<()> {
+        let order = self.order.clone().lock_owned().await;
+        let fs = self.fs.clone();
+        let state = self.state.clone();
+        let parent = self.dest_parent;
+        let options = self.opts.clone();
+        let entries = entries.to_vec();
         self.fs
-            .import_chunk_with_conn(
-                &self.conn,
-                self.dest_parent,
-                &self.opts,
-                &mut self.dir_inos,
-                &mut self.results,
-                entries,
-            )
+            .pool
+            .execute(move |conn| {
+                let _order = order;
+                let mut state = state.lock();
+                let ImportState { dir_inos, results } = &mut *state;
+                fs.import_chunk_with_conn(conn, parent, &options, dir_inos, results, &entries)
+            })
             .await
     }
-
-    /// Finish the import and return one [`ImportedEntry`] per imported node,
-    /// in the order the entries were fed.
-    pub fn finish(self) -> Vec<ImportedEntry> {
+    pub async fn finish(self) -> Result<Vec<ImportedEntry>> {
+        let _order = self.order.lock().await;
+        self.fs.pool.barrier().await?;
         self.fs.invalidate_attr(self.dest_parent);
-        self.results
+        Ok(std::mem::take(&mut self.state.lock().results))
     }
 }
-
 impl Vfs {
-    #[cfg(test)]
-    pub(super) async fn import_entries(
+    pub async fn import_entries(
         &self,
         dest_parent: i64,
         entries: &[ImportEntry],
@@ -102,33 +88,25 @@ impl Vfs {
     ) -> Result<Vec<ImportedEntry>> {
         let mut session = self.begin_import(dest_parent, opts.clone()).await?;
         session.import_chunk(entries).await?;
-        Ok(session.finish())
+        session.finish().await
     }
-
-    /// Begin a streaming bulk import under `dest_parent`; see
-    /// [`ImportSession`].
     pub async fn begin_import(
         &self,
         dest_parent: i64,
         opts: ImportOptions,
     ) -> Result<ImportSession> {
+        self.check_background()?;
         Ok(ImportSession {
             fs: self.clone(),
-            conn: self.pool.get_connection().await?,
             dest_parent,
             opts,
-            dir_inos: HashMap::new(),
-            results: Vec::new(),
+            state: Arc::default(),
+            order: Arc::default(),
         })
     }
-
-    /// One chunk of a streaming import. `conn`, `dir_inos`, and `results`
-    /// persist across calls so later chunks may reference directories
-    /// imported by earlier ones; each call still splits its entries into
-    /// bounded transactions.
-    async fn import_chunk_with_conn(
+    fn import_chunk_with_conn(
         &self,
-        conn: &crate::pool::PooledConnection,
+        conn: &Connection,
         dest_parent: i64,
         opts: &ImportOptions,
         dir_inos: &mut HashMap<String, i64>,
@@ -144,22 +122,18 @@ impl Vfs {
                 "INSERT INTO fs_inode (mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ino",
             )
-            .await?;
-        let mut dentry_stmt = conn
-            .prepare_cached("INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)")
-            .await?;
-        let mut symlink_stmt = conn
-            .prepare_cached("INSERT INTO fs_symlink (ino, target) VALUES (?, ?)")
-            .await?;
-        let mut parent_stmt = conn
-            .prepare_cached(
-                "UPDATE fs_inode
+            ?;
+        let mut dentry_stmt =
+            conn.prepare_cached("INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)")?;
+        let mut symlink_stmt =
+            conn.prepare_cached("INSERT INTO fs_symlink (ino, target) VALUES (?, ?)")?;
+        let mut parent_stmt = conn.prepare_cached(
+            "UPDATE fs_inode
                  SET nlink = nlink + ?, ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                  WHERE ino = ?
                  RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
                            atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-            )
-            .await?;
+        )?;
 
         results.reserve(entries.len());
 
@@ -182,7 +156,9 @@ impl Vfs {
             // parent ino -> nlink bump from new subdirectories ("..").
             let mut parent_bumps: HashMap<i64, i64> = HashMap::new();
 
-            let mut txn = MutationTxn::begin(conn, self.journal_ctx()).await?;
+            let mut batch_dirs = dir_inos.clone();
+            let mut batch_results = Vec::new();
+            let mut txn = MutationTxn::begin(conn, self.journal_ctx())?;
             for entry in &entries[idx..batch_end] {
                 let (parent_path, name) = match entry.path.rsplit_once('/') {
                     Some((parent, name)) => (parent, name),
@@ -197,7 +173,7 @@ impl Vfs {
                 let parent_ino = if parent_path.is_empty() {
                     dest_parent
                 } else {
-                    *dir_inos
+                    *batch_dirs
                         .get(parent_path)
                         .ok_or_else(|| Error::Fs(FsError::NotFound))?
                 };
@@ -221,46 +197,47 @@ impl Vfs {
                     _ => return Err(FsError::InvalidPath.into()),
                 };
 
-                let row = inode_stmt
-                    .query_row((
-                        entry.mode as i64,
-                        nlink,
-                        opts.uid,
-                        opts.gid,
-                        size as i64,
-                        ts_secs,
-                        ts_secs,
-                        ts_secs,
-                        ts_nsec,
-                        ts_nsec,
-                        ts_nsec,
-                        data_inline,
-                        storage_kind,
-                    ))
-                    .await?;
-                let ino = row
-                    .get_value(0)
-                    .ok()
-                    .and_then(|v| v.as_integer().copied())
+                let mut single_row_query = inode_stmt.query((
+                    entry.mode as i64,
+                    nlink,
+                    opts.uid,
+                    opts.gid,
+                    size as i64,
+                    ts_secs,
+                    ts_secs,
+                    ts_secs,
+                    ts_nsec,
+                    ts_nsec,
+                    ts_nsec,
+                    data_inline,
+                    storage_kind,
+                ))?;
+                let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
+                let ino = Some(row.get::<_, i64>(0)?)
                     .ok_or_else(|| Error::Internal("failed to get inode".to_string()))?;
 
-                match dentry_stmt.execute((name, parent_ino, ino)).await {
+                match dentry_stmt.execute((name, parent_ino, ino)) {
                     Ok(_) => {}
-                    Err(turso::Error::Constraint(_)) => return Err(FsError::AlreadyExists.into()),
+                    Err(tokio_rusqlite::rusqlite::Error::SqliteFailure(code, _))
+                        if code.code
+                            == tokio_rusqlite::rusqlite::ErrorCode::ConstraintViolation =>
+                    {
+                        return Err(FsError::AlreadyExists.into())
+                    }
                     Err(error) => return Err(error.into()),
                 }
                 let dentry_id = conn.last_insert_rowid();
 
                 let (journal_digests, symlink_target) = match kind {
                     S_IFDIR => {
-                        dir_inos.insert(entry.path.clone(), ino);
+                        batch_dirs.insert(entry.path.clone(), ino);
                         *parent_bumps.entry(parent_ino).or_insert(0) += 1;
                         (Some(Vec::new()), None)
                     }
                     S_IFLNK => {
                         let target = std::str::from_utf8(&entry.data)
                             .map_err(|_| Error::Fs(FsError::InvalidPath))?;
-                        symlink_stmt.execute((ino, target)).await?;
+                        symlink_stmt.execute((ino, target))?;
                         parent_bumps.entry(parent_ino).or_insert(0);
                         (Some(Vec::new()), Some(target.to_string()))
                     }
@@ -271,15 +248,12 @@ impl Vfs {
                             for (chunk_index, chunk) in
                                 entry.data.chunks(self.chunk_size).enumerate()
                             {
-                                digests.push(
-                                    super::store::insert_chunk_mapping(
-                                        conn,
-                                        ino,
-                                        chunk_index as i64,
-                                        chunk,
-                                    )
-                                    .await?,
-                                );
+                                digests.push(super::store::insert_chunk_mapping(
+                                    conn,
+                                    ino,
+                                    chunk_index as i64,
+                                    chunk,
+                                )?);
                             }
                             Some(digests)
                         } else {
@@ -326,7 +300,7 @@ impl Vfs {
                 }
 
                 staged.push((parent_ino, name.to_string(), stats));
-                results.push(ImportedEntry {
+                batch_results.push(ImportedEntry {
                     path: entry.path.clone(),
                     ino,
                     mode: entry.mode,
@@ -336,17 +310,17 @@ impl Vfs {
 
             let mut parent_rows = Vec::with_capacity(parent_bumps.len());
             for (parent_ino, bump) in &parent_bumps {
-                let row = parent_stmt
-                    .query_row((*bump, ts_secs, ts_secs, ts_nsec, ts_nsec, *parent_ino))
-                    .await?;
+                let mut single_row_query =
+                    parent_stmt.query((*bump, ts_secs, ts_secs, ts_nsec, ts_nsec, *parent_ino))?;
+                let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
                 if txn.journaling() {
-                    parent_rows.push(InodeRow::from_row(&row, 0)?);
+                    parent_rows.push(InodeRow::from_row(row, 0)?);
                 }
             }
 
             for import in journal_imports {
                 let ino = import.inode.ino;
-                txn.record_inode("import", import.inode).await?;
+                txn.record_inode("import", import.inode)?;
                 txn.record(JournalDelta::dentry_upsert(
                     "import",
                     import.dentry_id,
@@ -367,9 +341,11 @@ impl Vfs {
                 }
             }
             for parent in parent_rows {
-                txn.record_inode("import", parent).await?;
+                txn.record_inode("import", parent)?;
             }
-            txn.commit().await?;
+            txn.commit()?;
+            *dir_inos = batch_dirs;
+            results.extend(batch_results);
             #[cfg(test)]
             self.import_commit_sizes.lock().unwrap().push(staged.len());
             crate::telemetry::record_vfs_batcher_commit_txn(staged.len() as u64);

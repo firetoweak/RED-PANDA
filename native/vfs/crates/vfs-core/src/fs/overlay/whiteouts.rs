@@ -20,22 +20,29 @@ impl OverlayFS {
 
     /// Create a whiteout for a path.
     pub(super) async fn create_whiteout(&self, path: &str) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
+        self.delta.get_pool().check_ready()?;
+
+        let path = path.to_owned();
+
+        let owned = self.clone();
+        self.delta.get_pool().execute(move |conn| {
+        let _keepalive = &owned;
+        let path = path.as_str();
+
         let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
+            super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
         let parent_path = parent_path_for_whiteout(path);
         let (now, _) = current_timestamp()?;
 
-        let result: Result<()> = async {
+        let result: Result<()> = (|| {
             conn.execute(
                 "INSERT OR REPLACE INTO fs_whiteout (path, parent_path, created_at) VALUES (?, ?, ?)",
                 (path, parent_path.as_str(), now),
             )
-            .await?;
-            self.maybe_fail_whiteout_for_test()?;
+            ?;
+            owned.maybe_fail_whiteout_for_test()?;
             Ok(())
-        }
-        .await;
+        })();
 
         match result {
             Ok(()) => {
@@ -45,19 +52,22 @@ impl OverlayFS {
                     &parent_path,
                     now,
                 ));
-                txn.commit().await?;
-                self.whiteouts.write().insert(path.to_string());
+                txn.commit()?;
+                owned.whiteouts.write().insert(path.to_string());
                 Ok(())
             }
             Err(error) => {
-                let _ = txn.rollback().await;
+                txn.rollback()?;
                 Err(error)
             }
         }
+            }).await
     }
 
     /// Remove a whiteout.
     pub(super) async fn remove_whiteout(&self, path: &str) -> Result<()> {
+        self.delta.get_pool().check_ready()?;
+
         let matched = self
             .whiteouts
             .read()
@@ -67,34 +77,39 @@ impl OverlayFS {
         let Some(matched) = matched else {
             return Ok(());
         };
-        let path = matched.as_str();
 
-        let conn = self.delta.get_connection().await?;
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let result: Result<()> = async {
-            conn.execute("DELETE FROM fs_whiteout WHERE path = ?", (path,))
-                .await?;
-            self.maybe_fail_whiteout_for_test()?;
-            Ok(())
-        }
-        .await;
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let path = matched.as_str();
 
-        match result {
-            Ok(()) => {
-                txn.record(super::super::vfs::JournalDelta::whiteout_delete(
-                    "whiteout_remove",
-                    path,
-                ));
-                txn.commit().await?;
-                self.whiteouts.write().remove(path);
-                Ok(())
-            }
-            Err(error) => {
-                let _ = txn.rollback().await;
-                Err(error)
-            }
-        }
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let result: Result<()> = (|| {
+                    conn.execute("DELETE FROM fs_whiteout WHERE path = ?", (path,))?;
+                    owned.maybe_fail_whiteout_for_test()?;
+                    Ok(())
+                })();
+
+                match result {
+                    Ok(()) => {
+                        txn.record(super::super::vfs::JournalDelta::whiteout_delete(
+                            "whiteout_remove",
+                            path,
+                        ));
+                        txn.commit()?;
+                        owned.whiteouts.write().remove(path);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        txn.rollback()?;
+                        Err(error)
+                    }
+                }
+            })
+            .await
     }
 
     /// Get child whiteouts for a directory.
@@ -120,8 +135,8 @@ impl OverlayFS {
     fn maybe_fail_whiteout_for_test(&self) -> Result<()> {
         #[cfg(test)]
         {
-            if let Some(reason) = self.whiteout_fault.lock().take() {
-                return Err(Error::Internal(reason));
+            if self.whiteout_fault.lock().take().is_some() {
+                return Err(crate::fs::FsError::PermissionDenied.into());
             }
         }
         Ok(())

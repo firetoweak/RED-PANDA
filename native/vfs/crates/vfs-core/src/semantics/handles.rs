@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use turso::Connection;
+use tokio_rusqlite::rusqlite::Connection;
 
 const DEFAULT_WRITE_TOKEN_CAPACITY: usize = 16_384;
 const DEFAULT_OPEN_HANDLE_CAPACITY: usize = 16_384;
@@ -264,7 +264,7 @@ impl HandleTable {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl ReapHook for HandleTable {
     async fn on_reap(&self, _conn: &Connection, ino: i64) -> Result<()> {
         self.invalidate_ino(ino);

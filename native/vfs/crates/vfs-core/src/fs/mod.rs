@@ -1,29 +1,18 @@
-pub mod base_fingerprint;
-pub mod history;
-pub mod host;
-pub mod overlay;
-pub mod vfs;
-
 use crate::error::Result;
 use async_trait::async_trait;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use thiserror::Error;
-
-// Re-export implementations
+pub mod base_fingerprint;
+pub mod history;
+#[cfg(any(target_os = "linux", target_os = "macos", windows))]
+pub mod host;
+pub mod vfs;
 pub use history::{
     HistoryStatus, HistoryTarget, ReconstructionInfo, SnapshotHeader, ValidatedHistoryTarget,
 };
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "linux", target_os = "macos", windows))]
 pub use host::HostFS;
-#[cfg(any(target_os = "linux", windows))]
-pub use host::HostFS;
-pub use overlay::{
-    BaseValidator, OverlayFS, PartialOriginMode, PartialOriginPolicy,
-    DEFAULT_PARTIAL_ORIGIN_THRESHOLD_BYTES,
-};
 pub use vfs::{journal_gc, ImportEntry, ImportOptions, ImportSession, ImportedEntry, Vfs};
-
 /// Filesystem-specific errors with errno semantics
 #[derive(Debug, Error)]
 pub enum FsError {
@@ -567,3 +556,9 @@ pub trait FileSystem: Send + Sync {
         // Default: no-op
     }
 }
+
+pub mod overlay;
+pub use overlay::{
+    BaseValidator, OverlayFS, PartialOriginMode, PartialOriginPolicy,
+    DEFAULT_PARTIAL_ORIGIN_THRESHOLD_BYTES,
+};

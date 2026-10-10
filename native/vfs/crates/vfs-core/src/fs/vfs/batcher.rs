@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
-use turso::{Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
 
 use crate::config::{BatcherConfig, Geometry};
 use crate::error::{Error, Result};
@@ -47,8 +47,7 @@ pub(super) struct EnqueueOutcome {
 pub(super) type PendingTimes = PendingTimeChange;
 
 pub(super) trait PendingView: Send + Sync {
-    fn has_pending(&self, ino: i64) -> bool;
-    fn overlay_read(&self, ino: i64, off: u64, buf: &mut [u8]) -> OverlayHit;
+    fn overlay_read(&self, ino: i64, off: u64, buf: &mut [u8]) -> Result<OverlayHit>;
     fn pending_max_end(&self, ino: i64) -> Option<u64>;
     fn pending_times(&self, ino: i64) -> Option<PendingTimes>;
     fn pending_generation(&self, ino: i64) -> PendingGeneration;
@@ -207,7 +206,7 @@ pub(super) fn write_commit_time_sets(
 /// ranges to commit, so there is no data UPDATE to fold the times into);
 /// runs inside the drain's `BEGIN IMMEDIATE`. A deleted inode simply matches
 /// no row (the unlink already won).
-async fn apply_pending_times_with_conn(
+fn apply_pending_times_with_conn(
     conn: &Connection,
     ino: i64,
     times: &PendingTimeChange,
@@ -241,7 +240,7 @@ async fn apply_pending_times_with_conn(
     // the RETURNING clause (and shipping data_inline back per row) is waste.
     if !journaling {
         let sql = format!("UPDATE fs_inode SET {} WHERE ino = ?", updates.join(", "));
-        conn.execute(&sql, values).await?;
+        conn.execute(&sql, tokio_rusqlite::rusqlite::params_from_iter(values))?;
         return Ok(None);
     }
     let sql = format!(
@@ -250,9 +249,10 @@ async fn apply_pending_times_with_conn(
                    atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
         updates.join(", ")
     );
-    let mut rows = conn.query(&sql, values).await?;
-    match rows.next().await? {
-        Some(row) => Ok(Some(InodeRow::from_row(&row, 0)?)),
+    let mut statement = conn.prepare_cached(&sql)?;
+    let mut rows = statement.query(tokio_rusqlite::rusqlite::params_from_iter(values))?;
+    match rows.next()? {
+        Some(row) => Ok(Some(InodeRow::from_row(row, 0)?)),
         None => Ok(None),
     }
 }
@@ -441,6 +441,7 @@ impl VfsWriteBatcherState {
 /// the canonical SQLite tables. It never creates sidecars and normal durability
 /// boundaries (`flush`, `fsync`, `release`, `destroy`) explicitly drain it.
 pub(super) struct VfsWriteBatcher {
+    runtime: tokio::runtime::Handle,
     pool: ConnectionPool,
     chunk_size: usize,
     inline_threshold: usize,
@@ -462,10 +463,22 @@ pub(super) struct VfsWriteBatcher {
     /// the tokio worker — `take_pending_locked` and friends always extract
     /// owned state under the lock and drop the guard before any I/O.
     state: RwLock<VfsWriteBatcherState>,
-    commit_lock: AsyncMutex<()>,
+    commit_lock: Arc<AsyncMutex<()>>,
+    scheduler: crate::scheduler::DrainScheduler,
 }
 
 impl VfsWriteBatcher {
+    // Shutdown contract: callers have stopped accepting writes. Abort the
+    // scheduler, await its owned handles and actual DB jobs, then drain pending.
+    pub(super) async fn shutdown(self: &Arc<Self>) -> Result<()> {
+        self.scheduler.stop().await;
+        self.pool.barrier().await?;
+        self.scheduler.observe_completed()?;
+        self.drain_all_reason(VfsWriteBatchDrainReason::Explicit)
+            .await?;
+        self.pool.barrier().await
+    }
+
     pub(super) fn split(batcher: &Arc<Self>) -> (BatcherPendingView, BatcherDrain) {
         (
             BatcherPendingView {
@@ -486,6 +499,7 @@ impl VfsWriteBatcher {
         journal: JournalCtx,
     ) -> Self {
         Self {
+            runtime: tokio::runtime::Handle::current(),
             pool,
             chunk_size,
             inline_threshold,
@@ -497,11 +511,14 @@ impl VfsWriteBatcher {
             txn_max_bytes: config.txn_max_bytes.max(1),
             journal,
             state: RwLock::new(VfsWriteBatcherState::default()),
-            commit_lock: AsyncMutex::new(()),
+            commit_lock: Arc::new(AsyncMutex::new(())),
+            scheduler: crate::scheduler::DrainScheduler::default(),
         }
     }
 
     fn queue(self: &Arc<Self>, ino: i64, ranges: Vec<WriteRange>) -> Result<EnqueueOutcome> {
+        self.scheduler.observe_completed()?;
+        self.pool.check_unobserved()?;
         let ranges: Vec<_> = ranges
             .into_iter()
             .filter(|range| !range.data.is_empty())
@@ -624,8 +641,25 @@ impl VfsWriteBatcher {
         reason: VfsWriteBatchDrainReason,
         required_ino: Option<i64>,
     ) -> Result<bool> {
-        let _commit_guard = self.commit_lock.lock().await;
+        let commit_guard = self.commit_lock.clone().lock_owned().await;
+        self.scheduler.observe_completed()?;
+        let owned = Arc::clone(self);
+        let runtime = self.runtime.clone();
+        self.pool
+            .execute(move |conn| {
+                let _commit_guard = commit_guard;
+                owned.drain_snapshot(conn, reason, required_ino, runtime)
+            })
+            .await
+    }
 
+    fn drain_snapshot(
+        self: &Arc<Self>,
+        conn: &Connection,
+        reason: VfsWriteBatchDrainReason,
+        required_ino: Option<i64>,
+        runtime: tokio::runtime::Handle,
+    ) -> Result<bool> {
         // Tier 4 corruption fix (commit-then-remove): SNAPSHOT pending ranges
         // by cloning, WITHOUT removing them from the overlay. `pread`/`getattr`
         // consult the overlay and then SQLite with no lock spanning the two; if
@@ -723,8 +757,8 @@ impl VfsWriteBatcher {
         }
 
         let started = Instant::now();
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.journal.clone()).await?;
+
+        let mut txn = MutationTxn::begin(conn, self.journal.clone())?;
 
         // Read times_explicit and the stashed explicit times only AFTER the
         // IMMEDIATE transaction holds the SQLite write lock: explicit
@@ -785,9 +819,7 @@ impl VfsWriteBatcher {
                     &normalized_refs,
                     preserve_times.get(ino).copied().unwrap_or(false),
                     pending_times.get(ino),
-                )
-                .await
-                {
+                ) {
                     Ok(changes) => storage_changes = Some(changes),
                     // The file was unlinked / renamed-over while its writes were
                     // still pending (git lock and temp files routinely live and
@@ -802,7 +834,7 @@ impl VfsWriteBatcher {
                         inode_missing = true;
                     }
                     Err(error) => {
-                        let _ = txn.rollback().await;
+                        txn.rollback()?;
                         // Overlay was never modified; ranges remain pending and are
                         // retried on the next drain. No restore needed.
                         return Err(error);
@@ -817,18 +849,16 @@ impl VfsWriteBatcher {
             if !inode_missing {
                 if let Some(times) = pending_times.get(ino) {
                     if normalized.is_empty() {
-                        match apply_pending_times_with_conn(&conn, *ino, times, txn.journaling())
-                            .await
-                        {
+                        match apply_pending_times_with_conn(conn, *ino, times, txn.journaling()) {
                             Ok(Some(inode)) => {
-                                if let Err(error) = txn.record_inode("setattr", inode).await {
-                                    let _ = txn.rollback().await;
+                                if let Err(error) = txn.record_inode("setattr", inode) {
+                                    txn.rollback()?;
                                     return Err(error);
                                 }
                             }
                             Ok(None) => {}
                             Err(error) => {
-                                let _ = txn.rollback().await;
+                                txn.rollback()?;
                                 return Err(error);
                             }
                         }
@@ -839,12 +869,12 @@ impl VfsWriteBatcher {
 
             if !inode_missing {
                 if let Some(changes) = storage_changes {
-                    txn.record_storage_changes("write", changes).await?;
+                    txn.record_storage_changes("write", changes)?;
                 }
             }
         }
 
-        txn.commit().await?;
+        txn.commit()?;
 
         // Durable now: drop exactly the committed ranges and applied times
         // from the overlay, preserving anything enqueued during the commit.
@@ -865,7 +895,7 @@ impl VfsWriteBatcher {
         // never stranded: the coalescing scheduler picks it up on its next
         // pass. Arm it if it is not already running (e.g. explicit drains
         // triggered by fsync / kill-switch paths outside the scheduler).
-        self.ensure_drain_scheduled();
+        self.ensure_drain_scheduled_on(&runtime);
         crate::telemetry::record_vfs_batcher_commit_latency(started.elapsed());
         crate::telemetry::record_vfs_batcher_commit_txn(to_commit.len() as u64);
 
@@ -877,6 +907,10 @@ impl VfsWriteBatcher {
     /// residual pending state (ranges enqueued mid-commit, stashed times,
     /// inodes beyond a bounded transaction) always has a scheduled commit.
     fn ensure_drain_scheduled(self: &Arc<Self>) {
+        self.ensure_drain_scheduled_on(&self.runtime);
+    }
+
+    fn ensure_drain_scheduled_on(self: &Arc<Self>, runtime: &tokio::runtime::Handle) {
         let arm = {
             let mut state = self.state.write();
             if !state.drain_scheduled && !state.pending.is_empty() {
@@ -887,7 +921,9 @@ impl VfsWriteBatcher {
             }
         };
         if arm {
-            self.spawn_drain_scheduler();
+            let batcher = Arc::clone(self);
+            self.scheduler
+                .spawn(runtime, async move { batcher.run_drain_scheduler().await });
         }
     }
 
@@ -896,9 +932,10 @@ impl VfsWriteBatcher {
     /// only once nothing is pending.
     fn spawn_drain_scheduler(self: &Arc<Self>) {
         let batcher = Arc::clone(self);
-        tokio::spawn(async move {
-            batcher.run_drain_scheduler().await;
-        });
+        self.scheduler.spawn(
+            &self.runtime,
+            async move { batcher.run_drain_scheduler().await },
+        );
     }
 
     /// Single coalescing drain scheduler (cross-inode group commit).
@@ -915,7 +952,7 @@ impl VfsWriteBatcher {
     /// that observes `drain_scheduled == false` arms a fresh one. Explicit
     /// drains (fsync, finalize, kill-switch paths) and the Bytes triggers are
     /// unaffected — they keep draining synchronously on their own call sites.
-    async fn run_drain_scheduler(self: Arc<Self>) {
+    async fn run_drain_scheduler(self: Arc<Self>) -> Result<()> {
         loop {
             tokio::time::sleep(self.batch_ms).await;
 
@@ -931,11 +968,7 @@ impl VfsWriteBatcher {
                     Ok(true) => continue,
                     Ok(false) => break,
                     Err(error) => {
-                        tracing::warn!(
-                            ?error,
-                            "Vfs write batcher: scheduled group drain failed (will retry)"
-                        );
-                        break;
+                        return Err(error);
                     }
                 }
             }
@@ -954,7 +987,7 @@ impl VfsWriteBatcher {
                 }
             };
             if exit {
-                return;
+                return Ok(());
             }
         }
     }
@@ -1042,23 +1075,28 @@ impl VfsWriteBatcher {
     /// to the requested window. The batcher's pending state is not modified.
     /// Callers merge the result over SQLite data with "pending wins"
     /// semantics; see `VfsFile::pread`.
-    fn pending_ranges(&self, ino: i64, offset: u64, size: u64) -> Vec<NormalizedWriteRange> {
+    fn pending_ranges(
+        &self,
+        ino: i64,
+        offset: u64,
+        size: u64,
+    ) -> Result<Vec<NormalizedWriteRange>> {
         if size == 0 {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let read_end = match offset.checked_add(size) {
             Some(end) => end,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
         // Read-lock: many concurrent readers OK; writers block briefly during
         // enqueue. Crucially, no `.await` is performed while the guard is
         // held, so a sync `parking_lot::RwLock` is safe inside an async fn.
         let state = self.state.read();
         let Some(batch) = state.pending.get(&ino) else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
         if batch.ranges.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let refs: Vec<_> = batch
             .ranges
@@ -1068,11 +1106,8 @@ impl VfsWriteBatcher {
                 data: r.data.as_slice(),
             })
             .collect();
-        let normalized = match normalize_write_ranges(&refs) {
-            Ok(n) => n,
-            Err(_) => return Vec::new(),
-        };
-        normalized
+        let normalized = normalize_write_ranges(&refs)?;
+        Ok(normalized
             .into_iter()
             .filter_map(|range| {
                 let r_end = range.offset + range.data.len() as u64;
@@ -1091,13 +1126,14 @@ impl VfsWriteBatcher {
                     data: range.data[skip..skip + take].to_vec(),
                 })
             })
-            .collect()
+            .collect())
     }
 
     /// Fast path for "does this inode have ANY pending write?" — used by
     /// readers to skip the heavier `peek_pending_max_end` / `peek_pending`
     /// calls entirely when the batcher has nothing for the inode. Read lock,
     /// O(1) HashMap hit.
+    #[cfg(test)]
     pub(super) fn has_pending(&self, ino: i64) -> bool {
         let state = self.state.read();
         state
@@ -1294,13 +1330,9 @@ impl VfsWriteBatcher {
 }
 
 impl PendingView for BatcherPendingView {
-    fn has_pending(&self, ino: i64) -> bool {
-        self.batcher.has_pending(ino)
-    }
-
-    fn overlay_read(&self, ino: i64, off: u64, buf: &mut [u8]) -> OverlayHit {
+    fn overlay_read(&self, ino: i64, off: u64, buf: &mut [u8]) -> Result<OverlayHit> {
         let mut applied = false;
-        for range in self.batcher.pending_ranges(ino, off, buf.len() as u64) {
+        for range in self.batcher.pending_ranges(ino, off, buf.len() as u64)? {
             let dst_off = (range.offset - off) as usize;
             if dst_off >= buf.len() {
                 continue;
@@ -1309,7 +1341,7 @@ impl PendingView for BatcherPendingView {
             buf[dst_off..end].copy_from_slice(&range.data[..end - dst_off]);
             applied = true;
         }
-        OverlayHit { applied }
+        Ok(OverlayHit { applied })
     }
 
     fn pending_max_end(&self, ino: i64) -> Option<u64> {
@@ -1383,5 +1415,12 @@ impl Drain for BatcherDrain {
 
     fn stash_times(&self, ino: i64, times: PendingTimes) {
         self.batcher.stash_pending_times(ino, times);
+    }
+}
+
+impl BatcherDrain {
+    pub(super) fn check_completed(&self) -> Result<()> {
+        self.batcher.scheduler.observe_completed()?;
+        self.batcher.pool.check_ready()
     }
 }

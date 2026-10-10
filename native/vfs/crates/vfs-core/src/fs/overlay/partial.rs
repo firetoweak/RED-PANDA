@@ -29,7 +29,9 @@ impl PartialOrigin {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct OverlayPartialFile {
+    pub(super) runtime: tokio::runtime::Handle,
     pub(super) delta: Vfs,
     // Retain the inode for the lifetime of this file, like ordinary delta opens.
     pub(super) _delta_handle: super::super::BoxedFile,
@@ -46,9 +48,8 @@ struct PartialOriginChunkHooks<'a> {
     file: &'a OverlayPartialFile,
 }
 
-#[async_trait]
 impl ChunkWriteHooks for PartialOriginChunkHooks<'_> {
-    async fn seed_missing_chunk(
+    fn seed_missing_chunk(
         &self,
         conn: &Connection,
         ino: i64,
@@ -58,7 +59,7 @@ impl ChunkWriteHooks for PartialOriginChunkHooks<'_> {
         debug_assert_eq!(ino, self.file.delta_ino);
         let chunk_index = u64::try_from(chunk_index)
             .map_err(|_| Error::Internal("negative chunk index".to_string()))?;
-        let base_size = self.file.partial_base_size_with_conn(conn).await?;
+        let base_size = self.file.partial_base_size_with_conn(conn)?;
         let chunk_start = chunk_index
             .checked_mul(geometry.chunk_size as u64)
             .ok_or_else(|| Error::Internal("chunk offset overflow".to_string()))?;
@@ -66,20 +67,24 @@ impl ChunkWriteHooks for PartialOriginChunkHooks<'_> {
             return Ok(None);
         }
 
-        self.file.validate_current_origin().await?;
+        self.file
+            .runtime
+            .block_on(self.file.validate_current_origin())?;
         let readable = std::cmp::min(geometry.chunk_size as u64, base_size - chunk_start);
-        let mut chunk = self.file.base_file.pread(chunk_start, readable).await?;
+        let mut chunk = self
+            .file
+            .runtime
+            .block_on(self.file.base_file.pread(chunk_start, readable))?;
         chunk.resize(geometry.chunk_size, 0);
         Ok(Some(chunk))
     }
 
-    async fn chunk_written(&self, conn: &Connection, ino: i64, chunk_index: i64) -> Result<()> {
+    fn chunk_written(&self, conn: &Connection, ino: i64, chunk_index: i64) -> Result<()> {
         debug_assert_eq!(ino, self.file.delta_ino);
         conn.execute(
             "INSERT OR IGNORE INTO fs_chunk_override (delta_ino, chunk_index) VALUES (?, ?)",
             (ino, chunk_index),
-        )
-        .await?;
+        )?;
         Ok(())
     }
 }
@@ -89,17 +94,19 @@ impl OverlayFS {
         &self,
         delta_ino: i64,
     ) -> Result<Option<PartialOrigin>> {
-        let conn = self.delta.get_connection().await?;
-        let mut rows = conn
-            .query(
-                "SELECT base_ino, base_path, base_size, base_fingerprint_size,
+        self.delta.get_pool().check_ready()?;
+
+        let owned = self.clone();
+        self.delta.get_pool().execute(move |conn| {
+        let _keepalive = &owned;
+
+        let mut query_statement_0 = conn.prepare_cached("SELECT base_ino, base_path, base_size, base_fingerprint_size,
                         base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
                         (SELECT base_identity FROM fs_origin WHERE fs_origin.delta_ino = fs_partial_origin.delta_ino)
-                 FROM fs_partial_origin WHERE delta_ino = ?",
-                (delta_ino,),
-            )
-            .await?;
-        if let Some(row) = rows.next().await? {
+                 FROM fs_partial_origin WHERE delta_ino = ?")?;
+let mut rows = query_statement_0.query((delta_ino,))
+            ?;
+        if let Some(row) = rows.next()? {
             let base_fingerprint_size: i64 = row.get(3)?;
             if base_fingerprint_size < 0 {
                 return Err(
@@ -120,9 +127,10 @@ impl OverlayFS {
         } else {
             Ok(None)
         }
+            }).await
     }
 
-    pub(super) async fn add_partial_origin_mapping_with_conn(
+    pub(super) fn add_partial_origin_mapping_with_conn(
         conn: &Connection,
         delta_ino: i64,
         base_ino: i64,
@@ -135,8 +143,7 @@ impl OverlayFS {
                 delta_ino, base_ino, base_path, base_size, created_at
              ) VALUES (?1, ?2, ?3, ?4, ?5)",
             (delta_ino, base_ino, base_path, base_stats.size, now),
-        )
-        .await?;
+        )?;
         conn.execute(
             "UPDATE fs_partial_origin
              SET base_fingerprint_size = ?1, base_mtime = ?2, base_mtime_nsec = ?3
@@ -147,15 +154,13 @@ impl OverlayFS {
                 base_stats.mtime_nsec as i64,
                 delta_ino,
             ),
-        )
-        .await?;
+        )?;
         conn.execute(
             "UPDATE fs_partial_origin
              SET base_ctime = ?1, base_ctime_nsec = ?2
              WHERE delta_ino = ?3",
             (base_stats.ctime, base_stats.ctime_nsec as i64, delta_ino),
-        )
-        .await?;
+        )?;
         Ok(())
     }
 }
@@ -163,31 +168,47 @@ impl OverlayFS {
 #[async_trait]
 impl File for OverlayPartialFile {
     async fn pread(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
+        self.delta.get_pool().check_ready()?;
+
         self.validate_current_origin().await?;
-        let conn = self.delta.get_connection().await?;
-        let file_size = self.delta_file_size_with_conn(&conn).await?;
-        if offset >= file_size || size == 0 {
-            return Ok(Vec::new());
-        }
 
-        let read_len = std::cmp::min(size, file_size - offset) as usize;
-        let chunk_size = self.chunk_size as u64;
-        let mut result = Vec::with_capacity(read_len);
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let snapshot = conn.unchecked_transaction()?;
+                let result = (|| {
+                    let file_size = owned.delta_file_size_with_conn(conn)?;
+                    if offset >= file_size || size == 0 {
+                        return Ok(Vec::new());
+                    }
 
-        while result.len() < read_len {
-            let current_offset = offset + result.len() as u64;
-            let chunk_index = current_offset / chunk_size;
-            let offset_in_chunk = (current_offset % chunk_size) as usize;
-            let take = std::cmp::min(
-                self.chunk_size - offset_in_chunk,
-                read_len.saturating_sub(result.len()),
-            );
+                    let read_len = std::cmp::min(size, file_size - offset) as usize;
+                    let chunk_size = owned.chunk_size as u64;
+                    let mut result = Vec::with_capacity(read_len);
 
-            let chunk = self.read_merged_chunk_with_conn(&conn, chunk_index).await?;
-            result.extend_from_slice(&chunk[offset_in_chunk..offset_in_chunk + take]);
-        }
+                    while result.len() < read_len {
+                        let current_offset = offset + result.len() as u64;
+                        let chunk_index = current_offset / chunk_size;
+                        let offset_in_chunk = (current_offset % chunk_size) as usize;
+                        let take = std::cmp::min(
+                            owned.chunk_size - offset_in_chunk,
+                            read_len.saturating_sub(result.len()),
+                        );
 
-        Ok(result)
+                        let chunk = owned.read_merged_chunk_with_conn(conn, chunk_index)?;
+                        result.extend_from_slice(&chunk[offset_in_chunk..offset_in_chunk + take]);
+                    }
+
+                    Ok(result)
+                })();
+                if result.is_ok() {
+                    snapshot.commit()?;
+                }
+                result
+            })
+            .await
     }
 
     async fn pwrite(&self, offset: u64, data: &[u8]) -> Result<()> {
@@ -202,130 +223,142 @@ impl File for OverlayPartialFile {
     }
 
     async fn pwrite_ranges(&self, ranges: Vec<WriteRange>) -> Result<()> {
+        self.delta.get_pool().check_ready()?;
+
         if ranges.iter().all(|range| range.data.is_empty()) {
             return Ok(());
         }
-        let conn = self.delta.get_connection().await?;
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let range_refs: Vec<_> = ranges
-            .iter()
-            .map(|range| WriteRangeRef {
-                offset: range.offset,
-                data: range.data.as_slice(),
+
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let range_refs: Vec<_> = ranges
+                    .iter()
+                    .map(|range| WriteRangeRef {
+                        offset: range.offset,
+                        data: range.data.as_slice(),
+                    })
+                    .collect();
+                let hooks = PartialOriginChunkHooks { file: &owned };
+
+                let result = store::write_ranges_with_chunk_hooks(
+                    conn,
+                    owned.delta_ino,
+                    owned.geometry(),
+                    &range_refs,
+                    &hooks,
+                );
+
+                match result {
+                    Ok(changes) => {
+                        txn.record_storage_changes("write", changes)?;
+                        let normalized = store::normalize_write_ranges(&range_refs)?;
+                        let mut override_indexes = BTreeSet::new();
+                        for range in &normalized {
+                            let start = range.offset / owned.chunk_size as u64;
+                            let end = (range.offset + range.data.len() as u64 - 1)
+                                / owned.chunk_size as u64;
+                            override_indexes.extend(start..=end);
+                        }
+                        for chunk_index in override_indexes {
+                            txn.record(super::super::vfs::JournalDelta::chunk_override_upsert(
+                                "chunk_override",
+                                owned.delta_ino,
+                                chunk_index as i64,
+                            ));
+                        }
+                        txn.commit()?;
+                        owned.delta.invalidate_attr(owned.delta_ino);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        txn.rollback()?;
+                        Err(e)
+                    }
+                }
             })
-            .collect();
-        let hooks = PartialOriginChunkHooks { file: self };
-
-        let result = async {
-            store::write_ranges_with_chunk_hooks(
-                &conn,
-                self.delta_ino,
-                self.geometry(),
-                &range_refs,
-                &hooks,
-            )
             .await
-        }
-        .await;
-
-        match result {
-            Ok(changes) => {
-                txn.record_storage_changes("write", changes).await?;
-                let normalized = store::normalize_write_ranges(&range_refs)?;
-                let mut override_indexes = BTreeSet::new();
-                for range in &normalized {
-                    let start = range.offset / self.chunk_size as u64;
-                    let end = (range.offset + range.data.len() as u64 - 1) / self.chunk_size as u64;
-                    override_indexes.extend(start..=end);
-                }
-                for chunk_index in override_indexes {
-                    txn.record(super::super::vfs::JournalDelta::chunk_override_upsert(
-                        "chunk_override",
-                        self.delta_ino,
-                        chunk_index as i64,
-                    ));
-                }
-                txn.commit().await?;
-                self.delta.invalidate_attr(self.delta_ino);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = txn.rollback().await;
-                Err(e)
-            }
-        }
     }
 
     async fn truncate(&self, size: u64) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let hooks = PartialOriginChunkHooks { file: self };
+        self.delta.get_pool().check_ready()?;
 
-        let result = async {
-            let changes = store::truncate_with_chunk_hooks(
-                &conn,
-                self.delta_ino,
-                self.geometry(),
-                size,
-                &hooks,
-            )
-            .await?;
-            let deleted_overrides = self
-                .prune_chunk_overrides_after_truncate(&conn, size)
-                .await?;
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
 
-            let origin_base_size = self.partial_base_size_with_conn(&conn).await?;
-            let partial_origin = if size < origin_base_size {
-                conn.execute(
-                    "UPDATE fs_partial_origin SET base_size = ? WHERE delta_ino = ?",
-                    (size as i64, self.delta_ino),
-                )
-                .await?;
-                Some(super::super::vfs::PartialOriginRow {
-                    delta_ino: self.delta_ino,
-                    base_ino: self.origin.base_ino,
-                    base_path: self.origin.base_path.clone(),
-                    base_size: size as i64,
-                    base_fingerprint_size: self.origin.base_fingerprint_size,
-                    base_mtime: self.origin.base_mtime,
-                    base_mtime_nsec: self.origin.base_mtime_nsec as i64,
-                    base_ctime: self.origin.base_ctime,
-                    base_ctime_nsec: self.origin.base_ctime_nsec as i64,
-                    created_at: self.origin.created_at,
-                })
-            } else {
-                None
-            };
-            Ok::<_, Error>((changes, deleted_overrides, partial_origin))
-        }
-        .await;
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let hooks = PartialOriginChunkHooks { file: &owned };
 
-        match result {
-            Ok((changes, deleted_overrides, partial_origin)) => {
-                txn.record_storage_changes("truncate", changes).await?;
-                for chunk_index in deleted_overrides {
-                    txn.record(super::super::vfs::JournalDelta::chunk_override_delete(
-                        "truncate",
-                        self.delta_ino,
-                        chunk_index,
-                    ));
+                let result = (|| {
+                    let changes = store::truncate_with_chunk_hooks(
+                        conn,
+                        owned.delta_ino,
+                        owned.geometry(),
+                        size,
+                        &hooks,
+                    )?;
+                    let deleted_overrides =
+                        owned.prune_chunk_overrides_after_truncate(conn, size)?;
+
+                    let origin_base_size = owned.partial_base_size_with_conn(conn)?;
+                    let partial_origin = if size < origin_base_size {
+                        conn.execute(
+                            "UPDATE fs_partial_origin SET base_size = ? WHERE delta_ino = ?",
+                            (size as i64, owned.delta_ino),
+                        )?;
+                        Some(super::super::vfs::PartialOriginRow {
+                            delta_ino: owned.delta_ino,
+                            base_ino: owned.origin.base_ino,
+                            base_path: owned.origin.base_path.clone(),
+                            base_size: size as i64,
+                            base_fingerprint_size: owned.origin.base_fingerprint_size,
+                            base_mtime: owned.origin.base_mtime,
+                            base_mtime_nsec: owned.origin.base_mtime_nsec as i64,
+                            base_ctime: owned.origin.base_ctime,
+                            base_ctime_nsec: owned.origin.base_ctime_nsec as i64,
+                            created_at: owned.origin.created_at,
+                        })
+                    } else {
+                        None
+                    };
+                    Ok::<_, Error>((changes, deleted_overrides, partial_origin))
+                })();
+
+                match result {
+                    Ok((changes, deleted_overrides, partial_origin)) => {
+                        txn.record_storage_changes("truncate", changes)?;
+                        for chunk_index in deleted_overrides {
+                            txn.record(super::super::vfs::JournalDelta::chunk_override_delete(
+                                "truncate",
+                                owned.delta_ino,
+                                chunk_index,
+                            ));
+                        }
+                        if let Some(row) = partial_origin {
+                            txn.record(super::super::vfs::JournalDelta::partial_origin_upsert(
+                                "truncate", &row,
+                            ));
+                        }
+                        txn.commit()?;
+                        owned.delta.invalidate_attr(owned.delta_ino);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        txn.rollback()?;
+                        Err(e)
+                    }
                 }
-                if let Some(row) = partial_origin {
-                    txn.record(super::super::vfs::JournalDelta::partial_origin_upsert(
-                        "truncate", &row,
-                    ));
-                }
-                txn.commit().await?;
-                self.delta.invalidate_attr(self.delta_ino);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = txn.rollback().await;
-                Err(e)
-            }
-        }
+            })
+            .await
     }
 
     async fn fsync(&self) -> Result<()> {
@@ -388,89 +421,53 @@ impl OverlayPartialFile {
         Ok(())
     }
 
-    async fn delta_file_size_with_conn(&self, conn: &Connection) -> Result<u64> {
-        let mut rows = conn
-            .query("SELECT size FROM fs_inode WHERE ino = ?", (self.delta_ino,))
-            .await?;
-        if let Some(row) = rows.next().await? {
-            Ok(row
-                .get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(0) as u64)
-        } else {
-            Err(FsError::NotFound.into())
-        }
+    fn delta_file_size_with_conn(&self, conn: &Connection) -> Result<u64> {
+        let size: i64 = conn.query_row(
+            "SELECT size FROM fs_inode WHERE ino = ?",
+            [self.delta_ino],
+            |row| row.get(0),
+        )?;
+        u64::try_from(size).map_err(|_| FsError::Corrupt("negative size".into()).into())
     }
 
-    async fn prune_chunk_overrides_after_truncate(
+    fn prune_chunk_overrides_after_truncate(
         &self,
         conn: &Connection,
         size: u64,
     ) -> Result<Vec<i64>> {
-        let mut rows = if size == 0 {
-            conn.query(
-                "DELETE FROM fs_chunk_override
-                 WHERE delta_ino = ?
-                 RETURNING chunk_index",
-                (self.delta_ino,),
-            )
-            .await?
+        let last = if size == 0 {
+            -1
         } else {
-            let last_chunk = (size - 1) / self.chunk_size as u64;
-            conn.query(
-                "DELETE FROM fs_chunk_override
-                 WHERE delta_ino = ? AND chunk_index > ?
-                 RETURNING chunk_index",
-                (self.delta_ino, last_chunk as i64),
-            )
-            .await?
+            ((size - 1) / self.chunk_size as u64) as i64
         };
+        let mut statement = conn.prepare_cached("DELETE FROM fs_chunk_override WHERE delta_ino = ? AND chunk_index > ? RETURNING chunk_index")?;
+        let mut rows = statement.query((self.delta_ino, last))?;
         let mut indexes = Vec::new();
-        while let Some(row) = rows.next().await? {
-            indexes.push(row.get::<i64>(0)?);
+        while let Some(row) = rows.next()? {
+            indexes.push(row.get(0)?);
         }
         Ok(indexes)
     }
 
-    async fn partial_base_size_with_conn(&self, conn: &Connection) -> Result<u64> {
-        let mut rows = conn
-            .query(
-                "SELECT base_size FROM fs_partial_origin WHERE delta_ino = ?",
-                (self.delta_ino,),
-            )
-            .await?;
-        if let Some(row) = rows.next().await? {
-            Ok(row
-                .get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(0) as u64)
-        } else {
-            Err(FsError::NotFound.into())
-        }
+    fn partial_base_size_with_conn(&self, conn: &Connection) -> Result<u64> {
+        let size: i64 = conn.query_row(
+            "SELECT base_size FROM fs_partial_origin WHERE delta_ino = ?",
+            [self.delta_ino],
+            |row| row.get(0),
+        )?;
+        u64::try_from(size).map_err(|_| FsError::Corrupt("negative base_size".into()).into())
     }
 
-    async fn chunk_is_override_with_conn(
-        &self,
-        conn: &Connection,
-        chunk_index: u64,
-    ) -> Result<bool> {
-        let mut rows = conn
-            .query(
-                "SELECT 1 FROM fs_chunk_override WHERE delta_ino = ? AND chunk_index = ?",
-                (self.delta_ino, chunk_index as i64),
-            )
-            .await?;
-        Ok(rows.next().await?.is_some())
+    fn chunk_is_override_with_conn(&self, conn: &Connection, chunk_index: u64) -> Result<bool> {
+        let mut query_statement_0 = conn.prepare_cached(
+            "SELECT 1 FROM fs_chunk_override WHERE delta_ino = ? AND chunk_index = ?",
+        )?;
+        let mut rows = query_statement_0.query((self.delta_ino, chunk_index as i64))?;
+        Ok(rows.next()?.is_some())
     }
 
-    async fn read_merged_chunk_with_conn(
-        &self,
-        conn: &Connection,
-        chunk_index: u64,
-    ) -> Result<Vec<u8>> {
-        if self.chunk_is_override_with_conn(conn, chunk_index).await? {
+    fn read_merged_chunk_with_conn(&self, conn: &Connection, chunk_index: u64) -> Result<Vec<u8>> {
+        if self.chunk_is_override_with_conn(conn, chunk_index)? {
             let chunk_start = chunk_index
                 .checked_mul(self.chunk_size as u64)
                 .ok_or_else(|| Error::Internal("chunk offset overflow".to_string()))?;
@@ -480,20 +477,20 @@ impl OverlayPartialFile {
                 self.geometry(),
                 chunk_start,
                 self.chunk_size as u64,
-            )
-            .await?;
+            )?;
             chunk.resize(self.chunk_size, 0);
             return Ok(chunk);
         }
 
-        let base_size = self.partial_base_size_with_conn(conn).await?;
+        let base_size = self.partial_base_size_with_conn(conn)?;
         let chunk_start = chunk_index
             .checked_mul(self.chunk_size as u64)
             .ok_or_else(|| Error::Internal("chunk offset overflow".to_string()))?;
         let mut chunk = if chunk_start < base_size {
-            self.validate_current_origin().await?;
+            self.runtime.block_on(self.validate_current_origin())?;
             let readable = std::cmp::min(self.chunk_size as u64, base_size - chunk_start);
-            self.base_file.pread(chunk_start, readable).await?
+            self.runtime
+                .block_on(self.base_file.pread(chunk_start, readable))?
         } else {
             Vec::new()
         };

@@ -1,9 +1,8 @@
 use crate::error::Result;
-use crate::pool::ConnectionPool;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use turso::Connection;
+use tokio_rusqlite::rusqlite::Connection;
 
 use super::journal::{JournalCtx, JournalDelta, MutationTxn};
 
@@ -16,7 +15,7 @@ pub(crate) struct ReapChanges {
 /// Implementors may delete sidecar rows keyed by `ino`; returning an error
 /// aborts and rolls back the whole reap transaction, including core row
 /// deletion.
-#[async_trait]
+#[async_trait(?Send)]
 pub trait ReapHook: Send + Sync {
     fn dedup_key(&self) -> Option<&'static str> {
         None
@@ -26,12 +25,21 @@ pub trait ReapHook: Send + Sync {
 }
 
 /// Owns open-inode tracking, deferred orphan queues, and reap hooks.
-#[derive(Default)]
 pub(crate) struct Lifecycle {
+    runtime: tokio::runtime::Handle,
     open_inodes: Arc<OpenInodes>,
     reap_hooks: Mutex<Vec<Arc<dyn ReapHook>>>,
 }
 
+impl Default for Lifecycle {
+    fn default() -> Self {
+        Self {
+            runtime: tokio::runtime::Handle::current(),
+            open_inodes: Arc::default(),
+            reap_hooks: Mutex::default(),
+        }
+    }
+}
 impl Lifecycle {
     pub(crate) fn guard(&self, ino: i64) -> OpenInodeGuard {
         self.open_inodes.guard(ino)
@@ -61,21 +69,21 @@ impl Lifecycle {
     /// were unlinked while open and never queued for deferred reap because the
     /// process died. They are invisible (no dentry), so deleting them before
     /// serving is safe.
-    pub(crate) async fn sweep_mount_orphans(
+    pub(crate) fn sweep_mount_orphans(
         &self,
         conn: &Connection,
         journal: JournalCtx,
     ) -> Result<Vec<i64>> {
-        let inos = self.nlink_zero_inos(conn).await?;
+        let inos = self.nlink_zero_inos(conn)?;
         if inos.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut txn = MutationTxn::begin(conn, journal).await?;
-        let result: Result<Vec<i64>> = async {
+        let mut txn = MutationTxn::begin(conn, journal)?;
+        let result: Result<Vec<i64>> = (|| {
             let mut reaped = Vec::new();
             for ino in &inos {
-                if let Some(changes) = self.reap_inode_with_conn(conn, *ino).await? {
+                if let Some(changes) = self.reap_inode_with_conn(conn, *ino)? {
                     for delta in changes.deltas {
                         txn.record(delta);
                     }
@@ -83,16 +91,15 @@ impl Lifecycle {
                 }
             }
             Ok(reaped)
-        }
-        .await;
+        })();
 
         match result {
             Ok(reaped) => {
-                txn.commit().await?;
+                txn.commit()?;
                 Ok(reaped)
             }
             Err(error) => {
-                let _ = txn.rollback().await;
+                txn.rollback()?;
                 Err(error)
             }
         }
@@ -102,9 +109,12 @@ impl Lifecycle {
     /// handles existed (POSIX unlink-while-open). Runs opportunistically at
     /// namespace mutations and at finalize; crash recovery is covered by the
     /// mount sweep.
-    pub(crate) async fn process_deferred_reaps<F>(
+    pub(crate) fn has_pending_reaps(&self) -> bool {
+        self.open_inodes.has_pending_reaps()
+    }
+    pub(crate) fn process_deferred_reaps<F>(
         &self,
-        pool: &ConnectionPool,
+        conn: &Connection,
         journal: JournalCtx,
         before_reap: F,
     ) -> Result<Vec<i64>>
@@ -114,78 +124,62 @@ impl Lifecycle {
         if !self.open_inodes.has_pending_reaps() {
             return Ok(Vec::new());
         }
+        // Queue removal, hook awaits, SQL and requeue-on-error all belong
+        // to the job, never to the cancelable outer waiter.
         let inos = self.open_inodes.take_reap_queue();
         for ino in &inos {
             before_reap(*ino);
         }
-        let conn = pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, journal).await?;
-        let result: Result<Vec<i64>> = async {
+        let result = (|| {
+            let mut txn = MutationTxn::begin(conn, journal)?;
             let mut reaped = Vec::new();
             for ino in &inos {
-                if let Some(changes) = self.reap_inode_with_conn(&conn, *ino).await? {
+                if let Some(changes) = self.reap_inode_with_conn(conn, *ino)? {
                     for delta in changes.deltas {
                         txn.record(delta);
                     }
                     reaped.push(*ino);
                 }
             }
+            txn.commit()?;
             Ok(reaped)
+        })();
+        if result.is_err() {
+            self.open_inodes.requeue_reaps(inos);
         }
-        .await;
-
-        match result {
-            Ok(reaped) => {
-                txn.commit().await?;
-                Ok(reaped)
-            }
-            Err(error) => {
-                let _ = txn.rollback().await;
-                self.open_inodes.requeue_reaps(inos);
-                Err(error)
-            }
-        }
+        result
     }
 
     /// Delete an already-unlinked inode and its core storage rows using the
     /// caller's transaction. The nlink=0 guard makes stale queue entries a
     /// no-op.
-    pub(crate) async fn reap_inode_with_conn(
+    pub(crate) fn reap_inode_with_conn(
         &self,
         conn: &Connection,
         ino: i64,
     ) -> Result<Option<ReapChanges>> {
-        let changed = conn
-            .execute("DELETE FROM fs_inode WHERE ino = ? AND nlink = 0", (ino,))
-            .await?;
+        let changed = conn.execute("DELETE FROM fs_inode WHERE ino = ? AND nlink = 0", (ino,))?;
         if changed == 0 {
             return Ok(None);
         }
 
         let mut deltas = vec![JournalDelta::inode_delete("reap", ino)];
-        if conn
-            .execute("DELETE FROM fs_origin WHERE delta_ino = ?", (ino,))
-            .await?
-            > 0
-        {
+        if conn.execute("DELETE FROM fs_origin WHERE delta_ino = ?", (ino,))? > 0 {
             deltas.push(JournalDelta::origin_delete("reap", ino));
         }
-        let mut override_rows = conn
-            .query(
-                "SELECT chunk_index
+        let mut query_statement_0 = conn.prepare_cached(
+            "SELECT chunk_index
                  FROM fs_chunk_override
                  WHERE delta_ino = ?
                  ORDER BY chunk_index",
-                (ino,),
-            )
-            .await?;
+        )?;
+        let mut override_rows = query_statement_0.query((ino,))?;
         let mut override_indexes = Vec::new();
-        while let Some(row) = override_rows.next().await? {
-            override_indexes.push(row.get::<i64>(0)?);
+        while let Some(row) = override_rows.next()? {
+            override_indexes.push(row.get::<_, i64>(0)?);
         }
         drop(override_rows);
-        conn.execute("DELETE FROM fs_chunk_override WHERE delta_ino = ?", (ino,))
-            .await?;
+        conn.execute("DELETE FROM fs_chunk_override WHERE delta_ino = ?", (ino,))?;
         for chunk_index in override_indexes {
             deltas.push(JournalDelta::chunk_override_delete(
                 "reap",
@@ -193,17 +187,13 @@ impl Lifecycle {
                 chunk_index,
             ));
         }
-        if conn
-            .execute("DELETE FROM fs_partial_origin WHERE delta_ino = ?", (ino,))
-            .await?
-            > 0
-        {
+        if conn.execute("DELETE FROM fs_partial_origin WHERE delta_ino = ?", (ino,))? > 0 {
             deltas.push(JournalDelta::partial_origin_delete("reap", ino));
         }
         for hook in self.hooks_snapshot() {
-            hook.on_reap(conn, ino).await?;
+            self.runtime.block_on(hook.on_reap(conn, ino))?;
         }
-        for delta in super::store::delete_all_chunk_mappings(conn, ino).await? {
+        for delta in super::store::delete_all_chunk_mappings(conn, ino)? {
             match delta {
                 super::store::DataDelta::Upsert { .. } => unreachable!(),
                 super::store::DataDelta::Delete { ino, chunk_index } => {
@@ -211,11 +201,7 @@ impl Lifecycle {
                 }
             }
         }
-        if conn
-            .execute("DELETE FROM fs_symlink WHERE ino = ?", (ino,))
-            .await?
-            > 0
-        {
+        if conn.execute("DELETE FROM fs_symlink WHERE ino = ?", (ino,))? > 0 {
             deltas.push(JournalDelta::symlink_delete("reap", ino));
         }
         Ok(Some(ReapChanges { deltas }))
@@ -230,12 +216,12 @@ impl Lifecycle {
         self.reap_hooks.lock().unwrap().len()
     }
 
-    async fn nlink_zero_inos(&self, conn: &Connection) -> Result<Vec<i64>> {
-        let mut rows = conn
-            .query("SELECT ino FROM fs_inode WHERE nlink = 0", ())
-            .await?;
+    fn nlink_zero_inos(&self, conn: &Connection) -> Result<Vec<i64>> {
+        let mut query_statement_1 =
+            conn.prepare_cached("SELECT ino FROM fs_inode WHERE nlink = 0")?;
+        let mut rows = query_statement_1.query([])?;
         let mut inos = Vec::new();
-        while let Some(row) = rows.next().await? {
+        while let Some(row) = rows.next()? {
             let ino: i64 = row.get(0)?;
             inos.push(ino);
         }

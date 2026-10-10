@@ -407,8 +407,10 @@ async fn mounted_native_io_is_private_and_survives_reopen() -> Result<()> {
         b"unicode case unchanged"
     );
     view.finalize().await?;
-    let conn = sdk.get_connection().await?;
-    let integrity = check(&conn, &CheckOpts::new(&db).check_base(true)).await?;
+    let integrity = sdk
+        .get_pool()
+        .execute(move |conn| check(conn, &CheckOpts::new(&db).check_base(true)))
+        .await?;
     assert!(integrity.ok, "{integrity:#?}");
     Ok(())
 }

@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use turso::transaction::{Transaction, TransactionBehavior};
-use turso::{Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 use crate::error::{Error, Result};
 use crate::fs::FsError;
@@ -305,19 +305,18 @@ pub(crate) struct InodeRow {
 }
 
 impl InodeRow {
-    pub(crate) fn from_row(row: &turso::Row, start: usize) -> Result<Self> {
+    pub(crate) fn from_row(row: &tokio_rusqlite::rusqlite::Row<'_>, start: usize) -> Result<Self> {
         let integer = |index: usize, name: &str| -> Result<i64> {
-            row.get_value(start + index)
-                .ok()
-                .and_then(|value| value.as_integer().copied())
-                .ok_or_else(|| FsError::Corrupt(format!("invalid fs_inode.{name}")).into())
+            (match row.get::<_, Value>(start + index)? {
+                Value::Integer(n) => Some(n),
+                _ => None,
+            })
+            .ok_or_else(|| FsError::Corrupt(format!("invalid fs_inode.{name}")).into())
         };
-        let data_inline = match row.get_value(start + 13) {
-            Ok(Value::Blob(data)) => Some(data),
-            Ok(Value::Null) => None,
-            Ok(_) | Err(_) => {
-                return Err(FsError::Corrupt("invalid fs_inode.data_inline".to_string()).into())
-            }
+        let data_inline = match row.get::<_, Value>(start + 13)? {
+            Value::Blob(data) => Some(data),
+            Value::Null => None,
+            _ => return Err(FsError::Corrupt("invalid fs_inode.data_inline".to_string()).into()),
         };
         Ok(Self {
             ino: integer(0, "ino")?,
@@ -387,9 +386,9 @@ pub(crate) struct MutationTxn<'conn> {
 }
 
 impl<'conn> MutationTxn<'conn> {
-    pub(crate) async fn begin(conn: &'conn Connection, journal: JournalCtx) -> Result<Self> {
+    pub(crate) fn begin(conn: &'conn Connection, journal: JournalCtx) -> Result<Self> {
         Ok(Self {
-            txn: Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?,
+            txn: Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?,
             journal,
             records: Vec::new(),
             inserted_chunks: Vec::new(),
@@ -412,21 +411,19 @@ impl<'conn> MutationTxn<'conn> {
         }
     }
 
-    pub(crate) async fn record_inode(&mut self, label: &'static str, row: InodeRow) -> Result<()> {
+    pub(crate) fn record_inode(&mut self, label: &'static str, row: InodeRow) -> Result<()> {
         if !self.journal.enabled {
             return Ok(());
         }
         let inline_digest = if let Some(data) = &row.data_inline {
             let digest = *blake3::hash(data).as_bytes();
             if !self.journal.chunk_known(&digest) {
-                self.txn
-                    .execute(
-                        "INSERT INTO fs_chunk (digest, data, refcount)
+                self.txn.execute(
+                    "INSERT INTO fs_chunk (digest, data, refcount)
                          VALUES (?, ?, 0)
                          ON CONFLICT(digest) DO NOTHING",
-                        (Value::Blob(digest.to_vec()), Value::Blob(data.clone())),
-                    )
-                    .await?;
+                    (Value::Blob(digest.to_vec()), Value::Blob(data.clone())),
+                )?;
                 self.inserted_chunks.push(digest);
             }
             Some(digest.to_vec())
@@ -453,12 +450,12 @@ impl<'conn> MutationTxn<'conn> {
         Ok(())
     }
 
-    pub(crate) async fn record_storage_changes(
+    pub(crate) fn record_storage_changes(
         &mut self,
         label: &'static str,
         changes: StorageChanges,
     ) -> Result<()> {
-        self.record_inode(label, changes.inode).await?;
+        self.record_inode(label, changes.inode)?;
         for change in changes.data {
             match change {
                 DataDelta::Upsert {
@@ -474,7 +471,7 @@ impl<'conn> MutationTxn<'conn> {
         Ok(())
     }
 
-    pub(crate) async fn commit(self) -> Result<()> {
+    pub(crate) fn commit(self) -> Result<()> {
         let Self {
             txn,
             journal,
@@ -490,17 +487,12 @@ impl<'conn> MutationTxn<'conn> {
             txn.execute(
                 "INSERT INTO fs_config (key, value) VALUES ('history_valid', '0')
                  ON CONFLICT(key) DO UPDATE SET value = '0'",
-                (),
-            )
-            .await?;
+                [],
+            )?;
         }
         if journal.enabled && !records.is_empty() {
             let hint = journal.next_seq.load(Ordering::Acquire);
-            let mut txn_id = if hint > 0 {
-                hint
-            } else {
-                next_txn_id(&txn).await?
-            };
+            let mut txn_id = if hint > 0 { hint } else { next_txn_id(&txn)? };
             let wallclock_ms = wallclock_ms()?;
             // Bulk imports journal thousands of rows in one commit, and
             // per-row statements made clone-import ~60% slower; multi-row
@@ -525,8 +517,8 @@ impl<'conn> MutationTxn<'conn> {
                     params.push(Value::Text(serde_json::to_string(&record.row)?));
                     params.push(Value::Integer(wallclock_ms));
                 }
-                let mut stmt = txn.prepare_cached(&sql).await?;
-                stmt.execute(params).await?;
+                let mut stmt = txn.prepare_cached(&sql)?;
+                stmt.execute(tokio_rusqlite::rusqlite::params_from_iter(params))?;
                 last = txn.last_insert_rowid();
                 let first = last - batch.len() as i64 + 1;
                 if first_batch {
@@ -537,9 +529,8 @@ impl<'conn> MutationTxn<'conn> {
                         // seq >= first inside the exclusive transaction, so
                         // one patch restores txn_id == first-seq.
                         let mut stmt = txn
-                            .prepare_cached("UPDATE fs_op_journal SET txn_id = ? WHERE seq >= ?")
-                            .await?;
-                        stmt.execute((first, first)).await?;
+                            .prepare_cached("UPDATE fs_op_journal SET txn_id = ? WHERE seq >= ?")?;
+                        stmt.execute((first, first))?;
                         txn_id = first;
                     }
                 }
@@ -550,7 +541,7 @@ impl<'conn> MutationTxn<'conn> {
             // reads the hint before this store.
             journal.next_seq.store(last + 1, Ordering::Release);
         }
-        txn.commit().await?;
+        txn.commit()?;
         if marks_history_invalid {
             journal.invalidated.store(true, Ordering::Release);
         }
@@ -558,8 +549,8 @@ impl<'conn> MutationTxn<'conn> {
         Ok(())
     }
 
-    pub(crate) async fn rollback(self) -> Result<()> {
-        self.txn.rollback().await?;
+    pub(crate) fn rollback(self) -> Result<()> {
+        self.txn.rollback()?;
         Ok(())
     }
 }
@@ -571,17 +562,12 @@ impl<'conn> MutationTxn<'conn> {
 /// inside this exclusive transaction. Deriving the ID this way keeps the
 /// commit path free of allocator-table writes, which dirtied an extra B-tree
 /// page on every mutating commit and dominated clone-workload overhead.
-async fn next_txn_id(conn: &Connection) -> Result<i64> {
-    // Bare `MAX(seq)` only: turso's min/max optimization plans it as a
-    // reverse seek, but wrapping it (e.g. `COALESCE(MAX(seq), 0)`) falls
-    // back to a full table scan, so the NULL of an empty journal is handled
-    // here instead of in SQL.
-    let mut stmt = conn
-        .prepare_cached("SELECT MAX(seq) FROM fs_op_journal")
-        .await?;
-    let mut rows = stmt.query(()).await?;
-    let head = match rows.next().await? {
-        Some(row) => match row.get_value(0)? {
+fn next_txn_id(conn: &Connection) -> Result<i64> {
+    // Read the journal head; the empty journal maps to zero below.
+    let mut stmt = conn.prepare_cached("SELECT MAX(seq) FROM fs_op_journal")?;
+    let mut rows = stmt.query([])?;
+    let head = match rows.next()? {
+        Some(row) => match row.get::<_, Value>(0)? {
             Value::Null => None,
             Value::Integer(seq) => Some(seq),
             other => {
@@ -613,6 +599,6 @@ fn hex_digest(digest: &[u8]) -> String {
     out
 }
 
-pub async fn journal_gc(conn: &Connection, retention_ops: usize) -> Result<()> {
-    super::super::history::journal_gc(conn, retention_ops).await
+pub fn journal_gc(conn: &Connection, retention_ops: usize) -> Result<()> {
+    super::super::history::journal_gc(conn, retention_ops)
 }

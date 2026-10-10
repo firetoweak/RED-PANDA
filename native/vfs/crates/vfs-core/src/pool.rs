@@ -1,481 +1,365 @@
-//! Connection pool for Turso database connections.
-//!
-//! This module provides a thread-safe connection pool that manages database
-//! connections with a maximum limit. When the pool is exhausted, callers block
-//! until a connection becomes available or timeout occurs.
-
-use std::{sync::Arc, time::Duration};
-use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
-use turso::{Connection, Database};
-
+//! Each submitted operation owns its slot until completion is delivered or
+//! abandoned. No SQLite connection or transaction escapes a worker closure.
 use crate::error::{Error, Result};
+use futures_util::FutureExt;
+use parking_lot::Mutex;
+use std::{
+    any::Any,
+    collections::VecDeque,
+    panic::{catch_unwind, resume_unwind, AssertUnwindSafe},
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio_rusqlite::{
+    rusqlite::{self, OpenFlags},
+    Connection,
+};
 
-/// Default number of connections in a local file-backed pool.
-const DEFAULT_MAX_CONNECTIONS: usize = 8;
-
-/// Default timeout for acquiring a connection from the pool.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Configuration for a connection pool.
-#[derive(Clone, Debug)]
-pub struct PoolOptions {
-    /// Maximum number of connections that may be checked out concurrently.
-    pub(crate) max_connections: usize,
-    /// Timeout for acquiring a connection when the pool is exhausted.
-    pub(crate) timeout: Duration,
-    /// SQL statements applied once to every newly-created connection.
-    pub(crate) setup_sql: Vec<String>,
-    /// Connection-local busy timeout applied without issuing SQL.
-    pub(crate) connection_busy_timeout: Option<Duration>,
+type Panic = Box<dyn Any + Send>;
+enum Failure {
+    Error(Error),
+    Panic(Panic),
+}
+struct State {
+    idle: Vec<Connection>,
+    failures: VecDeque<Failure>,
+    accepting: bool,
+}
+enum Source {
+    Memory,
+    Writable(PathBuf),
+    Frozen(String),
+}
+struct Inner {
+    source: Source,
+    capacity: u32,
+    slots: Arc<Semaphore>,
+    state: Mutex<State>,
+    checkpoint: Mutex<()>,
 }
 
-impl Default for PoolOptions {
-    fn default() -> Self {
-        Self {
-            max_connections: DEFAULT_MAX_CONNECTIONS,
-            timeout: DEFAULT_TIMEOUT,
-            setup_sql: Vec::new(),
-            connection_busy_timeout: None,
-        }
-    }
-}
-
-impl PoolOptions {
-    /// Options for a strictly serialized single-connection pool.
-    pub(crate) fn single_connection() -> Self {
-        Self {
-            max_connections: 1,
-            ..Self::default()
-        }
-    }
-
-    /// Override the setup SQL applied to every newly-created connection.
-    pub(crate) fn with_setup_sql<I, S>(mut self, setup_sql: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.setup_sql = setup_sql.into_iter().map(Into::into).collect();
-        self
-    }
-
-    /// Set the busy timeout directly on each newly-created connection.
-    pub(crate) fn with_connection_busy_timeout(mut self, timeout: Duration) -> Self {
-        self.connection_busy_timeout = Some(timeout);
-        self
-    }
-}
-
-/// A pool of database connections with a maximum limit.
-///
-/// The pool enforces a maximum number of concurrent connections. When all
-/// connections are in use, `get_connection()` blocks until one becomes
-/// available or the timeout expires (returning `ConnectionPoolTimeout`).
 #[derive(Clone)]
 pub struct ConnectionPool {
-    inner: Arc<ConnectionPoolInner>,
+    inner: Arc<Inner>,
 }
-
-struct ConnectionPoolInner {
-    db: Database,
-    /// Available connections ready to be reused
-    pool: Mutex<Vec<Connection>>,
-    /// Semaphore to limit concurrent connections
-    semaphore: Arc<Semaphore>,
-    /// Timeout for acquiring a connection
-    timeout: Duration,
-    /// SQL statements applied once to each newly-created connection
-    setup_sql: Vec<String>,
-    /// Busy timeout applied directly to each newly-created connection.
-    connection_busy_timeout: Option<Duration>,
+struct Completion<T> {
+    result: Option<std::result::Result<Result<T>, Panic>>,
+    pool: Arc<Inner>,
+    _permit: OwnedSemaphorePermit,
+}
+impl<T> Completion<T> {
+    fn observe(mut self) -> Result<T> {
+        match self.result.take().unwrap() {
+            Ok(result) => result,
+            Err(panic) => resume_unwind(panic),
+        }
+    }
+}
+impl<T> Drop for Completion<T> {
+    fn drop(&mut self) {
+        let failure = match self.result.take() {
+            Some(Ok(Err(error))) => Some(Failure::Error(error)),
+            Some(Err(panic)) => Some(Failure::Panic(panic)),
+            _ => None,
+        };
+        if let Some(failure) = failure {
+            self.pool.state.lock().failures.push_back(failure);
+        }
+    }
 }
 
 impl ConnectionPool {
-    /// Create a connection pool with explicit options.
-    pub(crate) fn with_options(db: Database, options: PoolOptions) -> Self {
+    fn from_source(source: Source, capacity: u32) -> Self {
+        assert!(capacity > 0);
         Self {
-            inner: Arc::new(ConnectionPoolInner {
-                db,
-                pool: Mutex::new(Vec::new()),
-                semaphore: Arc::new(Semaphore::new(options.max_connections.max(1))),
-                timeout: options.timeout,
-                setup_sql: options.setup_sql,
-                connection_busy_timeout: options.connection_busy_timeout,
+            inner: Arc::new(Inner {
+                source,
+                capacity,
+                slots: Arc::new(Semaphore::new(capacity as usize)),
+                state: Mutex::new(State {
+                    idle: Vec::new(),
+                    failures: VecDeque::new(),
+                    accepting: true,
+                }),
+                checkpoint: Mutex::new(()),
             }),
         }
     }
-
-    /// Get a connection from the pool.
-    ///
-    /// If a pooled connection is available, it is returned immediately.
-    /// Otherwise, if the pool hasn't reached max capacity, a new connection
-    /// is created. If at max capacity, this blocks until a connection is
-    /// returned to the pool or timeout expires.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Error::ConnectionPoolTimeout` if no connection becomes
-    /// available within the timeout period.
-    pub(crate) async fn get_connection(&self) -> Result<PooledConnection> {
-        // Try to acquire a permit with timeout
-        let permit = {
-            let _wait_timer =
-                crate::telemetry::timer(&crate::telemetry::CORE_COUNTERS.connection_wait);
-            tokio::time::timeout(
-                self.inner.timeout,
-                Arc::clone(&self.inner.semaphore).acquire_owned(),
-            )
-            .await
-            .map_err(|_| Error::ConnectionPoolTimeout)?
-            .map_err(|_| Error::Internal("semaphore closed".to_string()))?
-        };
-
-        // We have a permit - try to get an existing connection or create new one
-        let conn = {
-            let mut pool = self.inner.pool.lock().await;
-            pool.pop()
-        };
-
-        let conn = match conn {
-            Some(c) => {
-                crate::telemetry::record_connection_reuse();
-                c
-            }
-            None => {
-                let conn = self.create_connection().await?;
-                crate::telemetry::record_connection_create();
-                conn
-            }
-        };
-
-        Ok(PooledConnection {
-            conn: Some(conn),
-            pool: self.inner.clone(),
-            discard_on_drop: false,
-            _permit: permit,
-        })
+    pub fn writable(path: impl Into<PathBuf>, capacity: u32) -> Self {
+        Self::from_source(Source::Writable(path.into()), capacity)
     }
-
-    /// Get the underlying database reference (for creating additional connections).
-    pub fn database(&self) -> &Database {
-        &self.inner.db
+    pub fn memory() -> Self {
+        Self::from_source(Source::Memory, 1)
     }
-
-    async fn create_connection(&self) -> Result<Connection> {
-        let conn = self.inner.db.connect()?;
-
-        if let Some(timeout) = self.inner.connection_busy_timeout {
-            conn.busy_timeout(timeout)?;
+    /// Caller supplies a frozen single-file artifact, never a live WAL family.
+    pub fn frozen(path: &Path, capacity: u32) -> Result<Self> {
+        if !path.is_file() {
+            return Err(Error::DatabaseNotFound(path.display().to_string()));
         }
-        for sql in &self.inner.setup_sql {
-            let mut rows = conn.query(sql.as_str(), ()).await?;
-            while rows.next().await?.is_some() {}
+        #[cfg(windows)]
+        let path = path.canonicalize()?;
+        #[cfg(not(windows))]
+        let path = std::path::absolute(path)?;
+        let path = path
+            .to_str()
+            .ok_or_else(|| Error::InvalidUtf8Path(path.display().to_string()))?;
+        let mut uri = String::from("file:");
+        // Keep the Windows verbatim prefix for CreateFileW. A leading URI
+        // slash avoids treating it as an authority; SQLite's Windows VFS
+        // removes that slash after decoding the verbatim path.
+        #[cfg(windows)]
+        uri.push('/');
+        #[cfg(not(windows))]
+        if path.starts_with("//") {
+            uri.push_str("//");
         }
-
-        Ok(conn)
-    }
-}
-
-/// A connection borrowed from the pool.
-///
-/// When dropped, the connection is returned to the pool for reuse and the
-/// semaphore permit is released, allowing another caller to acquire a connection.
-pub struct PooledConnection {
-    conn: Option<Connection>,
-    pool: Arc<ConnectionPoolInner>,
-    discard_on_drop: bool,
-    /// Held permit - released when this is dropped
-    _permit: OwnedSemaphorePermit,
-}
-
-impl PooledConnection {
-    /// Get a reference to the underlying connection.
-    fn connection(&self) -> &Connection {
-        self.conn.as_ref().expect("connection already taken")
-    }
-
-    /// Mark this connection as unhealthy so it is evicted instead of reused.
-    ///
-    /// Callers that observe a fatal database error can keep the pool from
-    /// handing the same connection to the next borrower. The semaphore permit
-    /// is still released normally when the pooled wrapper drops.
-    fn mark_unhealthy(&mut self) {
-        self.discard_on_drop = true;
-    }
-
-    /// Mark this connection unhealthy when `error` indicates the connection
-    /// should not be returned to the reusable pool.
-    pub(crate) fn mark_unhealthy_if_fatal(&mut self, error: &Error) {
-        if is_fatal_connection_error(error) {
-            self.mark_unhealthy();
-        }
-    }
-}
-
-fn is_fatal_connection_error(error: &Error) -> bool {
-    matches!(
-        error,
-        Error::Database(
-            turso::Error::Corrupt(_)
-                | turso::Error::IoError(_, _)
-                | turso::Error::Misuse(_)
-                | turso::Error::NotAdb(_)
-        )
-    )
-}
-
-impl std::ops::Deref for PooledConnection {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        self.connection()
-    }
-}
-
-impl Drop for PooledConnection {
-    fn drop(&mut self) {
-        if let Some(conn) = self.conn.take() {
-            if self.discard_on_drop {
-                crate::telemetry::record_connection_health_eviction();
-                return;
-            }
-            // Return connection to pool - use try_lock to avoid blocking in drop
-            // If we can't get the lock, just drop the connection (it will be recreated)
-            if let Ok(mut pool) = self.pool.pool.try_lock() {
-                pool.push(conn);
+        for byte in path.bytes() {
+            if byte.is_ascii_alphanumeric() || b"/-._~:".contains(&byte) {
+                uri.push(byte as char);
             } else {
-                crate::telemetry::record_connection_drop_discard();
+                use std::fmt::Write;
+                write!(uri, "%{byte:02X}").unwrap();
             }
-            // Permit is automatically released when _permit is dropped
         }
+        uri.push_str("?immutable=1");
+        // The default Windows VFS caps URI paths at MAX_PATH, even when
+        // Rust supplied a canonical verbatim path before URI conversion.
+        #[cfg(windows)]
+        uri.push_str("&vfs=win32-longpath");
+        Ok(Self::from_source(Source::Frozen(uri), capacity))
+    }
+    pub fn check_unobserved(&self) -> Result<()> {
+        let failure = self.inner.state.lock().failures.pop_front();
+        match failure {
+            None => Ok(()),
+            Some(Failure::Error(error)) => Err(error),
+            Some(Failure::Panic(panic)) => resume_unwind(panic),
+        }
+    }
+    pub(crate) fn check_ready(&self) -> Result<()> {
+        self.check_unobserved()?;
+        assert!(
+            self.inner.state.lock().accepting,
+            "database pool stopped after an internal failure"
+        );
+        Ok(())
+    }
+    pub async fn execute<T, F>(&self, operation: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut rusqlite::Connection) -> Result<T> + Send + 'static,
+    {
+        self.check_ready()?;
+        let permit = tokio::time::timeout(
+            Duration::from_secs(30),
+            self.inner.slots.clone().acquire_owned(),
+        )
+        .await
+        .map_err(|_| Error::ConnectionPoolTimeout)?
+        .expect("pool semaphore is not closed");
+        self.check_ready()?;
+        let idle = self.inner.state.lock().idle.pop();
+        let inner = self.inner.clone();
+        if let Some(connection) = idle {
+            crate::telemetry::record_connection_reuse();
+            return Self::dispatch(inner, connection, permit, operation, false)
+                .await
+                .observe();
+        }
+        // Connection creation itself runs on a worker. Once admitted, a new
+        // job owns the permit through open AND operation, even if its caller
+        // is canceled before the open result is delivered. Existing idle
+        // connections do not pay for this extra Tokio task.
+        let opening = tokio::spawn(async move {
+            let opened = AssertUnwindSafe(async {
+                match &inner.source {
+                    Source::Memory => Connection::open_in_memory().await,
+                    Source::Writable(path) => Connection::open(path).await,
+                    Source::Frozen(uri) => {
+                        Connection::open_with_flags(
+                            uri,
+                            OpenFlags::SQLITE_OPEN_READ_ONLY
+                                | OpenFlags::SQLITE_OPEN_URI
+                                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                        )
+                        .await
+                    }
+                }
+            })
+            .catch_unwind()
+            .await;
+            let result = match opened {
+                Ok(Ok(connection)) => {
+                    crate::telemetry::record_connection_create();
+                    return Self::dispatch(inner, connection, permit, operation, true).await;
+                }
+                Ok(Err(error)) => Ok(Err(Error::Database(error))),
+                Err(panic) => Err(panic),
+            };
+            inner.state.lock().accepting = false;
+            Completion {
+                result: Some(result),
+                pool: inner,
+                _permit: permit,
+            }
+        });
+        match opening.await {
+            Ok(completion) => completion.observe(),
+            Err(error) => resume_unwind(error.into_panic()),
+        }
+    }
+    async fn dispatch<T, F>(
+        inner: Arc<Inner>,
+        connection: Connection,
+        permit: OwnedSemaphorePermit,
+        operation: F,
+        is_new: bool,
+    ) -> Completion<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut rusqlite::Connection) -> Result<T> + Send + 'static,
+    {
+        let reusable = connection.clone();
+        connection
+            .call_raw(move |db| {
+                let result = catch_unwind(AssertUnwindSafe(|| {
+                    if is_new {
+                        db.busy_timeout(Duration::from_secs(5))?;
+                        db.set_prepared_statement_cache_capacity(512);
+                        if matches!(&inner.source, Source::Writable(_)) {
+                            db.execute_batch(
+                                "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+                            )?;
+                        }
+                    }
+                    let result = operation(db);
+                    if result.is_ok() {
+                        assert!(
+                            db.is_autocommit(),
+                            "database operation leaked a transaction"
+                        );
+                    }
+                    result
+                }));
+                // A legitimate filesystem rejection must not discard the only
+                // in-memory database. Unknown failures stop admission and retain
+                // the original error/panic in the delivery envelope.
+                let healthy = db.is_autocommit()
+                    && match &result {
+                        Ok(Ok(_)) => true,
+                        Ok(Err(error)) => expected_rejection(error),
+                        Err(_) => false,
+                    };
+                let mut state = inner.state.lock();
+                if healthy {
+                    state.idle.push(reusable);
+                } else {
+                    crate::telemetry::record_connection_drop_discard();
+                    state.accepting = false;
+                }
+                drop(state);
+                Completion {
+                    result: Some(result),
+                    pool: inner,
+                    _permit: permit,
+                }
+            })
+            .await
+            .expect("SQLite worker stopped outside the operation boundary")
+    }
+    /// Stop operation ingress before using this as a shutdown barrier.
+    pub async fn barrier(&self) -> Result<()> {
+        let _permits = self
+            .inner
+            .slots
+            .clone()
+            .acquire_many_owned(self.inner.capacity)
+            .await
+            .expect("pool semaphore is not closed");
+        self.check_unobserved()
+    }
+    /// Terminal close after the caller has stopped ingress. Completion owns
+    /// every slot and worker close, even when the awaiting caller is canceled.
+    pub async fn close(&self) -> Result<()> {
+        self.check_ready()?;
+        let permit = self
+            .inner
+            .slots
+            .clone()
+            .acquire_many_owned(self.inner.capacity)
+            .await
+            .expect("pool semaphore is not closed");
+        self.check_ready()?;
+        let connections = {
+            let mut state = self.inner.state.lock();
+            state.accepting = false;
+            std::mem::take(&mut state.idle)
+        };
+        let inner = self.inner.clone();
+        let closing = tokio::spawn(async move {
+            let result = AssertUnwindSafe(async move {
+                for connection in connections {
+                    connection.close().await.map_err(|error| match error {
+                        tokio_rusqlite::Error::Close((_, error)) => Error::Database(error),
+                        error => panic!("SQLite close failed outside the driver: {error:?}"),
+                    })?;
+                }
+                Ok(())
+            })
+            .catch_unwind()
+            .await;
+            Completion {
+                result: Some(result),
+                pool: inner,
+                _permit: permit,
+            }
+        });
+        match closing.await {
+            Ok(completion) => completion.observe(),
+            Err(error) => resume_unwind(error.into_panic()),
+        }
+    }
+    pub fn available_slots(&self) -> usize {
+        self.inner.slots.available_permits()
+    }
+    pub fn idle_connections(&self) -> usize {
+        self.inner.state.lock().idle.len()
+    }
+
+    pub(crate) fn checkpoint(&self, conn: &rusqlite::Connection) -> Result<()> {
+        // SQLite does not invoke its busy handler for competing checkpointers.
+        // Serialize only checkpoints; no state lock is held here or over await.
+        let _checkpoint = self.inner.checkpoint.lock();
+        let _timer = crate::telemetry::timer(&crate::telemetry::CORE_COUNTERS.wal_checkpoint);
+        let busy: i64 = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))?;
+        if busy != 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+                Some("WAL checkpoint is busy".into()),
+            )
+            .into());
+        }
+        Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use turso::Builder;
-
-    #[tokio::test]
-    async fn test_connection_pool_basic() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(db, PoolOptions::single_connection());
-
-        // Get a connection
-        let conn = pool.get_connection().await.unwrap();
-        assert!(conn.conn.is_some());
-
-        // Drop it
-        drop(conn);
-
-        // Get another - should reuse the pooled one
-        let conn2 = pool.get_connection().await.unwrap();
-        assert!(conn2.conn.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_default_pool_is_single_connection() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(db, PoolOptions::single_connection());
-
-        let conn1 = pool.get_connection().await.unwrap();
-        let pool_clone = pool.clone();
-        let result =
-            tokio::time::timeout(Duration::from_millis(100), pool_clone.get_connection()).await;
-
-        assert!(result.is_err());
-        drop(conn1);
-        assert!(pool.get_connection().await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_single_connection_pool_times_out_under_contention() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(
-            db,
-            PoolOptions {
-                timeout: Duration::from_millis(50),
-                ..PoolOptions::single_connection()
-            },
-        );
-
-        // Get the one allowed connection
-        let conn1 = pool.get_connection().await.unwrap();
-        assert!(conn1.conn.is_some());
-
-        // Try to get another - should timeout quickly
-        let result = pool.get_connection().await;
-        assert!(matches!(result, Err(Error::ConnectionPoolTimeout)));
-
-        // Drop conn1, now we should be able to get a connection
-        drop(conn1);
-        let conn2 = pool.get_connection().await.unwrap();
-        assert!(conn2.conn.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_connection_pool_timeout_error() {
-        // Create pool with very short timeout
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(
-            db,
-            PoolOptions {
-                timeout: Duration::from_millis(50),
-                ..PoolOptions::single_connection()
-            },
-        );
-
-        // Hold the one connection
-        let _conn1 = pool.get_connection().await.unwrap();
-
-        // Try to get another - should return ConnectionPoolTimeout
-        let result = pool.get_connection().await;
-        assert!(matches!(result, Err(Error::ConnectionPoolTimeout)));
-    }
-
-    #[tokio::test]
-    async fn test_connection_pool_concurrent_waiters() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(db, PoolOptions::single_connection());
-        let counter = Arc::new(AtomicUsize::new(0));
-
-        // Spawn multiple tasks that all want the connection
-        let mut handles = vec![];
-        for _ in 0..5 {
-            let pool = pool.clone();
-            let counter = counter.clone();
-            handles.push(tokio::spawn(async move {
-                let _conn = pool.get_connection().await.unwrap();
-                counter.fetch_add(1, Ordering::SeqCst);
-                // Hold connection briefly
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }));
-        }
-
-        // Wait for all to complete
-        for handle in handles {
-            handle.await.unwrap();
-        }
-
-        // All 5 should have completed (serially, since max=1)
-        assert_eq!(counter.load(Ordering::SeqCst), 5);
-    }
-
-    #[tokio::test]
-    async fn test_drop_discard_is_counted_when_pool_lock_is_busy() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(db, PoolOptions::single_connection());
-
-        let conn = pool.get_connection().await.unwrap();
-        let before = crate::telemetry::snapshot().counter("connection_drop_discards");
-        let guard = pool.inner.pool.lock().await;
-        drop(conn);
-        drop(guard);
-
-        let after = crate::telemetry::snapshot().counter("connection_drop_discards");
-        assert!(
-            after > before,
-            "drop-discard counter should increase by at least one: before={before}, after={after}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_unhealthy_connection_is_evicted_and_counted() {
-        let db = Builder::new_local(":memory:").build().await.unwrap();
-        let pool = ConnectionPool::with_options(db, PoolOptions::single_connection());
-
-        let mut conn = pool.get_connection().await.unwrap();
-        let before = crate::telemetry::snapshot().counter("connection_health_evictions");
-        conn.mark_unhealthy();
-        drop(conn);
-
-        let after = crate::telemetry::snapshot().counter("connection_health_evictions");
-        assert!(
-            after > before,
-            "health-eviction counter should increase by at least one: before={before}, after={after}"
-        );
-        assert_eq!(pool.inner.pool.lock().await.len(), 0);
-    }
-
-    #[test]
-    fn fatal_connection_error_classifier_is_narrow() {
-        assert!(is_fatal_connection_error(&Error::Database(
-            turso::Error::Corrupt("bad page".to_string())
-        )));
-        assert!(is_fatal_connection_error(&Error::Database(
-            turso::Error::NotAdb("not an vfs db".to_string())
-        )));
-        assert!(is_fatal_connection_error(&Error::Database(
-            turso::Error::IoError(std::io::ErrorKind::UnexpectedEof, "read")
-        )));
-        assert!(!is_fatal_connection_error(&Error::Database(
-            turso::Error::Busy("database is busy".to_string())
-        )));
-        assert!(!is_fatal_connection_error(&Error::ConnectionPoolTimeout));
-    }
-
-    #[tokio::test]
-    async fn test_file_backed_pool_allows_multiple_connections() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("pool.db");
-        let db = Builder::new_local(db_path.to_str().unwrap())
-            .build()
-            .await
-            .unwrap();
-        let pool = ConnectionPool::with_options(
-            db,
-            PoolOptions {
-                max_connections: 2,
-                ..PoolOptions::default()
-            },
-        );
-
-        let conn1 = pool.get_connection().await.unwrap();
-        conn1
-            .execute(
-                "CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)",
-                (),
-            )
-            .await
-            .unwrap();
-        conn1
-            .execute("INSERT INTO items (value) VALUES ('ok')", ())
-            .await
-            .unwrap();
-
-        let conn2 = pool.get_connection().await.unwrap();
-        let mut rows = conn2
-            .query("SELECT value FROM items WHERE id = 1", ())
-            .await
-            .unwrap();
-        let row = rows.next().await.unwrap().unwrap();
-        assert_eq!(row.get::<String>(0).unwrap(), "ok");
-    }
-
-    #[tokio::test]
-    async fn test_setup_sql_runs_on_each_new_connection() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("setup.db");
-        let db = Builder::new_local(db_path.to_str().unwrap())
-            .build()
-            .await
-            .unwrap();
-        let pool = ConnectionPool::with_options(
-            db,
-            PoolOptions {
-                max_connections: 2,
-                ..PoolOptions::default().with_setup_sql(["PRAGMA busy_timeout = 1234"])
-            },
-        );
-
-        let conn1 = pool.get_connection().await.unwrap();
-        let conn2 = pool.get_connection().await.unwrap();
-
-        for conn in [&conn1, &conn2] {
-            let mut rows = conn.query("PRAGMA busy_timeout", ()).await.unwrap();
-            let row = rows.next().await.unwrap().unwrap();
-            assert_eq!(row.get::<i64>(0).unwrap(), 1234);
-        }
+fn expected_rejection(error: &Error) -> bool {
+    match error {
+        Error::Fs(crate::fs::FsError::Corrupt(_)) => false,
+        Error::Fs(_) => true,
+        Error::Database(rusqlite::Error::SqliteFailure(code, _)) => matches!(
+            code.code,
+            rusqlite::ErrorCode::ConstraintViolation
+                | rusqlite::ErrorCode::DatabaseBusy
+                | rusqlite::ErrorCode::DatabaseLocked
+                | rusqlite::ErrorCode::ReadOnly
+        ),
+        Error::HistoryInvalid { .. }
+        | Error::HistoryTargetOutOfRange { .. }
+        | Error::HistoryTargetMidTransaction { .. }
+        | Error::HistorySnapshotMissing { .. } => true,
+        _ => false,
     }
 }

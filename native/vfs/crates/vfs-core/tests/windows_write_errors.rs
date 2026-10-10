@@ -7,6 +7,7 @@ use std::{
         Arc,
     },
 };
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::{
     error::{Error, Result},
     fs::BaseValidator,
@@ -25,15 +26,17 @@ impl BaseValidator for ReadFailure {
     }
 }
 async fn summary(sdk: &Vfs) -> Result<Vec<i64>> {
-    let conn = sdk.get_connection().await?;
-    let mut counts = Vec::new();
-    for table in ["fs_data", "fs_chunk", "fs_chunk_override", "fs_op_journal"] {
-        let mut rows = conn
-            .query(format!("SELECT COUNT(*) FROM {table}"), ())
-            .await?;
-        counts.push(rows.next().await?.unwrap().get(0)?);
-    }
-    Ok(counts)
+    sdk.get_pool()
+        .execute(|conn| {
+            let mut counts = Vec::new();
+            for table in ["fs_data", "fs_chunk", "fs_chunk_override", "fs_op_journal"] {
+                let mut statement_0 = conn.prepare(&format!("SELECT COUNT(*) FROM {table}"))?;
+                let mut rows = statement_0.query(())?;
+                counts.push(rows.next()?.unwrap().get(0)?);
+            }
+            Ok(counts)
+        })
+        .await
 }
 async fn view(base: &Path, sdk: &Vfs, fault: Arc<ReadFailure>) -> Result<OverlayFS> {
     let fs = OverlayFS::new_with_partial_origin_policy(
@@ -76,7 +79,7 @@ async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result
         file.fsync().await?;
         let before = file.fstat().await?;
         let counts = summary(&sdk).await?;
-        let conn = sdk.get_connection().await?;
+        let conn = Connection::open(&db)?;
         if sql_failure {
             // Fail after the first mapping was inserted in this transaction.
             // This trigger exists only in this isolated test database.
@@ -86,8 +89,7 @@ async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result
                    (SELECT 1 FROM fs_data WHERE ino = NEW.ino AND chunk_index = 0)
                  BEGIN SELECT RAISE(ABORT, 'injected second chunk failure'); END",
                 (),
-            )
-            .await?;
+            )?;
         } else {
             fault.0.store(0, Ordering::SeqCst);
         }
@@ -97,18 +99,31 @@ async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result
             .expect_err("injected write must fail");
         if sql_failure {
             assert!(
-                matches!(error, Error::Database(turso::Error::Error(ref message))
-                    if message == "Runtime error: injected second chunk failure"),
+                matches!(error, Error::Database(tokio_rusqlite::rusqlite::Error::SqliteFailure(_, Some(ref message)))
+                    if message == "injected second chunk failure"),
                 "SQL cause was changed: {error:?}"
             );
-            conn.execute("DROP TRIGGER injected_second_chunk", ())
-                .await?;
+            conn.execute("DROP TRIGGER injected_second_chunk", ())?;
         } else {
             assert!(
                 matches!(error, Error::Io(ref e) if e.raw_os_error() == Some(1117)),
                 "I/O cause was changed: {error:?}"
             );
         }
+        // The unexpected device error stops the executor. Recovery is explicit;
+        // verify persisted rollback through a fresh instance before writing again.
+        let (sdk, fs, file) = if sql_failure {
+            (sdk, fs, file)
+        } else {
+            drop(file);
+            drop(fs);
+            drop(sdk);
+            let sdk = Vfs::open(VfsOptions::with_path(db.to_string_lossy())).await?;
+            let fs = view(&base, &sdk, Arc::new(ReadFailure(AtomicUsize::new(100)))).await?;
+            let stats = fs.lookup(1, "data.bin").await?.unwrap();
+            let file = fs.open(stats.ino, libc::O_RDWR).await?;
+            (sdk, fs, file)
+        };
         assert_eq!(file.pread(0, original.len() as u64).await?, original);
         let after = file.fstat().await?;
         assert_eq!(
@@ -147,7 +162,7 @@ async fn failed_multichunk_write_preserves_data_metadata_and_journal() -> Result
         }
         drop(file);
         fs.finalize().await?;
-        let report = check(&conn, &CheckOpts::new(db).check_base(true)).await?;
+        let report = check(&conn, &CheckOpts::new(db).check_base(true))?;
         assert!(report.ok, "post-error integrity: {report:?}");
         println!(
             "PASS {}: rollback, typed cause and retry",

@@ -7,12 +7,12 @@
 
 use crate::error::Error;
 use crate::error::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use turso::{Builder, Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
 
 use super::{
     BoxedFile, FilesystemStats, FsError, Stats, DEFAULT_DIR_MODE, MAX_NAME_LEN, S_IFDIR, S_IFLNK,
@@ -22,8 +22,8 @@ use super::{
 use super::{FileSystem, TimeChange, WriteRange, DEFAULT_FILE_MODE};
 #[cfg(test)]
 use crate::config::BatcherConfig;
-use crate::config::{CoreConfig, Geometry, DEFAULT_CHUNK_SIZE, DEFAULT_INLINE_THRESHOLD};
-use crate::pool::{ConnectionPool, PoolOptions};
+use crate::config::{CoreConfig, Geometry};
+use crate::pool::ConnectionPool;
 use crate::schema;
 
 mod batcher;
@@ -31,7 +31,7 @@ mod caches;
 mod file;
 mod fs;
 mod import;
-mod journal;
+pub(crate) mod journal;
 mod lifecycle;
 mod path_api;
 pub(in crate::fs) mod store;
@@ -59,77 +59,9 @@ const STORAGE_INLINE: i64 = 1;
 const DENTRY_CACHE_MAX_SIZE: usize = 10000;
 const NEGATIVE_DENTRY_CACHE_MAX_SIZE: usize = 10000;
 const FILE_BACKED_MAX_CONNECTIONS: usize = 8;
-const BUSY_TIMEOUT_SQL: &str = "PRAGMA busy_timeout = 5000";
-const WAL_MODE_SQL: &str = "PRAGMA journal_mode = WAL";
 const BASELINE_SYNCHRONOUS_SQL: &str = "PRAGMA synchronous = NORMAL";
 const DURABLE_SYNCHRONOUS_SQL: &str = "PRAGMA synchronous = FULL";
-const WAL_CHECKPOINT_SQL: &str = "PRAGMA wal_checkpoint(TRUNCATE)";
-// `PRAGMA temp_store` is deliberately absent from every setup list. Running
-// it (any value) initializes the connection's TEMP database, and with a TEMP
-// pager present every `Statement` drop walks turso 0.7's attached-rollback
-// path, which bumps the prepare-context generation and invalidates all
-// cached prepared statements on the connection — a re-prepare per statement
-// on the hot path. Vfs's statements never materialize temp B-trees, so the
-// TEMP database is best left uninitialized.
-const FILE_BACKED_SETUP_SQL: &[&str] = &[BUSY_TIMEOUT_SQL, WAL_MODE_SQL, BASELINE_SYNCHRONOUS_SQL];
-const READ_ONLY_FILE_BACKED_SETUP_SQL: &[&str] = &[];
-const MEMORY_SETUP_SQL: &[&str] = &[];
 const ATTR_CACHE_MAX_SIZE: usize = 10000;
-
-/// Production connection-pool options for local file-backed Vfs databases.
-///
-/// The engine's WAL auto actions stay enabled: interleaved A/B against the
-/// pre-upgrade baseline showed disabling them regresses the checkout phase
-/// 20-30ms per run (reads pay for the longer un-checkpointed WAL) while
-/// buying nothing on the write path.
-pub(crate) fn file_backed_connection_pool_options() -> PoolOptions {
-    PoolOptions {
-        max_connections: FILE_BACKED_MAX_CONNECTIONS,
-        ..PoolOptions::default().with_setup_sql(FILE_BACKED_SETUP_SQL.iter().copied())
-    }
-}
-
-/// Connection-pool options that cannot mutate a frozen database file family.
-pub(crate) fn read_only_file_backed_connection_pool_options() -> PoolOptions {
-    PoolOptions {
-        max_connections: FILE_BACKED_MAX_CONNECTIONS,
-        ..PoolOptions::default()
-            .with_setup_sql(READ_ONLY_FILE_BACKED_SETUP_SQL.iter().copied())
-            .with_connection_busy_timeout(std::time::Duration::from_millis(5000))
-    }
-}
-
-/// Production connection-pool options for local in-memory Vfs databases.
-pub(crate) fn memory_connection_pool_options() -> PoolOptions {
-    PoolOptions::single_connection().with_setup_sql(MEMORY_SETUP_SQL.iter().copied())
-}
-
-async fn checkpoint_wal(conn: &Connection) -> Result<()> {
-    let _checkpoint_timer =
-        crate::telemetry::timer(&crate::telemetry::CORE_COUNTERS.wal_checkpoint);
-    let mut rows = conn.query(WAL_CHECKPOINT_SQL, ()).await?;
-    while rows.next().await?.is_some() {}
-    Ok(())
-}
-
-fn sqlite_sidecar_path(path: &Path, suffix: &str) -> PathBuf {
-    PathBuf::from(format!("{}{}", path.display(), suffix))
-}
-
-fn remove_checkpointed_sidecars(path: &Path) -> Result<()> {
-    let wal = sqlite_sidecar_path(path, "-wal");
-    if let Ok(metadata) = std::fs::metadata(&wal) {
-        if metadata.len() == 0 {
-            std::fs::remove_file(&wal)?;
-        }
-    }
-
-    let shm = sqlite_sidecar_path(path, "-shm");
-    if shm.exists() {
-        std::fs::remove_file(&shm)?;
-    }
-    Ok(())
-}
 
 /// A filesystem backed by SQLite
 #[derive(Clone)]
@@ -152,7 +84,6 @@ pub struct Vfs {
     /// have access to this surface.
     write_drain: Option<BatcherDrain>,
     /// Concrete batcher retained only for white-box unit tests.
-    #[cfg(test)]
     write_batcher: Option<Arc<VfsWriteBatcher>>,
     /// Bulk-import transaction sizes observed by white-box tests.
     #[cfg(test)]
@@ -177,11 +108,10 @@ fn current_timestamp() -> Result<(i64, i64)> {
 impl Vfs {
     /// Create a new filesystem
     pub async fn new(db_path: &str) -> Result<Self> {
-        let db = Builder::new_local(db_path).build().await?;
         let pool = if db_path == ":memory:" {
-            ConnectionPool::with_options(db, memory_connection_pool_options())
+            ConnectionPool::memory()
         } else {
-            ConnectionPool::with_options(db, file_backed_connection_pool_options())
+            ConnectionPool::writable(db_path, FILE_BACKED_MAX_CONNECTIONS as u32)
         };
         let db_path = if db_path == ":memory:" {
             None
@@ -207,17 +137,20 @@ impl Vfs {
         mut config: CoreConfig,
     ) -> Result<Self> {
         let db_path = std::path::absolute(db_path)?;
-        let conn = pool.get_connection().await?;
-        schema::check_schema_version(&conn).await?;
-        let filesystem_id = schema::filesystem_identity(&conn).await?;
-
-        let chunk_size = Self::read_chunk_size(&conn).await?;
-        let inline_threshold = Self::read_inline_threshold(&conn).await?;
+        let (filesystem_id, chunk_size, inline_threshold) = pool
+            .execute(|conn| {
+                schema::check_schema_version(conn)?;
+                Ok((
+                    schema::filesystem_identity(conn)?,
+                    Self::read_chunk_size(conn)?,
+                    Self::read_inline_threshold(conn)?,
+                ))
+            })
+            .await?;
         config.geometry = Geometry {
             chunk_size,
             inline_threshold,
         };
-        drop(conn);
 
         Ok(Self {
             pool,
@@ -233,7 +166,6 @@ impl Vfs {
             attr_cache: Arc::new(AttrCache::new(ATTR_CACHE_MAX_SIZE)),
             pending_view: None,
             write_drain: None,
-            #[cfg(test)]
             write_batcher: None,
             #[cfg(test)]
             import_commit_sizes: Arc::new(Mutex::new(Vec::new())),
@@ -253,21 +185,24 @@ impl Vfs {
         // caller may have changed the working directory (mount teardown
         // chdirs to `/`), so a relative path would silently miss the -wal.
         let db_path = db_path.map(std::path::absolute).transpose()?;
-        let mut conn = pool.get_connection().await?;
-
-        // Initialize or validate schema first. The schema module owns DDL and
-        // stamps SQLite's user-version inside the DDL transaction.
         let journal = journal::JournalCtx::new(config.journal_enabled);
-        if let Err(error) = Self::initialize_schema(&conn, journal.clone()).await {
-            conn.mark_unhealthy_if_fatal(&error);
-            return Err(error);
-        }
-        let filesystem_id = schema::filesystem_identity(&conn).await?;
-        super::history::reconcile_epoch(&conn, config.journal_enabled).await?;
-
-        // Get chunk_size from config (or use default)
-        let chunk_size = Self::read_chunk_size(&conn).await?;
-        let inline_threshold = Self::read_inline_threshold(&conn).await?;
+        let lifecycle = Arc::new(Lifecycle::default());
+        let setup_journal = journal.clone();
+        let setup_lifecycle = lifecycle.clone();
+        let journaling = config.journal_enabled;
+        let (filesystem_id, chunk_size, inline_threshold) = pool
+            .execute(move |conn| {
+                Self::initialize_schema(conn, setup_journal.clone())?;
+                let identity = schema::filesystem_identity(conn)?;
+                super::history::reconcile_epoch(conn, journaling)?;
+                setup_lifecycle.sweep_mount_orphans(conn, setup_journal)?;
+                Ok((
+                    identity,
+                    Self::read_chunk_size(conn)?,
+                    Self::read_inline_threshold(conn)?,
+                ))
+            })
+            .await?;
         config.geometry = Geometry {
             chunk_size,
             inline_threshold,
@@ -295,12 +230,6 @@ impl Vfs {
             (None, None, None)
         };
 
-        let lifecycle = Arc::new(Lifecycle::default());
-
-        lifecycle
-            .sweep_mount_orphans(&conn, journal.clone())
-            .await?;
-
         let overlay_reads = core_config.overlay_reads;
         let fs = Self {
             pool,
@@ -316,7 +245,6 @@ impl Vfs {
             attr_cache,
             pending_view,
             write_drain,
-            #[cfg(test)]
             write_batcher: _write_batcher,
             #[cfg(test)]
             import_commit_sizes: Arc::new(Mutex::new(Vec::new())),
@@ -364,28 +292,22 @@ impl Vfs {
         self.lifecycle.reap_hook_count()
     }
 
-    /// Get a database connection from the pool
-    pub(crate) async fn get_connection(&self) -> Result<crate::pool::PooledConnection> {
-        self.pool.get_connection().await
-    }
-
     /// Get the connection pool
     pub fn get_pool(&self) -> ConnectionPool {
         self.pool.clone()
     }
 
     /// Initialize the database schema
-    async fn initialize_schema(conn: &Connection, journal: journal::JournalCtx) -> Result<()> {
-        schema::ensure_current(conn).await?;
-        let mut txn = MutationTxn::begin(conn, journal).await?;
+    fn initialize_schema(conn: &Connection, journal: journal::JournalCtx) -> Result<()> {
+        schema::ensure_current(conn)?;
+        let mut txn = MutationTxn::begin(conn, journal)?;
 
         // Ensure root directory exists with correct ownership
-        let mut rows = txn
-            .conn()
-            .query("SELECT uid, gid FROM fs_inode WHERE ino = ?", (ROOT_INO,))
-            .await?;
-        let root_ownership = if let Some(row) = rows.next().await? {
-            Some((row.get::<u32>(0)?, row.get::<u32>(1)?))
+        let mut query_statement_0 =
+            conn.prepare_cached("SELECT uid, gid FROM fs_inode WHERE ino = ?")?;
+        let mut rows = query_statement_0.query((ROOT_INO,))?;
+        let root_ownership = if let Some(row) = rows.next()? {
+            Some((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
         } else {
             None
         };
@@ -406,8 +328,8 @@ impl Vfs {
                 VALUES (?, ?, 2, ?, ?, 0, ?, ?, ?, ?, ?, ?)",
                 (ROOT_INO, DEFAULT_DIR_MODE as i64, uid, gid, now_secs, now_secs, now_secs, now_nsec, now_nsec, now_nsec),
             )
-            .await?;
-            schema::refresh_empty_initial_root(txn.conn()).await?;
+            ?;
+            schema::refresh_empty_initial_root(txn.conn())?;
             Some(InodeRow {
                 ino: ROOT_INO,
                 mode: DEFAULT_DIR_MODE as i64,
@@ -427,19 +349,16 @@ impl Vfs {
             })
         } else if root_ownership != Some((uid, gid)) {
             // Update existing root inode ownership to current user
-            let mut rows = txn
-                .conn()
-                .query(
-                    "UPDATE fs_inode SET uid = ?, gid = ? WHERE ino = ?
+            let mut query_statement_1 = conn.prepare_cached(
+                "UPDATE fs_inode SET uid = ?, gid = ? WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
                                atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                    (uid, gid, ROOT_INO),
-                )
-                .await?;
-            let row = rows.next().await?.ok_or_else(|| {
+            )?;
+            let mut rows = query_statement_1.query((uid, gid, ROOT_INO))?;
+            let row = rows.next()?.ok_or_else(|| {
                 Error::Internal("root ownership update returned no row".to_string())
             })?;
-            Some(InodeRow::from_row(&row, 0)?)
+            Some(InodeRow::from_row(row, 0)?)
         } else {
             None
         };
@@ -449,59 +368,52 @@ impl Vfs {
         // history epoch invalid for a maintenance open that touched nothing).
         match changed {
             Some(root) => {
-                txn.record_inode("root_init", root).await?;
-                txn.commit().await?;
+                txn.record_inode("root_init", root)?;
+                txn.commit()?;
             }
-            None => txn.rollback().await?,
+            None => txn.rollback()?,
         }
         Ok(())
     }
 
     /// Read chunk size from config
-    async fn read_chunk_size(conn: &Connection) -> Result<usize> {
-        let mut rows = conn
-            .query("SELECT value FROM fs_config WHERE key = 'chunk_size'", ())
-            .await?;
-
-        if let Some(row) = rows.next().await? {
-            let value = row
-                .get_value(0)
-                .ok()
-                .and_then(|v| match v {
-                    Value::Text(s) => s.parse::<usize>().ok(),
-                    Value::Integer(i) => Some(i as usize),
-                    _ => None,
-                })
-                .unwrap_or(DEFAULT_CHUNK_SIZE);
-            Ok(value)
-        } else {
-            Ok(DEFAULT_CHUNK_SIZE)
+    fn read_chunk_size(conn: &Connection) -> Result<usize> {
+        let value: Value = conn.query_row(
+            "SELECT value FROM fs_config WHERE key = 'chunk_size'",
+            [],
+            |row| row.get(0),
+        )?;
+        let decoded = match value {
+            Value::Text(text) => text
+                .parse::<usize>()
+                .map_err(|_| FsError::Corrupt("invalid chunk_size".into()))?,
+            Value::Integer(value) => {
+                usize::try_from(value).map_err(|_| FsError::Corrupt("invalid chunk_size".into()))?
+            }
+            _ => return Err(FsError::Corrupt("invalid chunk_size type".into()).into()),
+        };
+        if decoded == 0 {
+            return Err(FsError::Corrupt("zero chunk_size".into()).into());
         }
+        Ok(decoded)
     }
 
     /// Read inline threshold from config
-    async fn read_inline_threshold(conn: &Connection) -> Result<usize> {
-        let mut rows = conn
-            .query(
-                "SELECT value FROM fs_config WHERE key = 'inline_threshold'",
-                (),
-            )
-            .await?;
-
-        if let Some(row) = rows.next().await? {
-            let value = row
-                .get_value(0)
-                .ok()
-                .and_then(|v| match v {
-                    Value::Text(s) => s.parse::<usize>().ok(),
-                    Value::Integer(i) => Some(i as usize),
-                    _ => None,
-                })
-                .unwrap_or(DEFAULT_INLINE_THRESHOLD);
-            Ok(value)
-        } else {
-            Ok(DEFAULT_INLINE_THRESHOLD)
-        }
+    fn read_inline_threshold(conn: &Connection) -> Result<usize> {
+        let value: Value = conn.query_row(
+            "SELECT value FROM fs_config WHERE key = 'inline_threshold'",
+            [],
+            |row| row.get(0),
+        )?;
+        let decoded = match value {
+            Value::Text(text) => text
+                .parse::<usize>()
+                .map_err(|_| FsError::Corrupt("invalid inline_threshold".into()))?,
+            Value::Integer(value) => usize::try_from(value)
+                .map_err(|_| FsError::Corrupt("invalid inline_threshold".into()))?,
+            _ => return Err(FsError::Corrupt("invalid inline_threshold type".into()).into()),
+        };
+        Ok(decoded)
     }
 
     /// Normalize a path
@@ -561,12 +473,7 @@ impl Vfs {
     ///
     /// This is more efficient than `resolve_path` when you already have the parent inode,
     /// as it avoids re-resolving all parent path components.
-    async fn lookup_child(
-        &self,
-        conn: &Connection,
-        parent_ino: i64,
-        name: &str,
-    ) -> Result<Option<i64>> {
+    fn lookup_child(&self, conn: &Connection, parent_ino: i64, name: &str) -> Result<Option<i64>> {
         if let Some(cached_ino) = self.dentry_cache.get(parent_ino, name) {
             return Ok(Some(cached_ino));
         }
@@ -574,25 +481,19 @@ impl Vfs {
             return Ok(None);
         }
 
-        let mut stmt = conn
-            .prepare_cached("SELECT ino FROM fs_dentry WHERE parent_ino = ? AND name = ?")
-            .await?;
-        let mut rows = stmt.query((parent_ino, name)).await?;
+        let mut stmt =
+            conn.prepare_cached("SELECT ino FROM fs_dentry WHERE parent_ino = ? AND name = ?")?;
+        let mut rows = stmt.query((parent_ino, name))?;
 
         let mut found_ino = None;
         let mut row_count = 0;
 
-        while let Some(row) = rows.next().await? {
-            found_ino = Some(
-                row.get_value(0)
-                    .ok()
-                    .and_then(|v| v.as_integer().copied())
-                    .ok_or_else(|| {
-                        FsError::Corrupt(format!(
-                            "invalid ino for dentry {parent_ino}/{name}: expected integer"
-                        ))
-                    })?,
-            );
+        while let Some(row) = rows.next()? {
+            found_ino = Some(Some(row.get::<_, i64>(0)?).ok_or_else(|| {
+                FsError::Corrupt(format!(
+                    "invalid ino for dentry {parent_ino}/{name}: expected integer"
+                ))
+            })?);
             row_count += 1;
         }
 
@@ -703,27 +604,37 @@ impl Vfs {
 
     /// Drain all pending batched writes for this Vfs instance.
     pub async fn drain_all(&self) -> Result<()> {
+        self.check_background()?;
+
         if self.read_only {
             return Ok(());
         }
         if let Some(drain) = &self.write_drain {
             drain.drain_all().await?;
         }
-        let conn = self.pool.get_connection().await?;
-        checkpoint_wal(&conn).await?;
-        Ok(())
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                owned.pool.checkpoint(conn)?;
+                Ok(())
+            })
+            .await
     }
 
-    /// Drain all writes and leave the database in single-file journal mode for clean shutdown.
+    /// Stop batch scheduling, reap closed orphans and checkpoint committed writes.
     pub async fn finalize(&self) -> Result<()> {
         if self.read_only {
-            return Ok(());
+            return self.pool.barrier().await;
+        }
+        if let Some(batcher) = &self.write_batcher {
+            batcher.shutdown().await?;
         }
         self.process_deferred_reaps().await?;
         self.drain_all().await?;
-        if let Some(path) = &self.db_path {
-            remove_checkpointed_sidecars(path.as_ref())?;
-        }
+        self.pool.barrier().await?;
         Ok(())
     }
 
@@ -732,24 +643,33 @@ impl Vfs {
     /// namespace mutations and at finalize; a crash is covered by the
     /// nlink=0 sweep at mount.
     pub(crate) async fn process_deferred_reaps(&self) -> Result<()> {
-        let reaped = self
-            .lifecycle
-            .process_deferred_reaps(&self.pool, self.journal_ctx(), |ino| {
-                self.discard_pending_for_reaped_inode(ino);
-            })
-            .await?;
-        for ino in reaped {
-            self.invalidate_attr(ino);
+        self.check_background()?;
+        if !self.lifecycle.has_pending_reaps() {
+            return Ok(());
         }
-        Ok(())
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let reaped =
+                    owned
+                        .lifecycle
+                        .process_deferred_reaps(conn, owned.journal_ctx(), |ino| {
+                            owned.discard_pending_for_reaped_inode(ino);
+                        })?;
+                for ino in reaped {
+                    owned.invalidate_attr(ino);
+                }
+                Ok(())
+            })
+            .await
     }
 
-    async fn reap_inode_with_conn(
+    fn reap_inode_with_conn(
         &self,
         conn: &Connection,
         ino: i64,
     ) -> Result<Option<lifecycle::ReapChanges>> {
-        self.lifecycle.reap_inode_with_conn(conn, ino).await
+        self.lifecycle.reap_inode_with_conn(conn, ino)
     }
 
     /// Drop batcher state for an inode that is being reaped. Inline unlink /
@@ -782,7 +702,7 @@ impl Vfs {
         self.negative_dentry_cache.insert(parent_ino, name);
     }
 
-    pub(crate) async fn create_file_with_conn(
+    pub(crate) fn create_file_with_conn(
         &self,
         conn: &Connection,
         parent_ino: i64,
@@ -802,56 +722,52 @@ impl Vfs {
                 "INSERT INTO fs_inode (mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
                  VALUES (?, 1, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING ino",
             )
-            .await?;
-        let row = inode_stmt
-            .query_row((
-                file_mode as i64,
-                uid,
-                gid,
-                now_secs,
-                now_secs,
-                now_secs,
-                now_nsec,
-                now_nsec,
-                now_nsec,
-                Value::Blob(Vec::new()),
-                STORAGE_INLINE,
-            ))
-            .await?;
-        let ino = row
-            .get_value(0)
-            .ok()
-            .and_then(|value| value.as_integer().copied())
+            ?;
+        let mut single_row_query = inode_stmt.query((
+            file_mode as i64,
+            uid,
+            gid,
+            now_secs,
+            now_secs,
+            now_secs,
+            now_nsec,
+            now_nsec,
+            now_nsec,
+            Value::Blob(Vec::new()),
+            STORAGE_INLINE,
+        ))?;
+        let row = single_row_query.next()?.ok_or(FsError::NotFound)?;
+        let ino = Some(row.get::<_, i64>(0)?)
             .ok_or_else(|| Error::Internal("failed to get inode".to_string()))?;
 
-        match conn
-            .execute(
-                "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)",
-                (name, parent_ino, ino),
-            )
-            .await
-        {
+        match conn.execute(
+            "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)",
+            (name, parent_ino, ino),
+        ) {
             Ok(_) => {}
-            Err(turso::Error::Constraint(_)) => return Err(FsError::AlreadyExists.into()),
+            Err(tokio_rusqlite::rusqlite::Error::SqliteFailure(code, _))
+                if code.code == tokio_rusqlite::rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                return Err(FsError::AlreadyExists.into())
+            }
             Err(error) => return Err(error.into()),
         }
         let dentry_id = conn.last_insert_rowid();
 
         let parent = if update_parent_times {
-            let mut rows = conn
-                .query(
-                    "UPDATE fs_inode
+            let mut query_statement_0 = conn.prepare_cached(
+                "UPDATE fs_inode
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
                                atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind",
-                    (now_secs, now_secs, now_nsec, now_nsec, parent_ino),
-                )
-                .await?;
-            let row = rows.next().await?.ok_or_else(|| {
+            )?;
+            let mut rows =
+                query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, parent_ino))?;
+            let row = rows.next()?.ok_or_else(|| {
                 Error::Internal("create parent update returned no row".to_string())
             })?;
-            Some(InodeRow::from_row(&row, 0)?)
+            Some(InodeRow::from_row(row, 0)?)
         } else {
             None
         };
@@ -884,18 +800,18 @@ impl Vfs {
     }
 
     /// Get link count for an inode
-    async fn get_link_count(&self, conn: &Connection, ino: i64) -> Result<u32> {
-        store::link_count(conn, ino).await
+    fn get_link_count(&self, conn: &Connection, ino: i64) -> Result<u32> {
+        store::link_count(conn, ino)
     }
 
     /// Get file attributes by inode using an existing connection
-    async fn getattr_with_conn(&self, conn: &Connection, ino: i64) -> Result<Option<Stats>> {
+    fn getattr_with_conn(&self, conn: &Connection, ino: i64) -> Result<Option<Stats>> {
         if let Some(stats) = self.attr_cache.get(ino) {
             return Ok(Some(stats));
         }
 
         let generation = self.pending_generation(ino);
-        if let Some(mut stats) = store::getattr(conn, ino).await? {
+        if let Some(mut stats) = store::getattr(conn, ino)? {
             self.merge_pending_view(ino, Some(&mut stats));
             self.cache_attr_if_pending_generation(stats.clone(), generation);
             Ok(Some(stats))
@@ -906,19 +822,30 @@ impl Vfs {
 
     /// Resolve a path to an inode number
     async fn resolve_path(&self, path: &str) -> Result<Option<i64>> {
-        let conn = self.pool.get_connection().await?;
-        self.resolve_path_with_conn(&conn, path).await
+        self.check_background()?;
+
+        let path = path.to_owned();
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let path = path.as_str();
+
+                owned.resolve_path_with_conn(conn, path)
+            })
+            .await
     }
 
     /// Resolve a path to an inode number using a provided connection
-    async fn resolve_path_with_conn(&self, conn: &Connection, path: &str) -> Result<Option<i64>> {
+    fn resolve_path_with_conn(&self, conn: &Connection, path: &str) -> Result<Option<i64>> {
         let components = self.split_path(path);
         crate::telemetry::record_path_resolution(components.len() as u64);
         if components.is_empty() {
             return Ok(Some(ROOT_INO));
         }
 
-        let mut statement: Option<turso::Statement> = None;
+        let mut statement: Option<tokio_rusqlite::rusqlite::CachedStatement<'_>> = None;
         let mut current_ino = ROOT_INO;
         for component in components {
             // Check cache first
@@ -932,24 +859,19 @@ impl Vfs {
             }
 
             // Cache miss - query database
-            if let Some(statement) = &mut statement {
-                statement.reset()?;
-            } else {
-                statement = Some(
-                    conn.prepare_cached(
-                        "SELECT ino FROM fs_dentry WHERE parent_ino = ? AND name = ?",
-                    )
-                    .await?,
-                );
+            if statement.is_none() {
+                statement = Some(conn.prepare_cached(
+                    "SELECT ino FROM fs_dentry WHERE parent_ino = ? AND name = ?",
+                )?);
             }
             let statement = statement.as_mut().expect("statement was set above");
-            let mut rows = statement.query((current_ino, component.as_str())).await?;
+            let mut rows = statement.query((current_ino, component.as_str()))?;
 
             let mut found_row = None;
             let mut row_count = 0;
 
-            while let Some(row) = rows.next().await? {
-                found_row = Some(row);
+            while let Some(row) = rows.next()? {
+                found_row = Some(row.get::<_, i64>(0)?);
                 row_count += 1;
             }
 
@@ -958,11 +880,7 @@ impl Vfs {
             }
 
             if let Some(row) = found_row {
-                let child_ino = row
-                    .get_value(0)
-                    .ok()
-                    .and_then(|v| v.as_integer().copied())
-                    .ok_or_else(|| FsError::Corrupt("invalid ino: expected integer".to_string()))?;
+                let child_ino = row;
 
                 // Populate cache
                 self.cache_dentry(current_ino, &component, child_ino);
@@ -1003,52 +921,59 @@ impl Vfs {
 
     /// List directory contents
     pub async fn readdir(&self, ino: i64) -> Result<Option<Vec<String>>> {
-        let conn = self.pool.get_connection().await?;
-        let mut rows = conn
-            .query(
-                "SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name",
-                (ino,),
-            )
-            .await?;
+        self.check_background()?;
 
-        let mut entries = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let name = row
-                .get_value(0)
-                .ok()
-                .and_then(|v| {
-                    if let Value::Text(s) = v {
-                        Some(s.clone())
-                    } else {
-                        None
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut query_statement_0 = conn.prepare_cached(
+                    "SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name",
+                )?;
+                let mut rows = query_statement_0.query((ino,))?;
+
+                let mut entries = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let name = row.get::<_, String>(0)?;
+                    if !name.is_empty() {
+                        entries.push(name);
                     }
-                })
-                .unwrap_or_default();
-            if !name.is_empty() {
-                entries.push(name);
-            }
-        }
+                }
 
-        Ok(Some(entries))
+                Ok(Some(entries))
+            })
+            .await
     }
 
     /// Read the target of a symbolic link
     pub async fn readlink(&self, path: &str) -> Result<Option<String>> {
-        let conn = self.pool.get_connection().await?;
-        self.readlink_with_conn(&conn, path).await
+        self.check_background()?;
+
+        let path = path.to_owned();
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let path = path.as_str();
+
+                owned.readlink_with_conn(conn, path)
+            })
+            .await
     }
 
     /// Read the target of a symbolic link using a provided connection
-    async fn readlink_with_conn(&self, conn: &Connection, path: &str) -> Result<Option<String>> {
+    fn readlink_with_conn(&self, conn: &Connection, path: &str) -> Result<Option<String>> {
         let path = self.normalize_path(path);
 
-        let ino = match self.resolve_path_with_conn(conn, &path).await? {
+        let ino = match self.resolve_path_with_conn(conn, &path)? {
             Some(ino) => ino,
             None => return Ok(None),
         };
 
         // Check if it's a symlink by querying the inode
-        if let Some(mode) = store::mode(conn, ino).await? {
+        if let Some(mode) = store::mode(conn, ino)? {
             if (mode & S_IFMT) != S_IFLNK {
                 return Err(FsError::NotASymlink.into());
             }
@@ -1057,19 +982,12 @@ impl Vfs {
         }
 
         // Read target from fs_symlink table
-        let mut rows = conn
-            .query("SELECT target FROM fs_symlink WHERE ino = ?", (ino,))
-            .await?;
+        let mut query_statement_0 =
+            conn.prepare_cached("SELECT target FROM fs_symlink WHERE ino = ?")?;
+        let mut rows = query_statement_0.query((ino,))?;
 
-        if let Some(row) = rows.next().await? {
-            let target = row
-                .get_value(0)
-                .ok()
-                .and_then(|v| match v {
-                    Value::Text(s) => Some(s.to_string()),
-                    _ => None,
-                })
-                .ok_or(FsError::InvalidPath)?;
+        if let Some(row) = rows.next()? {
+            let target = row.get::<_, String>(0)?;
             Ok(Some(target))
         } else {
             Ok(None)
@@ -1080,37 +998,39 @@ impl Vfs {
     ///
     /// Returns the total number of inodes and bytes used by file contents.
     async fn statfs(&self) -> Result<FilesystemStats> {
+        self.check_background()?;
+
         self.drain_all().await?;
-        let conn = self.pool.get_connection().await?;
-        // Count total inodes
-        let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM fs_inode").await?;
-        let mut rows = stmt.query(()).await?;
 
-        let inodes = if let Some(row) = rows.next().await? {
-            row.get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(0) as u64
-        } else {
-            0
-        };
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
 
-        // Sum total bytes used (from file sizes in inodes)
-        let mut stmt = conn
-            .prepare_cached("SELECT COALESCE(SUM(size), 0) FROM fs_inode")
-            .await?;
-        let mut rows = stmt.query(()).await?;
+                // Count total inodes
+                let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM fs_inode")?;
+                let mut rows = stmt.query([])?;
 
-        let bytes_used = if let Some(row) = rows.next().await? {
-            row.get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(0) as u64
-        } else {
-            0
-        };
+                let inodes = if let Some(row) = rows.next()? {
+                    row.get::<_, i64>(0)? as u64
+                } else {
+                    0
+                };
 
-        Ok(FilesystemStats { inodes, bytes_used })
+                // Sum total bytes used (from file sizes in inodes)
+                let mut stmt =
+                    conn.prepare_cached("SELECT COALESCE(SUM(size), 0) FROM fs_inode")?;
+                let mut rows = stmt.query([])?;
+
+                let bytes_used = if let Some(row) = rows.next()? {
+                    row.get::<_, i64>(0)? as u64
+                } else {
+                    0
+                };
+
+                Ok(FilesystemStats { inodes, bytes_used })
+            })
+            .await
     }
 
     /// Open a file and return a file handle.
@@ -1131,7 +1051,7 @@ impl Vfs {
             write_drain: self.write_drain.clone(),
             overlay_reads: self.overlay_reads,
             journal: self.journal_ctx(),
-            _open_guard: Some(self.lifecycle.guard(ino)),
+            _open_guard: Some(Arc::new(self.lifecycle.guard(ino))),
         }))
     }
 
@@ -1141,53 +1061,69 @@ impl Vfs {
     /// or timer, so tests that inspect `fs_data` directly need a sync point.
     #[cfg(test)]
     async fn get_chunk_count(&self, ino: i64) -> Result<i64> {
-        self.drain_inode_writes(ino).await?;
-        let conn = self.pool.get_connection().await?;
-        let mut rows = conn
-            .query("SELECT COUNT(*) FROM fs_data WHERE ino = ?", (ino,))
-            .await?;
+        self.check_background()?;
 
-        if let Some(row) = rows.next().await? {
-            Ok(row
-                .get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(0))
-        } else {
-            Ok(0)
-        }
+        self.drain_inode_writes(ino).await?;
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut query_statement_0 =
+                    conn.prepare_cached("SELECT COUNT(*) FROM fs_data WHERE ino = ?")?;
+                let mut rows = query_statement_0.query((ino,))?;
+
+                if let Some(row) = rows.next()? {
+                    Ok(row.get::<_, i64>(0)?)
+                } else {
+                    Ok(0)
+                }
+            })
+            .await
     }
 
     #[cfg(test)]
     async fn get_storage_state(&self, ino: i64) -> Result<(i64, Option<Vec<u8>>)> {
-        self.drain_inode_writes(ino).await?;
-        let conn = self.pool.get_connection().await?;
-        let mut rows = conn
-            .query(
-                "SELECT storage_kind, data_inline FROM fs_inode WHERE ino = ?",
-                (ino,),
-            )
-            .await?;
+        self.check_background()?;
 
-        if let Some(row) = rows.next().await? {
-            let storage_kind = row
-                .get_value(0)
-                .ok()
-                .and_then(|v| v.as_integer().copied())
-                .unwrap_or(STORAGE_CHUNKED);
-            let data_inline = match row.get_value(1) {
-                Ok(Value::Blob(data)) => Some(data),
-                _ => None,
-            };
-            Ok((storage_kind, data_inline))
-        } else {
-            Err(FsError::NotFound.into())
-        }
+        self.drain_inode_writes(ino).await?;
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut query_statement_0 = conn.prepare_cached(
+                    "SELECT storage_kind, data_inline FROM fs_inode WHERE ino = ?",
+                )?;
+                let mut rows = query_statement_0.query((ino,))?;
+
+                if let Some(row) = rows.next()? {
+                    let storage_kind = row.get::<_, i64>(0)?;
+                    let data_inline = match row.get::<_, Value>(1) {
+                        Ok(Value::Blob(data)) => Some(data),
+                        _ => None,
+                    };
+                    Ok((storage_kind, data_inline))
+                } else {
+                    Err(FsError::NotFound.into())
+                }
+            })
+            .await
     }
 }
 
 #[cfg(test)]
-// Keep the extracted test body byte-for-byte; this feature is a pure move.
-#[rustfmt::skip]
-#[path = "tests.rs"]
+#[path = "../../../tests/internal/vfs.rs"]
 mod vfs_tests;
+
+impl Vfs {
+    fn check_background(&self) -> Result<()> {
+        self.pool.check_ready()?;
+        if let Some(drain) = &self.write_drain {
+            drain.check_completed()?;
+        }
+        Ok(())
+    }
+}

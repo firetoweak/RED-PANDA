@@ -49,66 +49,69 @@ impl OverlayFS {
     }
 
     pub(super) async fn cleanup_partial_origin_if_unlinked(&self, delta_ino: i64) -> Result<()> {
-        let conn = self.delta.get_connection().await?;
-        let mut rows = conn
-            .query("SELECT 1 FROM fs_inode WHERE ino = ?", (delta_ino,))
-            .await?;
-        if rows.next().await?.is_some() {
-            return Ok(());
-        }
-        drop(rows);
+        self.delta.get_pool().check_ready()?;
 
-        let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let origin_changed = txn
-            .conn()
-            .execute("DELETE FROM fs_origin WHERE delta_ino = ?", (delta_ino,))
-            .await?;
-        let mut override_rows = txn
-            .conn()
-            .query(
-                "DELETE FROM fs_chunk_override
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut query_statement_0 =
+                    conn.prepare_cached("SELECT 1 FROM fs_inode WHERE ino = ?")?;
+                let mut rows = query_statement_0.query((delta_ino,))?;
+                if rows.next()?.is_some() {
+                    return Ok(());
+                }
+                drop(rows);
+
+                let mut txn =
+                    super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+                let origin_changed = txn
+                    .conn()
+                    .execute("DELETE FROM fs_origin WHERE delta_ino = ?", (delta_ino,))?;
+                let mut query_statement_1 = conn.prepare_cached(
+                    "DELETE FROM fs_chunk_override
                  WHERE delta_ino = ?
                  RETURNING chunk_index",
-                (delta_ino,),
-            )
-            .await?;
-        let mut override_indexes = Vec::new();
-        while let Some(row) = override_rows.next().await? {
-            override_indexes.push(row.get::<i64>(0)?);
-        }
-        drop(override_rows);
-        let partial_changed = txn
-            .conn()
-            .execute(
-                "DELETE FROM fs_partial_origin WHERE delta_ino = ?",
-                (delta_ino,),
-            )
-            .await?;
-        if origin_changed > 0 {
-            txn.record(super::super::vfs::JournalDelta::origin_delete(
-                "partial_cleanup",
-                delta_ino,
-            ));
-        }
-        for chunk_index in override_indexes {
-            txn.record(super::super::vfs::JournalDelta::chunk_override_delete(
-                "partial_cleanup",
-                delta_ino,
-                chunk_index,
-            ));
-        }
-        if partial_changed > 0 {
-            txn.record(super::super::vfs::JournalDelta::partial_origin_delete(
-                "partial_cleanup",
-                delta_ino,
-            ));
-        }
-        txn.commit().await?;
-        self.origin_map
-            .write()
-            .retain(|_, mapped| *mapped != delta_ino);
-        Ok(())
+                )?;
+                let mut override_rows = query_statement_1.query((delta_ino,))?;
+                let mut override_indexes = Vec::new();
+                while let Some(row) = override_rows.next()? {
+                    override_indexes.push(row.get::<_, i64>(0)?);
+                }
+                drop(override_rows);
+                let partial_changed = txn.conn().execute(
+                    "DELETE FROM fs_partial_origin WHERE delta_ino = ?",
+                    (delta_ino,),
+                )?;
+                if origin_changed > 0 {
+                    txn.record(super::super::vfs::JournalDelta::origin_delete(
+                        "partial_cleanup",
+                        delta_ino,
+                    ));
+                }
+                for chunk_index in override_indexes {
+                    txn.record(super::super::vfs::JournalDelta::chunk_override_delete(
+                        "partial_cleanup",
+                        delta_ino,
+                        chunk_index,
+                    ));
+                }
+                if partial_changed > 0 {
+                    txn.record(super::super::vfs::JournalDelta::partial_origin_delete(
+                        "partial_cleanup",
+                        delta_ino,
+                    ));
+                }
+                txn.commit()?;
+                owned
+                    .origin_map
+                    .write()
+                    .retain(|_, mapped| *mapped != delta_ino);
+                Ok(())
+            })
+            .await
     }
 
     /// Promote an overlay inode from base layer to delta layer.
@@ -323,6 +326,8 @@ impl OverlayFS {
         overlay_ino: i64,
         info: &InodeInfo,
     ) -> Result<i64> {
+        self.delta.get_pool().check_ready()?;
+
         let components: Vec<&str> = info.path.split('/').filter(|s| !s.is_empty()).collect();
         if components.is_empty() {
             return Err(FsError::RootOperation.into());
@@ -357,10 +362,18 @@ impl OverlayFS {
             return Ok(stats.ino);
         }
 
-        let conn = self.delta.get_connection().await?;
+        let info = info.to_owned();
+        let name = (*name).to_owned();
+
+        let owned = self.clone();
+        self.delta.get_pool().execute(move |conn| {
+        let _keepalive = &owned;
+        let info = &info;
+        let name = name.as_str();
+
         let mut txn =
-            super::super::vfs::MutationTxn::begin(&conn, self.delta.journal_ctx()).await?;
-        let (stats, parent, dentry_id) = self
+            super::super::vfs::MutationTxn::begin(conn, owned.delta.journal_ctx())?;
+        let (stats, parent, dentry_id) = owned
             .delta
             .create_file_with_conn(
                 txn.conn(),
@@ -370,7 +383,7 @@ impl OverlayFS {
                 (base_stats.uid, base_stats.gid),
                 true,
             )
-            .await?;
+            ?;
         let delta_ino = stats.ino;
         txn.conn().execute(
             "UPDATE fs_inode
@@ -392,9 +405,9 @@ impl OverlayFS {
                 delta_ino,
             ),
         )
-        .await?;
-        let base_identity = self.base.file_identity(info.underlying_ino)?;
-        Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &base_identity).await?;
+        ?;
+        let base_identity = owned.base.file_identity(info.underlying_ino)?;
+        Self::add_origin_mapping_with_conn(txn.conn(), delta_ino, &base_identity)?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64;
         Self::add_partial_origin_mapping_with_conn(
             txn.conn(),
@@ -404,7 +417,7 @@ impl OverlayFS {
             &base_stats,
             now,
         )
-        .await?;
+        ?;
         let final_stats = Stats {
             ino: delta_ino,
             mode: base_stats.mode,
@@ -424,12 +437,12 @@ impl OverlayFS {
             "copyup",
             super::super::vfs::InodeRow::from_stats(&final_stats, None, STORAGE_CHUNKED),
         )
-        .await?;
+        ?;
         txn.record(super::super::vfs::JournalDelta::dentry_upsert(
             "copyup", dentry_id, parent_ino, name, delta_ino,
         ));
         if let Some(parent) = parent {
-            txn.record_inode("copyup", parent).await?;
+            txn.record_inode("copyup", parent)?;
         }
         txn.record(super::super::vfs::JournalDelta::origin_upsert(
             "origin_map",
@@ -451,14 +464,15 @@ impl OverlayFS {
                 created_at: now,
             },
         ));
-        txn.commit().await?;
+        txn.commit()?;
 
-        self.delta.publish_created_file(parent_ino, name, &stats);
-        self.delta.invalidate_attr(delta_ino);
-        self.origin_map.write().insert(base_identity, delta_ino);
-        self.refresh_overlay_mapping(overlay_ino, Layer::Delta, delta_ino, &info.path);
+        owned.delta.publish_created_file(parent_ino, name, &stats);
+        owned.delta.invalidate_attr(delta_ino);
+        owned.origin_map.write().insert(base_identity, delta_ino);
+        owned.refresh_overlay_mapping(overlay_ino, Layer::Delta, delta_ino, &info.path);
 
         Ok(delta_ino)
+            }).await
     }
 
     pub(super) async fn partial_file_for_delta(
@@ -505,6 +519,7 @@ impl OverlayFS {
             }
 
             let file: BoxedFile = Arc::new(OverlayPartialFile {
+                runtime: tokio::runtime::Handle::current(),
                 _delta_handle: FileSystem::open(&self.delta, delta_ino, flags & !libc::O_TRUNC)
                     .await?,
                 delta: self.delta.clone(),
@@ -537,57 +552,61 @@ impl OverlayFS {
     /// C uses to decide whether `partial_file_for_delta` can short-circuit to
     /// a HostFS fd.
     async fn delta_has_no_content_overrides(&self, delta_ino: i64, base_size: i64) -> Result<bool> {
-        let conn = self.delta.get_connection().await?;
+        self.delta.get_pool().check_ready()?;
 
-        // Any per-chunk override?
-        let mut rows = conn
-            .query(
-                "SELECT 1 FROM fs_chunk_override WHERE delta_ino = ? LIMIT 1",
-                (delta_ino,),
-            )
-            .await?;
-        if rows.next().await?.is_some() {
-            return Ok(false);
-        }
+        let owned = self.clone();
+        self.delta
+            .get_pool()
+            .execute(move |conn| {
+                let _keepalive = &owned;
 
-        // Any full chunk in fs_data? (Should be implied by no overrides for
-        // partial-origin files, but check defensively in case of a
-        // partial-origin → fully-overridden transition.)
-        let mut rows = conn
-            .query("SELECT 1 FROM fs_data WHERE ino = ? LIMIT 1", (delta_ino,))
-            .await?;
-        if rows.next().await?.is_some() {
-            return Ok(false);
-        }
+                // Any per-chunk override?
+                let mut query_statement_0 = conn.prepare_cached(
+                    "SELECT 1 FROM fs_chunk_override WHERE delta_ino = ? LIMIT 1",
+                )?;
+                let mut rows = query_statement_0.query((delta_ino,))?;
+                if rows.next()?.is_some() {
+                    return Ok(false);
+                }
 
-        // Size match + no inline override?
-        let mut rows = conn
-            .query(
-                "SELECT size, data_inline FROM fs_inode WHERE ino = ?",
-                (delta_ino,),
-            )
-            .await?;
-        let Some(row) = rows.next().await? else {
-            return Ok(false);
-        };
-        let delta_size: i64 = row
-            .get(0)
-            .map_err(|e| Error::Internal(format!("fs_inode.size read failed: {e}")))?;
-        if delta_size != base_size {
-            return Ok(false);
-        }
-        let inline_value = row
-            .get_value(1)
-            .map_err(|e| Error::Internal(format!("fs_inode.data_inline read failed: {e}")))?;
-        let inline_empty = match inline_value {
-            Value::Null => true,
-            Value::Blob(blob) => blob.is_empty(),
-            _ => true,
-        };
-        if !inline_empty {
-            return Ok(false);
-        }
+                // Any full chunk in fs_data? (Should be implied by no overrides for
+                // partial-origin files, but check defensively in case of a
+                // partial-origin → fully-overridden transition.)
+                let mut query_statement_1 =
+                    conn.prepare_cached("SELECT 1 FROM fs_data WHERE ino = ? LIMIT 1")?;
+                let mut rows = query_statement_1.query((delta_ino,))?;
+                if rows.next()?.is_some() {
+                    return Ok(false);
+                }
 
-        Ok(true)
+                // Size match + no inline override?
+                let mut query_statement_2 =
+                    conn.prepare_cached("SELECT size, data_inline FROM fs_inode WHERE ino = ?")?;
+                let mut rows = query_statement_2.query((delta_ino,))?;
+                let Some(row) = rows.next()? else {
+                    return Ok(false);
+                };
+                let delta_size: i64 = row.get(0)?;
+                if delta_size != base_size {
+                    return Ok(false);
+                }
+                let inline_value = row.get::<_, Value>(1)?;
+                let inline_empty = match inline_value {
+                    Value::Null => true,
+                    Value::Blob(blob) => blob.is_empty(),
+                    _ => {
+                        return Err(FsError::Corrupt(
+                            "fs_inode.data_inline: expected blob or null".into(),
+                        )
+                        .into())
+                    }
+                };
+                if !inline_empty {
+                    return Ok(false);
+                }
+
+                Ok(true)
+            })
+            .await
     }
 }

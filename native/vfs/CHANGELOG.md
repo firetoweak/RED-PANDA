@@ -1,5 +1,15 @@
 # Changelog
 
+## RED PANDA SQLite executor migration
+
+- Replace Turso and its vendored engine patches with tokio-rusqlite, rusqlite
+  and bundled SQLite; retain the filesystem format 0.11 and existing history.
+- Keep complete transactions on connection workers; retain admitted operations,
+  connection slots and original failures across cancellation.
+- Preserve immutable artifact reads, including canonical Windows long paths,
+  and serialize competing WAL checkpoints without serializing ordinary SQL.
+- Keep chunk reads on SQLite's page cache and retain the mimalloc allocator.
+
 ## RED PANDA local filesystem pruning
 
 - Keep core, Linux FUSE, Windows WinFsp and macOS HostFS.

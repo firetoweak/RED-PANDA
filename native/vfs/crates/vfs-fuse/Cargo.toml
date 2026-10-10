@@ -19,7 +19,7 @@ parking_lot = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-turso = { workspace = true }
+tokio-rusqlite = { workspace = true }
 zerocopy = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

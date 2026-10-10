@@ -10,6 +10,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::{
     schema::integrity::{check, CheckOpts},
     FileSystem, HostFS, OverlayFS, PartialOriginMode, PartialOriginPolicy, Vfs, VfsOptions,
@@ -265,14 +266,13 @@ async fn inspect(root: &Path, fs: &OverlayFS, phase: &str) -> Result<()> {
     }
     host_unchanged(root)?;
     let db = root.join("delta.db");
-    let sdk = Vfs::open(VfsOptions::with_path(db.to_string_lossy())).await?;
-    let conn = sdk.get_connection().await?;
-    let report = check(&conn, &CheckOpts::new(db).check_base(true)).await?;
+    let _sdk = Vfs::open(VfsOptions::with_path(db.to_string_lossy())).await?;
+    let conn = Connection::open(&db)?;
+    let report = check(&conn, &CheckOpts::new(db).check_base(true))?;
     ensure!(report.ok, "post-crash integrity failed: {report:?}");
-    let mut rows = conn
-        .query("SELECT COUNT(*) FROM fs_inode WHERE nlink = 0", ())
-        .await?;
-    let orphan_count: i64 = rows.next().await?.unwrap().get(0)?;
+    let mut statement_0 = conn.prepare("SELECT COUNT(*) FROM fs_inode WHERE nlink = 0")?;
+    let mut rows = statement_0.query(())?;
+    let orphan_count: i64 = rows.next()?.unwrap().get(0)?;
     ensure!(orphan_count == 0, "crash recovery retained orphan inodes");
     Ok(())
 }

@@ -2,6 +2,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::tempdir;
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::{
     error::{Error, Result},
     FileSystem, Vfs, VfsOptions,
@@ -218,19 +219,17 @@ async fn missing_or_malformed_namespace_is_refused_without_regeneration() -> Res
         let dir = tempdir()?;
         let path = dir.path().join("bad.db");
         let sdk = open(&path).await?;
-        let conn = sdk.get_connection().await?;
+        let conn = Connection::open(&path)?;
         if let Some(value) = invalid {
             conn.execute(
                 "UPDATE fs_config SET value = ? WHERE key = 'filesystem_id'",
                 (value,),
-            )
-            .await?;
+            )?;
         } else {
-            conn.execute("DELETE FROM fs_config WHERE key = 'filesystem_id'", ())
-                .await?;
+            conn.execute("DELETE FROM fs_config WHERE key = 'filesystem_id'", ())?;
         }
         assert!(matches!(
-            vfs_core::schema::ensure_current(&conn).await,
+            vfs_core::schema::ensure_current(&conn),
             Err(Error::Internal(_))
         ));
         let error = open(&path)
@@ -245,14 +244,11 @@ async fn missing_or_malformed_namespace_is_refused_without_regeneration() -> Res
             .err()
             .expect("read-only open accepted corrupt identity");
         assert!(matches!(error, Error::Internal(_)), "{error}");
-        let mut rows = conn
-            .query(
-                "SELECT value FROM fs_config WHERE key = 'filesystem_id'",
-                (),
-            )
-            .await?;
-        let persisted = match rows.next().await? {
-            Some(row) => Some(row.get::<String>(0)?),
+        let mut statement_0 =
+            conn.prepare("SELECT value FROM fs_config WHERE key = 'filesystem_id'")?;
+        let mut rows = statement_0.query(())?;
+        let persisted = match rows.next()? {
+            Some(row) => Some(row.get::<_, String>(0)?),
             None => None,
         };
         assert_eq!(
@@ -269,17 +265,15 @@ async fn old_unnamespaced_format_is_refused_without_rewriting_it() -> Result<()>
     let dir = tempdir()?;
     let path = dir.path().join("old.db");
     let sdk = open(&path).await?;
-    let conn = sdk.get_connection().await?;
-    conn.execute("PRAGMA user_version = 9", ()).await?;
+    let conn = Connection::open(&path)?;
+    conn.execute("PRAGMA user_version = 9", ())?;
     conn.execute(
         "UPDATE fs_config SET value = '0.9' WHERE key = 'schema_version'",
         (),
-    )
-    .await?;
-    conn.execute("DELETE FROM fs_config WHERE key = 'filesystem_id'", ())
-        .await?;
+    )?;
+    conn.execute("DELETE FROM fs_config WHERE key = 'filesystem_id'", ())?;
     assert!(matches!(
-        vfs_core::schema::ensure_current(&conn).await,
+        vfs_core::schema::ensure_current(&conn),
         Err(Error::SchemaVersionMismatch { .. })
     ));
     assert!(matches!(
@@ -292,15 +286,13 @@ async fn old_unnamespaced_format_is_refused_without_rewriting_it() -> Result<()>
         Vfs::open_read_only(&image).await.err().unwrap(),
         Error::SchemaVersionMismatch { .. }
     ));
-    let mut rows = conn.query("PRAGMA user_version", ()).await?;
-    assert_eq!(rows.next().await?.unwrap().get::<i64>(0)?, 9);
+    let mut statement_1 = conn.prepare("PRAGMA user_version")?;
+    let mut rows = statement_1.query(())?;
+    assert_eq!(rows.next()?.unwrap().get::<_, i64>(0)?, 9);
     drop(rows);
-    let mut rows = conn
-        .query(
-            "SELECT COUNT(*) FROM fs_config WHERE key = 'filesystem_id'",
-            (),
-        )
-        .await?;
-    assert_eq!(rows.next().await?.unwrap().get::<i64>(0)?, 0);
+    let mut statement_2 =
+        conn.prepare("SELECT COUNT(*) FROM fs_config WHERE key = 'filesystem_id'")?;
+    let mut rows = statement_2.query(())?;
+    assert_eq!(rows.next()?.unwrap().get::<_, i64>(0)?, 0);
     Ok(())
 }

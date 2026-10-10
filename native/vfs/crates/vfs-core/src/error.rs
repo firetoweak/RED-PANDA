@@ -10,9 +10,9 @@ use thiserror::Error;
 /// print every cause twice ("database error: X: X").
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Database error from turso
+    /// Database error from SQLite
     #[error("database error")]
-    Database(#[from] turso::Error),
+    Database(#[from] tokio_rusqlite::rusqlite::Error),
 
     /// IO error
     #[error("io error")]

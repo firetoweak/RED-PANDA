@@ -43,6 +43,7 @@ def main():
     tools.mkdir(exist_ok=True)
 
     environment = dict(os.environ)
+    environment["LIBSQLITE3_FLAGS"] = "-DSQLITE_DIRECT_OVERFLOW_READ=0"
     if windows:
         winfsp = Path(os.environ["ProgramFiles(x86)"]) / "WinFsp"
         include = args.winfsp_include or Path(environment.get("WINFSP_INCLUDE_DIR", winfsp / "inc"))
@@ -87,8 +88,10 @@ def main():
     files = {path.relative_to(output).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in sorted(output.rglob("*")) if path.is_file() and path.name != "BUILD.json"}
     record = {"target": args.target or "host", "profile": profile,
+              "sqlite_c_flags": environment["LIBSQLITE3_FLAGS"],
               "source_sha256": {"native/vfs": source_digest(factory),
                                 "native/sandbox": source_digest(ROOT / "native/sandbox"),
+                                ".cargo/config.toml": hashlib.sha256((ROOT / ".cargo/config.toml").read_bytes()).hexdigest(),
                                 "scripts/build_sandbox.py": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "files": files}
     (output / "BUILD.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")

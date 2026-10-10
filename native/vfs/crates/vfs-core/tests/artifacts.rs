@@ -30,9 +30,7 @@ async fn snapshot_into_is_consistent_under_concurrent_writes() -> Result<()> {
             file.pwrite(0, &[b'x'; 8192]).await?;
             file.fsync().await?;
             created += 1;
-            // Keep the writer concurrent without starving turso's
-            // VACUUM INTO I/O completion loop on the current-thread test
-            // runtime.
+            // Allow the snapshot task to race repeated committed writes.
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         }
         Ok::<u32, Error>(created)

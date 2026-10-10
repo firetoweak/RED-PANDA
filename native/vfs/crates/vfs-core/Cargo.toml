@@ -9,7 +9,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-turso = { workspace = true }
+tokio-rusqlite = { workspace = true }
+mimalloc = { workspace = true }
+futures-util = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 blake3 = { workspace = true }
@@ -23,8 +25,6 @@ uuid = { workspace = true }
 parking_lot = { workspace = true }
 smallvec = { workspace = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-aegis = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

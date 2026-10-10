@@ -1,0 +1,572 @@
+{
+  "date": "2026-10-10",
+  "target": "x86_64-pc-windows-gnullvm",
+  "baseline_commit": "da305ddf12a3bfece611203277c0bd0abaa1fadf",
+  "baseline_binary_sha256": "a59bd57b876725271e8592f8f8c82b1057f082b6bcc203feec275dae7290faec",
+  "candidate_binary_sha256": "fa7b8926bca0460786d21c80bea603ae531cd3ff6cbe584f210b080a1a931874",
+  "trials": [
+    {
+      "engine": "mount-ab-baseline",
+      "trial": "0",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 1193.7588000000014,
+          "operations": 1500,
+          "ops_per_second": 1256.5352397821052,
+          "p50_us": 763.0999999999999,
+          "p95_us": 998.3,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 724.4548999999997,
+          "operations": 750,
+          "ops_per_second": 1035.2611321974637,
+          "p50_us": 929.4000000000001,
+          "p95_us": 1171.6000000000001,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 1838.227599999998,
+          "operations": 3000,
+          "ops_per_second": 1632.0068309277933,
+          "p50_us": 588.1999999999999,
+          "p95_us": 767.6999999999999,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 8027.308499999998,
+          "operations": 300,
+          "ops_per_second": 37.372426885051205,
+          "p50_us": 26535.300000000003,
+          "p95_us": 29644.6,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 933.5450000000004,
+          "operations": 300,
+          "ops_per_second": 321.35569254829693,
+          "p50_us": 3019.7000000000003,
+          "p95_us": 3669.0,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1969.9751,
+          "operations": 1920,
+          "ops_per_second": 974.6316082878408,
+          "p50_us": 3146.2,
+          "p95_us": 5106.4,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1969.9751,
+          "operations": 480,
+          "ops_per_second": 243.6579020719602,
+          "p50_us": 3374.7,
+          "p95_us": 5834.599999999999,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    },
+    {
+      "engine": "mount-ab-candidate",
+      "trial": "0",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 527.9079000000008,
+          "operations": 1500,
+          "ops_per_second": 2841.404722300988,
+          "p50_us": 331.1,
+          "p95_us": 489.4,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 281.10119999999995,
+          "operations": 750,
+          "ops_per_second": 2668.0782579369998,
+          "p50_us": 344.79999999999995,
+          "p95_us": 537.8,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 670.8184999999997,
+          "operations": 3000,
+          "ops_per_second": 4472.148576701449,
+          "p50_us": 205.0,
+          "p95_us": 330.5,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 3322.006299999998,
+          "operations": 300,
+          "ops_per_second": 90.30687268714696,
+          "p50_us": 10732.699999999999,
+          "p95_us": 13290.2,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 501.2877,
+          "operations": 300,
+          "ops_per_second": 598.4587293883334,
+          "p50_us": 1622.3999999999999,
+          "p95_us": 2032.6,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1091.423,
+          "operations": 1920,
+          "ops_per_second": 1759.1712837277573,
+          "p50_us": 1920.8999999999999,
+          "p95_us": 3233.4,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1091.423,
+          "operations": 480,
+          "ops_per_second": 439.79282093193933,
+          "p50_us": 1967.7000000000003,
+          "p95_us": 3352.2000000000003,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    },
+    {
+      "engine": "mount-ab-candidate",
+      "trial": "1",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 547.6642,
+          "operations": 1500,
+          "ops_per_second": 2738.904606143691,
+          "p50_us": 334.6,
+          "p95_us": 514.3,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 275.8195000000002,
+          "operations": 750,
+          "ops_per_second": 2719.169601859185,
+          "p50_us": 341.0,
+          "p95_us": 530.5,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 660.6315999999996,
+          "operations": 3000,
+          "ops_per_second": 4541.108841902206,
+          "p50_us": 203.5,
+          "p95_us": 322.5,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 3155.9996,
+          "operations": 300,
+          "ops_per_second": 95.05704626832018,
+          "p50_us": 10460.9,
+          "p95_us": 11618.5,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 513.2613,
+          "operations": 300,
+          "ops_per_second": 584.497603852073,
+          "p50_us": 1650.0,
+          "p95_us": 2119.0,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1047.9544999999998,
+          "operations": 1920,
+          "ops_per_second": 1832.1406129750865,
+          "p50_us": 1838.3,
+          "p95_us": 3154.9,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1047.9544999999998,
+          "operations": 480,
+          "ops_per_second": 458.0351532437716,
+          "p50_us": 1936.1999999999998,
+          "p95_us": 3327.0,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    },
+    {
+      "engine": "mount-ab-baseline",
+      "trial": "1",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 1176.5991999999994,
+          "operations": 1500,
+          "ops_per_second": 1274.8606322356845,
+          "p50_us": 751.2,
+          "p95_us": 993.1,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 713.8977999999995,
+          "operations": 750,
+          "ops_per_second": 1050.5705438509553,
+          "p50_us": 915.2,
+          "p95_us": 1157.5,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 1866.3719000000017,
+          "operations": 3000,
+          "ops_per_second": 1607.3966823010983,
+          "p50_us": 591.7,
+          "p95_us": 768.6,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 8173.687299999996,
+          "operations": 300,
+          "ops_per_second": 36.703141310531926,
+          "p50_us": 26931.199999999997,
+          "p95_us": 29846.5,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 916.0010000000004,
+          "operations": 300,
+          "ops_per_second": 327.5105594862886,
+          "p50_us": 2970.1,
+          "p95_us": 3658.0,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1864.0265,
+          "operations": 1920,
+          "ops_per_second": 1030.0282748126167,
+          "p50_us": 3041.2,
+          "p95_us": 4753.2,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1864.0265,
+          "operations": 480,
+          "ops_per_second": 257.5070687031542,
+          "p50_us": 3236.3,
+          "p95_us": 4745.0,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    },
+    {
+      "engine": "mount-ab-baseline",
+      "trial": "2",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 1203.8592000000017,
+          "operations": 1500,
+          "ops_per_second": 1245.9928868758057,
+          "p50_us": 752.5,
+          "p95_us": 983.3000000000001,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 728.3861000000005,
+          "operations": 750,
+          "ops_per_second": 1029.6736854259018,
+          "p50_us": 934.4000000000001,
+          "p95_us": 1170.8999999999999,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 1957.509299999996,
+          "operations": 3000,
+          "ops_per_second": 1532.5597686815618,
+          "p50_us": 609.1999999999999,
+          "p95_us": 942.6,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 8048.391700000002,
+          "operations": 300,
+          "ops_per_second": 37.27452777925805,
+          "p50_us": 26733.8,
+          "p95_us": 28803.0,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 941.819,
+          "operations": 300,
+          "ops_per_second": 318.5325418153594,
+          "p50_us": 3039.9,
+          "p95_us": 3834.3,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 2001.0675999999999,
+          "operations": 1920,
+          "ops_per_second": 959.4878253988022,
+          "p50_us": 3113.0,
+          "p95_us": 5434.5,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 2001.0675999999999,
+          "operations": 480,
+          "ops_per_second": 239.87195634970055,
+          "p50_us": 3575.6,
+          "p95_us": 5769.7,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    },
+    {
+      "engine": "mount-ab-candidate",
+      "trial": "2",
+      "workloads": [
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 521.1643999999998,
+          "operations": 1500,
+          "ops_per_second": 2878.1704966801276,
+          "p50_us": 322.59999999999997,
+          "p95_us": 497.00000000000006,
+          "workload": "open-read-close-4096"
+        },
+        {
+          "bytes_per_operation": 65536,
+          "elapsed_ms": 271.4992999999997,
+          "operations": 750,
+          "ops_per_second": 2762.4380615346,
+          "p50_us": 328.0,
+          "p95_us": 537.2,
+          "workload": "open-read-close-65536"
+        },
+        {
+          "bytes_per_operation": 0,
+          "elapsed_ms": 659.2817999999999,
+          "operations": 3000,
+          "ops_per_second": 4550.406214762793,
+          "p50_us": 198.6,
+          "p95_us": 335.2,
+          "workload": "metadata"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "elapsed_ms": 3233.0664000000006,
+          "operations": 300,
+          "ops_per_second": 92.7911656871631,
+          "p50_us": 10555.0,
+          "p95_us": 12609.4,
+          "workload": "create-write-sync-rename-delete"
+        },
+        {
+          "bytes_per_operation": 7,
+          "elapsed_ms": 600.3569000000006,
+          "operations": 300,
+          "ops_per_second": 499.70276014150863,
+          "p50_us": 1791.1,
+          "p95_us": 3491.7,
+          "workload": "partial-write-sync-close"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1074.5884,
+          "operations": 1920,
+          "ops_per_second": 1786.730621696642,
+          "p50_us": 1905.5,
+          "p95_us": 3141.9,
+          "workload": "mixed4-read"
+        },
+        {
+          "bytes_per_operation": 4096,
+          "concurrent_clients": 4,
+          "elapsed_ms": 1074.5884,
+          "operations": 480,
+          "ops_per_second": 446.6826554241605,
+          "p50_us": 1989.8,
+          "p95_us": 3262.6,
+          "workload": "mixed4-write-sync"
+        }
+      ]
+    }
+  ],
+  "comparison": [
+    {
+      "workload": "open-read-close-4096",
+      "baseline": {
+        "elapsed_ms": 1193.7588000000014,
+        "ops_per_second": 1256.5352397821052,
+        "p50_us": 752.5,
+        "p95_us": 993.1
+      },
+      "candidate": {
+        "elapsed_ms": 527.9079000000008,
+        "ops_per_second": 2841.404722300988,
+        "p50_us": 331.1,
+        "p95_us": 497.00000000000006
+      },
+      "candidate_time_ratio": 0.4422232531395791,
+      "candidate_p95_ratio": 0.5004531265733562
+    },
+    {
+      "workload": "open-read-close-65536",
+      "baseline": {
+        "elapsed_ms": 724.4548999999997,
+        "ops_per_second": 1035.2611321974637,
+        "p50_us": 929.4000000000001,
+        "p95_us": 1170.8999999999999
+      },
+      "candidate": {
+        "elapsed_ms": 275.8195000000002,
+        "ops_per_second": 2719.169601859185,
+        "p50_us": 341.0,
+        "p95_us": 537.2
+      },
+      "candidate_time_ratio": 0.3807269438028513,
+      "candidate_p95_ratio": 0.4587923819284312
+    },
+    {
+      "workload": "metadata",
+      "baseline": {
+        "elapsed_ms": 1866.3719000000017,
+        "ops_per_second": 1607.3966823010983,
+        "p50_us": 591.7,
+        "p95_us": 768.6
+      },
+      "candidate": {
+        "elapsed_ms": 660.6315999999996,
+        "ops_per_second": 4541.108841902206,
+        "p50_us": 203.5,
+        "p95_us": 330.5
+      },
+      "candidate_time_ratio": 0.3539656806877552,
+      "candidate_p95_ratio": 0.4300026021337497
+    },
+    {
+      "workload": "create-write-sync-rename-delete",
+      "baseline": {
+        "elapsed_ms": 8048.391700000002,
+        "ops_per_second": 37.27452777925805,
+        "p50_us": 26733.8,
+        "p95_us": 29644.6
+      },
+      "candidate": {
+        "elapsed_ms": 3233.0664000000006,
+        "ops_per_second": 92.7911656871631,
+        "p50_us": 10555.0,
+        "p95_us": 12609.4
+      },
+      "candidate_time_ratio": 0.40170341112995284,
+      "candidate_p95_ratio": 0.42535234072984623
+    },
+    {
+      "workload": "partial-write-sync-close",
+      "baseline": {
+        "elapsed_ms": 933.5450000000004,
+        "ops_per_second": 321.35569254829693,
+        "p50_us": 3019.7000000000003,
+        "p95_us": 3669.0
+      },
+      "candidate": {
+        "elapsed_ms": 513.2613,
+        "ops_per_second": 584.497603852073,
+        "p50_us": 1650.0,
+        "p95_us": 2119.0
+      },
+      "candidate_time_ratio": 0.5497981350657973,
+      "candidate_p95_ratio": 0.5775415644589806
+    },
+    {
+      "workload": "mixed4-read",
+      "baseline": {
+        "elapsed_ms": 1969.9751,
+        "ops_per_second": 974.6316082878408,
+        "p50_us": 3113.0,
+        "p95_us": 5106.4
+      },
+      "candidate": {
+        "elapsed_ms": 1074.5884,
+        "ops_per_second": 1786.730621696642,
+        "p50_us": 1905.5,
+        "p95_us": 3154.9
+      },
+      "candidate_time_ratio": 0.5454832398643008,
+      "candidate_p95_ratio": 0.617832523891587
+    },
+    {
+      "workload": "mixed4-write-sync",
+      "baseline": {
+        "elapsed_ms": 1969.9751,
+        "ops_per_second": 243.6579020719602,
+        "p50_us": 3374.7,
+        "p95_us": 5769.7
+      },
+      "candidate": {
+        "elapsed_ms": 1074.5884,
+        "ops_per_second": 446.6826554241605,
+        "p50_us": 1967.7000000000003,
+        "p95_us": 3327.0
+      },
+      "candidate_time_ratio": 0.5454832398643008,
+      "candidate_p95_ratio": 0.5766331005078253
+    }
+  ],
+  "artifact_verification": {
+    "before": {
+      "": "64bebc110e1c2b9f2b89958c563fba7bf3270353a520f47ae12b2de6925c9156",
+      "-wal": null,
+      "-shm": null
+    },
+    "after": {
+      "": "64bebc110e1c2b9f2b89958c563fba7bf3270353a520f47ae12b2de6925c9156",
+      "-wal": null,
+      "-shm": null
+    },
+    "verified": true
+  },
+  "measured_workload_source_sha256": "b59e03cfda7380aba910a07e49cf55cfa82e09dff6558ac6bd0b6b196ab3a528",
+  "archived_workload_source_sha256": "b59e03cfda7380aba910a07e49cf55cfa82e09dff6558ac6bd0b6b196ab3a528",
+  "source_normalization": "CRLF to LF only; Rust code unchanged"
+}

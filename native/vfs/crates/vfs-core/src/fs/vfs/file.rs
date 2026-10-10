@@ -16,6 +16,7 @@ use super::*;
 ///
 /// This struct holds the inode number resolved at open time, allowing
 /// efficient read/write/fsync operations without path lookups.
+#[derive(Clone)]
 pub struct VfsFile {
     pub(super) pool: ConnectionPool,
     pub(super) ino: i64,
@@ -31,82 +32,67 @@ pub struct VfsFile {
     /// Present for user-visible handles so unlink defers inode reaping while
     /// they live. This remains optional until lifecycle extraction flattens
     /// the handle construction API.
-    pub(super) _open_guard: Option<OpenInodeGuard>,
+    pub(super) _open_guard: Option<Arc<OpenInodeGuard>>,
 }
 
 #[async_trait]
 impl File for VfsFile {
     async fn pread(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
-        // Tier Four: NO `drain_writes()` prelude. Read SQLite-resident bytes
-        // (committed state) and overlay pending writes from the in-memory
-        // batcher snapshot. Together they form a read-after-write consistent
-        // view without forcing a SQLite commit on the read path.
-        //
-        // Ordering matters: peek the batcher state BEFORE acquiring a pool
-        // connection, and release the connection BEFORE the splice loop. Long
-        // pread workloads (parallel git-grep) saturate the 8-slot pool, and
-        // holding a connection across `state.lock().await` starves the timer
-        // drain task that also needs a connection to commit.
+        self.check_failure()?;
         if size == 0 {
             return Ok(Vec::new());
         }
-        // Escape hatch: when overlay reads are disabled, behave like Tier 3
-        // — drain the inode's pending writes before reading SQLite. Same
-        // wire result, slower but battle-tested.
         if !self.overlay_reads {
             self.drain_writes().await?;
         }
-        let pending_max_end = match &self.pending_view {
-            Some(view) if self.overlay_reads && view.has_pending(self.ino) => {
-                view.pending_max_end(self.ino)
-            }
-            _ => None,
-        };
-
-        let conn = self.pool.get_connection().await?;
-        let metadata = store::file_storage(&conn, self.ino).await?;
-        let effective_size = match pending_max_end {
-            Some(end) => metadata.size().max(end),
-            None => metadata.size(),
-        };
-
-        if offset >= effective_size {
-            return Ok(Vec::new());
-        }
-        let read_size = size.min(effective_size - offset);
-
-        let base_window = if offset < metadata.size() {
-            (metadata.size() - offset).min(read_size)
-        } else {
-            0
-        };
-        let mut result = if base_window > 0 {
-            let mut buf = store::read_from_storage(
-                &conn,
-                self.ino,
-                self.geometry(),
-                &metadata,
-                offset,
-                base_window,
-            )
-            .await?;
-            buf.resize(read_size as usize, 0);
-            buf
-        } else {
-            vec![0u8; read_size as usize]
-        };
-        drop(conn);
-
-        if let Some(view) = &self.pending_view {
-            if pending_max_end.is_some() {
-                let _ = view.overlay_read(self.ino, offset, &mut result);
-            }
-        }
-
-        Ok(result)
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                loop {
+                    let view = owned.pending_view.as_ref().filter(|_| owned.overlay_reads);
+                    let generation = view.map(|view| view.pending_generation(owned.ino));
+                    let pending_max = view.and_then(|view| view.pending_max_end(owned.ino));
+                    // One SQLite snapshot covers both inode layout and chunks.
+                    let txn = conn.transaction()?;
+                    let metadata = store::file_storage(&txn, owned.ino)?;
+                    let effective_size =
+                        pending_max.map_or(metadata.size(), |end| metadata.size().max(end));
+                    let read_size = size.min(effective_size.saturating_sub(offset));
+                    let base_window = metadata.size().saturating_sub(offset).min(read_size);
+                    let mut result = if base_window > 0 {
+                        store::read_from_storage(
+                            &txn,
+                            owned.ino,
+                            owned.geometry(),
+                            &metadata,
+                            offset,
+                            base_window,
+                        )?
+                    } else {
+                        Vec::new()
+                    };
+                    result.resize(read_size as usize, 0);
+                    if let Some(view) = view {
+                        view.overlay_read(owned.ino, offset, &mut result)?;
+                    }
+                    let changed = view
+                        .zip(generation)
+                        .is_some_and(|(view, before)| view.pending_generation(owned.ino) != before);
+                    txn.commit()?;
+                    // Drain cleanup advances this existing generation counter.
+                    // A changed overlay invalidates the combined SQL/pending view.
+                    if changed {
+                        continue;
+                    }
+                    return Ok(result);
+                }
+            })
+            .await
     }
 
     async fn pwrite(&self, offset: u64, data: &[u8]) -> Result<()> {
+        self.check_failure()?;
+
         if data.is_empty() {
             return Ok(());
         }
@@ -133,26 +119,43 @@ impl File for VfsFile {
         // when there's no batcher, but keeping the call here makes the
         // contract explicit.
         self.drain_writes().await?;
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.journal.clone()).await?;
-        let ranges = [WriteRangeRef { offset, data }];
-        let result =
-            store::write_ranges(txn.conn(), self.ino, self.geometry(), &ranges, false, None).await;
-        match result {
-            Ok(changes) => {
-                txn.record_storage_changes("write", changes).await?;
-                txn.commit().await?;
-                self.attr_cache.remove(self.ino);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = txn.rollback().await;
-                Err(e)
-            }
-        }
+        let data = data.to_vec();
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
+                let ranges = [WriteRangeRef {
+                    offset,
+                    data: &data,
+                }];
+                let result = store::write_ranges(
+                    txn.conn(),
+                    owned.ino,
+                    owned.geometry(),
+                    &ranges,
+                    false,
+                    None,
+                );
+                match result {
+                    Ok(changes) => {
+                        txn.record_storage_changes("write", changes)?;
+                        txn.commit()?;
+                        owned.attr_cache.remove(owned.ino);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        txn.rollback()?;
+                        Err(e)
+                    }
+                }
+            })
+            .await
     }
 
     async fn pwrite_ranges(&self, ranges: Vec<WriteRange>) -> Result<()> {
+        self.check_failure()?;
+
         if ranges.iter().all(|range| range.data.is_empty()) {
             return Ok(());
         }
@@ -166,39 +169,44 @@ impl File for VfsFile {
         }
         self.drain_writes().await?;
 
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.journal.clone()).await?;
-        let range_refs: Vec<_> = ranges
-            .iter()
-            .map(|range| WriteRangeRef {
-                offset: range.offset,
-                data: range.data.as_slice(),
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
+                let range_refs: Vec<_> = ranges
+                    .iter()
+                    .map(|range| WriteRangeRef {
+                        offset: range.offset,
+                        data: range.data.as_slice(),
+                    })
+                    .collect();
+                let result = store::write_ranges(
+                    txn.conn(),
+                    owned.ino,
+                    owned.geometry(),
+                    &range_refs,
+                    false,
+                    None,
+                );
+                match result {
+                    Ok(changes) => {
+                        txn.record_storage_changes("write", changes)?;
+                        txn.commit()?;
+                        owned.attr_cache.remove(owned.ino);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        txn.rollback()?;
+                        Err(e)
+                    }
+                }
             })
-            .collect();
-        let result = store::write_ranges(
-            txn.conn(),
-            self.ino,
-            self.geometry(),
-            &range_refs,
-            false,
-            None,
-        )
-        .await;
-        match result {
-            Ok(changes) => {
-                txn.record_storage_changes("write", changes).await?;
-                txn.commit().await?;
-                self.attr_cache.remove(self.ino);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = txn.rollback().await;
-                Err(e)
-            }
-        }
+            .await
     }
 
     async fn pwrite_ranges_batched(&self, ranges: Vec<WriteRange>) -> Result<()> {
+        self.check_failure()?;
+
         if ranges.iter().all(|range| range.data.is_empty()) {
             return Ok(());
         }
@@ -212,6 +220,8 @@ impl File for VfsFile {
     }
 
     async fn truncate(&self, new_size: u64) -> Result<()> {
+        self.check_failure()?;
+
         // Tier Four: shrink the in-memory overlay BEFORE touching SQLite, so
         // a concurrent reader doesn't observe pending bytes past the new EOF
         // between the SQLite truncate and the batcher catching up.
@@ -224,73 +234,88 @@ impl File for VfsFile {
         // drain trigger. We still drain here so the SQLite size after this
         // call exactly matches `new_size`.
         self.drain_writes().await?;
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.journal.clone()).await?;
-        let result = store::truncate(txn.conn(), self.ino, self.geometry(), new_size).await;
-        match result {
-            Ok(changes) => {
-                txn.record_storage_changes("truncate", changes).await?;
-                txn.commit().await?;
-                self.attr_cache.remove(self.ino);
-                Ok(())
-            }
-            Err(e) => {
-                let _ = txn.rollback().await;
-                Err(e)
-            }
-        }
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let mut txn = MutationTxn::begin(conn, owned.journal.clone())?;
+                let result = store::truncate(txn.conn(), owned.ino, owned.geometry(), new_size);
+                match result {
+                    Ok(changes) => {
+                        txn.record_storage_changes("truncate", changes)?;
+                        txn.commit()?;
+                        owned.attr_cache.remove(owned.ino);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        txn.rollback()?;
+                        Err(e)
+                    }
+                }
+            })
+            .await
     }
 
     async fn fsync(&self) -> Result<()> {
+        self.check_failure()?;
+
         // Tier Four: fsync remains the explicit durability barrier — drain the
         // batcher so the WAL checkpoint that follows captures every pending
         // write.
         self.drain_writes().await?;
-        let conn = self.pool.get_connection().await?;
-        conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)
-            .await?
-            .execute(())
-            .await?;
-        checkpoint_wal(&conn).await?;
-        conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)
-            .await?
-            .execute(())
-            .await?;
-        Ok(())
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _owned = &owned;
+
+                conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)?.execute([])?;
+                owned.pool.checkpoint(conn)?;
+                conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)?.execute([])?;
+                Ok(())
+            })
+            .await
     }
 
     async fn fstat(&self) -> Result<Stats> {
+        self.check_failure()?;
+
         self.drain_writes().await?;
         if let Some(stats) = self.attr_cache.get(self.ino) {
             return Ok(stats);
         }
 
-        let conn = self.pool.get_connection().await?;
-        let generation = self
+        let owned = self.clone();
+        self.pool.execute(move |conn| {
+
+        let generation = owned
             .pending_view
             .as_ref()
-            .map(|view| view.pending_generation(self.ino));
+            .map(|view| view.pending_generation(owned.ino));
         let mut stmt = conn
             .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec FROM fs_inode WHERE ino = ?")
-            .await?;
-        let mut rows = stmt.query((self.ino,)).await?;
+            ?;
+        let mut rows = stmt.query((owned.ino,))?;
 
-        if let Some(row) = rows.next().await? {
-            let stats = store::stats_from_row(&row)?;
-            if let (Some(view), Some(generation)) = (&self.pending_view, generation) {
+        if let Some(row) = rows.next()? {
+            let stats = store::stats_from_row(row)?;
+            if let (Some(view), Some(generation)) = (&owned.pending_view, generation) {
                 if view.pending_generation(stats.ino) == generation {
-                    self.attr_cache.insert(stats.clone());
+                    owned.attr_cache.insert(stats.clone());
                 }
             } else {
-                self.attr_cache.insert(stats.clone());
+                owned.attr_cache.insert(stats.clone());
             }
             Ok(stats)
         } else {
             Err(FsError::NotFound.into())
         }
+            }).await
     }
 
     async fn drain_writes(&self) -> Result<()> {
+        self.check_failure()?;
+
         if let Some(drain) = &self.write_drain {
             drain.drain_inode(self.ino).await?;
         }
@@ -299,6 +324,14 @@ impl File for VfsFile {
 }
 
 impl VfsFile {
+    fn check_failure(&self) -> Result<()> {
+        self.pool.check_ready()?;
+        if let Some(drain) = &self.write_drain {
+            drain.check_completed()?;
+        }
+        Ok(())
+    }
+
     async fn finish_enqueue(drain: &BatcherDrain, ino: i64, outcome: EnqueueOutcome) -> Result<()> {
         if outcome.drain_all {
             drain.drain_all_bytes().await

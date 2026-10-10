@@ -8,8 +8,8 @@ pub mod integrity;
 use crate::config::{DEFAULT_CHUNK_SIZE, DEFAULT_INLINE_THRESHOLD};
 use crate::error::{Error, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
-use turso::transaction::{Transaction, TransactionBehavior};
-use turso::{Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 /// Current schema version.
 pub const CURRENT: SchemaVersion = SchemaVersion::V0_11;
@@ -483,8 +483,8 @@ const REQUIRED_CURRENT_TABLES: &[&str] = &[
 ///
 /// Returns `None` if the database has no `fs_inode` table and is therefore a
 /// new database from the schema authority's perspective.
-pub async fn detect_schema_version(conn: &Connection) -> Result<Option<SchemaVersion>> {
-    let raw_user_version = user_version(conn).await?;
+pub fn detect_schema_version(conn: &Connection) -> Result<Option<SchemaVersion>> {
+    let raw_user_version = user_version(conn)?;
     if raw_user_version > 0 {
         let version = SchemaVersion::from_user_version(raw_user_version).ok_or_else(|| {
             Error::SchemaVersionMismatch {
@@ -495,19 +495,19 @@ pub async fn detect_schema_version(conn: &Connection) -> Result<Option<SchemaVer
         return Ok(Some(version));
     }
 
-    if !table_exists(conn, "fs_inode").await? {
+    if !table_exists(conn, "fs_inode")? {
         return Ok(None);
     }
 
-    if table_exists(conn, "fs_snapshot").await? {
+    if table_exists(conn, "fs_snapshot")? {
         return Ok(Some(SchemaVersion::V0_8));
     }
 
-    if table_exists(conn, "fs_chunk").await? {
+    if table_exists(conn, "fs_chunk")? {
         return Ok(Some(SchemaVersion::V0_7));
     }
 
-    let columns = get_table_columns(conn, "fs_inode").await?;
+    let columns = get_table_columns(conn, "fs_inode")?;
     let has_nlink = columns.iter().any(|c| c.name == "nlink");
     let has_atime_nsec = columns.iter().any(|c| c.name == "atime_nsec");
     let has_mtime_nsec = columns.iter().any(|c| c.name == "mtime_nsec");
@@ -516,7 +516,7 @@ pub async fn detect_schema_version(conn: &Connection) -> Result<Option<SchemaVer
     let has_data_inline = columns.iter().any(|c| c.name == "data_inline");
     let has_storage_kind = columns.iter().any(|c| c.name == "storage_kind");
 
-    if has_data_inline && has_storage_kind && table_exists(conn, "fs_session_metadata").await? {
+    if has_data_inline && has_storage_kind && table_exists(conn, "fs_session_metadata")? {
         return Ok(Some(SchemaVersion::V0_6));
     }
 
@@ -541,24 +541,24 @@ pub async fn detect_schema_version(conn: &Connection) -> Result<Option<SchemaVer
 ///
 /// This is a read-only check. Opening paths should call [`ensure_current`] so
 /// a fresh database is initialized and current tables are validated.
-pub async fn check_schema_version(conn: &Connection) -> Result<()> {
-    if let Some(version) = detect_schema_version(conn).await? {
+pub fn check_schema_version(conn: &Connection) -> Result<()> {
+    if let Some(version) = detect_schema_version(conn)? {
         if !version.is_current() {
             return Err(Error::SchemaVersionMismatch {
                 found: version.to_string(),
                 expected: CURRENT.to_string(),
             });
         }
-        validate_current_schema(conn).await?;
+        validate_current_schema(conn)?;
     }
     Ok(())
 }
 
 /// Initialize a new database or validate the current format. Older formats
 /// are rejected before any DDL or data changes.
-pub async fn ensure_current(conn: &Connection) -> Result<()> {
-    let raw_user_version = user_version(conn).await?;
-    let detected = detect_schema_version(conn).await?;
+pub fn ensure_current(conn: &Connection) -> Result<()> {
+    let raw_user_version = user_version(conn)?;
+    let detected = detect_schema_version(conn)?;
 
     if let Some(version) = detected {
         if version < MIN_SUPPORTED {
@@ -569,98 +569,84 @@ pub async fn ensure_current(conn: &Connection) -> Result<()> {
         }
     }
     if raw_user_version == CURRENT.user_version() {
-        validate_current_schema(conn).await?;
-        ensure_current_indexes(conn).await?;
+        validate_current_schema(conn)?;
+        ensure_current_indexes(conn)?;
         return Ok(());
     }
     if detected == Some(CURRENT) {
-        filesystem_identity(conn).await?;
+        filesystem_identity(conn)?;
     }
 
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        execute_current_ddl(conn).await?;
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        execute_current_ddl(conn)?;
         if detected.is_none() {
             conn.execute(
                 "INSERT INTO fs_config (key, value) VALUES (?, ?)",
                 (CONFIG_FILESYSTEM_ID_KEY, uuid::Uuid::new_v4().to_string()),
-            )
-            .await?;
+            )?;
         }
-        ensure_config_defaults(conn).await?;
+        ensure_config_defaults(conn)?;
         if detected.is_none() {
-            capture_root_raw(conn, "init", 1, 0)
-                .await
-                .map_err(|error| {
-                    Error::Internal(format!(
-                        "failed to capture initial fs_inode history root: {error}"
-                    ))
-                })?;
+            capture_root_raw(conn, "init", 1, 0)?;
         }
-        set_user_version(conn, CURRENT).await?;
+        set_user_version(conn, CURRENT)?;
         Ok(())
-    }
-    .await;
+    })();
 
     match result {
-        Ok(()) => txn.commit().await?,
+        Ok(()) => txn.commit()?,
         Err(err) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             return Err(err);
         }
     }
 
-    validate_current_schema(conn).await?;
+    validate_current_schema(conn)?;
     Ok(())
 }
 
 /// Set or update the overlay base-path marker without owning any DDL locally.
-pub(crate) async fn set_overlay_base_path(conn: &Connection, base_path: &str) -> Result<()> {
-    ensure_current(conn).await?;
+pub(crate) fn set_overlay_base_path(conn: &Connection, base_path: &str) -> Result<()> {
+    ensure_current(conn)?;
     conn.execute(
         "INSERT OR REPLACE INTO fs_overlay_config (key, value) VALUES ('base_path', ?1)",
         [Value::Text(base_path.to_string())],
-    )
-    .await?;
+    )?;
     Ok(())
 }
 
-async fn execute_current_ddl(conn: &Connection) -> Result<()> {
+fn execute_current_ddl(conn: &Connection) -> Result<()> {
     for sql in ddl::create_all(CURRENT) {
-        conn.execute(*sql, ()).await?;
+        conn.execute(sql, [])?;
     }
     Ok(())
 }
 
-async fn ensure_current_indexes(conn: &Connection) -> Result<()> {
+fn ensure_current_indexes(conn: &Connection) -> Result<()> {
     // Schema validation checks columns; ensure planner indexes also exist.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_fs_dentry_parent ON fs_dentry(parent_ino, name)",
-        (),
-    )
-    .await?;
+        [],
+    )?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_fs_dentry_parent_ino ON fs_dentry(parent_ino, ino)",
-        (),
-    )
-    .await?;
+        [],
+    )?;
     Ok(())
 }
 
-async fn ensure_config_defaults(conn: &Connection) -> Result<()> {
+fn ensure_config_defaults(conn: &Connection) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO fs_config (key, value) VALUES (?, ?)",
         (CONFIG_SCHEMA_VERSION_KEY, CURRENT.as_str()),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT OR IGNORE INTO fs_config (key, value) VALUES (?, ?)",
         (CONFIG_CHUNK_SIZE_KEY, DEFAULT_CHUNK_SIZE.to_string()),
-    )
-    .await?;
+    )?;
     // A defaulted inline threshold must fit the recorded chunk size.
-    let chunk_size = read_config_value(conn, CONFIG_CHUNK_SIZE_KEY)
-        .await?
+    let chunk_size = read_config_value(conn, CONFIG_CHUNK_SIZE_KEY)?
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(DEFAULT_CHUNK_SIZE);
     conn.execute(
@@ -669,13 +655,12 @@ async fn ensure_config_defaults(conn: &Connection) -> Result<()> {
             CONFIG_INLINE_THRESHOLD_KEY,
             DEFAULT_INLINE_THRESHOLD.min(chunk_size).to_string(),
         ),
-    )
-    .await?;
-    initialize_history_markers(conn).await?;
+    )?;
+    initialize_history_markers(conn)?;
     Ok(())
 }
 
-async fn initialize_history_markers(conn: &Connection) -> Result<()> {
+fn initialize_history_markers(conn: &Connection) -> Result<()> {
     for (key, value) in [
         (CONFIG_HISTORY_EPOCH_KEY, "1"),
         (CONFIG_HISTORY_VALID_KEY, "1"),
@@ -684,8 +669,7 @@ async fn initialize_history_markers(conn: &Connection) -> Result<()> {
         conn.execute(
             "INSERT OR IGNORE INTO fs_config (key, value) VALUES (?, ?)",
             (key, value),
-        )
-        .await?;
+        )?;
     }
     Ok(())
 }
@@ -696,21 +680,18 @@ async fn initialize_history_markers(conn: &Connection) -> Result<()> {
 /// Vfs open then creates inode 1. Only that pristine state may rewrite the
 /// sequence-0 root; repaired/corrupt databases with any journal or populated
 /// snapshot state keep their existing lineage.
-pub(crate) async fn refresh_empty_initial_root(conn: &Connection) -> Result<()> {
-    let mut rows = conn
-        .query(
-            "SELECT
+pub(crate) fn refresh_empty_initial_root(conn: &Connection) -> Result<()> {
+    let mut query_statement_0 = conn.prepare_cached(
+        "SELECT
                  (SELECT COUNT(*) FROM fs_op_journal),
                  (SELECT COUNT(*) FROM fs_snapshot),
                  (SELECT COUNT(*) FROM fs_snapshot_inode),
                  (SELECT COUNT(*) FROM fs_snapshot
                   WHERE history_epoch = 1 AND through_seq = 0 AND reason = 'init')",
-            (),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_0.query([])?;
     let row = rows
-        .next()
-        .await?
+        .next()?
         .ok_or_else(|| Error::Internal("failed to inspect the initial history root".to_string()))?;
     let journal_rows: i64 = row.get(0)?;
     let snapshot_rows: i64 = row.get(1)?;
@@ -727,16 +708,13 @@ pub(crate) async fn refresh_empty_initial_root(conn: &Connection) -> Result<()> 
         return Ok(());
     }
 
-    let mut rows = conn
-        .query(
-            "SELECT snapshot_id FROM fs_snapshot
+    let mut query_statement_1 = conn.prepare_cached(
+        "SELECT snapshot_id FROM fs_snapshot
              WHERE history_epoch = 1 AND through_seq = 0 AND reason = 'init'",
-            (),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_1.query([])?;
     let snapshot_id: i64 = rows
-        .next()
-        .await?
+        .next()?
         .ok_or_else(|| Error::Internal("initial history root disappeared".to_string()))?
         .get(0)?;
     drop(rows);
@@ -756,22 +734,20 @@ pub(crate) async fn refresh_empty_initial_root(conn: &Connection) -> Result<()> 
         conn.execute(
             &format!("DELETE FROM {table} WHERE snapshot_id = ?"),
             (snapshot_id,),
-        )
-        .await?;
+        )?;
     }
     conn.execute(
         "DELETE FROM fs_snapshot WHERE snapshot_id = ?",
         (snapshot_id,),
-    )
-    .await?;
-    capture_root_raw(conn, "init", 1, 0).await?;
+    )?;
+    capture_root_raw(conn, "init", 1, 0)?;
     Ok(())
 }
 
 /// Capture the live filesystem and overlay root inside the caller's
 /// transaction. This helper neither drains pending writes nor acquires a
 /// session lock; callers own the consistency boundary.
-pub async fn capture_root_raw(
+pub fn capture_root_raw(
     conn: &Connection,
     reason: &str,
     epoch: i64,
@@ -784,8 +760,7 @@ pub async fn capture_root_raw(
          (through_seq, created_at_ms, reason, history_epoch)
          VALUES (?, ?, ?, ?)",
         (through_seq, created_at_ms, reason, epoch),
-    )
-    .await?;
+    )?;
     let snapshot_id = conn.last_insert_rowid();
 
     conn.execute(
@@ -797,41 +772,35 @@ pub async fn capture_root_raw(
                 rdev, atime_nsec, mtime_nsec, ctime_nsec, NULL, storage_kind
          FROM fs_inode",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_dentry
          (snapshot_id, id, name, parent_ino, ino)
          SELECT ?, id, name, parent_ino, ino FROM fs_dentry",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_data
          (snapshot_id, ino, chunk_index, digest)
          SELECT ?, ino, chunk_index, digest FROM fs_data",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_symlink (snapshot_id, ino, target)
          SELECT ?, ino, target FROM fs_symlink",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_whiteout
          (snapshot_id, path, parent_path, created_at)
          SELECT ?, path, parent_path, created_at FROM fs_whiteout",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_origin (snapshot_id, delta_ino, base_identity)
          SELECT ?, delta_ino, base_identity FROM fs_origin",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_partial_origin (
             snapshot_id, delta_ino, base_ino, base_path, base_size,
@@ -843,34 +812,29 @@ pub async fn capture_root_raw(
                 base_ctime, base_ctime_nsec, created_at
          FROM fs_partial_origin",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_chunk_override
          (snapshot_id, delta_ino, chunk_index)
          SELECT ?, delta_ino, chunk_index FROM fs_chunk_override",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
     conn.execute(
         "INSERT INTO fs_snapshot_chunk (snapshot_id, digest)
          SELECT ?, digest FROM fs_data GROUP BY digest",
         (snapshot_id,),
-    )
-    .await?;
+    )?;
 
-    let mut rows = conn
-        .query(
-            "SELECT ino, data_inline
+    let mut query_statement_2 = conn.prepare_cached(
+        "SELECT ino, data_inline
              FROM fs_inode
              WHERE data_inline IS NOT NULL
              ORDER BY ino",
-            (),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_2.query([])?;
     let mut inline_rows = Vec::new();
-    while let Some(row) = rows.next().await? {
-        inline_rows.push((row.get::<i64>(0)?, row.get::<Vec<u8>>(1)?));
+    while let Some(row) = rows.next()? {
+        inline_rows.push((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?));
     }
     drop(rows);
     for (ino, data) in inline_rows {
@@ -880,21 +844,18 @@ pub async fn capture_root_raw(
              VALUES (?, ?, 0)
              ON CONFLICT(digest) DO NOTHING",
             (Value::Blob(digest.clone()), Value::Blob(data)),
-        )
-        .await?;
+        )?;
         conn.execute(
             "UPDATE fs_snapshot_inode
              SET data_inline_digest = ?
              WHERE snapshot_id = ? AND ino = ?",
             (Value::Blob(digest.clone()), snapshot_id, ino),
-        )
-        .await?;
+        )?;
         conn.execute(
             "INSERT OR IGNORE INTO fs_snapshot_chunk (snapshot_id, digest)
              VALUES (?, ?)",
             (snapshot_id, Value::Blob(digest)),
-        )
-        .await?;
+        )?;
     }
 
     for (meta_key, table, source_key) in [
@@ -906,8 +867,7 @@ pub async fn capture_root_raw(
             "INSERT INTO fs_snapshot_meta (snapshot_id, key, value)
              SELECT ?, ?, value FROM {table} WHERE key = ?"
         );
-        conn.execute(&sql, (snapshot_id, meta_key, source_key))
-            .await?;
+        conn.execute(&sql, (snapshot_id, meta_key, source_key))?;
     }
 
     Ok(snapshot_id)
@@ -916,10 +876,9 @@ pub async fn capture_root_raw(
 /// Rebuild the retained row-delta journal so its AUTOINCREMENT allocator
 /// resumes immediately after `through_seq`.
 ///
-/// Historical reconstruction trims a future suffix. Turso rejects direct
-/// writes to `sqlite_sequence`, so rebuilding the table is the only supported
-/// way to prevent the next committed group from leaving a false gap.
-pub async fn rebuild_journal_allocator(conn: &Connection, through_seq: i64) -> Result<()> {
+/// Historical reconstruction trims a future suffix. Rebuild the retained rows
+/// and their allocator together so the next group cannot leave a false gap.
+pub fn rebuild_journal_allocator(conn: &Connection, through_seq: i64) -> Result<()> {
     conn.execute(
         "CREATE TABLE fs_op_journal_rebuilt (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -930,9 +889,8 @@ pub async fn rebuild_journal_allocator(conn: &Connection, through_seq: i64) -> R
             row TEXT NOT NULL,
             wallclock_ms INTEGER NOT NULL
         )",
-        (),
-    )
-    .await?;
+        [],
+    )?;
     conn.execute(
         "INSERT INTO fs_op_journal_rebuilt
          (seq, txn_id, label, tbl, verb, row, wallclock_ms)
@@ -941,31 +899,28 @@ pub async fn rebuild_journal_allocator(conn: &Connection, through_seq: i64) -> R
          WHERE seq <= ?
          ORDER BY seq",
         (through_seq,),
-    )
-    .await?;
-    conn.execute("DROP TABLE fs_op_journal", ()).await?;
+    )?;
+    conn.execute("DROP TABLE fs_op_journal", [])?;
     conn.execute(
         "ALTER TABLE fs_op_journal_rebuilt RENAME TO fs_op_journal",
-        (),
-    )
-    .await?;
+        [],
+    )?;
     Ok(())
 }
 
-async fn read_config_value(conn: &Connection, key: &str) -> Result<Option<String>> {
-    let mut rows = conn
-        .query("SELECT value FROM fs_config WHERE key = ?", (key,))
-        .await?;
-    if let Some(row) = rows.next().await? {
+fn read_config_value(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut query_statement_3 = conn.prepare_cached("SELECT value FROM fs_config WHERE key = ?")?;
+    let mut rows = query_statement_3.query((key,))?;
+    if let Some(row) = rows.next()? {
         Ok(Some(row.get(0)?))
     } else {
         Ok(None)
     }
 }
 
-async fn validate_current_schema(conn: &Connection) -> Result<()> {
+fn validate_current_schema(conn: &Connection) -> Result<()> {
     for table in REQUIRED_CURRENT_TABLES {
-        if !table_exists(conn, table).await? {
+        if !table_exists(conn, table)? {
             return Err(Error::Internal(format!(
                 "current schema is missing required table {table}"
             )));
@@ -973,18 +928,17 @@ async fn validate_current_schema(conn: &Connection) -> Result<()> {
     }
 
     for spec in CURRENT_COLUMN_SPECS {
-        ensure_column_matches(conn, *spec).await?;
+        ensure_column_matches(conn, *spec)?;
     }
 
-    filesystem_identity(conn).await?;
+    filesystem_identity(conn)?;
 
     Ok(())
 }
 
 /// Immutable creation namespace; never default missing or corrupt persisted identity.
-pub(crate) async fn filesystem_identity(conn: &Connection) -> Result<String> {
-    let value = read_config_value(conn, CONFIG_FILESYSTEM_ID_KEY)
-        .await?
+pub(crate) fn filesystem_identity(conn: &Connection) -> Result<String> {
+    let value = read_config_value(conn, CONFIG_FILESYSTEM_ID_KEY)?
         .ok_or_else(|| Error::Internal("current schema is missing filesystem_id".into()))?;
     if !valid_filesystem_identity(&value) {
         return Err(Error::Internal(format!(
@@ -999,49 +953,45 @@ pub(crate) fn valid_filesystem_identity(value: &str) -> bool {
         .is_ok_and(|id| id.get_version_num() == 4 && id.to_string() == value)
 }
 
-async fn user_version(conn: &Connection) -> Result<i64> {
-    let mut rows = conn.query("PRAGMA user_version", ()).await?;
+fn user_version(conn: &Connection) -> Result<i64> {
+    let mut query_statement_4 = conn.prepare_cached("PRAGMA user_version")?;
+    let mut rows = query_statement_4.query([])?;
     let row = rows
-        .next()
-        .await?
+        .next()?
         .ok_or_else(|| Error::Internal("PRAGMA user_version returned no rows".to_string()))?;
     row.get(0).map_err(Error::from)
 }
 
-async fn set_user_version(conn: &Connection, version: SchemaVersion) -> Result<()> {
+fn set_user_version(conn: &Connection, version: SchemaVersion) -> Result<()> {
     conn.execute(
         &format!("PRAGMA user_version = {}", version.user_version()),
-        (),
-    )
-    .await?;
+        [],
+    )?;
     Ok(())
 }
 
-async fn table_exists(conn: &Connection, table_name: &str) -> Result<bool> {
-    let mut rows = conn
-        .query(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (table_name,),
-        )
-        .await?;
-    Ok(rows.next().await?.is_some())
+fn table_exists(conn: &Connection, table_name: &str) -> Result<bool> {
+    let mut query_statement_5 =
+        conn.prepare_cached("SELECT name FROM sqlite_master WHERE type='table' AND name=?")?;
+    let mut rows = query_statement_5.query((table_name,))?;
+    Ok(rows.next()?.is_some())
 }
 
-async fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<ColumnInfo>> {
-    let mut rows = conn
-        .query(&format!("PRAGMA table_info({})", table_name), ())
-        .await?;
+fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<ColumnInfo>> {
+    let mut query_statement_6 =
+        conn.prepare_cached(&format!("PRAGMA table_info({})", table_name))?;
+    let mut rows = query_statement_6.query([])?;
 
     let mut columns = Vec::new();
-    while let Some(row) = rows.next().await? {
+    while let Some(row) = rows.next()? {
         let name: String = row.get(1)?;
         let type_name: String = row.get(2)?;
         let not_null: i64 = row.get(3)?;
-        let default_value = match row.get_value(4).ok() {
-            Some(Value::Text(value)) => Some(value.clone()),
-            Some(Value::Integer(value)) => Some(value.to_string()),
-            Some(Value::Null) | None => None,
-            Some(value) => Some(format!("{value:?}")),
+        let default_value = match row.get::<_, Value>(4)? {
+            Value::Text(value) => Some(value),
+            Value::Integer(value) => Some(value.to_string()),
+            Value::Null => None,
+            value => Some(format!("{value:?}")),
         };
         columns.push(ColumnInfo {
             name,
@@ -1054,8 +1004,8 @@ async fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<Co
     Ok(columns)
 }
 
-async fn ensure_column_matches(conn: &Connection, spec: ColumnSpec) -> Result<()> {
-    let columns = get_table_columns(conn, spec.table_name).await?;
+fn ensure_column_matches(conn: &Connection, spec: ColumnSpec) -> Result<()> {
+    let columns = get_table_columns(conn, spec.table_name)?;
     for column in columns {
         if column.name != spec.column_name {
             continue;
@@ -1089,539 +1039,5 @@ async fn ensure_column_matches(conn: &Connection, spec: ColumnSpec) -> Result<()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Vfs, VfsOptions, DEFAULT_FILE_MODE};
-    use tempfile::tempdir;
-    use turso::Builder;
-
-    const S_IFDIR: i64 = 0o040000;
-    const S_IFREG: i64 = 0o100000;
-
-    #[tokio::test]
-    async fn empty_chunk_with_nonempty_digest_is_corruption() -> Result<()> {
-        let dir = tempdir()?;
-        let db_path = dir.path().join("empty-chunk-corruption.db");
-        let db = Builder::new_local(db_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        ensure_current(&conn).await?;
-        conn.execute(
-            "INSERT INTO fs_chunk (digest, data, refcount) VALUES (?, ?, 0)",
-            (
-                Value::Blob(blake3::hash(b"missing bytes").as_bytes().to_vec()),
-                Value::Blob(Vec::new()),
-            ),
-        )
-        .await?;
-
-        let report = integrity::check(&conn, &integrity::CheckOpts::new(db_path.clone())).await?;
-        assert!(!report.ok);
-        assert!(report.checks.iter().any(|check| {
-            check.name == "storage.chunk_bytes_match_digest"
-                && !check.ok
-                && check.detail.contains("1 violation")
-        }));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn capture_root_normalizes_and_pins_inline_bytes() -> Result<()> {
-        let dir = tempdir()?;
-        let db_path = dir.path().join("capture-root-inline.db");
-        let db = Builder::new_local(db_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        ensure_current(&conn).await?;
-
-        let inline = b"snapshot-inline".to_vec();
-        let digest = blake3::hash(&inline).as_bytes().to_vec();
-        conn.execute(
-            "INSERT INTO fs_inode (
-                ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind
-             ) VALUES (2, ?, 1, 1, 2, ?, 1, 1, 1, 0, 0, 0, 0, ?, 1)",
-            (
-                S_IFREG | DEFAULT_FILE_MODE as i64,
-                inline.len() as i64,
-                Value::Blob(inline.clone()),
-            ),
-        )
-        .await?;
-        conn.execute(
-            "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES ('inline.txt', 1, 2)",
-            (),
-        )
-        .await?;
-
-        let snapshot_id = capture_root_raw(&conn, "test", 1, 1).await?;
-        let mut rows = conn
-            .query(
-                "SELECT data_inline_digest
-                 FROM fs_snapshot_inode
-                 WHERE snapshot_id = ? AND ino = 2",
-                (snapshot_id,),
-            )
-            .await?;
-        let row = rows.next().await?.expect("snapshot inode must exist");
-        assert_eq!(row.get::<Vec<u8>>(0)?, digest);
-        drop(rows);
-
-        let mut rows = conn
-            .query(
-                "SELECT c.data, c.refcount
-                 FROM fs_snapshot_chunk sc
-                 JOIN fs_chunk c ON c.digest = sc.digest
-                 WHERE sc.snapshot_id = ? AND sc.digest = ?",
-                (snapshot_id, Value::Blob(digest)),
-            )
-            .await?;
-        let row = rows
-            .next()
-            .await?
-            .expect("inline snapshot digest must be pinned");
-        assert_eq!(row.get::<Vec<u8>>(0)?, inline);
-        assert_eq!(row.get::<i64>(1)?, 0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn open_paths_reject_old_schema_without_upgrading() -> Result<()> {
-        for version in [
-            SchemaVersion::V0_0,
-            SchemaVersion::V0_2,
-            SchemaVersion::V0_4,
-            SchemaVersion::V0_5,
-            SchemaVersion::V0_6,
-            SchemaVersion::V0_7,
-            SchemaVersion::V0_8,
-            SchemaVersion::V0_9,
-            SchemaVersion::V0_10,
-        ] {
-            let dir = tempdir()?;
-            let db_path = dir.path().join(format!("old-{}.db", version.as_str()));
-            let marker = if version >= SchemaVersion::V0_8 {
-                version.user_version()
-            } else {
-                0
-            };
-            {
-                let db = Builder::new_local(db_path.to_str().unwrap())
-                    .build()
-                    .await?;
-                let conn = db.connect()?;
-                create_legacy_fixture(&conn, version).await?;
-                conn.execute(&format!("PRAGMA user_version = {marker}"), ())
-                    .await?;
-            }
-
-            let err = match Vfs::open(VfsOptions::with_path(db_path.to_string_lossy())).await {
-                Ok(_) => panic!("{version}: Vfs::open must not upgrade an old schema"),
-                Err(err) => err,
-            };
-            assert!(
-                matches!(err, Error::SchemaVersionMismatch { .. }),
-                "{version}: unexpected open error {err}"
-            );
-            let db = Builder::new_local(db_path.to_str().unwrap())
-                .build()
-                .await?;
-            let conn = db.connect()?;
-            assert_eq!(
-                user_version(&conn).await?,
-                marker,
-                "{version}: marker changed"
-            );
-            assert_eq!(detect_schema_version(&conn).await?, Some(version));
-            let columns = get_table_columns(&conn, "fs_inode").await?;
-            if version < SchemaVersion::V0_5 {
-                assert!(
-                    !columns.iter().any(|column| column.name == "data_inline"),
-                    "{version}: open added v0.5 columns"
-                );
-            }
-
-            let before = read_fixture_file_bytes(&conn).await?;
-            assert!(matches!(
-                ensure_current(&conn).await,
-                Err(Error::SchemaVersionMismatch { .. })
-            ));
-            assert_eq!(user_version(&conn).await?, marker);
-            assert_eq!(before, read_fixture_file_bytes(&conn).await?);
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn schema_interrupted_init_reopens_or_errors_cleanly() -> Result<()> {
-        let dir = tempdir()?;
-        let empty_path = dir.path().join("empty.db");
-        let db = Builder::new_local(empty_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        ensure_current(&conn).await?;
-        assert_eq!(user_version(&conn).await?, CURRENT.user_version());
-
-        let config_only_path = dir.path().join("config-only.db");
-        let db = Builder::new_local(config_only_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        conn.execute(
-            "CREATE TABLE fs_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-            (),
-        )
-        .await?;
-        ensure_current(&conn).await?;
-        assert_eq!(user_version(&conn).await?, CURRENT.user_version());
-
-        let hybrid_path = dir.path().join("hybrid-v05-no-markers.db");
-        let db = Builder::new_local(hybrid_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        create_legacy_fixture(&conn, SchemaVersion::V0_5).await?;
-        conn.execute(
-            "DELETE FROM fs_config WHERE key = ?",
-            (CONFIG_SCHEMA_VERSION_KEY,),
-        )
-        .await?;
-        assert!(matches!(
-            ensure_current(&conn).await,
-            Err(Error::SchemaVersionMismatch { .. })
-        ));
-        assert_eq!(
-            detect_schema_version(&conn).await?,
-            Some(SchemaVersion::V0_5)
-        );
-
-        let corrupt_current_path = dir.path().join("current-missing-table.db");
-        let db = Builder::new_local(corrupt_current_path.to_str().unwrap())
-            .build()
-            .await?;
-        let conn = db.connect()?;
-        set_user_version(&conn, CURRENT).await?;
-        let err = ensure_current(&conn)
-            .await
-            .expect_err("missing current tables must error");
-        assert!(
-            err.to_string()
-                .contains("current schema is missing required table"),
-            "unexpected error: {err}"
-        );
-
-        Ok(())
-    }
-
-    async fn create_legacy_fixture(conn: &Connection, version: SchemaVersion) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE fs_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-            (),
-        )
-        .await?;
-        conn.execute(
-            "INSERT INTO fs_config (key, value) VALUES ('chunk_size', '4')",
-            (),
-        )
-        .await?;
-        conn.execute(
-            "INSERT INTO fs_config (key, value) VALUES ('schema_version', ?), ('inline_threshold', '4')",
-            (version.as_str(),),
-        )
-        .await?;
-
-        let mut columns = vec![
-            "ino INTEGER PRIMARY KEY AUTOINCREMENT",
-            "mode INTEGER NOT NULL",
-            "uid INTEGER NOT NULL DEFAULT 0",
-            "gid INTEGER NOT NULL DEFAULT 0",
-            "size INTEGER NOT NULL DEFAULT 0",
-            "atime INTEGER NOT NULL",
-            "mtime INTEGER NOT NULL",
-            "ctime INTEGER NOT NULL",
-        ];
-        if version >= SchemaVersion::V0_2 {
-            columns.insert(2, "nlink INTEGER NOT NULL DEFAULT 0");
-        }
-        if version >= SchemaVersion::V0_4 {
-            columns.extend([
-                "rdev INTEGER NOT NULL DEFAULT 0",
-                "atime_nsec INTEGER NOT NULL DEFAULT 0",
-                "mtime_nsec INTEGER NOT NULL DEFAULT 0",
-                "ctime_nsec INTEGER NOT NULL DEFAULT 0",
-            ]);
-        }
-        if version >= SchemaVersion::V0_5 {
-            columns.extend([
-                "data_inline BLOB",
-                "storage_kind INTEGER NOT NULL DEFAULT 0",
-            ]);
-        }
-        conn.execute(
-            &format!("CREATE TABLE fs_inode ({})", columns.join(", ")),
-            (),
-        )
-        .await?;
-        conn.execute(
-            "CREATE TABLE fs_dentry (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                parent_ino INTEGER NOT NULL,
-                ino INTEGER NOT NULL,
-                UNIQUE(parent_ino, name)
-            )",
-            (),
-        )
-        .await?;
-        if version >= SchemaVersion::V0_7 {
-            conn.execute(
-                "CREATE TABLE fs_data (
-                    ino INTEGER NOT NULL,
-                    chunk_index INTEGER NOT NULL,
-                    digest BLOB NOT NULL,
-                    PRIMARY KEY (ino, chunk_index)
-                )",
-                (),
-            )
-            .await?;
-            conn.execute(
-                "CREATE TABLE fs_chunk (
-                    digest BLOB PRIMARY KEY,
-                    data BLOB NOT NULL,
-                    refcount INTEGER NOT NULL DEFAULT 0
-                )",
-                (),
-            )
-            .await?;
-            conn.execute(
-                "CREATE TABLE fs_op_journal (
-                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                    txn_id INTEGER NOT NULL,
-                    op TEXT NOT NULL,
-                    payload TEXT NOT NULL,
-                    wallclock_ms INTEGER NOT NULL
-                )",
-                (),
-            )
-            .await?;
-            conn.execute(
-                "CREATE TABLE fs_journal_chunk (
-                    seq INTEGER NOT NULL,
-                    digest BLOB NOT NULL
-                )",
-                (),
-            )
-            .await?;
-        } else {
-            conn.execute(
-                "CREATE TABLE fs_data (
-                    ino INTEGER NOT NULL,
-                    chunk_index INTEGER NOT NULL,
-                    data BLOB NOT NULL,
-                    PRIMARY KEY (ino, chunk_index)
-                )",
-                (),
-            )
-            .await?;
-        }
-        conn.execute(
-            "CREATE TABLE fs_symlink (ino INTEGER PRIMARY KEY, target TEXT NOT NULL)",
-            (),
-        )
-        .await?;
-        conn.execute(
-            "CREATE TABLE kv_store (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                created_at INTEGER DEFAULT (unixepoch()),
-                updated_at INTEGER DEFAULT (unixepoch())
-            )",
-            (),
-        )
-        .await?;
-        conn.execute(
-            "CREATE TABLE tool_calls (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                parameters TEXT,
-                result TEXT,
-                error TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                started_at INTEGER NOT NULL,
-                completed_at INTEGER,
-                duration_ms INTEGER
-            )",
-            (),
-        )
-        .await?;
-        if version >= SchemaVersion::V0_6 {
-            conn.execute(
-                "CREATE TABLE fs_session_metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )",
-                (),
-            )
-            .await?;
-        }
-
-        insert_legacy_inode(conn, version, 1, S_IFDIR | 0o755, 2, 0).await?;
-        insert_legacy_inode(conn, version, 2, S_IFREG | DEFAULT_FILE_MODE as i64, 1, 6).await?;
-        insert_legacy_inode(conn, version, 3, S_IFREG | DEFAULT_FILE_MODE as i64, 1, 4).await?;
-        conn.execute(
-            "INSERT INTO fs_dentry (name, parent_ino, ino) VALUES
-             ('file.txt', 1, 2),
-             ('duplicate.txt', 1, 3)",
-            (),
-        )
-        .await?;
-        if version >= SchemaVersion::V0_7 {
-            let abcd = blake3::hash(b"abcd").as_bytes().to_vec();
-            let ef = blake3::hash(b"ef").as_bytes().to_vec();
-            conn.execute(
-                "INSERT INTO fs_chunk (digest, data, refcount) VALUES
-                 (?, ?, 2),
-                 (?, ?, 1)",
-                (
-                    Value::Blob(abcd.clone()),
-                    Value::Blob(b"abcd".to_vec()),
-                    Value::Blob(ef.clone()),
-                    Value::Blob(b"ef".to_vec()),
-                ),
-            )
-            .await?;
-            conn.execute(
-                "INSERT INTO fs_data (ino, chunk_index, digest) VALUES
-                 (2, 0, ?),
-                 (2, 1, ?),
-                 (3, 0, ?)",
-                (
-                    Value::Blob(abcd.clone()),
-                    Value::Blob(ef),
-                    Value::Blob(abcd.clone()),
-                ),
-            )
-            .await?;
-            conn.execute(
-                "INSERT INTO fs_op_journal (txn_id, op, payload, wallclock_ms)
-                 VALUES (1, 'write', '{\"ino\":2,\"ranges\":[]}', 1)",
-                (),
-            )
-            .await?;
-            conn.execute(
-                "INSERT INTO fs_journal_chunk (seq, digest) VALUES (1, ?)",
-                (Value::Blob(abcd),),
-            )
-            .await?;
-        } else {
-            conn.execute(
-                "INSERT INTO fs_data (ino, chunk_index, data) VALUES
-                 (2, 0, ?),
-                 (2, 1, ?),
-                 (3, 0, ?)",
-                (
-                    Value::Blob(b"abcd".to_vec()),
-                    Value::Blob(b"ef".to_vec()),
-                    Value::Blob(b"abcd".to_vec()),
-                ),
-            )
-            .await?;
-        }
-        conn.execute(
-            "INSERT INTO kv_store (key, value) VALUES ('k', '{\"v\":1}')",
-            (),
-        )
-        .await?;
-        conn.execute(
-            "INSERT INTO tool_calls (name, parameters, status, started_at) VALUES ('tool', '{}', 'success', 1)",
-            (),
-        )
-        .await?;
-        Ok(())
-    }
-
-    async fn insert_legacy_inode(
-        conn: &Connection,
-        version: SchemaVersion,
-        ino: i64,
-        mode: i64,
-        nlink: i64,
-        size: i64,
-    ) -> Result<()> {
-        let mut columns = vec![
-            "ino", "mode", "uid", "gid", "size", "atime", "mtime", "ctime",
-        ];
-        let mut values = vec![
-            Value::Integer(ino),
-            Value::Integer(mode),
-            Value::Integer(0),
-            Value::Integer(0),
-            Value::Integer(size),
-            Value::Integer(1),
-            Value::Integer(1),
-            Value::Integer(1),
-        ];
-        if version >= SchemaVersion::V0_2 {
-            columns.insert(2, "nlink");
-            values.insert(2, Value::Integer(nlink));
-        }
-        if version >= SchemaVersion::V0_4 {
-            columns.extend(["rdev", "atime_nsec", "mtime_nsec", "ctime_nsec"]);
-            values.extend([
-                Value::Integer(0),
-                Value::Integer(0),
-                Value::Integer(0),
-                Value::Integer(0),
-            ]);
-        }
-        if version >= SchemaVersion::V0_5 {
-            columns.extend(["data_inline", "storage_kind"]);
-            values.extend([Value::Null, Value::Integer(0)]);
-        }
-        let placeholders = std::iter::repeat_n("?", columns.len())
-            .collect::<Vec<_>>()
-            .join(", ");
-        conn.execute(
-            &format!(
-                "INSERT INTO fs_inode ({}) VALUES ({})",
-                columns.join(", "),
-                placeholders
-            ),
-            values,
-        )
-        .await?;
-        Ok(())
-    }
-
-    async fn read_fixture_file_bytes(conn: &Connection) -> Result<Vec<u8>> {
-        let sql = if get_table_columns(conn, "fs_data")
-            .await?
-            .iter()
-            .any(|c| c.name == "data")
-        {
-            "SELECT data FROM fs_data WHERE ino = 2 ORDER BY chunk_index"
-        } else {
-            "SELECT c.data
-             FROM fs_data d
-             JOIN fs_chunk c ON c.digest = d.digest
-             WHERE d.ino = 2
-             ORDER BY d.chunk_index"
-        };
-        let mut rows = conn.query(sql, ()).await?;
-        let mut bytes = Vec::new();
-        while let Some(row) = rows.next().await? {
-            match row.get_value(0)? {
-                Value::Blob(chunk) => bytes.extend(chunk),
-                other => {
-                    return Err(Error::Internal(format!(
-                        "unexpected fs_data value in fixture: {other:?}"
-                    )))
-                }
-            }
-        }
-        Ok(bytes)
-    }
-}
+#[path = "../../tests/internal/schema.rs"]
+mod tests;

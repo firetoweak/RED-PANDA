@@ -2,6 +2,7 @@
 #![cfg(windows)]
 use std::{path::Path, sync::Arc};
 use tempfile::{tempdir, TempDir};
+use tokio_rusqlite::rusqlite::Connection;
 use vfs_core::fs::base_fingerprint::BaseFingerprint;
 use vfs_core::{
     error::Result, FileSystem, HostFS, OverlayFS, PartialOriginMode, PartialOriginPolicy, Vfs,
@@ -241,15 +242,16 @@ async fn delta_names_and_whiteouts_follow_windows_ordinal_semantics() -> Result<
 async fn current_format_refuses_old_or_malformed_origins_without_repair() -> Result<()> {
     let dir = fixture();
     let path = dir.path().join("schema.db");
-    let sdk = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
-    let conn = sdk.get_connection().await?;
-    conn.execute("PRAGMA user_version = 8", ()).await?;
+    let _sdk = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
+    let conn = Connection::open(&path)?;
+    conn.execute("PRAGMA user_version = 8", ())?;
     assert!(matches!(
-        vfs_core::schema::ensure_current(&conn).await,
+        vfs_core::schema::ensure_current(&conn),
         Err(vfs_core::error::Error::SchemaVersionMismatch { .. })
     ));
-    let mut rows = conn.query("PRAGMA user_version", ()).await?;
-    assert_eq!(rows.next().await?.unwrap().get::<i64>(0)?, 8);
+    let mut statement_0 = conn.prepare("PRAGMA user_version")?;
+    let mut rows = statement_0.query(())?;
+    assert_eq!(rows.next()?.unwrap().get::<_, i64>(0)?, 8);
     drop(rows);
     conn.execute(
         &format!(
@@ -257,14 +259,12 @@ async fn current_format_refuses_old_or_malformed_origins_without_repair() -> Res
             vfs_core::schema::CURRENT.user_version()
         ),
         (),
-    )
-    .await?;
+    )?;
     conn.execute(
         "ALTER TABLE fs_origin RENAME COLUMN base_identity TO base_ino",
         (),
-    )
-    .await?;
-    assert!(vfs_core::schema::ensure_current(&conn).await.is_err());
+    )?;
+    assert!(vfs_core::schema::ensure_current(&conn).is_err());
     Ok(())
 }
 

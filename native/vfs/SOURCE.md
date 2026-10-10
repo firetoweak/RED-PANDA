@@ -18,3 +18,8 @@ Windows 支持范围以 `docs/WINDOWS.md` 为准。本地裁剪后保留 core、
 VFS 负责通用文件系统机制；RED PANDA 的候选操作、变化证据、接受与恢复应用在相邻的 `../sandbox/`，Python 事务编排在 `redpanda/sandbox/`。源码在一个仓库内，职责仍分开。
 
 本文件记录首次导入来源，不表示后续本地修改仍与上述提交逐字相同。构建脚本为当前 VFS 与 sandbox 源码计算 SHA256，写入生成的 `BUILD.json`；从 GitHub 源码压缩包构建也不需要本地 Git 元数据。
+
+数据库执行层已本地替换为 tokio-rusqlite / rusqlite 与 bundled SQLite。
+首次导入的 `third_party/turso*` 源码及 Cargo patch 已移除；VFS 的持久格式、
+CoW、Journal 和重放职责保留。当前版本以 Cargo.lock 为准，新增依赖的许可证
+及 SQLite 源码中的 public-domain 声明随原生程序一起分发。

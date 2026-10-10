@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use turso::{Builder, Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
 
 use crate::error::{Error, Result};
 use crate::fs::vfs::{JournalDelta, MutationTxn};
@@ -19,27 +19,36 @@ impl Vfs {
     /// Record the frozen parent artifact digest this branch delta reads
     /// through. Requires the overlay schema to be initialized.
     pub async fn set_overlay_parent_artifact(&self, digest: &str) -> Result<()> {
+        self.check_background()?;
+
         if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(Error::Internal(format!(
                 "invalid parent artifact digest {digest:?}: expected 64 hex characters"
             )));
         }
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.fs.journal_ctx()).await?;
-        txn.conn()
-            .execute(
-                "INSERT INTO fs_overlay_config (key, value) VALUES (?, ?)
+        let digest = digest.to_owned();
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let digest = digest.as_str();
+
+                let mut txn = MutationTxn::begin(conn, owned.fs.journal_ctx())?;
+                txn.conn().execute(
+                    "INSERT INTO fs_overlay_config (key, value) VALUES (?, ?)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (PARENT_ARTIFACT_KEY, digest.to_ascii_lowercase()),
-            )
-            .await?;
-        txn.record(JournalDelta::overlay_config_upsert(
-            "parent_artifact",
-            PARENT_ARTIFACT_KEY,
-            &digest.to_ascii_lowercase(),
-        ));
-        txn.commit().await?;
-        Ok(())
+                    (PARENT_ARTIFACT_KEY, digest.to_ascii_lowercase()),
+                )?;
+                txn.record(JournalDelta::overlay_config_upsert(
+                    "parent_artifact",
+                    PARENT_ARTIFACT_KEY,
+                    &digest.to_ascii_lowercase(),
+                ));
+                txn.commit()?;
+                Ok(())
+            })
+            .await
     }
 
     /// Read the frozen parent artifact digest, if this is a branch delta.
@@ -50,23 +59,28 @@ impl Vfs {
     /// Remove the parent artifact reference after its state has been folded
     /// into this database.
     pub async fn clear_overlay_parent_artifact(&self) -> Result<()> {
-        let conn = self.pool.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, self.fs.journal_ctx()).await?;
-        let changed = txn
-            .conn()
-            .execute(
-                "DELETE FROM fs_overlay_config WHERE key = ?",
-                (PARENT_ARTIFACT_KEY,),
-            )
-            .await?;
-        if changed > 0 {
-            txn.record(JournalDelta::overlay_config_delete(
-                "parent_artifact_clear",
-                PARENT_ARTIFACT_KEY,
-            ));
-        }
-        txn.commit().await?;
-        Ok(())
+        self.check_background()?;
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                let mut txn = MutationTxn::begin(conn, owned.fs.journal_ctx())?;
+                let changed = txn.conn().execute(
+                    "DELETE FROM fs_overlay_config WHERE key = ?",
+                    (PARENT_ARTIFACT_KEY,),
+                )?;
+                if changed > 0 {
+                    txn.record(JournalDelta::overlay_config_delete(
+                        "parent_artifact_clear",
+                        PARENT_ARTIFACT_KEY,
+                    ));
+                }
+                txn.commit()?;
+                Ok(())
+            })
+            .await
     }
 
     /// Read the overlay base directory recorded at initialization, if any.
@@ -75,22 +89,27 @@ impl Vfs {
     }
 
     async fn overlay_config_value(&self, key: &str) -> Result<Option<String>> {
-        let conn = self.pool.get_connection().await?;
+        self.check_background()?;
+
+        let key = key.to_owned();
+
+        let owned = self.clone();
+        self.pool.execute(move |conn| {
+        let _keepalive = &owned;
+        let key = key.as_str();
+
         // A database without the overlay schema is a plain Vfs.
-        let mut tables = conn
-            .query(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fs_overlay_config'",
-                (),
-            )
-            .await?;
-        if tables.next().await?.is_none() {
+        let mut query_statement_0 = conn.prepare_cached("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fs_overlay_config'")?;
+let mut tables = query_statement_0.query([])
+            ?;
+        if tables.next()?.is_none() {
             return Ok(None);
         }
-        let mut rows = conn
-            .query("SELECT value FROM fs_overlay_config WHERE key = ?", (key,))
-            .await?;
-        match rows.next().await? {
-            Some(row) => match row.get_value(0)? {
+        let mut query_statement_1 = conn.prepare_cached("SELECT value FROM fs_overlay_config WHERE key = ?")?;
+let mut rows = query_statement_1.query((key,))
+            ?;
+        match rows.next()? {
+            Some(row) => match row.get::<_, Value>(0)? {
                 Value::Text(value) => Ok(Some(value)),
                 value => Err(Error::Internal(format!(
                     "invalid fs_overlay_config value for {key}: {value:?}"
@@ -98,6 +117,7 @@ impl Vfs {
             },
             None => Ok(None),
         }
+            }).await
     }
 
     /// Copy a consistent point-in-time image of a live database into a new
@@ -110,10 +130,13 @@ impl Vfs {
     /// proceed. `output` must not already exist.
     pub async fn snapshot_into(&self, output: &Path) -> Result<()> {
         self.fs.drain_all().await?;
-        let conn = self.pool.get_connection().await?;
-        vacuum_into(&conn, output).await?;
-        drop(conn);
-        publish_single_file_artifact(output).await
+        let output = output.to_owned();
+        self.pool
+            .execute(move |conn| {
+                vacuum_into(conn, &output)?;
+                publish_single_file_artifact(&output)
+            })
+            .await
     }
 
     /// Truncate the op journal to the configured retention horizon and
@@ -122,33 +145,37 @@ impl Vfs {
     /// Pending batched writes are drained first so every acknowledged
     /// write is journaled before the horizon is computed.
     pub async fn collect_journal(&self) -> Result<()> {
+        self.check_background()?;
+
         self.fs.drain_all().await?;
-        let conn = self.pool.get_connection().await?;
-        crate::fs::journal_gc(&conn, self.fs.journal_retention_ops()).await?;
-        // GC may have deleted zero-ref chunks the known-digest cache vouches
-        // for; a stale entry would let a later commit pin a missing digest.
-        self.fs.journal_ctx().forget_chunks();
-        Ok(())
+
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+
+                crate::fs::journal_gc(conn, owned.fs.journal_retention_ops())?;
+                // GC may have deleted zero-ref chunks the known-digest cache vouches
+                // for; a stale entry would let a later commit pin a missing digest.
+                owned.fs.journal_ctx().forget_chunks();
+                Ok(())
+            })
+            .await
     }
 }
 
-async fn vacuum_into(conn: &Connection, output: &Path) -> Result<()> {
-    let escaped_output = output.to_string_lossy().replace('\'', "''");
-    conn.execute(&format!("VACUUM INTO '{escaped_output}'"), ())
-        .await?;
+fn vacuum_into(conn: &Connection, output: &Path) -> Result<()> {
+    let name = output
+        .to_str()
+        .ok_or_else(|| Error::InvalidUtf8Path(output.display().to_string()))?;
+    conn.execute("VACUUM INTO ?", [name])?;
     Ok(())
 }
 
-/// Checkpoint a freshly written copy into a durable single-file family.
-async fn publish_single_file_artifact(output: &Path) -> Result<()> {
-    let output_str = output
-        .to_str()
-        .ok_or_else(|| Error::InvalidUtf8Path(output.display().to_string()))?;
-    let output_db = Builder::new_local(output_str).build().await?;
-    let output_conn = output_db.connect()?;
-    checkpoint_truncate(&output_conn).await?;
-    drop(output_conn);
-    drop(output_db);
+fn publish_single_file_artifact(output: &Path) -> Result<()> {
+    let copy = Connection::open(output)?;
+    checkpoint_truncate(&copy)?;
+    copy.close().map_err(|(_, error)| error)?;
     remove_sidecar_if_present(output, "-wal")?;
     remove_sidecar_if_present(output, "-shm")?;
     std::fs::OpenOptions::new()
@@ -168,9 +195,10 @@ fn remove_sidecar_if_present(path: &Path, suffix: &str) -> Result<()> {
     }
 }
 
-async fn checkpoint_truncate(conn: &Connection) -> Result<()> {
-    let mut rows = conn.query("PRAGMA wal_checkpoint(TRUNCATE)", ()).await?;
-    if let Some(row) = rows.next().await? {
+pub(crate) fn checkpoint_truncate(conn: &Connection) -> Result<()> {
+    let mut query_statement_0 = conn.prepare_cached("PRAGMA wal_checkpoint(TRUNCATE)")?;
+    let mut rows = query_statement_0.query([])?;
+    if let Some(row) = rows.next()? {
         let busy: i64 = row.get(0)?;
         if busy != 0 {
             return Err(Error::Internal(
@@ -178,6 +206,6 @@ async fn checkpoint_truncate(conn: &Connection) -> Result<()> {
             ));
         }
     }
-    while rows.next().await?.is_some() {}
+    while rows.next()?.is_some() {}
     Ok(())
 }

@@ -51,7 +51,15 @@ fn error_to_errno(e: &SdkError) -> i32 {
     let errno = match e {
         SdkError::Fs(fs_err) => fs_err.to_errno(),
         SdkError::Io(io_err) => io_err.raw_os_error().unwrap_or(libc::EIO),
-        SdkError::Database(turso::Error::Busy(_)) => libc::EAGAIN,
+        SdkError::Database(tokio_rusqlite::rusqlite::Error::SqliteFailure(code, _))
+            if matches!(
+                code.code,
+                tokio_rusqlite::rusqlite::ErrorCode::DatabaseBusy
+                    | tokio_rusqlite::rusqlite::ErrorCode::DatabaseLocked
+            ) =>
+        {
+            libc::EAGAIN
+        }
         SdkError::ConnectionPoolTimeout => libc::EAGAIN,
         _ => libc::EIO,
     };

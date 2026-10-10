@@ -152,34 +152,40 @@ async fn assert_final_state(agent: &Vfs) -> Result<()> {
 }
 
 async fn assert_integrity_check_ok(agent: &Vfs) -> Result<()> {
-    let conn = agent.get_connection().await?;
-    let mut rows = conn.query("PRAGMA integrity_check", ()).await?;
-    let mut results = Vec::new();
-    while let Some(row) = rows.next().await? {
-        results.push(row.get::<String>(0)?);
-    }
-    assert_eq!(results, vec!["ok".to_string()]);
-    Ok(())
+    agent
+        .get_pool()
+        .execute(move |conn| {
+            let mut statement_0 = conn.prepare("PRAGMA integrity_check")?;
+            let mut rows = statement_0.query(())?;
+            let mut results = Vec::new();
+            while let Some(row) = rows.next()? {
+                results.push(row.get::<_, String>(0)?);
+            }
+            assert_eq!(results, vec!["ok".to_string()]);
+            Ok(())
+        })
+        .await
 }
 
 async fn assert_inline_inode_has_no_chunks(agent: &Vfs, ino: i64, expected: &[u8]) -> Result<()> {
-    let conn = agent.get_connection().await?;
-    let mut rows = conn
-        .query(
-            "SELECT storage_kind, data_inline FROM fs_inode WHERE ino = ?",
-            (ino,),
-        )
-        .await?;
-    let row = rows.next().await?.unwrap();
-    assert_eq!(row.get::<i64>(0)?, 1);
-    assert_eq!(row.get::<Vec<u8>>(1)?, expected);
+    let expected = expected.to_vec();
+    agent
+        .get_pool()
+        .execute(move |conn| {
+            let mut statement_1 =
+                conn.prepare("SELECT storage_kind, data_inline FROM fs_inode WHERE ino = ?")?;
+            let mut rows = statement_1.query((ino,))?;
+            let row = rows.next()?.unwrap();
+            assert_eq!(row.get::<_, i64>(0)?, 1);
+            assert_eq!(row.get::<_, Vec<u8>>(1)?, expected);
 
-    let mut rows = conn
-        .query("SELECT COUNT(*) FROM fs_data WHERE ino = ?", (ino,))
-        .await?;
-    let row = rows.next().await?.unwrap();
-    assert_eq!(row.get::<i64>(0)?, 0);
-    Ok(())
+            let mut statement_2 = conn.prepare("SELECT COUNT(*) FROM fs_data WHERE ino = ?")?;
+            let mut rows = statement_2.query((ino,))?;
+            let row = rows.next()?.unwrap();
+            assert_eq!(row.get::<_, i64>(0)?, 0);
+            Ok(())
+        })
+        .await
 }
 
 fn payload_bytes(worker: usize, iteration: usize) -> Vec<u8> {

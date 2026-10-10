@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::Path;
-use turso::transaction::{Transaction, TransactionBehavior};
-use turso::{Connection, Value};
+use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 const PARENT_ARTIFACT_KEY: &str = "parent_artifact";
 const REPLAY_LIVE_TABLES: &[&str] = &[
@@ -268,13 +268,13 @@ struct ReplayState {
 /// Re-enabling journaling after a recorded gap drops the stale replay plane,
 /// bumps the epoch, captures the current root, and publishes that root as the
 /// new floor.
-pub(crate) async fn reconcile_epoch(conn: &Connection, journaling_enabled: bool) -> Result<()> {
+pub(crate) fn reconcile_epoch(conn: &Connection, journaling_enabled: bool) -> Result<()> {
     if !journaling_enabled {
         return Ok(());
     }
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        let markers = read_markers(conn).await?;
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        let markers = read_markers(conn)?;
         if markers.valid {
             return Ok(());
         }
@@ -283,20 +283,19 @@ pub(crate) async fn reconcile_epoch(conn: &Connection, journaling_enabled: bool)
             .epoch
             .checked_add(1)
             .ok_or_else(|| Error::Internal("history epoch overflow".to_string()))?;
-        delete_all_snapshots(conn).await?;
-        conn.execute("DELETE FROM fs_op_journal", ()).await?;
-        let snapshot_id = schema::capture_root_raw(conn, "epoch", next_epoch, markers.head).await?;
-        let root = snapshot_header(conn, snapshot_id).await?;
-        set_config_i64(conn, CONFIG_HISTORY_EPOCH_KEY, next_epoch).await?;
-        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, root.through_seq).await?;
-        set_config_i64(conn, CONFIG_HISTORY_VALID_KEY, 1).await?;
-        collect_unpinned_chunks(conn).await
-    }
-    .await;
+        delete_all_snapshots(conn)?;
+        conn.execute("DELETE FROM fs_op_journal", [])?;
+        let snapshot_id = schema::capture_root_raw(conn, "epoch", next_epoch, markers.head)?;
+        let root = snapshot_header(conn, snapshot_id)?;
+        set_config_i64(conn, CONFIG_HISTORY_EPOCH_KEY, next_epoch)?;
+        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, root.through_seq)?;
+        set_config_i64(conn, CONFIG_HISTORY_VALID_KEY, 1)?;
+        collect_unpinned_chunks(conn)
+    })();
     match result {
-        Ok(()) => txn.commit().await?,
+        Ok(()) => txn.commit()?,
         Err(error) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             return Err(error);
         }
     }
@@ -304,10 +303,10 @@ pub(crate) async fn reconcile_epoch(conn: &Connection, journaling_enabled: bool)
 }
 
 /// Capture the current filesystem root at the acknowledged journal head.
-pub(crate) async fn capture_root(conn: &Connection, reason: &str) -> Result<SnapshotHeader> {
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        let markers = read_markers(conn).await?;
+pub(crate) fn capture_root(conn: &Connection, reason: &str) -> Result<SnapshotHeader> {
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        let markers = read_markers(conn)?;
         if !markers.valid {
             return Err(Error::HistoryInvalid {
                 epoch: markers.epoch,
@@ -315,29 +314,27 @@ pub(crate) async fn capture_root(conn: &Connection, reason: &str) -> Result<Snap
                 head_seq: markers.head,
             });
         }
-        if let Some(root) = snapshot_at(conn, markers.epoch, markers.head).await? {
+        if let Some(root) = snapshot_at(conn, markers.epoch, markers.head)? {
             return Ok(root);
         }
-        let snapshot_id =
-            schema::capture_root_raw(conn, reason, markers.epoch, markers.head).await?;
-        snapshot_header(conn, snapshot_id).await
-    }
-    .await;
+        let snapshot_id = schema::capture_root_raw(conn, reason, markers.epoch, markers.head)?;
+        snapshot_header(conn, snapshot_id)
+    })();
     match result {
         Ok(header) => {
-            txn.commit().await?;
+            txn.commit()?;
             Ok(header)
         }
         Err(error) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             Err(error)
         }
     }
 }
 
 /// Return the retained range and every complete target in ascending order.
-pub(crate) async fn status(conn: &Connection) -> Result<HistoryStatus> {
-    let markers = read_markers(conn).await?;
+pub(crate) fn status(conn: &Connection) -> Result<HistoryStatus> {
+    let markers = read_markers(conn)?;
     let mut targets = vec![HistoryTarget {
         seq: markers.floor,
         txn_id: None,
@@ -345,22 +342,20 @@ pub(crate) async fn status(conn: &Connection) -> Result<HistoryStatus> {
         wallclock_ms: None,
         row_count: 0,
     }];
-    let mut rows = conn
-        .query(
-            "SELECT txn_id, MIN(label), MIN(wallclock_ms), COUNT(*), MAX(seq)
+    let mut query_statement_0 = conn.prepare_cached(
+        "SELECT txn_id, MIN(label), MIN(wallclock_ms), COUNT(*), MAX(seq)
              FROM fs_op_journal
              WHERE seq > ?
              GROUP BY txn_id
              ORDER BY txn_id",
-            (markers.floor,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_0.query((markers.floor,))?;
+    while let Some(row) = rows.next()? {
         targets.push(HistoryTarget {
             txn_id: Some(row.get(0)?),
             label: Some(row.get(1)?),
             wallclock_ms: Some(row.get(2)?),
-            row_count: usize::try_from(row.get::<i64>(3)?)
+            row_count: usize::try_from(row.get::<_, i64>(3)?)
                 .map_err(|_| Error::Internal("negative history row count".to_string()))?,
             seq: row.get(4)?,
         });
@@ -376,48 +371,46 @@ pub(crate) async fn status(conn: &Connection) -> Result<HistoryStatus> {
 }
 
 /// Validate range, epoch, transaction-boundary, snapshot, and contiguity rules.
-pub(crate) async fn validate_target(
+pub(crate) fn validate_target(
     conn: &Connection,
     target_seq: i64,
 ) -> Result<ValidatedHistoryTarget> {
-    let markers = read_markers(conn).await?;
-    validate_target_with_markers(conn, target_seq, markers).await
+    let markers = read_markers(conn)?;
+    validate_target_with_markers(conn, target_seq, markers)
 }
 
 /// Replace live filesystem/overlay rows with the exact target state.
-pub(crate) async fn reconstruct(
+pub(crate) fn reconstruct(
     conn: &Connection,
     database_path: &Path,
     target_seq: i64,
 ) -> Result<ReconstructionInfo> {
-    let validated = validate_target(conn, target_seq).await?;
+    let validated = validate_target(conn, target_seq)?;
     let source_head_seq = validated.head_seq;
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        let max_inode_ever = max_known_inode(conn).await?;
-        let (state, chunks) = materialize_state(conn, &validated.root, target_seq).await?;
-        install_state_as_live(conn, &state, &chunks).await?;
-        verify_reconstructed_digests(conn).await?;
-        trim_future(conn, target_seq, validated.epoch).await?;
-        schema::rebuild_journal_allocator(conn, target_seq).await?;
-        recompute_chunk_refcounts(conn).await?;
-        verify_inode_allocator(conn, max_inode_ever).await?;
-        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, validated.floor_seq).await?;
-        collect_unpinned_chunks(conn).await?;
-        visible_tree_sanity(conn).await?;
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        let max_inode_ever = max_known_inode(conn)?;
+        let (state, chunks) = materialize_state(conn, &validated.root, target_seq)?;
+        install_state_as_live(conn, &state, &chunks)?;
+        verify_reconstructed_digests(conn)?;
+        trim_future(conn, target_seq, validated.epoch)?;
+        schema::rebuild_journal_allocator(conn, target_seq)?;
+        recompute_chunk_refcounts(conn)?;
+        verify_inode_allocator(conn, max_inode_ever)?;
+        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, validated.floor_seq)?;
+        collect_unpinned_chunks(conn)?;
+        visible_tree_sanity(conn)?;
         Ok(())
-    }
-    .await;
+    })();
     match result {
-        Ok(()) => txn.commit().await?,
+        Ok(()) => txn.commit()?,
         Err(error) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             return Err(error);
         }
     }
 
-    let report =
-        schema::integrity::check(conn, &schema::integrity::CheckOpts::new(database_path)).await?;
+    let report = schema::integrity::check(conn, &schema::integrity::CheckOpts::new(database_path))?;
     if !report.ok {
         let failed = report
             .checks
@@ -439,66 +432,63 @@ pub(crate) async fn reconstruct(
 
 /// Advance the retained floor to a complete boundary while preserving a root
 /// at the new floor and a contiguous journal suffix.
-pub(crate) async fn journal_gc(conn: &Connection, retention_ops: usize) -> Result<()> {
+pub(crate) fn journal_gc(conn: &Connection, retention_ops: usize) -> Result<()> {
     if retention_ops == 0 {
         return Err(Error::Internal(
             "journal retention must be positive".to_string(),
         ));
     }
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        let markers = read_markers(conn).await?;
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        let markers = read_markers(conn)?;
         if !markers.valid {
-            return collect_unpinned_chunks(conn).await;
+            return collect_unpinned_chunks(conn);
         }
         let retention = i64::try_from(retention_ops)
             .map_err(|_| Error::Internal("journal retention is too large".to_string()))?;
         let horizon = markers.head.saturating_sub(retention);
         if horizon <= markers.floor {
-            return collect_unpinned_chunks(conn).await;
+            return collect_unpinned_chunks(conn);
         }
 
-        let mut rows = conn
-            .query(
-                "SELECT MAX(seq)
+        let mut query_statement_1 = conn.prepare_cached(
+            "SELECT MAX(seq)
                  FROM fs_op_journal
                  GROUP BY txn_id
                  HAVING MAX(seq) <= ?
                  ORDER BY MAX(seq) DESC
                  LIMIT 1",
-                (horizon,),
-            )
-            .await?;
-        let Some(row) = rows.next().await? else {
-            return collect_unpinned_chunks(conn).await;
+        )?;
+        let mut rows = query_statement_1.query((horizon,))?;
+        let Some(row) = rows.next()? else {
+            return collect_unpinned_chunks(conn);
         };
         let boundary: i64 = row.get(0)?;
         drop(rows);
         if boundary <= markers.floor {
-            return collect_unpinned_chunks(conn).await;
+            return collect_unpinned_chunks(conn);
         }
 
-        let validated = validate_target_with_markers(conn, boundary, markers).await?;
-        let (state, _) = materialize_state(conn, &validated.root, boundary).await?;
-        delete_snapshot_at(conn, markers.epoch, boundary).await?;
-        let snapshot_id = capture_state_root(conn, &state, "gc", markers.epoch, boundary).await?;
-        let root = snapshot_header(conn, snapshot_id).await?;
+        let validated = validate_target_with_markers(conn, boundary, markers)?;
+        let (state, _) = materialize_state(conn, &validated.root, boundary)?;
+        delete_snapshot_at(conn, markers.epoch, boundary)?;
+        let snapshot_id = capture_state_root(conn, &state, "gc", markers.epoch, boundary)?;
+        let root = snapshot_header(conn, snapshot_id)?;
         if root.through_seq != boundary {
             return Err(Error::HistoryIntegrity(format!(
                 "GC root landed at {}, expected {boundary}",
                 root.through_seq
             )));
         }
-        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, boundary).await?;
-        delete_journal_through(conn, boundary).await?;
-        delete_snapshots_before(conn, markers.epoch, boundary).await?;
-        collect_unpinned_chunks(conn).await
-    }
-    .await;
+        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, boundary)?;
+        delete_journal_through(conn, boundary)?;
+        delete_snapshots_before(conn, markers.epoch, boundary)?;
+        collect_unpinned_chunks(conn)
+    })();
     match result {
-        Ok(()) => txn.commit().await?,
+        Ok(()) => txn.commit()?,
         Err(error) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             return Err(error);
         }
     }
@@ -510,13 +500,10 @@ pub(crate) async fn journal_gc(conn: &Connection, retention_ops: usize) -> Resul
 /// Pack calls this after materializing any parent chain. It captures the live
 /// state at the current head, removes every pre-pack replay target, and keeps
 /// that root as the sole floor of the current epoch.
-pub(crate) async fn establish_fresh_floor(
-    conn: &Connection,
-    reason: &str,
-) -> Result<SnapshotHeader> {
-    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate).await?;
-    let result = async {
-        let markers = read_markers(conn).await?;
+pub(crate) fn establish_fresh_floor(conn: &Connection, reason: &str) -> Result<SnapshotHeader> {
+    let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let result = (|| {
+        let markers = read_markers(conn)?;
         if !markers.valid {
             return Err(Error::HistoryInvalid {
                 epoch: markers.epoch,
@@ -524,30 +511,28 @@ pub(crate) async fn establish_fresh_floor(
                 head_seq: markers.head,
             });
         }
-        delete_snapshot_at(conn, markers.epoch, markers.head).await?;
-        let snapshot_id =
-            schema::capture_root_raw(conn, reason, markers.epoch, markers.head).await?;
-        let root = snapshot_header(conn, snapshot_id).await?;
-        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, markers.head).await?;
-        delete_journal_through(conn, markers.head).await?;
-        delete_snapshots_except(conn, markers.epoch, root.snapshot_id).await?;
-        collect_unpinned_chunks(conn).await?;
+        delete_snapshot_at(conn, markers.epoch, markers.head)?;
+        let snapshot_id = schema::capture_root_raw(conn, reason, markers.epoch, markers.head)?;
+        let root = snapshot_header(conn, snapshot_id)?;
+        set_config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY, markers.head)?;
+        delete_journal_through(conn, markers.head)?;
+        delete_snapshots_except(conn, markers.epoch, root.snapshot_id)?;
+        collect_unpinned_chunks(conn)?;
         Ok(root)
-    }
-    .await;
+    })();
     match result {
         Ok(root) => {
-            txn.commit().await?;
+            txn.commit()?;
             Ok(root)
         }
         Err(error) => {
-            let _ = txn.rollback().await;
+            txn.rollback()?;
             Err(error)
         }
     }
 }
 
-async fn validate_target_with_markers(
+fn validate_target_with_markers(
     conn: &Connection,
     target_seq: i64,
     markers: Markers,
@@ -569,13 +554,10 @@ async fn validate_target_with_markers(
     }
 
     if target_seq != markers.floor {
-        let mut rows = conn
-            .query(
-                "SELECT txn_id FROM fs_op_journal WHERE seq = ?",
-                (target_seq,),
-            )
-            .await?;
-        let Some(row) = rows.next().await? else {
+        let mut query_statement_2 =
+            conn.prepare_cached("SELECT txn_id FROM fs_op_journal WHERE seq = ?")?;
+        let mut rows = query_statement_2.query((target_seq,))?;
+        let Some(row) = rows.next()? else {
             return Err(Error::HistoryGap {
                 target_seq,
                 snapshot_seq: markers.floor,
@@ -588,19 +570,16 @@ async fn validate_target_with_markers(
         };
         let txn_id: i64 = row.get(0)?;
         drop(rows);
-        let mut rows = conn
-            .query(
-                "SELECT seq
+        let mut query_statement_3 = conn.prepare_cached(
+            "SELECT seq
                  FROM fs_op_journal
                  WHERE txn_id = ?
                  ORDER BY seq DESC
                  LIMIT 1",
-                (txn_id,),
-            )
-            .await?;
+        )?;
+        let mut rows = query_statement_3.query((txn_id,))?;
         let transaction_end_seq: i64 = rows
-            .next()
-            .await?
+            .next()?
             .ok_or_else(|| Error::Internal("history transaction has no rows".to_string()))?
             .get(0)?;
         if transaction_end_seq != target_seq {
@@ -615,15 +594,15 @@ async fn validate_target_with_markers(
         }
     }
 
-    let root = nearest_snapshot(conn, markers.epoch, target_seq)
-        .await?
-        .ok_or(Error::HistorySnapshotMissing {
+    let root = nearest_snapshot(conn, markers.epoch, target_seq)?.ok_or(
+        Error::HistorySnapshotMissing {
             target_seq,
             floor_seq: markers.floor,
             head_seq: markers.head,
             epoch: markers.epoch,
-        })?;
-    validate_contiguous_rows(conn, &root, target_seq, markers).await?;
+        },
+    )?;
+    validate_contiguous_rows(conn, &root, target_seq, markers)?;
     Ok(ValidatedHistoryTarget {
         target_seq,
         root,
@@ -633,7 +612,7 @@ async fn validate_target_with_markers(
     })
 }
 
-async fn validate_contiguous_rows(
+fn validate_contiguous_rows(
     conn: &Connection,
     root: &SnapshotHeader,
     target_seq: i64,
@@ -642,16 +621,14 @@ async fn validate_contiguous_rows(
     let mut expected = root.through_seq.saturating_add(1);
     let mut current_txn = None;
     let mut current_txn_first = 0;
-    let mut rows = conn
-        .query(
-            "SELECT seq, txn_id
+    let mut query_statement_4 = conn.prepare_cached(
+        "SELECT seq, txn_id
              FROM fs_op_journal
              WHERE seq > ? AND seq <= ?
              ORDER BY seq",
-            (root.through_seq, target_seq),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_4.query((root.through_seq, target_seq))?;
+    while let Some(row) = rows.next()? {
         let seq: i64 = row.get(0)?;
         let txn_id: i64 = row.get(1)?;
         if seq != expected {
@@ -726,23 +703,23 @@ fn history_gap(
     }
 }
 
-async fn materialize_state(
+type ChunkBytes = BTreeMap<Vec<u8>, Vec<u8>>;
+
+fn materialize_state(
     conn: &Connection,
     root: &SnapshotHeader,
     target_seq: i64,
-) -> Result<(ReplayState, BTreeMap<Vec<u8>, Vec<u8>>)> {
-    let mut state = load_snapshot_state(conn, root.snapshot_id).await?;
-    let mut rows = conn
-        .query(
-            "SELECT seq, txn_id, tbl, verb, row
+) -> Result<(ReplayState, ChunkBytes)> {
+    let mut state = load_snapshot_state(conn, root.snapshot_id)?;
+    let mut query_statement_5 = conn.prepare_cached(
+        "SELECT seq, txn_id, tbl, verb, row
              FROM fs_op_journal
              WHERE seq > ? AND seq <= ?
              ORDER BY seq",
-            (root.through_seq, target_seq),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_5.query((root.through_seq, target_seq))?;
     let mut active_txn = None;
-    while let Some(row) = rows.next().await? {
+    while let Some(row) = rows.next()? {
         let delta = JournalRow {
             seq: row.get(0)?,
             txn_id: row.get(1)?,
@@ -762,21 +739,19 @@ async fn materialize_state(
         apply_delta_to_state(&mut state, &delta)?;
     }
     drop(rows);
-    let chunks = load_referenced_chunks(conn, &state).await?;
+    let chunks = load_referenced_chunks(conn, &state)?;
     Ok((state, chunks))
 }
 
-async fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<ReplayState> {
+fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<ReplayState> {
     let mut state = ReplayState::default();
-    let mut rows = conn
-        .query(
-            "SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
+    let mut query_statement_6 = conn.prepare_cached(
+        "SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
                     atime_nsec, mtime_nsec, ctime_nsec, data_inline_digest, storage_kind
              FROM fs_snapshot_inode WHERE snapshot_id = ? ORDER BY ino",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_6.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         let ino = row.get(0)?;
         state.inodes.insert(
             ino,
@@ -794,21 +769,19 @@ async fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Repl
                 atime_nsec: row.get(10)?,
                 mtime_nsec: row.get(11)?,
                 ctime_nsec: row.get(12)?,
-                data_inline_digest: optional_blob(&row, 13)?,
+                data_inline_digest: optional_blob(row, 13)?,
                 storage_kind: row.get(14)?,
             },
         );
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT id, name, parent_ino, ino
+    let mut query_statement_7 = conn.prepare_cached(
+        "SELECT id, name, parent_ino, ino
              FROM fs_snapshot_dentry WHERE snapshot_id = ? ORDER BY id",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_7.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         let dentry = ReplayDentry {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -821,37 +794,30 @@ async fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Repl
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT ino, chunk_index, digest
+    let mut query_statement_8 = conn.prepare_cached(
+        "SELECT ino, chunk_index, digest
              FROM fs_snapshot_data WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_8.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         state.data.insert((row.get(0)?, row.get(1)?), row.get(2)?);
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT ino, target FROM fs_snapshot_symlink WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    let mut query_statement_9 =
+        conn.prepare_cached("SELECT ino, target FROM fs_snapshot_symlink WHERE snapshot_id = ?")?;
+    let mut rows = query_statement_9.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         state.symlinks.insert(row.get(0)?, row.get(1)?);
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT path, parent_path, created_at
+    let mut query_statement_10 = conn.prepare_cached(
+        "SELECT path, parent_path, created_at
              FROM fs_snapshot_whiteout WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_10.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         let whiteout = WhiteoutDelta {
             path: row.get(0)?,
             parent_path: row.get(1)?,
@@ -861,27 +827,23 @@ async fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Repl
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT delta_ino, base_identity
+    let mut query_statement_11 = conn.prepare_cached(
+        "SELECT delta_ino, base_identity
              FROM fs_snapshot_origin WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_11.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         state.origins.insert(row.get(0)?, row.get(1)?);
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT delta_ino, base_ino, base_path, base_size, base_fingerprint_size,
+    let mut query_statement_12 = conn.prepare_cached(
+        "SELECT delta_ino, base_ino, base_path, base_size, base_fingerprint_size,
                     base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at
              FROM fs_snapshot_partial_origin WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_12.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         let partial = PartialOriginDelta {
             delta_ino: row.get(0)?,
             base_ino: row.get(1)?,
@@ -898,25 +860,20 @@ async fn load_snapshot_state(conn: &Connection, snapshot_id: i64) -> Result<Repl
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT delta_ino, chunk_index
+    let mut query_statement_13 = conn.prepare_cached(
+        "SELECT delta_ino, chunk_index
              FROM fs_snapshot_chunk_override WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_13.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         state.chunk_overrides.insert((row.get(0)?, row.get(1)?));
     }
     drop(rows);
 
-    let mut rows = conn
-        .query(
-            "SELECT key, value FROM fs_snapshot_meta WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    let mut query_statement_14 =
+        conn.prepare_cached("SELECT key, value FROM fs_snapshot_meta WHERE snapshot_id = ?")?;
+    let mut rows = query_statement_14.query((snapshot_id,))?;
+    while let Some(row) = rows.next()? {
         state.meta.insert(row.get(0)?, row.get(1)?);
     }
     if let Some(parent) = state.meta.get(PARENT_ARTIFACT_KEY) {
@@ -1076,32 +1033,28 @@ fn apply_delta_to_state(state: &mut ReplayState, delta: &JournalRow) -> Result<(
     Ok(())
 }
 
-async fn install_state_as_live(
+fn install_state_as_live(
     conn: &Connection,
     state: &ReplayState,
     chunks: &BTreeMap<Vec<u8>, Vec<u8>>,
 ) -> Result<()> {
     for table in REPLAY_LIVE_TABLES {
-        conn.execute(&format!("DELETE FROM {table}"), ()).await?;
+        conn.execute(&format!("DELETE FROM {table}"), [])?;
     }
     conn.execute(
         "DELETE FROM fs_overlay_config WHERE key = ?",
         (PARENT_ARTIFACT_KEY,),
-    )
-    .await?;
+    )?;
     for key in ["seed_pin", "seeded_paths"] {
-        conn.execute("DELETE FROM fs_session_metadata WHERE key = ?", (key,))
-            .await?;
+        conn.execute("DELETE FROM fs_session_metadata WHERE key = ?", (key,))?;
     }
 
-    let mut inode_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_inode
+    let mut inode_stmt = conn.prepare_cached(
+        "INSERT INTO fs_inode
              (ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
               atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for inode in state.inodes.values() {
         let data_inline = match &inode.data_inline_digest {
             Some(digest) if inode.storage_kind == 1 => Value::Blob(
@@ -1112,127 +1065,106 @@ async fn install_state_as_live(
             ),
             _ => Value::Null,
         };
-        inode_stmt
-            .execute((
-                inode.ino,
-                inode.mode,
-                inode.nlink,
-                inode.uid,
-                inode.gid,
-                inode.size,
-                inode.atime,
-                inode.mtime,
-                inode.ctime,
-                inode.rdev,
-                inode.atime_nsec,
-                inode.mtime_nsec,
-                inode.ctime_nsec,
-                data_inline,
-                inode.storage_kind,
-            ))
-            .await?;
+        inode_stmt.execute((
+            inode.ino,
+            inode.mode,
+            inode.nlink,
+            inode.uid,
+            inode.gid,
+            inode.size,
+            inode.atime,
+            inode.mtime,
+            inode.ctime,
+            inode.rdev,
+            inode.atime_nsec,
+            inode.mtime_nsec,
+            inode.ctime_nsec,
+            data_inline,
+            inode.storage_kind,
+        ))?;
     }
 
     let mut dentry_stmt = conn
-        .prepare_cached("INSERT INTO fs_dentry (id, name, parent_ino, ino) VALUES (?, ?, ?, ?)")
-        .await?;
+        .prepare_cached("INSERT INTO fs_dentry (id, name, parent_ino, ino) VALUES (?, ?, ?, ?)")?;
     let mut dentries = state.dentries.values().collect::<Vec<_>>();
     dentries.sort_by_key(|dentry| dentry.id);
     for dentry in dentries {
-        dentry_stmt
-            .execute((
-                dentry.id,
-                dentry.name.as_str(),
-                dentry.parent_ino,
-                dentry.ino,
-            ))
-            .await?;
+        dentry_stmt.execute((
+            dentry.id,
+            dentry.name.as_str(),
+            dentry.parent_ino,
+            dentry.ino,
+        ))?;
     }
 
-    let mut data_stmt = conn
-        .prepare_cached("INSERT INTO fs_data (ino, chunk_index, digest) VALUES (?, ?, ?)")
-        .await?;
+    let mut data_stmt =
+        conn.prepare_cached("INSERT INTO fs_data (ino, chunk_index, digest) VALUES (?, ?, ?)")?;
     for ((ino, chunk_index), digest) in &state.data {
-        data_stmt
-            .execute((*ino, *chunk_index, Value::Blob(digest.clone())))
-            .await?;
+        data_stmt.execute((*ino, *chunk_index, Value::Blob(digest.clone())))?;
     }
-    let mut symlink_stmt = conn
-        .prepare_cached("INSERT INTO fs_symlink (ino, target) VALUES (?, ?)")
-        .await?;
+    let mut symlink_stmt =
+        conn.prepare_cached("INSERT INTO fs_symlink (ino, target) VALUES (?, ?)")?;
     for (ino, target) in &state.symlinks {
-        symlink_stmt.execute((*ino, target.as_str())).await?;
+        symlink_stmt.execute((*ino, target.as_str()))?;
     }
-    let mut whiteout_stmt = conn
-        .prepare_cached("INSERT INTO fs_whiteout (path, parent_path, created_at) VALUES (?, ?, ?)")
-        .await?;
+    let mut whiteout_stmt = conn.prepare_cached(
+        "INSERT INTO fs_whiteout (path, parent_path, created_at) VALUES (?, ?, ?)",
+    )?;
     for whiteout in state.whiteouts.values() {
-        whiteout_stmt
-            .execute((
-                whiteout.path.as_str(),
-                whiteout.parent_path.as_str(),
-                whiteout.created_at,
-            ))
-            .await?;
+        whiteout_stmt.execute((
+            whiteout.path.as_str(),
+            whiteout.parent_path.as_str(),
+            whiteout.created_at,
+        ))?;
     }
-    let mut origin_stmt = conn
-        .prepare_cached("INSERT INTO fs_origin (delta_ino, base_identity) VALUES (?, ?)")
-        .await?;
+    let mut origin_stmt =
+        conn.prepare_cached("INSERT INTO fs_origin (delta_ino, base_identity) VALUES (?, ?)")?;
     for (delta_ino, base_identity) in &state.origins {
-        origin_stmt
-            .execute((*delta_ino, base_identity.as_str()))
-            .await?;
+        origin_stmt.execute((*delta_ino, base_identity.as_str()))?;
     }
-    let mut partial_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_partial_origin
+    let mut partial_stmt = conn.prepare_cached(
+        "INSERT INTO fs_partial_origin
              (delta_ino, base_ino, base_path, base_size, base_fingerprint_size,
               base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for partial in state.partial_origins.values() {
-        partial_stmt
-            .execute((
-                partial.delta_ino,
-                partial.base_ino,
-                partial.base_path.as_str(),
-                partial.base_size,
-                partial.base_fingerprint_size,
-                partial.base_mtime,
-                partial.base_mtime_nsec,
-                partial.base_ctime,
-                partial.base_ctime_nsec,
-                partial.created_at,
-            ))
-            .await?;
+        partial_stmt.execute((
+            partial.delta_ino,
+            partial.base_ino,
+            partial.base_path.as_str(),
+            partial.base_size,
+            partial.base_fingerprint_size,
+            partial.base_mtime,
+            partial.base_mtime_nsec,
+            partial.base_ctime,
+            partial.base_ctime_nsec,
+            partial.created_at,
+        ))?;
     }
     let mut override_stmt = conn
-        .prepare_cached("INSERT INTO fs_chunk_override (delta_ino, chunk_index) VALUES (?, ?)")
-        .await?;
+        .prepare_cached("INSERT INTO fs_chunk_override (delta_ino, chunk_index) VALUES (?, ?)")?;
     for (delta_ino, chunk_index) in &state.chunk_overrides {
-        override_stmt.execute((*delta_ino, *chunk_index)).await?;
+        override_stmt.execute((*delta_ino, *chunk_index))?;
     }
     if let Some(parent) = state.overlay_config.get(PARENT_ARTIFACT_KEY) {
         conn.execute(
             "INSERT INTO fs_overlay_config (key, value) VALUES (?, ?)",
             (PARENT_ARTIFACT_KEY, parent.as_str()),
-        )
-        .await?;
+        )?;
     }
     for key in ["seed_pin", "seeded_paths"] {
         if let Some(value) = state.meta.get(key) {
             conn.execute(
                 "INSERT INTO fs_session_metadata (key, value) VALUES (?, ?)",
                 (key, value.as_str()),
-            )
-            .await?;
+            )?;
         }
     }
     Ok(())
 }
 
-async fn load_referenced_chunks(
+fn load_referenced_chunks(
     conn: &Connection,
     state: &ReplayState,
 ) -> Result<BTreeMap<Vec<u8>, Vec<u8>>> {
@@ -1246,8 +1178,9 @@ async fn load_referenced_chunks(
         }
     }
     let mut chunks = BTreeMap::new();
-    let mut rows = conn.query("SELECT digest, data FROM fs_chunk", ()).await?;
-    while let Some(row) = rows.next().await? {
+    let mut query_statement_15 = conn.prepare_cached("SELECT digest, data FROM fs_chunk")?;
+    let mut rows = query_statement_15.query([])?;
+    while let Some(row) = rows.next()? {
         let digest: Vec<u8> = row.get(0)?;
         if references.remove(&digest).is_some() {
             chunks.insert(digest, row.get(1)?);
@@ -1262,8 +1195,11 @@ async fn load_referenced_chunks(
     Ok(chunks)
 }
 
-fn optional_blob(row: &turso::Row, column: usize) -> Result<Option<Vec<u8>>> {
-    match row.get_value(column)? {
+fn optional_blob(
+    row: &tokio_rusqlite::rusqlite::Row<'_>,
+    column: usize,
+) -> Result<Option<Vec<u8>>> {
+    match row.get::<_, Value>(column)? {
         Value::Blob(value) => Ok(Some(value)),
         Value::Null => Ok(None),
         value => Err(Error::HistoryIntegrity(format!(
@@ -1272,70 +1208,56 @@ fn optional_blob(row: &turso::Row, column: usize) -> Result<Option<Vec<u8>>> {
     }
 }
 
-async fn verify_reconstructed_digests(conn: &Connection) -> Result<()> {
-    let mut rows = conn
-        .query(
-            "SELECT hex(d.digest)
+fn verify_reconstructed_digests(conn: &Connection) -> Result<()> {
+    let mut query_statement_16 = conn.prepare_cached(
+        "SELECT hex(d.digest)
              FROM fs_data d
              LEFT JOIN fs_chunk c ON c.digest = d.digest
              WHERE c.digest IS NULL LIMIT 1",
-            (),
-        )
-        .await?;
-    if let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_16.query([])?;
+    if let Some(row) = rows.next()? {
         return Err(Error::HistoryMissingChunk {
-            digest: row.get::<String>(0)?.to_ascii_lowercase(),
+            digest: row.get::<_, String>(0)?.to_ascii_lowercase(),
             referenced_by: "fs_data".to_string(),
         });
     }
     Ok(())
 }
 
-async fn trim_future(conn: &Connection, target_seq: i64, epoch: i64) -> Result<()> {
-    conn.execute("DELETE FROM fs_op_journal WHERE seq > ?", (target_seq,))
-        .await?;
-    delete_snapshots_after(conn, epoch, target_seq).await?;
+fn trim_future(conn: &Connection, target_seq: i64, epoch: i64) -> Result<()> {
+    conn.execute("DELETE FROM fs_op_journal WHERE seq > ?", (target_seq,))?;
+    delete_snapshots_after(conn, epoch, target_seq)?;
     Ok(())
 }
 
-async fn recompute_chunk_refcounts(conn: &Connection) -> Result<()> {
+fn recompute_chunk_refcounts(conn: &Connection) -> Result<()> {
     conn.execute(
         "UPDATE fs_chunk
          SET refcount = (SELECT COUNT(*) FROM fs_data d WHERE d.digest = fs_chunk.digest)",
-        (),
-    )
-    .await?;
+        [],
+    )?;
     Ok(())
 }
 
-async fn max_known_inode(conn: &Connection) -> Result<i64> {
-    let max_live_inode =
-        query_scalar_i64(conn, "SELECT COALESCE(MAX(ino), 0) FROM fs_inode", ()).await?;
+fn max_known_inode(conn: &Connection) -> Result<i64> {
+    let max_live_inode = query_scalar_i64(conn, "SELECT COALESCE(MAX(ino), 0) FROM fs_inode", [])?;
     let max_snapshot_inode = query_scalar_i64(
         conn,
         "SELECT COALESCE(MAX(ino), 0) FROM fs_snapshot_inode",
-        (),
-    )
-    .await?;
-    let max_journal_inode = max_journal_integer_field(conn, "fs_inode", "ino").await?;
+        [],
+    )?;
+    let max_journal_inode = max_journal_integer_field(conn, "fs_inode", "ino")?;
     Ok(max_live_inode
         .max(max_snapshot_inode)
         .max(max_journal_inode))
 }
 
-async fn verify_inode_allocator(conn: &Connection, max_inode_ever: i64) -> Result<()> {
-    let mut rows = conn
-        .query(
-            "SELECT seq FROM sqlite_sequence WHERE name = 'fs_inode'",
-            (),
-        )
-        .await?;
-    let allocated_through = rows
-        .next()
-        .await?
-        .map(|row| row.get(0))
-        .transpose()?
-        .unwrap_or(0);
+fn verify_inode_allocator(conn: &Connection, max_inode_ever: i64) -> Result<()> {
+    let mut query_statement_17 =
+        conn.prepare_cached("SELECT seq FROM sqlite_sequence WHERE name = 'fs_inode'")?;
+    let mut rows = query_statement_17.query([])?;
+    let allocated_through = rows.next()?.map(|row| row.get(0)).transpose()?.unwrap_or(0);
     if allocated_through < max_inode_ever {
         return Err(Error::HistoryIntegrity(format!(
             "inode allocator is at {allocated_through}, below retained-history inode {max_inode_ever}"
@@ -1344,15 +1266,12 @@ async fn verify_inode_allocator(conn: &Connection, max_inode_ever: i64) -> Resul
     Ok(())
 }
 
-async fn max_journal_integer_field(conn: &Connection, table: &str, field: &str) -> Result<i64> {
-    let mut rows = conn
-        .query(
-            "SELECT row FROM fs_op_journal WHERE tbl = ? ORDER BY seq",
-            (table,),
-        )
-        .await?;
+fn max_journal_integer_field(conn: &Connection, table: &str, field: &str) -> Result<i64> {
+    let mut query_statement_18 =
+        conn.prepare_cached("SELECT row FROM fs_op_journal WHERE tbl = ? ORDER BY seq")?;
+    let mut rows = query_statement_18.query((table,))?;
     let mut maximum = 0;
-    while let Some(row) = rows.next().await? {
+    while let Some(row) = rows.next()? {
         let payload: String = row.get(0)?;
         let value: serde_json::Value = serde_json::from_str(&payload)?;
         if let Some(number) = value.get(field).and_then(serde_json::Value::as_i64) {
@@ -1362,16 +1281,15 @@ async fn max_journal_integer_field(conn: &Connection, table: &str, field: &str) 
     Ok(maximum)
 }
 
-async fn visible_tree_sanity(conn: &Connection) -> Result<()> {
-    let mut inode_rows = conn
-        .query("SELECT ino, mode, nlink FROM fs_inode", ())
-        .await?;
+fn visible_tree_sanity(conn: &Connection) -> Result<()> {
+    let mut query_statement_19 = conn.prepare_cached("SELECT ino, mode, nlink FROM fs_inode")?;
+    let mut inode_rows = query_statement_19.query([])?;
     let mut modes = BTreeMap::new();
     let mut linked = BTreeSet::new();
-    while let Some(row) = inode_rows.next().await? {
+    while let Some(row) = inode_rows.next()? {
         let ino: i64 = row.get(0)?;
-        modes.insert(ino, row.get::<i64>(1)?);
-        if row.get::<i64>(2)? > 0 {
+        modes.insert(ino, row.get::<_, i64>(1)?);
+        if row.get::<_, i64>(2)? > 0 {
             linked.insert(ino);
         }
     }
@@ -1381,14 +1299,11 @@ async fn visible_tree_sanity(conn: &Connection) -> Result<()> {
         ));
     }
 
-    let mut rows = conn
-        .query(
-            "SELECT parent_ino, name, ino FROM fs_dentry ORDER BY parent_ino, name",
-            (),
-        )
-        .await?;
+    let mut query_statement_20 = conn
+        .prepare_cached("SELECT parent_ino, name, ino FROM fs_dentry ORDER BY parent_ino, name")?;
+    let mut rows = query_statement_20.query([])?;
     let mut children: BTreeMap<i64, Vec<(String, i64)>> = BTreeMap::new();
-    while let Some(row) = rows.next().await? {
+    while let Some(row) = rows.next()? {
         children
             .entry(row.get(0)?)
             .or_default()
@@ -1424,7 +1339,7 @@ async fn visible_tree_sanity(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-async fn capture_state_root(
+fn capture_state_root(
     conn: &Connection,
     state: &ReplayState,
     reason: &str,
@@ -1442,152 +1357,117 @@ async fn capture_state_root(
          (through_seq, created_at_ms, reason, history_epoch)
          VALUES (?, ?, ?, ?)",
         (through_seq, created_at_ms, reason, epoch),
-    )
-    .await?;
+    )?;
     let snapshot_id = conn.last_insert_rowid();
-    let mut inode_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_inode
+    let mut inode_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_inode
              (snapshot_id, ino, mode, nlink, uid, gid, size, atime, mtime, ctime,
               rdev, atime_nsec, mtime_nsec, ctime_nsec, data_inline_digest, storage_kind)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for inode in state.inodes.values() {
-        inode_stmt
-            .execute((
-                snapshot_id,
-                inode.ino,
-                inode.mode,
-                inode.nlink,
-                inode.uid,
-                inode.gid,
-                inode.size,
-                inode.atime,
-                inode.mtime,
-                inode.ctime,
-                inode.rdev,
-                inode.atime_nsec,
-                inode.mtime_nsec,
-                inode.ctime_nsec,
-                inode
-                    .data_inline_digest
-                    .clone()
-                    .map(Value::Blob)
-                    .unwrap_or(Value::Null),
-                inode.storage_kind,
-            ))
-            .await?;
+        inode_stmt.execute((
+            snapshot_id,
+            inode.ino,
+            inode.mode,
+            inode.nlink,
+            inode.uid,
+            inode.gid,
+            inode.size,
+            inode.atime,
+            inode.mtime,
+            inode.ctime,
+            inode.rdev,
+            inode.atime_nsec,
+            inode.mtime_nsec,
+            inode.ctime_nsec,
+            inode
+                .data_inline_digest
+                .clone()
+                .map(Value::Blob)
+                .unwrap_or(Value::Null),
+            inode.storage_kind,
+        ))?;
     }
-    let mut dentry_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_dentry
+    let mut dentry_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_dentry
              (snapshot_id, id, name, parent_ino, ino) VALUES (?, ?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for dentry in state.dentries.values() {
-        dentry_stmt
-            .execute((
-                snapshot_id,
-                dentry.id,
-                dentry.name.as_str(),
-                dentry.parent_ino,
-                dentry.ino,
-            ))
-            .await?;
+        dentry_stmt.execute((
+            snapshot_id,
+            dentry.id,
+            dentry.name.as_str(),
+            dentry.parent_ino,
+            dentry.ino,
+        ))?;
     }
-    let mut data_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_data
+    let mut data_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_data
              (snapshot_id, ino, chunk_index, digest) VALUES (?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for ((ino, chunk_index), digest) in &state.data {
-        data_stmt
-            .execute((snapshot_id, *ino, *chunk_index, Value::Blob(digest.clone())))
-            .await?;
+        data_stmt.execute((snapshot_id, *ino, *chunk_index, Value::Blob(digest.clone())))?;
     }
-    let mut symlink_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_symlink (snapshot_id, ino, target) VALUES (?, ?, ?)",
-        )
-        .await?;
+    let mut symlink_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_symlink (snapshot_id, ino, target) VALUES (?, ?, ?)",
+    )?;
     for (ino, target) in &state.symlinks {
-        symlink_stmt
-            .execute((snapshot_id, *ino, target.as_str()))
-            .await?;
+        symlink_stmt.execute((snapshot_id, *ino, target.as_str()))?;
     }
-    let mut whiteout_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_whiteout
+    let mut whiteout_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_whiteout
              (snapshot_id, path, parent_path, created_at) VALUES (?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for whiteout in state.whiteouts.values() {
-        whiteout_stmt
-            .execute((
-                snapshot_id,
-                whiteout.path.as_str(),
-                whiteout.parent_path.as_str(),
-                whiteout.created_at,
-            ))
-            .await?;
+        whiteout_stmt.execute((
+            snapshot_id,
+            whiteout.path.as_str(),
+            whiteout.parent_path.as_str(),
+            whiteout.created_at,
+        ))?;
     }
-    let mut origin_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_origin
+    let mut origin_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_origin
              (snapshot_id, delta_ino, base_identity) VALUES (?, ?, ?)",
-        )
-        .await?;
+    )?;
     for (delta_ino, base_identity) in &state.origins {
-        origin_stmt
-            .execute((snapshot_id, *delta_ino, base_identity.as_str()))
-            .await?;
+        origin_stmt.execute((snapshot_id, *delta_ino, base_identity.as_str()))?;
     }
-    let mut partial_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_partial_origin
+    let mut partial_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_partial_origin
              (snapshot_id, delta_ino, base_ino, base_path, base_size,
               base_fingerprint_size, base_mtime, base_mtime_nsec,
               base_ctime, base_ctime_nsec, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .await?;
+    )?;
     for partial in state.partial_origins.values() {
-        partial_stmt
-            .execute((
-                snapshot_id,
-                partial.delta_ino,
-                partial.base_ino,
-                partial.base_path.as_str(),
-                partial.base_size,
-                partial.base_fingerprint_size,
-                partial.base_mtime,
-                partial.base_mtime_nsec,
-                partial.base_ctime,
-                partial.base_ctime_nsec,
-                partial.created_at,
-            ))
-            .await?;
+        partial_stmt.execute((
+            snapshot_id,
+            partial.delta_ino,
+            partial.base_ino,
+            partial.base_path.as_str(),
+            partial.base_size,
+            partial.base_fingerprint_size,
+            partial.base_mtime,
+            partial.base_mtime_nsec,
+            partial.base_ctime,
+            partial.base_ctime_nsec,
+            partial.created_at,
+        ))?;
     }
-    let mut override_stmt = conn
-        .prepare_cached(
-            "INSERT INTO fs_snapshot_chunk_override
+    let mut override_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_chunk_override
              (snapshot_id, delta_ino, chunk_index) VALUES (?, ?, ?)",
-        )
-        .await?;
+    )?;
     for (delta_ino, chunk_index) in &state.chunk_overrides {
-        override_stmt
-            .execute((snapshot_id, *delta_ino, *chunk_index))
-            .await?;
+        override_stmt.execute((snapshot_id, *delta_ino, *chunk_index))?;
     }
-    let mut meta_stmt = conn
-        .prepare_cached("INSERT INTO fs_snapshot_meta (snapshot_id, key, value) VALUES (?, ?, ?)")
-        .await?;
+    let mut meta_stmt = conn.prepare_cached(
+        "INSERT INTO fs_snapshot_meta (snapshot_id, key, value) VALUES (?, ?, ?)",
+    )?;
     for (key, value) in &state.meta {
-        meta_stmt
-            .execute((snapshot_id, key.as_str(), value.as_str()))
-            .await?;
+        meta_stmt.execute((snapshot_id, key.as_str(), value.as_str()))?;
     }
     let mut pins = state.data.values().cloned().collect::<BTreeSet<_>>();
     pins.extend(
@@ -1596,29 +1476,29 @@ async fn capture_state_root(
             .values()
             .filter_map(|inode| inode.data_inline_digest.clone()),
     );
-    let mut pin_stmt = conn
-        .prepare_cached("INSERT INTO fs_snapshot_chunk (snapshot_id, digest) VALUES (?, ?)")
-        .await?;
+    let mut pin_stmt =
+        conn.prepare_cached("INSERT INTO fs_snapshot_chunk (snapshot_id, digest) VALUES (?, ?)")?;
     for digest in pins {
-        pin_stmt.execute((snapshot_id, Value::Blob(digest))).await?;
+        pin_stmt.execute((snapshot_id, Value::Blob(digest)))?;
     }
     Ok(snapshot_id)
 }
 
-async fn read_markers(conn: &Connection) -> Result<Markers> {
-    let epoch = config_i64(conn, CONFIG_HISTORY_EPOCH_KEY).await?;
-    let valid = config_i64(conn, CONFIG_HISTORY_VALID_KEY).await?;
+fn read_markers(conn: &Connection) -> Result<Markers> {
+    let epoch = config_i64(conn, CONFIG_HISTORY_EPOCH_KEY)?;
+    let valid = config_i64(conn, CONFIG_HISTORY_VALID_KEY)?;
     if !matches!(valid, 0 | 1) {
         return Err(Error::HistoryIntegrity(format!(
             "invalid history_valid marker {valid}"
         )));
     }
-    let floor = config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY).await?;
-    let mut rows = conn.query("SELECT MAX(seq) FROM fs_op_journal", ()).await?;
+    let floor = config_i64(conn, CONFIG_HISTORY_FLOOR_SEQ_KEY)?;
+    let mut query_statement_21 = conn.prepare_cached("SELECT MAX(seq) FROM fs_op_journal")?;
+    let mut rows = query_statement_21.query([])?;
     // An empty journal yields one NULL row; keep the wrapper out of the SQL
-    // (COALESCE defeats turso's min/max reverse-seek plan).
-    let journal_head = match rows.next().await? {
-        Some(row) => match row.get_value(0)? {
+    // The empty journal maps to zero in Rust.
+    let journal_head = match rows.next()? {
+        Some(row) => match row.get::<_, Value>(0)? {
             Value::Null => None,
             Value::Integer(seq) => Some(seq),
             other => {
@@ -1630,17 +1510,15 @@ async fn read_markers(conn: &Connection) -> Result<Markers> {
         None => None,
     };
     drop(rows);
-    let mut rows = conn
-        .query(
-            "SELECT through_seq
+    let mut query_statement_22 = conn.prepare_cached(
+        "SELECT through_seq
              FROM fs_snapshot
              WHERE history_epoch = ?
              ORDER BY through_seq DESC
              LIMIT 1",
-            (epoch,),
-        )
-        .await?;
-    let snapshot_head = rows.next().await?.map(|row| row.get(0)).transpose()?;
+    )?;
+    let mut rows = query_statement_22.query((epoch,))?;
+    let snapshot_head = rows.next()?.map(|row| row.get(0)).transpose()?;
     let head = journal_head
         .unwrap_or(floor)
         .max(snapshot_head.unwrap_or(floor))
@@ -1653,13 +1531,12 @@ async fn read_markers(conn: &Connection) -> Result<Markers> {
     })
 }
 
-async fn config_i64(conn: &Connection, key: &str) -> Result<i64> {
-    let mut rows = conn
-        .query("SELECT value FROM fs_config WHERE key = ?", (key,))
-        .await?;
+fn config_i64(conn: &Connection, key: &str) -> Result<i64> {
+    let mut query_statement_23 =
+        conn.prepare_cached("SELECT value FROM fs_config WHERE key = ?")?;
+    let mut rows = query_statement_23.query((key,))?;
     let value: String = rows
-        .next()
-        .await?
+        .next()?
         .ok_or_else(|| Error::HistoryIntegrity(format!("missing history marker {key}")))?
         .get(0)?;
     value
@@ -1667,27 +1544,23 @@ async fn config_i64(conn: &Connection, key: &str) -> Result<i64> {
         .map_err(|error| Error::HistoryIntegrity(format!("invalid {key}={value:?}: {error}")))
 }
 
-async fn set_config_i64(conn: &Connection, key: &str, value: i64) -> Result<()> {
+fn set_config_i64(conn: &Connection, key: &str, value: i64) -> Result<()> {
     conn.execute(
         "INSERT INTO fs_config (key, value) VALUES (?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (key, value.to_string()),
-    )
-    .await?;
+    )?;
     Ok(())
 }
 
-async fn snapshot_header(conn: &Connection, snapshot_id: i64) -> Result<SnapshotHeader> {
-    let mut rows = conn
-        .query(
-            "SELECT snapshot_id, through_seq, created_at_ms, reason, history_epoch
+fn snapshot_header(conn: &Connection, snapshot_id: i64) -> Result<SnapshotHeader> {
+    let mut query_statement_24 = conn.prepare_cached(
+        "SELECT snapshot_id, through_seq, created_at_ms, reason, history_epoch
              FROM fs_snapshot WHERE snapshot_id = ?",
-            (snapshot_id,),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_24.query((snapshot_id,))?;
     let row = rows
-        .next()
-        .await?
+        .next()?
         .ok_or_else(|| Error::HistoryIntegrity(format!("missing snapshot {snapshot_id}")))?;
     Ok(SnapshotHeader {
         snapshot_id: row.get(0)?,
@@ -1698,115 +1571,96 @@ async fn snapshot_header(conn: &Connection, snapshot_id: i64) -> Result<Snapshot
     })
 }
 
-async fn snapshot_at(
-    conn: &Connection,
-    epoch: i64,
-    through_seq: i64,
-) -> Result<Option<SnapshotHeader>> {
-    let mut rows = conn
-        .query(
-            "SELECT snapshot_id FROM fs_snapshot
+fn snapshot_at(conn: &Connection, epoch: i64, through_seq: i64) -> Result<Option<SnapshotHeader>> {
+    let mut query_statement_25 = conn.prepare_cached(
+        "SELECT snapshot_id FROM fs_snapshot
              WHERE history_epoch = ? AND through_seq = ?",
-            (epoch, through_seq),
-        )
-        .await?;
-    match rows.next().await? {
-        Some(row) => Ok(Some(snapshot_header(conn, row.get(0)?).await?)),
+    )?;
+    let mut rows = query_statement_25.query((epoch, through_seq))?;
+    match rows.next()? {
+        Some(row) => Ok(Some(snapshot_header(conn, row.get(0)?)?)),
         None => Ok(None),
     }
 }
 
-async fn nearest_snapshot(
+fn nearest_snapshot(
     conn: &Connection,
     epoch: i64,
     target_seq: i64,
 ) -> Result<Option<SnapshotHeader>> {
-    let mut rows = conn
-        .query(
-            "SELECT snapshot_id
+    let mut query_statement_26 = conn.prepare_cached(
+        "SELECT snapshot_id
              FROM fs_snapshot
              WHERE history_epoch = ? AND through_seq <= ?
              ORDER BY through_seq DESC
              LIMIT 1",
-            (epoch, target_seq),
-        )
-        .await?;
-    match rows.next().await? {
-        Some(row) => Ok(Some(snapshot_header(conn, row.get(0)?).await?)),
+    )?;
+    let mut rows = query_statement_26.query((epoch, target_seq))?;
+    match rows.next()? {
+        Some(row) => Ok(Some(snapshot_header(conn, row.get(0)?)?)),
         None => Ok(None),
     }
 }
 
-async fn delete_journal_through(conn: &Connection, through_seq: i64) -> Result<()> {
-    conn.execute("DELETE FROM fs_op_journal WHERE seq <= ?", (through_seq,))
-        .await?;
+fn delete_journal_through(conn: &Connection, through_seq: i64) -> Result<()> {
+    conn.execute("DELETE FROM fs_op_journal WHERE seq <= ?", (through_seq,))?;
     Ok(())
 }
 
-async fn delete_all_snapshots(conn: &Connection) -> Result<()> {
+fn delete_all_snapshots(conn: &Connection) -> Result<()> {
     for table in SNAPSHOT_CHILD_TABLES {
-        conn.execute(&format!("DELETE FROM {table}"), ()).await?;
+        conn.execute(&format!("DELETE FROM {table}"), [])?;
     }
-    conn.execute("DELETE FROM fs_snapshot", ()).await?;
+    conn.execute("DELETE FROM fs_snapshot", [])?;
     Ok(())
 }
 
-async fn delete_snapshot_at(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
+fn delete_snapshot_at(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
     delete_snapshots_matching(
         conn,
         "history_epoch = ? AND through_seq = ?",
         vec![Value::Integer(epoch), Value::Integer(through_seq)],
     )
-    .await
 }
 
-async fn delete_snapshots_before(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
+fn delete_snapshots_before(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
     delete_snapshots_matching(
         conn,
         "history_epoch != ? OR through_seq < ?",
         vec![Value::Integer(epoch), Value::Integer(through_seq)],
     )
-    .await
 }
 
-async fn delete_snapshots_after(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
+fn delete_snapshots_after(conn: &Connection, epoch: i64, through_seq: i64) -> Result<()> {
     delete_snapshots_matching(
         conn,
         "history_epoch != ? OR through_seq > ?",
         vec![Value::Integer(epoch), Value::Integer(through_seq)],
     )
-    .await
 }
 
-async fn delete_snapshots_except(conn: &Connection, epoch: i64, snapshot_id: i64) -> Result<()> {
+fn delete_snapshots_except(conn: &Connection, epoch: i64, snapshot_id: i64) -> Result<()> {
     delete_snapshots_matching(
         conn,
         "history_epoch != ? OR snapshot_id != ?",
         vec![Value::Integer(epoch), Value::Integer(snapshot_id)],
     )
-    .await
 }
 
-async fn delete_snapshots_matching(
-    conn: &Connection,
-    predicate: &str,
-    params: Vec<Value>,
-) -> Result<()> {
+fn delete_snapshots_matching(conn: &Connection, predicate: &str, params: Vec<Value>) -> Result<()> {
     for table in SNAPSHOT_CHILD_TABLES {
         conn.execute(
             &format!(
                 "DELETE FROM {table}
                  WHERE snapshot_id IN (SELECT snapshot_id FROM fs_snapshot WHERE {predicate})"
             ),
-            params.clone(),
-        )
-        .await?;
+            tokio_rusqlite::rusqlite::params_from_iter(params.clone()),
+        )?;
     }
     conn.execute(
         &format!("DELETE FROM fs_snapshot WHERE {predicate}"),
-        params,
-    )
-    .await?;
+        tokio_rusqlite::rusqlite::params_from_iter(params),
+    )?;
     Ok(())
 }
 
@@ -1817,17 +1671,15 @@ async fn delete_snapshots_matching(
 /// two extra B-tree writes, while this scan runs only on offline collection
 /// paths. A chunk survives if a live mapping counts it, a snapshot pins it,
 /// or any retained `fs_data`/`fs_inode` upsert names its digest.
-async fn collect_unpinned_chunks(conn: &Connection) -> Result<()> {
-    let mut rows = conn
-        .query(
-            "SELECT digest FROM fs_chunk
+fn collect_unpinned_chunks(conn: &Connection) -> Result<()> {
+    let mut query_statement_27 = conn.prepare_cached(
+        "SELECT digest FROM fs_chunk
              WHERE refcount = 0
                AND digest NOT IN (SELECT digest FROM fs_snapshot_chunk)",
-            (),
-        )
-        .await?;
+    )?;
+    let mut rows = query_statement_27.query([])?;
     let mut candidates: Vec<Vec<u8>> = Vec::new();
-    while let Some(row) = rows.next().await? {
+    while let Some(row) = rows.next()? {
         candidates.push(row.get(0)?);
     }
     drop(rows);
@@ -1835,7 +1687,7 @@ async fn collect_unpinned_chunks(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    let referenced = journal_referenced_digests(conn).await?;
+    let referenced = journal_referenced_digests(conn)?;
     let doomed: Vec<Vec<u8>> = candidates
         .into_iter()
         .filter(|digest| !referenced.contains(digest))
@@ -1848,25 +1700,22 @@ async fn collect_unpinned_chunks(conn: &Connection) -> Result<()> {
             .collect();
         conn.execute(
             &format!("DELETE FROM fs_chunk WHERE digest IN ({placeholders})"),
-            params,
-        )
-        .await?;
+            tokio_rusqlite::rusqlite::params_from_iter(params),
+        )?;
     }
     Ok(())
 }
 
 /// Every digest a retained journal row references: `fs_data` upserts name
 /// their chunk digest and `fs_inode` upserts carry `data_inline_digest`.
-async fn journal_referenced_digests(conn: &Connection) -> Result<HashSet<Vec<u8>>> {
+fn journal_referenced_digests(conn: &Connection) -> Result<HashSet<Vec<u8>>> {
     let mut referenced = HashSet::new();
-    let mut rows = conn
-        .query(
-            "SELECT tbl, row FROM fs_op_journal
+    let mut query_statement_28 = conn.prepare_cached(
+        "SELECT tbl, row FROM fs_op_journal
              WHERE verb = 'upsert' AND tbl IN ('fs_data', 'fs_inode')",
-            (),
-        )
-        .await?;
-    while let Some(row) = rows.next().await? {
+    )?;
+    let mut rows = query_statement_28.query([])?;
+    while let Some(row) = rows.next()? {
         let tbl: String = row.get(0)?;
         let payload: String = row.get(1)?;
         let value: JsonValue = serde_json::from_str(&payload)
@@ -1883,13 +1732,13 @@ async fn journal_referenced_digests(conn: &Connection) -> Result<HashSet<Vec<u8>
     Ok(referenced)
 }
 
-async fn query_scalar_i64<P>(conn: &Connection, sql: &str, params: P) -> Result<i64>
+fn query_scalar_i64<P>(conn: &Connection, sql: &str, params: P) -> Result<i64>
 where
-    P: turso::params::IntoParams,
+    P: tokio_rusqlite::rusqlite::Params,
 {
-    let mut rows = conn.query(sql, params).await?;
-    rows.next()
-        .await?
+    let mut query_statement_29 = conn.prepare_cached(sql)?;
+    let mut rows = query_statement_29.query(params)?;
+    rows.next()?
         .ok_or_else(|| Error::Internal("scalar query returned no row".to_string()))?
         .get(0)
         .map_err(Error::from)
@@ -1933,1202 +1782,5 @@ fn decode_nibble(byte: u8) -> Result<u8> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::fs::vfs::{JournalDelta, MutationTxn, PartialOriginRow};
-    use crate::fs::{FileSystem, TimeChange, DEFAULT_DIR_MODE, DEFAULT_FILE_MODE};
-    use crate::{Vfs, VfsOptions};
-    use rand::{rngs::StdRng, Rng, RngCore, SeedableRng};
-    use std::collections::HashSet;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::Duration;
-    use turso::Builder;
-
-    const TEST_ROOT_INO: i64 = 1;
-
-    // Reconstruction intentionally rewrites the journal, root snapshots,
-    // history markers, and SQLite allocator state, so those tables cannot be
-    // compared to the source timeline. KV rows, tool calls, and session
-    // generation are outside filesystem replay by contract. These queries cover
-    // every replayable live row, ordered by stable primary keys. `fs_chunk` is
-    // compared separately for every digest reachable from live `fs_data` or
-    // inline inode bytes; zero-ref rows retained only by journal/snapshot pins
-    // are excluded because retention and reconstruction legitimately rewrite
-    // those timelines.
-    const COMPARED_TABLES: &[(&str, &str, usize)] = &[
-        (
-            "fs_inode",
-            "SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                    atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind
-             FROM fs_inode ORDER BY ino",
-            15,
-        ),
-        (
-            "fs_dentry",
-            "SELECT id, name, parent_ino, ino FROM fs_dentry ORDER BY id",
-            4,
-        ),
-        (
-            "fs_data",
-            "SELECT ino, chunk_index, digest FROM fs_data ORDER BY ino, chunk_index",
-            3,
-        ),
-        (
-            "fs_symlink",
-            "SELECT ino, target FROM fs_symlink ORDER BY ino",
-            2,
-        ),
-        (
-            "fs_whiteout",
-            "SELECT path, parent_path, created_at FROM fs_whiteout ORDER BY path",
-            3,
-        ),
-        (
-            "fs_origin",
-            "SELECT delta_ino, base_identity FROM fs_origin ORDER BY delta_ino",
-            2,
-        ),
-        (
-            "fs_partial_origin",
-            "SELECT delta_ino, base_ino, base_path, base_size, base_fingerprint_size,
-                    base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at
-             FROM fs_partial_origin ORDER BY delta_ino",
-            10,
-        ),
-        (
-            "fs_chunk_override",
-            "SELECT delta_ino, chunk_index FROM fs_chunk_override
-             ORDER BY delta_ino, chunk_index",
-            2,
-        ),
-        (
-            "fs_overlay_config",
-            "SELECT key, value FROM fs_overlay_config ORDER BY key",
-            2,
-        ),
-    ];
-
-    async fn table_dump(conn: &Connection, sql: &str, columns: usize) -> Result<Vec<Vec<String>>> {
-        let mut rows = conn.query(sql, ()).await?;
-        let mut dump = Vec::new();
-        while let Some(row) = rows.next().await? {
-            dump.push(
-                (0..columns)
-                    .map(|column| format!("{:?}", row.get_value(column)))
-                    .collect(),
-            );
-        }
-        Ok(dump)
-    }
-
-    async fn live_chunk_dump(conn: &Connection) -> Result<Vec<(Vec<u8>, Vec<u8>, i64)>> {
-        let mut live_digests = HashSet::new();
-        let mut rows = conn.query("SELECT digest FROM fs_data", ()).await?;
-        while let Some(row) = rows.next().await? {
-            match row.get_value(0)? {
-                Value::Blob(digest) => {
-                    live_digests.insert(digest);
-                }
-                value => {
-                    return Err(Error::HistoryIntegrity(format!(
-                        "fs_data digest is not a blob in comparison helper: {value:?}"
-                    )));
-                }
-            }
-        }
-        let mut rows = conn
-            .query(
-                "SELECT data_inline FROM fs_inode WHERE data_inline IS NOT NULL",
-                (),
-            )
-            .await?;
-        while let Some(row) = rows.next().await? {
-            match row.get_value(0)? {
-                Value::Blob(data) => {
-                    live_digests.insert(blake3::hash(&data).as_bytes().to_vec());
-                }
-                value => {
-                    return Err(Error::HistoryIntegrity(format!(
-                        "inline inode data is not a blob in comparison helper: {value:?}"
-                    )));
-                }
-            }
-        }
-
-        let mut dump = Vec::with_capacity(live_digests.len());
-        let mut rows = conn
-            .query(
-                "SELECT digest, data, refcount FROM fs_chunk ORDER BY digest",
-                (),
-            )
-            .await?;
-        while let Some(row) = rows.next().await? {
-            let Value::Blob(digest) = row.get_value(0)? else {
-                return Err(Error::HistoryIntegrity(
-                    "fs_chunk digest is not a blob in comparison helper".to_string(),
-                ));
-            };
-            if !live_digests.remove(&digest) {
-                continue;
-            }
-            let Value::Blob(data) = row.get_value(1)? else {
-                return Err(Error::HistoryIntegrity(
-                    "fs_chunk data is not a blob in comparison helper".to_string(),
-                ));
-            };
-            dump.push((digest, data, row.get(2)?));
-        }
-        if !live_digests.is_empty() {
-            return Err(Error::HistoryIntegrity(format!(
-                "comparison helper is missing {} live fs_chunk rows",
-                live_digests.len()
-            )));
-        }
-        Ok(dump)
-    }
-
-    async fn assert_filesystem_tables_equal(expected: &Path, actual: &Path) -> Result<()> {
-        assert_filesystem_tables_equal_for(expected, actual, "deterministic case").await
-    }
-
-    async fn assert_filesystem_tables_equal_for(
-        expected: &Path,
-        actual: &Path,
-        context: &str,
-    ) -> Result<()> {
-        let expected_db = Builder::new_local(expected.to_str().unwrap())
-            .build()
-            .await?;
-        let expected_conn = expected_db.connect()?;
-        let actual_db = Builder::new_local(actual.to_str().unwrap()).build().await?;
-        let actual_conn = actual_db.connect()?;
-        for (table, sql, columns) in COMPARED_TABLES {
-            assert_eq!(
-                table_dump(&expected_conn, sql, *columns).await?,
-                table_dump(&actual_conn, sql, *columns).await?,
-                "{context}: table {table} differs"
-            );
-        }
-        assert_eq!(
-            live_chunk_dump(&expected_conn).await?,
-            live_chunk_dump(&actual_conn).await?,
-            "{context}: live-reachable fs_chunk rows differ"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn initial_history_floor_contains_the_root_inode() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let source = temp.path().join("initial-source.db");
-        let expected = temp.path().join("initial-expected.db");
-        let replay = temp.path().join("initial-replay.db");
-
-        let vfs = Vfs::open(VfsOptions::with_path(source.to_string_lossy())).await?;
-        let status = vfs.history_status().await?;
-        assert_eq!(status.floor_seq, 0);
-        vfs.snapshot_into(&expected).await?;
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        fs::copy(&source, &replay)?;
-        Vfs::reconstruct_to(&replay, 0).await?;
-        assert_filesystem_tables_equal(&expected, &replay).await
-    }
-
-    #[tokio::test]
-    async fn reconstruct_matches_intermediate_database_exactly() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let source_path = temp.path().join("source.db");
-        let expected_path = temp.path().join("expected.db");
-        let replay_path = temp.path().join("replay.db");
-
-        let vfs = Vfs::open(VfsOptions::with_path(source_path.to_string_lossy())).await?;
-        let (stats, file) =
-            FileSystem::create_file(&vfs.fs, 1, "data", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        file.pwrite(0, b"inline target").await?;
-        FileSystem::link(&vfs.fs, stats.ino, 1, "hardlink").await?;
-
-        let chunk_size = vfs.fs.chunk_size();
-        file.pwrite((chunk_size * 2 + 17) as u64, &vec![0x5a; chunk_size + 31])
-            .await?;
-        let (dense_stats, dense) =
-            FileSystem::create_file(&vfs.fs, 1, "dense", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        dense.pwrite(0, &vec![0x33; chunk_size]).await?;
-        dense.truncate(4).await?;
-        let (_, doomed) =
-            FileSystem::create_file(&vfs.fs, 1, "doomed", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        doomed.pwrite(0, b"reaped").await?;
-        drop(doomed);
-        FileSystem::unlink(&vfs.fs, 1, "doomed").await?;
-        let (_, rename_source) =
-            FileSystem::create_file(&vfs.fs, 1, "rename-src", DEFAULT_FILE_MODE, 1000, 1000)
-                .await?;
-        rename_source.pwrite(0, b"source").await?;
-        let (_, rename_destination) =
-            FileSystem::create_file(&vfs.fs, 1, "rename-dst", DEFAULT_FILE_MODE, 1000, 1000)
-                .await?;
-        rename_destination.pwrite(0, b"destination").await?;
-        drop(rename_source);
-        drop(rename_destination);
-        FileSystem::rename(&vfs.fs, 1, "rename-src", 1, "rename-dst").await?;
-        vfs.fs.drain_all().await?;
-        let conn = vfs.get_connection().await?;
-        assert_eq!(
-            query_scalar_i64(
-                &conn,
-                "SELECT storage_kind FROM fs_inode WHERE ino = ?",
-                (dense_stats.ino,),
-            )
-            .await?,
-            1,
-            "dense chunked file must transition back to inline"
-        );
-        drop(conn);
-        let target = vfs.history_status().await?.head_seq;
-        vfs.snapshot_into(&expected_path).await?;
-
-        FileSystem::unlink(&vfs.fs, 1, "hardlink").await?;
-        file.truncate(4).await?;
-        file.pwrite(0, b"tiny").await?;
-        let (_, replacement) =
-            FileSystem::create_file(&vfs.fs, 1, "replacement", DEFAULT_FILE_MODE, 1000, 1000)
-                .await?;
-        replacement.pwrite(0, b"future").await?;
-        FileSystem::rename(&vfs.fs, 1, "replacement", 1, "data").await?;
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        fs::copy(&source_path, &replay_path)?;
-        Vfs::reconstruct_to(&replay_path, target).await?;
-        assert_filesystem_tables_equal(&expected_path, &replay_path).await
-    }
-
-    #[tokio::test]
-    async fn reconstruct_restores_overlay_sidecars_and_parent_config() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let source_path = temp.path().join("overlay-source.db");
-        let expected_path = temp.path().join("overlay-expected.db");
-        let replay_path = temp.path().join("overlay-replay.db");
-
-        let vfs = Vfs::open(VfsOptions::with_path(source_path.to_string_lossy())).await?;
-        let (stats, file) =
-            FileSystem::create_file(&vfs.fs, 1, "partial", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        file.pwrite(vfs.fs.chunk_size() as u64, b"partial").await?;
-        vfs.fs.drain_all().await?;
-
-        let conn = vfs.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, vfs.fs.journal_ctx()).await?;
-        txn.conn()
-            .execute(
-                "INSERT INTO fs_whiteout (path, parent_path, created_at)
-                 VALUES ('/hidden', '/', 7)",
-                (),
-            )
-            .await?;
-        txn.record(JournalDelta::whiteout_upsert(
-            "test_overlay",
-            "/hidden",
-            "/",
-            7,
-        ));
-        txn.conn()
-            .execute(
-                "INSERT INTO fs_origin (delta_ino, base_identity) VALUES (?, 'test:42')",
-                (stats.ino,),
-            )
-            .await?;
-        txn.record(JournalDelta::origin_upsert(
-            "test_overlay",
-            stats.ino,
-            "test:42",
-        ));
-        let partial = PartialOriginRow {
-            delta_ino: stats.ino,
-            base_ino: 42,
-            base_path: "/partial".to_string(),
-            base_size: stats.size.max(vfs.fs.chunk_size() as i64 + 7),
-            base_fingerprint_size: 0,
-            base_mtime: 1,
-            base_mtime_nsec: 2,
-            base_ctime: 3,
-            base_ctime_nsec: 4,
-            created_at: 5,
-        };
-        txn.conn()
-            .execute(
-                "INSERT INTO fs_partial_origin
-                 (delta_ino, base_ino, base_path, base_size, base_fingerprint_size,
-                  base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    partial.delta_ino,
-                    partial.base_ino,
-                    partial.base_path.as_str(),
-                    partial.base_size,
-                    partial.base_fingerprint_size,
-                    partial.base_mtime,
-                    partial.base_mtime_nsec,
-                    partial.base_ctime,
-                    partial.base_ctime_nsec,
-                    partial.created_at,
-                ),
-            )
-            .await?;
-        txn.record(JournalDelta::partial_origin_upsert(
-            "test_overlay",
-            &partial,
-        ));
-        txn.conn()
-            .execute(
-                "INSERT INTO fs_chunk_override (delta_ino, chunk_index) VALUES (?, 0)",
-                (stats.ino,),
-            )
-            .await?;
-        txn.record(JournalDelta::chunk_override_upsert(
-            "test_overlay",
-            stats.ino,
-            0,
-        ));
-        txn.commit().await?;
-        drop(conn);
-        vfs.set_overlay_parent_artifact(&"ab".repeat(32)).await?;
-
-        let target = vfs.history_status().await?.head_seq;
-        vfs.snapshot_into(&expected_path).await?;
-
-        let conn = vfs.get_connection().await?;
-        let mut txn = MutationTxn::begin(&conn, vfs.fs.journal_ctx()).await?;
-        txn.conn()
-            .execute("DELETE FROM fs_whiteout WHERE path = '/hidden'", ())
-            .await?;
-        txn.record(JournalDelta::whiteout_delete(
-            "test_overlay_cleanup",
-            "/hidden",
-        ));
-        txn.conn()
-            .execute(
-                "DELETE FROM fs_chunk_override WHERE delta_ino = ?",
-                (stats.ino,),
-            )
-            .await?;
-        txn.record(JournalDelta::chunk_override_delete(
-            "test_overlay_cleanup",
-            stats.ino,
-            0,
-        ));
-        txn.conn()
-            .execute(
-                "DELETE FROM fs_partial_origin WHERE delta_ino = ?",
-                (stats.ino,),
-            )
-            .await?;
-        txn.record(JournalDelta::partial_origin_delete(
-            "test_overlay_cleanup",
-            stats.ino,
-        ));
-        txn.conn()
-            .execute("DELETE FROM fs_origin WHERE delta_ino = ?", (stats.ino,))
-            .await?;
-        txn.record(JournalDelta::origin_delete(
-            "test_overlay_cleanup",
-            stats.ino,
-        ));
-        txn.commit().await?;
-        drop(conn);
-        vfs.clear_overlay_parent_artifact().await?;
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        fs::copy(&source_path, &replay_path)?;
-        Vfs::reconstruct_to(&replay_path, target).await?;
-        assert_filesystem_tables_equal(&expected_path, &replay_path).await
-    }
-
-    #[tokio::test]
-    async fn rejects_mid_transaction_and_out_of_range_targets() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let path = temp.path().join("targets.db");
-        let vfs = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
-        FileSystem::create_file(&vfs.fs, 1, "target", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        let status = vfs.history_status().await?;
-        let head = status.head_seq;
-        let mut rows = vfs
-            .get_connection()
-            .await?
-            .query("SELECT txn_id FROM fs_op_journal WHERE seq = ?", (head,))
-            .await?;
-        let txn_id: i64 = rows.next().await?.unwrap().get(0)?;
-        if txn_id < head {
-            assert!(matches!(
-                vfs.validate_target(txn_id).await,
-                Err(Error::HistoryTargetMidTransaction { .. })
-            ));
-        }
-        assert!(matches!(
-            vfs.validate_target(head + 1).await,
-            Err(Error::HistoryTargetOutOfRange { .. })
-        ));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn capture_root_records_the_drained_head_once() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let path = temp.path().join("capture.db");
-        let vfs = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
-        let (_, file) =
-            FileSystem::create_file(&vfs.fs, 1, "captured", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        file.pwrite(0, b"captured bytes").await?;
-        let root = vfs.capture_root("test").await?;
-        assert_eq!(root.through_seq, vfs.history_status().await?.head_seq);
-        assert_eq!(
-            vfs.capture_root("duplicate").await?.snapshot_id,
-            root.snapshot_id
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn kill_switch_invalidates_and_reenabling_starts_new_epoch() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let path = temp.path().join("epoch.db");
-        let vfs = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
-        FileSystem::create_file(&vfs.fs, 1, "before-gap", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        let old_epoch = vfs.history_status().await?.epoch;
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        let disabled = crate::CoreConfig {
-            journal_enabled: false,
-            ..crate::CoreConfig::default()
-        };
-        // A disabled open that mutates nothing is a maintenance open and must
-        // not poison history; only the first unjournaled mutation does.
-        let vfs = Vfs::open(
-            VfsOptions::with_path(path.to_string_lossy()).with_core_config(disabled.clone()),
-        )
-        .await?;
-        assert!(vfs.history_status().await?.valid);
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        let vfs =
-            Vfs::open(VfsOptions::with_path(path.to_string_lossy()).with_core_config(disabled))
-                .await?;
-        FileSystem::create_file(&vfs.fs, 1, "gap", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        let invalid = vfs.history_status().await?;
-        assert!(!invalid.valid);
-        assert!(matches!(
-            vfs.validate_target(invalid.floor_seq).await,
-            Err(Error::HistoryInvalid { .. })
-        ));
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        let readonly = Vfs::open_read_only(&path).await?;
-        assert!(!readonly.history_status().await?.valid);
-        drop(readonly);
-
-        let vfs = Vfs::open(VfsOptions::with_path(path.to_string_lossy())).await?;
-        let revalidated = vfs.history_status().await?;
-        assert!(revalidated.valid);
-        assert_eq!(revalidated.epoch, old_epoch + 1);
-        assert_eq!(revalidated.floor_seq, revalidated.head_seq);
-        assert_eq!(revalidated.targets.len(), 1);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn gc_keeps_every_advertised_target_reconstructible() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let path = temp.path().join("gc.db");
-        let post_gc = temp.path().join("post-gc.db");
-        let config = crate::CoreConfig {
-            journal_retention_ops: 8,
-            ..crate::CoreConfig::default()
-        };
-        let vfs = Vfs::open(VfsOptions::with_path(path.to_string_lossy()).with_core_config(config))
-            .await?;
-        for index in 0..8 {
-            let (_, file) = FileSystem::create_file(
-                &vfs.fs,
-                1,
-                &format!("file-{index}"),
-                DEFAULT_FILE_MODE,
-                1000,
-                1000,
-            )
-            .await?;
-            file.pwrite(0, format!("payload-{index}").as_bytes())
-                .await?;
-        }
-        vfs.fs.drain_all().await?;
-        let before = vfs.history_status().await?;
-        vfs.collect_journal().await?;
-        let after = vfs.history_status().await?;
-        assert!(after.floor_seq > before.floor_seq);
-        assert!(after
-            .targets
-            .iter()
-            .all(|target| target.seq >= after.floor_seq));
-        vfs.snapshot_into(&post_gc).await?;
-        drop(vfs);
-
-        for target in after.targets {
-            let candidate = temp.path().join(format!("gc-target-{}.db", target.seq));
-            fs::copy(&post_gc, &candidate)?;
-            Vfs::reconstruct_to(&candidate, target.seq).await?;
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn reconstruction_preserves_inode_high_water_and_exact_refcounts() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let source = temp.path().join("allocator-source.db");
-        let replay = temp.path().join("allocator-replay.db");
-        let vfs = Vfs::open(VfsOptions::with_path(source.to_string_lossy())).await?;
-        FileSystem::create_file(&vfs.fs, 1, "target", DEFAULT_FILE_MODE, 1000, 1000).await?;
-        let target = vfs.history_status().await?.head_seq;
-        for index in 0..5 {
-            FileSystem::create_file(
-                &vfs.fs,
-                1,
-                &format!("future-{index}"),
-                DEFAULT_FILE_MODE,
-                1000,
-                1000,
-            )
-            .await?;
-        }
-        let conn = vfs.get_connection().await?;
-        let max_ever =
-            query_scalar_i64(&conn, "SELECT COALESCE(MAX(ino), 0) FROM fs_inode", ()).await?;
-        drop(conn);
-        vfs.fs.finalize().await?;
-        drop(vfs);
-
-        fs::copy(&source, &replay)?;
-        Vfs::reconstruct_to(&replay, target).await?;
-        let vfs = Vfs::open(VfsOptions::with_path(replay.to_string_lossy())).await?;
-        let (created, _) =
-            FileSystem::create_file(&vfs.fs, 1, "after-replay", DEFAULT_FILE_MODE, 1000, 1000)
-                .await?;
-        assert!(created.ino > max_ever);
-        let conn = vfs.get_connection().await?;
-        let mismatches = query_scalar_i64(
-            &conn,
-            "SELECT COUNT(*) FROM fs_chunk c
-             WHERE c.refcount != (
-                 SELECT COUNT(*) FROM fs_data d WHERE d.digest = c.digest
-             )",
-            (),
-        )
-        .await?;
-        assert_eq!(mismatches, 0);
-        Ok(())
-    }
-
-    #[derive(Clone, Debug)]
-    struct InventoryEntry {
-        parent_ino: i64,
-        name: String,
-        ino: i64,
-        mode: u32,
-        nlink: u32,
-    }
-
-    impl InventoryEntry {
-        fn is_file(&self) -> bool {
-            self.mode & crate::S_IFMT == crate::S_IFREG
-        }
-
-        fn is_directory(&self) -> bool {
-            self.mode & crate::S_IFMT == crate::S_IFDIR
-        }
-    }
-
-    #[derive(Debug)]
-    struct ReplayCheckpoint {
-        seq: i64,
-        path: PathBuf,
-    }
-
-    #[derive(Clone, Copy)]
-    struct RandomReplayCase {
-        seed: u64,
-        operations: usize,
-        gc_each_checkpoint: bool,
-        batcher_bursts: bool,
-    }
-
-    async fn load_inventory(vfs: &Vfs) -> Result<Vec<InventoryEntry>> {
-        let conn = vfs.get_connection().await?;
-        let mut rows = conn
-            .query(
-                "SELECT d.parent_ino, d.name, d.ino, i.mode, i.nlink
-                 FROM fs_dentry d
-                 JOIN fs_inode i ON i.ino = d.ino
-                 ORDER BY d.id",
-                (),
-            )
-            .await?;
-        let mut entries = Vec::new();
-        while let Some(row) = rows.next().await? {
-            entries.push(InventoryEntry {
-                parent_ino: row.get(0)?,
-                name: row.get(1)?,
-                ino: row.get(2)?,
-                mode: row.get::<i64>(3)? as u32,
-                nlink: row.get::<i64>(4)? as u32,
-            });
-        }
-        Ok(entries)
-    }
-
-    fn choose_entry<'a>(
-        entries: &'a [InventoryEntry],
-        rng: &mut StdRng,
-        predicate: impl Fn(&InventoryEntry) -> bool,
-    ) -> Option<&'a InventoryEntry> {
-        let matches = entries
-            .iter()
-            .filter(|entry| predicate(entry))
-            .collect::<Vec<_>>();
-        (!matches.is_empty()).then(|| matches[rng.gen_range(0..matches.len())])
-    }
-
-    fn directory_inodes(entries: &[InventoryEntry]) -> Vec<i64> {
-        let mut directories = vec![TEST_ROOT_INO];
-        directories.extend(
-            entries
-                .iter()
-                .filter(|entry| entry.is_directory())
-                .map(|entry| entry.ino),
-        );
-        directories
-    }
-
-    fn choose_directory(entries: &[InventoryEntry], rng: &mut StdRng) -> i64 {
-        let directories = directory_inodes(entries);
-        directories[rng.gen_range(0..directories.len())]
-    }
-
-    fn fresh_name(
-        entries: &[InventoryEntry],
-        parent_ino: i64,
-        operation: usize,
-        rng: &mut StdRng,
-    ) -> String {
-        loop {
-            let name = format!("random-{operation}-{:08x}", rng.gen_range(0..=u32::MAX));
-            if !entries
-                .iter()
-                .any(|entry| entry.parent_ino == parent_ino && entry.name == name)
-            {
-                return name;
-            }
-        }
-    }
-
-    fn random_bytes(rng: &mut StdRng, len: usize) -> Vec<u8> {
-        let mut bytes = vec![0; len];
-        rng.fill_bytes(&mut bytes);
-        bytes
-    }
-
-    fn random_write(rng: &mut StdRng, chunk_size: usize) -> (u64, Vec<u8>) {
-        match rng.gen_range(0..5) {
-            0 => {
-                let offset = rng.gen_range(0..256);
-                let len = rng.gen_range(1..512);
-                (offset, random_bytes(rng, len))
-            }
-            1 => {
-                let offset = rng.gen_range(0..1024);
-                let len = rng.gen_range(8_000..16_384);
-                (offset, random_bytes(rng, len))
-            }
-            2 => {
-                let len = chunk_size + rng.gen_range(1..257);
-                ((chunk_size - 31) as u64, random_bytes(rng, len))
-            }
-            3 => {
-                let offset = (chunk_size * 2 + rng.gen_range(1..1024)) as u64;
-                let len = rng.gen_range(1..2048);
-                (offset, random_bytes(rng, len))
-            }
-            _ => {
-                let offset = rng.gen_range(0..chunk_size) as u64;
-                let len = rng.gen_range(1..4096);
-                (offset, random_bytes(rng, len))
-            }
-        }
-    }
-
-    async fn create_random_file(
-        vfs: &Vfs,
-        entries: &[InventoryEntry],
-        operation: usize,
-        rng: &mut StdRng,
-    ) -> Result<()> {
-        let parent = choose_directory(entries, rng);
-        let name = fresh_name(entries, parent, operation, rng);
-        let (_, file) =
-            FileSystem::create_file(&vfs.fs, parent, &name, DEFAULT_FILE_MODE, 1000, 1000).await?;
-        if rng.gen_bool(0.7) {
-            let (offset, bytes) = random_write(rng, vfs.fs.chunk_size());
-            file.pwrite(offset, &bytes).await?;
-        }
-        Ok(())
-    }
-
-    async fn run_random_operation(
-        vfs: &Vfs,
-        operation: usize,
-        rng: &mut StdRng,
-        protected_ino: Option<i64>,
-    ) -> Result<()> {
-        let entries = load_inventory(vfs).await?;
-        let roll = rng.gen_range(0..100);
-        match roll {
-            0..=11 => create_random_file(vfs, &entries, operation, rng).await,
-            12..=29 => {
-                let Some(entry) = choose_entry(&entries, rng, InventoryEntry::is_file) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                let file = FileSystem::open(&vfs.fs, entry.ino, libc::O_RDWR).await?;
-                let (offset, bytes) = random_write(rng, vfs.fs.chunk_size());
-                file.pwrite(offset, &bytes).await
-            }
-            30..=39 => {
-                let Some(entry) = choose_entry(&entries, rng, InventoryEntry::is_file) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                let file = FileSystem::open(&vfs.fs, entry.ino, libc::O_RDWR).await?;
-                let current_size = file.fstat().await?.size.max(0) as u64;
-                let size = match rng.gen_range(0..6) {
-                    0 => 0,
-                    1 => current_size / 2,
-                    2 => 16_383,
-                    3 => 16_385,
-                    4 => vfs.fs.chunk_size() as u64 + 37,
-                    _ => current_size.saturating_add(vfs.fs.chunk_size() as u64 + 19),
-                };
-                file.truncate(size).await
-            }
-            40..=47 => {
-                let parent = choose_directory(&entries, rng);
-                let name = fresh_name(&entries, parent, operation, rng);
-                FileSystem::mkdir(&vfs.fs, parent, &name, DEFAULT_DIR_MODE, 1000, 1000)
-                    .await
-                    .map(|_| ())
-            }
-            48..=52 => {
-                let occupied = entries
-                    .iter()
-                    .map(|entry| entry.parent_ino)
-                    .collect::<HashSet<_>>();
-                let Some(entry) = choose_entry(&entries, rng, |entry| {
-                    entry.is_directory() && !occupied.contains(&entry.ino)
-                }) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                FileSystem::rmdir(&vfs.fs, entry.parent_ino, &entry.name).await
-            }
-            53..=64 => {
-                let Some(source) = choose_entry(&entries, rng, |_| true) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                let replace = rng.gen_bool(0.45);
-                if replace {
-                    let Some(destination) = choose_entry(&entries, rng, |entry| {
-                        entry.ino != source.ino
-                            && entry.is_directory() == source.is_directory()
-                            && !entry.is_directory()
-                            && Some(entry.ino) != protected_ino
-                    }) else {
-                        return create_random_file(vfs, &entries, operation, rng).await;
-                    };
-                    FileSystem::rename(
-                        &vfs.fs,
-                        source.parent_ino,
-                        &source.name,
-                        destination.parent_ino,
-                        &destination.name,
-                    )
-                    .await
-                } else {
-                    let parent = if source.is_directory() {
-                        source.parent_ino
-                    } else {
-                        choose_directory(&entries, rng)
-                    };
-                    let name = fresh_name(&entries, parent, operation, rng);
-                    FileSystem::rename(&vfs.fs, source.parent_ino, &source.name, parent, &name)
-                        .await
-                }
-            }
-            65..=71 => {
-                let Some(entry) = choose_entry(&entries, rng, |entry| {
-                    !entry.is_directory() && Some(entry.ino) != protected_ino
-                }) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                FileSystem::unlink(&vfs.fs, entry.parent_ino, &entry.name).await
-            }
-            72..=77 => {
-                let Some(source) = choose_entry(&entries, rng, InventoryEntry::is_file) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                let parent = choose_directory(&entries, rng);
-                let name = fresh_name(&entries, parent, operation, rng);
-                FileSystem::link(&vfs.fs, source.ino, parent, &name)
-                    .await
-                    .map(|_| ())
-            }
-            78..=83 => {
-                let parent = choose_directory(&entries, rng);
-                let name = fresh_name(&entries, parent, operation, rng);
-                let target = format!("../target/{operation}/{}", rng.gen::<u64>());
-                FileSystem::symlink(&vfs.fs, parent, &name, &target, 1000, 1000)
-                    .await
-                    .map(|_| ())
-            }
-            84..=89 => {
-                let ino = if entries.is_empty() {
-                    TEST_ROOT_INO
-                } else {
-                    entries[rng.gen_range(0..entries.len())].ino
-                };
-                let mode = [0o600, 0o640, 0o644, 0o700, 0o755][rng.gen_range(0..5)];
-                FileSystem::chmod(&vfs.fs, ino, mode).await
-            }
-            90..=94 => {
-                let ino = if entries.is_empty() {
-                    TEST_ROOT_INO
-                } else {
-                    entries[rng.gen_range(0..entries.len())].ino
-                };
-                FileSystem::chown(
-                    &vfs.fs,
-                    ino,
-                    Some(rng.gen_range(1_000..2_000)),
-                    Some(rng.gen_range(1_000..2_000)),
-                )
-                .await
-            }
-            95..=97 => {
-                let ino = if entries.is_empty() {
-                    TEST_ROOT_INO
-                } else {
-                    entries[rng.gen_range(0..entries.len())].ino
-                };
-                let seconds = 1_700_000_000 + operation as i64;
-                FileSystem::utimens(
-                    &vfs.fs,
-                    ino,
-                    TimeChange::Set(seconds, rng.gen_range(0..1_000_000_000)),
-                    TimeChange::Set(seconds + 1, rng.gen_range(0..1_000_000_000)),
-                )
-                .await
-            }
-            _ => {
-                let Some(entry) = choose_entry(&entries, rng, |entry| {
-                    entry.is_file() && entry.nlink == 1 && Some(entry.ino) != protected_ino
-                }) else {
-                    return create_random_file(vfs, &entries, operation, rng).await;
-                };
-                let file = FileSystem::open(&vfs.fs, entry.ino, libc::O_RDWR).await?;
-                file.pwrite(0, b"pending-before-unlink").await?;
-                FileSystem::unlink(&vfs.fs, entry.parent_ino, &entry.name).await?;
-                file.pwrite(9, b"pending-after-unlink").await?;
-                drop(file);
-                vfs.fs.process_deferred_reaps().await
-            }
-        }
-    }
-
-    async fn capture_checkpoint(
-        vfs: &Vfs,
-        directory: &Path,
-        label: &str,
-    ) -> Result<ReplayCheckpoint> {
-        let path = directory.join(format!("{label}.db"));
-        vfs.snapshot_into(&path).await?;
-        Ok(ReplayCheckpoint {
-            seq: vfs.history_status().await?.head_seq,
-            path,
-        })
-    }
-
-    async fn assert_reconstruction(
-        source: &Path,
-        expected: &Path,
-        target: i64,
-        candidate: &Path,
-        context: &str,
-    ) -> Result<()> {
-        fs::copy(source, candidate)?;
-        Vfs::reconstruct_to(candidate, target)
-            .await
-            .map_err(|error| Error::Internal(format!("{context}: {error}")))?;
-        assert_filesystem_tables_equal_for(expected, candidate, context).await
-    }
-
-    async fn run_random_replay_case(case: RandomReplayCase) -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let source = temp.path().join("source.db");
-        let floor_reference = temp.path().join("floor-reference.db");
-        let final_reference = temp.path().join("final-reference.db");
-        let mut config = crate::CoreConfig::default();
-        if case.gc_each_checkpoint {
-            config.journal_retention_ops = 1;
-        }
-        if case.batcher_bursts {
-            config.batcher.window = Duration::from_secs(60);
-            config.batcher.inode_bytes = usize::MAX / 4;
-            config.batcher.global_bytes = usize::MAX / 4;
-        }
-
-        let vfs =
-            Vfs::open(VfsOptions::with_path(source.to_string_lossy()).with_core_config(config))
-                .await?;
-        vfs.snapshot_into(&floor_reference).await?;
-
-        let mut rng = StdRng::seed_from_u64(case.seed);
-        let (_, warm_file) = FileSystem::create_file(
-            &vfs.fs,
-            TEST_ROOT_INO,
-            "warm-file",
-            DEFAULT_FILE_MODE,
-            1000,
-            1000,
-        )
-        .await?;
-        warm_file.pwrite(0, b"warm").await?;
-        let warm_dir = FileSystem::mkdir(
-            &vfs.fs,
-            TEST_ROOT_INO,
-            "warm-dir",
-            DEFAULT_DIR_MODE,
-            1000,
-            1000,
-        )
-        .await?;
-        FileSystem::symlink(
-            &vfs.fs,
-            warm_dir.ino,
-            "warm-link",
-            "../warm-file",
-            1000,
-            1000,
-        )
-        .await?;
-
-        let (protected_ino, burst_file) = if case.batcher_bursts {
-            let (stats, file) = FileSystem::create_file(
-                &vfs.fs,
-                TEST_ROOT_INO,
-                "batch-target",
-                DEFAULT_FILE_MODE,
-                1000,
-                1000,
-            )
-            .await?;
-            (Some(stats.ino), Some(file))
-        } else {
-            (None, None)
-        };
-
-        let mut checkpoints = vec![capture_checkpoint(&vfs, temp.path(), "checkpoint-000")
-            .await
-            .map_err(|error| {
-                Error::Internal(format!(
-                    "random replay seed {} initial checkpoint: {error}",
-                    case.seed
-                ))
-            })?];
-
-        for operation in 1..=case.operations {
-            run_random_operation(&vfs, operation, &mut rng, protected_ino)
-                .await
-                .map_err(|error| {
-                    Error::Internal(format!(
-                        "random replay seed {} operation {operation}: {error}",
-                        case.seed
-                    ))
-                })?;
-
-            if let Some(file) = burst_file.as_ref().filter(|_| operation % 32 == 0) {
-                for burst in 0..24 {
-                    let offset = ((burst * 4093 + operation) % (vfs.fs.chunk_size() * 3)) as u64;
-                    let bytes = random_bytes(&mut rng, 257 + burst * 19);
-                    file.pwrite(offset, &bytes).await?;
-                }
-                file.drain_writes().await?;
-            }
-
-            if operation % 40 == 0 {
-                let checkpoint =
-                    capture_checkpoint(&vfs, temp.path(), &format!("checkpoint-{operation:03}"))
-                        .await
-                        .map_err(|error| {
-                            Error::Internal(format!(
-                                "random replay seed {} checkpoint {operation}: {error}",
-                                case.seed
-                            ))
-                        })?;
-                if case.gc_each_checkpoint {
-                    let root_mode = if operation / 40 % 2 == 0 {
-                        0o755
-                    } else {
-                        0o700
-                    };
-                    FileSystem::chmod(&vfs.fs, TEST_ROOT_INO, root_mode).await?;
-                    vfs.collect_journal().await?;
-                    assert_eq!(
-                        vfs.history_status().await?.floor_seq,
-                        checkpoint.seq,
-                        "random replay seed {}: GC floor did not land on checkpoint {}",
-                        case.seed,
-                        operation
-                    );
-                }
-                checkpoints.push(checkpoint);
-            }
-        }
-
-        vfs.snapshot_into(&final_reference).await?;
-        let final_status = vfs.history_status().await?;
-        vfs.fs.finalize().await?;
-        drop(burst_file);
-        drop(warm_file);
-        drop(vfs);
-
-        for (index, checkpoint) in checkpoints.iter().enumerate() {
-            let candidate = temp.path().join(format!("replay-checkpoint-{index:03}.db"));
-            fs::copy(&source, &candidate)?;
-            let context = format!(
-                "random replay seed {} checkpoint {} target {}",
-                case.seed, index, checkpoint.seq
-            );
-            if checkpoint.seq < final_status.floor_seq {
-                assert!(
-                    matches!(
-                        Vfs::reconstruct_to(&candidate, checkpoint.seq).await,
-                        Err(Error::HistoryTargetOutOfRange {
-                            target_seq,
-                            floor_seq,
-                            head_seq,
-                            epoch,
-                        }) if target_seq == checkpoint.seq
-                            && floor_seq == final_status.floor_seq
-                            && head_seq == final_status.head_seq
-                            && epoch == final_status.epoch
-                    ),
-                    "{context}: checkpoint below the retained floor was not refused"
-                );
-            } else {
-                Vfs::reconstruct_to(&candidate, checkpoint.seq)
-                    .await
-                    .map_err(|error| Error::Internal(format!("{context}: {error}")))?;
-                assert_filesystem_tables_equal_for(&checkpoint.path, &candidate, &context).await?;
-            }
-        }
-
-        let floor_expected = if final_status.floor_seq == 0 {
-            floor_reference.as_path()
-        } else {
-            checkpoints
-                .iter()
-                .find(|checkpoint| checkpoint.seq == final_status.floor_seq)
-                .map(|checkpoint| checkpoint.path.as_path())
-                .ok_or_else(|| {
-                    Error::Internal(format!(
-                        "random replay seed {} has no exact floor checkpoint for {}",
-                        case.seed, final_status.floor_seq
-                    ))
-                })?
-        };
-        assert_reconstruction(
-            &source,
-            floor_expected,
-            final_status.floor_seq,
-            &temp.path().join("replay-floor.db"),
-            &format!(
-                "random replay seed {} explicit floor {}",
-                case.seed, final_status.floor_seq
-            ),
-        )
-        .await?;
-        assert_reconstruction(
-            &source,
-            &final_reference,
-            final_status.head_seq,
-            &temp.path().join("replay-head.db"),
-            &format!(
-                "random replay seed {} explicit head {}",
-                case.seed, final_status.head_seq
-            ),
-        )
-        .await
-    }
-
-    #[tokio::test]
-    async fn randomized_replay_conformance_seed_0x5eed() -> Result<()> {
-        run_random_replay_case(RandomReplayCase {
-            seed: 0x5eed,
-            operations: 320,
-            gc_each_checkpoint: false,
-            batcher_bursts: false,
-        })
-        .await
-    }
-
-    #[tokio::test]
-    async fn randomized_replay_conformance_seed_0xc0ffee() -> Result<()> {
-        run_random_replay_case(RandomReplayCase {
-            seed: 0xc0ffee,
-            operations: 320,
-            gc_each_checkpoint: false,
-            batcher_bursts: false,
-        })
-        .await
-    }
-
-    #[tokio::test]
-    async fn randomized_replay_conformance_seed_0xdecafbad() -> Result<()> {
-        run_random_replay_case(RandomReplayCase {
-            seed: 0xdecafbad,
-            operations: 320,
-            gc_each_checkpoint: false,
-            batcher_bursts: false,
-        })
-        .await
-    }
-
-    #[tokio::test]
-    async fn randomized_replay_conformance_with_gc_roll_forward() -> Result<()> {
-        run_random_replay_case(RandomReplayCase {
-            seed: 0x6c5eed,
-            operations: 320,
-            gc_each_checkpoint: true,
-            batcher_bursts: false,
-        })
-        .await
-    }
-
-    #[tokio::test]
-    async fn randomized_replay_conformance_with_batcher_bursts() -> Result<()> {
-        run_random_replay_case(RandomReplayCase {
-            seed: 0x0ba7_c4e2,
-            operations: 320,
-            gc_each_checkpoint: false,
-            batcher_bursts: true,
-        })
-        .await
-    }
-}
+#[path = "../../tests/internal/history.rs"]
+mod tests;
