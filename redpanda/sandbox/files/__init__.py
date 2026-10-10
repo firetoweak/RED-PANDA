@@ -1,5 +1,6 @@
 """Sandbox file-management entry points; storage and merge backends stay internal."""
 from .children import ChildFiles, child_root, child_workspace
+from .text import read_text, write_text, replace_text
 from .operations import (
     SandboxUnavailable,
     UnknownWorkspaceVersion,
@@ -21,6 +22,9 @@ __all__ = [
     "child_root",
     "child_workspace",
     "operation_id",
+    "read_text",
+    "write_text",
+    "replace_text",
     "validate_version",
     "workspace_files",
 ]

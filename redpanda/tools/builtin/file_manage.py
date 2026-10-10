@@ -9,6 +9,8 @@ from redpanda.sandbox.api import (
     environment_error,
 )
 from redpanda.sandbox.workspace import EnvironmentInputError
+from redpanda.sandbox.files import write_text
+from redpanda.sandbox.api import file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -35,45 +37,11 @@ def create_file_manage_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
         except EnvironmentInputError as exc:
             return environment_error(exc)
 
-        path = resolved_path.native_path
-        relative_path = resolved_path.workspace_membership.display_path
         try:
-            if path.exists() and path.is_dir():
-                return {
-                    "ok": False,
-                    "code": "IS_A_DIR",
-                    "path": relative_path,
-                    **resolved_path.result_fields(),
-                }
-            existed = path.exists()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if raw.overwrite:
-                path.write_text(raw.content, encoding="utf-8")
-            else:
-                try:
-                    with path.open("x", encoding="utf-8") as handle:
-                        handle.write(raw.content)
-                except FileExistsError:
-                    return {
-                        "ok": False,
-                        "code": "FILE_EXISTS",
-                        "path": relative_path,
-                        **resolved_path.result_fields(),
-                    }
+            result = await write_text(resolved_path.native_path, raw.content, overwrite=raw.overwrite)
         except OSError as exc:
-            return {
-                "ok": False,
-                "code": "FILE_WRITE_FAILED",
-                "error": f"写入文件失败: {type(exc).__name__}: {exc}",
-                "path": relative_path,
-                **resolved_path.result_fields(),
-            }
-        return {
-            "ok": True,
-            "code": "FILE_OVERWRITTEN" if existed else "FILE_CREATED",
-            "path": relative_path,
-            **resolved_path.result_fields(),
-        }
+            result = {"ok": False, "code": "FILE_WRITE_FAILED", "error": file_error_message(exc)}
+        return {**result, "path": resolved_path.workspace_membership.display_path, **resolved_path.result_fields()}
 
     return [
         ToolSpec(
