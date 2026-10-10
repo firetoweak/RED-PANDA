@@ -219,15 +219,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.assistant.subagent.workspace import child_layout, review_worktrees
+        from redpanda.sandbox.child_files import ChildFiles
         from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
             DeliveryIdentity,
         )
 
-        root, ref = child_layout(self.home, PARENT, CHILD)
-        await review_worktrees(self.home, self.workspace).fork(root, ref)
+        await ChildFiles(self.home, self.workspace).create(PARENT, CHILD)
         await self.store.create(CHILD, workspace_id=self.workspace.workspace_id)
         journal = SqliteJournal(self.store.require(CHILD))
         await journal.accept_delivery(
@@ -306,20 +305,19 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn(CHILD, self.host.workers)
 
-    async def test_sibling_creation_serializes_workspace_forks(self):
+    async def test_sibling_creation_has_no_workspace_queue(self):
         from unittest.mock import AsyncMock, patch
 
         await self.store.create(PARENT, workspace_id=self.workspace.workspace_id)
         active = 0
         peak = 0
 
-        class Versions:
-            async def fork(self, root, _ref, *, conflict_from=None):
+        class Files:
+            async def create(self, parent_id, child_id, *, conflict_child_id=None):
                 nonlocal active, peak
                 active += 1
                 peak = max(peak, active)
                 await asyncio.sleep(0.02)
-                root.mkdir(parents=True)
                 active -= 1
 
         intents = [
@@ -327,14 +325,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             for index in range(3)
         ]
         with (
-            patch("redpanda.assistant.host.supervisor.review_worktrees", return_value=Versions()),
+            patch("redpanda.assistant.host.supervisor.ChildFiles", return_value=Files()),
             patch.object(self.host, "request", new_callable=AsyncMock),
         ):
             await asyncio.gather(*(
                 self.host._route("create_child", intent.child_session_id, task_fact_arguments(intent))
                 for intent in intents
             ))
-        self.assertEqual(peak, 1)
+        self.assertEqual(peak, 3)
         self.assertTrue(all(self.store.path(intent.child_session_id).is_file() for intent in intents))
 
     async def test_child_startup_failure_does_not_strand_parent_delegate(self):
@@ -670,14 +668,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
-        from redpanda.assistant.subagent.workspace import child_layout
+        from redpanda.sandbox.child_files import child_root
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")
         await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         children = project_delegations(events)
-        roots = [child_layout(self.home, "parent", child)[0] for child in children]
+        roots = [child_root(self.home, "parent", child) for child in children]
         self.assertTrue(all(root.is_dir() for root in roots))
         await asyncio.wait_for(self.host.archive("parent"), 30)
         self.assertTrue(self.host.is_archived("parent"))

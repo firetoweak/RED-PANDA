@@ -35,9 +35,8 @@ from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
-from redpanda.assistant.subagent.workspace import (
-    ChildWorkspaceReview, child_layout, child_workspace, workspace_versions, review_worktrees,
-)
+from redpanda.assistant.subagent.workspace import ChildWorkspaceReview
+from redpanda.sandbox.child_files import ChildFiles, child_root, child_workspace, workspace_versions
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -116,10 +115,10 @@ async def build_assistant_assembly(
     task = project_task(await journal.snapshot(session_id))
     versions = workspace_versions(home, workspace)
     if task is not None:
-        child_root, _ = child_layout(home, task.parent_session_id, session_id)
-        if not child_root.is_dir():
-            raise ValueError(f"child workspace missing: {child_root}")
-        workspace = child_workspace(workspace, child_root)
+        root = child_root(home, task.parent_session_id, session_id)
+        if not root.is_dir():
+            raise ValueError(f"child workspace missing: {root}")
+        workspace = child_workspace(workspace, root)
         versions = workspace_versions(home, workspace)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
@@ -293,7 +292,7 @@ async def build_assistant_assembly(
         **compact_context.bindings(),
     }
     bindings = _with_tool_progress(bindings, tool_progress_sink)
-    for name in (*builtin_tools.names(), *review_bindings):
+    for name in builtin_tools.names():
         binding = bindings[name]
         async def projected(context, arguments, _handler=binding.handler,
                             _name=name):
@@ -328,7 +327,7 @@ async def build_assistant_assembly(
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
-    child_review = ChildWorkspaceReview(runtime, session_id, review_worktrees(home, workspace), home, session_transport, versions)
+    child_review = ChildWorkspaceReview(runtime, session_id, ChildFiles(home, workspace), session_transport, versions)
     surface.attach(runtime)
     compact_context.runtime = runtime
     scheduler = scheduler_factory(

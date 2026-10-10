@@ -1038,7 +1038,7 @@ class SubAgentHost:
             if source is None or source.child_session_id not in project_reclaimed(events):
                 return {"ok": False, "code": "UNKNOWN_CONFLICT_SOURCE", "data": {},
                         "error": "解冲突只能引用当前会话已经交回的委派。"}
-            available = await self._transport("child_workspace_version", source.child_session_id,
+            available = await self._transport("prepare_child_files", source.child_session_id,
                                               {"parent_session_id": context.session_id})
             if not available["ok"]:
                 return available

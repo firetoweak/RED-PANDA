@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from redpanda.assistant.subagent.subagent import project_delegate_intents, project_reclaimed
-from redpanda.assistant.subagent.workspace import child_layout
+from redpanda.sandbox.child_files import child_root as subagent_root
 from redpanda.assistant.workspace_versions import project_workspace_versions
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.config import load_app_config
@@ -135,7 +135,7 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 intents = project_delegate_intents(parent_events)
                 assert len(intents) == 1
                 child_id = intents[0].child_session_id
-                child_root, _ = child_layout(host.home, "e2e-parent", child_id)
+                child_root = subagent_root(host.home, "e2e-parent", child_id)
                 assert (child_root / "result.txt").read_text(encoding="utf-8") == nonce + "\n"
                 assert project_reclaimed(parent_events) == {child_id}
                 assert all(session_id == "e2e-parent" for session_id, _ in outputs)

@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
 import os
-import shutil
 from datetime import datetime, timezone
 
 from redpanda.automation.once import (
@@ -34,6 +33,7 @@ from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
+    REPORT_FACT,
     RETURN_FACT,
     project_delegate_intents,
     persist_return,
@@ -45,7 +45,7 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.assistant.subagent.workspace import child_layout, review_worktrees, child_workspace
+from redpanda.sandbox.child_files import ChildFiles
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
@@ -125,7 +125,6 @@ class HostSupervisor:
         self.workers: dict[str, Worker] = {}
         self.watchers: set[asyncio.Task] = set()
         self.locks: dict[str, asyncio.Lock] = {}
-        self.workspace_creation_locks: dict[str, asyncio.Lock] = {}
         self.failures: asyncio.Queue[WorkerFailed] = asyncio.Queue()
         self.intentionally_stopped: set[str] = set()
         self.selections: dict[str, str] = {}
@@ -237,26 +236,21 @@ class HostSupervisor:
             )
             async with self.locks.setdefault(session_id, asyncio.Lock()):
                 parent_workspace = self.workspaces.get(child_workspace_id)
-                root, ref = child_layout(self.home, expected_task.parent_session_id, session_id)
-                conflict_from = None
+                conflict_child_id = None
                 if expected_task.resolve_conflicts_of is not None:
                     parent_events = await SqliteJournal(self.store.require(expected_task.parent_session_id)).snapshot(expected_task.parent_session_id)
                     source = next((item for item in project_delegate_intents(parent_events)
                                    if item.command_id == expected_task.resolve_conflicts_of), None)
                     if source is None:
                         raise ValueError("conflict source does not belong to parent")
-                    source_version = await self._route("child_workspace_version", source.child_session_id,
+                    source_files = await self._route("prepare_child_files", source.child_session_id,
                                                        {"parent_session_id": expected_task.parent_session_id})
-                    if not source_version["ok"]:
-                        raise ValueError("conflict source has no completed workspace version")
-                    _, source_ref = child_layout(self.home, expected_task.parent_session_id, source.child_session_id)
-                    conflict_from = (source_ref + "-base", source_version["version"])
-                async with self.workspace_creation_locks.setdefault(
-                    child_workspace_id, asyncio.Lock()
-                ):
-                    await review_worktrees(self.home, parent_workspace).fork(
-                        root, ref, conflict_from=conflict_from
-                    )
+                    if not source_files["ok"]:
+                        raise ValueError("conflict source has no completed files")
+                    conflict_child_id = source.child_session_id
+                await ChildFiles(self.home, parent_workspace).create(
+                    expected_task.parent_session_id, session_id, conflict_child_id=conflict_child_id
+                )
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
@@ -283,7 +277,7 @@ class HostSupervisor:
             )
             self._track(session_id, activation)
             return None
-        if operation == "child_workspace_version":
+        if operation == "prepare_child_files":
             events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
             task = project_task(events)
             if task is None or task.parent_session_id != arguments["parent_session_id"]:
@@ -292,10 +286,8 @@ class HostSupervisor:
                        and event.payload.fact_type == RETURN_FACT for event in events):
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
             workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
-            root, ref = child_layout(self.home, task.parent_session_id, session_id)
-            version = await review_worktrees(self.home, child_workspace(workspace, root), ref=ref,
-                                            ignore_root=workspace.task_root).record()
-            return {"ok": True, "version": version}
+            await ChildFiles(self.home, workspace).finish(task.parent_session_id, session_id)
+            return {"ok": True}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
             return None
@@ -661,6 +653,11 @@ class HostSupervisor:
 
     async def request(self, operation, session_id, arguments):
         assert not self.closed
+        if operation == "fact" and arguments["fact_type"] == REPORT_FACT:
+            prepared = await self._route("prepare_child_files", arguments["data"]["child_session_id"],
+                                         {"parent_session_id": session_id})
+            if not prepared["ok"]:
+                raise ValueError("child report precedes its durable return")
         lock = self.locks.setdefault(session_id, asyncio.Lock())
         just_started = False
         while True:
@@ -720,13 +717,8 @@ class HostSupervisor:
                                           {"parent_session_id": session_id, "reason": "父会话归档"})
         if intents:
             await self.wait_quiescent(session_id)
-            root, _ = child_layout(self.home, session_id, intents[0].child_session_id)
-            parent_root = root.parent.resolve()
-            expected = (self.home.state_root / "subagent_worktrees").resolve()
-            if not parent_root.is_relative_to(expected):
-                raise ValueError("child workspace cleanup escaped product data root")
-            if parent_root.exists():
-                await asyncio.to_thread(shutil.rmtree, parent_root)
+            workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
+            await ChildFiles(self.home, workspace).discard(session_id, [i.child_session_id for i in intents])
         self._archived.set(session_id, True)
 
     def set_title(self, session_id, title):

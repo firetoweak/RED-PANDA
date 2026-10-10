@@ -11,7 +11,7 @@ import pytest
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.workspace_versions import project_workspace_versions, workspace_version_event, WORKSPACE_RESCUE_FACT
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.subagent.workspace import workspace_versions
+from redpanda.sandbox.child_files import workspace_versions
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome

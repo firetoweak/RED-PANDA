@@ -175,10 +175,16 @@ impl Image {
 }
 pub async fn resolve(fs: &dyn FileSystem, path: &str) -> vfs_core::error::Result<Option<i64>> {
     let mut ino = 1;
-    for name in path.split('/').filter(|s| !s.is_empty()) {
+    let names: Vec<_> = path.split('/').filter(|s| !s.is_empty()).collect();
+    for (index, name) in names.iter().enumerate() {
         let Some(s) = fs.lookup(ino, name).await? else {
             return Ok(None);
         };
+        // Evidence describes objects at paths. Replacing an ancestor directory
+        // with a file makes its former descendants absent, not unreadable.
+        if index + 1 < names.len() && !s.is_directory() {
+            return Ok(None);
+        }
         ino = s.ino;
     }
     Ok(Some(ino))

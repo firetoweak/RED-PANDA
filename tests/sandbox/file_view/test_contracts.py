@@ -101,6 +101,27 @@ class Contracts(unittest.TestCase):
             self.assertEqual(pub.publish(client)['status'],'conflict')
             self.assertEqual((base/'a.txt').read_bytes(),b'HHH____AAA')
 
+    def test_type_replacement_resumes_between_remove_and_create_phases(self):
+        for phase in ('remove','create'):
+            with self.subTest(phase=phase):
+                _,base,store=self.fixture('replace_'+phase)
+                with self.client(store,base) as client:
+                    self.change(client,'edit',"from pathlib import Path;p=Path('a.txt');p.unlink();p.mkdir();(p/'new').write_bytes(b'new')")
+                    original=pub.apply_step
+                    def interrupted(owner,transaction,step,path):
+                        original(owner,transaction,step,path)
+                        kind='missing' if phase=='remove' else 'directory'
+                        if step['path']=='/a.txt' and step['desired']['kind']==kind:
+                            raise InterruptedError('interrupted replacement')
+                    with patch.object(pub,'apply_step',interrupted):
+                        with self.assertRaises(InterruptedError): pub.publish(client)
+                    transaction=pub.unfinished(store)[0]
+                    self.assertTrue(pub.execute(client,transaction)['finalized'])
+                    self.assertEqual((base/'a.txt/new').read_bytes(),b'new')
+                    self.assertTrue(pub.execute(client,transaction)['finalized'])
+                    self.assertTrue(pub.undo(client,'edit','original')['finalized'])
+                    self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
+
     def test_batch_and_reverse_undo(self):
         _,base,store=self.fixture('batch')
         with self.client(store,base) as client:

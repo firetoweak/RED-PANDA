@@ -144,13 +144,15 @@ def subagent_review_tools(operation):
     from redpanda.runtime import ToolBinding
 
     specs = create_subagent_workspace_specs(operation)
-    registry = ToolRegistry()
-    for spec in specs:
-        registry.register(spec)
-    executor = ToolsExecutor(registry)
     bindings = {}
     for spec in specs:
         async def handler(context, arguments, _name=spec.name):
+            async def review(*args, **kwargs):
+                return await operation(context.command_id, *args, **kwargs)
+            registry = ToolRegistry()
+            for bound in create_subagent_workspace_specs(review):
+                registry.register(bound)
+            executor = ToolsExecutor(registry)
             return runtime_tool_result(await executor.execute_parsed(_name, arguments))
         bindings[spec.name] = ToolBinding(handler, requires_authorization=spec.requires_authorization)
     return ([spec.to_openai_tool() for spec in specs], bindings,

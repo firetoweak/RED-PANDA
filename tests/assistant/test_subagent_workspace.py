@@ -4,7 +4,7 @@ import os
 import pytest
 
 from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
-from redpanda.assistant.subagent.workspace import child_layout, child_workspace
+from redpanda.sandbox.child_files import child_root, child_workspace
 from redpanda.paths import RedPandaHome
 from redpanda.sandbox.registry import workspace_view
 from tests.fixtures.workspaces import workspace_record
@@ -46,10 +46,10 @@ def test_only_merge_requires_authorization_and_is_exclusive():
 def test_generated_child_can_write_with_long_home(tmp_path):
     async def scenario():
         home = RedPandaHome(tmp_path / "home")
-        child_root, _ = child_layout(home, "parent", "parent/sub-command_" + "a" * 32)
-        child_root.mkdir(parents=True)
-        runner = await build_builtin_tools(child_workspace(workspace_record(tmp_path), child_root), isolated=True)
+        root = child_root(home, "parent", "parent/sub-command_" + "a" * 32)
+        root.mkdir(parents=True)
+        runner = await build_builtin_tools(child_workspace(workspace_record(tmp_path), root), isolated=True)
         result = await runner.execute("write_file", {"path": "result.txt", "content": "marker\n"})
         assert result["ok"] is True
-        assert (child_root / "result.txt").read_text() == "marker\n"
+        assert (root / "result.txt").read_text() == "marker\n"
     asyncio.run(scenario())

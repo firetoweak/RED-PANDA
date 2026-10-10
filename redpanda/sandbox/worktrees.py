@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-from contextlib import closing
 import os
 import json
 from pathlib import Path
-import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
+from redpanda.sandbox.versions import settled
 
 
 class VersionBackendError(OSError):
@@ -31,22 +29,47 @@ class ReviewWorktrees:
     """子会话的显式工作树创建与三方合入；不承担日常文件回退。"""
 
     def __init__(self, root: Path, storage: Path, *,
-                 excluded_roots: tuple[Path, ...] = (), ref: str = "HEAD",
-                 ignore_root: Path | None = None, symlinks: bool = True) -> None:
+                 excluded_roots: tuple[Path, ...] = (),
+                 ignore_root: Path | None = None, symlinks: bool = True,
+                 objects: Path | None = None) -> None:
         self.root = _native_path(root)
         self.storage = _native_path(storage)
         self.repository = self.storage / "repository.git"
-        self.ref = ref
         self.symlinks = symlinks
+        self.objects = None if objects is None else _native_path(objects)
         self.ignore_root = self.root if ignore_root is None else _native_path(ignore_root)
         self.excluded_roots = (self.storage, *(_native_path(path) for path in excluded_roots))
 
-    async def record(self) -> str:
+    async def snapshot(self) -> str:
         return await self._run(self._record)
 
-    async def fork(self, root: Path, ref: str, *, conflict_from: tuple[str, str] | None = None) -> str:
-        """冻结一次基准，原子发布工作树；重试不重置已经开始的子。"""
-        return await self._run(lambda index: self._fork(index, root, ref, conflict_from))
+    async def record(self, base: str, paths: tuple[str, ...]) -> str:
+        return await self._run(lambda index: self._record_paths(index, base, paths))
+
+    async def materialize(self, root: Path, tree: str):
+        """Copy an immutable tree through a private index, outside publication locks."""
+        def operation(index):
+            destination = _native_path(root)
+            if destination.exists():
+                return
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with TemporaryDirectory(dir=destination.parent) as temporary:
+                published = Path(temporary) / "tree"
+                published.mkdir()
+                staging = ReviewWorktrees(published, self.storage, ignore_root=self.ignore_root, objects=self.objects)
+                staging._git(index, "read-tree", tree)
+                staging._git(index, "checkout-index", "--all", "--force")
+                os.rename(published, destination)
+        await self._run(operation)
+
+    async def seed(self, base: str, source: "ReviewWorktrees", result: dict) -> str:
+        def operation(index):
+            if self.objects is None or self.objects != source.objects:
+                self._git(index, "fetch", "--no-tags", "--no-write-fetch-head",
+                          _git_path(source.repository), result["base"], result["version"])
+            tree, _ = self._merge_tree(index, result["base"], base, result["version"])
+            return self._commit(index, tree, base)
+        return await self._run(operation)
 
     async def compare(self, base: str, version: str, paths: tuple[str, ...] = ()) -> dict:
         def operation(index):
@@ -64,10 +87,16 @@ class ReviewWorktrees:
 
     async def merge(self, base: str, version: str) -> tuple[str, ...]:
         def operation(index):
-            current = self._record(index)
+            paths = tuple(path.decode("utf-8") for path in self._git(
+                index, "diff", "--no-renames", "--name-only", "-z", base, version, "--"
+            ).split(b"\0") if path)
+            current = self._record_paths(index, base, paths)
             tree, conflicts = self._merge_tree(index, base, current, version)
             if not conflicts:
-                self._git(index, "read-tree", "--reset", "-u", tree)
+                patch = self._git(index, "diff", "--binary", "--full-index", "--no-renames",
+                                  "--no-ext-diff", "--no-textconv", current, tree, "--")
+                if patch:
+                    self._git(index, "apply", "--binary", "--whitespace=nowarn", "-", data=patch)
             return conflicts
         return await self._run(operation)
 
@@ -83,66 +112,24 @@ class ReviewWorktrees:
             conflicts.append(path.decode("utf-8"))
         return tree, tuple(conflicts)
 
-    def _fork(self, index, root, ref, conflict_from):
-        base_ref = ref + "-base"
-        base = self._git(index, "rev-parse", "--verify", "--quiet", base_ref,
-                         accepted=(0, 1)).decode().strip()
-        if not base:
-            base = self._record(index)
-            self._git(index, "update-ref", base_ref, base, "0" * 40)
-        root = _native_path(root)
-        child = ReviewWorktrees(root, self.storage, ref=ref, ignore_root=self.ignore_root)
-        if not root.exists():
-            root.parent.mkdir(parents=True, exist_ok=True)
-            with TemporaryDirectory(dir=root.parent) as temporary:
-                published = Path(temporary) / "tree"
-                published.mkdir()
-                staging = ReviewWorktrees(published, self.storage, ref=ref,
-                                            ignore_root=self.ignore_root)
-                tree = base
-                if conflict_from is not None:
-                    tree, _ = self._merge_tree(index, conflict_from[0], base, conflict_from[1])
-                staging._git(index, "read-tree", tree)
-                staging._git(index, "checkout-index", "--all", "--force")
-                os.rename(published, root)
-        if child._head(index) is None:
-            self._git(index, "update-ref", ref, base, "0" * 40)
-        return base
-
     async def _run(self, operation):
-        task = asyncio.create_task(asyncio.to_thread(self._locked, operation))
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError as cancelled:
-            # 不让后台线程在 Worker 关闭后继续改文件。
-            try:
-                await task
-            except BaseException as error:
-                raise BaseExceptionGroup("workspace operation failed during cancellation",
-                                         [cancelled, error]) from None
-            raise
+        return await settled(self._indexed, operation)
 
-    def _locked(self, operation):
+    def _indexed(self, operation):
         self.storage.mkdir(parents=True, exist_ok=True)
-        # 只串行化版本库事务，不协调 Session 对工作树的普通写入。
-        try:
-            with closing(sqlite3.connect(self.storage / "lock.sqlite", timeout=30)) as connection:
-                connection.execute("BEGIN IMMEDIATE")
-                if not self.repository.exists():
-                    self._git(None, "init", "--bare", "--template=", _git_path(self.repository))
-                (self.repository / "info").mkdir(exist_ok=True)
-                (self.repository / "info" / "attributes").write_text(
-                    "* -text -filter -ident -working-tree-encoding\n", encoding="utf-8",
-                )
-                with TemporaryDirectory(dir=self.storage) as temporary:
-                    return operation(Path(temporary) / "index")
-        except sqlite3.OperationalError as error:
-            if error.sqlite_errorcode in {
-                sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, sqlite3.SQLITE_CANTOPEN,
-                sqlite3.SQLITE_READONLY, sqlite3.SQLITE_FULL,
-            }:
-                raise VersionBackendError(str(error)) from error
-            raise
+        if self.objects is not None:
+            (self.objects / "pack").mkdir(parents=True, exist_ok=True)
+            (self.objects / "info").mkdir(exist_ok=True)
+        # Each delegation owns its object store; readers use private indexes.
+        # Initialization is protected by ChildFiles' per-delegation creation lock.
+        if not self.repository.exists():
+            self._git(None, "init", "--bare", "--template=", _git_path(self.repository))
+            (self.repository / "info").mkdir(exist_ok=True)
+            (self.repository / "info" / "attributes").write_text(
+                "* -text -filter -ident -working-tree-encoding\n", encoding="utf-8",
+            )
+        with TemporaryDirectory(dir=self.storage) as temporary:
+            return operation(Path(temporary) / "index")
 
     def _git(self, index: Path | None, *args: str, data: bytes | None = None,
              accepted: tuple[int, ...] = (0,)) -> bytes:
@@ -156,6 +143,8 @@ class ReviewWorktrees:
         command = ["git", "-c", "core.longpaths=true"]
         if index is not None:
             env["GIT_INDEX_FILE"] = _git_path(index)
+            if self.objects is not None:
+                env["GIT_OBJECT_DIRECTORY"] = _git_path(self.objects)
             command += [
                 f"--git-dir={_git_path(self.repository)}", f"--work-tree={_git_path(self.root)}",
                 "-c", "core.bare=false", "-c", "core.autocrlf=false",
@@ -181,10 +170,10 @@ class ReviewWorktrees:
         return result.stdout
 
     def _head(self, index: Path) -> str | None:
-        value = self._git(index, "rev-parse", "--verify", "--quiet", self.ref, accepted=(0, 1))
+        value = self._git(index, "rev-parse", "--verify", "--quiet", "HEAD", accepted=(0, 1))
         return value.decode().strip() or None
 
-    def _walk(self, index: Path) -> list[bytes]:
+    def _walk(self, index: Path, roots: tuple[str, ...] | None = None) -> list[bytes]:
         """逐层收集要记录的路径；忽略的目录在下降之前就被剪掉。
 
         忽略规则必须先于遍历生效：被忽略的目录不进快照，它读不读得动都
@@ -192,7 +181,21 @@ class ReviewWorktrees:
         上抛。每层一次判定，深度决定调用次数，不随文件数增长。
         """
         included: list[bytes] = []
-        level = [self.root]
+        level = [self.root] if roots is None else []
+        if roots is not None:
+            candidates = [path.encode("utf-8") for path in roots]
+            ignored = set(self._git(index, "check-ignore", "--no-index", "-z", "--stdin",
+                                   data=b"\0".join(candidates) + b"\0", accepted=(0, 1)).split(b"\0"))
+            for path in candidates:
+                native = self.root / path.decode("utf-8")
+                if path in ignored or native in self.excluded_roots:
+                    continue
+                if native.is_symlink():
+                    included.append(path)
+                elif native.is_dir():
+                    level.append(native)
+                elif native.exists():
+                    included.append(path)
         while level:
             entries: list[tuple[bytes, bool]] = []
             for parent in level:
@@ -228,6 +231,51 @@ class ReviewWorktrees:
         previous = self._head(index)
         self._git(index, "read-tree", "--empty")
         included = self._walk(index)
+        self._hash(index, included)
+        tree = self._git(index, "write-tree").decode().strip()
+        version = self._commit(index, tree, previous)
+        self._git(index, "update-ref", "HEAD", version)
+        return version
+
+    def _record_paths(self, index, base, paths):
+        from pathlib import PurePosixPath
+        roots = set()
+        for path in paths:
+            relative = PurePosixPath(path)
+            if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+                raise ValueError("invalid changed path")
+            if any(part.casefold() == ".git" for part in relative.parts):
+                continue
+            # A parent file or symlink is a namespace conflict, never a path to follow.
+            for parent in reversed(relative.parents):
+                if parent == PurePosixPath("."):
+                    continue
+                native = self.root / parent.as_posix()
+                if native.is_symlink() or native.is_file():
+                    relative = parent
+                    break
+            roots.add(relative.as_posix())
+        roots = tuple(path for path in sorted(roots)
+                      if not any(parent.as_posix() in roots for parent in PurePosixPath(path).parents))
+        if not roots:
+            return base
+        self._git(index, "read-tree", base)
+        tracked = self._git(index, "--literal-pathspecs", "ls-files", "-z", "--", *roots)
+        if tracked:
+            self._git(index, "update-index", "--force-remove", "-z", "--stdin", data=tracked)
+        self._hash(index, self._walk(index, roots))
+        if any(PurePosixPath(path).name == ".gitignore" for path in paths):
+            # A changed ignore rule can exclude unchanged baseline entries.
+            # Ask Git over index names; do not read or rehash their contents.
+            names = self._git(index, "ls-files", "-z")
+            if names:
+                ignored = self._git(index, "check-ignore", "--no-index", "-z", "--stdin",
+                                    data=names, accepted=(0, 1))
+                if ignored:
+                    self._git(index, "update-index", "--force-remove", "-z", "--stdin", data=ignored)
+        return self._commit(index, self._git(index, "write-tree").decode().strip(), base)
+
+    def _hash(self, index, included):
         if included:
             # Plumbing 按原始字节存储；不执行工作树的 filter，也不把嵌套仓库变成 gitlink。
             regular = [path for path in included
@@ -250,13 +298,12 @@ class ReviewWorktrees:
                     oid = objects[path]
                 entries.append(mode + b" " + oid + b"\t" + path + b"\0")
             self._git(index, "update-index", "-z", "--index-info", data=b"".join(entries))
-        tree = self._git(index, "write-tree").decode().strip()
+
+    def _commit(self, index, tree, previous):
         if previous is not None:
             old_tree = self._git(index, "rev-parse", f"{previous}^{{tree}}").decode().strip()
             if tree == old_tree:
                 return previous
         parent = [] if previous is None else ["-p", previous]
-        version = self._git(index, "commit-tree", tree, *parent,
-                            data=b"SubAgent review baseline\n").decode().strip()
-        self._git(index, "update-ref", self.ref, version, previous or "0" * 40)
-        return version
+        return self._git(index, "commit-tree", tree, *parent,
+                         data=b"SubAgent file state\n").decode().strip()

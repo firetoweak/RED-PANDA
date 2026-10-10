@@ -485,7 +485,7 @@ pub async fn plan(
     }
     let mut directories: Vec<_> = paths
         .iter()
-        .filter(|(_, e)| e.expected.kind == "directory" && e.desired.kind == "missing")
+        .filter(|(_, e)| e.expected.kind == "directory" && e.desired.kind != "directory")
         .map(|(p, _)| p.clone())
         .collect();
     directories.sort_by_key(|p| std::cmp::Reverse(p.matches('/').count()));

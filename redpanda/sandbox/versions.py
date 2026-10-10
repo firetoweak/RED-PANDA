@@ -50,7 +50,12 @@ async def settled(function, *args):
         return await asyncio.shield(task)
     except asyncio.CancelledError as cancelled:
         try:
-            await task
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+            task.result()
         except BaseException as error:
             raise BaseExceptionGroup("sandbox operation failed during cancellation", [cancelled, error]) from None
         raise
@@ -158,6 +163,58 @@ class WorkspaceVersions:
         async with self._owner():
             history = await settled(self._history)
             return history[-1] if history else INITIAL
+
+    async def freeze(self, callback):
+        """Wait for this view's writer, then consume its published state."""
+        async with self._owner():
+            from redpanda.sandbox.file_view.publication import unfinished, load, fields
+            import uuid
+            def pending():
+                head = self.storage / "HEAD"
+                if unfinished(self.storage):
+                    return True
+                if not head.exists():
+                    return False
+                token = head.read_text(encoding="utf-8")
+                if str(uuid.UUID(token)) != token:
+                    raise ValueError("invalid sandbox commit reference")
+                commit = load(self.storage / "commits" / (token + ".json"))
+                fields(commit, ("previous", "digest", "command_id", "kind"))
+                if commit["kind"] not in ("accept", "rebase"):
+                    raise ValueError("invalid sandbox commit kind")
+                return commit["kind"] == "accept"
+            if await settled(pending):
+                client = self._client()
+                try:
+                    await self._publish_pending(client)
+                finally:
+                    await settled(client.close)
+            return await self.read(callback)
+
+    def changed_paths(self):
+        """Paths touched by accepted operations, including restoration effects."""
+        from pathlib import PurePosixPath
+        from redpanda.sandbox.file_view.publication import fields, load, valid_image, valid_operation
+        paths = set()
+        for identity in self._history():
+            receipt = load(self.storage / "commands" / identity / "sealed.json")
+            fields(receipt, ("version", "command_id", "parent_commit", "digest", "changes", "operation"))
+            if receipt["version"] != 3 or receipt["command_id"] != identity:
+                raise ValueError("invalid accepted receipt")
+            valid_operation(receipt["operation"])
+            for change in receipt["changes"]:
+                fields(change, ("path", "before", "after"))
+                before, after = valid_image(change["before"]), valid_image(change["after"])
+                path = PurePosixPath(change["path"])
+                if not path.is_absolute() or ".." in path.parts:
+                    raise ValueError("invalid evidence path")
+                # Directory metadata is not a reason to rehash its unchanged children.
+                if before["kind"] == after["kind"] == "directory":
+                    continue
+                if path == PurePosixPath("/"):
+                    raise ValueError("invalid root replacement")
+                paths.add(path.relative_to("/").as_posix())
+        return tuple(sorted(paths))
 
     def _client(self):
         executable = self.executable if self.executable is not None else native_executable()

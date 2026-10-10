@@ -124,7 +124,7 @@ fn local_path(path: &Path) -> Result<PathBuf> {
             value.as_bytes().get(1) == Some(&b':'),
             "a local drive path is required"
         );
-        return Ok(PathBuf::from(value));
+        Ok(PathBuf::from(value))
     }
     #[cfg(unix)]
     {

@@ -120,7 +120,7 @@ def target(base, relative):
     for index,part in enumerate(parts):
         path=path/part
         try: info=path.lstat()
-        except FileNotFoundError: continue
+        except (FileNotFoundError,NotADirectoryError): continue
         if os.name=='nt':
             if info.st_file_attributes&0x400: raise Conflict('reparse path')
         elif stat.S_ISLNK(info.st_mode) and index!=len(parts)-1: raise Conflict('reparse path')
@@ -152,7 +152,7 @@ def actual(base,relative,template=None,store=None):
                     value['blocks'][key]=save_block(store,data)
                 value['complete']=template['complete']
         return value,None
-    except FileNotFoundError: return image(chunk_size=chunk_size),None
+    except (FileNotFoundError,NotADirectoryError): return image(chunk_size=chunk_size),None
     except OSError as error:
         if os.name=='nt':
             if error.winerror==32: raise Conflict('file is busy') from error
@@ -237,17 +237,21 @@ def build_plan(client,changes,mode,expected_bindings):
             if identity is not None and not identity.startswith('vfs:') and current['kind']=='file' and current['identity']!=identity: raise Conflict('file identity changed')
         desired,counts=choose(client.store,before,after,current,mode)
         check_blobs(client.store,desired)
-        if current['kind']=='directory' and desired['kind']=='missing' and any(target(client.base,path).iterdir()):
+        if current['kind']=='directory' and desired['kind']!='directory' and any(target(client.base,path).iterdir()):
             children={c['path'] for c in changes if c['after' if mode=='publish' else 'before']['kind']=='missing'}
             if any('/'+str(p.relative_to(client.base)).replace('\\','/') not in children for p in target(client.base,path).iterdir()):
                 if mode=='preserve': desired=dict(current)
                 else: raise Conflict('directory contains user children')
+        if current['kind']!=desired['kind'] and current['kind']!='missing' and desired['kind']!='missing':
+            missing=image(chunk_size=current['chunk_size'])
+            plan.append({'path':path,'expected':current,'desired':missing,'state':'prepared','counts':{'changed_bytes':0,'preserved_bytes':0},'created_identity':None})
+            current=missing
         plan.append({'path':path,'expected':current,'desired':desired,'state':'prepared','counts':counts,'created_identity':None})
     def order(step):
         depth=step['path'].count('/')
-        if step['desired']['kind']=='directory' and step['expected']['kind']=='missing': return 0,depth,step['path']
-        if step['desired']['kind']!='missing': return 1,depth,step['path']
-        return 2,-depth,step['path']
+        if step['desired']['kind']=='missing': return 0,-depth,step['path']
+        if step['desired']['kind']=='directory' and step['expected']['kind']=='missing': return 1,depth,step['path']
+        return 2,depth,step['path']
     return sorted(plan,key=order)
 
 def mixed(store,current,expected,desired):
@@ -330,8 +334,12 @@ def execute(client,path):
     if transaction['finalized']: return transaction
     client.request('pause')
     try:
-        for step in transaction['steps']:
+        for index,step in enumerate(transaction['steps']):
             if step['state']=='done':
+                # Replacement has a durable remove phase followed by creation.
+                # Once creation started, the remove phase no longer describes the live path.
+                if any(later['path']==step['path'] and later['state']!='prepared'
+                       for later in transaction['steps'][index+1:]): continue
                 current,_=actual(client.base,step['path'],step['desired'],client.store)
                 identity=step['created_identity'] or step['expected']['identity']
                 if not same(current,step['desired']) or (current['kind'] in ('file','directory','symlink') and identity is not None and current['identity']!=identity): raise Conflict('completed step changed externally')

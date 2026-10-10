@@ -33,30 +33,42 @@ def test_record_does_not_enumerate_workspace(tmp_path):
 
 
 def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
-    from redpanda.assistant.subagent.workspace import ChildWorkspaceReview, child_layout
+    from redpanda.assistant.subagent.workspace import ChildWorkspaceReview
     from redpanda.paths import RedPandaHome
-    from redpanda.sandbox.worktrees import ReviewWorktrees
+    from redpanda.sandbox.child_files import ChildFiles, child_workspace, workspace_versions
+    from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
         logical = view.root / "file"
         logical.write_text("base")
         home = RedPandaHome(tmp_path / "home")
-        business = ReviewWorktrees(view.root, tmp_path / "reviews")
-        child_root, ref = child_layout(home, "parent", "child")
-        await business.fork(child_root, ref)
-        child = ReviewWorktrees(child_root, business.storage, ref=ref, ignore_root=view.root)
-        (child.root / "file").write_text("child")
-        version = await child.record()
+        workspace = workspace_record(view.root)
+        files = ChildFiles(home, workspace)
+        child_root = await files.create("parent", "child")
+        child = workspace_versions(home, child_workspace(workspace, child_root))
+        async def edit():
+            child.native_path(child.root / "file").write_text("child")
+            return {"ok": True}
+        await child.execute(operation_id("child", "edit"), edit)
         async def snapshot(session_id): return []
+        preparations = []
         async def transport(operation, session_id, arguments):
-            assert (operation, session_id, arguments) == ("child_workspace_version", "child", {"parent_session_id": "parent"})
-            return {"ok": True, "version": version}
-        review = ChildWorkspaceReview(SimpleNamespace(snapshot=snapshot), "parent", business, home, transport, view)
+            assert (operation, session_id, arguments) == ("prepare_child_files", "child", {"parent_session_id": "parent"})
+            # A child readiness check can depend on parent progress. Holding the
+            # parent writer lock across this wait would deadlock this operation.
+            preparations.append(1)
+            async def progress():
+                view.native_path(view.root / "progress").write_text(str(len(preparations)))
+                return {"ok": True}
+            await asyncio.wait_for(view.execute(operation_id("parent", f"progress-{len(preparations)}"), progress), 20)
+            await files.finish("parent", "child")
+            return {"ok": True}
+        review = ChildWorkspaceReview(SimpleNamespace(snapshot=snapshot), "parent", files, transport, view)
         intent = SimpleNamespace(command_id="delegate", child_session_id="child")
         with patch("redpanda.assistant.subagent.workspace.project_delegate_intents", return_value=[intent]):
-            compared = await view.execute(operation_id("parent", "compare"), lambda: review.review("delegate", ["file"]))
+            compared = await review.review("compare", "delegate", ["file"])
             assert compared["ok"] and "+child" in compared["data"]["diff"]
-            merged = await view.execute(operation_id("parent", "merge"), lambda: review.review("delegate", merge=True))
+            merged = await review.review("merge", "delegate", merge=True)
             assert merged["ok"]
         assert logical.read_text() == "child"
         (view.root / "user").write_text("human")
