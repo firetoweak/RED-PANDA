@@ -174,6 +174,10 @@ npm test
 npm run build
 ```
 
+GitHub Actions 的 [CI 配置](.github/workflows/ci.yml) 会在推送到 `main` 或更新目标为 `main` 的 PR 时运行，也可以在仓库的 Actions → CI → Run workflow 手动触发。Python 在 Linux 和 Windows 上运行上述日常测试；Web 运行 `npm test` 和 `npm run build`，后者包含类型检查。
+
+可以在 PR 的 Checks 或仓库的 Actions 页面查看结果；点开失败的任务和步骤即可查看日志。这一版不构建原生沙箱，也不运行真实进程、真模型或性能测试；绿色表示这些已配置的检查通过。
+
 ## 文档
 
 如果想理解项目，建议先读架构方向与总览，再按正在修改的能力查阅专题文档。
