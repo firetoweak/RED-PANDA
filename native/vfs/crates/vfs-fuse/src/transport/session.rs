@@ -500,8 +500,16 @@ impl SessionUnmounter {
         #[cfg(target_os = "linux")]
         self.uring_control.shutdown_and_join();
         #[cfg(target_os = "linux")]
-        if let Err(err) = abort_fuse_connection(&self.device) {
-            debug!("failed to abort FUSE connection during unmount: {err}");
+        {
+            let mountpoint = self
+                .mount
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|(_, mount)| mount.mountpoint_bytes());
+            if let Err(err) = abort_fuse_connection(&self.device, mountpoint.as_deref()) {
+                debug!("failed to abort FUSE connection during unmount: {err}");
+            }
         }
         drop(std::mem::take(&mut *self.mount.lock().unwrap()));
         Ok(())
@@ -509,7 +517,7 @@ impl SessionUnmounter {
 }
 
 #[cfg(target_os = "linux")]
-fn abort_fuse_connection(device: &std::fs::File) -> io::Result<()> {
+fn abort_fuse_connection(device: &std::fs::File, mountpoint: Option<&[u8]>) -> io::Result<()> {
     // Only a still-connected (wedged) connection needs the fusectl abort. An
     // already-dead connection keeps its id in fdinfo, but the kernel frees
     // that id at unmount and hands it to the next FUSE mount — writing the
@@ -518,20 +526,111 @@ fn abort_fuse_connection(device: &std::fs::File) -> io::Result<()> {
     if connection_is_aborted(device) {
         return Ok(());
     }
-    let fdinfo_path = format!("/proc/self/fdinfo/{}", device.as_raw_fd());
-    let fdinfo = std::fs::read_to_string(fdinfo_path)?;
-    let Some(connection_id) = fdinfo.lines().find_map(|line| {
-        line.strip_prefix("fuse_connection:")
-            .and_then(|value| value.split_whitespace().next())
-    }) else {
+    let Some(connection_id) = fuse_connection_id(device, mountpoint) else {
         return Ok(());
     };
+    // Parsing mountinfo takes long enough for a concurrent unmount to recycle
+    // the anonymous device number. Recheck the fd before writing abort.
+    if connection_is_aborted(device) {
+        return Ok(());
+    }
     let abort_path = format!("/sys/fs/fuse/connections/{connection_id}/abort");
     match std::fs::write(&abort_path, b"1\n") {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(err) => Err(err),
     }
+}
+
+/// Connection id for fusectl abort.
+///
+/// `fuse_connection:` in `/proc/self/fdinfo` arrived with the May 2025 kernel
+/// patch. Older kernels, including 6.12, omit it. FUSE still publishes the
+/// same id as the anonymous superblock minor (`0:<id>` in mountinfo, directory
+/// under `/sys/fs/fuse/connections`).
+#[cfg(target_os = "linux")]
+fn fuse_connection_id(device: &std::fs::File, mountpoint: Option<&[u8]>) -> Option<u32> {
+    let fdinfo_path = format!("/proc/self/fdinfo/{}", device.as_raw_fd());
+    if let Ok(fdinfo) = std::fs::read_to_string(fdinfo_path) {
+        if let Some(id) = connection_id_from_fdinfo(&fdinfo) {
+            return Some(id);
+        }
+    }
+    let point = mountpoint?;
+    let mountinfo = std::fs::read("/proc/self/mountinfo").ok()?;
+    connection_id_from_mountinfo(&mountinfo, point)
+}
+
+#[cfg(target_os = "linux")]
+fn connection_id_from_fdinfo(fdinfo: &str) -> Option<u32> {
+    fdinfo.lines().find_map(|line| {
+        line.strip_prefix("fuse_connection:")
+            .and_then(|value| value.split_whitespace().next())
+            .and_then(|value| value.parse().ok())
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn connection_id_from_mountinfo(mountinfo: &[u8], mountpoint: &[u8]) -> Option<u32> {
+    for line in mountinfo.split(|byte| *byte == b'\n') {
+        let Some(id) = connection_id_from_mountinfo_line(line, mountpoint) else {
+            continue;
+        };
+        return Some(id);
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn connection_id_from_mountinfo_line(line: &[u8], mountpoint: &[u8]) -> Option<u32> {
+    let (left, _) = split_once(line, b" - ")?;
+    let mut fields = left.split(|byte| *byte == b' ');
+    let _mount_id = fields.next()?;
+    let _parent = fields.next()?;
+    let device = fields.next()?;
+    let _root = fields.next()?;
+    let point = fields.next()?;
+    if unescape_mountinfo_field(point) != mountpoint {
+        return None;
+    }
+    let device = std::str::from_utf8(device).ok()?;
+    let (major, minor) = device.split_once(':')?;
+    if major != "0" {
+        return None;
+    }
+    minor.parse().ok()
+}
+
+#[cfg(target_os = "linux")]
+fn split_once<'a>(haystack: &'a [u8], needle: &[u8]) -> Option<(&'a [u8], &'a [u8])> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|index| (&haystack[..index], &haystack[index + needle.len()..]))
+}
+
+#[cfg(target_os = "linux")]
+fn unescape_mountinfo_field(field: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(field.len());
+    let mut index = 0;
+    while index < field.len() {
+        if field[index] == b'\\'
+            && index + 3 < field.len()
+            && field[index + 1..index + 4]
+                .iter()
+                .all(|byte| matches!(byte, b'0'..=b'7'))
+        {
+            let value = (field[index + 1] - b'0') * 64
+                + (field[index + 2] - b'0') * 8
+                + (field[index + 3] - b'0');
+            output.push(value);
+            index += 4;
+        } else {
+            output.push(field[index]);
+            index += 1;
+        }
+    }
+    output
 }
 
 /// Whether the FUSE connection behind `device` is already disconnected
@@ -633,5 +732,45 @@ mod tests {
     #[test]
     fn quiet_live_connection_is_not_aborted() {
         assert!(!connection_is_aborted_by(-1, |_| Ok(0)));
+    }
+
+    #[test]
+    fn fdinfo_connection_id_is_preferred_when_present() {
+        let fdinfo = "pos:\t0\nflags:\t02100002\nmnt_id:\t22\nfuse_connection:\t39\n";
+        assert_eq!(connection_id_from_fdinfo(fdinfo), Some(39));
+    }
+
+    #[test]
+    fn missing_fdinfo_line_falls_back_to_mountinfo_minor() {
+        let fdinfo = "pos:\t0\nflags:\t02100002\nmnt_id:\t255\nino:\t101\n";
+        assert_eq!(connection_id_from_fdinfo(fdinfo), None);
+        let mountinfo = b"\
+223 253 0:40 / /cursor/stores rw,nosuid,nodev,relatime - fuse.agent-store cursor-agent-store rw\n\
+224 253 0:41 / /tmp/store/mount rw,nosuid,nodev,relatime - fuse vfs rw,user_id=1000\n";
+        assert_eq!(
+            connection_id_from_mountinfo(mountinfo, b"/tmp/store/mount"),
+            Some(41)
+        );
+        assert_eq!(
+            connection_id_from_fdinfo(fdinfo)
+                .or_else(|| connection_id_from_mountinfo(mountinfo, b"/tmp/store/mount")),
+            Some(41)
+        );
+    }
+
+    #[test]
+    fn mountinfo_unescapes_the_mountpoint_and_ignores_non_anonymous_devices() {
+        let mountinfo = b"\
+1 1 8:1 / / rw - ext4 /dev/sda1 rw\n\
+224 253 0:7 / /tmp/a\\040b rw,nosuid - fuse vfs rw\n";
+        assert_eq!(
+            connection_id_from_mountinfo(mountinfo, b"/tmp/a b"),
+            Some(7)
+        );
+        assert_eq!(connection_id_from_mountinfo(mountinfo, b"/"), None);
+        assert_eq!(
+            connection_id_from_mountinfo(mountinfo, b"/tmp/missing"),
+            None
+        );
     }
 }

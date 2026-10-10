@@ -9,8 +9,17 @@ impl OverlayFS {
             return self.base.getattr(ino).await;
         }
 
-        let mut stats = None;
+        let mut stats: Option<Stats> = None;
         for component in path.split('/').filter(|s| !s.is_empty()) {
+            // A delta directory may replace a host file. The next component is
+            // not on that file; looking it up is ENOTDIR on Linux (openat)
+            // before the caller can treat the base path as absent.
+            if stats
+                .as_ref()
+                .is_some_and(|current| !current.is_directory())
+            {
+                return Ok(None);
+            }
             let Some(next) = self.base.lookup(ino, component).await? else {
                 return Ok(None);
             };
@@ -121,8 +130,8 @@ impl OverlayFS {
         let components: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
         let mut current_path = String::new();
-        let mut current_delta_ino: i64 = 1; // Delta root
-        let mut current_base_ino: i64 = 1; // Base root
+        let mut current_delta_ino: i64 = 1;
+        let mut current_base_ino: Option<i64> = Some(1);
 
         for component in components.iter().take(components.len().saturating_sub(1)) {
             current_path = format!("{}/{}", current_path, component);
@@ -136,9 +145,13 @@ impl OverlayFS {
             {
                 if stats.is_directory() {
                     current_delta_ino = stats.ino;
-                    // Advance base in parallel so it stays in sync
-                    if let Some(bs) = self.base.lookup(current_base_ino, component).await? {
-                        current_base_ino = bs.ino;
+                    // Advance base in parallel so it stays in sync. A host file
+                    // replaced by this directory is not a directory; do not
+                    // look up later components inside it.
+                    if let Some(base_ino) = current_base_ino {
+                        if let Some(bs) = self.base.lookup(base_ino, component).await? {
+                            current_base_ino = bs.is_directory().then_some(bs.ino);
+                        }
                     }
                     continue;
                 } else {
@@ -147,10 +160,13 @@ impl OverlayFS {
             }
 
             // Not in delta, check base (using the base inode, not delta inode)
-            let base_stats = self.base.lookup(current_base_ino, component).await?;
+            let base_stats = match current_base_ino {
+                Some(base_ino) => self.base.lookup(base_ino, component).await?,
+                None => None,
+            };
             let (dir_uid, dir_gid, origin_base_ino) = if let Some(s) = &base_stats {
                 let base_ino = s.ino;
-                current_base_ino = base_ino;
+                current_base_ino = s.is_directory().then_some(base_ino);
                 (s.uid, s.gid, Some(base_ino))
             } else {
                 (uid, gid, None)

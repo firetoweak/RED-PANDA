@@ -447,7 +447,9 @@ class HostSupervisor:
             )
 
         peer = PipePeer(local, route, signal, peer_alive=lambda: worker.process.is_alive())
-        admitted = context.Event()
+        # Pipe handshake instead of Event: spawn children on some Linux
+        # sandboxes cannot rebuild /dev/shm SemLocks (FileNotFoundError).
+        admit_recv, admit_send = context.Pipe(duplex=False)
         process = context.Process(
             target=worker_main,
             args=(
@@ -456,24 +458,37 @@ class HostSupervisor:
                 path,
                 self.config_factory,
                 self.home.root,
-                admitted,
+                admit_recv,
                 self.command_environment,
             ),
             name=f"session:{session_id}",
         )
-        start_worker(process, extra_handles=(local, remote))
+        start_worker(process, extra_handles=(local, remote, admit_recv, admit_send))
         try:
             if self.job is not None:
                 self.job.assign(process.pid)
-            admitted.set()
+            admit_send.send(None)
+            admit_send.close()
         except BaseException:
             process.terminate()
             await asyncio.to_thread(process.join)
             process.close()
             local.close()
             remote.close()
+            try:
+                admit_send.close()
+            except OSError:
+                pass
+            try:
+                admit_recv.close()
+            except OSError:
+                pass
             raise
         remote.close()
+        try:
+            admit_recv.close()
+        except OSError:
+            pass
         worker = Worker(process, peer)
         self.workers[session_id] = worker
         worker.reader = asyncio.create_task(self._watch(session_id, worker))

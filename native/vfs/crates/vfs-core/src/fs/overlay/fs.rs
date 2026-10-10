@@ -176,11 +176,12 @@ impl FileSystem for OverlayFS {
             let mut found_all = true;
             crate::telemetry::record_path_resolution(components.len() as u64);
             for comp in &components {
-                if let Some(s) = self.base.lookup(ino, comp).await? {
-                    ino = s.ino;
-                } else {
-                    found_all = false;
-                    break;
+                match self.base.lookup(ino, comp).await? {
+                    Some(s) if s.is_directory() => ino = s.ino,
+                    _ => {
+                        found_all = false;
+                        break;
+                    }
                 }
             }
             if found_all {
@@ -236,11 +237,12 @@ impl FileSystem for OverlayFS {
             let mut found_all = true;
             crate::telemetry::record_path_resolution(components.len() as u64);
             for comp in &components {
-                if let Some(s) = self.base.lookup(ino, comp).await? {
-                    ino = s.ino;
-                } else {
-                    found_all = false;
-                    break;
+                match self.base.lookup(ino, comp).await? {
+                    Some(s) if s.is_directory() => ino = s.ino,
+                    _ => {
+                        found_all = false;
+                        break;
+                    }
                 }
             }
             if found_all {

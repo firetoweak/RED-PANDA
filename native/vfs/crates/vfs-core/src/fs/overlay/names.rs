@@ -41,15 +41,16 @@ impl OverlayFS {
         if self.is_whiteout(&path) {
             return Ok((name.to_owned(), None));
         }
+        // A delta directory may replace a host file at the same path. The host
+        // object is then not a directory; looking up a child in it is ENOTDIR
+        // on Linux (openat) and must not fail the overlay operation.
         let base_parent = if info.layer == Layer::Base {
-            Some(info.underlying_ino)
+            self.base.getattr(info.underlying_ino).await?
         } else {
-            self.resolve_base_path(&info.path)
-                .await?
-                .map(|stats| stats.ino)
+            self.resolve_base_path(&info.path).await?
         };
-        if let Some(base_parent) = base_parent {
-            if let Some(entry) = self.base.lookup_named(base_parent, name).await? {
+        if let Some(base_parent) = base_parent.filter(|stats| stats.is_directory()) {
+            if let Some(entry) = self.base.lookup_named(base_parent.ino, name).await? {
                 return Ok((entry.name, Some(entry.stats)));
             }
         }

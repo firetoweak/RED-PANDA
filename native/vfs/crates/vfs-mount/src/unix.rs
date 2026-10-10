@@ -11,20 +11,25 @@ const DEFAULT_MOUNT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[cfg(target_os = "linux")]
 fn get_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Runtime::new().expect("internal error: failed to initialize runtime")
+    // mount_fs is called from sandbox's #[tokio::main] worker. Creating a
+    // nested Runtime on that same thread panics ("Cannot start a runtime from
+    // within a runtime"). Build it on a fresh OS thread instead.
+    std::thread::Builder::new()
+        .name("vfs-mount-runtime".into())
+        .spawn(|| {
+            tokio::runtime::Runtime::new().expect("internal error: failed to initialize runtime")
+        })
+        .expect("failed to spawn vfs-mount runtime thread")
+        .join()
+        .expect("vfs-mount runtime thread panicked")
 }
 
 /// Mount backend type.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum Backend {
     /// FUSE filesystem (Linux only).
+    #[default]
     Fuse,
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Self::Fuse
-    }
 }
 
 impl std::fmt::Display for Backend {
@@ -246,7 +251,11 @@ pub fn unmount(mountpoint: &Path, backend: Backend, lazy: bool) -> Result<()> {
 #[cfg(target_os = "linux")]
 pub async fn mount_fs(fs: Arc<dyn vfs_core::FileSystem>, opts: MountOpts) -> Result<MountHandle> {
     match opts.backend {
-        Backend::Fuse => fuse::mount_fuse(fs, opts),
+        // mount_fuse builds its own Tokio Runtime and may Drop/block_on on the
+        // calling thread. Keep it off #[tokio::main] workers.
+        Backend::Fuse => tokio::task::spawn_blocking(move || fuse::mount_fuse(fs, opts))
+            .await
+            .map_err(|error| anyhow::anyhow!("FUSE mount task join failed: {error}"))?,
     }
 }
 

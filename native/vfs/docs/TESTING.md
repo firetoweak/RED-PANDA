@@ -24,7 +24,7 @@ cargo test -p vfs-mount --features winfsp --target x86_64-pc-windows-gnullvm --t
 
 ## Linux
 
-需要可用的 `/dev/fuse`、FUSE 3 开发包、C 编译器及固定 Rust 工具链。
+需要可用的 `/dev/fuse`、可读的 `/etc/mtab`（Ubuntu 上指向 `/proc/self/mounts`）、FUSE 3 开发包、C 编译器及固定 Rust 工具链。
 从项目根目录运行 `python scripts/build_sandbox.py`；从本目录运行：
 
 ```sh

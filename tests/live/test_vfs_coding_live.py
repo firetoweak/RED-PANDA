@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import shlex
 import shutil
 import sys
 import time
@@ -16,8 +17,8 @@ from redpanda.sandbox.files.file_view.client import native_executable
 from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, SqliteJournal, StepCommitted
 
 pytestmark = [pytest.mark.live, pytest.mark.skipif(
-    os.environ.get("REDPANDA_RUN_LIVE_TESTS") != "1" or os.name != "nt" or not native_executable().is_file(),
-    reason="需启用真实模型测试与 Windows VFS",
+    os.environ.get("REDPANDA_RUN_LIVE_TESTS") != "1" or not native_executable().is_file(),
+    reason="需启用真实模型测试与已构建的原生 VFS",
 )]
 
 
@@ -55,9 +56,20 @@ def test_real_model_codes_and_time_travel_restores_only_assistant_changes(tmp_pa
             host.set_model("coding", selected_model)
             await host.select("test-browser", "coding")
             await host.set_auto_authorize("coding", True)
-            command = f"[IO.File]::WriteAllText('ignored.txt', 'command-produced'); & '{sys.executable}' -B -m unittest test_calc"
+            if os.name == "nt":
+                command = (
+                    "[IO.File]::WriteAllText('ignored.txt', 'command-produced'); "
+                    f"& '{sys.executable}' -B -m unittest test_calc"
+                )
+                shell_label = "PowerShell"
+            else:
+                command = (
+                    "printf 'command-produced' > ignored.txt; "
+                    f"{shlex.quote(sys.executable)} -B -m unittest test_calc"
+                )
+                shell_label = "shell"
             prompt = ("完成一次真实编码测试。先单独 read_file 读取 calc.py，再用 apply_patch 修复 add 的减法错误为加法。"
-                      "不要修改测试文件。然后 execute_command 实际执行以下 PowerShell 命令，workspace_effect=may_write："
+                      f"不要修改测试文件。然后 execute_command 实际执行以下 {shell_label} 命令，workspace_effect=may_write："
                       + command + "。核对测试成功，再用 read_file 核对 ignored.txt 内容。"
                       "只允许修改 calc.py、ignored.txt，勿委派任务、勿安装依赖、勿调用其他管理能力。最后回复 VFS_CODING_DONE。")
             started = time.monotonic()

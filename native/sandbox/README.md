@@ -54,7 +54,7 @@ SDK include 目录应包含 `winfsp/winfsp.h`，lib 目录应包含当前 linker
 
 ### Linux
 
-编译不链接 libfuse。运行挂载需要 `fuse3` 提供的 `fusermount3`，以及当前用户可读写的 `/dev/fuse`。开发包与 `native/vfs/scripts/install-deps.sh` 一致。
+编译不链接 libfuse。运行挂载需要 `fuse3` 提供的 `fusermount3`，以及当前用户可读写的 `/dev/fuse`。
 
 Ubuntu / Debian：
 
@@ -78,6 +78,7 @@ sudo yum install -y fuse3 fuse3-devel pkgconfig gcc
 非特权挂载：
 
 - `ls -l /dev/fuse` 应为当前用户可读写。常见权限是 `crw-rw-rw-`。节点不存在时执行 `sudo modprobe fuse`。权限为 `crw-rw----` 且属组为 `fuse` 时，执行 `sudo usermod -aG fuse "$USER"` 并重新登录。
+- `/etc/mtab` 必须可读。Ubuntu 上它是指向 `/proc/self/mounts` 的符号链接。`fusermount3` 用它查找挂载项；这个文件不存在时卸载失败。
 - 普通用户通过 `fusermount3` 挂载，不需要 root。
 - 沙箱挂载的 `allow_other` 默认为关闭，不读取 `user_allow_other`。只有挂载点要给其他用户访问时，才在 `/etc/fuse.conf` 取消 `user_allow_other` 的注释。
 
