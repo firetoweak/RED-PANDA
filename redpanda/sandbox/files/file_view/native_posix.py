@@ -116,7 +116,7 @@ class _Opened:
         return False
 
 
-def open_file(path: Path, *, create=False, write=False):
+def open_file(path: Path, *, create=False, write=False, shared_read=False):
     flags = os.O_RDWR if write else os.O_RDONLY
     flags |= os.O_CLOEXEC | os.O_NOFOLLOW
     if create:
