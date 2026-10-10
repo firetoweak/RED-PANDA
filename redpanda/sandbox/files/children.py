@@ -92,9 +92,9 @@ class ChildFiles:
             await settled(atomic, result_path, {"base": baseline["base"], "version": version})
         await view.freeze(freeze)
 
-    async def compare(self, parent_id, child_id, paths=()):
+    async def compare(self, parent_id, child_id, paths=(), *, offset=0):
         result = self._result(parent_id, child_id)
-        return await self._git(parent_id, child_id).compare(result["base"], result["version"], tuple(paths))
+        return await self._git(parent_id, child_id).compare(result["base"], result["version"], tuple(paths), offset=offset)
 
     async def merge(self, parent_id, child_id, view):
         result = self._result(parent_id, child_id)

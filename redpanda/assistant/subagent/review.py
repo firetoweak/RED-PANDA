@@ -11,14 +11,14 @@ class ChildWorkspaceReview:
         self.transport = transport
         self.sandbox = sandbox
 
-    async def review(self, command_id, tool_call_id, paths=None, *, merge=False):
+    async def review(self, command_id, tool_call_id, paths=None, *, merge=False, offset=0):
         try:
-            return await self._review(command_id, tool_call_id, paths, merge=merge)
+            return await self._review(command_id, tool_call_id, paths, merge=merge, offset=offset)
         except OSError:
             return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
                     "error": "无法读取或合入子任务文件；请检查磁盘空间、文件占用和访问权限后重试。"}
 
-    async def _review(self, command_id, tool_call_id, paths, *, merge):
+    async def _review(self, command_id, tool_call_id, paths, *, merge, offset):
         events = await self.runtime.snapshot(self.session_id)
         intent = next((item for item in project_delegate_intents(events)
                        if item.command_id == tool_call_id), None)
@@ -32,14 +32,16 @@ class ChildWorkspaceReview:
         if merge:
             async def apply():
                 try:
-                    conflicts = await self.files.merge(self.session_id, intent.child_session_id, self.sandbox)
+                    result = await self.files.merge(self.session_id, intent.child_session_id, self.sandbox)
                 except OSError:
                     return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
                             "error": "无法合入子任务文件；请检查磁盘空间、文件占用和访问权限后重试。"}
-                if conflicts:
-                    return {"ok": False, "code": "MERGE_CONFLICT", "data": {"conflicts": list(conflicts)},
+                if result.conflicts:
+                    return {"ok": False, "code": "MERGE_CONFLICT", "data": {"conflicts": list(result.conflicts)},
                             "error": "合入冲突，用户的文件没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。"}
-                return {"ok": True, "code": "SUBAGENT_MERGED", "data": {"tool_call_id": tool_call_id}}
+                return {"ok": True, "code": "SUBAGENT_MERGED",
+                        "data": {"tool_call_id": tool_call_id, "changed_files": list(result.changed_paths[:100]),
+                                 "changed_count": len(result.changed_paths), "truncated": len(result.changed_paths) > 100}}
             return await self.sandbox.execute(operation_id(self.session_id, command_id), apply)
-        data = await self.files.compare(self.session_id, intent.child_session_id, tuple(paths or ()))
+        data = await self.files.compare(self.session_id, intent.child_session_id, tuple(paths or ()), offset=offset)
         return {"ok": True, "code": "SUBAGENT_CHANGES", "data": data}

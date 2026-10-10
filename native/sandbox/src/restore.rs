@@ -42,6 +42,14 @@ impl Operation {
 pub struct Completed {
     pub command_id: String,
     pub parent_commit: Option<String>,
+    pub summary: Summary,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Summary {
+    pub changed_paths: Vec<String>,
+    pub preserved_paths: Vec<String>,
 }
 
 pub struct Conflict {
@@ -155,7 +163,7 @@ fn choose(
     change: &Change,
     current: &Image,
     policy: &Policy,
-) -> Result<std::result::Result<Image, Conflict>> {
+) -> Result<std::result::Result<(Image, bool), Conflict>> {
     let source = &change.after;
     let destination = &change.before;
     if current.size != source.size {
@@ -177,13 +185,14 @@ fn choose(
             let data = block(cas, current, key)?;
             let start = destination.size.saturating_sub(key * source.chunk_size) as usize;
             if start < after.len() && after[start..] != data[start..] {
-                return Ok(Ok(current.clone()));
+                return Ok(Ok((current.clone(), true)));
             }
         }
     }
     let mut desired = current.clone();
     desired.size = destination.size;
     let mut preserved = false;
+    let mut kept_external = false;
     for key in keys {
         let source_bytes = block(cas, source, key)?;
         let mut result = block(cas, destination, key)?;
@@ -197,6 +206,7 @@ fn choose(
                     && data[index] != source_bytes[index]
                 {
                     preserved = true;
+                    kept_external |= data[index] != result[index];
                 }
                 result[index] = data[index];
             }
@@ -217,5 +227,5 @@ fn choose(
         desired.mode = destination.mode;
     }
     validate(&desired)?;
-    Ok(Ok(desired))
+    Ok(Ok((desired, kept_external)))
 }

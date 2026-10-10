@@ -137,7 +137,7 @@ class WorkspaceVersionBoundary:
         try:
             version = await self.versions.record()
         except SandboxUnavailable as exc:
-            fact = WorkspaceVersionFact(self.workspace_id, step_id, None, str(exc))
+            fact = WorkspaceVersionFact(self.workspace_id, step_id, None, "当前无法记录工作区文件状态，请让用户检查应用安装。")
         else:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, version, None)
         await self.runtime.receive_domain_fact(
@@ -183,6 +183,14 @@ class WorkspaceVersionBoundary:
         await self._record_rescue(
             delivery_id, target.step_id, restored.before_version, restored.version, None
         )
+        if restored.preserved_paths:
+            await self.runtime.receive_domain_fact(
+                self.session_id, WORKSPACE_CARRYOVER_FACT,
+                {"note": "文件回退保留了后续改动，当前文件可能与保留的对话记录不同；请读取相关文件核对。",
+                 "files": list(restored.preserved_paths[:100]),
+                 "truncated": len(restored.preserved_paths) > 100},
+                delivery_id=delivery_id + "-preserved", source=WORKSPACE_CARRYOVER_FACT,
+            )
 
     async def _record_rescue(self, delivery_id, step_id, before, version, error):
         """这条分支开始之前工作区是什么样。
@@ -221,11 +229,19 @@ class WorkspaceVersionBoundary:
         except WorkspaceRestoreFailed as error:
             await self._record_restore(command_id, target, error.before_version, None, str(error))
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error),
-                    "hint": "文件恢复计划存在冲突，未创建恢复候选；检查用户变化后再选择策略。"}
+                    "hint": "本次回退没有修改文件；请核对相关文件的当前内容后再选择策略。"}
         except SandboxUnavailable as error:
-            return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error)}
+            return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED",
+                    "error": "当前无法回退工作区文件，请让用户检查应用安装后重试。"}
         await self._record_restore(command_id, target, restored.before_version, restored.version, None)
-        return {"ok": True, "code": "WORKSPACE_RESTORED", "tool_call_id": target}
+        changed, preserved = restored.changed_paths, restored.preserved_paths
+        effect = ("partially_restored" if changed and preserved else "restored" if changed
+                  else "preserved" if preserved else "unchanged")
+        return {"ok": True, "code": "WORKSPACE_RESTORED", "tool_call_id": target,
+                "data": {"effect": effect, "changed_files": list(changed[:100]),
+                         "preserved_files": list(preserved[:100]),
+                         "changed_count": len(changed), "preserved_count": len(preserved),
+                         "truncated": len(changed) > 100 or len(preserved) > 100}}
 
     async def _record_restore(self, command_id, target, before, version, error):
         await self.runtime.receive_domain_fact(

@@ -32,6 +32,170 @@ def test_record_does_not_enumerate_workspace(tmp_path):
     asyncio.run(scenario())
 
 
+def test_record_finishes_known_publication_before_exposing_its_file_boundary(tmp_path):
+    from redpanda.sandbox.files.file_view import publication
+    async def scenario():
+        view = backend(tmp_path)
+        async def edit():
+            view.native_path(view.root / "a").write_bytes(b"a")
+            view.native_path(view.root / "b").write_bytes(b"b")
+            return {"ok": True}
+        original = publication.atomic
+        def crash(path, value):
+            original(path, value)
+            if type(value) is dict and value.get("state") == "prepared" and any(
+                step["state"] == "done" for step in value.get("steps", [])
+            ):
+                raise RuntimeError("lost acknowledgment")
+        identity = operation_id("s", "write")
+        with patch.object(publication, "atomic", crash):
+            with pytest.raises(RuntimeError, match="lost acknowledgment"):
+                await view.execute(identity, edit)
+        assert len(tuple(view.root.iterdir())) == 1
+        assert await view.record() == identity
+        assert (view.root / "a").read_bytes() == b"a"
+        assert (view.root / "b").read_bytes() == b"b"
+        assert publication.unfinished(view.storage) == []
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("current,policy,expected,changed,preserved", [
+    (b"BBBB", "preserve", b"AAAA", True, False),
+    (b"HHHH", "preserve", b"HHHH", False, True),
+    (b"HBHB", "preserve", b"HAHA", True, True),
+    (b"AAAA", "preserve", b"AAAA", False, False),
+    (b"HHHH", "original", b"AAAA", True, False),
+])
+def test_restore_reports_actual_effect_and_preserved_values(tmp_path, current, policy, expected, changed, preserved):
+    async def scenario():
+        view = backend(tmp_path)
+        file = view.root / "file"
+        file.write_bytes(b"AAAA")
+        async def edit():
+            view.native_path(file).write_bytes(b"BBBB")
+            return {"ok": True}
+        await view.execute(operation_id("s", "edit"), edit)
+        file.write_bytes(current)
+        identity = operation_id("s", "restore")
+        result = await view.restore(INITIAL, identity=identity, policy=policy)
+        assert file.read_bytes() == expected
+        assert result.changed_paths == (("file",) if changed else ())
+        assert result.preserved_paths == (("file",) if preserved else ())
+        assert await view.restore(INITIAL, identity=identity, policy=policy) == result
+    asyncio.run(scenario())
+
+
+def test_local_tool_edit_captures_only_changed_blocks_and_preserves_newlines(tmp_path):
+    import json
+    from redpanda.assistant.builtin_tools import build_builtin_tools
+    from tests.fixtures.workspaces import workspace_record
+    async def scenario():
+        view = backend(tmp_path)
+        file = view.root / "file"
+        source = b"TARGET\n" + b"A" * (4 * 65536) + b"TARGET\r\n"
+        file.write_bytes(source)
+        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view)
+        identity = operation_id("s", "replace")
+        result = await view.execute(identity, lambda: tools.execute("replace_all", {
+            "path": "file", "old_block": "TARGET", "new_block": "CHANGE",
+        }))
+        assert result["ok"]
+        assert file.read_bytes() == source.replace(b"TARGET", b"CHANGE")
+        receipt = json.loads((view.storage / "commands" / identity / "sealed.json").read_text())
+        change = next(item for item in receipt["changes"] if item["path"] == "/file")
+        assert set(change["before"]["blocks"]) == {"0", "4"}
+    asyncio.run(scenario())
+
+
+def test_write_failure_exposes_only_logical_file_information(tmp_path):
+    from redpanda.assistant.builtin_tools import build_builtin_tools
+    from tests.fixtures.workspaces import workspace_record
+    async def scenario():
+        view = backend(tmp_path)
+        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view)
+        original = Path.open
+        def denied(path, *args, **kwargs):
+            if path.name == "blocked.txt":
+                raise PermissionError(13, "private execution information", str(path))
+            return original(path, *args, **kwargs)
+        with patch.object(Path, "open", denied):
+            result = await view.execute(operation_id("s", "denied"), lambda: tools.execute("write_file", {
+                "path": "blocked.txt", "content": "x", "overwrite": True,
+            }))
+        assert not result["ok"]
+        assert result["data"]["path"] == "blocked.txt"
+        assert "private execution information" not in str(result)
+        assert str(view.storage) not in str(result)
+        assert "mount" not in str(result)
+    asyncio.run(scenario())
+
+
+def test_current_changes_distinguish_agent_and_external_without_a_restore(tmp_path):
+    async def scenario():
+        view = backend(tmp_path)
+        path = view.root / "file"
+        path.write_bytes(b"AAAAAA")
+        async def edit():
+            view.native_path(path).write_bytes(b"BAAAAA")
+            return {"ok": True}
+        await view.execute(operation_id("s", "edit"), edit)
+        path.write_bytes(b"BAHAAA")
+        head = (view.storage / "HEAD").read_bytes()
+        cas = {p.name: p.read_bytes() for p in (view.storage / "cas").iterdir()}
+        result = await view.changes(path)
+        state = result["changes"][0]
+        assert state["origin"] == "mixed"
+        assert state["edits"][0]["after"] == "BAHAAA"
+        assert (view.storage / "HEAD").read_bytes() == head
+        assert {p.name: p.read_bytes() for p in (view.storage / "cas").iterdir()} == cas
+        await view.restore(INITIAL, identity=operation_id("s", "undo"), policy="preserve")
+        state = (await view.changes(path))["changes"][0]
+        assert state["origin"] == "external"
+        assert state["edits"][0]["after"] == "AAHAAA"
+    asyncio.run(scenario())
+
+
+def test_agent_creation_and_recreation_are_not_reported_as_external_replacements(tmp_path):
+    async def scenario():
+        view = backend(tmp_path)
+        path = view.root / "file"
+        async def create():
+            view.native_path(path).write_bytes(b"AAAAAA")
+            return {"ok": True}
+        await view.execute(operation_id("s", "create"), create)
+        async def recreate():
+            native = view.native_path(path)
+            native.unlink()
+            native.write_bytes(b"BAAAAA")
+            return {"ok": True}
+        await view.execute(operation_id("s", "recreate"), recreate)
+        async def edit():
+            view.native_path(path).write_bytes(b"BAAAAB")
+            return {"ok": True}
+        await view.execute(operation_id("s", "edit"), edit)
+        state = (await view.changes(path))["changes"][0]
+        assert state["origin"] == "agent"
+        assert not any(p["origin"] == "external" for p in state["properties"])
+    asyncio.run(scenario())
+
+
+def test_failed_tool_result_still_reports_actual_and_unexpected_file_effects(tmp_path):
+    async def scenario():
+        view = backend(tmp_path)
+        (view.root / "wanted.txt").write_text("before")
+        async def edit():
+            view.native_path(view.root / "wanted.txt").write_text("after")
+            view.native_path(view.root / "unexpected.txt").write_text("extra")
+            return {"ok": False, "error": "failed after writing"}
+        assert not (await view.execute(operation_id("s", "failed"), edit))["ok"]
+        result = await view.changes()
+        files = {item["path"]: item for item in result["changes"]}
+        assert files["wanted.txt"]["edits"][0]["after"] == "after"
+        assert files["unexpected.txt"]["edits"][0]["after"] == "extra"
+        assert all(item["origin"] == "agent" for item in files.values())
+    asyncio.run(scenario())
+
+
 def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
     from redpanda.assistant.subagent.review import ChildWorkspaceReview
     from redpanda.paths import RedPandaHome
@@ -50,6 +214,9 @@ def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
             child.native_path(child.root / "file").write_text("child")
             return {"ok": True}
         await child.execute(operation_id("child", "edit"), edit)
+        child_result = await child.changes()
+        assert child_result["changes"][0]["edits"][0]["after"] == "child"
+        assert (await view.changes())["changes"] == []
         async def snapshot(session_id): return []
         preparations = []
         async def transport(operation, session_id, arguments):
@@ -248,7 +415,7 @@ def test_noop_restore_retry_cannot_undo_later_commands(tmp_path):
 
 
 @pytest.mark.parametrize("deep_store", [False, True])
-def test_discovery_paths_are_logical_and_git_reads_projected_files(tmp_path, deep_store):
+def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep_store):
     from redpanda.assistant.builtin_tools import build_builtin_tools
     from tests.fixtures.workspaces import workspace_record
     async def scenario():
@@ -271,11 +438,16 @@ def test_discovery_paths_are_logical_and_git_reads_projected_files(tmp_path, dee
             assert found["data"]["matches"][0]["location"]["path"] == code.as_uri()
             search = await tools.execute("grep", {"query": "after", "path": "."})
             assert search["ok"] and search["data"]["hits"], search
-            changes = await tools.execute("get_changes", {})
-            assert changes["ok"] and "+print('after')" in changes["data"]["diff"], changes
-            assert changes["data"]["repository_location"]["path"] == view.root.as_uri()
             return {"ok": True}
         await view.execute(operation_id("s", "discovery"), inspect)
+        async def verify():
+            changes = await tools.execute("get_changes", {})
+            assert changes["ok"], changes
+            state = changes["data"]["changes"][0]
+            assert state["edits"][0]["after"] == code.read_bytes().decode("utf-8")
+            assert state["location"]["path"] == code.as_uri()
+            assert state["origin"] == "agent"
+        await view.read(verify)
     asyncio.run(scenario())
 
 

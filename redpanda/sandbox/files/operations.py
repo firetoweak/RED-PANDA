@@ -37,6 +37,8 @@ class WorkspaceRestoreFailed(OSError):
 class WorkspaceRestore:
     before_version: str
     version: str
+    changed_paths: tuple[str, ...] = ()
+    preserved_paths: tuple[str, ...] = ()
 
 def workspace_files(home, workspace):
     storage = home.state_root / "workspace_views" / sha256(
@@ -123,9 +125,12 @@ class WorkspaceFiles:
         return list(reversed(operations))
 
     async def record(self) -> str:
-        async with self._owner():
+        async def recorded():
             history = await settled(self._history)
             return history[-1] if history else INITIAL
+        # Only a completed publication is a file boundary. Reconcile known
+        # accepted effects just as child-result freezing does; never rerun tools.
+        return await self.freeze(recorded)
 
     async def freeze(self, callback):
         """Wait for this view's writer, then consume its published state."""
@@ -276,12 +281,28 @@ class WorkspaceFiles:
                     return WorkspaceRestore(before, before)
                 result = await settled(lambda: client.restore(identity, targets, policy))
                 if result["status"] == "conflict":
-                    raise WorkspaceRestoreFailed(before, f"{result['reason']}: {result['path']}")
+                    reasons = {
+                        "structure_changed": "文件类型已变化",
+                        "identity_changed": "文件已被替换",
+                        "length_changed": "文件长度已变化，无法安全恢复",
+                        "content_unavailable": "缺少恢复所需的原文",
+                        "directory_contains_user_children": "目录包含需要保留的文件",
+                        "unsupported_directory_replacement": "不支持恢复该目录替换",
+                        "unsupported_directory_rename": "不支持恢复该目录重命名",
+                        "parent_changed": "上级目录已变化",
+                        "unsupported_link_restore": "不支持恢复该链接变化",
+                        "unsupported_rename_cycle": "不支持恢复该组相互重命名",
+                    }
+                    raise WorkspaceRestoreFailed(before,
+                        f"无法回退 {result['path'].removeprefix('/')}：{reasons[result['reason']]}。")
                 if result["status"] not in ("sealed", "accepted"):
                     raise RuntimeError(f"sandbox restoration requires explicit recovery: {result}")
                 accepted = await settled(lambda: client.request("accept", command_id=identity))
                 if accepted["status"] != "accepted": raise RuntimeError(accepted)
                 await self._publish_pending(client)
-                return WorkspaceRestore(before, identity)
+                summary = result["restore_summary"]
+                return WorkspaceRestore(before, identity,
+                    tuple(path.removeprefix("/") for path in summary["changed_paths"]),
+                    tuple(path.removeprefix("/") for path in summary["preserved_paths"]))
             finally:
                 await settled(client.close)

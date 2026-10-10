@@ -5,11 +5,18 @@ import json
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
+from dataclasses import dataclass
 from .lifecycle import settled
 
 
 class VersionBackendError(OSError):
     """已识别的 Git 执行环境错误。"""
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    conflicts: tuple[str, ...]
+    changed_paths: tuple[str, ...]
 
 
 def _native_path(path: Path) -> Path:
@@ -71,7 +78,7 @@ class ReviewWorktrees:
             return self._commit(index, tree, base)
         return await self._run(operation)
 
-    async def compare(self, base: str, version: str, paths: tuple[str, ...] = ()) -> dict:
+    async def compare(self, base: str, version: str, paths: tuple[str, ...] = (), *, offset: int = 0) -> dict:
         def operation(index):
             files = self._git(index, "diff", "--no-renames", "--name-status", "-z", base, version, "--")
             fields = files.decode("utf-8").split("\0")[:-1]
@@ -80,24 +87,30 @@ class ReviewWorktrees:
             if paths:
                 patch = self._git(index, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv",
                                   "--no-renames", base, version, "--", *paths).decode("utf-8", errors="replace")
-                result.update(diff=patch[:120_000], truncated=len(patch) > 120_000)
+                end = offset + 120_000
+                result.update(diff=patch[offset:end], truncated=len(patch) > end,
+                              offset=offset, next_offset=end if len(patch) > end else None)
                 result["limitations"] = ["binary 文件只提供变化摘要，不含正文"] if "Binary files " in patch else []
             return result
         return await self._run(operation)
 
-    async def merge(self, base: str, version: str) -> tuple[str, ...]:
+    async def merge(self, base: str, version: str) -> MergeResult:
         def operation(index):
             paths = tuple(path.decode("utf-8") for path in self._git(
                 index, "diff", "--no-renames", "--name-only", "-z", base, version, "--"
             ).split(b"\0") if path)
             current = self._record_paths(index, base, paths)
             tree, conflicts = self._merge_tree(index, base, current, version)
+            changed = ()
             if not conflicts:
+                changed = tuple(path.decode("utf-8") for path in self._git(
+                    index, "diff", "--no-renames", "--name-only", "-z", current, tree, "--"
+                ).split(b"\0") if path)
                 patch = self._git(index, "diff", "--binary", "--full-index", "--no-renames",
                                   "--no-ext-diff", "--no-textconv", current, tree, "--")
                 if patch:
                     self._git(index, "apply", "--binary", "--whitespace=nowarn", "-", data=patch)
-            return conflicts
+            return MergeResult(conflicts, changed)
         return await self._run(operation)
 
     def _merge_tree(self, index, base, current, version):
