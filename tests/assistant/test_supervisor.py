@@ -219,7 +219,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.sandbox.child_files import ChildFiles
+        from redpanda.sandbox.files.children import ChildFiles
         from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
@@ -668,7 +668,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
-        from redpanda.sandbox.child_files import child_root
+        from redpanda.sandbox.files.children import child_root
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")

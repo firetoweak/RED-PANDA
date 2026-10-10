@@ -4,7 +4,7 @@ import os
 import pytest
 
 from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
-from redpanda.sandbox.child_files import child_root, child_workspace
+from redpanda.sandbox.files.children import child_root, child_workspace
 from redpanda.paths import RedPandaHome
 from redpanda.sandbox.registry import workspace_view
 from tests.fixtures.workspaces import workspace_record

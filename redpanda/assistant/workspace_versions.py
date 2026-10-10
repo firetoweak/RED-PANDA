@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 
 from redpanda.runtime import DomainFactCommitted
 from redpanda.runtime.model import CommandPhase
-from redpanda.sandbox.versions import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceVersions, operation_id, validate_version
+from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceFiles, operation_id, validate_version
 
 
 WORKSPACE_VERSION_FACT = "assistant.workspace_version"
@@ -111,7 +111,7 @@ def branch_baseline(events, marker, through):
 
 class WorkspaceVersionBoundary:
     def __init__(self, runtime, session_id: str, workspace_id: str,
-                 versions: WorkspaceVersions) -> None:
+                 versions: WorkspaceFiles) -> None:
         self.runtime = runtime
         self.session_id = session_id
         self.workspace_id = workspace_id

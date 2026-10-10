@@ -5,10 +5,10 @@ import sys
 
 import pytest
 
-from redpanda.sandbox.versions import (
+from redpanda.sandbox.files.operations import (
     INITIAL,
     WorkspaceRestoreFailed,
-    WorkspaceVersions,
+    WorkspaceFiles,
     native_executable,
     operation_id,
 )
@@ -22,7 +22,7 @@ pytestmark = [pytest.mark.process, pytest.mark.skipif(
 def backend(tmp_path):
     root = tmp_path / "project"
     root.mkdir()
-    return WorkspaceVersions(root, tmp_path / "store")
+    return WorkspaceFiles(root, tmp_path / "store")
 
 
 def test_execute_publishes_writes_edits_and_deletes(tmp_path):

@@ -124,8 +124,8 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
             # 本层守循环提示契约；真实投影在 sandbox process 层验证。
             async def execute(self, identity, callback):
                 return await callback()
-            self.enterContext(patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute))
-            self.enterContext(patch("redpanda.sandbox.versions.WorkspaceVersions.native_path", lambda self, path: path))
+            self.enterContext(patch("redpanda.sandbox.files.operations.WorkspaceFiles.execute", execute))
+            self.enterContext(patch("redpanda.sandbox.files.operations.WorkspaceFiles.native_path", lambda self, path: path))
             assembly = await build_assistant_assembly(
                 AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",

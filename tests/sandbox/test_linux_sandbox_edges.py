@@ -12,12 +12,12 @@ import pytest
 if sys.platform != "linux":
     pytest.skip("需要 Linux 与可用的 FUSE", allow_module_level=True)
 
-from redpanda.sandbox.file_view import Client
-from redpanda.sandbox.file_view import publication as pub
-from redpanda.sandbox.file_view.native_posix import identity, open_file
-from redpanda.sandbox.versions import (
+from redpanda.sandbox.files.file_view import Client
+from redpanda.sandbox.files.file_view import publication as pub
+from redpanda.sandbox.files.file_view.native_posix import identity, open_file
+from redpanda.sandbox.files.operations import (
     INITIAL,
-    WorkspaceVersions,
+    WorkspaceFiles,
     native_executable,
     operation_id,
 )
@@ -31,7 +31,7 @@ pytestmark = [pytest.mark.process, pytest.mark.skipif(
 def backend(tmp_path):
     root = tmp_path / "project"
     root.mkdir()
-    return WorkspaceVersions(root, tmp_path / "store")
+    return WorkspaceFiles(root, tmp_path / "store")
 
 
 def test_birth_time_survives_rewrite_and_changes_when_recreated(tmp_path):

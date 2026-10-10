@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
-from redpanda.sandbox.versions import settled
+from .lifecycle import settled
 
 
 class VersionBackendError(OSError):

@@ -81,52 +81,21 @@ sh scripts/setup.sh
 
 Windows 与 Linux 都要先构建原生沙箱。macOS 的文件视图尚未实现。VFS 源码随本仓库提供，无需另行克隆。Python 安装脚本不会安装 WinFsp、FUSE 或编译 Rust；缺少原生程序时文件工具会明确返回沙箱不可用。
 
-**Windows**
+先按[原生沙箱构建说明](native/sandbox/README.md#构建)准备当前平台的工具链和系统组件，再在仓库根目录执行：
 
-先准备 Rust、WinFsp 驱动与 SDK、LLVM MinGW，再在仓库根目录执行：
+**Windows（PowerShell）**
 
 ```powershell
 .\redpanda-env\Scripts\python.exe scripts/build_sandbox.py
 ```
 
-默认构建 GNU LLVM（`x86_64-pc-windows-gnullvm`）release target；本机已验证的是同一 target 的 debug 构建。具体准备条件、可选参数与已验证的构建方式见 `scripts/build_sandbox.py`。
-
 **Linux**
-
-需要 rustup 提供的 `nightly-2026-08-07`（`native/sandbox/rust-toolchain.toml` 会选定它）以及 FUSE 用户态组件。编译不链接 libfuse。运行挂载需要 `fusermount3`，以及当前用户可读写的 `/dev/fuse`。
-
-Ubuntu / Debian：
-
-```sh
-sudo apt-get update
-sudo apt-get install -y fuse3 libfuse3-dev pkg-config build-essential
-```
-
-CentOS / RHEL / Fedora：
-
-```sh
-sudo dnf install -y fuse3 fuse3-devel pkgconf-pkg-config gcc
-```
-
-仍使用 yum 的发行版：
-
-```sh
-sudo yum install -y fuse3 fuse3-devel pkgconfig gcc
-```
-
-非特权挂载还需要：
-
-- `/dev/fuse` 存在且当前用户可读写。`ls -l /dev/fuse` 常见为 `crw-rw-rw-`。若节点不存在，先加载模块：`sudo modprobe fuse`。若权限是 `crw-rw----` 且属组为 `fuse`，把用户加入该组并重新登录：`sudo usermod -aG fuse "$USER"`。
-- `fusermount3` 随 `fuse3` 安装。普通用户通过它挂载，不需要 root。
-- 沙箱自己的挂载不设置 `allow_other`，所以不需要改 `/etc/fuse.conf`。只有挂载点要给其他用户访问时，才取消该文件里 `user_allow_other` 的注释。
-
-然后在仓库根目录执行：
 
 ```sh
 ./redpanda-env/bin/python scripts/build_sandbox.py
 ```
 
-程序生成在 `redpanda/sandbox/bin/redpanda-sandbox`。`REDPANDA_SANDBOX_EXECUTABLE` 可指向其他构建。
+构建默认生成 release 程序，输出到 `redpanda/sandbox/bin/`；Windows 的 LLVM 运行库与 SDK 参数见上述说明。
 
 然后安装前端依赖并构建：
 
@@ -163,15 +132,15 @@ cd ..
 | `console_chat.py` | 终端交互；默认工作区为当前目录，可用 `--workspace` 指定 |
 | `acp_chat.py` | 由支持 ACP 的客户端启动，通过 stdio 通信；可用 `--workspace` 指定工作区 |
 
-个人配置与会话数据保存在 `~/.redpanda`。`REDPANDA_HOME` 可以更换整个个人数据目录，`REDPANDA_CONFIG` 可以单独指定模型候选配置文件；详细说明见[模型配置](docs/模型配置.md)。
+个人配置与会话数据保存在 `~/.redpanda`。产品数据目录必须位于用户登记的任务根之外；测试独立实例时，在运行安装脚本和启动服务前设置独立的 `REDPANDA_HOME`。`REDPANDA_HOME` 可以更换整个个人数据目录，`REDPANDA_CONFIG` 可以单独指定模型候选配置文件；详细说明见[模型配置](docs/模型配置.md)。
 
 ## 开发与测试
 
-Windows 与 Linux 的文件修改、可能写入的命令和文件回退通过 VFS 文件视图执行；只读文件工具与声明 `read_only` 的命令直接查询已发布工作区，不捕获误标造成的写入。VFS 底层源码在 `native/vfs/`，Rust 沙箱应用在 `native/sandbox/`，Python 胶水源码在 `redpanda/sandbox/`，均由本仓库维护。Windows 安装 WinFsp 和构建工具后，Linux 安装上方的 FUSE 包后，执行 `python scripts/build_sandbox.py`；程序生成在 `redpanda/sandbox/bin/`，运行时默认使用它。构建条件及已验证的工具链见上方的构建说明。`REDPANDA_SANDBOX_EXECUTABLE` 仅用于显式选择其他构建。产品数据目录 `REDPANDA_HOME` 必须位于任务根之外。缺少原生程序时明确报错。macOS 尚未实现。
+Sandbox 的文件管理系统统一提供受控文件操作、操作历史、恢复及子任务成果交换，职责见[Sandbox 总览](docs/架构/Sandbox/总览.md)。Python 入口在 `redpanda/sandbox/files/`；原生服务与底层库分别在 `native/sandbox/` 和 `native/vfs/`，由本仓库共同维护。
 
-日常回退捕获助手造成的文件变化，`.gitignore` 不影响捕获。模型可选择保留用户后续值或恢复助手改变位置的原值；Web 时间旅行默认保留用户后续值。系统安装、挂载外命令写入及其他外部副作用不在回退范围内。子任务复制与成果比较、合入仍使用独立的 Git 业务端口，不参加日常 Step 记录。
+只读文件工具与声明 `read_only` 的命令查询已发布工作区。只读声明是调用契约，误标造成的写入不在回退范围。文件修改、可能写入的命令及恢复通过原生视图执行；挂载外写入、安装与网络副作用不属于文件回退范围。子任务成果使用 Git 差异和三方合并，日常 Step 不创建 Git 快照。
 
-本机接入、真实编码与回撤的验证结果，以及当前能力边界，见[Windows VFS 接入验证](docs/验证/VFS接入.md)。
+构建与分发见[原生服务说明](native/sandbox/README.md)，底层测试见[VFS 测试说明](native/vfs/docs/TESTING.md)。历史实验和验证结果从[文档索引](docs/README.md)查阅，不作为当前构建步骤。
 
 完成安装与前端依赖准备后，可以用 Web 开发模式同时启动后端热重载与 Vite：
 
@@ -214,11 +183,12 @@ npm run build
 | [文档索引](docs/README.md) | 使用说明、架构专题与实验记录的入口 |
 | [项目架构方向](docs/项目架构方向.md) | 个人助手的定位、渐进式加载与可控扩展原则 |
 | [架构总览](docs/架构/总览.md) | 当前分层、包边界与测试分层 |
+| [Sandbox](docs/架构/Sandbox/总览.md) | 执行环境、文件管理、原生能力与业务层的边界 |
 | [Runtime](docs/架构/运行/Runtime.md) | 运行事实、调度、持久化与恢复的核心契约 |
 | [模型配置](docs/模型配置.md) | 连接文件、候选模型与会话模型切换 |
 | [自举开发](docs/自举开发.md) | 用 RED PANDA 开发 RED PANDA，隔离工作区、数据与端口 |
 
-`docs/架构/` 的目录划分也表达当前进度：`运行/`、`上下文/`、`能力/`、`入口/` 记录已落地的决策，`未开始/` 记录尚待探索的方向。长期记忆、交互式资源与进程沙箱等方向尚未实现，具体范围以文档和代码为准。
+`docs/架构/` 的目录划分也表达当前进度：`运行/`、`上下文/`、`能力/`、`入口/`、`Sandbox/` 记录已落地的决策，`未开始/` 记录尚待探索的方向。长期记忆、交互式资源与进程沙箱等方向尚未实现，具体范围以文档和代码为准。
 
 ## 参与贡献
 

@@ -14,8 +14,8 @@ native/sandbox → vfs-mount → vfs-fuse → vfs-core
 macOS HostFS 保留，但当前 sandbox 没有 macOS 挂载执行入口。
 
 不再提供独立 VFS CLI、NFS、会话交接、KV、工具调用审计、数据库加密配置或远端 chunk 源。
-VFS 是 Sandbox 的文件管理子系统；`vfs-core` 管理当前文件状态和冻结制品，
-`native/sandbox` 与 Python 文件管理层共同管理操作历史、回退和子任务文件交换。
+本目录是 Sandbox 文件管理系统使用的底层 VFS 库；`vfs-core` 管理当前文件状态和冻结制品，
+`native/sandbox` 与 `redpanda/sandbox/files` 共同管理操作历史、回退和子任务文件交换。
 进程、权限与网络由 Sandbox 的相应能力协调，文件视图本身不提供进程或网络隔离。
 
 数据库和显式配置的只读 base 是文件视图的依据。缓存和句柄不能成为第二事实源。

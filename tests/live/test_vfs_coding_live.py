@@ -12,7 +12,7 @@ from redpanda.assistant.workspace_versions import WORKSPACE_RESCUE_FACT, project
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.config import load_app_config
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.versions import native_executable
+from redpanda.sandbox.files.file_view.client import native_executable
 from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, SqliteJournal, StepCommitted
 
 pytestmark = [pytest.mark.live, pytest.mark.skipif(

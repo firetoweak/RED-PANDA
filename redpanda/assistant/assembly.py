@@ -35,8 +35,8 @@ from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
-from redpanda.assistant.subagent.workspace import ChildWorkspaceReview
-from redpanda.sandbox.child_files import ChildFiles, child_root, child_workspace, workspace_versions
+from redpanda.assistant.subagent.review import ChildWorkspaceReview
+from redpanda.sandbox.files import ChildFiles, child_root, child_workspace, workspace_files
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -54,7 +54,7 @@ from redpanda.automation.tool import (
 )
 from redpanda.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool, subagent_review_tools
 from redpanda.sandbox.registry import WorkspaceRecord
-from redpanda.sandbox.versions import SandboxUnavailable, operation_id
+from redpanda.sandbox.files import SandboxUnavailable, operation_id
 from redpanda.assistant.cli import CliToolAdapter
 from redpanda.assistant.mcp import McpToolsetAdapter
 from redpanda.assistant.management import (
@@ -113,13 +113,13 @@ async def build_assistant_assembly(
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = RedPandaHome.default() if home is None else home
     task = project_task(await journal.snapshot(session_id))
-    versions = workspace_versions(home, workspace)
+    versions = workspace_files(home, workspace)
     if task is not None:
         root = child_root(home, task.parent_session_id, session_id)
         if not root.is_dir():
             raise ValueError(f"child workspace missing: {root}")
         workspace = child_workspace(workspace, root)
-        versions = workspace_versions(home, workspace)
+        versions = workspace_files(home, workspace)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(

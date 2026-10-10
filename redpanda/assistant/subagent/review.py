@@ -1,6 +1,6 @@
 """Parent ownership and acceptance of delegated file results."""
 from redpanda.assistant.subagent.subagent import project_delegate_intents, project_failed_delegations
-from redpanda.sandbox.versions import operation_id
+from redpanda.sandbox.files import operation_id
 
 
 class ChildWorkspaceReview:

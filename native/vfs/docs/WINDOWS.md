@@ -22,14 +22,15 @@ uses size/write/change time and persistent identity; an explicit application con
 validator may use hashes instead. This is chunk COW, not byte-range ownership.
 The application captures Command intervals separately.
 
-Schema 0.11 accepts only local filesystem storage and refuses older formats
+Schema 0.12 accepts only local filesystem storage and refuses other formats
 before DDL. It retains the persistent namespaces introduced in 0.10;
 old process-local or unnamespaced inode identities cannot be rebound reliably.
 Each fresh delta persists a UUID namespace; its own file identities include that
 namespace and inode. Independent files in different layers remain distinct, while
-hard links and copy-up retain their original identity. Snapshots and reconstruction
-preserve the namespace; missing or malformed current namespaces are refused.
-Origins, journal post-images and snapshots all use the new identity representation.
+hard links and copy-up retain their original identity. Frozen artifacts preserve
+the namespace; missing or malformed current namespaces are refused. Origins
+and frozen artifacts use this identity representation. Core has no row journal
+or relational-history reconstruction; Sandbox owns file-operation evidence.
 Native identities identify physical files, not equivalent checkouts on another
 machine. Rebinding to another base is not implicit; even identical bytes do not
 authorize substituting a different physical origin.
@@ -45,14 +46,8 @@ containing `winfsp/winfsp.h`, and `WINFSP_LIB_DIR` to the directory containing
 the environment for backend policy. A C compiler supported by `cc` is required.
 The WinFsp runtime DLL must be discoverable when running the resulting program.
 
-```powershell
-cargo test -p vfs-core --lib --test windows_filesystem
-cargo test -p vfs-core --test windows_write_errors
-cargo test -p vfs-core --test windows_write_crash -- --ignored --exact interrupted_writes_recover_whole_transactions_and_flushed_versions --nocapture
-cargo test -p vfs-mount --features winfsp --test windows_mount -- --ignored
-cargo test -p vfs-mount --features winfsp --test windows_io_errors -- --ignored
-cargo test -p vfs-mount --features winfsp --test windows_execution_crash -- --ignored --exact abrupt_execution_keeps_committed_view_and_host_unchanged --nocapture
-```
+Build requirements and executable test commands are maintained in
+[TESTING.md](TESTING.md); this document describes Windows contracts and limits.
 
 `mount_fs(Arc<dyn FileSystem>, MountOpts)` owns the SDK dispatcher. Native calls
 are translated directly into filesystem operations; there is no callback TCP
@@ -182,8 +177,8 @@ tests.
 
 The core error suite injects an I/O error while preparing the second COW chunk,
 and a test-database trigger aborts insertion of the second mapping after the first
-mapping was inserted. File bytes, modification/change times, storage rows and
-journal rows remain unchanged; removing the fault permits a successful new write.
+mapping was inserted. File bytes, modification/change times and storage rows
+remain unchanged; removing the fault permits a successful new write.
 The original typed I/O/database cause is retained.
 
 The native error suite wraps file operations in tests only. Unexpected read,

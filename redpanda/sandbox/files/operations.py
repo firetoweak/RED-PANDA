@@ -9,16 +9,11 @@ import json
 import os
 from pathlib import Path
 import re
-import sqlite3
+
+from .lifecycle import _sqlite_lock, settled
+from .file_view.client import native_executable
 
 INITIAL = "initial"
-
-def native_executable() -> Path:
-    configured = os.environ.get("REDPANDA_SANDBOX_EXECUTABLE")
-    if configured is not None:
-        return Path(configured)
-    name = "redpanda-sandbox.exe" if os.name == "nt" else "redpanda-sandbox"
-    return Path(__file__).with_name("bin") / name
 
 def validate_version(version: str) -> None:
     if type(version) is not str or (version != INITIAL and re.fullmatch(r"[0-9a-f]{64}", version) is None):
@@ -43,56 +38,14 @@ class WorkspaceRestore:
     before_version: str
     version: str
 
-async def settled(function, *args):
-    """A native lifecycle must settle before cancellation releases ownership."""
-    task = asyncio.create_task(asyncio.to_thread(function, *args))
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError as cancelled:
-        try:
-            while not task.done():
-                try:
-                    await asyncio.shield(task)
-                except asyncio.CancelledError:
-                    continue
-            task.result()
-        except BaseException as error:
-            raise BaseExceptionGroup("sandbox operation failed during cancellation", [cancelled, error]) from None
-        raise
+def workspace_files(home, workspace):
+    storage = home.state_root / "workspace_views" / sha256(
+        str(workspace.task_root.resolve()).encode("utf-8")
+    ).hexdigest()
+    return WorkspaceFiles(workspace.task_root, storage)
 
-@asynccontextmanager
-async def _sqlite_lock(path: Path, *, shared: bool = False):
-    def acquire():
-        connection = sqlite3.connect(path, timeout=0)
-        try:
-            connection.execute("CREATE TABLE IF NOT EXISTS lock_guard (id INTEGER PRIMARY KEY)")
-            connection.execute("BEGIN" if shared else "BEGIN EXCLUSIVE")
-            # A deferred transaction holds no read lock until its first read.
-            if shared:
-                connection.execute("SELECT id FROM lock_guard LIMIT 1").fetchone()
-            return connection
-        except BaseException:
-            connection.close()
-            raise
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + 300
-    while True:
-        try:
-            connection = acquire()
-        except sqlite3.OperationalError as error:
-            if getattr(error, "sqlite_errorcode", None) != sqlite3.SQLITE_BUSY or loop.time() >= deadline:
-                raise
-            # Never occupy an executor thread while waiting for another task
-            # to release a lock. Only lock acquisition is retried.
-            await asyncio.sleep(0.01)
-        else:
-            break
-    try:
-        yield
-    finally:
-        connection.close()
 
-class WorkspaceVersions:
+class WorkspaceFiles:
     """One ordered operation history per task root, shared by its Session workers."""
     def __init__(self, root: Path, storage: Path, *, executable: Path | None = None):
         self.root = root.resolve()
@@ -124,7 +77,7 @@ class WorkspaceVersions:
 
     async def read(self, callback):
         """Read published files concurrently; never expose an executing candidate."""
-        from redpanda.sandbox.file_view.publication import unfinished
+        from redpanda.sandbox.files.file_view.publication import unfinished
         self.storage.mkdir(parents=True, exist_ok=True)
         async with _sqlite_lock(self.storage / "publication-lock.sqlite", shared=True):
             if await settled(unfinished, self.storage):
@@ -138,7 +91,8 @@ class WorkspaceVersions:
     def _history(self):
         head = self.storage / "HEAD"
         if not head.exists(): return []
-        from redpanda.sandbox.file_view.publication import fields, load, command_id
+        from .state import fields, load
+        from .file_view.publication import command_id
         import uuid
         next_commit = head.read_text(encoding="utf-8")
         operations, seen = [], set()
@@ -167,7 +121,8 @@ class WorkspaceVersions:
     async def freeze(self, callback):
         """Wait for this view's writer, then consume its published state."""
         async with self._owner():
-            from redpanda.sandbox.file_view.publication import unfinished, load, fields
+            from .state import fields, load
+            from .file_view.publication import unfinished
             import uuid
             def pending():
                 head = self.storage / "HEAD"
@@ -194,7 +149,8 @@ class WorkspaceVersions:
     def changed_paths(self):
         """Paths touched by accepted operations, including restoration effects."""
         from pathlib import PurePosixPath
-        from redpanda.sandbox.file_view.publication import fields, load, valid_image, valid_operation
+        from .state import fields, load
+        from .file_view.publication import valid_image, valid_operation
         paths = set()
         for identity in self._history():
             receipt = load(self.storage / "commands" / identity / "sealed.json")
@@ -220,12 +176,12 @@ class WorkspaceVersions:
         executable = self.executable if self.executable is not None else native_executable()
         if not executable.is_file():
             raise SandboxUnavailable("运行 scripts/build_sandbox.py 构建本仓库的原生 sandbox，或配置 REDPANDA_SANDBOX_EXECUTABLE")
-        from redpanda.sandbox.file_view import Client
+        from redpanda.sandbox.files.file_view import Client
         return Client(executable, self.storage, self.root)
 
     @staticmethod
     def _publish(client):
-        from redpanda.sandbox.file_view import publication
+        from redpanda.sandbox.files.file_view import publication
         for transaction in publication.unfinished(client.store):
             result = publication.execute(client, transaction)
             if not result.get("finalized"):
@@ -266,7 +222,7 @@ class WorkspaceVersions:
                     self._mount.reset(token)
                 files = await settled(lambda: client.request("finish"))
                 if files["status"] != "sealed": raise RuntimeError(files)
-                from redpanda.sandbox.file_view.publication import atomic
+                from .state import atomic
                 await settled(atomic, result_path, result)
                 accepted = await settled(lambda: client.request("accept", command_id=identity))
                 if accepted["status"] != "accepted": raise RuntimeError(accepted)
@@ -283,7 +239,7 @@ class WorkspaceVersions:
         async with self._owner():
             noop = self.storage / "noops" / (identity + ".json")
             if noop.exists():
-                from redpanda.sandbox.file_view.publication import fields, load
+                from .state import fields, load
                 saved = load(noop)
                 fields(saved, ("target", "policy", "version"))
                 validate_version(saved["target"])
@@ -305,7 +261,7 @@ class WorkspaceVersions:
                     if version not in history: raise UnknownWorkspaceVersion(version)
                     targets = history[history.index(version)+1:]
                 if not targets:
-                    from redpanda.sandbox.file_view.publication import atomic
+                    from .state import atomic
                     noop.parent.mkdir(exist_ok=True)
                     await settled(atomic, noop, {"target": version, "policy": policy, "version": before})
                     return WorkspaceRestore(before, before)

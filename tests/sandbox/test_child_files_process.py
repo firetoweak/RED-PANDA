@@ -6,9 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.child_files import ChildFiles, child_root, child_workspace, workspace_versions
-from redpanda.sandbox.versions import INITIAL, WorkspaceRestoreFailed, native_executable, operation_id
-from redpanda.sandbox.worktrees import ReviewWorktrees
+from redpanda.sandbox.files import ChildFiles, child_root, child_workspace, workspace_files
+from redpanda.sandbox.files.operations import INITIAL, WorkspaceRestoreFailed, native_executable, operation_id
+from redpanda.sandbox.files.git import ReviewWorktrees
 from tests.fixtures.workspaces import workspace_record
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
@@ -40,7 +40,7 @@ def test_handoff_hashes_only_changed_files_and_reuses_frozen_result(tmp_path, un
         for index in range(untouched):
             (root / f"untouched-{index}").write_bytes(b"U" * 8192)
         child = await files.create("parent", "child")
-        view = workspace_versions(home, child_workspace(workspace, child))
+        view = workspace_files(home, child_workspace(workspace, child))
         await edit(view, "write", lambda mount: (mount / "src" / "code").write_text("child\n"))
         hashes = []
         original = ReviewWorktrees._hash
@@ -56,7 +56,7 @@ def test_handoff_hashes_only_changed_files_and_reuses_frozen_result(tmp_path, un
             assert "+child" in compared["diff"] and "after handoff" not in compared["diff"]
             assert hashes == ["src/code"]
             (root / "human").write_text("human")
-            parent = workspace_versions(home, workspace)
+            parent = workspace_files(home, workspace)
             async def merge():
                 assert await files.merge("parent", "child", parent) == ()
                 return {"ok": True}
@@ -75,7 +75,7 @@ def test_siblings_can_write_and_finish_without_waiting_for_each_other(tmp_path):
         root, home, workspace, files = setup(tmp_path)
         (root / "file").write_text("base")
         children = await asyncio.gather(*(files.create("parent", name) for name in ("a", "b")))
-        views = [workspace_versions(home, child_workspace(workspace, root)) for root in children]
+        views = [workspace_files(home, child_workspace(workspace, root)) for root in children]
         started = [asyncio.Event(), asyncio.Event()]
         release = asyncio.Event()
         async def write(index):
@@ -100,7 +100,7 @@ def test_siblings_can_write_and_finish_without_waiting_for_each_other(tmp_path):
         # A fresh pair avoids the already frozen A result above.
         for name in ("c", "d"):
             child = await files.create("parent", name)
-            child_view = workspace_versions(home, child_workspace(workspace, child))
+            child_view = workspace_files(home, child_workspace(workspace, child))
             await edit(child_view, name, lambda mount: (mount / "file").write_text("changed"))
         barrier = threading.Barrier(2, timeout=15)
         original = ReviewWorktrees._hash
@@ -122,7 +122,7 @@ def test_restored_and_ignored_changes_do_not_enter_result(tmp_path):
         (root / "file").write_text("base")
         (root / ".gitignore").write_text("ignored\n")
         child = await files.create("parent", "child")
-        view = workspace_versions(home, child_workspace(workspace, child))
+        view = workspace_files(home, child_workspace(workspace, child))
         await edit(view, "temporary", lambda mount: (mount / "file").write_text("temporary"))
         await view.restore(INITIAL, identity=operation_id("child", "undo"), policy="original")
         await edit(view, "ignored", lambda mount: (mount / "ignored").write_text("ignored"))
@@ -141,7 +141,7 @@ def test_file_directory_replacement_is_complete(tmp_path, directory):
         else:
             (root / "node").write_text("old")
         child = await files.create("parent", "child")
-        view = workspace_versions(home, child_workspace(workspace, child))
+        view = workspace_files(home, child_workspace(workspace, child))
         def replace(mount):
             node = mount / "node"
             if directory:
@@ -154,7 +154,7 @@ def test_file_directory_replacement_is_complete(tmp_path, directory):
                 (node / "new").write_text("new")
         await edit(view, "replace", replace)
         await files.finish("parent", "child")
-        parent = workspace_versions(home, workspace)
+        parent = workspace_files(home, workspace)
         async def merge():
             assert await files.merge("parent", "child", parent) == ()
             return {"ok": True}
@@ -177,11 +177,11 @@ def test_conflict_result_can_seed_an_independent_resolution_child(tmp_path):
         root, home, workspace, files = setup(tmp_path)
         (root / "file").write_text("base\n")
         child = await files.create("parent", "child")
-        child_view = workspace_versions(home, child_workspace(workspace, child))
+        child_view = workspace_files(home, child_workspace(workspace, child))
         await edit(child_view, "edit", lambda mount: (mount / "file").write_text("child\n"))
         await files.finish("parent", "child")
         (root / "file").write_text("parent\n")
-        parent = workspace_versions(home, workspace)
+        parent = workspace_files(home, workspace)
         async def merge():
             assert await files.merge("parent", "child", parent) == ("file",)
             return {"ok": False}
@@ -189,7 +189,7 @@ def test_conflict_result_can_seed_an_independent_resolution_child(tmp_path):
         assert (root / "file").read_text() == "parent\n"
         resolution = await files.create("parent", "resolve", conflict_child_id="child")
         assert "<<<<<<<" in (resolution / "file").read_text()
-        resolution_view = workspace_versions(home, child_workspace(workspace, resolution))
+        resolution_view = workspace_files(home, child_workspace(workspace, resolution))
         await edit(resolution_view, "resolve", lambda mount: (mount / "file").write_text("resolved\n"))
         await files.finish("parent", "resolve")
         async def accept():
@@ -205,7 +205,7 @@ def test_handoff_publishes_accepted_effects_after_interrupted_worker(tmp_path):
         root, home, workspace, files = setup(tmp_path)
         (root / "file").write_text("base")
         child = await files.create("parent", "child")
-        view = workspace_versions(home, child_workspace(workspace, child))
+        view = workspace_files(home, child_workspace(workspace, child))
         identity = operation_id("child", "interrupted")
         from pathlib import Path
         with view._client() as client:

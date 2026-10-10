@@ -49,7 +49,7 @@ writes and drains them on a short timer window, a per-inode pending-byte
 trigger, a global pending-byte cap, and bounded per-transaction inode/byte
 budgets (`VFS_BATCH_*` knobs). Buffered acknowledgement is only permitted
 for volatile-durability writes; any operation that promises durability —
-`fsync`, an NFSv3 `WRITE` acknowledged as `FILE_SYNC`, or unmount/shutdown
+`fsync` or unmount/shutdown
 finalization — MUST NOT return until the affected pending bytes are committed
 to the database (a per-inode or filesystem-wide commit barrier).
 
@@ -713,10 +713,10 @@ An overlay used as another base preserves its origin identity across copy-up.
 
 ### Partial-Origin Overlay Mode
 
-Partial-origin copy-up is an opt-in overlay mode selected by the first-class
-CLI policy `--partial-origin <off|on|auto>` (with
-`--partial-origin-threshold-bytes` sizing the `auto` cutoff). The default
-overlay behavior remains whole-file copy-up (`off`). In opt-in mode,
+Partial-origin copy-up is selected by the application's typed
+`PartialOriginPolicy` (`off`, `on` or `auto`, with a size threshold). The
+core policy defaults to whole-file copy-up (`off`); the Sandbox application
+selects its own policy explicitly. In partial-origin mode,
 write-opening a regular base-layer file creates a delta inode with the
 original size and metadata, records the base path/fingerprint in
 `fs_partial_origin`, and stores only changed chunk mappings in `fs_data` plus
@@ -729,10 +729,10 @@ reads also fail if the recorded base size or time fingerprint changes. An
 application MAY select an explicit `BaseValidator` content policy (for example,
 hash validation); that policy does not replace persistent identity checks. Snapshot/restore of the main
 delta database is supported only when the same unchanged base path is available.
-A database containing partial-origin rows is not portable on its own:
-`vfs backup` rejects it unless `--materialize` folds the base bytes in,
-`vfs materialize` produces a portable copy, and `vfs integrity`
-exposes the dependency via `--require-portable` and `--check-base`.
+A database containing partial-origin rows is not portable on its own.
+A frozen database preserves its delta and lineage; it does not freeze the
+host base. A self-contained export must materialize all required base bytes.
+This local library does not provide the upstream VFS CLI.
 
 #### Tables: `fs_partial_origin` and `fs_chunk_override`
 
@@ -757,11 +757,9 @@ CREATE TABLE fs_chunk_override (
 )
 ```
 
-Partial-origin stays opt-in. Coverage pinning the mode includes remount,
-main-DB snapshot restore, unlink cleanup/whiteout behavior, hardlink survival,
-rename plus `readdir_plus`, truncate shrink/extend, and base drift detection.
-It SHOULD NOT become the default until the FUSE/CLI torture and POSIX gates
-pass with the policy enabled.
+Partial-origin policy is an application choice, not a command-line contract
+of this library. Reopening a frozen delta still requires the declared base
+and valid origin identities; materialization must preserve unchanged bytes.
 
 ### Consistency Rules
 

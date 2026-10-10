@@ -292,6 +292,21 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 )
         self.assertEqual(offenders, [])
 
+    def test_file_management_consumers_use_public_entry_points(self):
+        """File-view transport, persistence and Git stay behind Sandbox files."""
+        files_root = SANDBOX_ROOT / "files"
+        offenders = []
+        for path in SANDBOX_ROOT.parent.rglob("*.py"):
+            if path.is_relative_to(files_root):
+                continue
+            implementations = sorted(
+                module for module in _imported_modules(path)
+                if module.startswith("redpanda.sandbox.files.")
+            )
+            if implementations:
+                offenders.append(f"{path}: {', '.join(implementations)}")
+        self.assertEqual(offenders, [])
+
     def test_sandbox_does_not_import_product_or_runtime_layers(self):
         offenders: list[str] = []
         forbidden = {

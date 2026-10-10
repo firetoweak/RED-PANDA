@@ -6,16 +6,10 @@ import re
 import shutil
 
 from redpanda.sandbox.registry import WorkspaceRecord
-from redpanda.sandbox.versions import WorkspaceVersions, _sqlite_lock, settled
-from redpanda.sandbox.worktrees import ReviewWorktrees, _native_path
-from redpanda.sandbox.file_view.publication import atomic, fields, load
-
-
-def workspace_versions(home, workspace):
-    storage = home.state_root / "workspace_views" / sha256(
-        str(workspace.task_root.resolve()).encode("utf-8")
-    ).hexdigest()
-    return WorkspaceVersions(workspace.task_root, storage)
+from .operations import workspace_files
+from .lifecycle import _sqlite_lock, settled
+from .git import ReviewWorktrees, _native_path
+from .state import atomic, fields, load
 
 
 def _child_key(parent_id, child_id):
@@ -64,7 +58,7 @@ class ChildFiles:
             git = self._git(parent_id, child_id)
             baseline_path = store / "baseline.json"
             if not baseline_path.exists():
-                view = workspace_versions(self.home, self.workspace)
+                view = workspace_files(self.home, self.workspace)
                 base = await view.read(git.snapshot)
                 seed = base
                 if conflict_child_id is not None:
@@ -86,7 +80,7 @@ class ChildFiles:
             self._result(parent_id, child_id)
             return
         root = child_root(self.home, parent_id, child_id)
-        view = workspace_versions(self.home, child_workspace(self.workspace, root))
+        view = workspace_files(self.home, child_workspace(self.workspace, root))
         async def freeze():
             if result_path.exists():
                 self._result(parent_id, child_id)
@@ -110,7 +104,7 @@ class ChildFiles:
     async def discard(self, parent_id, child_ids):
         for child_id in child_ids:
             root = child_root(self.home, parent_id, child_id)
-            view = workspace_versions(self.home, child_workspace(self.workspace, root))
+            view = workspace_files(self.home, child_workspace(self.workspace, root))
             for path, boundary in (
                 (root, self.home.state_root / "subagent_worktrees"),
                 (self._store(parent_id, child_id), self.home.state_root / "file_exchanges"),

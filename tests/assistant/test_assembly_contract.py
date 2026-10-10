@@ -31,10 +31,10 @@ def version_backend():
     async def execute(self, identity, callback):
         return await callback()
     with (
-        patch("redpanda.sandbox.versions.WorkspaceVersions.record", return_value="a" * 64),
-        patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute),
-        patch("redpanda.sandbox.versions.WorkspaceVersions.native_path", lambda self, path: path),
-        patch("redpanda.sandbox.versions.WorkspaceVersions.logical_path", lambda self, path: path),
+        patch("redpanda.sandbox.files.operations.WorkspaceFiles.record", return_value="a" * 64),
+        patch("redpanda.sandbox.files.operations.WorkspaceFiles.execute", execute),
+        patch("redpanda.sandbox.files.operations.WorkspaceFiles.native_path", lambda self, path: path),
+        patch("redpanda.sandbox.files.operations.WorkspaceFiles.logical_path", lambda self, path: path),
     ):
         yield
 
@@ -265,8 +265,8 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             with (
                 patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=home),
                 patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
-                patch("redpanda.sandbox.versions.WorkspaceVersions.read", read),
-                patch("redpanda.sandbox.versions.WorkspaceVersions.execute", execute),
+                patch("redpanda.sandbox.files.operations.WorkspaceFiles.read", read),
+                patch("redpanda.sandbox.files.operations.WorkspaceFiles.execute", execute),
             ):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(model_name="test", compact_threshold_tokens=200_000,

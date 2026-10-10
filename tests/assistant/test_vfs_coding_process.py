@@ -11,11 +11,11 @@ import pytest
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.workspace_versions import project_workspace_versions, workspace_version_event, WORKSPACE_RESCUE_FACT
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.sandbox.child_files import workspace_versions
+from redpanda.sandbox.files import workspace_files
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.versions import native_executable
+from redpanda.sandbox.files.file_view.client import native_executable
 from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, MemoryJournal, SqliteJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
@@ -45,7 +45,7 @@ def test_read_only_shell_commands_overlap_without_native_operations(tmp_path, mo
         (root / "value").write_text("published")
         home = RedPandaHome(tmp_path / "home")
         workspace = workspace_record(root)
-        view = workspace_versions(home, workspace)
+        view = workspace_files(home, workspace)
         script = tmp_path / "rendezvous.py"
         # The rendezvous writes only test controls outside the workspace.
         script.write_text(

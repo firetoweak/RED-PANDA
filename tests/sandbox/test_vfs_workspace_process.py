@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.sandbox.versions import INITIAL, WorkspaceVersions, native_executable, operation_id
+from redpanda.sandbox.files.operations import INITIAL, WorkspaceFiles, native_executable, operation_id
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
     not native_executable().is_file(),
@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.process, pytest.mark.skipif(
 def backend(tmp_path):
     root = tmp_path / "project"
     root.mkdir()
-    return WorkspaceVersions(root, tmp_path / "store")
+    return WorkspaceFiles(root, tmp_path / "store")
 
 
 def test_record_does_not_enumerate_workspace(tmp_path):
@@ -33,9 +33,9 @@ def test_record_does_not_enumerate_workspace(tmp_path):
 
 
 def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
-    from redpanda.assistant.subagent.workspace import ChildWorkspaceReview
+    from redpanda.assistant.subagent.review import ChildWorkspaceReview
     from redpanda.paths import RedPandaHome
-    from redpanda.sandbox.child_files import ChildFiles, child_workspace, workspace_versions
+    from redpanda.sandbox.files import ChildFiles, child_workspace, workspace_files
     from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
@@ -45,7 +45,7 @@ def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
         workspace = workspace_record(view.root)
         files = ChildFiles(home, workspace)
         child_root = await files.create("parent", "child")
-        child = workspace_versions(home, child_workspace(workspace, child_root))
+        child = workspace_files(home, child_workspace(workspace, child_root))
         async def edit():
             child.native_path(child.root / "file").write_text("child")
             return {"ok": True}
@@ -65,7 +65,7 @@ def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
             return {"ok": True}
         review = ChildWorkspaceReview(SimpleNamespace(snapshot=snapshot), "parent", files, transport, view)
         intent = SimpleNamespace(command_id="delegate", child_session_id="child")
-        with patch("redpanda.assistant.subagent.workspace.project_delegate_intents", return_value=[intent]):
+        with patch("redpanda.assistant.subagent.review.project_delegate_intents", return_value=[intent]):
             compared = await review.review("compare", "delegate", ["file"])
             assert compared["ok"] and "+child" in compared["data"]["diff"]
             merged = await review.review("merge", "delegate", merge=True)
@@ -139,7 +139,7 @@ def test_unknown_execution_never_publishes_or_reexecutes(tmp_path):
 def test_two_owners_serialize_and_read_preceding_publication(tmp_path):
     async def scenario():
         first = backend(tmp_path)
-        second = WorkspaceVersions(first.root, first.storage)
+        second = WorkspaceFiles(first.root, first.storage)
         logical = first.root / "ordered"
         entered, release = asyncio.Event(), asyncio.Event()
         async def one():
@@ -194,9 +194,9 @@ def test_publication_in_another_process_waits_for_reader(tmp_path):
         source = """
 import asyncio, sys
 from pathlib import Path
-from redpanda.sandbox.versions import WorkspaceVersions
+from redpanda.sandbox.files.operations import WorkspaceFiles
 async def main():
-    view = WorkspaceVersions(Path(sys.argv[1]), Path(sys.argv[2]))
+    view = WorkspaceFiles(Path(sys.argv[1]), Path(sys.argv[2]))
     view._publish = lambda _: (view.root / 'file.txt').write_text('next')
     print('waiting', flush=True)
     await view._publish_pending(None)
@@ -255,7 +255,7 @@ def test_discovery_paths_are_logical_and_git_reads_projected_files(tmp_path, dee
         view = backend(tmp_path)
         if deep_store:
             storage = tmp_path / ("s" * (235 - len(str(tmp_path)) - 1))
-            view = WorkspaceVersions(view.root, storage)
+            view = WorkspaceFiles(view.root, storage)
             assert len(str(storage / "mount" / ".git" / "objects" / "00" / ("a" * 38))) > 260
         code = view.root / "main.py"
         code.write_text("print('before')\n")
@@ -281,7 +281,7 @@ def test_discovery_paths_are_logical_and_git_reads_projected_files(tmp_path, dee
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows 共享模式会拒绝正在打开的内部元数据替换")
 def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persistent_lock(tmp_path):
-    from redpanda.sandbox.file_view import publication
+    from redpanda.sandbox.files.file_view import publication
     path = tmp_path / "metadata.json"
     publication.atomic(path, {"value": "before"})
     held = publication.native.open_file(path)
@@ -299,7 +299,7 @@ def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persiste
     thread = threading.Thread(target=reader)
     thread.start()
     try:
-        with patch("redpanda.sandbox.file_view.publication.os.replace", observe):
+        with patch("redpanda.sandbox.files.file_view.publication.os.replace", observe):
             publication.atomic(path, {"value": "after"})
     finally:
         thread.join(timeout=2)
@@ -312,7 +312,7 @@ def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persiste
 
 
 def test_native_history_pointer_handles_a_brief_reader(tmp_path):
-    from redpanda.sandbox.file_view import Client, publication
+    from redpanda.sandbox.files.file_view import Client, publication
     root = tmp_path / "project"
     root.mkdir()
     with Client(native_executable(), tmp_path / "store", root) as client:

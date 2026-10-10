@@ -13,7 +13,7 @@ from redpanda.assistant.workspace_versions import (
 from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.session_scheduler import SettlingScheduler
-from redpanda.sandbox.versions import SandboxUnavailable
+from redpanda.sandbox.files.operations import SandboxUnavailable
 
 
 def test_record_waits_for_whole_batch_without_context_noise_or_extra_decision():
@@ -84,7 +84,7 @@ def test_record_failure_is_a_visible_fact_but_unknown_error_propagates():
 
 
 async def restore_history(recorded):
-    from redpanda.sandbox.versions import WorkspaceRestore
+    from redpanda.sandbox.files.operations import WorkspaceRestore
     async def tool(*_):
         return {"ok": True, "code": "DONE"}
     model = ScriptedDecisionMaker((
@@ -162,7 +162,7 @@ def test_compact_window_cannot_reference_removed_calls():
 
 def test_partial_restore_retains_rescue_fact_without_exposing_version_addresses():
     async def scenario():
-        from redpanda.sandbox.versions import WorkspaceRestoreFailed
+        from redpanda.sandbox.files.operations import WorkspaceRestoreFailed
         from redpanda.assistant.workspace_versions import WORKSPACE_RESTORE_FACT
         runtime, boundary, versions, events, visible = await restore_history(["a" * 64] * 4)
         versions.restore.side_effect = WorkspaceRestoreFailed("f" * 64, OSError("disk full"))

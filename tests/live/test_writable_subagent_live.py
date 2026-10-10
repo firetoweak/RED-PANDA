@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from redpanda.assistant.subagent.subagent import project_delegate_intents, project_reclaimed
-from redpanda.sandbox.child_files import child_root as subagent_root
+from redpanda.sandbox.files.children import child_root as subagent_root
 from redpanda.assistant.workspace_versions import project_workspace_versions
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.config import load_app_config

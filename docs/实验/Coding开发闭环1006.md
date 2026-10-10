@@ -94,9 +94,9 @@ Host 使用独立实验数据根。实验连接与模型设置对象读取原有
 
 本次本地产物在 `tests/.live_workspace/coding-20261006-02/`，被 Git 忽略，保留三份项目、虚拟环境、独立验收、Journal、任务正文、模型回复、工具调用与结果、diff、用量及诊断。
 
-- [results.json](../../tests/.live_workspace/coding-20261006-02/results.json)：逐样本判定、测试输出和用量。
-- [environment-control.json](../../tests/.live_workspace/coding-20261006-02/environment-control.json)：助手与项目环境对照。
-- [diagnostics.json](../../tests/.live_workspace/coding-20261006-02/diagnostics.json)：新增测试对原始源码的结果、CLI 原始输出与回读。
+- `results.json`：逐样本判定、测试输出和用量。
+- `environment-control.json`：助手与项目环境对照。
+- `diagnostics.json`：新增测试对原始源码的结果、CLI 原始输出与回读。
 
 本地完整证据不会随仓库提交自动分发。没有自动清理本次产物，也没有把实验仓库的 Git 提交、环境或凭据纳入主仓库。
 

@@ -2,40 +2,17 @@
 from __future__ import annotations
 import errno
 import hashlib
-import json
 import os
 from pathlib import Path
 import stat
 import uuid
-import time
 from . import native
+from ..state import atomic, fields, load
 
 class Conflict(RuntimeError):
     pass
 
 def digest(data): return hashlib.sha256(data).hexdigest()
-def load(path): return json.loads(Path(path).read_text(encoding='utf-8'))
-
-def atomic(path, value):
-    path = Path(path)
-    temp = path.with_name(path.name+'.'+uuid.uuid4().hex+'.next')
-    with temp.open('xb') as file:
-        file.write(json.dumps(value,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
-        file.flush();os.fsync(file.fileno())
-    # Windows readers can briefly deny DELETE sharing on internal metadata.
-    # Retry the still-unpublished rename, never the Command or host writes.
-    for delay in (0,0.01,0.02,0.04,0.08):
-        if delay: time.sleep(delay)
-        try:
-            os.replace(temp,path)
-        except OSError as error:
-            if getattr(error,'winerror',None) not in (5,32) or delay==0.08: raise
-        else:
-            return
-
-def fields(value, expected):
-    if type(value) is not dict or set(value)!=set(expected): raise ValueError('persistent fields differ')
-
 def command_id(value):
     if type(value) is not str or not 0<len(value)<=100 or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in value): raise ValueError('invalid command id')
 
