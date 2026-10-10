@@ -15,16 +15,11 @@ fn get_runtime() -> tokio::runtime::Runtime {
 }
 
 /// Mount backend type.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum Backend {
     /// FUSE filesystem (Linux only).
+    #[default]
     Fuse,
-}
-
-impl Default for Backend {
-    fn default() -> Self {
-        Self::Fuse
-    }
 }
 
 impl std::fmt::Display for Backend {

@@ -4,7 +4,7 @@ use crate::fs::{FsError, TimeChange};
 use crate::DEFAULT_FILE_MODE;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use tempfile::tempdir;
-use tokio_rusqlite::rusqlite::{types::Value, Connection};
+use tokio_rusqlite::rusqlite::Connection;
 
 async fn create_test_overlay() -> Result<(OverlayFS, tempfile::TempDir, tempfile::TempDir)> {
     let base_dir = tempdir()?;
@@ -296,10 +296,17 @@ async fn materialize_base_changes_folds_visible_parent_state_only() -> Result<()
         PartialOriginPolicy::default(),
     );
     branch_overlay.init("overlay://parent").await?;
-    let (_, branch_override) = branch_overlay
-        .create_file(ROOT_INO, "parent-only.txt", DEFAULT_FILE_MODE, 51, 52)
-        .await?;
+    // create_file rejects a name that already exists in a lower layer.
+    // The branch override is a copy-up write.
+    let parent_only = branch_overlay
+        .lookup(ROOT_INO, "parent-only.txt")
+        .await?
+        .unwrap();
+    let branch_override = branch_overlay.open(parent_only.ino, libc::O_RDWR).await?;
     branch_override.pwrite(0, b"branch override").await?;
+    branch_override
+        .truncate(b"branch override".len() as u64)
+        .await?;
     branch_override.fsync().await?;
 
     branch_overlay

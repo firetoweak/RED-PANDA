@@ -55,6 +55,11 @@ pub(crate) struct Mount {
     fuse_device: Arc<File>,
 }
 impl Mount {
+    /// Canonical mountpoint passed to `mount(2)` / fusermount, without the trailing NUL.
+    pub(crate) fn mountpoint_bytes(&self) -> Vec<u8> {
+        self.mountpoint.as_bytes().to_vec()
+    }
+
     pub(crate) fn new(
         mountpoint: &Path,
         options: &[MountOption],
