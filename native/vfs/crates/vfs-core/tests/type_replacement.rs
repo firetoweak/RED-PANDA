@@ -43,6 +43,41 @@ async fn directory_replacing_a_host_file_accepts_children() {
 }
 
 #[tokio::test]
+async fn directory_replacing_a_host_file_accepts_nested_children() {
+    let dir = tempdir().unwrap();
+    let base_dir = dir.path().join("base");
+    std::fs::create_dir(&base_dir).unwrap();
+    std::fs::write(base_dir.join("a"), b"file").unwrap();
+
+    let base = Arc::new(HostFS::new(&base_dir).unwrap());
+    let delta = Vfs::open(VfsOptions::with_path(
+        dir.path().join("delta.db").to_str().unwrap(),
+    ))
+    .await
+    .unwrap();
+    let overlay = OverlayFS::new(base, delta.fs);
+    overlay.init(base_dir.to_str().unwrap()).await.unwrap();
+
+    overlay.unlink(1, "a").await.unwrap();
+    let directory = overlay.mkdir(1, "a", 0o755, 0, 0).await.unwrap();
+    assert!(directory.is_directory());
+    let sub = overlay
+        .mkdir(directory.ino, "sub", 0o755, 0, 0)
+        .await
+        .unwrap();
+    assert!(sub.is_directory());
+    let (file_stats, file) = overlay
+        .create_file(sub.ino, "file", 0o644, 0, 0)
+        .await
+        .unwrap();
+    file.pwrite(0, b"nested").await.unwrap();
+    drop(file);
+    let found = overlay.lookup(sub.ino, "file").await.unwrap().unwrap();
+    assert_eq!(found.ino, file_stats.ino);
+    assert_eq!(found.size, 6);
+}
+
+#[tokio::test]
 async fn file_replacing_a_host_directory_can_be_written() {
     let dir = tempdir().unwrap();
     let base_dir = dir.path().join("base");
