@@ -161,7 +161,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         events = await SqliteJournal(self.store.require(job["reader"])).snapshot(
             job["reader"]
         )
-        self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), 2)
+        self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), 3)
         self.assertTrue(self.host.failures.empty())
 
     async def test_repeated_reads_are_reminded_and_can_complete(self):

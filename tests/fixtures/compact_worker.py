@@ -52,13 +52,20 @@ class CompactLlm:
                     LLMUsage(input_tokens=60000, output_tokens=5),
                 )
             if (self.workspace / "read_compact").exists() or (self.workspace / "repeat_reads").exists():
-                tool_results = [m for m in messages if m["role"] == "tool" and "source" in str(m["content"])]
+                tool_results = [m for m in messages if m["role"] == "tool" and "HISTORY_FOUND" in str(m["content"])]
                 reads = 10 if (self.workspace / "repeat_reads").exists() else 1
                 if len(tool_results) < reads:
                     return LLMCallResult(LLMResponse(content="回读", calls=(ToolCall(
-                        "read-source", "read_compact_source", json.dumps({
-                            "kind": "view", "reference": "", "offset": 0, "limit": 10
+                        "read-source", "find_history", json.dumps({
+                            "offset": 0, "limit": 10
                         })),)), LLMUsage(input_tokens=60000, output_tokens=5))
+                if (self.workspace / "read_compact").exists() and not any(
+                    m["role"] == "tool" and "CONTENT_READ" in str(m["content"]) for m in messages
+                ):
+                    reference = json.loads(tool_results[-1]["content"])["data"]["records"][0]["reference"]
+                    return LLMCallResult(LLMResponse(content="读取原文", calls=(ToolCall(
+                        "read-content", "read_content", json.dumps({"reference": reference}),
+                    ),)), LLMUsage(input_tokens=60000, output_tokens=5))
             if (self.workspace / "write_compact").exists():
                 return LLMCallResult(LLMResponse(content="", calls=(ToolCall(
                     "write", "write_file", '{"path":"forbidden.txt","content":"bad"}'

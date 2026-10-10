@@ -6,13 +6,14 @@ from redpanda.runtime.json_values import thaw_value
 
 import json
 from copy import deepcopy
-from dataclasses import asdict, replace
+from dataclasses import replace
 
 from redpanda.assistant.artifacts import (
     is_valid_artifact_id,
-    ArtifactOffsetOutOfRangeError,
+    ArtifactNotFoundError,
 )
 from redpanda.assistant.attachments import is_valid_attachment_id
+from redpanda.assistant.content import READ_CONTENT, read_content_result
 from redpanda.assistant.context.projection import (
     _translate_visible_events,
     PreparedModelContext,
@@ -28,22 +29,22 @@ TASK = "compact.task"
 CREATED = "compact.handoff_created"
 WINDOW = "compact.window_rolled_over"
 MODEL_USAGE = "model_usage"
-READ = "read_compact_source"
+FIND_HISTORY = "find_history"
 SUBMIT = "_accept_handoff"
 HISTORY_PREVIEW_CHARS = 400
 MAX_HISTORY_RECORDS = 50
 PURPOSE = """<self_handoff>
-当前在后台为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
-优先使用已有上下文，仅为关键缺口调用 read_compact_source 回读。其他工具不能执行。
+请为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
+优先使用已有上下文，仅为关键缺口用 find_history 定位历史、read_content 读取真实引用。其他工具不能执行。
 保持目标、约束、纠正、决定、未完成委派、证据与来源；计划不写成已执行，声明不写成验证。
 保留用户对本会话命令环境的要求及其后续修改、取消；区分用户要求、已验证的执行方式与尚未验证的设想。单次 Shell 激活不写成可延续的进程状态。
-关键证据保留真实事件序号和原件引用；文件位置保留相对工作区的完整路径，不省略目录前缀。
+关键证据保留真实来源引用和消息序号；文件位置保留相对工作区的完整路径，不省略目录前缀。
 推测、未确认条件与已验证事实保持区分，不把相关性写成因果，不把待验证的解释写成根因闭环。
 相关图片保留原始附件 id 和来源；摘要文字不等于看过图片，业务模型可用 read_image 重新查看。
 不重复读取，不扩展调查；未知内容标明不确定。交接之后新到的消息会接在它后面，可以修正它。
 完成时直接输出非空交接文本，不调用工具。
 </self_handoff>"""
-HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。压缩前及分支继承的历史仍可回读：遇到疑点用 read_compact_source，以 view 按序号范围或关键词定位，再用 event 读取对应消息。upto 固定查询切面，续页沿用返回的 upto；以下来源身份仅用于溯源。之后的消息可修正它。\n"
+HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。更早的原始消息仍可回查：有真实引用时用 read_content 查找或读取原文；没有引用时用 find_history 按关键词或消息序号范围定位。历史检索续页沿用返回的 upto 和 next_offset。之后的消息可修正它。\n"
 
 
 def schema(name, description, properties, required):
@@ -62,28 +63,23 @@ def schema(name, description, properties, required):
     }
 
 
-READ_SCHEMA = schema(
-    READ,
-    "回读会话历史，包含已被压缩移出当前上下文的原始消息。"
-    "view 按 start_sequence/end_sequence（含两端）和 query 定位，返回事件序号及有界原文片段，reference 为空。"
-    "query 对模型消息的字符串字段作区分大小写的字面匹配，空串表示不筛选；按事件顺序返回，不搜索外置 Artifact 正文。"
-    "view 的 offset 是跳过的匹配事件数，limit 最多 50；event/artifact 的 offset 和 limit 按字符计，limit 最多 12000。"
-    "event 的 reference 取 view 中的 sequence 字符串，返回该序号对应的一组完整模型消息（不是原始 Event 对象）；"
-    "artifact 的 reference 取真实 artifact_id，读取外置原文。读取范围由执行侧确定，无需指定会话身份："
-    "后台交接只能回读冻结点以内的历史；业务会话可回读自身完整逻辑历史，包括分支继承的前缀。"
-    "首次省略 upto 采用当前可读截止位置，续页必须带返回的 upto 和 next_offset，并保持筛选条件不变。"
-    "后台交接的 upto 固定为冻结点，较早范围用 end_sequence 筛选。",
+FIND_HISTORY_SCHEMA = schema(
+    FIND_HISTORY,
+    "检索当前对话可回查的原始消息，包括当前上下文中已省略的历史。"
+    "query 按区分大小写的字面关键词检索消息内容，空串表示浏览，不搜索引用中的正文。"
+    "返回消息序号、原文线索和可用 read_content 读取的真实 reference；片段足够时无需再读。"
+    "start_sequence/end_sequence 含两端，offset 是跳过的匹配消息组数。"
+    "首次可省略 upto；续页沿用返回的 upto、next_offset 和筛选条件，避免新消息改变结果。"
+    "limit 默认 10、最大 50。整理交接时只可检索交接开始前的历史。",
     {
-        "kind": {"enum": ["view", "event", "artifact"]},
-        "reference": {"type": "string"},
-        "offset": {"type": "integer", "minimum": 0, "description": "view 为匹配事件偏移，event/artifact 为字符偏移；首次用 0。"},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 12000, "description": "view 最多 50 个事件，event/artifact 最多 12000 字符。"},
-        "start_sequence": {"type": "integer", "minimum": 1, "description": "仅 view：最早事件序号，默认 1。"},
-        "end_sequence": {"type": "integer", "minimum": 1, "description": "仅 view：最晚事件序号，默认 upto。"},
-        "query": {"type": "string", "description": "仅 view：原文关键词，默认空串，不作语义排序。"},
-        "upto": {"type": "integer", "minimum": 0, "description": "固定读取截至此 Journal 位置的事实；首次可省略，续页使用返回值。"},
+        "query": {"type": "string", "default": ""},
+        "offset": {"type": "integer", "minimum": 0, "default": 0},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+        "start_sequence": {"type": "integer", "minimum": 1},
+        "end_sequence": {"type": "integer", "minimum": 1},
+        "upto": {"type": "integer", "minimum": 0, "description": "沿用上次检索返回的历史截止位置。"},
     },
-    ["kind", "reference", "offset", "limit"],
+    [],
 )
 
 
@@ -254,7 +250,7 @@ class CompactContext:
         return self.projector.attachments_for(source).read(attachment_id)
 
     def schemas(self):
-        return deepcopy(self.request["tools"]) if self.is_reader else [READ_SCHEMA]
+        return deepcopy(self.request["tools"]) if self.is_reader else [FIND_HISTORY_SCHEMA]
 
     def visible(self, events, state):
         # 按 sequence 硬切不会把一个回合切成两半：cutover 取自 snapshot 时的
@@ -279,7 +275,8 @@ class CompactContext:
 
     def bindings(self):
         return {
-            READ: ToolBinding(self.read),
+            FIND_HISTORY: ToolBinding(self.find_history),
+            READ_CONTENT: ToolBinding(self.read_content),
             SUBMIT: ToolBinding(self.submit, decision_on_outcome=False),
         }
 
@@ -287,7 +284,7 @@ class CompactContext:
         if self.is_reader:
             data = self.seed[1]
             if upto is not None and upto != data["upto"]:
-                raise HistoryPositionError(f"后台来源固定截至 {data['upto']}，请用 end_sequence 筛选更早范围")
+                raise HistoryPositionError(f"当前可读历史固定截至 {data['upto']}，请用 end_sequence 筛选更早范围")
             bundle = load_document(
                 self.projector.gateway, data["source"], data["bundle"]
             )
@@ -299,7 +296,7 @@ class CompactContext:
         available = events[-1].sequence if events else 0
         upto = available if upto is None else upto
         if upto > available:
-            raise HistoryPositionError(f"历史截至 {available}，无法读取截至 {upto} 的切面")
+            raise HistoryPositionError(f"当前可回查的历史截至消息序号 {available}，请提供不超过该值的 upto")
         # 截取执行事实后再投影，不能让截止位置之后的 Outcome 改写旧 Step 的表示。
         selected = tuple(event for event in events if event.sequence <= upto)
         return self.session_id, history_bundle(self.projector, selected, self.session_id), upto
@@ -318,14 +315,7 @@ class CompactContext:
                     {
                         "role": "user",
                         "content": PURPOSE
-                        + "\n"
-                        + json.dumps(
-                            {
-                                "source": self.seed[1]["source"],
-                                "upto": self.seed[1]["upto"],
-                            },
-                            ensure_ascii=False,
-                        ),
+                        + f"\n当前可检索的历史截至消息序号 {self.seed[1]['upto']}。",
                     }
                 )
             else:
@@ -338,92 +328,73 @@ class CompactContext:
             source_sequences=tuple([0] * len(messages)),
         )
 
-    async def read(self, context, arguments):
-        required = {"kind", "reference", "offset", "limit"}
-        view_fields = {"start_sequence", "end_sequence", "query"}
-        if not required <= set(arguments) or set(arguments) - required - view_fields - {"upto"}:
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "INVALID_ARGUMENT"}
-        kind, reference, offset, limit = (
-            arguments[k] for k in ("kind", "reference", "offset", "limit")
-        )
+    async def find_history(self, context, arguments):
+        offset, limit = arguments.get("offset", 0), arguments.get("limit", 10)
         upto = arguments.get("upto")
         start_sequence = arguments.get("start_sequence", 1)
         end_sequence = arguments.get("end_sequence")
         query = arguments.get("query", "")
         if (
-            type(reference) is not str
-            or type(kind) is not str
-            or kind not in {"view", "event", "artifact"}
-            or type(offset) is not int
-            or offset < 0
-            or type(limit) is not int
-            or not 1 <= limit <= 12000
+            set(arguments) - {"offset", "limit", "upto", "start_sequence", "end_sequence", "query"}
+            or type(offset) is not int or offset < 0
+            or type(limit) is not int or not 1 <= limit <= MAX_HISTORY_RECORDS
             or ("upto" in arguments and (type(upto) is not int or upto < 0))
             or type(start_sequence) is not int or start_sequence < 1
             or ("end_sequence" in arguments and (type(end_sequence) is not int or end_sequence < start_sequence))
             or type(query) is not str
-            or (kind != "view" and bool(set(arguments) & view_fields))
-            or (kind == "view" and (reference != "" or limit > MAX_HISTORY_RECORDS))
         ):
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "INVALID_ARGUMENT"}
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "历史检索参数无效。"}
         if offset > 0 and upto is None:
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "续读必须提供第一页返回的 upto"}
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "续查必须提供第一页返回的 upto"}
         try:
             source, bundle, upto = await self._read_source(upto)
         except HistoryPositionError as error:
             return {"ok": False, "code": "HISTORY_POSITION_OUT_OF_RANGE", "error": str(error)}
-        if kind == "view":
-            end_sequence = upto if end_sequence is None else end_sequence
-            if end_sequence > upto:
-                return {"ok": False, "code": "INVALID_ARGUMENT", "error": "end_sequence 不能超过 upto"}
-            records = []
-            for sequence in sorted(bundle["raw"], key=int):
-                if start_sequence <= int(sequence) <= end_sequence:
-                    record = _history_record(int(sequence), bundle["raw"][sequence], query)
-                    if record is not None:
-                        records.append(record)
-            if offset > len(records):
-                return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
-            end = min(len(records), offset + limit)
-            return {
-                "ok": True, "code": "COMPACT_SOURCE_READ",
-                "data": {
-                    "source": source, "upto": upto,
-                    "start_sequence": start_sequence, "end_sequence": end_sequence,
-                    "records": records[offset:end], "offset": offset,
-                    "next_offset": end if end < len(records) else None,
-                    "total_records": len(records),
-                },
-            }
-        elif kind == "event":
-            if reference not in bundle["raw"]:
-                return {"ok": False, "code": "EVENT_NOT_IN_SOURCE", "error": "EVENT_NOT_IN_SOURCE"}
-            text = json.dumps(bundle["raw"][reference], ensure_ascii=False)
-        else:
-            if reference not in bundle["artifacts"]:
-                return {"ok": False, "code": "ARTIFACT_NOT_IN_SOURCE", "error": "ARTIFACT_NOT_IN_SOURCE"}
-            try:
-                chunk = self.projector.gateway.for_session(source).read(
-                    reference, offset, limit
-                )
-            except ArtifactOffsetOutOfRangeError:
-                return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
-            return {"ok": True, "code": "COMPACT_SOURCE_READ", "data": {"source": source, "upto": upto, **asdict(chunk)}}
-        if offset > len(text):
+        end_sequence = upto if end_sequence is None else end_sequence
+        if end_sequence > upto:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "end_sequence 不能超过 upto"}
+        records = []
+        for sequence in sorted(bundle["raw"], key=int):
+            if start_sequence <= int(sequence) <= end_sequence:
+                record = _history_record(int(sequence), bundle["raw"][sequence], query)
+                if record is not None:
+                    records.append(record)
+        if offset > len(records):
             return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
-        end = min(len(text), offset + limit)
+        end = min(len(records), offset + limit)
+        page = records[offset:end]
+        store = self.projector.gateway.for_session(self.session_id)
+        for record in page:
+            record["reference"] = store.save(json.dumps(
+                bundle["raw"][str(record["sequence"])], ensure_ascii=False,
+            )).artifact_id
         return {
-            "ok": True,
-            "code": "COMPACT_SOURCE_READ",
+            "ok": True, "code": "HISTORY_FOUND",
             "data": {
-                "source": source,
-                "upto": upto,
-                "content": text[offset:end],
-                "offset": offset,
-                "next_offset": end if end < len(text) else None,
-                "total_chars": len(text),
+                "upto": upto, "start_sequence": start_sequence, "end_sequence": end_sequence,
+                "records": page, "offset": offset,
+                "next_offset": end if end < len(records) else None,
+                "total_records": len(records),
             },
+            "hint": "线索不足时用 read_content 读取 reference；继续检索沿用 upto、next_offset 和筛选条件。",
         }
+
+    async def read_content(self, context, arguments):
+        source = self.session_id
+        if self.is_reader:
+            reference = arguments.get("reference")
+            if not is_valid_artifact_id(reference):
+                return read_content_result(self.projector.gateway.for_session(source), arguments)
+            try:
+                self.projector.gateway.for_session(source).read(reference, 0, 1)
+            except ArtifactNotFoundError:
+                pass
+            else:
+                return read_content_result(self.projector.gateway.for_session(source), arguments)
+            source, bundle, _ = await self._read_source(None)
+            if reference not in bundle["artifacts"]:
+                return {"ok": False, "code": "CONTENT_NOT_FOUND", "error": "该引用不在当前可读内容中。"}
+        return read_content_result(self.projector.gateway.for_session(source), arguments)
 
     async def submit(self, context, arguments):
         if not self.is_reader or set(arguments) != {"handoff"}:
@@ -446,7 +417,29 @@ def frozen_bundle(projector, events, session_id, context, prepared=None):
         {"source": session_id, "sequence": seq, "message": message}
         for seq, message in zip(prepared.source_sequences[1:], prepared.messages[1:])
     ]
-    return {"records": records, **history_bundle(projector, events, session_id)}
+    bundle = history_bundle(projector, events, session_id)
+    artifacts = set(bundle["artifacts"])
+    for record in records:
+        message = record["message"]
+        if message["role"] == "tool":
+            artifacts.update(content_references(json.loads(message["content"])))
+    return {"records": records, **bundle, "artifacts": sorted(artifacts)}
+
+
+def content_references(value):
+    references = set()
+    def collect(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in {"artifact_id", "reference"} and is_valid_artifact_id(child):
+                    references.add(child)
+                else:
+                    collect(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                collect(child)
+    collect(value)
+    return references
 
 
 def history_bundle(projector, events, session_id):
@@ -460,21 +453,11 @@ def history_bundle(projector, events, session_id):
             raw.setdefault(str(item.sequence), []).append(item.message)
     artifacts = set()
 
-    def collect(value):
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "artifact_id" and is_valid_artifact_id(child):
-                    artifacts.add(child)
-                else:
-                    collect(child)
-        elif isinstance(value, (list, tuple)):
-            for child in value:
-                collect(child)
 
     for values in raw.values():
         for message in values:
             if message["role"] == "tool":
-                collect(json.loads(message["content"]))
+                artifacts.update(content_references(json.loads(message["content"])))
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted):

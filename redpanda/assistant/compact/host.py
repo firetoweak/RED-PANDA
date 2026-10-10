@@ -177,8 +177,7 @@ class CompactHost:
             {
                 "role": "user",
                 "content": HANDOFF_PREFIX
-                + json.dumps(provenance, ensure_ascii=False)
-                + "\n"
+                + f"这份交接覆盖的历史截至消息序号 {p}。\n"
                 + job["summary"],
             }
         ]

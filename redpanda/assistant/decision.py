@@ -9,10 +9,11 @@ from typing import AbstractSet, Protocol
 from redpanda.assistant.compact.core import (
     CompactContext,
     MODEL_USAGE,
-    READ_SCHEMA,
+    FIND_HISTORY,
     SUBMIT,
 )
 from redpanda.assistant.artifacts import ArtifactGateway
+from redpanda.assistant.content import READ_CONTENT
 from redpanda.assistant.loop_guard import LoopGuard, NOTICE
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT
 from redpanda.assistant.control import (
@@ -469,7 +470,7 @@ class JournalBackedLlmDecisionMaker:
                 decision = self._decision_from_response(
                     frame,
                     result.response,
-                    {READ_SCHEMA["function"]["name"]} & allowed_tool_names,
+                    {FIND_HISTORY, READ_CONTENT} & allowed_tool_names,
                     frozenset(),
                 )
             else:

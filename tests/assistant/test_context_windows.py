@@ -14,7 +14,7 @@ from redpanda.assistant.compact.core import (
     CompactBoundary,
     CompactContext,
     HANDOFF_PREFIX,
-    READ_SCHEMA,
+    FIND_HISTORY_SCHEMA,
     TASK,
     MODEL_USAGE,
     latest_input_tokens,
@@ -50,10 +50,10 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         )
         context.runtime = runtime
         args = {
-            "kind": "view", "reference": "", "offset": 0, "limit": 10,
+            "offset": 0, "limit": 10,
             "start_sequence": target.sequence, "end_sequence": target.sequence, "query": query,
         }
-        result = await context.read(None, args)
+        result = await context.find_history(None, args)
         self.assertTrue(result["ok"])
         data = result["data"]
         self.assertEqual(data["total_records"], 1)
@@ -61,14 +61,11 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["sequence"], target.sequence)
         self.assertIn(query, record["preview"])
         self.assertTrue(record["preview_truncated"])
-        event = await context.read(None, {
-            "kind": "event", "reference": str(record["sequence"]),
-            "offset": 0, "limit": 12000, "upto": data["upto"],
-        })
-        self.assertIn({"role": "user", "content": content}, json.loads(event["data"]["content"]))
-        not_literal = await context.read(None, {**args, "query": r"a.+\[1\]"})
+        event = await context.read_content(None, {"reference": record["reference"]})
+        self.assertIn({"role": "user", "content": content}, json.loads(event["data"]["fragments"][0]["content"]))
+        not_literal = await context.find_history(None, {**args, "query": r"a.+\[1\]"})
         self.assertEqual(not_literal["data"]["records"], [])
-        wrong_case = await context.read(None, {**args, "query": query.lower()})
+        wrong_case = await context.find_history(None, {**args, "query": query.lower()})
         self.assertEqual(wrong_case["data"]["records"], [])
 
     async def test_history_paging_keeps_late_outcomes_out_of_the_original_snapshot(self):
@@ -93,36 +90,29 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         events = await runtime.snapshot("b")
         context = CompactContext("b", events, ModelContextProjector(gateway=gateway), None)
         context.runtime = runtime
-        args = {"kind": "view", "reference": "", "offset": 0, "limit": 1}
-        first = (await context.read(None, args))["data"]
+        args = {"offset": 0, "limit": 1}
+        first = (await context.find_history(None, args))["data"]
         self.assertIsNotNone(first["next_offset"])
         await settle_session(runtime, "b")
         await runtime.receive_user_message("b", "new message", delivery_id="new")
-        second = (await context.read(None, {
+        second = (await context.find_history(None, {
             **args, "upto": first["upto"], "offset": first["next_offset"],
         }))["data"]
         self.assertEqual(second["upto"], first["upto"])
         self.assertEqual(second["total_records"], first["total_records"])
         self.assertIsNone(second["next_offset"])
-        step_sequence = second["records"][0]["sequence"]
-        event_args = {"kind": "event", "reference": str(step_sequence), "offset": 0, "limit": 12000}
-        frozen = await context.read(None, {**event_args, "upto": first["upto"]})
-        current = await context.read(None, event_args)
-        self.assertNotIn(artifacts[0], frozen["data"]["content"])
-        self.assertIn(artifacts[0], current["data"]["content"])
-        blocked = await context.read(None, {
-            "kind": "artifact", "reference": artifacts[0], "offset": 0, "limit": 100,
-            "upto": first["upto"],
-        })
-        self.assertEqual(blocked["error"], "ARTIFACT_NOT_IN_SOURCE")
-        frozen_prefix = frozen["data"]["content"][:40]
-        frozen_page = await context.read(None, {**event_args, "limit": 40, "upto": first["upto"]})
-        self.assertEqual(frozen_page["data"]["content"], frozen_prefix)
-        resumed = await context.read(None, {
-            **event_args, "offset": frozen_page["data"]["next_offset"], "upto": first["upto"],
-        })
-        self.assertEqual(frozen_prefix + resumed["data"]["content"], frozen["data"]["content"])
-        continuation = await context.read(None, {**args, "offset": first["next_offset"]})
+        frozen_ref = second["records"][0]["reference"]
+        frozen = await context.read_content(None, {"reference": frozen_ref})
+        fresh = await context.find_history(None, {"start_sequence": second["records"][0]["sequence"]})
+        current_ref = fresh["data"]["records"][0]["reference"]
+        current = await context.read_content(None, {"reference": current_ref})
+        frozen_text = frozen["data"]["fragments"][0]["content"]
+        self.assertNotIn(artifacts[0], frozen_text)
+        self.assertIn(artifacts[0], current["data"]["fragments"][0]["content"])
+        frozen_page = await context.read_content(None, {"reference": frozen_ref, "limit": 40})
+        resumed = await context.read_content(None, {"reference": frozen_ref, "offset": frozen_page["data"]["next_offset"]})
+        self.assertEqual(frozen_page["data"]["fragments"][0]["content"] + resumed["data"]["fragments"][0]["content"], frozen_text)
+        continuation = await context.find_history(None, {**args, "offset": first["next_offset"]})
         self.assertEqual(continuation["code"], "INVALID_ARGUMENT")
 
     async def test_logical_history_survives_interleaved_compaction_and_nested_forks(self):
@@ -160,7 +150,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
                 context = CompactContext(sid, events, projector, None)
                 visible = context.visible(events, StateProjector().project_visible(sid, events))
                 prepared = projector.prepare(events, visible, sid, "frozen system", prefix=context.prefix)
-                request = save_document(gateway, sid, {"messages": prepared.messages, "tools": [READ_SCHEMA]})
+                request = save_document(gateway, sid, {"messages": prepared.messages, "tools": [FIND_HISTORY_SCHEMA]})
                 requests.append(request)
                 bundle = save_document(gateway, sid, frozen_bundle(projector, events, sid, context, prepared))
                 material = save_document(gateway, sid, {"messages": [{
@@ -191,10 +181,10 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             visible = restored.visible(events, StateProjector().project_visible(sid, events))
             self.assertNotIn(original.event_id, visible.visible_event_ids)
             self.assertIn('"source": "b2"', restored.prefix[0]["content"])
-            args = {"kind": "view", "reference": "", "offset": 0, "limit": 2}
+            args = {"offset": 0, "limit": 2}
             pages = []
             while True:
-                result = await restored.read(None, args)
+                result = await restored.find_history(None, args)
                 self.assertTrue(result["ok"])
                 page = result["data"]
                 pages.append(page["records"])
@@ -212,14 +202,14 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             old_user = next(r for r in records if "original question" in r["preview"])
             self.assertEqual(old_user["sequence"], original.sequence)
             old_step = next(r for r in records if "original analysis" in r["preview"])
-            event = await restored.read(None, {**args, "kind": "event", "reference": str(old_step["sequence"]), "offset": 0, "limit": 12000})
-            messages = json.loads(event["data"]["content"])
+            event = await restored.read_content(None, {"reference": old_step["reference"]})
+            messages = json.loads(event["data"]["fragments"][0]["content"])
             self.assertEqual(messages[0]["reasoning_content"], "original reasoning")
             artifact_id = json.loads(next(m["content"] for m in messages if m["role"] == "tool"))["data"]["artifact_id"]
-            artifact = await restored.read(None, {**args, "kind": "artifact", "reference": artifact_id, "offset": 0, "limit": 12000})
-            self.assertEqual(artifact["data"]["content"], "original SQL result")
-            request = await restored.read(None, {**args, "kind": "artifact", "reference": requests[0], "offset": 0, "limit": 12000})
-            self.assertIn("frozen system", request["data"]["content"])
+            artifact = await restored.read_content(None, {"reference": artifact_id})
+            self.assertEqual(artifact["data"]["fragments"][0]["content"], "original SQL result")
+            request = await restored.read_content(None, {"reference": requests[0]})
+            self.assertIn("frozen system", request["data"]["fragments"][0]["content"])
             material_path = attachments.for_session(sid).files.materials / uploaded.attachment_id.removeprefix("file:") / uploaded.name
             self.assertEqual(material_path.read_bytes(), b"original log")
 
@@ -447,50 +437,31 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         await runtime.receive_user_message("b", "before P", delivery_id="before")
         await runtime.receive_user_message("b", "after P", delivery_id="after")
         later_artifact = gateway.for_session("b").save("after P artifact")
-        request_read = await context.read(
+        request_read = await context.read_content(
             None,
             {
-                "kind": "artifact",
                 "reference": request,
                 "offset": 0,
                 "limit": 1000,
             },
         )
-        self.assertIn("fixed", request_read["data"]["content"])
+        self.assertIn("fixed", request_read["data"]["fragments"][0]["content"])
 
-        args = {
-            "kind": "event",
-            "reference": "1",
-            "offset": 0,
-            "limit": 1000,
-        }
-        self.assertIn("before P", (await context.read(None, args))["data"]["content"])
-        self.assertEqual(
-            (await context.read(None, {**args, "reference": "2"}))["error"],
-            "EVENT_NOT_IN_SOURCE",
-        )
-        view = await context.read(None, {**args, "kind": "view", "reference": "", "limit": 10})
+        view = await context.find_history(None, {})
         self.assertEqual(view["data"]["upto"], 1)
-        self.assertEqual(view["data"]["records"], [{
-            "sequence": 1, "roles": ["user"], "preview": "user\nbefore P", "preview_truncated": False,
-        }])
-        scoped_view = await context.read(None, {
-            "kind": "view", "reference": "", "offset": 0, "limit": 10,
-            "upto": view["data"]["upto"], "start_sequence": 1, "end_sequence": 1, "query": "before",
-        })
-        self.assertEqual(scoped_view["data"]["records"], [{
-            "sequence": 1, "roles": ["user"], "preview": "before P", "preview_truncated": False,
-        }])
-        beyond_frozen = await context.read(None, {**args, "upto": 2})
-        self.assertEqual(beyond_frozen["code"], "HISTORY_POSITION_OUT_OF_RANGE")
-        self.assertEqual(
-            (await context.read(None, {**args, "kind": "artifact", "reference": later_artifact.artifact_id}))["error"],
-            "ARTIFACT_NOT_IN_SOURCE",
-        )
-        self.assertEqual(
-            (await context.read(None, {**args, "source": "other"}))["error"],
-            "INVALID_ARGUMENT",
-        )
+        record = view["data"]["records"][0]
+        self.assertEqual(record["sequence"], 1)
+        self.assertIn("before P", record["preview"])
+        content = await context.read_content(None, {"reference": record["reference"]})
+        self.assertIn("before P", content["data"]["fragments"][0]["content"])
+        scoped = await context.find_history(None, {"upto": 1, "start_sequence": 1, "end_sequence": 1, "query": "before"})
+        self.assertEqual(scoped["data"]["records"][0]["preview"], "before P")
+        beyond = await context.find_history(None, {"upto": 2})
+        self.assertEqual(beyond["code"], "HISTORY_POSITION_OUT_OF_RANGE")
+        denied = await context.read_content(None, {"reference": later_artifact.artifact_id})
+        self.assertEqual(denied["code"], "CONTENT_NOT_FOUND")
+        invalid = await context.find_history(None, {"source": "other"})
+        self.assertEqual(invalid["code"], "INVALID_ARGUMENT")
 
     async def test_windows_preserve_execution_state_and_rebuild_from_journal(self):
         gateway = MemoryArtifactGateway()
@@ -534,16 +505,15 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored.window["id"], "1")
         self.assertEqual(restored.prefix[0]["content"], "handoff 1")
         restored.runtime = runtime
-        evidence = await restored.read(
+        evidence = await restored.read_content(
             None,
             {
-                "kind": "artifact",
                 "reference": material,
                 "offset": 0,
                 "limit": 1000,
             },
         )
-        self.assertIn("handoff 1", evidence["data"]["content"])
+        self.assertIn("handoff 1", evidence["data"]["fragments"][0]["content"])
 
         def restored_visible(events):
             whole = StateProjector().project_visible("b", events)

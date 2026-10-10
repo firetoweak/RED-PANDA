@@ -10,8 +10,8 @@ from tempfile import TemporaryDirectory
 from redpanda.assistant.artifacts import (
     FileArtifactStore,
     MemoryArtifactGateway,
-    read_artifact_binding,
 )
+from redpanda.assistant.compact.core import CompactContext
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
@@ -156,7 +156,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(self._tool_messages(prepared.messages)[0]["content"])
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["code"], "REMOTE_FAILED")
-        self.assertEqual(payload["data"]["artifact_id"], artifact_id)
+        self.assertEqual(payload["data"]["reference"], artifact_id)
         self.assertTrue(payload["data"]["preview"])
         self.assertEqual(prepared.age_dehydrated_command_ids, ())
 
@@ -713,7 +713,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["ok"], False)
         self.assertEqual(payload["code"], "RemoteError")
         self.assertNotIn(failure_body, tool["content"])
-        artifact_id = payload["data"]["artifact_id"]
+        artifact_id = payload["data"]["reference"]
         chunk = gateway.for_session(self.SESSION).read(artifact_id, 0, 3000)
         full_outcome = json.loads(chunk.content)
         self.assertEqual(full_outcome["ok"], False)
@@ -751,7 +751,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
 
         tool = self._tool_messages(prepared.messages)[0]
         payload = json.loads(tool["content"])
-        artifact_id = payload["data"]["artifact_id"]
+        artifact_id = payload["data"]["reference"]
         self.assertEqual(payload["ok"], True)
         self.assertEqual(payload["data"]["preview"], "")
         self.assertIn(
@@ -801,7 +801,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             {},
         )
         self.assertEqual(result["data"]["externalized"], True)
-        chunk = gateway.for_session("s1").read(result["data"]["artifact_id"], 0, 3000)
+        chunk = gateway.for_session("s1").read(result["data"]["reference"], 0, 3000)
         full_outcome = json.loads(chunk.content)
         self.assertEqual(full_outcome["ok"], True)
         self.assertEqual(
@@ -850,23 +850,24 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         tool = self._tool_messages(prepared.messages)[0]
         payload = json.loads(tool["content"])
         self.assertEqual(payload["ok"], True)
-        self.assertIn("artifact_id", payload["data"])
+        self.assertIn("reference", payload["data"])
 
-    async def test_read_artifact_binding_pages_session_store(self):
+    async def test_read_content_pages_are_session_scoped(self):
         gateway = MemoryArtifactGateway()
         artifact = gateway.for_session("s1").save("abcdef")
-        binding = read_artifact_binding(gateway)["read_artifact"]
-        first = await binding.handler(
+        reader = CompactContext("s1", (), ModelContextProjector(gateway=gateway), None)
+        first = await reader.read_content(
             AttemptContext("s1", "cmd-1", "att-1", 1),
-            {"artifact_id": artifact.artifact_id, "offset": 0, "limit": 3},
+            {"reference": artifact.artifact_id, "offset": 0, "limit": 3},
         )
-        self.assertEqual(first["data"]["content"], "abc")
+        self.assertEqual(first["data"]["fragments"][0]["content"], "abc")
         self.assertEqual(first["data"]["next_offset"], 3)
-        missing = await binding.handler(
+        other = CompactContext("s2", (), ModelContextProjector(gateway=gateway), None)
+        missing = await other.read_content(
             AttemptContext("s2", "cmd-1", "att-1", 1),
-            {"artifact_id": artifact.artifact_id, "offset": 0, "limit": 3},
+            {"reference": artifact.artifact_id, "offset": 0, "limit": 3},
         )
-        self.assertEqual(missing["code"], "ARTIFACT_NOT_FOUND")
+        self.assertEqual(missing["code"], "CONTENT_NOT_FOUND")
 
     def test_externalize_payload_below_threshold_is_identity(self):
         gateway = MemoryArtifactGateway()
@@ -890,10 +891,10 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNotNone(artifact_id)
         self.assertEqual(stub["data"]["externalized"], True)
-        self.assertEqual(stub["data"]["artifact_id"], artifact_id)
+        self.assertEqual(stub["data"]["reference"], artifact_id)
         self.assertTrue(stub["data"]["preview"].startswith('{"ok":'))
         journaled = CommandOutcome(OutcomeStatus.SUCCEEDED, value=stub)
-        self.assertEqual(journaled.value["data"]["artifact_id"], artifact_id)
+        self.assertEqual(journaled.value["data"]["reference"], artifact_id)
         stored = json.loads(gateway.for_session("s1").read(artifact_id, 0, 4000).content)
         self.assertEqual(stored["ok"], True)
         self.assertEqual(stored["data"], blob)

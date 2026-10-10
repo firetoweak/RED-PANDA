@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 
+from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
 from redpanda.assistant.artifacts import (
     ArtifactGateway,
     ArtifactStore,
@@ -39,10 +40,10 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 9
+PROJECTOR_VERSION = 10
 MESSAGE_EXTENSIONS = "message_extensions"
-DEFAULT_SIZE_EXTERNALIZE_CHARS = 16_000
-DEFAULT_PREVIEW_CHARS = 1_200
+DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
+DEFAULT_PREVIEW_CHARS = 2_000
 DEFAULT_MAX_TOOL_IMAGES = 5
 _IMAGE_EVICTED_HINT = "\n图片已移出上下文；需要重新查看时用上面的 id 调用 read_image。"
 _USER_ATTACHMENT_HINT = "\n（本消息附图 id：{ids}；需要重看时用 read_image 回读）"
@@ -469,8 +470,8 @@ def _externalized_meta(content: object) -> dict[str, object] | None:
 def _is_externalized_meta(value: object) -> bool:
     return (
         isinstance(value, dict)
-        and set(value) == {"artifact_id", "size_chars", "preview"}
-        and is_valid_artifact_id(value["artifact_id"])
+        and set(value) == {"reference", "size_chars", "preview"}
+        and is_valid_artifact_id(value["reference"])
         and type(value["size_chars"]) is int
         and value["size_chars"] >= 0
         and type(value["preview"]) is str
@@ -480,12 +481,12 @@ def _is_externalized_meta(value: object) -> bool:
 def _journaled_externalized_meta(value: object) -> dict[str, object] | None:
     if (
         not isinstance(value, dict)
-        or set(value) != {"externalized", "artifact_id", "size_chars", "preview"}
+        or set(value) != {"externalized", "reference", "size_chars", "preview"}
         or value["externalized"] is not True
     ):
         return None
     meta = {
-        "artifact_id": value["artifact_id"],
+        "reference": value["reference"],
         "size_chars": value["size_chars"],
         "preview": value["preview"],
     }
@@ -496,7 +497,7 @@ def parse_tool_result_meta(content: object) -> tuple[bool, str | None]:
     meta = _externalized_meta(content)
     if meta is None:
         return False, None
-    return True, meta["artifact_id"]
+    return True, meta["reference"]
 
 
 def _content_char_length(content: object) -> int:
@@ -508,7 +509,7 @@ def _content_char_length(content: object) -> int:
 def _stub_content(
     outcome_content: str,
     size_chars: int,
-    artifact_id: str,
+    reference: str,
     preview: str = "",
 ) -> str:
     outcome = json.loads(outcome_content)
@@ -525,12 +526,12 @@ def _stub_content(
         "code": outcome["code"],
         "data": {
             "externalized": True,
-            "artifact_id": artifact_id,
+            "reference": reference,
             "size_chars": size_chars,
             "preview": preview,
         },
         "error": error,
-        "hint": "需要更多内容时调用 read_artifact 分页读取。",
+        "hint": ((outcome["hint"] + "\n") if outcome.get("hint") else "") + CONTENT_HINT,
     }
     if outcome.get("images"):
         stub["images"] = outcome["images"]
@@ -683,11 +684,14 @@ class ModelContextProjector:
         store: ArtifactStore,
     ) -> list[str]:
         changed: list[str] = []
+        read_ids = _content_read_ids(items)
         for item in items:
             if item.kind != "tool":
                 continue
             if item.command_id is None:
                 raise ValueError("projected tool message lacks command id")
+            if item.command_id in read_ids:
+                continue
             content = item.message["content"]
             meta = _externalized_meta(content)
             if meta is not None:
@@ -725,6 +729,7 @@ class ModelContextProjector:
         protection_start: int,
     ) -> list[str]:
         changed: list[str] = []
+        read_ids = _content_read_ids(items)
         payloads = [item.message for item in items]
         index = 0
         while index < len(payloads):
@@ -766,6 +771,14 @@ class ModelContextProjector:
                     item = items[tool_index]
                     if item.command_id is None:
                         raise ValueError("projected tool message lacks command id")
+                    if item.command_id in read_ids:
+                        result = json.loads(item.message["content"])
+                        for fragment in result["data"]["fragments"]:
+                            del fragment["content"]
+                        result["hint"] = "此处仅保留已读位置；需要原文时用 read_content 读取原 reference 和片段范围。"
+                        item.message["content"] = json.dumps(result, ensure_ascii=False)
+                        changed.append(item.command_id)
+                        continue
                     meta = _externalized_meta(item.message["content"])
                     if meta is not None:
                         if meta.get("preview"):
@@ -835,3 +848,11 @@ def _tool_succeeded(message: Mapping[str, object]) -> bool:
     if type(ok) is not bool:
         raise TypeError("projected tool ok must be bool")
     return ok
+
+
+def _content_read_ids(items: list[_Projected]) -> set[str]:
+    return {
+        call["id"] for item in items if item.kind == "assistant"
+        for call in item.message.get("tool_calls", [])
+        if call["function"]["name"] == READ_CONTENT
+    }

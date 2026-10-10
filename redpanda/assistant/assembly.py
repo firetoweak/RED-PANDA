@@ -3,17 +3,14 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
-from redpanda.assistant.artifacts import (
-    READ_ARTIFACT_SCHEMA,
-    FileArtifactGateway,
-    read_artifact_binding,
-)
+from redpanda.assistant.artifacts import FileArtifactGateway
 from redpanda.assistant.attachments import (
     AttachmentGateway,
     READ_IMAGE_SCHEMA,
     read_image_binding,
 )
-from redpanda.assistant.compact.core import CompactContext, CompactBoundary, READ, SUBMIT
+from redpanda.assistant.compact.core import CompactContext, CompactBoundary, FIND_HISTORY, SUBMIT
+from redpanda.assistant.content import READ_CONTENT, READ_CONTENT_SCHEMA
 from redpanda.assistant.loop_guard import LoopGuard
 from redpanda.assistant.work_plan import UPDATE_PLAN, UPDATE_PLAN_SCHEMA, update_plan_binding
 from redpanda.assistant.delivery import (
@@ -227,7 +224,7 @@ async def build_assistant_assembly(
                 [SCHEDULE_ONCE_SCHEMA, CANCEL_SCHEDULE_SCHEMA]
                 if session_transport is not None else []
             ),
-            READ_ARTIFACT_SCHEMA,
+            READ_CONTENT_SCHEMA,
             READ_IMAGE_SCHEMA,
             UPDATE_PLAN_SCHEMA,
         ],
@@ -237,13 +234,13 @@ async def build_assistant_assembly(
             *review_bindings,
             SCHEDULE_ONCE,
             CANCEL_SCHEDULE,
-            "read_artifact",
+            READ_CONTENT,
             "read_image",
             UPDATE_PLAN,
             DELIVER_TOOL_NAME,
             DELEGATE,
             REPORT,
-            READ,
+            FIND_HISTORY,
             SUBMIT,
             *management.names(),
             *management.resident_names(),
@@ -280,7 +277,6 @@ async def build_assistant_assembly(
                 CANCEL_SCHEDULE: cancel_schedule_binding(session_transport),
             } if session_transport is not None else {}
         ),
-        **read_artifact_binding(gateway),
         **read_image_binding(journal, attachments),
         UPDATE_PLAN: update_plan_binding(),
         **deliver_binding(delivery_sink, preview),

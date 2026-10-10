@@ -12,10 +12,10 @@ from acp.schema import (
 
 _TOOL_KINDS = {
     "read_file": "read",
-    "read_artifact": "read",
+    "read_content": "read",
     "read_image": "read",
     "read_skill_resource": "read",
-    "read_compact_source": "read",
+    "find_history": "read",
     "write_file": "edit",
     "apply_patch": "edit",
     "replace_all": "edit",
