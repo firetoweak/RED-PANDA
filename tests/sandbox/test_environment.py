@@ -44,7 +44,7 @@ class EnvironmentPathContractTest(unittest.TestCase):
                 "../docs/new.txt"
             )
 
-            self.assertEqual(resolved.native_path, root / "docs" / "new.txt")
+            self.assertEqual(resolved.native_path, (root / "docs" / "new.txt").resolve())
             self.assertEqual(resolved.workspace_membership.root_id, "project")
             self.assertEqual(
                 resolved.location,
@@ -68,7 +68,7 @@ class EnvironmentPathContractTest(unittest.TestCase):
 
             resolved = self.binding(root, cwd=cwd).resolver.resolve("new.txt")
 
-            self.assertEqual(resolved.native_path, cwd / "new.txt")
+            self.assertEqual(resolved.native_path, (cwd / "new.txt").resolve())
 
     def test_nonexistent_path_still_has_a_location(self):
         with tempfile.TemporaryDirectory() as directory:
