@@ -17,8 +17,7 @@ fn get_runtime() -> tokio::runtime::Runtime {
     std::thread::Builder::new()
         .name("vfs-mount-runtime".into())
         .spawn(|| {
-            tokio::runtime::Runtime::new()
-                .expect("internal error: failed to initialize runtime")
+            tokio::runtime::Runtime::new().expect("internal error: failed to initialize runtime")
         })
         .expect("failed to spawn vfs-mount runtime thread")
         .join()
@@ -254,11 +253,9 @@ pub async fn mount_fs(fs: Arc<dyn vfs_core::FileSystem>, opts: MountOpts) -> Res
     match opts.backend {
         // mount_fuse builds its own Tokio Runtime and may Drop/block_on on the
         // calling thread. Keep it off #[tokio::main] workers.
-        Backend::Fuse => {
-            tokio::task::spawn_blocking(move || fuse::mount_fuse(fs, opts))
-                .await
-                .map_err(|error| anyhow::anyhow!("FUSE mount task join failed: {error}"))?
-        }
+        Backend::Fuse => tokio::task::spawn_blocking(move || fuse::mount_fuse(fs, opts))
+            .await
+            .map_err(|error| anyhow::anyhow!("FUSE mount task join failed: {error}"))?,
     }
 }
 
