@@ -2245,17 +2245,35 @@ impl VfsFuse {
         // Kept for emergency parity with pre-Tier-4 paths; not called on the
         // hot read path because the SDK overlay handles read-after-write
         // consistency without forcing a SQLite commit.
-        self.runtime
-            .block_on(self.semantics.commit_barrier(Some(ino as i64)))
+        self.drive(self.semantics.commit_barrier(Some(ino as i64)))
+    }
+
+    fn drive<F, T>(&self, fut: F) -> T
+    where
+        F: std::future::Future<Output = T> + Send,
+        T: Send,
+    {
+        // FUSE handlers and Drop may run while the sandbox process is already
+        // inside #[tokio::main]. Calling Runtime::block_on on that thread
+        // panics; drive our runtime from a thread that is not entered.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            std::thread::scope(|scope| {
+                scope
+                    .spawn(|| self.runtime.block_on(fut))
+                    .join()
+                    .unwrap_or_else(|_| panic!("vfs-fuse drive thread panicked"))
+            })
+        } else {
+            self.runtime.block_on(fut)
+        }
     }
 
     fn commit_barrier(&self, ino: Option<u64>) -> Result<(), SdkError> {
-        self.runtime
-            .block_on(self.semantics.commit_barrier(ino.map(|ino| ino as i64)))
+        self.drive(self.semantics.commit_barrier(ino.map(|ino| ino as i64)))
     }
 
     fn finalize_filesystem(&self) -> Result<(), SdkError> {
-        self.runtime.block_on(self.semantics.finalize())
+        self.drive(self.semantics.finalize())
     }
 
     fn invalidate_inode_cache(&self, req: &Request, ino: u64) {

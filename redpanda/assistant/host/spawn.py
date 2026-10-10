@@ -27,6 +27,10 @@ def start_worker(process, extra_handles=()) -> None:
 
 def _disinherit_handles(objects) -> None:
     seen: set[int] = set()
+    # Windows Connection.fileno() yields an OS handle; POSIX yields a CRT fd.
+    set_not_inheritable = (
+        os.set_handle_inheritable if os.name == "nt" else os.set_inheritable
+    )
     for obj in objects:
         for candidate in _handle_owners(obj):
             fileno = getattr(candidate, "fileno", None)
@@ -37,7 +41,7 @@ def _disinherit_handles(objects) -> None:
                 continue
             seen.add(handle)
             try:
-                os.set_handle_inheritable(handle, False)
+                set_not_inheritable(handle, False)
             except OSError:
                 continue
 

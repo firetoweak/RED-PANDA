@@ -235,7 +235,10 @@ def worker_main(connection, session_id, path, config_factory, home_root, admitte
 
     threading.Thread(target=exit_with_parent, daemon=True).start()
     try:
-        admitted.wait()
+        # admitted is a one-shot Pipe end from the Host (was Event; SemLock
+        # rebuild breaks under some Linux sandbox /dev/shm setups).
+        admitted.recv()
+        admitted.close()
         asyncio.run(run_worker(connection, session_id, path, config_factory, home_root, command_environment))
     except BaseException as error:
         # Process boundary: transport original diagnostics, then let the process fail.
