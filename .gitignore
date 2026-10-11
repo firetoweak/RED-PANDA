@@ -4,7 +4,9 @@ __pycache__/
 redpanda-env/
 .vscode/
 .pytest_cache/
-.cursor/
+# 编辑器本地状态不入库；验证 skill 随仓库交给后续 agent
+.cursor/*
+!.cursor/skills/
 tests/.parallel_logs/
 tests/.live_workspace/
 docs/.obsidian/
