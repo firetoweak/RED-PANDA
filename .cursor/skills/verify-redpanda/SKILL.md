@@ -73,7 +73,7 @@ Run this before the first click, after any surprising failure, and before claimi
 
 Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME`, `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready` and `sandbox.ready`.
 
-`live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting. It does not mean the key is valid when true. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
+`live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
 `sandbox.ready` is false on macOS, when `redpanda/sandbox/bin/redpanda-sandbox` is missing, or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
 

@@ -37,5 +37,5 @@ Preconditions:
 - The page polls settings about every 5 seconds. Assert the table after the discard click, not on a stale snapshot taken before it.
 - `保存配置` writes the disposable home's `config.json`. This smoke stops at `撤销修改`.
 - Deleting the current default is refused until another default is saved. Do not delete `deepseek/deepseek-v4-pro` here.
-- `已配置` means the connection file has the required field. It does not mean the key or the local server works.
+- `已配置` means the connection file has the required field. It does not mean the key or the local server works. vLLM and Ollama count as configured when the key is empty and `base_url` is set. `live_model_ready` follows the default model, not those badges.
 - Provider badges and the connections path are visible without a key. Do not copy `connections.json` into the evidence directory.
