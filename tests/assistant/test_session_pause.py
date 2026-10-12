@@ -34,6 +34,7 @@ class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
         host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
         host._pause.remember("session-1", True)
+        host.turn_locks = {}
         view = SimpleNamespace(paused=True)
         host.compact = SimpleNamespace(application=AsyncMock(return_value=view))
         host._with_host_metadata = lambda observed, session_id: observed
@@ -86,6 +87,7 @@ class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             host = object.__new__(HostSupervisor)
             host.models = None
+            host.turn_locks = {}
             host._pause = SessionFlagStore(root, "paused.json")
             host.compact = SimpleNamespace(application=AsyncMock())
 

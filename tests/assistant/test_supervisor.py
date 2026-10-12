@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from functools import partial
 from pathlib import Path
 import tempfile
@@ -591,6 +592,140 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(view.status, "waiting")
         events = await SqliteJournal(self.store.require("one")).snapshot("one")
         self.assertIsInstance(events[-1].payload, DecisionCancelled)
+
+    async def test_cancel_parent_reclaims_all_children_and_later_input_can_continue(self):
+        from redpanda.assistant.subagent.subagent import project_pending, project_returned
+        from redpanda.sandbox.files.children import child_root
+
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.select("web", PARENT)
+        await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
+        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        before = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        children = project_pending(before)
+        self.assertEqual(len(children), 2)
+        roots = [child_root(self.home, PARENT, child) for child in children]
+        self.assertTrue(all(root.is_dir() for root in roots))
+
+        view = await self.host.cancel_turn(PARENT)
+
+        self.assertTrue(view.paused)
+        self.assertFalse(view.has_active_subagents)
+        self.assertEqual(self.host.activity(PARENT), "idle")
+        self.assertTrue(all(root.is_dir() for root in roots))
+        for child in children:
+            self.assertNotIn(child, self.host.workers)
+            child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
+            self.assertTrue(project_returned(child_events))
+            self.assertTrue(child_events[-1].payload.data["cancelled"])
+        # Viewing/resuming a stopped parent must not turn reclaim into new work.
+        stopped_outputs = list(self.output)
+        await self.host.resume(PARENT)
+        await self.host.wait_quiescent(PARENT)
+        self.assertEqual(self.output, stopped_outputs)
+        await self.host.accept_input(PARENT, "继续新的要求", delivery_id="next")
+        await until(lambda: len(self.output) == len(stopped_outputs) + 1)
+        self.assertFalse(self.host.is_paused(PARENT))
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_input_during_parent_reclaim_is_accepted_after_stop_finishes(self):
+        from unittest.mock import AsyncMock
+
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
+        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        previous_output_count = len(self.output)
+        entered, release = asyncio.Event(), asyncio.Event()
+        reclaim = self.host._reclaim_child
+
+        async def held_reclaim(*args):
+            entered.set()
+            await release.wait()
+            await reclaim(*args)
+
+        self.host._reclaim_child = AsyncMock(side_effect=held_reclaim)
+        stopping = asyncio.create_task(self.host.cancel_turn(PARENT))
+        await asyncio.wait_for(entered.wait(), 30)
+        incoming = asyncio.create_task(
+            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next")
+        )
+        await asyncio.sleep(0)
+        self.assertFalse(incoming.done())
+        self.assertTrue(self.host.is_paused(PARENT))
+        release.set()
+        await asyncio.wait_for(asyncio.gather(stopping, incoming), 30)
+        await until(lambda: len(self.output) == previous_output_count + 1)
+        self.assertFalse(self.host.is_paused(PARENT))
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_restart_parent_with_active_children_finishes_and_keeps_child_work(self):
+        from redpanda.assistant.subagent.subagent import project_pending, project_returned
+        from redpanda.assistant.workspace_versions import WORKSPACE_VERSION_FACT
+        from redpanda.runtime import DomainFactCommitted
+        from redpanda.sandbox.files.children import child_root
+
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
+        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        children = project_pending(events)
+        step_id = next(
+            e.payload.data["step_id"] for e in events
+            if isinstance(e.payload, DomainFactCommitted)
+            and e.payload.fact_type == WORKSPACE_VERSION_FACT
+            and e.payload.data["version"] is not None
+            and e.payload.data["step_id"] is not None
+        )
+
+        view = await asyncio.wait_for(self.host.restart_from_step(
+            "web", PARENT, step_id, "branch", "restart", restore_files=False
+        ), 45)
+
+        self.assertTrue(view.paused)
+        self.assertFalse(view.has_active_subagents)
+        for child in children:
+            self.assertNotIn(child, self.host.workers)
+            self.assertTrue(child_root(self.home, PARENT, child).is_dir())
+            child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
+            self.assertTrue(project_returned(child_events))
+        await self.host.set_paused("branch", False)
+        await self.host.wait_quiescent("branch")
+        again = await self.host.cancel_turn("branch")
+        self.assertTrue(again.paused)
+        self.assertFalse(again.has_active_subagents)
+        self.assertTrue(all(child not in self.host.workers for child in children))
+        # Explicit model reclaim sees the same terminal children as already done.
+        import json
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.runtime import CommandOutcomeReceived
+
+        child_id = next(iter(children))
+
+        class ReclaimFinishedLlm(ProcessLlm):
+            async def chat(client, messages, model, **kwargs):
+                return LLMCallResult(LLMResponse(calls=(ToolCall(
+                    "reclaim-finished", "reclaim", json.dumps({"child_session_id": child_id})
+                ),)), LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.llm = ReclaimFinishedLlm(self.root)
+        await self.host.accept_input("branch", "查看已经结束的子任务", delivery_id="reclaim-finished")
+        # 收回不单独要一次决策：已结束的回收结果写进 Journal，会话随即静止。
+        async with asyncio.timeout(30):
+            while True:
+                branch_events = await SqliteJournal(self.store.require("branch")).snapshot("branch")
+                if any(
+                    isinstance(e.payload, CommandOutcomeReceived)
+                    and isinstance(e.payload.outcome.value, Mapping)
+                    and e.payload.outcome.value.get("code") == "ALREADY_RECLAIMED"
+                    for e in branch_events
+                ):
+                    break
+                await asyncio.sleep(0.02)
+        await self.host.wait_quiescent("branch")
+        # 已结束的子不再被当作活跃任务：没有新的回收事实，也没有重新拉起 Worker。
+        self.assertEqual(project_reclaimed(branch_events), frozenset())
+        self.assertTrue(all(child not in self.host.workers for child in children))
+        self.assertTrue(self.host.failures.empty())
 
     async def test_unselected_busy_worker_stops_only_after_work_finishes(self):
         await self.host.create("one", self.workspace.workspace_id)

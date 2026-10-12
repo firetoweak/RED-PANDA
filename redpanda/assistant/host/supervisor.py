@@ -130,6 +130,7 @@ class HostSupervisor:
         self.selections: dict[str, str] = {}
         self.selecting: dict[str, str] = {}
         self.selection_locks: dict[str, asyncio.Lock] = {}
+        self.turn_locks: dict[str, asyncio.Lock] = {}
         self.closed = False
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
@@ -215,6 +216,9 @@ class HostSupervisor:
             )
         if operation == "is_paused":
             return self.is_paused(session_id)
+        if operation == "subagent_returned":
+            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+            return project_returned(events)
         if operation == "compact_boundary":
             return await self.compact.boundary(session_id, arguments)
         if operation == "compact_complete":
@@ -642,6 +646,8 @@ class HostSupervisor:
                 ),
             )
         await self.compact.retire(session_id)
+        if worker is not None and worker.failure is not None:
+            raise worker.failure
         await self.request(
             "fact",
             parent_session_id,
@@ -942,25 +948,27 @@ class HostSupervisor:
         )
 
     async def receive_user_message(self, session_id, content, **kwargs):
-        if self.models is not None:
-            self.store.require(session_id)
-            self.models.require_ready(session_id)
-        if self._pause.get(session_id):
-            self._pause.set(session_id, False)
-        await self.compact.application(
-            "receive_user_message", session_id, dict(content=content, **kwargs)
-        )
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            if self.models is not None:
+                self.store.require(session_id)
+                self.models.require_ready(session_id)
+            if self._pause.get(session_id):
+                self._pause.set(session_id, False)
+            await self.compact.application(
+                "receive_user_message", session_id, dict(content=content, **kwargs)
+            )
 
     async def accept_input(self, session_id, content, **kwargs):
-        if self.models is not None:
-            self.store.require(session_id)
-            self.models.require_ready(session_id)
-        if self._pause.get(session_id):
-            self._pause.set(session_id, False)
-        view = await self.compact.application(
-            "accept_input", session_id, dict(content=content, **kwargs)
-        )
-        return self._with_host_metadata(view, session_id)
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            if self.models is not None:
+                self.store.require(session_id)
+                self.models.require_ready(session_id)
+            if self._pause.get(session_id):
+                self._pause.set(session_id, False)
+            view = await self.compact.application(
+                "accept_input", session_id, dict(content=content, **kwargs)
+            )
+            return self._with_host_metadata(view, session_id)
 
     async def resolve_authorization(self, session_id, command_id, *, approved):
         await self.compact.application(
@@ -1004,10 +1012,38 @@ class HostSupervisor:
         )
 
     async def cancel_turn(self, session_id):
-        return self._with_host_metadata(
-            await self.compact.application("cancel_turn", session_id, {}),
-            session_id,
-        )
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            return await self._cancel_turn(session_id)
+
+    async def _cancel_turn(self, session_id):
+        # Child return is a new external fact, even when it races with reclaim.
+        # Keep the stopped parent paused until an explicit continuation/input.
+        self._pause.set(session_id, True)
+        await self.compact.application("cancel_turn", session_id, {})
+        # Wait for this Worker's direct commands to settle before projecting
+        # children: a committed delegate may still be creating its Session.
+        worker = self.workers.get(session_id)
+        if worker is not None:
+            while True:
+                worker.changed.clear()
+                if worker.failure is not None:
+                    raise worker.failure
+                if worker.idle_revision is not None or worker.exited.is_set():
+                    break
+                await worker.changed.wait()
+        stopped = await asyncio.gather(*(
+            self._reclaim_child(
+                child_id,
+                {"parent_session_id": session_id, "reason": "用户中断父会话"},
+            )
+            for child_id in await self._running_children(session_id)
+        ), return_exceptions=True)
+        errors = [result for result in stopped if isinstance(result, BaseException)]
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise BaseExceptionGroup("收回子任务失败", errors)
+        return await self.wait_quiescent(session_id)
 
     async def restart_from_step(
         self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
@@ -1075,14 +1111,19 @@ class HostSupervisor:
         子会话自己的回传已经说明它停了，再等那份回收不会到来。
         """
 
+        return bool(await self._running_children(session_id))
+
+    async def _running_children(self, session_id):
         events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        running = []
         for child_id in project_pending(events):
             if not self.store.path(child_id).parent.exists():
-                return True
+                running.append(child_id)
+                continue
             child_events = await SqliteJournal(self.store.require(child_id)).snapshot(child_id)
             if not project_returned(child_events):
-                return True
-        return False
+                running.append(child_id)
+        return tuple(running)
 
     async def wait_failure(self):
         return await self.failures.get()

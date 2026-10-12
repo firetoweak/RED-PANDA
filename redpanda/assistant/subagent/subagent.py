@@ -730,8 +730,17 @@ class SubAgentHost:
     async def refresh_activity(self, session_id: str) -> None:
         events = await self._require_runtime().snapshot(session_id)
         if project_parent(events) is None:
-            self._visible_pending[session_id] = set(project_pending(events))
+            self._visible_pending[session_id] = set(await self.pending_children(session_id, events))
             self._publish_activity(session_id)
+
+    async def pending_children(self, session_id, events):
+        pending = set(project_pending(events))
+        for intent in project_delegate_intents(events):
+            if (intent.child_session_id in pending
+                and intent.parent_session_id != session_id
+                and await self._transport("subagent_returned", intent.child_session_id, {})):
+                pending.remove(intent.child_session_id)
+        return frozenset(pending)
 
     def tool_names(self, session_id: str) -> frozenset[str] | None:
         """本 Session 允许出现的工具名；None 表示不设限。"""
@@ -818,7 +827,7 @@ class SubAgentHost:
                         report_arguments(session_id, event.payload.data),
                     )
             return ()
-        pending_ids = project_pending(events)
+        pending_ids = await self.pending_children(session_id, events)
         intents = project_delegate_intents(events)
         state = await runtime.state(session_id)
         commands = {
@@ -826,7 +835,7 @@ class SubAgentHost:
         }
         pending: list[str] = []
         for intent in intents:
-            self._parents[intent.child_session_id] = session_id
+            self._parents[intent.child_session_id] = intent.parent_session_id
             command = commands[intent.command_id]
             if command.phase is CommandPhase.UNKNOWN:
                 await self._transport(
@@ -987,6 +996,15 @@ class SubAgentHost:
                 "error": "不是当前会话委派的子 Agent",
             }
         if child_session_id in project_reclaimed(events):
+            return {
+                "ok": True,
+                "code": "ALREADY_RECLAIMED",
+                "data": {"child_session_id": child_session_id},
+            }
+        intent = next(item for item in project_delegate_intents(events)
+                      if item.child_session_id == child_session_id)
+        if (intent.parent_session_id != context.session_id
+            and await self._transport("subagent_returned", child_session_id, {})):
             return {
                 "ok": True,
                 "code": "ALREADY_RECLAIMED",

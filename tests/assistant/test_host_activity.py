@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor, Worker
+from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     DelegateIntent,
@@ -49,6 +50,33 @@ class HostActivityTest(unittest.TestCase):
         worker.running = False
         worker.idle_revision = 3
         self.assertEqual(host.activity("session-1"), "idle")
+
+
+class HostStopChildrenTest(unittest.IsolatedAsyncioTestCase):
+    async def test_failure_stopping_one_child_does_not_leave_others_unattempted(self):
+        host = object.__new__(HostSupervisor)
+        host.turn_locks = {}
+        host._pause = SessionFlagStore(None, "paused.json")
+        host.workers = {}
+        host.compact = SimpleNamespace(application=AsyncMock())
+        host.store = SimpleNamespace(require=lambda _session: "journal")
+        host._running_children = AsyncMock(return_value=("child-1", "child-2"))
+        host.wait_quiescent = AsyncMock()
+        attempted = []
+        failure = OSError("child teardown failed")
+
+        async def reclaim(child, _arguments):
+            attempted.append(child)
+            if child == "child-1":
+                raise failure
+
+        host._reclaim_child = reclaim
+        with self.assertRaises(OSError) as caught:
+            await host.cancel_turn("parent")
+        self.assertIs(caught.exception, failure)
+        self.assertEqual(set(attempted), {"child-1", "child-2"})
+        self.assertTrue(host.is_paused("parent"))
+        host.wait_quiescent.assert_not_awaited()
 
 
 class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):

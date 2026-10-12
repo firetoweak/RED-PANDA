@@ -35,6 +35,7 @@ def host_watching(order):
     host._lineage = SessionLineageStore(None, "lineage.json")
     host._with_host_metadata = lambda observed, session_id: observed
     host.locks = {}
+    host.turn_locks = {}
 
     async def application(operation, session_id, arguments):
         order.append(f"{operation}:{session_id}")
