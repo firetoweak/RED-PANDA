@@ -46,7 +46,7 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（20 个）
+## 功能列表（23 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -69,6 +69,9 @@
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏会话列表 | 未 live |
 | console-chat | [console-chat.md](./console-chat.md) | 终端入口 `console_chat.py`、`/new`、`/resume` | 未 live（需真 TTY） |
 | acp-channel | [acp-channel.md](./acp-channel.md) | `acp_chat.py` ACP 入口 | 未 live（需 ACP 客户端） |
+| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 未 live |
+| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 未 live |
+| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写 | 未 live |
 | setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_sandbox.py`、`sandbox_runtime.py`、`dev.sh` | 未 live（本轮只读源码） |
 
 ## 入口 → 地图条目 覆盖表
@@ -98,10 +101,10 @@
 | `POST /api/files/select`、`POST .../attachments`、`POST .../attachments/from-path`、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
-| `POST .../restarts` | file-rewind |
-| `POST .../forks`、`POST .../branches` | edit-and-branch |
-| `POST .../paused`、`POST .../cancel`、`POST .../retry` | run-control |
-| `GET .../subagents/{command_id}` | subagents |
+| `POST .../restarts` | file-rewind、rewind-edge-cases |
+| `POST .../forks`、`POST .../branches` | edit-and-branch、rewind-edge-cases（带附件改写） |
+| `POST .../paused`、`POST .../cancel`、`POST .../retry` | run-control、crash-recovery（故障后重试） |
+| `GET .../subagents/{command_id}` | subagents、subagents-parallel |
 | `/assets/*`、`/{path:path}` 静态页 | web-session-chat |
 
 ### 模型可调用的工具（Assistant 能力，经对话触发）
@@ -110,7 +113,8 @@
 |---|---|---|
 | `read_file` `glob` `grep` `write_file` `apply_patch` `replace_all` `execute_command` `get_changes` | `redpanda/tools/builtin/` | tool-coding-round |
 | `restore_workspace` | `redpanda/tools/builtin/workspace_restore.py` | agent-workspace-restore |
-| `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents |
+| `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
+| `read_image` | `redpanda/assistant/attachments.py` | rewind-edge-cases、composer-attachments |
 | `update_plan` | `redpanda/assistant/work_plan.py` | work-plan-and-usage |
 | `model_usage` `find_history` | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
@@ -131,6 +135,18 @@
 | `scripts/sandbox_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
 | `scripts/install_winfsp.ps1` | setup-and-sandbox-install（仅 Windows，未 live） |
 | `scripts/dev.sh`、`scripts/dev.ps1` | setup-and-sandbox-install |
+
+### 非入口类场景（故障与边界）
+
+| 场景 | 源码 | 条目 |
+|---|---|---|
+| Worker 失败 → SSE `session_failed` | `redpanda/channels/web/app.py` `report_worker_failures`、`assistant/host/supervisor.py` | crash-recovery |
+| 未完成命令 `CommandPhase.UNKNOWN` / `NO_RESULT_YET` | `runtime/state.py`、`assistant/context/projection.py`、`assistant/conversations.py` | crash-recovery |
+| 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
+| 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
+| 残留 FUSE 挂载清理 | `native/sandbox/src/main.rs` `clear_stale_mount` | crash-recovery |
+| 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
+| 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
 
 ### 有意不覆盖
 
