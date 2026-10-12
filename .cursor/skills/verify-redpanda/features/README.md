@@ -46,7 +46,7 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（23 个）
+## 功能列表（24 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -60,7 +60,8 @@
 | edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 未 live |
 | run-control | [run-control.md](./run-control.md) | `暂停`/`继续`、`中断`、`重试`、`退回编辑栏` | 未 live |
 | subagents | [subagents.md](./subagents.md) | `delegate`、`子 Agent` 面板、`交回结论`、`compare_subagent`/`merge_subagent` | 未 live |
-| work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | `当前计划`、轮次耗时、`上下文用量`、compact | 未 live |
+| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 未 live |
+| work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 未 live |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 部分（徽标与丢弃已跑） |
 | agent-workspace-restore | [agent-workspace-restore.md](./agent-workspace-restore.md) | 模型调用 `restore_workspace` 撤回文件变化 | 未 live |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 未 live |
@@ -115,7 +116,7 @@
 | `restore_workspace` | `redpanda/tools/builtin/workspace_restore.py` | agent-workspace-restore |
 | `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
 | `read_image` | `redpanda/assistant/attachments.py` | rewind-edge-cases、composer-attachments |
-| `update_plan` | `redpanda/assistant/work_plan.py` | work-plan-and-usage |
+| `update_plan` | `redpanda/assistant/work_plan.py` | work-plan |
 | `model_usage` `find_history` | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `skill_help` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
