@@ -90,8 +90,8 @@
 
 ## Driving it with the browser + shell
 
-- **A 同长 + Web 回滚**：(a) `mix.txt` 为 `hello WORLD`（人的大写 `WORLD` 保留，助手的 `HELLO` 撤销）；新会话 journal 有 `assistant.workspace_carryover`，`files` 含 `mix.txt`。(b) `POST .../restarts` 201。(c) 未涉及的文件不变。(d) **界面没有任何提示说 `mix.txt` 被部分保留** → 按源码预期如此，记为疑似问题（用户不知道文件处于混合状态）。
-- **A 变长 + Web 回滚**：(a) 所有工作区文件（包括其他本该能回退的文件）**都没变**；新会话 journal 有 `assistant.workspace_rescue`，`error` 为 `无法回退 mix.txt：文件长度已变化，无法安全恢复。`。(b) 仍是 201，对话已截短、页面正常跳转。(c) 人的修改完整保留。(d) **界面不提示失败**——这就是此前发现的「回滚静默失败」形态之一，判为问题。
+- **A 同长 + Web 回滚**：(a) `mix.txt` 为 `hello WORLD`（人的大写 `WORLD` 保留，助手的 `HELLO` 撤销）；新会话 journal 有 `assistant.workspace_carryover`，`files` 含 `mix.txt`。(b) `POST .../restarts` 201。(c) 未涉及的文件不变。(d) 界面 `会话已回退 · 文件处理结果` 列出 `mix.txt` 为保留后续值、说明只回退了 agent 的部分 → 通过；字节混合可接受，**缺这条提示才算失败**。
+- **A 变长 + Web 回滚**：(a) 所有工作区文件（包括其他本该能回退的文件）**都没变**；新会话 journal 有 `assistant.workspace_rescue`，`error` 为 `无法回退 mix.txt：文件长度已变化，无法安全恢复。`。(b) 仍是 201，对话已截短、页面正常跳转。(c) 人的修改完整保留。(d) 界面显示失败提示（`workspace_file_result` 的 error）→ 通过；不保证文件恢复，201 + 失败结果是正常的。界面看不到失败提示才算问题。
 - **A + 模型 preserve**：(a) 同上的文件结果。(b) 工具结果 `effect` 为 `partially_restored` 或 `preserved`，`preserved_files` 含 `mix.txt`；变长时为 `WORKSPACE_RESTORE_FAILED` 和上述 `error`/`hint`。(d) 模型回复若宣称「已完全撤销」→ 判失败（违反工具描述）。
 - **A + 模型 original**：(a) 同长时 `mix.txt` 变回 `hello world`，人的 `WORLD` 被覆盖；`preserved_files` 不含它。(d) 模型在选 original 前是否告知用户会覆盖人的修改——源码不要求，记录观察。
 - **B1 preserve（Web 或模型）**：(a) `agent.txt` 仍为 `abX`，计入 preserved（模型结果 `preserved_files` / 新会话 carryover `files`）。(c) 文件未被删除。
@@ -103,13 +103,21 @@
 ## Gotchas
 
 - **疑似问题：Web 回滚无预检、无结果报告。** 用户点 `会话和文件一起回滚` 前看不到哪些文件有人工修改，之后也看不到哪些被保留或回退失败；结果只写进模型上下文。
-- **疑似问题：一个冲突导致整次回退失败，且只报第一个冲突。** 人对任何一个助手改过的文件做了变长修改，所有文件都不回退；HTTP 仍是 201。
+- 设计行为：一个冲突导致整次回退失败、只报第一个冲突；只要用户看得到失败提示即可。
 - **疑似问题：长度变化就判冲突。** 人最常见的编辑（加一行）都会改长度，所以实际上「保留人工修改」只在原位同长修改时生效。
-- **疑似问题：preserve 是字节级合并。** 同长的人工修改与助手修改交错时，结果可能是语义上不成立的混合内容，只以 preserved 路径提示，没有 diff。
-- **疑似问题：没有引导模型做语义处理。** 工具描述与系统提示只要求如实汇报 changed/preserved，没有要求读 diff、征求用户、或手工重做。
+- 设计行为：preserve 是字节级保留人的改动；有「agent 和人都改过、只回滚了 agent 的部分」的提示即可。
+- 设计行为：runtime 只如实报告 changed/preserved，语义处理交给模型。
 - **original 会删除或覆盖人工修改**（B1 删除文件、A 覆盖同位置）；只能由模型选择，Web 不提供。
 - 每个用例都在临时工作区里做，并用 `sha256sum` 记录前后哈希作为证据。
 
+## 成功条件（用户确认的边界）
+
+- (a) 人手动（Web）回滚固定 `preserve`：只回滚 agent 的改动，不覆盖人的改动；字节混合可接受。
+- (b) 普通步骤回滚和回滚失败都返回 201；失败时界面必须看得到文件处理结果的失败提示。
+- (c) 人机都改过的文件：界面必须提示「此文件 agent 改过、人也改过，只回滚了 agent 的部分」；缺这条提示才算失败。当前文案「文件部分回退，部分后续值已保留」未写清，记为剩余缺口。
+- (d) 附件：回滚后 Web 不再显示该附件即可，同会话 API 仍能下载不算问题；跨会话必须 404。
+
 ## Live status
-- 部分（2026-10-12，修复后）：原四类已确认问题均有对应修复落地——文件结果如实报告（B）、附件下载分支范围（G）、回滚停止来源压缩（I）、compact 窗口继承规则；均有自动化测试覆盖
-- 未验（待真实 UI）：compact 前后回滚、带附件会话回滚与改写的界面流程
+- 通过（r2，按新成功条件）：preserve 得到 `hOllo world` 且 `effect=partially_restored`（只回了 agent 部分、人的改动保留）；长度变化回滚失败仍 201，响应带 `workspace_file_result.effect=failed` 和中文 error；回滚后同会话附件仍 200 但 Web 不显示、跨会话 404
+- **剩余缺口**：人机混合文件的界面提示仍是「文件部分回退，部分后续值已保留」，未写明「agent 改过、人也改过，只回滚了 agent 的部分」
+- 未验：compact 进行中回滚（r2 跳过）

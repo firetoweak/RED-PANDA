@@ -58,7 +58,7 @@
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具 | 通过（2026-10-12，main@1a4790a） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
 | edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 通过（2026-10-12，main@1a4790a；改写后模型回复偏题，待查） |
-| run-control | [run-control.md](./run-control.md) | `暂停`/`继续`、`中断`、`重试`、`退回编辑栏` | 部分（2026-10-12，修复后；中断后计划保留为设计行为） |
+| run-control | [run-control.md](./run-control.md) | `停止`/`继续`、`重试`、`退回编辑栏` | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
 | subagents | [subagents.md](./subagents.md) | `delegate`、`子 Agent` 面板、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
@@ -162,3 +162,14 @@
 证据根目录：`/workspace/verify-run-20261012`（下文路径相对于它），完整报告见该目录 `REPORT.md`。
 
 该轮次对应源码基线 `main@1a4790a`。其后的 2026-10-12 修复轮次见 `docs/讨论/2026-10-12-验证问题修复.md`：隔离 API 复跑记录在仓库 `.tools/verification/fixapi-20261012/`（16 项检查，覆盖 A 附件入口边界、D 已知入口错误、E 模型失败可见与再试）；真实 UI 流程未在该环境复跑，本表中相关条目标注「UI 待复跑」。
+
+## 已确认的设计边界（不当问题报）
+
+- Web API 没有登录鉴权，是刻意设计。
+- 人手动（Web）回滚：固定用 `preserve`，只回滚 agent 的改动，不覆盖人的改动；字节混合可接受。成功条件要求提示说明「此文件 agent 改过、人也改过，只回滚了 agent 的部分」。当前界面文案「文件部分回退，部分后续值已保留」未写清这一点，记为剩余缺口。
+- 回滚失败：给用户看得见的失败提示就算成功；不保证文件一定恢复，201 加失败的文件结果是正常的。普通步骤回滚返回 201 也正常。
+- 工作计划由模型制定和控制，没有完整状态机。
+- 回滚后同会话附件 API 仍可下载但 Web 不显示，不算用户问题；跨会话必须 404。
+- `select-directory` 是 human-in-the-loop，人不选就一直等。
+- 停止：只有一个 `停止`；一次性写入写完再停，长命令杀进程组，中断调用标 unknown 并给模型简短提示，`继续` 不自动重跑。
+

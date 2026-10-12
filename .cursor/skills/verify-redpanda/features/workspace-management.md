@@ -5,7 +5,7 @@
 ## Sub-features
 
 - `create`：弹窗 `新建工作区`，字段 `名称`、`目录`（提示 `选择窗口在运行后端的电脑上打开，也可以直接填写该电脑上的目录路径`），按钮 `创建`。
-- `pick-directory`：目录选择按钮调用 `POST /api/workspaces/select-directory`，由服务端弹本机系统对话框。
+- `pick-directory`：目录选择按钮调用 `POST /api/workspaces/select-directory`，由服务端弹本机系统对话框。这是 human-in-the-loop：人不选就一直等，不设超时，不算挂起问题。
 - `list`：`GET /api/workspaces`，侧栏按工作区分组列会话，组上有 `在 <名称> 新建会话`。
 
 ## How to get to it (user POV)
@@ -29,6 +29,6 @@
 - `workspaces.json` 被手改坏（重复 id、同路径两项）时服务应返回 400 `WORKSPACE_REGISTRY_ERROR`，而非崩溃。
 
 ## Live status
-- 部分（2026-10-12，修复后）：选择器已知不可用返回 503、不静默挂起（自动化通过）；目录登记与冲突路径不变
-- 未验（待真实 UI）：选择窗口实际弹出、取消、再次打开
-- 功能缺口（不在本次修复范围）：无删除/重命名工作区入口
+- 通过（r2）：冲突 409、坏路径 400；`select-directory` 有图形环境时拉起选择器并等待——符合 human-in-the-loop 设计
+- 未验：UI 截图
+- 功能缺口：无删除/重命名工作区入口
