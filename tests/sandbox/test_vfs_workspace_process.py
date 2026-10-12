@@ -59,14 +59,43 @@ def test_record_finishes_known_publication_before_exposing_its_file_boundary(tmp
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("current,policy,expected,changed,preserved", [
-    (b"BBBB", "preserve", b"AAAA", True, False),
-    (b"HHHH", "preserve", b"HHHH", False, True),
-    (b"HBHB", "preserve", b"HAHA", True, True),
-    (b"AAAA", "preserve", b"AAAA", False, False),
-    (b"HHHH", "original", b"AAAA", True, False),
+@pytest.mark.parametrize("before,agent,current,policy,expected,changed,preserved", [
+    (b"AAAA", b"BBBB", b"BBBB", "preserve", b"AAAA", True, False),
+    (b"AAAA", b"BBBB", b"HHHH", "preserve", b"HHHH", False, True),
+    (b"AAAA", b"BBBB", b"HBHB", "preserve", b"HAHA", True, True),
+    (b"AAAA", b"BBBB", b"AAAA", "preserve", b"AAAA", False, False),
+    (b"AAAA", b"BBBB", b"HHHH", "original", b"AAAA", True, False),
+    (b"AAAA", b"BAAA", b"BAAH", "preserve", b"AAAH", True, False),
+    (b"AAAA", b"BAAA", b"BAAH", "original", b"AAAH", True, False),
+    (None, b"abc", b"abX", "preserve", b"abX", False, True),
+    (None, b"abc", b"abX", "original", None, True, False),
+    (b"user", b"UseR", b"UseX", "preserve", b"useX", True, True),
+    (b"user", b"UseR", b"UseX", "original", b"user", True, False),
 ])
-def test_restore_reports_actual_effect_and_preserved_values(tmp_path, current, policy, expected, changed, preserved):
+def test_restore_reports_actual_effect_and_preserved_values(tmp_path, before, agent, current, policy, expected, changed, preserved):
+    async def scenario():
+        view = backend(tmp_path)
+        file = view.root / "file"
+        if before is not None:
+            file.write_bytes(before)
+        async def edit():
+            view.native_path(file).write_bytes(agent)
+            return {"ok": True}
+        await view.execute(operation_id("s", "edit"), edit)
+        file.write_bytes(current)
+        identity = operation_id("s", "restore")
+        result = await view.restore(INITIAL, identity=identity, policy=policy)
+        assert (file.read_bytes() if file.exists() else None) == expected
+        assert result.changed_paths == (("file",) if changed else ())
+        assert result.preserved_paths == (("file",) if preserved else ())
+        assert result.deleted_paths == (("file",) if expected is None else ())
+        assert await view.restore(INITIAL, identity=identity, policy=policy) == result
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("policy", ["preserve", "original"])
+def test_restore_length_conflict_reports_file_and_leaves_user_content(tmp_path, policy):
+    from redpanda.sandbox.files.operations import WorkspaceRestoreFailed
     async def scenario():
         view = backend(tmp_path)
         file = view.root / "file"
@@ -75,13 +104,11 @@ def test_restore_reports_actual_effect_and_preserved_values(tmp_path, current, p
             view.native_path(file).write_bytes(b"BBBB")
             return {"ok": True}
         await view.execute(operation_id("s", "edit"), edit)
-        file.write_bytes(current)
-        identity = operation_id("s", "restore")
-        result = await view.restore(INITIAL, identity=identity, policy=policy)
-        assert file.read_bytes() == expected
-        assert result.changed_paths == (("file",) if changed else ())
-        assert result.preserved_paths == (("file",) if preserved else ())
-        assert await view.restore(INITIAL, identity=identity, policy=policy) == result
+        file.write_bytes(b"BBBBB")
+        with pytest.raises(WorkspaceRestoreFailed, match="长度已变化") as captured:
+            await view.restore(INITIAL, identity=operation_id("s", "restore"), policy=policy)
+        assert captured.value.paths == ("file",)
+        assert file.read_bytes() == b"BBBBB"
     asyncio.run(scenario())
 
 

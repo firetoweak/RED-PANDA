@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from typing import Literal
 
 from redpanda.runtime import DomainFactCommitted
 from redpanda.runtime.model import CommandPhase
@@ -11,7 +12,89 @@ from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, W
 WORKSPACE_VERSION_FACT = "assistant.workspace_version"
 WORKSPACE_RESTORE_FACT = "assistant.workspace_restore"
 WORKSPACE_RESCUE_FACT = "assistant.workspace_rescue"
-WORKSPACE_CARRYOVER_FACT = "assistant.workspace_carryover"
+
+SEMANTIC_RESTORE_HINT = (
+    "机械回退不保证符合用户意图。请读取相关文件的当前内容，核对已有修改证据；"
+    "若仍需调整，按用户目标使用普通文件工具修改，并遵守现有写入授权。"
+    "不要自动升级回退策略或反复重试同一次失败。"
+)
+
+
+@dataclass(frozen=True)
+class WorkspaceFileResult:
+    policy: Literal["preserve", "original", "keep"]
+    effect: Literal["restored", "partially_restored", "preserved", "unchanged", "kept", "failed"]
+    changed_files: tuple[str, ...] = ()
+    preserved_files: tuple[str, ...] = ()
+    deleted_files: tuple[str, ...] = ()
+    failed_files: tuple[str, ...] = ()
+    error: str | None = None
+
+    @classmethod
+    def parse(cls, data):
+        if not isinstance(data, Mapping) or set(data) != {
+            "policy", "effect", "changed_files", "preserved_files", "deleted_files", "failed_files", "error"
+        }:
+            raise ValueError("workspace file result fields invalid")
+        if data["policy"] not in ("preserve", "original", "keep"):
+            raise ValueError("workspace file result policy invalid")
+        if data["effect"] not in ("restored", "partially_restored", "preserved", "unchanged", "kept", "failed"):
+            raise ValueError("workspace file result effect invalid")
+        paths = {}
+        for key in ("changed_files", "preserved_files", "deleted_files", "failed_files"):
+            values = data[key]
+            if not isinstance(values, (list, tuple)) or any(type(path) is not str or not path for path in values):
+                raise ValueError(f"workspace file result {key} invalid")
+            paths[key] = tuple(values)
+        error = data["error"]
+        if (data["effect"] == "failed") != (type(error) is str and bool(error)):
+            raise ValueError("workspace file result error invalid")
+        if data["effect"] != "failed" and error is not None:
+            raise ValueError("workspace file result error invalid")
+        return cls(data["policy"], data["effect"], **paths, error=error)
+
+
+def restored_file_result(restored, policy):
+    changed, preserved = restored.changed_paths, restored.preserved_paths
+    effect = ("partially_restored" if changed and preserved else "restored" if changed
+              else "preserved" if preserved else "unchanged")
+    return WorkspaceFileResult(policy, effect, changed, preserved, restored.deleted_paths)
+
+
+def workspace_file_result_note(result):
+    note = {
+        "failed": "会话已回退，文件未能恢复；本次文件回退没有修改文件。",
+        "partially_restored": "文件已部分回退，同时保留了后续值；当前文件可能与保留的对话记录不同。",
+        "preserved": "文件回退保留了后续值，本次没有修改文件；当前文件可能与保留的对话记录不同。",
+        "restored": "已执行文件回退，请核对实际修改和删除的文件。",
+        "unchanged": "本次文件处理没有改变文件。",
+        "kept": "工作区文件保持现状，没有退回这条分支的历史位置；存在保留对话之外的文件变化。",
+    }[result.effect]
+    if result.policy == "original":
+        note += "原值策略允许覆盖助手改变位置的后续值，或删除助手创建后又被修改的文件。"
+    return note + SEMANTIC_RESTORE_HINT
+
+
+def project_workspace_file_result(events):
+    result = None
+    for event in events:
+        payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == WORKSPACE_RESCUE_FACT:
+            result = workspace_rescue_result(payload.data)
+    return result
+
+
+def workspace_rescue_result(data):
+    if not isinstance(data, Mapping) or set(data) != {"step_id", "before_version", "version", "error", "result"}:
+        raise ValueError("workspace branch baseline fields invalid")
+    if data["step_id"] is not None and (type(data["step_id"]) is not str or not data["step_id"]):
+        raise ValueError("workspace branch step_id invalid")
+    validate_version(data["before_version"])
+    _validate_version_result(data["version"], data["error"])
+    result = WorkspaceFileResult.parse(data["result"])
+    if result.error != data["error"]:
+        raise ValueError("workspace branch result differs from boundary")
+    return result
 
 
 class StepNotRewindable(Exception):
@@ -101,10 +184,7 @@ def branch_baseline(events, marker, through):
         payload = event.payload
         if marker.sequence < event.sequence <= through and isinstance(payload, DomainFactCommitted) and payload.fact_type == WORKSPACE_RESCUE_FACT:
             data = payload.data
-            if not isinstance(data, Mapping) or set(data) != {"step_id", "before_version", "version", "error"}:
-                raise ValueError("workspace branch baseline fields invalid")
-            validate_version(data["before_version"])
-            _validate_version_result(data["version"], data["error"])
+            workspace_rescue_result(data)
             version = data["version"] if data["error"] is None else data["before_version"]
     return version
 
@@ -152,9 +232,17 @@ class WorkspaceVersionBoundary:
 
         退：回到这条分支历史里最后记下的那个状态。不退：磁盘上留着本分支
         历史看不到的改动，模型必须知道，否则它会照着读到的文件往下推。
-        分支点之后本来就没动过文件时两条路没有区别，也就没什么可说的。
+        分支点之后没动过文件时两条路没有区别，结果明确记为未改变。
         """
         events = await self.runtime.snapshot(self.session_id)
+        for event in events:
+            if (event.delivery is not None
+                    and event.delivery.source == WORKSPACE_RESCUE_FACT
+                    and event.delivery.delivery_id == delivery_id):
+                result = workspace_rescue_result(event.payload.data)
+                if result.policy != ("preserve" if restore else "keep"):
+                    raise ValueError("workspace settlement identity was reused")
+                return
         recorded = [f for f in project_workspace_versions(events) if f.version is not None]
         if not recorded:
             return
@@ -163,45 +251,40 @@ class WorkspaceVersionBoundary:
         target_version = branch_baseline(events, marker, events[-1].sequence)
         current = await self.versions.record()
         if current == target_version:
+            await self._record_rescue(delivery_id, target.step_id, current, current, None,
+                                      WorkspaceFileResult("preserve" if restore else "keep", "unchanged"))
             return
         if not restore:
-            await self._record_rescue(delivery_id + "-baseline", target.step_id, current, current, None)
-            await self.runtime.receive_domain_fact(
-                self.session_id, WORKSPACE_CARRYOVER_FACT,
-                {"note": "工作区文件保持现状，没有退回这条分支的历史位置；"
-                         "磁盘上存在本分支历史里看不到的改动。"},
-                delivery_id=delivery_id, source=WORKSPACE_CARRYOVER_FACT,
-            )
+            await self._record_rescue(delivery_id, target.step_id, current, current, None,
+                                      WorkspaceFileResult("keep", "kept"))
             return
         try:
             restored = await self.versions.restore(target_version, identity=operation_id(self.session_id, delivery_id))
         except WorkspaceRestoreFailed as error:
             await self._record_rescue(
-                delivery_id, target.step_id, error.before_version, None, str(error)
+                delivery_id, target.step_id, error.before_version, None, str(error),
+                WorkspaceFileResult("preserve", "failed", failed_files=error.paths, error=str(error)),
             )
             return
+        except SandboxUnavailable:
+            error = "当前无法回退工作区文件，请让用户检查应用安装。"
+            await self._record_rescue(delivery_id, target.step_id, current, None, error,
+                                      WorkspaceFileResult("preserve", "failed", error=error))
+            return
         await self._record_rescue(
-            delivery_id, target.step_id, restored.before_version, restored.version, None
+            delivery_id, target.step_id, restored.before_version, restored.version, None,
+            restored_file_result(restored, "preserve"),
         )
-        if restored.preserved_paths:
-            await self.runtime.receive_domain_fact(
-                self.session_id, WORKSPACE_CARRYOVER_FACT,
-                {"note": "文件回退保留了后续改动，当前文件可能与保留的对话记录不同；请读取相关文件核对。",
-                 "files": list(restored.preserved_paths[:100]),
-                 "truncated": len(restored.preserved_paths) > 100},
-                delivery_id=delivery_id + "-preserved", source=WORKSPACE_CARRYOVER_FACT,
-            )
 
-    async def _record_rescue(self, delivery_id, step_id, before, version, error):
+    async def _record_rescue(self, delivery_id, step_id, before, version, error, result):
         """这条分支开始之前工作区是什么样。
 
-        成功时不渲染：分支自己就是载体，历史和文件停在同一刻，没有可说的。
-        失败时必须渲染——那时历史说在这一刻、文件不在，模型要知道这件事。
+        文件边界和实际处理结果来自同一次操作，模型只读取可观察的结果。
         """
         await self.runtime.receive_domain_fact(
             self.session_id, WORKSPACE_RESCUE_FACT,
             {"step_id": step_id, "before_version": before,
-             "version": version, "error": error},
+             "version": version, "error": error, "result": asdict(result)},
             delivery_id=delivery_id, source=WORKSPACE_RESCUE_FACT,
         )
 
@@ -229,19 +312,16 @@ class WorkspaceVersionBoundary:
         except WorkspaceRestoreFailed as error:
             await self._record_restore(command_id, target, error.before_version, None, str(error))
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error),
-                    "hint": "本次回退没有修改文件；请核对相关文件的当前内容后再选择策略。"}
+                    "failed_files": list(error.paths),
+                    "hint": "本次回退没有修改文件。" + SEMANTIC_RESTORE_HINT}
         except SandboxUnavailable as error:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED",
-                    "error": "当前无法回退工作区文件，请让用户检查应用安装后重试。"}
+                    "error": "当前无法回退工作区文件，请让用户检查应用安装。",
+                    "hint": SEMANTIC_RESTORE_HINT}
         await self._record_restore(command_id, target, restored.before_version, restored.version, None)
-        changed, preserved = restored.changed_paths, restored.preserved_paths
-        effect = ("partially_restored" if changed and preserved else "restored" if changed
-                  else "preserved" if preserved else "unchanged")
+        result = restored_file_result(restored, policy)
         return {"ok": True, "code": "WORKSPACE_RESTORED", "tool_call_id": target,
-                "data": {"effect": effect, "changed_files": list(changed[:100]),
-                         "preserved_files": list(preserved[:100]),
-                         "changed_count": len(changed), "preserved_count": len(preserved),
-                         "truncated": len(changed) > 100 or len(preserved) > 100}}
+                "data": asdict(result), "hint": workspace_file_result_note(result)}
 
     async def _record_restore(self, command_id, target, before, version, error):
         await self.runtime.receive_domain_fact(

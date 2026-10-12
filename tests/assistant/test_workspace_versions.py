@@ -6,8 +6,8 @@ import pytest
 
 from redpanda.assistant.context.projection import project_chat_messages
 from redpanda.assistant.workspace_versions import (
-    WORKSPACE_CARRYOVER_FACT, WorkspaceVersionBoundary, WorkspaceVersionFact,
-    project_workspace_versions, workspace_version_event,
+    WORKSPACE_RESCUE_FACT, WorkspaceFileResult, WorkspaceVersionBoundary, WorkspaceVersionFact,
+    project_workspace_file_result, project_workspace_versions, workspace_version_event,
     operation_id,
 )
 from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, ToolBinding
@@ -186,12 +186,15 @@ def test_partial_restore_retains_rescue_fact_without_exposing_version_addresses(
 def test_failed_time_travel_exposes_observable_failure_without_file_version_coordinates():
     async def scenario():
         runtime, boundary, _, _, _ = await restore_history(["a" * 64] * 4)
-        await boundary._record_rescue("travel", "step", "f" * 64, None, "文件已被替换，无法回退。")
+        error = "文件已被替换，无法回退。"
+        await boundary._record_rescue("travel", "step", "f" * 64, None, error,
+                                      WorkspaceFileResult("preserve", "failed", failed_files=("calc.py",), error=error))
         events = await runtime.snapshot("s")
         assert events[-1].payload.data["before_version"] == "f" * 64
         visible = runtime.projector.project_visible("s", events)
         messages = json.dumps(project_chat_messages(events, visible), ensure_ascii=False)
         assert "文件已被替换" in messages
+        assert "calc.py" in messages and "普通文件工具" in messages
         assert "before_version" not in messages and "f" * 64 not in messages
     asyncio.run(scenario())
 
@@ -225,8 +228,8 @@ def test_a_step_whose_version_was_never_taken_has_no_boundary_to_guess_at():
     asyncio.run(scenario())
 
 
-def test_fork_only_speaks_up_when_the_files_actually_diverged():
-    """分支点之后没动过文件时，退与不退没有区别，不该往上下文里塞话。
+def test_fork_reports_unchanged_or_kept_files_without_repeating_restoration():
+    """分支点之后没动过文件时，退与不退没有区别。
 
     真有改动而用户选了不退，模型必须知道磁盘上有本分支历史看不到的东西。
     """
@@ -239,18 +242,19 @@ def test_fork_only_speaks_up_when_the_files_actually_diverged():
 
         versions.record.return_value = branch_point
         await boundary.settle_fork(False, "edit-1-workspace")
-        assert (await runtime.snapshot("s"))[-1].payload.fact_type != WORKSPACE_CARRYOVER_FACT
+        assert project_workspace_file_result(await runtime.snapshot("s")).effect == "unchanged"
 
         versions.record.return_value = "d" * 64
         await boundary.settle_fork(False, "edit-2-workspace")
         saved = (await runtime.snapshot("s"))[-1].payload
-        assert saved.fact_type == WORKSPACE_CARRYOVER_FACT
+        assert saved.fact_type == WORKSPACE_RESCUE_FACT
+        assert saved.data["result"]["effect"] == "kept"
         versions.restore.assert_not_awaited()
         all_events = await runtime.snapshot("s")
         messages = project_chat_messages(
             all_events, runtime.projector.project_visible("s", all_events)
         )
-        assert WORKSPACE_CARRYOVER_FACT in json.dumps(messages)
+        assert "保留对话之外" in json.dumps(messages, ensure_ascii=False)
 
         await boundary.settle_fork(True, "edit-3-workspace")
         # 留在磁盘上的状态已经成为本分支起点，重试不再改文件。
@@ -268,4 +272,58 @@ def test_undoing_restore_uses_its_saved_pre_restore_files():
         result = await boundary.restore("undo-restore", restore_call, events, visible)
         assert result["ok"] is True
         versions.restore.assert_awaited_once_with("f" * 64, identity=operation_id("s", "undo-restore"), policy="preserve")
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_fork_file_result_survives_reprojection_for_web_and_model(failure):
+    from redpanda.assistant.conversations import project_conversation
+    from redpanda.assistant.sessions import SessionView
+    from redpanda.sandbox.files.operations import WorkspaceRestore, WorkspaceRestoreFailed
+    async def scenario():
+        runtime, boundary, versions, _, _ = await restore_history(["a" * 64] * 4)
+        paths = tuple(f"file-{index}.py" for index in range(105))
+        versions.record.side_effect = None
+        versions.record.return_value = "d" * 64
+        if failure:
+            versions.restore.side_effect = WorkspaceRestoreFailed("d" * 64, "无法回退 calc.py：文件长度已变化。", ("calc.py",))
+        else:
+            versions.restore.return_value = WorkspaceRestore("d" * 64, "e" * 64, paths, ("file-104.py",), ("file-0.py",))
+        await boundary.settle_fork(True, "travel")
+        events = await runtime.snapshot("s")
+        state = runtime.projector.project_visible("s", events)
+        view = project_conversation("s", events, state.steps, session=SessionView("waiting", ("external_fact",), (), False))
+        result = view.workspace_file_result
+        assert result == project_workspace_file_result(events)
+        messages = json.dumps(project_chat_messages(events, state), ensure_ascii=False)
+        assert "普通文件工具" in messages and "现有写入授权" in messages
+        assert "before_version" not in messages and "d" * 64 not in messages
+        if failure:
+            assert result.effect == "failed" and result.failed_files == ("calc.py",)
+            assert "长度已变化" in result.error and "会话已回退" in messages
+        else:
+            assert result.effect == "partially_restored"
+            assert result.changed_files == paths and result.preserved_files == ("file-104.py",)
+            assert result.deleted_files == ("file-0.py",)
+            assert "file-104.py" in messages
+        # 重复交付不能把原结果改成 unchanged，也不能重试失败或按后来文件重判。
+        versions.record.return_value = "f" * 64
+        await boundary.settle_fork(True, "travel")
+        assert await runtime.snapshot("s") == events
+        versions.restore.assert_awaited_once()
+    asyncio.run(scenario())
+
+
+def test_original_tool_result_reports_all_paths_and_semantic_action():
+    from redpanda.sandbox.files.operations import WorkspaceRestore
+    async def scenario():
+        _, boundary, versions, events, visible = await restore_history(["a" * 64] * 4)
+        paths = tuple(f"file-{index}.py" for index in range(105))
+        versions.restore.return_value = WorkspaceRestore("d" * 64, "e" * 64, paths, (), ("file-104.py",))
+        target = visible.steps[0].commands[0].command.command_id
+        result = await boundary.restore("undo", target, events, visible, policy="original")
+        assert result["data"]["changed_files"] == paths
+        assert result["data"]["deleted_files"] == ("file-104.py",)
+        assert "覆盖" in result["hint"] and "删除" in result["hint"] and "普通文件工具" in result["hint"]
+        assert "before_version" not in json.dumps(result)
     asyncio.run(scenario())

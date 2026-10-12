@@ -20,6 +20,7 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from redpanda.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
+    workspace_rescue_result, workspace_file_result_note,
 )
 from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
 from redpanda.runtime.events import (
@@ -294,8 +295,6 @@ def _translate_visible_events(
         if isinstance(payload, DomainFactCommitted):
             if payload.fact_type == WORKSPACE_RESTORE_FACT:
                 continue
-            if payload.fact_type == WORKSPACE_RESCUE_FACT and payload.data["error"] is None:
-                continue
             if payload.fact_type == WORKSPACE_VERSION_FACT:
                 fact = WorkspaceVersionFact.parse(payload.data)
                 if fact.error is None:
@@ -303,8 +302,8 @@ def _translate_visible_events(
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
             if payload.fact_type == WORKSPACE_RESCUE_FACT:
-                shown_data = {"note": "文件没有成功回退到所选位置，请核对当前文件后继续。",
-                              "error": payload.data["error"]}
+                result = workspace_rescue_result(payload.data)
+                shown_data = {**thaw_value(payload.data["result"]), "note": workspace_file_result_note(result)}
             content = json.dumps(
                 {"fact": payload.fact_type, "data": shown_data},
                 ensure_ascii=False,

@@ -29,9 +29,10 @@ class SandboxUnavailable(OSError):
     """The native sandbox program is unavailable."""
 
 class WorkspaceRestoreFailed(OSError):
-    def __init__(self, before_version: str, error: str) -> None:
+    def __init__(self, before_version: str, error: str, paths: tuple[str, ...] = ()) -> None:
         super().__init__(error)
         self.before_version = before_version
+        self.paths = paths
 
 @dataclass(frozen=True)
 class WorkspaceRestore:
@@ -39,6 +40,7 @@ class WorkspaceRestore:
     version: str
     changed_paths: tuple[str, ...] = ()
     preserved_paths: tuple[str, ...] = ()
+    deleted_paths: tuple[str, ...] = ()
 
 def workspace_files(home, workspace):
     storage = home.state_root / "workspace_views" / sha256(
@@ -293,8 +295,9 @@ class WorkspaceFiles:
                         "unsupported_link_restore": "不支持恢复该链接变化",
                         "unsupported_rename_cycle": "不支持恢复该组相互重命名",
                     }
+                    path = result['path'].removeprefix('/')
                     raise WorkspaceRestoreFailed(before,
-                        f"无法回退 {result['path'].removeprefix('/')}：{reasons[result['reason']]}。")
+                        f"无法回退 {path}：{reasons[result['reason']]}。", (path,))
                 if result["status"] not in ("sealed", "accepted"):
                     raise RuntimeError(f"sandbox restoration requires explicit recovery: {result}")
                 accepted = await settled(lambda: client.request("accept", command_id=identity))
@@ -303,6 +306,8 @@ class WorkspaceFiles:
                 summary = result["restore_summary"]
                 return WorkspaceRestore(before, identity,
                     tuple(path.removeprefix("/") for path in summary["changed_paths"]),
-                    tuple(path.removeprefix("/") for path in summary["preserved_paths"]))
+                    tuple(path.removeprefix("/") for path in summary["preserved_paths"]),
+                    tuple(change["path"].removeprefix("/") for change in result["receipt"]["changes"]
+                          if change["after"]["kind"] == "missing"))
             finally:
                 await settled(client.close)

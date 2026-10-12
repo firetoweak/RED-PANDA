@@ -33,7 +33,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
   };
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 5,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, workspace_file_result: null,
     context_input_tokens: null, work_plan: completed,
     work_plan_updates: [{ step_id: "plan-step", plan: completed }],
     session: {

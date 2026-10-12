@@ -19,7 +19,9 @@ from redpanda.assistant.subagent.subagent import (
 )
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.workspaces import bound_workspace_id
-from redpanda.assistant.workspace_versions import WorkspaceVersionFact, project_workspace_versions
+from redpanda.assistant.workspace_versions import (
+    WorkspaceFileResult, WorkspaceVersionFact, project_workspace_file_result, project_workspace_versions,
+)
 from redpanda.runtime import (
     CommandPhase,
     CommandState,
@@ -102,6 +104,7 @@ class ConversationView:
     compact_phase: str | None = None
     waiting_until: datetime | None = None
     workspace_version: WorkspaceVersionFact | None = None
+    workspace_file_result: WorkspaceFileResult | None = None
     work_plan: dict | None = None
     work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
     context_input_tokens: int | None = None
@@ -372,6 +375,7 @@ def project_conversation(
         items=tuple(items),
         session=session,
         workspace_version=versions[-1] if versions else None,
+        workspace_file_result=project_workspace_file_result(events),
         work_plan=project_work_plan(events),
         work_plan_updates=project_work_plan_updates(events),
         context_input_tokens=latest_input_tokens(events),

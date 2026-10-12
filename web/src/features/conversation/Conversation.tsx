@@ -56,6 +56,7 @@ import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
+import { WorkspaceFileResultAlert } from "./WorkspaceFileResultAlert";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
@@ -452,6 +453,7 @@ export function Conversation() {
           </Button>
         )}
         <Stack className="composer-column" gap={8}>
+        <WorkspaceFileResultAlert result={conversation.workspace_file_result} />
         <WorkPlanPanel key={activePlan === null ? "none" : "active"} plan={activePlan} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
