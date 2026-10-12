@@ -452,6 +452,35 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.host.close()
         self.directory.cleanup()
 
+    async def test_close_rejects_worker_start_waiting_for_journal(self):
+        from unittest.mock import patch
+
+        await self.host.create("one", self.workspace.workspace_id)
+        entered, release = asyncio.Event(), asyncio.Event()
+        snapshot = SqliteJournal.snapshot
+
+        async def held_snapshot(journal, session_id):
+            events = await snapshot(journal, session_id)
+            entered.set()
+            await release.wait()
+            return events
+
+        with patch.object(SqliteJournal, "snapshot", held_snapshot):
+            starting = asyncio.create_task(self.host.request("view", "one", {}))
+            self.host._track("one", starting)
+            await asyncio.wait_for(entered.wait(), 30)
+            closing = asyncio.create_task(self.host.close())
+            await until(lambda: self.host.closed)
+            release.set()
+            await asyncio.wait_for(closing, 30)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "Host closed"):
+                    await starting
+                self.assertFalse(self.host.workers)
+                self.assertFalse(self.host.watchers)
+            finally:
+                await self.host.close()
+
     async def test_idle_exit_delivery_and_explicit_restart(self):
         await self.host.create("one", self.workspace.workspace_id)
         await until(lambda: not self.host.workers and not self.host.watchers)
@@ -886,17 +915,35 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
         from redpanda.sandbox.files.children import child_root
 
+        started = set()
+        route = self.host._route
+
+        async def observe_child_request(operation, session_id, arguments, **kwargs):
+            if operation == "llm_chat" and session_id.startswith("parent/sub-"):
+                started.add(session_id)
+            return await route(operation, session_id, arguments, **kwargs)
+
+        self.host._route = observe_child_request
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")
-        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        # Observe each child's real IPC request, rather than counting random
+        # marker files left by model calls (which need not be one per Worker).
+        await until(lambda: len(started) >= 2 or not self.host.failures.empty())
+        self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         children = project_delegations(events)
+        self.assertEqual(len(children), 2)
+        self.assertEqual(started, set(children))
+        workers = [self.host.workers[child] for child in children]
+        self.assertTrue(all(worker.process.is_alive() for worker in workers))
         roots = [child_root(self.home, "parent", child) for child in children]
         self.assertTrue(all(root.is_dir() for root in roots))
         await asyncio.wait_for(self.host.archive("parent"), 30)
         self.assertTrue(self.host.is_archived("parent"))
+        self.assertTrue(all(worker.exited.is_set() for worker in workers))
         self.assertTrue(all(not root.exists() for root in roots))
         self.assertTrue(all(child not in self.host.workers for child in children))
+        self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
 
     async def test_deliveries_during_idle_transition_are_all_durable(self):
         await self.host.create("one", self.workspace.workspace_id)
