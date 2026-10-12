@@ -6,7 +6,7 @@
 
 ## 运行包
 
-正常使用安装已编译的沙箱运行包，**不需要 Rust、LLVM 或开发 SDK**。项目准备脚本自动下载 [`release.json`](release.json) 固定版本的运行包，校验 SHA256 后安装；已有相同版本时跳过。首次运行包尚待发布，发布前下载会明确报错。
+正常使用安装已编译的沙箱运行包，**不需要 Rust、LLVM 或开发 SDK**。项目准备脚本自动下载 [`release.json`](release.json) 固定版本的[运行包](https://github.com/firetoweak/RED-PANDA/releases)，校验 SHA256 后安装；已有相同版本时跳过。
 
 安装位置为 `redpanda/sandbox/bin/`。Windows 包含程序、WinFsp 用户态 DLL 和 libunwind；Linux 包含程序。两种运行包都保留 `BUILD.json` 和许可证，Linux 安装时自动设置执行权限。
 

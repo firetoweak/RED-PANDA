@@ -171,7 +171,7 @@ Cargo 使用仓库内 `../vfs/` 路径依赖。构建临时目录在项目 `.too
 
 原生源码变化会触发 [Sandbox runtime 工作流](../../.github/workflows/sandbox.yml)，分别在 Windows x64 和 Ubuntu 22.04 上构建 release 程序，打包运行库、构建记录、许可证及 SHA256，并执行真实安装与挂载验证。Linux 包要求 glibc 2.35 或更新版本。
 
-需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，再到 GitHub Actions 的 **Sandbox runtime → Run workflow**，选择 `main` 并勾选 `publish`。两个平台都验证成功后，工作流创建 `sandbox-v<版本>` Release；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。首次发布前，普通安装会明确提示运行包尚未发布。
+需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，再到 GitHub Actions 的 **Sandbox runtime → Run workflow**，选择 `main` 并勾选 `publish`。两个平台都验证成功后，工作流创建 `sandbox-v<版本>` Release；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。
 
 发布只需在原生程序或通信协议变化时进行；Python、前端的普通修改继续复用固定版本。新的源码提交可以暂时保持同一个运行包版本，待原生功能准备好后再发布。
 

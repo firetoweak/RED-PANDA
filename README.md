@@ -34,8 +34,6 @@
 
 目前支持 **Windows x64 和 Linux x64**（glibc 2.35+）；macOS 的工作区文件视图尚未实现。
 
-**首次沙箱运行包尚待发布。准备脚本已接入自动下载；发布前，新安装会提示运行包尚未发布。**
-
 ### 1. 准备运行环境
 
 先自行安装 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)、[fd](https://github.com/sharkdp/fd#installation)、Node.js 与 npm（Node.js 22.x 至少 22.13，或 24.x）。Linux 还需 curl。这些系统工具由你安装，准备脚本只检查是否可用。
