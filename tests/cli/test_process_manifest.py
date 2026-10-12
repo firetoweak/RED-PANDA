@@ -98,7 +98,11 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
                 resolved = await self.assembly.service.installer.resolve_path(
                     "redpanda-fake-cli"
                 )
-                self.assertEqual(Path(resolved), shim)
+                # where.exe may return 8.3 short paths (RUNNER~1); compare by identity.
+                self.assertTrue(
+                    os.path.samefile(resolved, shim),
+                    f"{resolved!r} is not the same file as {shim!r}",
+                )
             finally:
                 if original is None:
                     winreg.DeleteValue(key, "Path")
