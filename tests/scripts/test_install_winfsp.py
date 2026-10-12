@@ -13,7 +13,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "install_winfsp.ps1"
 # Windows PowerShell 5.1 to exercise version selection and installer arguments.
 DRIVER = r"""
 $case = $env:REDPANDA_WINFSP_TEST_CASE | ConvertFrom-Json
-$state = @{ Downloads = @(); Arguments = $null; Sdk = $case.sdk; Runtime = [bool]$case.version; Error = $null; ApiCalls = 0 }
+$state = @{ Downloads = @(); Arguments = $null; Sdk = $case.sdk; Runtime = [bool]$case.version; Error = $null; ApiCalls = 0; ApiAuthorization = $null }
 function Get-ItemProperty {
     param($Path, $ErrorAction)
     if ($Path -like '*Uninstall*') {
@@ -31,8 +31,9 @@ function Test-Path {
 }
 function New-Item { param($ItemType, [switch]$Force, $Path) }
 function Invoke-RestMethod {
-    param($Uri)
+    param($Uri, $Headers)
     $state.ApiCalls++
+    $state.ApiAuthorization = $Headers.Authorization
     foreach ($version in @('2.2.26215', '2.1.25156')) {
         [pscustomobject]@{
             tag_name = $version; draft = $false; prerelease = ($version -eq '2.2.26215')
@@ -63,11 +64,12 @@ $state | ConvertTo-Json -Compress
 """
 
 
-def run_installer(*, version=None, sdk=False, developer=False, exit_code=0, signature="Valid"):
+def run_installer(*, version=None, sdk=False, developer=False, exit_code=0, signature="Valid", token=""):
     case = {"version": version, "sdk": sdk, "developer": developer, "exit_code": exit_code, "signature": signature}
     env = os.environ | {
         "REDPANDA_WINFSP_TEST_CASE": json.dumps(case),
         "REDPANDA_WINFSP_TEST_SCRIPT": str(SCRIPT),
+        "GH_TOKEN": token,
     }
     powershell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
     result = subprocess.run(
@@ -90,9 +92,11 @@ def test_existing_newer_driver_receives_matching_sdk_without_downgrade():
     assert '.msi" ADDLOCAL=' in state["Arguments"]
 
 
-def test_fresh_install_chooses_stable_release():
-    state = run_installer()
+@pytest.mark.parametrize("token", ["", "test-workflow-token"])
+def test_fresh_install_chooses_stable_release(token):
+    state = run_installer(token=token)
     assert state["Error"] is None
+    assert state["ApiAuthorization"] == (f"Bearer {token}" if token else None)
     assert state["Downloads"] == ["https://example.test/winfsp-2.1.25156.msi"]
     assert 'ADDLOCAL=F.Main,F.User ' in state["Arguments"]
     assert 'F.Developer' not in state["Arguments"]

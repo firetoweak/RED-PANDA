@@ -3,10 +3,10 @@ name: Sandbox runtime
 on:
   pull_request:
     branches: [main]
-    paths: ['native/**', '.cargo/**', 'scripts/build_sandbox.py', 'scripts/sandbox_runtime.py', 'tests/scripts/test_sandbox_runtime*', '.github/workflows/sandbox.yml']
+    paths: ['native/**', '.cargo/**', 'scripts/build_sandbox.py', 'scripts/install_winfsp.ps1', 'scripts/sandbox_runtime.py', 'tests/scripts/test_install_winfsp.py', 'tests/scripts/test_sandbox_runtime*', '.github/workflows/sandbox.yml']
   push:
     branches: [main]
-    paths: ['native/**', '.cargo/**', 'scripts/build_sandbox.py', 'scripts/sandbox_runtime.py', 'tests/scripts/test_sandbox_runtime*', '.github/workflows/sandbox.yml']
+    paths: ['native/**', '.cargo/**', 'scripts/build_sandbox.py', 'scripts/install_winfsp.ps1', 'scripts/sandbox_runtime.py', 'tests/scripts/test_install_winfsp.py', 'tests/scripts/test_sandbox_runtime*', '.github/workflows/sandbox.yml']
   workflow_dispatch:
     inputs:
       publish:
@@ -50,6 +50,8 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
       - name: Prepare Windows build and runtime dependencies
         if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -72,7 +74,7 @@ jobs:
       - name: Prepare verification environment
         run: python -m pip install -r requirements.txt
       - name: Verify installation contracts
-        run: python -m pytest tests/scripts/test_sandbox_runtime.py
+        run: python -m pytest tests/scripts/test_sandbox_runtime.py tests/scripts/test_install_winfsp.py
       - name: Verify native runtime without Rust on PATH
         run: python -m pytest -m process tests/scripts/test_sandbox_runtime_process.py
       - uses: actions/upload-artifact@v7

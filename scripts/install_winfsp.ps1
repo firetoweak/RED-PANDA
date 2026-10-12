@@ -26,7 +26,9 @@ if ($installed -and (Test-WinFspComponents)) {
 }
 
 # Use the installed version when adding SDK files; never downgrade a driver.
-$releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/winfsp/winfsp/releases?per_page=100'
+$headers = @{ Accept = 'application/vnd.github+json' }
+if ($env:GH_TOKEN) { $headers.Authorization = "Bearer $env:GH_TOKEN" }
+$releases = Invoke-RestMethod -Uri 'https://api.github.com/repos/winfsp/winfsp/releases?per_page=100' -Headers $headers
 if ($installed) {
     $packageName = "winfsp-$($installed.DisplayVersion).msi"
     $release = $releases | Where-Object { $_.assets.name -contains $packageName } | Select-Object -First 1
