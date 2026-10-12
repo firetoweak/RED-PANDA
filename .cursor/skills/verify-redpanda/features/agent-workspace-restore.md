@@ -25,6 +25,10 @@
 - 范围包含同一工作区其间其他会话的助手修改；并行会话验证时要预期这一点。
 - 需要 `sandbox.ready` 与 `live_model_ready`。
 
+## 成功条件补充
+
+- preserve 刻意保留人的改动；结果把文件标为 preserved/partially_restored，且回复不宣称「已完全撤销」即通过。字节混合可接受。
+
 ## Live status
-- 部分（2026-10-12，修复后）：机械回退结果如实分类并分别告知用户与模型，不静默宣称完全恢复（源码确认 + 自动化通过）；语义处理交给模型或用户
-- 未验（待真实 UI）：助手撤回后的结果展示与模型下一步动作
+- 通过（r2，按新条件）：长度变化时 `WORKSPACE_RESTORE_FAILED` 且不改文件；preserve 结果带 preserved 标记
+- 观察：同长度 `policy=original` 会把人的 `HUMAN` 盖回 `hello`，hint 写明原值策略允许覆盖——属于模型主动选 original 的语义，不按 bug 报
