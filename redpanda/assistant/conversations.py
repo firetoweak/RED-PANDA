@@ -45,7 +45,7 @@ ToolStatus = Literal[
     "rejected",
 ]
 SessionActivity = Literal["running", "idle"]
-UNKNOWN_TOOL_ERROR = "执行中断，结果未知"
+UNKNOWN_TOOL_ERROR = "执行已开始，但未取得最终结果，原因未知，可能已部分执行"
 
 
 @dataclass(frozen=True, slots=True)

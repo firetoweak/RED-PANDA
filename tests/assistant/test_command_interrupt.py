@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.assistant.context.projection import outcome_text
+from redpanda.assistant.context.projection import ModelContextProjector, outcome_text
 from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.runtime import (
@@ -15,6 +16,8 @@ from redpanda.runtime import (
     MemoryJournal,
     ModelDecision,
     RuntimeStatus,
+    SqliteJournal,
+    StateProjector,
     StepContinuationCancelled,
     ToolBinding,
 )
@@ -36,6 +39,7 @@ from redpanda.tools.builtin.command_interrupts import (
     run_interruptible,
 )
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
+from tests.session_scheduler import SettlingScheduler
 
 
 def _binding(root: Path, runner) -> EnvironmentBinding:
@@ -67,6 +71,50 @@ def _interrupted(stdout: str) -> CommandResult:
 
 
 class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
+    async def test_cancel_turn_lets_started_file_write_finish_without_continuing(self):
+        started = asyncio.Event()
+        finish_write = asyncio.Event()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "written.txt"
+
+        async def write_file(_context, _arguments):
+            started.set()
+            await finish_write.wait()
+            path.write_text("complete", encoding="utf-8")
+            return {"ok": True}
+
+        model = ScriptedDecisionMaker((
+            lambda _frame: ModelDecision(
+                command_requests=(InvokeTool("write_file"),),
+            ),
+        ))
+        runtime = AgentRuntime(
+            MemoryJournal(), model, {"write_file": ToolBinding(write_file)},
+            SequentialIds(),
+        )
+        scheduler = SettlingScheduler(runtime, "session")
+        scheduler.command_interrupts = CommandInterrupts()
+        try:
+            await runtime.receive_user_message("session", "write", delivery_id="delivery")
+            await scheduler.wake("session")
+            await asyncio.wait_for(started.wait(), timeout=1)
+
+            await scheduler.cancel_turn("session")
+            self.assertFalse(path.exists())
+            self.assertFalse(scheduler.idle)
+
+            finish_write.set()
+            await asyncio.wait_for(scheduler.join(), timeout=1)
+            self.assertEqual(path.read_text(encoding="utf-8"), "complete")
+            state = await runtime.state("session")
+            self.assertEqual(state.commands[0].outcome.value, {"ok": True})
+            self.assertEqual(state.status, RuntimeStatus.WAITING)
+            self.assertEqual(len(model.frames), 1)
+        finally:
+            finish_write.set()
+            await scheduler.close()
+
     async def test_cancel_turn_interrupts_every_running_execute_command(self):
         started = asyncio.Event()
         running = 0
@@ -103,7 +151,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
             )
 
         runtime = AgentRuntime(
-            MemoryJournal(),
+            SqliteJournal(root / "journal.sqlite"),
             ScriptedDecisionMaker((
                 lambda _frame: ModelDecision(
                     command_requests=(
@@ -149,6 +197,9 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
             projected = outcome_text(command.outcome)
             self.assertIn('"code": "COMMAND_INTERRUPTED"', projected)
             self.assertIn('"output_is_result": false', projected)
+            self.assertIn("用户停止", projected)
+            self.assertIn("可能已部分执行", projected)
+            self.assertIn("先检查相关文件或外部状态", projected)
             self.assertNotIn("COMMAND_TIMEOUT", projected)
         events = await runtime.snapshot("session")
         self.assertEqual(
@@ -165,6 +216,20 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
             ),
             2,
         )
+
+        await runtime.receive_user_message("session", "继续", delivery_id="continue")
+        restored_events = await SqliteJournal(root / "journal.sqlite").snapshot("session")
+        prepared = ModelContextProjector().prepare(
+            restored_events, StateProjector().project_visible("session", restored_events),
+            "session",
+        )
+        restored_results = [
+            json.loads(message["content"])
+            for message in prepared.messages if message["role"] == "tool"
+        ]
+        self.assertEqual(restored_results, [
+            json.loads(outcome_text(command.outcome)) for command in state.commands
+        ])
 
     async def test_kill_failure_is_exposed_and_does_not_record_an_outcome(self):
         started = asyncio.Event()

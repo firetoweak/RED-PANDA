@@ -27,13 +27,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   useAuthorizeCommandMutation,
   useBranchAfterTurnMutation,
+  useCancelTurnMutation,
   useEditAndForkMutation,
   useGetConversationQuery,
   useResolveControlMutation,
   useSelectSessionMutation,
   useSendInputMutation,
   useSetAutoAuthorizeMutation,
-  useSetPausedMutation,
   useRetryTurnMutation,
   useRestartFromStepMutation,
 } from "../../api/redpandaApi";
@@ -101,7 +101,7 @@ export function Conversation() {
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
   const [resolveControl, resolvingControl] = useResolveControlMutation();
   const [setAutoAuthorize, autoAuthorizing] = useSetAutoAuthorizeMutation();
-  const [setPaused, pausing] = useSetPausedMutation();
+  const [cancelTurn, stopping] = useCancelTurnMutation();
   const [retryTurn, retrying] = useRetryTurnMutation();
   const [restartFromStep, restarting] = useRestartFromStepMutation();
   const [rewindStepId, setRewindStepId] = useState<string | null>(null);
@@ -500,14 +500,16 @@ export function Conversation() {
             </Group>
           </Alert>
         )}
-        {sending.isError || editing.isError || retrying.isError || branching.isError ? (
+        {sending.isError || editing.isError || retrying.isError || branching.isError || stopping.isError ? (
           <Alert
             className="composer-error"
             color="red"
             icon={<IconAlertCircle size={16} />}
             py="xs"
           >
-            {branching.isError
+            {stopping.isError
+              ? requestErrorMessage(stopping.error, "停止失败，请确认后端连接后重试。")
+              : branching.isError
               ? requestErrorMessage(
                   branching.error,
                   "未能从这一轮建立新会话。",
@@ -529,11 +531,10 @@ export function Conversation() {
           disabled={connectionId === null}
           sending={sending.isLoading}
           running={running === true}
-          paused={conversation.session.paused}
           shouldWake={
             conversation.session.should_wake && lastError == null
           }
-          pauseBusy={pausing.isLoading}
+          stopBusy={stopping.isLoading}
           retryBusy={retrying.isLoading}
           autoAuthorize={conversation.session.auto_authorize}
           autoAuthorizeBusy={autoAuthorizing.isLoading}
@@ -546,15 +547,14 @@ export function Conversation() {
             }
             void retryTurn({ connectionId, sessionId }).unwrap();
           }}
-          onSetPaused={(nextPaused) => {
+          onStop={() => {
             if (connectionId === null) {
               return;
             }
-            void setPaused({
+            void cancelTurn({
               connectionId,
               sessionId,
-              paused: nextPaused,
-            }).unwrap();
+            });
           }}
         />
         </Stack>

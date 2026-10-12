@@ -269,7 +269,7 @@ class SkillApplicationService:
                     "Skill 在检查更新后已变化，请重新检查更新"
                 )
             if not candidate.diff.changed:
-                raise SkillPreconditionError("Skill 候选与当前安装内容相同")
+                raise SkillPreconditionError("Skill 更新内容与当前安装内容相同")
             if current.enabled:
                 await self._check_catalog_budget(bundle.name, bundle.description)
             return await self._replace_with_candidate(current, bundle)

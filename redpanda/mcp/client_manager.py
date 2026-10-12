@@ -44,6 +44,10 @@ class McpSdkError(McpClientError):
     """MCP SDK/transport 在外部调用边界返回的失败。"""
 
 
+class McpToolNotStartedError(McpSdkError):
+    """建立连接失败，尚未调用服务端工具。"""
+
+
 class McpConnectionInvalidatedError(McpClientError):
     """连接建立期间被外部配置变更主动失效。"""
 
@@ -131,6 +135,8 @@ def _external_details(
     if isinstance(exc, McpSdkError) and exc.__cause__ is not None:
         return _external_details(exc.__cause__, seen)
     text = " ".join(str(exc).split())
+    if not text and isinstance(exc, TimeoutError):
+        return ("请求超时",)
     if not text or text.startswith(_INTERNAL_TRANSPORT_PREFIXES):
         if exc.__cause__ is not None:
             return _external_details(exc.__cause__, seen)
@@ -139,7 +145,7 @@ def _external_details(
 
 
 def _transport_failure_text(server_name: str, exc: BaseException) -> str:
-    text = f"与 {server_name} 的连接中断，这次调用没有完成"
+    text = f"与 {server_name} 的连接中断，未取得最终结果"
     details = _external_details(exc)
     if details:
         text = f"{text}：{'；'.join(details)}"
@@ -746,7 +752,10 @@ class McpClientManager:
         tool_name: str,
         arguments: dict[str, Any] | None,
     ) -> CallToolResult | InputRequiredResult:
-        connection = await self._ensure_connection(record)
+        try:
+            connection = await self._ensure_connection(record)
+        except (McpClientError, *_EXPECTED_SDK_ERRORS) as exc:
+            raise McpToolNotStartedError(str(exc)) from exc
         try:
             return await connection.session.call_tool(tool_name, arguments)
         finally:

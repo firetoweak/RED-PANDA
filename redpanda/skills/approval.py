@@ -114,12 +114,11 @@ def create_skill_install_proposal_spec(
                 f"描述：{candidate.description}\n"
                 f"来源：{candidate.source.kind} {candidate.source.locator}\n"
                 f"解析引用：{candidate.resolved_ref}\n"
-                f"Content hash：{candidate.content_hash}\n"
                 "批准后安装并启用；下一次决策进入能力目录。"
             ),
             risk=(
                 "Skill 包可包含外部指令和脚本；"
-                "当前只证明结构、路径、大小与 hash 符合契约，"
+                "当前只证明包通过结构、路径、大小与完整性校验，"
                 "不证明内容安全。"
             ),
         )
@@ -184,7 +183,6 @@ class SkillInstallApprovalHandler:
             data={
                 "skill_id": record.name,
                 "revision": record.revision,
-                "content_hash": record.content_hash,
                 "enabled": record.enabled,
             },
         )
@@ -222,7 +220,7 @@ def create_skill_set_enabled_proposal_spec(service: SkillApplicationService) -> 
                 "expected_hash": record.content_hash,
                 "enabled": input_data.enabled,
             },
-            summary=f"准备{state} Skill `{record.name}`，revision={record.revision}。",
+            summary=f"准备{state} Skill `{record.name}`。",
             risk="批准后改变目录可用状态，下一次决策生效；不执行技能正文或脚本。",
         )
 
@@ -307,7 +305,7 @@ def create_skill_uninstall_proposal_spec(service: SkillApplicationService) -> To
                 "expected_revision": record.revision,
                 "expected_hash": record.content_hash,
             },
-            summary=f"准备卸载 Skill `{record.name}`，revision={record.revision}。",
+            summary=f"准备卸载 Skill `{record.name}`。",
             risk="批准后删除已安装的包与登记；来源不变，下一次决策从目录移除。",
         )
 
@@ -398,7 +396,15 @@ def create_skill_update_proposal_spec(
             return {
                 "ok": True,
                 "code": "SKILL_ALREADY_CURRENT",
-                "data": report.to_dict(),
+                "data": {
+                    "skill_id": candidate.skill_id,
+                    "changed": False,
+                    "source": candidate.source.to_dict(),
+                    "resolved_ref": candidate.new_resolved_ref,
+                    "diff": candidate.diff.to_dict(),
+                    "semantic_summary": report.semantic_summary,
+                    "summary_error": report.summary_error,
+                },
                 "error": None,
                 "hint": None,
             }
@@ -410,7 +416,6 @@ def create_skill_update_proposal_spec(
             },
             summary=(
                 f"准备{candidate.operation} Skill `{candidate.skill_id}`\n"
-                f"Candidate hash：{candidate.candidate_hash}\n"
                 f"Diff：{candidate.diff.to_dict()}\n"
                 f"语义概括：{report.semantic_summary or report.summary_error}"
             ),

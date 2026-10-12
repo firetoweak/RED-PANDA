@@ -10,7 +10,7 @@ import {
 } from "@mantine/core";
 import {
   IconArrowUp,
-  IconPlayerPauseFilled,
+  IconPlayerStopFilled,
   IconPlayerPlayFilled,
   IconPlus,
   IconTrash,
@@ -58,15 +58,14 @@ type ComposerProps = {
   disabled: boolean;
   sending: boolean;
   running: boolean;
-  paused: boolean;
   shouldWake: boolean;
-  pauseBusy: boolean;
+  stopBusy: boolean;
   retryBusy: boolean;
   autoAuthorize: boolean;
   autoAuthorizeBusy: boolean;
   onToggleAutoAuthorize: (enabled: boolean) => void;
   onSend: (text: string, artifactRefs: string[]) => Promise<void>;
-  onSetPaused: (paused: boolean) => void;
+  onStop: () => void;
   onRetry: () => void;
   inputTokens: number | null;
 };
@@ -78,15 +77,14 @@ export function Composer({
   disabled,
   sending,
   running,
-  paused,
   shouldWake,
-  pauseBusy,
+  stopBusy,
   retryBusy,
   autoAuthorize,
   autoAuthorizeBusy,
   onToggleAutoAuthorize,
   onSend,
-  onSetPaused,
+  onStop,
   onRetry,
   inputTokens,
 }: ComposerProps) {
@@ -494,19 +492,20 @@ export function Composer({
           disabled={disabled}
         />
         <Group gap={6} wrap="nowrap">
-          {running && !paused ? (
-            <Tooltip label="暂停">
+          {running ? (
+            <Tooltip label="停止">
               <ActionIcon
-                aria-label="暂停"
+                aria-label="停止"
                 color="gray"
-                disabled={pauseBusy || connectionId === null}
-                onClick={() => onSetPaused(true)}
+                disabled={stopBusy || connectionId === null}
+                loading={stopBusy}
+                onClick={onStop}
                 radius="xl"
                 size={36}
                 type="button"
                 variant="light"
               >
-                <IconPlayerPauseFilled size={16} />
+                <IconPlayerStopFilled size={16} />
               </ActionIcon>
             </Tooltip>
           ) : null}
@@ -515,7 +514,7 @@ export function Composer({
               <ActionIcon
                 aria-label="继续"
                 color="blue"
-                disabled={pauseBusy || retryBusy || connectionId === null}
+                disabled={stopBusy || retryBusy || connectionId === null}
                 onClick={onRetry}
                 radius="xl"
                 size={36}

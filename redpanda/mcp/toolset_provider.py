@@ -23,7 +23,7 @@ from redpanda.mcp.adapter import (
     input_required_unsupported,
     parse_toolset_id,
 )
-from redpanda.mcp.client_manager import McpClientError, McpClientManager
+from redpanda.mcp.client_manager import McpClientError, McpClientManager, McpToolNotStartedError
 from redpanda.mcp.registry import McpRegistry
 
 
@@ -227,7 +227,10 @@ class McpToolsetProvider:
                     summary
                 )
                 await self._client_manager.invalidate(record_id)
-                return adapt_transport_error(exc, error_summary=summary)
+                return adapt_transport_error(
+                    exc, error_summary=summary,
+                    not_started=isinstance(exc, McpToolNotStartedError),
+                )
             if isinstance(result, InputRequiredResult):
                 return input_required_unsupported()
 

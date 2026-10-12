@@ -22,7 +22,7 @@ from redpanda.assistant.context.projection import (
     project_chat_messages,
 )
 from redpanda.assistant.decision import bind_executor_tools
-from tests.session_scheduler import settle_session
+from tests.session_scheduler import SettlingScheduler, settle_session
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
@@ -32,6 +32,7 @@ from redpanda.runtime import (
     MemoryJournal,
     ModelDecision,
     OutcomeStatus,
+    SqliteJournal,
     StateProjector,
     ToolBinding,
 )
@@ -109,27 +110,29 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(outcome.status, OutcomeStatus.SUCCEEDED)
         self.assertEqual(outcome.value["code"], value["code"])
 
-    async def test_domain_failure_is_not_age_dehydrated(self):
-        async def failed(_context, _arguments):
-            return {"ok": False, "code": "MCP_TRANSPORT_ERROR", "error": "offline"}
+    async def test_error_or_unknown_result_is_not_age_dehydrated(self):
+        for ok in (False, None):
+            with self.subTest(ok=ok):
+                async def failed(_context, _arguments):
+                    return {"ok": ok, "code": "MCP_TRANSPORT_ERROR", "error": "offline"}
 
-        events, _ = await self._history(
-            (
-                lambda _frame: ModelDecision(command_requests=(InvokeTool("failed"),)),
-                lambda _frame: _deliver("first-done"),
-                lambda _frame: _deliver("second-done"),
-            ),
-            {"failed": ToolBinding(failed)},
-            ("first", "second"),
-        )
-        prepared = self._projector().prepare(
-            events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
-        )
-        self.assertEqual(prepared.age_dehydrated_command_ids, ())
-        payload = json.loads(self._tool_messages(prepared.messages)[0]["content"])
-        self.assertEqual(set(payload), {"ok", "code", "data", "error", "hint"})
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["error"], "offline")
+                events, _ = await self._history(
+                    (
+                        lambda _frame: ModelDecision(command_requests=(InvokeTool("failed"),)),
+                        lambda _frame: _deliver("first-done"),
+                        lambda _frame: _deliver("second-done"),
+                    ),
+                    {"failed": ToolBinding(failed)},
+                    ("first", "second"),
+                )
+                prepared = self._projector().prepare(
+                    events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
+                )
+                self.assertEqual(prepared.age_dehydrated_command_ids, ())
+                payload = json.loads(self._tool_messages(prepared.messages)[0]["content"])
+                self.assertEqual(set(payload), {"ok", "code", "data", "error", "hint"})
+                self.assertIs(payload["ok"], ok)
+                self.assertEqual(payload["error"], "offline")
 
     async def test_execute_time_externalized_failure_keeps_failure_and_preview(self):
         gateway = MemoryArtifactGateway()
@@ -329,6 +332,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(answer["content"])
         self.assertIsNone(payload["ok"])
         self.assertEqual(payload["code"], "AWAITING_AUTHORIZATION")
+        self.assertIn("尚未执行", payload["hint"])
 
     async def test_in_flight_command_is_not_reported_as_awaiting_authorization(self):
         """起过 attempt 的命令和等授权的命令必须分开。
@@ -370,10 +374,56 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         payload = json.loads(self._tool_messages(messages)[0]["content"])
         self.assertEqual(payload["code"], "NO_RESULT_YET")
+        self.assertIn("原因未知", payload["error"])
+        self.assertIn("无法确认该调用是否仍在执行", payload["hint"])
+        self.assertNotIn("用户停止", payload["error"])
 
         gate.set()
         while runtime.dispatcher.active_count:
             await asyncio.sleep(0)
+
+    async def test_recovery_preserves_completed_result_and_guides_unfinished_call(self):
+        async def completed(_context, _arguments):
+            return _result("done")
+
+        async def unfinished(_context, _arguments):
+            raise RuntimeError("worker exited before returning a result")
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "journal.sqlite"
+            runtime = AgentRuntime(
+                SqliteJournal(path),
+                ScriptedDecisionMaker((
+                    lambda _frame: ModelDecision(command_requests=(InvokeTool("completed"),)),
+                    lambda _frame: ModelDecision(command_requests=(InvokeTool("unfinished"),)),
+                )),
+                {"completed": ToolBinding(completed), "unfinished": ToolBinding(unfinished)},
+                SequentialIds(),
+            )
+            scheduler = SettlingScheduler(runtime, self.SESSION)
+            try:
+                await runtime.receive_user_message(self.SESSION, "go", delivery_id="start")
+                await scheduler.wake(self.SESSION)
+                with self.assertRaisesRegex(RuntimeError, "worker exited"):
+                    await scheduler.join()
+            finally:
+                await scheduler.close()
+
+            events = await SqliteJournal(path).snapshot(self.SESSION)
+            prepared = self._projector().prepare(
+                events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
+            )
+            done, unknown = [
+                json.loads(message["content"])
+                for message in self._tool_messages(prepared.messages)
+            ]
+            self.assertEqual(done, _result("done"))
+            self.assertIsNone(unknown["ok"])
+            self.assertEqual(unknown["code"], "NO_RESULT_YET")
+            self.assertIn("原因未知", unknown["error"])
+            self.assertIn("可能已部分执行", unknown["error"])
+            self.assertIn("先检查相关文件", unknown["hint"])
+            self.assertNotIn("用户停止", unknown["error"])
 
     async def _history(self, scripts, tools, users: tuple[str, ...]):
         delivered: list[str] = []
