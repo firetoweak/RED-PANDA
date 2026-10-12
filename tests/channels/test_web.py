@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
 from redpanda.assistant.conversations import (
     ConversationView,
@@ -846,6 +847,24 @@ class WebFirstSliceTest(unittest.TestCase):
                 self.assertNotIn("path", ref)
         self.assertEqual(self.client.post("/api/files/select").status_code, 405)
 
+    def test_known_input_connection_and_authorization_errors_keep_their_meaning(self):
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "input-1", "text": " "}
+        self.assertEqual(self.client.post("/api/sessions/session-old/inputs", json=body).status_code, 422)
+        body.update(connection_id="expired", text="hello")
+        self.assertEqual(self.client.post("/api/sessions/session-old/inputs", json=body).status_code, 409)
+        with patch("redpanda.channels.web.channel.select_file") as picker:
+            self.assertEqual(self.client.post("/api/sessions/session-old/attachments/select",
+                json={"connection_id": "expired"}).status_code, 409)
+            picker.assert_not_called()
+        for error, expected in ((AuthorizationTargetNotFound("目标不存在"), 404), (AuthorizationConflict("当前不可授权"), 409)):
+            with self.subTest(error=type(error)), patch.object(self.sessions, "resolve_authorization", side_effect=error):
+                response = self.client.post("/api/sessions/session-old/commands/cmd-1/authorize",
+                    json={"connection_id": self.connection.connection_id, "approved": True})
+            self.assertEqual(response.status_code, expected)
+            self.assertEqual(response.json()["detail"], str(error))
+        with patch.object(self.sessions, "resolve_authorization", side_effect=ValueError("broken contract")), self.assertRaisesRegex(ValueError, "broken contract"):
+            self.client.post("/api/sessions/session-old/commands/cmd-1/authorize",
+                json={"connection_id": self.connection.connection_id, "approved": True})
 
     def test_directory_picker_only_converts_known_desktop_unavailability(self):
         with patch.object(

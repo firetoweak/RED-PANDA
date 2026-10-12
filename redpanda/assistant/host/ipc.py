@@ -8,6 +8,20 @@ from inspect import isawaitable
 import traceback
 from uuid import uuid4
 
+from redpanda.assistant.authorization import (
+    AuthorizationConflict,
+    AuthorizationTargetNotFound,
+)
+
+
+_AUTHORIZATION_ERRORS = {
+    "authorization_target_not_found": AuthorizationTargetNotFound,
+    "authorization_conflict": AuthorizationConflict,
+}
+_AUTHORIZATION_ERROR_CODES = {
+    error_type: code for code, error_type in _AUTHORIZATION_ERRORS.items()
+}
+
 
 @dataclass(frozen=True)
 class ProcessFailure:
@@ -88,6 +102,14 @@ class PipePeer:
         try:
             result = await self.handler(operation, session_id, arguments)
             await self.send(("response", request_id, result))
+        except (AuthorizationTargetNotFound, AuthorizationConflict) as error:
+            if (
+                operation not in {"resolve_authorization", "resolve_authorizations"}
+                or type(error) not in _AUTHORIZATION_ERROR_CODES
+            ):
+                raise
+            code = _AUTHORIZATION_ERROR_CODES[type(error)]
+            await self.send(("authorization_error", request_id, code, str(error)))
         except asyncio.CancelledError:
             return
         finally:
@@ -151,6 +173,12 @@ class PipePeer:
                 future = self.pending.get(request_id)
                 if future is not None and not future.done():
                     future.set_result(result)
+            elif kind == "authorization_error":
+                request_id, code, message = payload
+                error_type = _AUTHORIZATION_ERRORS[code]
+                future = self.pending.get(request_id)
+                if future is not None and not future.done():
+                    future.set_exception(error_type(message))
             else:
                 await self.signal(kind, *payload)
 

@@ -23,13 +23,14 @@ from redpanda.assistant.host.session_store import (
     SessionForkUnavailableError,
 )
 from redpanda.assistant.file_attachments import is_file_attachment_id
+from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.workspace_versions import StepNotRewindable
 from redpanda.bootstrap import bootstrap_assistant
-from redpanda.channels.web.channel import WebChannel
+from redpanda.channels.web.channel import WebChannel, WebConnectionInactive, WebInputInvalid
 from redpanda.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
@@ -60,7 +61,7 @@ async def report_worker_failures(host: HostSupervisor, events: WebEventHub) -> N
 class ConnectionRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
+    connection_id: str = Field(min_length=1)
 
 
 class ModelSettingsRequest(ConnectionRequest):
@@ -82,8 +83,8 @@ class CreateSessionRequest(ConnectionRequest):
 class InputRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
-    delivery_id: str
+    connection_id: str = Field(min_length=1)
+    delivery_id: str = Field(min_length=1)
     text: str
     artifact_refs: list[str] = Field(default_factory=list)
 
@@ -98,7 +99,7 @@ class InputRequest(BaseModel):
 
 class EditRequest(InputRequest):
     artifact_refs: list[str]
-    message_id: str
+    message_id: str = Field(min_length=1)
     listed: bool = False
     restore_files: bool = False
 
@@ -106,38 +107,38 @@ class EditRequest(InputRequest):
 class RestartRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
-    delivery_id: str
-    step_id: str
+    connection_id: str = Field(min_length=1)
+    delivery_id: str = Field(min_length=1)
+    step_id: str = Field(min_length=1)
     restore_files: bool = True
 
 
 class BranchRequest(ConnectionRequest):
-    message_id: str
+    message_id: str = Field(min_length=1)
 
 
 class AuthorizationRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
+    connection_id: str = Field(min_length=1)
     approved: bool
 
 
 class ControlDecisionRequest(AuthorizationRequest):
-    request_id: str
+    request_id: str = Field(min_length=1)
 
 
 class AutoAuthorizeRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
+    connection_id: str = Field(min_length=1)
     enabled: bool
 
 
 class PauseRequest(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    connection_id: str
+    connection_id: str = Field(min_length=1)
     paused: bool
 
 
@@ -214,6 +215,22 @@ def create_web_app(
                 await asyncio.gather(failures, return_exceptions=True)
 
     app = FastAPI(lifespan=lifespan)
+
+    @app.exception_handler(WebConnectionInactive)
+    async def inactive_connection(_request: Request, error: WebConnectionInactive):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @app.exception_handler(WebInputInvalid)
+    async def invalid_input(_request: Request, error: WebInputInvalid):
+        return JSONResponse(status_code=422, content={"detail": str(error)})
+
+    @app.exception_handler(AuthorizationTargetNotFound)
+    async def authorization_missing(_request: Request, error: AuthorizationTargetNotFound):
+        return JSONResponse(status_code=404, content={"detail": str(error)})
+
+    @app.exception_handler(AuthorizationConflict)
+    async def authorization_conflict(_request: Request, error: AuthorizationConflict):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
 
     @app.exception_handler(ModelConfigurationError)
     async def invalid_model_configuration(_request: Request, error: ModelConfigurationError):

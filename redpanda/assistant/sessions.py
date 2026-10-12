@@ -4,6 +4,10 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from redpanda.assistant.authorization import (
+    AuthorizationConflict,
+    AuthorizationTargetNotFound,
+)
 from redpanda.assistant.control import (
     CONTROL_SOURCE,
     AssistantControlPlane,
@@ -325,10 +329,15 @@ class AssistantSessions:
         *,
         approved: bool,
     ) -> None:
+        state = await self._runtime.state(session_id)
+        if command_id not in {item.command.command_id for item in state.commands}:
+            raise AuthorizationTargetNotFound(f"授权目标不存在：{command_id}")
         if approved:
-            await self._runtime.grant_command(session_id, command_id)
+            event = await self._runtime.grant_command(session_id, command_id)
         else:
-            await self._runtime.reject_command(session_id, command_id)
+            event = await self._runtime.reject_command(session_id, command_id)
+        if event is None:
+            raise AuthorizationConflict(f"该操作已处理或当前不可授权：{command_id}")
         await self._scheduler.wake(session_id)
 
     async def resolve_authorizations(
@@ -338,11 +347,16 @@ class AssistantSessions:
         approved: bool,
     ) -> None:
         state = await self._runtime.state(session_id)
-        for command_id in pending_authorization_ids(state):
+        pending = pending_authorization_ids(state)
+        if not pending:
+            raise AuthorizationConflict("当前没有待授权的操作。")
+        for command_id in pending:
             if approved:
-                await self._runtime.grant_command(session_id, command_id)
+                event = await self._runtime.grant_command(session_id, command_id)
             else:
-                await self._runtime.reject_command(session_id, command_id)
+                event = await self._runtime.reject_command(session_id, command_id)
+            if event is None:
+                raise AuthorizationConflict(f"该操作已处理或当前不可授权：{command_id}")
         await self._scheduler.wake(session_id)
 
     def is_auto_authorized(self, session_id: str) -> bool:

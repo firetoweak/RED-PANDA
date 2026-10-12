@@ -375,9 +375,9 @@ class WebChannel:
 
     def _require_connection(self, connection_id: str) -> WebConnection:
         if type(connection_id) is not str or not connection_id:
-            raise ValueError("connection_id must be a non-empty str")
+            raise WebConnectionInactive("Web 连接无效，请重新连接页面。")
         if connection_id not in self._connections:
-            raise ValueError("Web connection is not active")
+            raise WebConnectionInactive("Web 连接已失效，请重新连接页面。")
         return WebConnection(connection_id)
 
     @staticmethod
@@ -386,5 +386,5 @@ class WebChannel:
             raise TypeError("text must be str")
         content = text.strip()
         if not content:
-            raise ValueError("text must be a non-empty str")
+            raise WebInputInvalid("消息内容不能为空。")
         return content

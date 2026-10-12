@@ -279,6 +279,31 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             )
         await self.assert_failure_report("application request failed")
 
+    async def test_invalid_authorization_requests_do_not_fail_worker(self):
+        from redpanda.assistant.authorization import (
+            AuthorizationConflict,
+            AuthorizationTargetNotFound,
+        )
+
+        sid = "authorization-errors"
+        await self.host.create(sid, self.workspace.workspace_id)
+        await self.host.view(sid)
+        before = await SqliteJournal(self.store.require(sid)).snapshot(sid)
+        for approved in (False, True):
+            with self.assertRaises(AuthorizationTargetNotFound):
+                await asyncio.wait_for(self.host.resolve_authorization(
+                    sid, "missing", approved=approved,
+                ), 30)
+            with self.assertRaises(AuthorizationConflict):
+                await asyncio.wait_for(self.host.resolve_authorizations(
+                    sid, approved=approved,
+                ), 30)
+        self.assertEqual(await SqliteJournal(self.store.require(sid)).snapshot(sid), before)
+        self.assertTrue(self.host.failures.empty())
+        await self.host.accept_input(sid, "hello", delivery_id="hello")
+        await until(lambda: (sid, "done") in self.output)
+        self.assertTrue(self.host.failures.empty())
+
     async def test_new_child_has_parent_identity_before_initialization(self):
         await self.host.create("parent", self.workspace.workspace_id)
         self.host.config_factory = partial(failing_startup_config, self.root, "config")
