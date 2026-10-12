@@ -1,0 +1,82 @@
+name: Sandbox Linux
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+  FD_VERSION: '10.2.0'
+  RG_VERSION: '14.1.1'
+
+jobs:
+  build:
+    name: Build and verify (linux-x86_64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare Linux build and runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential fuse3
+          sudo modprobe fuse
+
+          tools="$HOME/.local/bin"
+          mkdir -p "$tools"
+
+          curl -fsSL "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd-v${FD_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C /tmp
+          install -m 755 "/tmp/fd-v${FD_VERSION}-x86_64-unknown-linux-gnu/fd" "$tools/fd"
+          ln -sf fd "$tools/fdfind"
+
+          curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C /tmp
+          install -m 755 "/tmp/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl/rg" "$tools/rg"
+
+          echo "$tools" >> "$GITHUB_PATH"
+          "$tools/fd" --version
+          "$tools/rg" --version
+
+          channel=$(python -c 'import tomllib; print(tomllib.load(open("native/sandbox/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          rustup toolchain install "$channel" --profile minimal
+      - name: Build Linux
+        run: python scripts/build_sandbox.py
+      - name: Package release build
+        run: python -m scripts.sandbox_runtime package --platform linux-x86_64
+      - name: Prepare verification environment
+        run: python -m venv redpanda-env
+      - name: Verify process contracts
+        run: redpanda-env/bin/python scripts/ci.py process
+      - name: Verify installation contracts
+        run: redpanda-env/bin/python -m pytest tests/scripts/test_sandbox_runtime.py tests/scripts/test_install_winfsp.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sandbox-linux-x86_64
+          path: dist/sandbox/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

@@ -4,11 +4,14 @@ import asyncio
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+import errno
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 from .lifecycle import _sqlite_lock, settled
 from .file_view.client import native_executable
@@ -41,6 +44,27 @@ class WorkspaceRestore:
     changed_paths: tuple[str, ...] = ()
     preserved_paths: tuple[str, ...] = ()
     deleted_paths: tuple[str, ...] = ()
+
+def clear_stale_mounts(home) -> None:
+    """Linux：沙箱进程被 kill -9 后，它的 FUSE 挂载点只剩断开的连接，启动时摘掉。
+
+    只处理 workspace_views 下自己的挂载点，且只认 ENOTCONN：活着的挂载不碰。
+    """
+    if sys.platform != "linux":
+        return
+    views = home.state_root / "workspace_views"
+    if not views.is_dir():
+        return
+    # glob 会把 ENOTCONN 的挂载点当成不存在，所以逐个 view 拼路径。
+    for view in views.iterdir():
+        point = view / "mount"
+        try:
+            # 断开的挂载点 stat 仍可能成功，读目录才报 ENOTCONN。
+            os.listdir(point)
+        except OSError as error:
+            if error.errno == errno.ENOTCONN:
+                subprocess.run(["fusermount3", "-u", "-z", str(point)], check=False)
+
 
 def workspace_files(home, workspace):
     storage = home.state_root / "workspace_views" / sha256(

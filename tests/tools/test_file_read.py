@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -170,6 +171,9 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(result.get("code"), "FILE_TOO_LARGE")
 
 
+needs_fd = unittest.skipUnless(shutil.which("fd") or shutil.which("fdfind"), "glob 需要 fd 或 fdfind")
+
+
 @pytest.mark.process
 class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -209,6 +213,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
     def _match_paths(self, result: dict) -> set[str]:
         return {item["path"] for item in result["matches"]}
 
+    @needs_fd
     async def test_glob_skips_hidden_and_gitignore_by_default(self):
         result = await self.glob(GlobInput(pattern="*", max_results=100))
 
@@ -224,6 +229,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("include_hidden=true", result["hint"])
         self.assertIn("include_ignored=true", result["hint"])
 
+    @needs_fd
     async def test_glob_include_hidden_finds_dot_files_but_not_git(self):
         result = await self.glob(
             GlobInput(pattern="*", include_hidden=True, max_results=100),
@@ -235,6 +241,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(".github/README.md", paths)
         self.assertFalse(any(path.startswith(".git/") for path in paths))
 
+    @needs_fd
     async def test_glob_include_ignored_finds_gitignored_files(self):
         result = await self.glob(
             GlobInput(pattern="*.py", include_ignored=True, max_results=100),
@@ -245,6 +252,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ignored/secret.py", paths)
         self.assertIn("src/keep.py", paths)
 
+    @needs_fd
     async def test_glob_enumerates_empty_dirs_and_dirs_with_only_ignored_files(self):
         (self.root / "empty").mkdir()
         (self.root / "cache").mkdir()
@@ -256,6 +264,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self._match_paths(result), {"src", "empty", "cache"})
         self.assertTrue(all(item["kind"] == "dir" for item in result["matches"]))
 
+    @needs_fd
     async def test_glob_max_depth_keeps_directories_with_deeper_files(self):
         (self.root / "src" / "nested").mkdir()
         (self.root / "src" / "nested" / "a.py").write_text("deep")
@@ -264,6 +273,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self._match_paths(result), {"src"})
         self.assertEqual(result["matches"][0]["kind"], "dir")
 
+    @needs_fd
     async def test_glob_relative_patterns_and_pages_are_stable(self):
         (self.root / "src" / "nested").mkdir()
         (self.root / "src" / "nested" / "a.py").write_text("deep")
@@ -278,6 +288,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual([item["path"] for item in result["matches"]], [path])
                 self.assertEqual(result["next_offset"], offset + 1 if offset < len(expected) - 1 else None)
 
+    @needs_fd
     async def test_glob_uses_fd_ignore_rules_without_overriding_gitignore(self):
         (self.root / ".fdignore").write_text("src/\n")
         result = await self.glob(GlobInput(pattern="*.py", max_results=100))
@@ -286,6 +297,7 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         included = await self.glob(GlobInput(pattern="*.py", include_ignored=True, max_results=100))
         self.assertEqual(self._match_paths(included), {"src/keep.py", "ignored/secret.py"})
 
+    @needs_fd
     async def test_explicit_path_searches_hidden_directories(self):
         for path, filename, query, include_hidden in (
             (".github", ".github/README.md", "workflow", False),

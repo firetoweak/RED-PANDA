@@ -341,6 +341,9 @@ class HostSupervisor:
     async def _start(self, session_id):
         path = self.store.require(session_id)
         is_subagent = project_parent(await SqliteJournal(path).snapshot(session_id)) is not None
+        # close() may have taken its Worker snapshot while the Journal read waited.
+        if self.closed:
+            raise RuntimeError("Host closed")
         context = multiprocessing.get_context("spawn")
         local, remote = context.Pipe()
         worker = None
