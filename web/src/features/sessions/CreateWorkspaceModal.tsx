@@ -57,7 +57,7 @@ export function CreateWorkspaceModal({
         />
         <Group align="flex-end" gap="sm" wrap="nowrap">
           <TextInput
-            description="选择本机已有的文件夹，也可以直接填写路径"
+            description="选择窗口在运行后端的电脑上打开，也可以直接填写该电脑上的目录路径"
             disabled={isSelecting || isLoading}
             label="目录"
             onChange={(event) => setTaskRoot(event.currentTarget.value)}

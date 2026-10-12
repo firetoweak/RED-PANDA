@@ -86,6 +86,9 @@ def _main() -> None:
                 mustexist=True,
                 initialdir=str(Path.home()),
             )
+    except tkinter.TclError as error:
+        print(f"无法打开本机选择窗口：{error}", file=sys.stderr)
+        raise SystemExit(2) from error
     finally:
         root.destroy()
     print(json.dumps(selected if selected else None))

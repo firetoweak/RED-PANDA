@@ -4,6 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 import subprocess
+import sys
 from threading import Event
 from types import SimpleNamespace
 import unittest
@@ -13,10 +14,24 @@ from redpanda.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
     select_file,
+    _main,
 )
 
 
 class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
+    def test_dialog_creation_failure_is_known_unavailability_and_cleans_up_root(self):
+        class TclError(Exception):
+            pass
+
+        root = Mock()
+        tkinter = SimpleNamespace(TclError=TclError, Tk=Mock(return_value=root),
+            filedialog=SimpleNamespace(askdirectory=Mock(side_effect=TclError("desktop unavailable"))))
+        with patch.dict(sys.modules, {"tkinter": tkinter}), patch.object(sys, "argv", ["picker"]), patch.object(sys.stderr, "reconfigure"):
+            with self.assertRaises(SystemExit) as raised:
+                _main()
+        self.assertEqual(raised.exception.code, 2)
+        root.destroy.assert_called_once()
+
     async def test_process_protocol_preserves_selection_cancel_and_error_meanings(self):
         selected = Path(__file__).resolve().parent
         cases = [
