@@ -5,6 +5,7 @@ import signal
 import stat
 import sys
 import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,8 @@ import pytest
 if sys.platform != "linux":
     pytest.skip("需要 Linux 与可用的 FUSE", allow_module_level=True)
 
+from redpanda.paths import RedPandaHome
+from redpanda.sandbox.files import clear_stale_mounts, workspace_files
 from redpanda.sandbox.files.file_view import Client
 from redpanda.sandbox.files.file_view import publication as pub
 from redpanda.sandbox.files.file_view.native_posix import identity, open_file
@@ -152,19 +155,27 @@ def test_fifo_rejection_leaves_the_service_usable(tmp_path):
         client.close()
 
 
-def test_sigkill_mount_is_cleared_on_the_next_begin(tmp_path):
+def test_sigkill_mount_is_cleared_on_restart_and_the_view_resumes(tmp_path):
+    home = RedPandaHome(tmp_path / "home")
+    home.initialize()
     root = tmp_path / "base"
     root.mkdir()
     (root / "keep.txt").write_text("A", encoding="utf-8")
-    store = tmp_path / "store"
-    client = Client(native_executable(), store, root)
+    view = workspace_files(home, SimpleNamespace(task_root=root))
+    client = Client(native_executable(), view.storage, root)
     begin = client.begin("c1")
     assert begin["status"] == "active"
     os.kill(client.process.pid, signal.SIGKILL)
     client.process.wait(timeout=20)
     client.close()
-    nxt = Client(native_executable(), store, root)
+    assert begin["mount"] in Path("/proc/self/mounts").read_text(encoding="utf-8")
+
+    clear_stale_mounts(home)
+
+    assert begin["mount"] not in Path("/proc/self/mounts").read_text(encoding="utf-8")
+    nxt = Client(native_executable(), view.storage, root)
     try:
+        assert nxt.request("status", command_id="c1")["status"] == "unknown"
         again = nxt.begin("c2")
         assert again["status"] == "active", again
         assert (Path(again["mount"]) / "keep.txt").read_text(encoding="utf-8") == "A"

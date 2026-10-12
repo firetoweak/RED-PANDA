@@ -19,6 +19,7 @@ from redpanda.model_settings import ModelSettings
 from redpanda.llm.connections import ModelConnections
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.composition import build_mcp
+from redpanda.sandbox.files import clear_stale_mounts
 from redpanda.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
 from redpanda.skills.composition import build_skills
 from redpanda.skills.summarizer import LlmSkillDiffSummarizer
@@ -71,6 +72,7 @@ async def bootstrap_assistant(
     config = load_app_config() if app_config is None else app_config
     home = RedPandaHome.default()
     home.initialize()
+    clear_stale_mounts(home)
     store = SessionStore(home.runtime_sessions_root)
     if app_config is not None and not config_path().exists():
         write_json(config_path(), app_config.to_dict())
