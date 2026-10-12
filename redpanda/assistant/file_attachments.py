@@ -142,6 +142,11 @@ class FileAttachmentStore:
                 return entries[0]
         raise FileNotFoundError(self._directory(attachment_id))
 
+    def owns(self, attachment_id: str) -> bool:
+        if not is_file_attachment_id(attachment_id):
+            raise ValueError("file attachment id 格式无效")
+        return self._directory(attachment_id).is_dir() or self._mount_pointer(attachment_id).is_file()
+
     def describe(self, attachment_id: str) -> FileAttachment:
         path = self.source(attachment_id)
         return FileAttachment(attachment_id, path.name, path.stat().st_size)

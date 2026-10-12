@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from redpanda.assistant.attachments import (
     AttachmentGateway,
+    AttachmentNotInSession,
     AttachmentRejected,
     is_valid_attachment_id,
 )
@@ -126,6 +127,8 @@ class WebChannel:
         if not is_valid_attachment_id(attachment_id):
             raise AttachmentRejected("attachment id 格式无效")
         await self.conversation(session_id)
+        if not await self._store().available_in_session(session_id, attachment_id):
+            raise AttachmentNotInSession("附件不属于当前会话。")
         store = self._store().for_session(session_id)
         path = store.path(attachment_id)
         if not path.is_file():
@@ -150,7 +153,7 @@ class WebChannel:
             raise ValueError("delivery_id must be a non-empty str")
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
-        refs = self._require_refs(session_id, artifact_refs)
+        refs = await self._require_refs(session_id, artifact_refs)
         view = await self._sessions.accept_input(
             session_id,
             content,
@@ -181,7 +184,7 @@ class WebChannel:
             if type(value) is not str or not value:
                 raise ValueError(f"{label} must be a non-empty str")
         child_session_id = f"session-{uuid4().hex}"
-        refs = self._require_refs(source_session_id, artifact_refs)
+        refs = await self._require_refs(source_session_id, artifact_refs)
         view = await self._sessions.fork_and_accept_input(
             connection.owner,
             source_session_id,
@@ -354,7 +357,7 @@ class WebChannel:
             raise RuntimeError("WebChannel 未装配附件网关")
         return self._attachments
 
-    def _require_refs(
+    async def _require_refs(
         self, session_id: str, artifact_refs: tuple[str, ...]
     ) -> tuple[str, ...]:
         if type(artifact_refs) is not tuple:
@@ -365,12 +368,11 @@ class WebChannel:
         for ref in artifact_refs:
             if not is_valid_attachment_id(ref):
                 raise AttachmentRejected("artifact_refs 必须是有效附件 id")
-            try:
-                exists = store.path(ref).is_file()
-            except FileNotFoundError:
-                exists = False
-            if not exists:
-                raise AttachmentRejected("附件不存在")
+            if not await self._store().available_in_session(session_id, ref):
+                raise AttachmentRejected("附件不属于当前会话")
+            path = store.path(ref)
+            if not path.is_file():
+                raise FileNotFoundError(path)
         return artifact_refs
 
     def _require_connection(self, connection_id: str) -> WebConnection:

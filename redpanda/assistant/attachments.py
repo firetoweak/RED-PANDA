@@ -20,7 +20,7 @@ from redpanda.assistant.file_attachments import (
     FileAttachment, FileAttachmentStore, InvalidAttachmentName, is_file_attachment_id,
 )
 
-from redpanda.runtime import ToolBinding
+from redpanda.runtime import SqliteJournal, ToolBinding
 from redpanda.runtime.events import CommandOutcomeReceived
 from redpanda.runtime.json_values import thaw_value
 
@@ -42,6 +42,10 @@ _ATTACHMENT_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 class AttachmentRejected(ValueError):
     """外部边界拒绝：格式不在白名单、体积超限，或声明与实际不符。"""
+
+
+class AttachmentNotInSession(LookupError):
+    """附件既未挂入本会话，也未由本会话历史引用。"""
 
 
 def is_valid_attachment_id(value: object) -> bool:
@@ -177,6 +181,15 @@ class AttachmentStore:
             own,
         )
 
+    def owns(self, attachment_id: str) -> bool:
+        """只检查本会话登记，不检查挂入的外部路径是否仍存在。"""
+
+        if is_file_attachment_id(attachment_id):
+            return self.files.owns(attachment_id)
+        if not is_image_attachment_id(attachment_id):
+            raise ValueError("attachment id 格式无效")
+        return (self._root / attachment_id.removeprefix(_ATTACHMENT_ID_PREFIX)).is_file()
+
     def read(self, attachment_id: str) -> bytes:
         # 附件缺失是持久化损坏，原样抛出，不降级成「没图」。
         return self.path(attachment_id).read_bytes()
@@ -191,6 +204,16 @@ class AttachmentStore:
         return AttachmentRef(attachment_id, mime, width, height, width, height)
 
 
+def _outcome_images(event) -> list[dict[str, object]]:
+    payload = event.payload
+    if not isinstance(payload, CommandOutcomeReceived) or payload.outcome.value is None:
+        return []
+    value = thaw_value(payload.outcome.value)
+    if type(value) is not dict:
+        return []
+    return value.get("images", [])
+
+
 class AttachmentGateway:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
@@ -203,6 +226,23 @@ class AttachmentGateway:
             inherited = inherited_drawers(self._root, session_id, ".attachments")
             self._inherited[session_id] = inherited
         return AttachmentStore(self._root / drawer / ".attachments", inherited)
+
+    async def available_in_session(self, session_id: str, attachment_id: str) -> bool:
+        """Web 可预览自身挂入的附件；来源原件只按实际历史引用读取。"""
+
+        store = self.for_session(session_id)
+        if store.owns(attachment_id):
+            return True
+        drawer = sha256(session_id.encode("utf-8")).hexdigest()
+        journal = self._root / drawer / "journal.sqlite"
+        if not journal.is_file():
+            return False
+        for event in await SqliteJournal(journal).snapshot(session_id):
+            if attachment_id in event.artifact_refs:
+                return True
+            if any(image["id"] == attachment_id for image in _outcome_images(event)):
+                return True
+        return False
 
 
 READ_IMAGE_SCHEMA: dict[str, object] = {
@@ -248,16 +288,7 @@ def read_image_binding(journal, store: AttachmentStore) -> dict[str, ToolBinding
                     "data": {"id": attachment_id},
                     "images": [store.inspect(attachment_id).to_block()],
                 }
-            payload = event.payload
-            if (
-                not isinstance(payload, CommandOutcomeReceived)
-                or payload.outcome.value is None
-            ):
-                continue
-            value = thaw_value(payload.outcome.value)
-            if type(value) is not dict:
-                continue
-            for image in value.get("images") or []:
+            for image in _outcome_images(event):
                 if image["id"] == attachment_id:
                     store.read(attachment_id)
                     return {

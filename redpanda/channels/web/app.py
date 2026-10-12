@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from redpanda.assistant.attachments import (
     AttachmentGateway,
+    AttachmentNotInSession,
     AttachmentRejected,
     MAX_SOURCE_BYTES,
     is_valid_attachment_id,
@@ -452,7 +453,7 @@ def create_web_app(
                 session_id,
                 attachment_id,
             )
-        except FileNotFoundError as error:
+        except AttachmentNotInSession as error:
             return JSONResponse(status_code=404, content={"detail": str(error)})
         return FileResponse(
             path, media_type=mime,
