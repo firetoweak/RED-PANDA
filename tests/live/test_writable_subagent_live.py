@@ -159,17 +159,19 @@ def test_real_model_delegates_loads_readonly_mcp_and_merges_only_after_authoriza
                 assert all(call.name != "execute_command" for call in child_calls.values())
                 assert any(event.payload.outcome.value.get("code") == "PATH_OUTSIDE_WORKSPACE_VIEW"
                            for event in child_events if isinstance(event.payload, CommandOutcomeReceived)
-                           and event.payload.command_id in child_calls)
+                           and event.payload.command_id in child_calls
+                           and child_calls[event.payload.command_id].name == "write_file")
                 parent_events = await SqliteJournal(host.store.require("e2e-parent")).snapshot("e2e-parent")
                 outcomes = {event.payload.command_id: event.payload.outcome for event in parent_events
                             if isinstance(event.payload, CommandOutcomeReceived)}
                 assert outcomes[approvals[0][1]].value["ok"] is True
-                git_checks = [outcomes[command.command_id].value for event in parent_events
+                change_checks = [outcomes[command.command_id].value for event in parent_events
                               if isinstance(event.payload, StepCommitted)
                               for command in event.payload.step.commands
                               if isinstance(command.effect, InvokeTool) and command.effect.name == "get_changes"]
-                assert git_checks and all(result["ok"] for result in git_checks), git_checks
-                assert any("result.txt" in result["data"]["untracked_paths"] for result in git_checks)
+                assert change_checks and all(result["ok"] for result in change_checks), change_checks
+                assert any(change["path"] == "result.txt" for result in change_checks
+                           for change in result["data"]["changes"])
                 report = {"model": app.config.default_model, "marker": nonce, "child": child_id,
                           "authorization": approvals, "tools": progress, "outputs": outputs}
                 (tmp_path / "e2e-result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
