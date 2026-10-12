@@ -482,6 +482,9 @@ class Idle:
     def is_paused(self, session_id):
         return session_id == "spoken"
 
+    def current_failure(self, session_id):
+        return None
+
     def is_superseded(self, session_id):
         return session_id in self.superseded
 
@@ -648,6 +651,9 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
                 return None
 
             def is_paused(self, session_id):
+                return None
+
+            def current_failure(self, session_id):
                 return None
 
             def conversation_status(self, session_id):

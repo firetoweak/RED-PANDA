@@ -21,7 +21,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("submits a recovered pending command with the new connection without an authorization SSE event", async () => {
+function prepareBrowser() {
   vi.stubGlobal("ResizeObserver", class {
     observe() {}
     unobserve() {}
@@ -36,6 +36,10 @@ it("submits a recovered pending command with the new connection without an autho
       super(typeof input === "string" ? new URL(input, "http://localhost") : input, init);
     }
   });
+}
+
+it("submits a recovered pending command with the new connection without an authorization SSE event", async () => {
+  prepareBrowser();
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
@@ -45,7 +49,7 @@ it("submits a recovered pending command with the new connection without an autho
       pending_authorization_ids: [commandId],
       pending_authorization_commands: [{ command_id: commandId, name: "write_file", arguments: { path: "probe.md" } }],
       should_wake: false, has_active_subagents: false, control_approval: null,
-      control_message: null, auto_authorize: false, paused: false,
+      control_message: null, auto_authorize: false, paused: false, last_error: null,
     },
     items: [
       { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
@@ -93,20 +97,7 @@ it("submits a recovered pending command with the new connection without an autho
 });
 
 it("disables pending authorization buttons while the web connection is down", async () => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  });
-  vi.stubGlobal("matchMedia", () => ({
-    matches: false, addEventListener() {}, removeEventListener() {},
-  }));
-  const NativeRequest = Request;
-  vi.stubGlobal("Request", class extends NativeRequest {
-    constructor(input: RequestInfo | URL, init?: RequestInit) {
-      super(typeof input === "string" ? new URL(input, "http://localhost") : input, init);
-    }
-  });
+  prepareBrowser();
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
@@ -116,7 +107,7 @@ it("disables pending authorization buttons while the web connection is down", as
       pending_authorization_ids: [commandId],
       pending_authorization_commands: [{ command_id: commandId, name: "write_file", arguments: { path: "probe.md" } }],
       should_wake: false, has_active_subagents: false, control_approval: null,
-      control_message: null, auto_authorize: false, paused: false,
+      control_message: null, auto_authorize: false, paused: false, last_error: null,
     },
     items: [
       { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
@@ -153,6 +144,60 @@ it("disables pending authorization buttons while the web connection is down", as
   fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
   expect(submissions).toEqual([]);
   expect(view.session.pending_authorization_ids).toEqual([commandId]);
+  cleanup();
+  store.dispatch(redpandaApi.util.resetApiState());
+});
+
+it("recovers a model failure from the conversation after refresh and retries without submitting a message", async () => {
+  prepareBrowser();
+  const view: ConversationView = {
+    session_id: "session", workspace_id: "workspace", revision: 1,
+    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null,
+    workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+    session: {
+      status: "runnable", waiting_for: [], pending_authorization_ids: [], pending_authorization_commands: [],
+      should_wake: true, has_active_subagents: false, control_approval: null, control_message: null,
+      auto_authorize: false, paused: false, last_error: "供应商暂时不可用，请稍后再试。",
+    },
+    items: [{ kind: "user", message_id: "user", text: "原始请求", occurred_at: "2026-10-12T00:00:00Z", images: [], files: [] }],
+  };
+  const requests: { path: string; method: string; body: unknown }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    const body = request.method === "POST" ? await request.json() : null;
+    requests.push({ path, method: request.method, body });
+    if (path.endsWith("/retry")) {
+      view.session.last_error = null;
+      view.session.status = "waiting";
+      view.session.waiting_for = ["external_fact"];
+      view.session.should_wake = false;
+    }
+    return Response.json(view);
+  }));
+  const store = configureStore({
+    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+  });
+  store.dispatch(connected("refreshed-connection"));
+  render(<Provider store={store}><MantineProvider>
+    <MemoryRouter initialEntries={["/sessions/session"]}>
+      <Routes><Route path="/sessions/:sessionId" element={<Conversation />} /></Routes>
+    </MemoryRouter>
+  </MantineProvider></Provider>);
+  expect(await screen.findByText(/执行已停止。供应商暂时不可用/)).toBeInTheDocument();
+  await waitFor(() => expect(store.getState().runtime.ownerSessionId).toBe("session"));
+  // 刷新后的状态只来自 GET / conversation，没有 session_failed 事件。
+  expect(store.getState().runtime.sessions.session.lastError).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "再试" }));
+  await waitFor(() => expect(requests.filter((request) => request.path.endsWith("/retry"))).toEqual([
+    { path: "/api/sessions/session/retry", method: "POST", body: { connection_id: "refreshed-connection" } },
+  ]));
+  await waitFor(() => expect(screen.queryByText(/执行已停止。供应商暂时不可用/)).toBeNull());
+  expect(requests.filter((request) => request.method === "POST"
+    && !request.path.endsWith("/select") && !request.path.endsWith("/retry"))).toEqual([]);
+  expect(store.getState()[redpandaApi.reducerPath].queries["getConversation(\"session\")"]?.data).toMatchObject({
+    items: [{ kind: "user", message_id: "user", text: "原始请求" }],
+  });
   cleanup();
   store.dispatch(redpandaApi.util.resetApiState());
 });

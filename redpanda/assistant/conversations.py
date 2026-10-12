@@ -230,9 +230,11 @@ class AssistantQueries:
                 control_message=project_control_message(events),
                 auto_authorize=self._sessions.auto_authorize(session_id),
                 paused=self._sessions.is_paused(session_id),
+                last_error=self._sessions.current_failure(session_id),
             )
         else:
-            view = replace(view, has_active_subagents=still_running)
+            view = replace(view, has_active_subagents=still_running,
+                           last_error=self._sessions.current_failure(session_id))
         status = self._sessions.conversation_status(session_id)
         scheduled = self._sessions.next_scheduled_check(session_id)
         return replace(

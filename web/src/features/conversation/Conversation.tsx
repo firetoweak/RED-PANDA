@@ -182,6 +182,7 @@ export function Conversation() {
   );
   const turns = timelineTurns(items);
   const running = runtime?.activity === "running";
+  const lastError = running ? null : runtime?.lastError ?? conversation.session.last_error;
   const compactPhase =
     runtime?.conversationStatus?.compactPhase ?? conversation.compact_phase;
   const lastTurnKey = turns.at(-1)?.key;
@@ -470,7 +471,7 @@ export function Conversation() {
             </Text>
           </Alert>
         )}
-        {runtime?.lastError == null ? null : (
+        {lastError == null ? null : (
           <Alert
             className="composer-error"
             color="red"
@@ -479,7 +480,7 @@ export function Conversation() {
           >
             <Group gap="sm" justify="space-between" wrap="nowrap">
               <Text className="pre-wrap" ff="monospace" fz={11}>
-                {runtime.lastError}
+                执行已停止。{lastError}
               </Text>
               <Button
                 disabled={connectionId === null}
@@ -517,7 +518,7 @@ export function Conversation() {
                 )
               : retrying.isError
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
-                : "消息发送失败，请确认后端连接后重试。"}
+                : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")}
           </Alert>
         ) : null}
         <Composer
@@ -529,7 +530,7 @@ export function Conversation() {
           running={running === true}
           paused={conversation.session.paused}
           shouldWake={
-            conversation.session.should_wake && runtime?.lastError == null
+            conversation.session.should_wake && lastError == null
           }
           pauseBusy={pausing.isLoading}
           retryBusy={retrying.isLoading}

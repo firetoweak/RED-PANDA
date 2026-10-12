@@ -481,6 +481,59 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(started[3], delta[3])
         self.assertEqual(delta[3], final[2])
 
+    async def test_model_failure_survives_query_and_selection_then_retries_without_repeating_tool(self):
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.llm.api import LLMAuthenticationError, LLMTransientError, LLMProviderError, LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.runtime.events import UserMessageReceived, CommandOutcomeReceived, StepCommitted
+
+        (self.root / "input.txt").write_text("evidence", encoding="utf-8")
+        for index, error in enumerate((LLMAuthenticationError("401"), LLMTransientError("429 exhausted"),
+                                       LLMProviderError("500"), LLMTransientError("stream interrupted"))):
+            with self.subTest(error=str(error)):
+                class FailAfterRead(ProcessLlm):
+                    count = 0
+
+                    async def chat(client, messages, model, **kwargs):
+                        client.count += 1
+                        if client.count == 1:
+                            return LLMCallResult(LLMResponse(calls=(ToolCall("read-evidence", "read_file", '{"path":"input.txt"}'),)),
+                                                 LLMUsage(input_tokens=10, output_tokens=5))
+                        if client.count == 2:
+                            raise error
+                        return await super().chat(messages, model, **kwargs)
+
+                self.host.llm = llm = FailAfterRead(self.root)
+                session_id = f"failed-model-{index}"
+                await self.host.create(session_id, self.workspace.workspace_id)
+                await self.host.accept_input(session_id, "read", delivery_id=f"input-{index}")
+                await until(lambda: self.host.current_failure(session_id) is not None)
+                await until(lambda: not self.host.workers and not self.host.watchers)
+                queries = AssistantQueries(self.store, self.host)
+                refreshed = await queries.conversation(session_id)
+                self.assertIn("认证失败" if index == 0 else str(error), refreshed.session.last_error)
+                self.assertEqual(refreshed.session.status, "runnable")
+                self.assertEqual(self.host.activity(session_id), "idle")
+                before = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+                await self.host.select(f"viewer-{index}", session_id)
+                self.assertNotIn(session_id, self.host.workers)
+                self.assertEqual(llm.count, 2)
+                self.assertIsNotNone(self.host.current_failure(session_id))
+                await self.host.retry(session_id)
+                await until(lambda: (session_id, "done") in self.output)
+                await self.host.release(f"viewer-{index}")
+                await until(lambda: not self.host.workers and not self.host.watchers)
+                self.assertEqual(llm.count, 3)
+                self.assertIsNone((await queries.conversation(session_id)).session.last_error)
+                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+                self.assertEqual(events[:len(before)], before)
+                self.assertEqual(sum(isinstance(event.payload, UserMessageReceived) for event in events), 1)
+                read_commands = {command.command_id for event in events
+                                 if isinstance(event.payload, StepCommitted)
+                                 for command in event.payload.step.commands if command.effect.name == "read_file"}
+                self.assertEqual(len(read_commands), 1)
+                self.assertEqual(sum(isinstance(event.payload, CommandOutcomeReceived)
+                                     and event.payload.command_id in read_commands for event in events), 1)
+
     async def test_child_stream_crosses_worker_boundary_only_to_observer(self):
         from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 

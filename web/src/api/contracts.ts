@@ -30,6 +30,7 @@ const sessionViewSchema = z
     control_message: z.string().nullable(),
     auto_authorize: z.boolean(),
     paused: z.boolean(),
+    last_error: z.string().nullable(),
   })
   .strict();
 

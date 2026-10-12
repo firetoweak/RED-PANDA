@@ -28,6 +28,7 @@ class SubagentObservationTest(unittest.IsolatedAsyncioTestCase):
             # 查询端口没有 select / wake / request，观察必须只读。
             host = SimpleNamespace(
                 activity=lambda _: "idle", auto_authorize=lambda _: False, is_paused=lambda _: False,
+                current_failure=lambda _: None,
                 conversation_status=lambda _: SimpleNamespace(compact_count=0, compact_phase=None),
                 next_scheduled_check=lambda _: None,
             )

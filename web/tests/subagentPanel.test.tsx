@@ -37,7 +37,7 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
       }],
       session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
         pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
-        control_approval: null, control_message: null, auto_authorize: false, paused: false },
+        control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
       compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
       work_plan: null, work_plan_updates: [], workspace_version: null,
     },

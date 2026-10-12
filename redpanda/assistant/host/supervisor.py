@@ -131,6 +131,7 @@ class HostSupervisor:
         self.selecting: dict[str, str] = {}
         self.selection_locks: dict[str, asyncio.Lock] = {}
         self.turn_locks: dict[str, asyncio.Lock] = {}
+        self._current_failures: dict[str, str] = {}
         self.closed = False
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
@@ -424,6 +425,7 @@ class HostSupervisor:
                 if was_running:
                     await self._emit_session_activity(session_id, "idle")
             elif kind == "busy":
+                self._current_failures.pop(session_id, None)
                 worker.idle_revision = None
                 worker.idle_has_active_subagents = False
                 worker.running = True
@@ -561,6 +563,8 @@ class HostSupervisor:
         if worker.failure is not None:
             self.compact.store.fail(session_id, asdict(worker.failure.failure))
             compact_job = self.compact.store.reader_job(session_id)
+            if compact_job is None:
+                self._current_failures[session_id] = f"Session 进程失败：{worker.failure.failure.render()}"
             if compact_job is not None:
                 self.compact.notify_status(compact_job["source"])
             self.failures.put_nowait(worker.failure)
@@ -751,7 +755,11 @@ class HostSupervisor:
             view,
             auto_authorize=self.auto_authorize(session_id),
             paused=self.is_paused(session_id),
+            last_error=self.current_failure(session_id),
         )
+
+    def current_failure(self, session_id):
+        return self._current_failures.get(session_id)
 
     async def _push_auto_authorize(self, session_id):
         return await self.request(
@@ -780,10 +788,10 @@ class HostSupervisor:
             await emitted
 
     async def _emit_session_failed(self, session_id, message):
-        if (
-            self.session_failed_sink is None
-            or self.compact.store.reader_job(session_id) is not None
-        ):
+        if self.compact.store.reader_job(session_id) is not None:
+            return
+        self._current_failures[session_id] = message
+        if self.session_failed_sink is None:
             return
         emitted = self.session_failed_sink(session_id, message)
         if isawaitable(emitted):
@@ -910,7 +918,7 @@ class HostSupervisor:
         )
 
     async def _should_wake(self, session_id):
-        if self.is_paused(session_id):
+        if self.is_paused(session_id) or self.current_failure(session_id) is not None:
             return False
         _events, state = await self._journal_state(session_id)
         return session_view(state).should_wake

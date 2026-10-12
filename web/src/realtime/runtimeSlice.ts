@@ -160,6 +160,7 @@ const runtimeSlice = createSlice({
     ) {
       const session = runtimeOf(state, action.payload.sessionId);
       session.lastError = action.payload.message;
+      session.activity = "idle";
       session.tools = {};
     },
     previewStarted(
