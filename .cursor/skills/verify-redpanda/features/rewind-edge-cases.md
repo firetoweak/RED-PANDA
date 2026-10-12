@@ -111,9 +111,5 @@
 - 每个用例都在临时工作区里做，并用 `sha256sum` 记录前后哈希作为证据。
 
 ## Live status
-- 部分（2026-10-12，main@1a4790a）：compact 前后回滚通过
-- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
-  - 回滚失败仍返回 201：`evidence/rewind-mixed/A_len/result.json`
-  - 人机混改回滚拼接/丢弃：`evidence/rewind-mixed/`
-  - 回滚后附件仍可下载、未清理：`evidence/rewind-edge-cases/attachments_after_rewind.json`
-  - compact 中回滚：旧会话仍继续 compact（低）：`evidence/rewind-edge-cases/rewind_during_compact.json`
+- 部分（2026-10-12，修复后）：原四类已确认问题均有对应修复落地——文件结果如实报告（B）、附件下载分支范围（G）、回滚停止来源压缩（I）、compact 窗口继承规则；均有自动化测试覆盖
+- 未验（待真实 UI）：compact 前后回滚、带附件会话回滚与改写的界面流程

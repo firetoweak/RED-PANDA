@@ -26,7 +26,5 @@
 - 需要 `sandbox.ready` 与 `live_model_ready`。
 
 ## Live status
-- 失败（2026-10-12，main@1a4790a）
-- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
-  - preserve 策略拼接人机改动：`evidence/agent-workspace-restore/A_overlap_preserve`
-  - original 策略静默覆盖或删除人改过的文件：`evidence/agent-workspace-restore/A_overlap_original、B1_original`
+- 部分（2026-10-12，修复后）：机械回退结果如实分类并分别告知用户与模型，不静默宣称完全恢复（源码确认 + 自动化通过）；语义处理交给模型或用户
+- 未验（待真实 UI）：助手撤回后的结果展示与模型下一步动作

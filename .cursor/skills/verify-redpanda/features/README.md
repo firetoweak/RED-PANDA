@@ -50,29 +50,29 @@
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
-| web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 失败（2026-10-12，main@1a4790a） |
-| workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突 | 失败（2026-10-12，main@1a4790a） |
+| web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 部分（2026-10-12，修复后；错误码与失败再试已修，UI 待复跑） |
+| workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突 | 部分（2026-10-12，修复后；选择器 503 已修，UI 待复跑） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
-| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件上传、`本机文件`、下载附件 | 失败（2026-10-12，main@1a4790a） |
-| tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 失败（2026-10-12，main@1a4790a；正常批准/拒绝通过） |
+| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件上传、`本机文件`、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
+| tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具 | 通过（2026-10-12，main@1a4790a） |
-| file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，main@1a4790a；主路径通过；人机混改失败） |
+| file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
 | edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 通过（2026-10-12，main@1a4790a；改写后模型回复偏题，待查） |
-| run-control | [run-control.md](./run-control.md) | `暂停`/`继续`、`中断`、`重试`、`退回编辑栏` | 部分（2026-10-12，main@1a4790a；中断能结束进程；计划状态残留） |
+| run-control | [run-control.md](./run-control.md) | `暂停`/`继续`、`中断`、`重试`、`退回编辑栏` | 部分（2026-10-12，修复后；中断后计划保留为设计行为） |
 | subagents | [subagents.md](./subagents.md) | `delegate`、`子 Agent` 面板、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
-| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 失败（2026-10-12，main@1a4790a） |
+| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
-| agent-workspace-restore | [agent-workspace-restore.md](./agent-workspace-restore.md) | 模型调用 `restore_workspace` 撤回文件变化 | 失败（2026-10-12，main@1a4790a） |
+| agent-workspace-restore | [agent-workspace-restore.md](./agent-workspace-restore.md) | 模型调用 `restore_workspace` 撤回文件变化 | 部分（2026-10-12，修复后；结果如实报告，UI 待复跑） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
-| realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，main@1a4790a；流式通过；断线重连未测） |
+| realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏会话列表 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
 | console-chat | [console-chat.md](./console-chat.md) | 终端入口 `console_chat.py`、`/new`、`/resume` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
 | acp-channel | [acp-channel.md](./acp-channel.md) | `acp_chat.py` ACP 入口 | 跳过（2026-10-12，main@1a4790a；需 ACP 客户端） |
-| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 失败（2026-10-12，main@1a4790a） |
-| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，main@1a4790a；kill -9 后工具不重复执行（通过）） |
-| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，main@1a4790a；compact 前后回滚通过） |
+| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
+| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
+| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，修复后；四类问题对应修复已落地，UI 待复跑） |
 | setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_sandbox.py`、`sandbox_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
 
 ## 入口 → 地图条目 覆盖表
@@ -99,7 +99,7 @@
 | `POST /api/sessions/{id}/select` | session-sidebar |
 | `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | session-sidebar |
 | `GET/POST /api/workspaces`、`POST /api/workspaces/select-directory` | workspace-management |
-| `POST /api/files/select`、`POST .../attachments`、`POST .../attachments/from-path`、`GET .../attachments/{attachment_id}` | composer-attachments |
+| `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
 | `POST .../restarts` | file-rewind、rewind-edge-cases |
@@ -160,3 +160,5 @@
 
 ## 2026-10-12 live 实跑
 证据根目录：`/workspace/verify-run-20261012`（下文路径相对于它），完整报告见该目录 `REPORT.md`。
+
+该轮次对应源码基线 `main@1a4790a`。其后的 2026-10-12 修复轮次见 `docs/讨论/2026-10-12-验证问题修复.md`：隔离 API 复跑记录在仓库 `.tools/verification/fixapi-20261012/`（16 项检查，覆盖 A 附件入口边界、D 已知入口错误、E 模型失败可见与再试）；真实 UI 流程未在该环境复跑，本表中相关条目标注「UI 待复跑」。

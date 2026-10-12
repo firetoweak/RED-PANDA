@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `create`：弹窗 `新建工作区`，字段 `名称`、`目录`（提示 `选择本机已有的文件夹，也可以直接填写路径`），按钮 `创建`。
+- `create`：弹窗 `新建工作区`，字段 `名称`、`目录`（提示 `选择窗口在运行后端的电脑上打开，也可以直接填写该电脑上的目录路径`），按钮 `创建`。
 - `pick-directory`：目录选择按钮调用 `POST /api/workspaces/select-directory`，由服务端弹本机系统对话框。
 - `list`：`GET /api/workspaces`，侧栏按工作区分组列会话，组上有 `在 <名称> 新建会话`。
 
@@ -19,7 +19,7 @@
   - (b) `POST /api/workspaces` 返回 201；弹窗关闭，侧栏出现该工作区。
   - (c) `$SCRATCH_WORKSPACE` 里的文件不被改动、不新建文件。
   - (d) 错误路径①：目录填一个不存在的路径 → 400，弹窗显示 `创建失败`/`目录不存在，或者已经被另一个工作区占用。`，`workspaces.json` 不变。错误路径②：同一目录再建一次 → 409（`WorkspacePathTaken`），`workspaces.json` 仍只有一项。
-- **目录选择**：无图形桌面的 Linux 上点选择按钮 → 503，弹窗显示 `文件夹选择失败，请查看服务端错误。`，可改为手填路径继续。
+- **目录选择**：点 `选择文件夹` → 选择窗口在运行后端的电脑上打开，等待用户选择不设固定超时，取消后按钮恢复可用。已知不可用（无桌面等）→ 503，弹窗显示 `文件夹选择失败，请查看服务端错误。`，可改为手填路径继续。
 - **新建会话**：点 `在 verify 新建会话` → 进入 `/workspaces/<id>` 草稿，(a) 此时会话列表不增加，发出首条消息后才增加。
 
 ## Gotchas
@@ -29,7 +29,6 @@
 - `workspaces.json` 被手改坏（重复 id、同路径两项）时服务应返回 400 `WORKSPACE_REGISTRY_ERROR`，而非崩溃。
 
 ## Live status
-- 失败（2026-10-12，main@1a4790a）
-- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
-  - 选择目录接口无超时、无界面时返回 500：`evidence/workspace-management/results.json；evidence/select_directory_hang.txt`
-  - 无删除/改名工作区接口（功能缺口）：`evidence/workspace-management/results.json`
+- 部分（2026-10-12，修复后）：选择器已知不可用返回 503、不静默挂起（自动化通过）；目录登记与冲突路径不变
+- 未验（待真实 UI）：选择窗口实际弹出、取消、再次打开
+- 功能缺口（不在本次修复范围）：无删除/重命名工作区入口

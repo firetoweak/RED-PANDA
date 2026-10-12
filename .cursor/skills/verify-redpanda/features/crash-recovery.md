@@ -8,6 +8,7 @@
 - **待授权**：未授权的命令投影为 `AWAITING_AUTHORIZATION`，「尚未执行」。journal 对同一命令重复授权/拒绝会抛 `command already authorized/rejected`（`redpanda/runtime/journal/api.py`）。
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`journal/sqlite.py` 的 `events_delivery_identity` 唯一索引）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`（它是 `ValueError` 的子类）。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：408/425/429/500/502/503/504 与 `httpx.TransportError` → `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次；流一旦开始（收到任何一行）就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `InvalidLLMResponse`（`模型响应不符合约定`）；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。读超时 60 秒、连接超时 10 秒。
+- **失败可见与再试**：已识别的模型请求失败只停该会话，当前失败原因记录在会话上（`session.last_error`），刷新后仍可查询；`runnable` 只表示仍有待处理输入，不代表模型请求正在执行。点 `重试`沿用原待处理输入继续，不新增用户消息、不重复已完成的工具。
 - **FUSE 挂载**：`native/sandbox/src/main.rs` 的 `clear_stale_mount` 在下次挂载前遇到 `ENOTCONN` 时执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`），**Linux 没有对应的崩溃测试**。
 - **定时任务**：`redpanda/automation/recovery.py` 处理重启后 UNKNOWN 的定时命令。
 
@@ -43,7 +44,7 @@
 - **429 / 5xx（流开始前）**：假服务前两次返回 429，第三次正常 → (a) 回合成功，journal 只有一条助手回复。四次都 429 → `模型服务暂时不可用：<provider> 429: ...`。
 - **流中断**：假服务先发几个 `data:` 块再断开、不发 `[DONE]` → (b) `模型响应不符合约定：model stream ended without the [DONE] marker` 或传输错误，**不重试**。(a) 已流出的预览文字不作为最终回复写入 journal（界面 `preview.aborted`）。
 - **超时**：假服务 70 秒不回 → 60 秒读超时后报临时错误；界面不得永久转圈。
-- **无效 key**：(b) `模型认证失败：API 密钥无效，或当前密钥无权访问配置的模型。请检查个人目录 connections.json 中当前模型供应商的 API 密钥。` (c) 不重试，响应与日志中不出现 key 明文。
+- **无效 key**：(b) `模型认证失败：API 密钥无效，或当前密钥无权访问配置的模型。请检查个人目录 connections.json 中当前模型供应商的 API 密钥。` (c) 不重试，响应与日志中不出现 key 明文。(d) 刷新页面后仍显示该失败原因；恢复配置后点 `重试` → 同一触发重跑，不重复用户消息。
 - **待授权跨重启**：出现 `待授权` 后 `kill -9` 重启。(a) 命令仍在等待授权（投影 `AWAITING_AUTHORIZATION`），文件未改动。(b) 界面仍显示 `允许`/`拒绝`。(d) 重启后点 `允许` → 只执行一次；对同一 `command_id` 再 POST `authorize` → 预期 4xx；若返回 500，记为疑似问题（`command already authorized` 是 `ValueError`，`app.py` 未注册 `ValueError` 处理器）。
 - **重发去重**：用浏览器开发者工具把一次 `POST .../inputs` 原样重放（同一 `delivery_id`）。(a) `GET` 中消息只有一条，journal 事件数不变。(d) 同一 `delivery_id` 但改了 `text` 重放 → 应 409/4xx；若 500 记为疑似问题（`DeliveryConflictError` 未被处理）。
 - **重连界面**：每个故障后刷新页面，(a) 转录、步骤状态、`当前计划`、子 Agent 卡片与 `GET /api/sessions/<id>` 一致。
@@ -52,13 +53,11 @@
 
 - **疑似问题：Linux 崩溃路径没有测试。** 只有 Windows 有崩溃契约测试，Linux FUSE 的崩溃后清理只靠 `clear_stale_mount`，必须 live 验。
 - **疑似问题：流开始的判定太早。** `stream.started` 在收到任何一行（包括空行/keep-alive）时就置真，之后的 5xx/断流不再重试；`Retry-After` 头没有被读取。
-- **疑似问题：`ValueError` 未映射。** 重复授权、`DeliveryConflictError`、失效连接都可能变成 500。
+- 已知入口错误已分类：失效连接 409、空消息 422、授权目标不存在 404、重复授权/拒绝 409；内部契约违规与未知异常仍原样暴露，不做全局兜底。
 - `kill -9` Web 会连带 Worker 子进程失去父进程；用 `pgrep` 确认没有孤儿 Worker 继续写 journal。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
 
 ## Live status
-- 部分（2026-10-12，main@1a4790a）：kill -9 后工具不重复执行（通过）
-- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
-  - kill -9 后 FUSE 挂载残留：`evidence/crash-recovery/after_kill.txt、after_restart.json`
-  - 模型调用失败后会话卡在 runnable，历史无错误条目：`evidence/crash-recovery/model_errors.json、failed_session_resend.json`
-- 更严格的成功标准：模型调用失败后，`GET /api/sessions/<id>` 的历史里必须出现一条错误条目，会话不能停在 runnable。
+- 部分（2026-10-12，修复后）：模型失败可见性与再试已由隔离 API 注入认证失败验证（16/16，见 `.tools/verification/fixapi-20261012/`）；已知入口错误分类（自动化通过）；kill -9 后工具不重复执行（通过）
+- 未验（待真实 UI / 环境）：刷新后错误仍在页面上的观感、真实供应商 429 与 `Retry-After`、Linux FUSE 残留清理
+- 更严格成功标准：模型调用失败后刷新页面仍能看到失败原因，再试沿用原输入且不重复已完成工具——API 层已满足，UI 层待人工复跑

@@ -33,6 +33,4 @@
 - `web/dist` 不存在时 `/` 不会有页面，只有 API。
 
 ## Live status
-- 失败（2026-10-12，main@1a4790a）
-- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
-  - 非法输入（空消息、无效连接 id）返回 500 而非 4xx：`evidence/web-session-chat/errors.json`
+- 部分（2026-10-12，修复后）：空消息 422、失效连接 409、模型失败可见与再试（隔离 API 通过）；页面观感待人工复跑
