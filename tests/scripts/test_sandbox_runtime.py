@@ -66,6 +66,9 @@ def test_package_has_runtime_files_and_leaves_local_build_unmarked(tmp_path, tar
     source = make_build(tmp_path, target)
     original = (source / "BUILD.json").read_bytes()
     archive = runtime.package(tmp_path, tmp_path / "dist", target)
+    assert archive.with_suffix(".zip.sha256").read_bytes() == (
+        f"{runtime.digest(archive)}  {archive.name}\n".encode("ascii")
+    )
     with zipfile.ZipFile(archive) as bundle:
         record = json.loads(bundle.read("BUILD.json"))
         assert set(bundle.namelist()) == set(record["files"]) | {"BUILD.json"}
