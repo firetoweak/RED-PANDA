@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from anyio import CancelScope
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -296,7 +297,9 @@ def create_web_app(
                 yield ServerSentEvent(event=item.name, data=item.data)
         finally:
             _hub(request).unsubscribe(queue)
-            await web.disconnect(connection)
+            # SSE disconnect cancels its task group; finish releasing the Worker.
+            with CancelScope(shield=True):
+                await web.disconnect(connection)
 
     @app.get("/api/model-settings")
     async def model_settings(request: Request):

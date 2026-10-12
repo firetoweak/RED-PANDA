@@ -21,6 +21,8 @@ class WebEntryTests(unittest.TestCase):
         popen.assert_called_once_with(
             ["node", web / "node_modules" / "vite" / "bin" / "vite.js"],
             cwd=web,
+            creationflags=(web_chat.subprocess.CREATE_NEW_PROCESS_GROUP
+                           if web_chat.os.name == "nt" else 0),
         )
         run.assert_called_once_with(
             "web_chat:app",

@@ -1,4 +1,5 @@
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -42,6 +43,8 @@ def main(argv: list[str] | None = None) -> None:
         frontend = subprocess.Popen(
             ["node", web / "node_modules" / "vite" / "bin" / "vite.js"],
             cwd=web,
+            # Uvicorn uses Ctrl+C for reloads on Windows; Vite must survive them.
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
 
     try:

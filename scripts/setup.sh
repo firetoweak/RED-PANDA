@@ -4,12 +4,8 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_root"
 
-if ! command -v rg >/dev/null 2>&1; then
-  printf '%s\n' "Install ripgrep first: https://github.com/BurntSushi/ripgrep#installation" >&2
-  exit 1
-fi
-if ! command -v fd >/dev/null 2>&1 && ! command -v fdfind >/dev/null 2>&1; then
-  printf '%s\n' "Install fd first: https://github.com/sharkdp/fd#installation" >&2
+if [ "$(uname -s)" != Linux ]; then
+  printf '%s\n' "The native sandbox currently supports Windows x64 and Linux. Use setup.ps1 on Windows." >&2
   exit 1
 fi
 
@@ -63,8 +59,8 @@ if [ "$create_environment" -eq 1 ]; then
   "$uv" venv --clear --python "$python_version" --managed-python "$environment_dir"
 fi
 python="$venv_python"
-environment_python_version=$($python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-base_prefix=$($python -c 'import sys; print(sys.base_prefix)')
+environment_python_version=$("$python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+base_prefix=$("$python" -c 'import sys; print(sys.base_prefix)')
 case "$base_prefix/" in
   "$managed_python_dir"/*) ;;
   *)
@@ -77,8 +73,4 @@ if [ "$environment_python_version" != "$python_version" ]; then
   exit 1
 fi
 
-"$uv" pip install --python "$python" pip -r requirements.txt
-
-"$python" -m redpanda.initialize
-
-printf '%s\n' "Setup complete. Fill provider settings in your personal connections.json."
+"$python" -m scripts.setup "$@"

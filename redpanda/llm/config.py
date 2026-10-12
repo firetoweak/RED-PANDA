@@ -51,8 +51,7 @@ def initial_connections() -> dict:
             for name, provider in PROVIDERS.items()}
 
 
-def load_connections(path: Path) -> dict[str, dict[str, str]]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+def parse_connections(data: object) -> dict[str, dict[str, str]]:
     if type(data) is not dict or set(data) != set(PROVIDERS):
         raise ValueError("connections.json 必须包含全部内置供应商")
     for name, provider in PROVIDERS.items():
@@ -67,6 +66,10 @@ def load_connections(path: Path) -> dict[str, dict[str, str]]:
             if address.scheme not in ("http", "https") or not address.hostname or address.query or address.fragment:
                 raise ValueError(f"{name} base_url 必须是 HTTP(S) 服务地址")
     return data
+
+
+def load_connections(path: Path) -> dict[str, dict[str, str]]:
+    return parse_connections(json.loads(path.read_text(encoding="utf-8")))
 
 
 def load_endpoint(model: ModelConfig, path: Path | None = None) -> Endpoint:

@@ -1,15 +1,12 @@
+param(
+    [switch]$NoConfigure,
+    [switch]$Check
+)
 $ErrorActionPreference = "Stop"
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $projectRoot
 try {
-    if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
-        throw "Install ripgrep first: winget install --id BurntSushi.ripgrep.MSVC --exact"
-    }
-    if (-not (Get-Command fd -ErrorAction SilentlyContinue) -and -not (Get-Command fdfind -ErrorAction SilentlyContinue)) {
-        throw "Install fd first: winget install --id sharkdp.fd --exact"
-    }
-
     $pythonVersion = (Get-Content (Join-Path $projectRoot ".python-version") -Raw).Trim()
     $uvVersion = "0.12.19"
     $toolsDir = Join-Path $projectRoot ".tools"
@@ -64,17 +61,14 @@ try {
         throw "redpanda-env is not using the project Python. Delete redpanda-env and run this script again."
     }
 
-    & $uv pip install --python $python pip -r requirements.txt
+    $setupArgs = @()
+    if ($NoConfigure) { $setupArgs += "--no-configure" }
+    if ($Check) { $setupArgs += "--check" }
+    & $python -m scripts.setup @setupArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install Python dependencies."
+        Write-Host "Project setup failed. See the failed step above." -ForegroundColor Red
+        exit $LASTEXITCODE
     }
-
-    & $python -m redpanda.initialize
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to initialize personal model configuration."
-    }
-
-    Write-Host "Setup complete. Fill provider settings in your personal connections.json."
 }
 finally {
     Pop-Location

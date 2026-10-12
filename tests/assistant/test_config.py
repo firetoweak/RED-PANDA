@@ -34,7 +34,7 @@ class AppConfigTest(unittest.TestCase):
 
             self.assertEqual(config.default_model, active)
 
-    def test_first_run_writes_usable_defaults_and_continues(self):
+    def test_first_run_creates_empty_model_configuration(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
             expected_path = home / ".redpanda" / "config.json"
@@ -48,11 +48,9 @@ class AppConfigTest(unittest.TestCase):
             document = json.loads(expected_path.read_text(encoding="utf-8"))
 
         self.assertEqual(document, INITIAL_CONFIG)
-        self.assertEqual(config.default_model, INITIAL_CONFIG["model"]["default"])
-        self.assertEqual(
-            config.default.compact_threshold_tokens,
-            INITIAL_CONFIG["model"]["candidates"][0]["compact_threshold_tokens"],
-        )
+        self.assertIsNone(config.default_model)
+        self.assertIsNone(config.default)
+        self.assertEqual(config.models, ())
 
     def test_loads_default_config_from_redpanda_home(self):
         with TemporaryDirectory() as directory:

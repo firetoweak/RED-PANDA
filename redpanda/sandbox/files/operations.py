@@ -189,7 +189,7 @@ class WorkspaceFiles:
     def _client(self):
         executable = self.executable if self.executable is not None else native_executable()
         if not executable.is_file():
-            raise SandboxUnavailable("运行 scripts/build_sandbox.py 构建本仓库的原生 sandbox，或配置 REDPANDA_SANDBOX_EXECUTABLE")
+            raise SandboxUnavailable("未找到原生沙箱运行程序，请先安装与当前平台匹配的沙箱运行包。")
         from redpanda.sandbox.files.file_view import Client
         return Client(executable, self.storage, self.root)
 

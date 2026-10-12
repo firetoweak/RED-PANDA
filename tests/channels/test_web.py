@@ -22,7 +22,7 @@ from redpanda.assistant.conversations import (
 )
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.model_settings import ModelSettings
-from redpanda.config import INITIAL_CONFIG, write_json
+from redpanda.config import write_json
 from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
 from redpanda.assistant.sessions import SessionView
@@ -33,6 +33,11 @@ from redpanda.channels.web.channel import WebChannel
 from redpanda.channels.web.directory_picker import DirectoryPickerUnavailable
 from redpanda.channels.web.hub import WebEventHub
 from redpanda.sandbox.registry import WorkspaceRegistry
+
+
+MODEL_CONFIG = {"model": {"default": "deepseek/test-model", "candidates": [
+    {"model": "deepseek/test-model", "compact_threshold_tokens": 64000},
+]}}
 
 
 class _Sessions:
@@ -182,7 +187,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.queries = _Queries()
         self.sessions = _Sessions(self.queries)
         home = RedPandaHome(Path(self._directory.name))
-        write_json(home.config_path, INITIAL_CONFIG)
+        write_json(home.config_path, MODEL_CONFIG)
         self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
         self.models.initialize_session("session-old")
         self.sessions.models = self.models
@@ -308,6 +313,16 @@ class WebFirstSliceTest(unittest.TestCase):
     def test_events_assigns_connection_identity_and_releases_on_disconnect(self):
         body = bytearray()
         headers = {}
+        released = []
+
+        async def release(owner):
+            # A real release awaits IPC; disconnect cancellation must not skip it.
+            import anyio
+
+            await anyio.sleep(0)
+            released.append(owner)
+
+        self.sessions.release = release
 
         async def exercise():
             first = asyncio.Event()
@@ -361,7 +376,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(event, "connected")
         connection_id = payload["connection_id"]
         self.assertNotIn(connection_id, self.channel._connections)
-        self.assertIn(("release", f"web:{connection_id}"), self.sessions.calls)
+        self.assertEqual(released, [f"web:{connection_id}"])
 
     def test_events_sends_keepalive_comments_while_idle(self):
         body = bytearray()
@@ -423,14 +438,14 @@ class WebFirstSliceTest(unittest.TestCase):
         response = self.client.get("/api/model-settings")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["config"], INITIAL_CONFIG)
+        self.assertEqual(response.json()["config"], MODEL_CONFIG)
         self.assertNotIn("secret-for-test", response.text)
         status = next(item for item in response.json()["providers"] if item["provider"] == "deepseek")
         self.assertTrue(status["configured"])
 
     def test_session_model_selection_and_invalid_model_boundary(self):
         response = self.client.get("/api/sessions/session-old/model")
-        self.assertEqual(response.json()["selected"]["model"], INITIAL_CONFIG["model"]["default"])
+        self.assertEqual(response.json()["selected"]["model"], MODEL_CONFIG["model"]["default"])
         response = self.client.put("/api/sessions/session-old/model", json={
             "connection_id": self.connection.connection_id, "model": "unknown/no-model",
         })

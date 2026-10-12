@@ -11,9 +11,7 @@ from redpanda.llm.config import ModelConfig
 from redpanda.paths import RedPandaHome
 
 CONFIG_PATH_ENV = "REDPANDA_CONFIG"
-INITIAL_CONFIG = {"model": {"default": "deepseek/deepseek-v4-pro", "candidates": [
-    {"model": "deepseek/deepseek-v4-pro", "compact_threshold_tokens": 200000},
-]}}
+INITIAL_CONFIG = {"model": {"default": None, "candidates": []}}
 
 
 @dataclass(frozen=True, slots=True)

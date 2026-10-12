@@ -1,34 +1,19 @@
 <p align="center">
-  <img src="assets/brand/red-panda-full.png" width="240" alt="RED PANDA 折纸小熊猫完整形象">
+  <img src="assets/brand/red-panda-full.png" width="240" alt="RED PANDA 折纸小熊猫">
 </p>
 
 <h1 align="center">RED PANDA</h1>
 
-<p align="center">一个你可以拥有、理解并持续塑造的个人 AI 助手。</p>
+<p align="center">面向开发者的 coding agent。</p>
 
 <p align="center">
   <a href="#功能">功能</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#开发与测试">开发与测试</a> ·
-  <a href="#文档">文档</a> ·
-  <a href="#参与贡献">参与贡献</a>
+  <a href="#文档">文档</a>
 </p>
 
-RED PANDA 从对话出发，在你的工作区里阅读文件、修改内容、执行命令，并展示行动过程与工作计划。你可以连接远程模型或本地模型，通过 Web、终端或支持 ACP 的客户端使用它。
-
-这个项目也记录了构建个人通用助手的学习过程：以模型负责判断，以明确的运行契约组织执行，让每项能力的行为、边界和变化都有据可查。项目仍在持续开发，欢迎一起讨论设计与实现。
-
-## 功能
-
-| 能力 | 当前支持 |
-| --- | --- |
-| 对话与工作区 | 多工作区、多会话、流式回复、图片与文件附件、消息编辑与会话分支 |
-| 执行过程 | 文件读写、命令执行、工具进度与工作计划展示、命令授权与打断 |
-| 模型选择 | DeepSeek、OpenAI、Qwen、StepFun、BigModel、vLLM、Ollama；候选模型配置与会话内切换 |
-| 会话延续 | 事件持久化与重放、上下文整理（Compact）、工作区文件版本与显式回退 |
-| 子任务 | 子会话独立调查或修改文件，父会话审阅差异并经授权合入 |
-| 能力扩展 | 按需加载 MCP 工具、Skill 与 CLI 能力；一次性定时唤醒 |
-| 使用入口 | Web 界面、终端交互、ACP stdio 接入；Web 支持浅色与深色外观 |
+连接你选择的模型，让助手在代码工作区里理解项目、修改文件、执行命令并验证结果。你可以查看行动过程、审阅文件变化，也可以回退工作区内的文件修改。
 
 <p align="center">
   <img src="assets/screenshots/red-panda-web.jpg" width="960" alt="RED PANDA Web 界面：工作区、工具执行过程与工作计划">
@@ -36,24 +21,33 @@ RED PANDA 从对话出发，在你的工作区里阅读文件、修改内容、�
   <sub>Web 界面示例，使用演示数据。</sub>
 </p>
 
+## 功能
+
+- **处理编码任务**：阅读项目、修改代码、运行命令与测试。
+- **查看和控制过程**：查看计划与工具进度，授权命令、打断执行、审阅与回退文件变化。
+- **拆分任务**：让子会话独立调查或修改，审阅成果后合入。
+- **选择模型与工具**：连接远程或本地模型，接入 MCP、Skill 和 CLI；支持 Web、终端与 ACP 客户端。
+
+项目仍在持续开发，也记录构建 coding agent 的学习过程。
+
 ## 快速开始
 
-### 1. 准备环境与获取项目
+目前支持 **Windows x64 和 Linux x64**（glibc 2.35+）；macOS 的工作区文件视图尚未实现。
 
-需要 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)、[fd](https://github.com/sharkdp/fd#installation)，以及一个可用的模型来源。文件内容搜索使用 ripgrep，文件与目录查找使用 fd（Linux 上也支持命令名 fdfind）。Web 还需要 Node.js 与 npm，当前前端依赖支持 Node.js 22.x（至少 22.13）或 24.x。
+**首次沙箱运行包尚待发布。准备脚本已接入自动下载；发布前，新安装会提示运行包尚未发布。**
 
-安装脚本会下载项目专用的 Python 3.13 并安装依赖，不需要预装 Python 或 Docker。
+### 1. 准备运行环境
 
-此分支的工作区文件执行与回退采用内置 VFS，已在 Windows x64 与 Linux 上运行。启动前需要构建原生沙箱：Windows 安装 WinFsp，Linux 安装 FUSE 用户态组件。macOS 的文件视图尚未实现。
+先自行安装 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)、[fd](https://github.com/sharkdp/fd#installation)、Node.js 与 npm（Node.js 22.x 至少 22.13，或 24.x）。Linux 还需 curl。这些系统工具由你安装，准备脚本只检查是否可用。
+
+获取项目：
 
 ```sh
 git clone https://github.com/firetoweak/RED-PANDA.git
 cd RED-PANDA
 ```
 
-### 2. 安装 Python 环境
-
-在仓库根目录运行对应平台的脚本：
+在仓库根目录运行对应平台的准备命令：
 
 **Windows（PowerShell）**
 
@@ -61,145 +55,56 @@ cd RED-PANDA
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
-**macOS / Linux**
+**Linux**
 
 ```sh
 sh scripts/setup.sh
 ```
 
-脚本会创建项目内的 `redpanda-env` 环境，并在个人数据目录 `~/.redpanda` 创建 `config.json` 与 `connections.json`；已有的个人配置不会被覆盖。Windows 下，默认个人数据目录位于用户主目录的 `.redpanda` 文件夹。
+脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的沙箱，并引导你配置模型。Windows 会按需安装 WinFsp 驱动，首次安装需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/sandbox/README.md#linux)。重复执行会跳过已有运行包，并保留自行编译的沙箱。
 
-### 3. 配置模型连接
+**运行不需要 Rust、LLVM、开发 SDK、预装 Python 或 Docker。** 安装参数见[运行指南](docs/运行指南.md#准备选项)。
 
-打开 `~/.redpanda/connections.json`，填写所用供应商的 `api_key`。文件包含所有内置供应商的配置项，只需修改你要使用的项，其余配置保留即可。
-
-远程模型支持 DeepSeek、OpenAI、阿里云百炼 Qwen、阶跃星辰 StepFun 和智谱 BigModel。本地 vLLM / Ollama 填写包含 `/v1` 的 `base_url`；服务未启用认证时，密钥可以留空。
-
-保存后，下一次模型调用直接使用新连接，无需重启。Web 可以在密钥未填写时启动，密钥由个人连接文件管理。完整示例与模型 ID 的填写方式见[模型配置指南](docs/模型配置.md)。
-
-### 4. 构建原生沙箱和 Web
-
-Windows 与 Linux 都要先构建原生沙箱。macOS 的文件视图尚未实现。VFS 源码随本仓库提供，无需另行克隆。Python 安装脚本不会安装 WinFsp、FUSE 或编译 Rust；缺少原生程序时文件工具会明确返回沙箱不可用。
-
-先按[原生沙箱构建说明](native/sandbox/README.md#构建)准备当前平台的工具链和系统组件，再在仓库根目录执行：
+### 2. 启动并开始使用
 
 **Windows（PowerShell）**
 
 ```powershell
-.\redpanda-env\Scripts\python.exe scripts/build_sandbox.py
+powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 ```
 
 **Linux**
 
 ```sh
-./redpanda-env/bin/python scripts/build_sandbox.py
+sh scripts/dev.sh
 ```
 
-构建默认生成 release 程序，输出到 `redpanda/sandbox/bin/`；Windows 的 LLVM 运行库与 SDK 参数见上述说明。
+打开终端打印的浏览器地址，新建工作区、选择代码目录，再创建会话开始使用。以后直接运行启动命令即可，无需重复安装。
 
-然后安装前端依赖并构建：
-
-```sh
-cd web
-npm ci
-npm run build
-cd ..
-```
-
-**Windows（PowerShell）**
-
-```powershell
-.\redpanda-env\Scripts\python.exe web_chat.py
-```
-
-**macOS / Linux**
-
-```sh
-./redpanda-env/bin/python web_chat.py
-```
-
-浏览器打开 [http://127.0.0.1:8765](http://127.0.0.1:8765)。在侧栏「模型配置」中添加你的服务实际支持的模型 ID，保存候选模型与新会话默认值；可以用「测试」按钮验证连接。
-
-然后新建工作区，选择助手要使用的本地目录，再创建会话开始对话。输入区可切换会话模型，选择从下一次决策开始生效，已有历史保留。
-
-### 其他入口与数据位置
-
-下面的脚本同样使用 `redpanda-env` 中的 Python，在仓库根目录启动：
-
-| 入口 | 用途 |
-| --- | --- |
-| `web_chat.py` | Web 服务；可用 `--port` 指定端口、`--workspace` 显式登记工作区 |
-| `console_chat.py` | 终端交互；默认工作区为当前目录，可用 `--workspace` 指定 |
-| `acp_chat.py` | 由支持 ACP 的客户端启动，通过 stdio 通信；可用 `--workspace` 指定工作区 |
-
-个人配置与会话数据保存在 `~/.redpanda`。产品数据目录必须位于用户登记的任务根之外；测试独立实例时，在运行安装脚本和启动服务前设置独立的 `REDPANDA_HOME`。`REDPANDA_HOME` 可以更换整个个人数据目录，`REDPANDA_CONFIG` 可以单独指定模型候选配置文件；详细说明见[模型配置](docs/模型配置.md)。
+模型可在侧栏「模型配置」中管理；API Key 保存在个人目录的 `~/.redpanda/connections.json`。详见[模型配置](docs/模型配置.md)。
 
 ## 开发与测试
 
-Sandbox 的文件管理系统统一提供受控文件操作、操作历史、恢复及子任务成果交换，职责见[Sandbox 总览](docs/架构/Sandbox/总览.md)。Python 入口在 `redpanda/sandbox/files/`；原生服务与底层库分别在 `native/sandbox/` 和 `native/vfs/`，由本仓库共同维护。
+日常启动支持 Python 与前端热重载。开发者可在自备环境运行 `python -m pytest`；前端测试使用 `npm --prefix web test`。
 
-只读文件工具与声明 `read_only` 的命令查询已发布工作区。只读声明是调用契约，误标造成的写入不在回退范围。文件修改、可能写入的命令及恢复通过原生视图执行；挂载外写入、安装与网络副作用不属于文件回退范围。子任务成果使用 Git 差异和三方合并，日常 Step 不创建 Git 快照。
+[GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试，以及前端测试和构建。沙箱源码变化另行构建并验证运行包；真实模型与完整业务流程需另外验证。
 
-构建与分发见[原生服务说明](native/sandbox/README.md)，底层测试见[VFS 测试说明](native/vfs/docs/TESTING.md)。历史实验和验证结果从[文档索引](docs/README.md)查阅，不作为当前构建步骤。
-
-完成安装与前端依赖准备后，可以用 Web 开发模式同时启动后端热重载与 Vite：
-
-```powershell
-# Windows
-.\redpanda-env\Scripts\python.exe web_chat.py --dev
-```
-
-```sh
-# macOS / Linux
-./redpanda-env/bin/python web_chat.py --dev
-```
-
-打开终端打印的 Vite 地址。开发模式使用默认后端端口 `8765`。
-
-运行后端测试前，先激活项目环境：Windows 使用 `.\redpanda-env\Scripts\Activate.ps1`，macOS / Linux 使用 `source redpanda-env/bin/activate`。日常反馈以默认测试为主，真实进程测试单独运行：
-
-```sh
-python -m pytest                 # 架构契约与进程内语义
-python -m pytest -m process      # 真实进程、shell 与 MCP 传输
-python -m pytest --all           # 默认测试 + 进程测试
-```
-
-真实模型测试需要配置可用连接并显式设置 `REDPANDA_RUN_LIVE_TESTS=1`，随后运行 `python -m pytest tests/live`；这些测试会调用实际模型服务。
-
-前端测试与构建：
-
-```sh
-cd web
-npm test
-npm run build
-```
-
-GitHub Actions 的 [CI 配置](.github/workflows/ci.yml) 会在推送到 `main` 或更新目标为 `main` 的 PR 时运行，也可以在仓库的 Actions → CI → Run workflow 手动触发。Python 在 Linux 和 Windows 上运行上述日常测试；Web 运行 `npm test` 和 `npm run build`，后者包含类型检查。
-
-可以在 PR 的 Checks 或仓库的 Actions 页面查看结果；点开失败的任务和步骤即可查看日志。这一版不构建原生沙箱，也不运行真实进程、真模型或性能测试；绿色表示这些已配置的检查通过。
+`redpanda-env` 用于运行工具；修改项目源码时，开发环境由你自行选择。测试方法见[开发指南](docs/开发指南.md)。
 
 ## 文档
 
-如果想理解项目，建议先读架构方向与总览，再按正在修改的能力查阅专题文档。
-
-| 文档 | 内容 |
+| 想了解什么 | 从这里开始 |
 | --- | --- |
-| [文档索引](docs/README.md) | 使用说明、架构专题与实验记录的入口 |
-| [项目架构方向](docs/项目架构方向.md) | 个人助手的定位、渐进式加载与可控扩展原则 |
-| [架构总览](docs/架构/总览.md) | 当前分层、包边界与测试分层 |
-| [Sandbox](docs/架构/Sandbox/总览.md) | 执行环境、文件管理、原生能力与业务层的边界 |
-| [Runtime](docs/架构/运行/Runtime.md) | 运行事实、调度、持久化与恢复的核心契约 |
-| [模型配置](docs/模型配置.md) | 连接文件、候选模型与会话模型切换 |
-| [自举开发](docs/自举开发.md) | 用 RED PANDA 开发 RED PANDA，隔离工作区、数据与端口 |
-
-`docs/架构/` 的目录划分也表达当前进度：`运行/`、`上下文/`、`能力/`、`入口/`、`Sandbox/` 记录已落地的决策，`未开始/` 记录尚待探索的方向。长期记忆、交互式资源与进程沙箱等方向尚未实现，具体范围以文档和代码为准。
+| 安装参数、其他入口与数据位置 | [运行指南](docs/运行指南.md) |
+| 自行开发与测试 | [开发指南](docs/开发指南.md) |
+| 模型连接与切换 | [模型配置](docs/模型配置.md) |
+| 项目的设计与架构 | [架构方向](docs/项目架构方向.md) · [架构总览](docs/架构/总览.md) |
+| 全部文档与实验记录 | [文档索引](docs/README.md) |
 
 ## 参与贡献
 
-欢迎通过 [Issue](https://github.com/firetoweak/RED-PANDA/issues) 报告问题、交流使用体验或讨论设计，也欢迎提交 Pull Request。问题报告请带上运行环境、复现步骤、预期行为与实际结果。
-
-修改前请阅读 [AGENTS.md](AGENTS.md) 与相关架构文档。保持高内聚、低耦合，让一次改动围绕一个明确问题展开；涉及架构边界或新增抽象时，先说明需求与取舍。测试放在 `tests/` 或前端对应测试位置，并在 PR 中写明验证方式与结果。
+欢迎通过 [Issue](https://github.com/firetoweak/RED-PANDA/issues) 交流问题和设计，也欢迎提交 PR。修改前请阅读 [AGENTS.md](AGENTS.md)，提交时说明改动目的与验证结果。
 
 ## 许可证
 
-当前仓库尚未添加 `LICENSE`，开源许可证待确定。
+当前仓库尚未添加 `LICENSE`，许可证待确定。

@@ -19,8 +19,12 @@
 | 文档 | 用途 |
 |---|---|
 | [模型配置](模型配置.md) | 个人连接文件、候选模型与 Web 会话切换 |
+| [源码快速开始](../README.md#快速开始) | 运行环境、沙箱运行包与日常启动 |
+| [运行指南](运行指南.md) | 准备参数、模型配置、其他入口与数据位置 |
+| [沙箱运行说明](../native/sandbox/README.md) | 运行包、Windows 驱动与 Linux FUSE 运行要求 |
+| [开发指南](开发指南.md) | 自备开发环境、源码修改与测试 |
 | [自举开发](自举开发.md) | 用 RED PANDA 开发 RED PANDA：双 worktree、数据根与端口隔离 |
-| [原生 sandbox 构建与分发](../native/sandbox/README.md) | Windows / Linux 构建、系统组件与二进制分发 |
+| [原生 sandbox 开发与构建](../native/sandbox/BUILD.md) | 可选的原生编译工具、源码构建与二进制分发 |
 
 ## 架构
 
