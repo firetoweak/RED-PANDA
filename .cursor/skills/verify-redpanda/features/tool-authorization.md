@@ -24,3 +24,8 @@
 
 - 只读命令（被 `exec_policy` 判为只读）不需要授权，也不进入文件回滚范围。
 - 自动放行只覆盖「写文件等工具」；MCP/Skill/CLI 的 `propose_*` 安装类请求仍需确认，见 extensions。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）：正常批准/拒绝通过
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 无待授权项时拒绝/重复授权返回 500：`evidence/tool-authorization/results.json`

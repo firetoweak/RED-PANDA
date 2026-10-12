@@ -30,3 +30,6 @@
 
 - 本轮只读源码，全部 unverified-live；`setup.ps1`、`install_winfsp.ps1` 需 Windows 机器。
 - 旧版本沙箱二进制与新代码不匹配时可能静默行为异常（上次扫描挖出过），Doctor 应能识别版本；重建后再验文件类功能。
+
+## Live status
+- 通过（2026-10-12，main@1a4790a）：doctor 与 sandbox 构建通过

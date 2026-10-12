@@ -57,3 +57,9 @@
 - **疑似问题：回滚等待子。** 见上「父会话回滚」。
 - 模型可能串行委派而非并行；通过条件是同一步出现多个 `delegate` 且卡片时间重叠。
 - 需要 `sandbox.ready` 与 `live_model_ready`。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 中断父会话后子 Agent 继续运行：`evidence/subagents-parallel/cancel_run.json`
+- 更严格的成功标准：父会话中断后 30 秒内，各子 Agent 的事件数必须停止增长，`has_active_subagents` 变为 false。

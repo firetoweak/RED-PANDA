@@ -109,3 +109,11 @@
 - **疑似问题：没有引导模型做语义处理。** 工具描述与系统提示只要求如实汇报 changed/preserved，没有要求读 diff、征求用户、或手工重做。
 - **original 会删除或覆盖人工修改**（B1 删除文件、A 覆盖同位置）；只能由模型选择，Web 不提供。
 - 每个用例都在临时工作区里做，并用 `sha256sum` 记录前后哈希作为证据。
+
+## Live status
+- 部分（2026-10-12，main@1a4790a）：compact 前后回滚通过
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 回滚失败仍返回 201：`evidence/rewind-mixed/A_len/result.json`
+  - 人机混改回滚拼接/丢弃：`evidence/rewind-mixed/`
+  - 回滚后附件仍可下载、未清理：`evidence/rewind-edge-cases/attachments_after_rewind.json`
+  - compact 中回滚：旧会话仍继续 compact（低）：`evidence/rewind-edge-cases/rewind_during_compact.json`

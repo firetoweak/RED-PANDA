@@ -25,3 +25,8 @@
 
 - 自动标题依赖模型；`live_model_ready` 为 false 时跳过 `auto-title`。
 - 源码没有「取消归档」入口；归档后能否找回只能经 URL 直达，记为观察项。
+
+## Live status
+- 部分（2026-10-12，main@1a4790a）：归档不可撤销
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 归档后无法取消归档（功能缺口）：`evidence/session-sidebar/results.json`

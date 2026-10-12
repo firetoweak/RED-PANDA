@@ -31,3 +31,8 @@
 - `live_model_ready` 为 false 时只验到建会话为止。
 - `--workspace` 启动会预先登记工作区，跳过空首页路径；验证时不要用。
 - `web/dist` 不存在时 `/` 不会有页面，只有 API。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 非法输入（空消息、无效连接 id）返回 500 而非 4xx：`evidence/web-session-chat/errors.json`

@@ -48,3 +48,6 @@
 - `pytest -m process` 走的是同一批工具但不经 Web，只能记为进程测试。
 - 只读命令不发布文件变化；`read_file` 那一步仍可能显示 `从这一步之后重开`，其保存的文件是 `apply_patch` 之前的字节，file-rewind 用的就是这一行。
 - 模型可能拒绝或换工具；通过条件是三个工具名按顺序出现且 `note.txt` 为 `edited`。
+
+## Live status
+- 通过（2026-10-12，main@1a4790a）

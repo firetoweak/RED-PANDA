@@ -27,3 +27,9 @@
 - Web 端创建时 `fullAccess` 写死为 `false`（`CreateWorkspaceModal.tsx`），界面上没有「整台电脑」选项；`full_access: true` 只能经 API 或其他入口登记。终端入口会打印 `工作区：整台电脑`。验证完全访问模式要明确记为「Web 不可达」。
 - 没有删除/重命名工作区的入口（源码里没有对应路由），不要去找。
 - `workspaces.json` 被手改坏（重复 id、同路径两项）时服务应返回 400 `WORKSPACE_REGISTRY_ERROR`，而非崩溃。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 选择目录接口无超时、无界面时返回 500：`evidence/workspace-management/results.json；evidence/select_directory_hang.txt`
+  - 无删除/改名工作区接口（功能缺口）：`evidence/workspace-management/results.json`

@@ -27,3 +27,6 @@
 
 - 需要真 TTY（prompt_toolkit）；不能用管道喂输入。
 - 与 Web 不同，终端缺省会用启动目录登记工作区。
+
+## Live status
+- 跳过（2026-10-12，main@1a4790a）：需真 TTY

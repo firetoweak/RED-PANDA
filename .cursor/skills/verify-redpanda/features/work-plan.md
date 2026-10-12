@@ -64,3 +64,9 @@
 - 全部完成的计划仍在每次模型上下文里占用 token，直到被替换或清除。
 - 计划完全依赖模型调用；模型可能不调用 `update_plan`。通过条件是 journal 中真的有成功的 `update_plan` 结果。
 - 需要 `live_model_ready`。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 计划状态无约束（可多项同时进行中）：`evidence/work-plan/results.json`
+  - 中断后计划步骤停留在进行中：`evidence/run-control/interrupt.json`

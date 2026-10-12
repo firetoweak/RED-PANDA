@@ -25,3 +25,9 @@
 
 - `本机文件` 与目录选择一样依赖服务端桌面；无桌面时预期 503。
 - `from-path` 会读取服务端机器上任意绝对路径的文件。服务以 `--host 0.0.0.0` 局域网共享且没有鉴权时，这是读取服务端任意文件的口子（见报告「疑似问题」）。验证时记录是否有任何路径限制。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 本机文件附件接口无鉴权，可读取服务器任意文件（严重）：`evidence/composer-attachments/results.json`
+  - 无效连接 id 上传返回 500：`evidence/composer-attachments/results.json`

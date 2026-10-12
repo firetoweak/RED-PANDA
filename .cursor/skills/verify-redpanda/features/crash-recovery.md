@@ -55,3 +55,10 @@
 - **疑似问题：`ValueError` 未映射。** 重复授权、`DeliveryConflictError`、失效连接都可能变成 500。
 - `kill -9` Web 会连带 Worker 子进程失去父进程；用 `pgrep` 确认没有孤儿 Worker 继续写 journal。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
+
+## Live status
+- 部分（2026-10-12，main@1a4790a）：kill -9 后工具不重复执行（通过）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - kill -9 后 FUSE 挂载残留：`evidence/crash-recovery/after_kill.txt、after_restart.json`
+  - 模型调用失败后会话卡在 runnable，历史无错误条目：`evidence/crash-recovery/model_errors.json、failed_session_resend.json`
+- 更严格的成功标准：模型调用失败后，`GET /api/sessions/<id>` 的历史里必须出现一条错误条目，会话不能停在 runnable。

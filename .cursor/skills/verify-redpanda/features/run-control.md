@@ -25,3 +25,8 @@
 
 - 进程级中断在 Windows 与 Linux 实现不同（`command_interrupts.py`），两边都要单独验。
 - 需要 `live_model_ready`；`sleep` 时长保持短以免拖慢验证。
+
+## Live status
+- 部分（2026-10-12，main@1a4790a）：中断能结束进程；计划状态残留
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 中断后计划步骤停留在进行中：`evidence/run-control/interrupt.json`

@@ -34,3 +34,9 @@
 - `只回滚会话` 不能证明本功能。
 - 被判为只读的命令即便写了文件也不在回滚范围内。
 - 同一工作区其间其他会话的助手修改也可能被一起回退（见 agent-workspace-restore 中工具描述），多会话并行时要记录。
+
+## Live status
+- 部分（2026-10-12，main@1a4790a）：主路径通过；人机混改失败
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - 回滚失败仍返回 201 且界面无提示：`evidence/rewind-mixed/A_len/result.json`
+  - 人机混改时文件被拼接或人的改动被丢弃：`evidence/rewind-mixed/A_overlap、A_same、B2`

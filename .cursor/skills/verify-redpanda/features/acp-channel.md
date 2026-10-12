@@ -20,3 +20,6 @@
 ## Gotchas
 
 - 本轮未 live 验证；需要 ACP 客户端，记为 unverified-live。
+
+## Live status
+- 跳过（2026-10-12，main@1a4790a）：需 ACP 客户端

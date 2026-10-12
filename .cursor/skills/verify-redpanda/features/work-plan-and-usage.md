@@ -23,3 +23,6 @@
 ## Gotchas
 
 - 改 `compact 触发值` 会写 `config.json`，验证结束要改回或丢弃临时 home。
+
+## Live status
+- 通过（2026-10-12，main@1a4790a）：只经 API 核对，UI 未验

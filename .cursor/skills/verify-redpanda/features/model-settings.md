@@ -27,3 +27,6 @@
 
 - 设置 `REDPANDA_CONFIG` 环境变量会让 `config.json` 指向别处（`redpanda/config.py`），验证时确认未设置。
 - `测试` 需要网络与真实 key，`live_model_ready` 为 false 时只验错误路径。
+
+## Live status
+- 通过（2026-10-12，main@1a4790a）

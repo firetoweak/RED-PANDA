@@ -24,3 +24,9 @@
 
 - 范围包含同一工作区其间其他会话的助手修改；并行会话验证时要预期这一点。
 - 需要 `sandbox.ready` 与 `live_model_ready`。
+
+## Live status
+- 失败（2026-10-12，main@1a4790a）
+- 已确认问题（证据路径相对 `/workspace/verify-run-20261012`）：
+  - preserve 策略拼接人机改动：`evidence/agent-workspace-restore/A_overlap_preserve`
+  - original 策略静默覆盖或删除人改过的文件：`evidence/agent-workspace-restore/A_overlap_original、B1_original`
