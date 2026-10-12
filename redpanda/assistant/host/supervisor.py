@@ -1048,6 +1048,15 @@ class HostSupervisor:
     async def restart_from_step(
         self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
     ):
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            return await self._restart_from_step(
+                owner, session_id, step_id, child_session_id, delivery_id,
+                restore_files=restore_files,
+            )
+
+    async def _restart_from_step(
+        self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
+    ):
         """人点时间线上的一步：从那一刻重开。
 
         只退文件是残缺的——会话照样停在第十步，那七步基于旧世界的推理还在
@@ -1064,7 +1073,8 @@ class HostSupervisor:
             raise StepNotRewindable(step_id)
 
         self._pause.set(session_id, True)
-        await self.compact.application("cancel_turn", session_id, {})
+        await self.compact.retire(session_id)
+        await self._cancel_turn(session_id)
         await self.wait_quiescent(session_id)
 
         async with self.locks.setdefault(session_id, asyncio.Lock()):

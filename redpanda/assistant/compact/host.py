@@ -35,7 +35,7 @@ class CompactHost:
         self.store = CompactStore(host.store.root)
         self.gateway = FileArtifactGateway(host.store.root)
         self.locks = {}
-        self.activating = set()
+        self.activating = {}
 
     def notify_status(self, session):
         if self.host.conversation_status_sink is None:
@@ -65,21 +65,36 @@ class CompactHost:
     async def retire(self, source):
         async with self.lock(source):
             job = self.store.job(source)
-            if job is not None:
-                self._retire(job)
+            if job is None:
+                return
+            self._retire(job, stop_reader=False)
+            activation = self.activating.get(job["reader"])
+            if activation is not None:
+                activation.cancel()
+                try:
+                    await activation
+                except asyncio.CancelledError:
+                    pass
+            # The watcher closes IPC and awaits its Host-side handlers, including
+            # the local model request, before advertising Worker exit. Keep the
+            # retirement boundary held so concurrent callers also wait for this.
+            worker = self.host.workers.get(job["reader"])
+            if worker is not None:
+                worker.intentionally_stopped = True
+                self.host.intentionally_stopped.add(job["reader"])
+                if not worker.exited.is_set() and worker.process.is_alive():
+                    worker.process.terminate()
+                await worker.exited.wait()
+                if worker.failure is not None:
+                    raise worker.failure
 
     def activate(self, session):
         if session in self.activating or self.host.closed:
             return
-        self.activating.add(session)
-
-        async def resume():
-            try:
-                await self.host.request("resume", session, {})
-            finally:
-                self.activating.remove(session)
-
-        self.host._track(session, asyncio.create_task(resume()))
+        task = asyncio.create_task(self.host.request("resume", session, {}))
+        self.activating[session] = task
+        task.add_done_callback(lambda _done: self.activating.pop(session))
+        self.host._track(session, task)
 
     async def ensure_reader(self, job):
         reader = job["reader"]
@@ -219,6 +234,7 @@ class CompactHost:
         if job is None:
             raise ValueError("unknown handoff worker")
         async with self.lock(job["source"]):
+            job = self.store.reader_job(reader)
             if job["published"] == 2:
                 return
             if await self._source_returned(job["source"]):

@@ -138,6 +138,69 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         await until(lambda: len(self.outputs) == 2)
         self.assertEqual(self.host.conversation_status("chat").compact_count, 0)
 
+    async def test_restart_stops_compact_request_before_fork_and_rejects_late_result(self):
+        from redpanda.assistant.workspace_versions import WORKSPACE_VERSION_FACT
+
+        released = asyncio.Event()
+
+        class ObservedCompactLlm(CompactLlm):
+            async def chat(client, messages, model, **kwargs):
+                is_handoff = any("<self_handoff>" in str(m["content"]) for m in messages)
+                try:
+                    return await super().chat(messages, model, **kwargs)
+                finally:
+                    if is_handoff:
+                        released.set()
+
+        self.host.llm = ObservedCompactLlm(self.root)
+        await self.start()
+        job = self.host.compact.store.job("chat")
+        events = await SqliteJournal(self.store.require("chat")).snapshot("chat")
+        step_id = next(
+            e.payload.data["step_id"] for e in events
+            if isinstance(e.payload, DomainFactCommitted)
+            and e.payload.fact_type == WORKSPACE_VERSION_FACT
+            and e.payload.data["version"] is not None
+            and e.payload.data["step_id"] is not None
+        )
+
+        view = await self.host.restart_from_step(
+            "web", "chat", step_id, "branch", "restart", restore_files=False
+        )
+
+        self.assertTrue(view.paused)
+        self.assertTrue(released.is_set())
+        self.assertNotIn(job["reader"], self.host.workers)
+        self.assertNotIn(job["reader"], self.host.compact.activating)
+        self.assertEqual(self.host.compact.store.reader_job(job["reader"])["published"], 2)
+        # A completion that reached Host after retirement cannot revive the job.
+        await self.host.compact.complete(job["reader"], {"handoff": HANDOFF})
+        source_events = await SqliteJournal(self.store.require("chat")).snapshot("chat")
+        branch_events = await SqliteJournal(self.store.require("branch")).snapshot("branch")
+        for history in (source_events, branch_events):
+            self.assertFalse(any(
+                isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == WINDOW
+                for e in history
+            ))
+        self.assertEqual(self.outputs, [("chat", "正常回复")])
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_completion_waiting_at_retirement_does_not_accept_stale_job(self):
+        await self.start()
+        job = self.host.compact.store.job("chat")
+        async with self.host.compact.lock("chat"):
+            completing = asyncio.create_task(
+                self.host.compact.complete(job["reader"], {"handoff": HANDOFF})
+            )
+            await asyncio.sleep(0)
+            # Retirement wins while complete has read the old job and is waiting
+            # for the same publication boundary.
+            self.host.compact.store.retire(job["reader"])
+        await completing
+        retired = self.host.compact.store.reader_job(job["reader"])
+        self.assertEqual(retired["published"], 2)
+        self.assertIsNone(retired["summary"])
+
     async def test_prepared_publication_is_recovered_without_new_session(self):
         await self.start()
         job = self.host.compact.store.job("chat")

@@ -44,7 +44,11 @@ def host_watching(order):
     async def fork_after_event(source, boundary_event_id, child):
         order.append(f"fork:{boundary_event_id}")
 
-    host.compact = SimpleNamespace(application=AsyncMock(side_effect=application))
+    host.compact = SimpleNamespace(
+        application=AsyncMock(side_effect=application),
+        retire=AsyncMock(side_effect=lambda s: order.append(f"retire:{s}")),
+    )
+    host._cancel_turn = AsyncMock(side_effect=lambda s: order.append(f"cancel_turn:{s}"))
     host.store = SimpleNamespace(
         require=lambda session_id: "journal",
         fork_after_event=fork_after_event,
@@ -83,6 +87,7 @@ class HostRestartFromStepTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             order,
             [
+                "retire:session-old",
                 "cancel_turn:session-old",
                 "quiescent",
                 "fork:fact-step-1",
