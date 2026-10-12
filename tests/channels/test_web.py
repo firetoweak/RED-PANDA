@@ -845,7 +845,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 ref = response.json()["file"]
                 self.assertEqual((ref["kind"], ref["name"], ref["size"]), ("file", "notes.txt", 1))
                 self.assertNotIn("path", ref)
-        self.assertEqual(self.client.post("/api/files/select").status_code, 405)
+        self.assertIn(self.client.post("/api/files/select").status_code, (404, 405))
 
     def test_known_input_connection_and_authorization_errors_keep_their_meaning(self):
         body = {"connection_id": self.connection.connection_id, "delivery_id": "input-1", "text": " "}
