@@ -115,7 +115,10 @@ def adapt_call_result(
                 }
             },
             "error": _text_from_content(content) or "MCP tool reported an error",
-            "hint": "可根据服务端返回修正参数后重试。",
+            "hint": (
+                "按服务端返回检查错误原因；报错不保证操作没有部分执行。"
+                "涉及创建、发送或修改时，先核对实际状态，再决定是否修正参数重试。"
+            ),
         }
 
     if output_validator is not None:
@@ -131,7 +134,7 @@ def adapt_call_result(
                     }
                 },
                 "error": "工具声明了 outputSchema，但未返回 structuredContent",
-                "hint": "请检查 MCP Server 返回值。",
+                "hint": "请检查 MCP Server 返回值；结果格式错误不证明操作未执行，重试前先核对实际状态。",
             }
         try:
             output_validator.validate(result.structured_content)
@@ -150,7 +153,7 @@ def adapt_call_result(
                     f"structuredContent 不符合 outputSchema: {exc}",
                     secret_values=secret_values,
                 ),
-                "hint": "请检查 MCP Server 返回值或 outputSchema。",
+                "hint": "请检查 MCP Server 返回值或 outputSchema；结果格式错误不证明操作未执行，重试前先核对实际状态。",
             }
 
     return {
@@ -200,15 +203,26 @@ def adapt_transport_error(
     exc: BaseException,
     *,
     error_summary: str | None = None,
+    not_started: bool = False,
 ) -> dict[str, Any]:
+    detail = error_summary or sanitize_error_summary(
+        str(exc) or exc.__class__.__name__
+    )
     return {
-        "ok": False,
+        "ok": False if not_started else None,
         "code": "MCP_TRANSPORT_ERROR",
-        "data": {},
-        "error": error_summary or sanitize_error_summary(
-            str(exc) or exc.__class__.__name__
+        "data": {"execution_status": "not_started" if not_started else "unknown"},
+        "error": (
+            f"工具尚未调用，建立连接失败：{detail}"
+            if not_started
+            else f"{detail}；执行结果未知，可能已部分执行。"
         ),
-        "hint": "检查 Server 是否可用、地址/命令是否正确，稍后重试。",
+        "hint": (
+            "本次工具未执行；检查服务是否可用、连接配置是否正确，恢复后可重试。"
+            if not_started
+            else "无法确认服务端操作是否完成或仍在执行。继续前先查询相关对象、文件或操作状态；"
+            "不要直接重复创建、发送或修改。连接恢复不证明上次操作未执行。"
+        ),
     }
 
 

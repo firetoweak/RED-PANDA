@@ -67,7 +67,7 @@ class SkillInstallCandidateStore:
         directory = self._directory(content_hash)
         if not directory.is_dir():
             raise SkillCandidateNotFoundError(
-                f"Skill install candidate 不存在: {content_hash}"
+                "本次检查的安装内容已不可用，请重新检查来源并提交安装。"
             )
         bundle = self.package_reader.read(
             directory / "package" / skill_id

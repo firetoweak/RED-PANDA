@@ -601,6 +601,11 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "COMMAND_TIMEOUT")
         self.assertTrue(result["data"]["timed_out"])
         self.assertIn("started", result["data"]["stdout"]["content"])
+        self.assertIs(result["data"]["output_is_result"], False)
+        self.assertIn("因超时终止", result["error"])
+        self.assertIn("可能已部分执行", result["error"])
+        self.assertIn("先检查相关文件或外部状态", result["hint"])
+        self.assertNotIn("用户停止", result["error"])
 
     async def test_timeout_schema_limits_are_exposed_and_validated(self):
         schema = ExecuteCommandInput.model_json_schema()["properties"]

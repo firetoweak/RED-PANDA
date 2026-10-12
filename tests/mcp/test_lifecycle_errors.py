@@ -18,6 +18,64 @@ from tests.mcp.test_mcp import _stdio_record
 
 
 class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_response_loss_after_side_effect_is_unknown_without_retry(self):
+        created = []
+
+        async def call_tool(name, arguments):
+            created.append(arguments["name"])
+            raise TimeoutError()
+
+        record = _stdio_record("create")
+
+        async def factory(server, secrets):
+            session = SimpleNamespace(
+                protocol_version="test", server_capabilities=None,
+                call_tool=call_tool,
+            )
+            return ManagedMcpConnection(session, AsyncExitStack(), server)
+
+        manager = McpClientManager(
+            Mock(resolve_many=Mock(return_value={})),
+            runtime_root=Path.cwd(), session_factory=factory,
+        )
+        provider = McpToolsetProvider(
+            SimpleNamespace(get=AsyncMock(return_value=record)), manager,
+        )
+        handler = provider._make_handler(
+            record_id=record.id, expected_revision=record.revision,
+            tool_name="create", output_validator=None,
+        )
+        result = await handler({"name": "new item"})
+        self.assertEqual(created, ["new item"])
+        self.assertIsNone(result["ok"])
+        self.assertEqual(result["data"]["execution_status"], "unknown")
+        self.assertIn("请求超时", result["error"])
+        self.assertIn("可能已部分执行", result["error"])
+        self.assertIn("先查询", result["hint"])
+        await manager.aclose()
+
+    async def test_connection_failure_is_known_not_started(self):
+        record = _stdio_record("offline")
+        factory = AsyncMock(side_effect=TimeoutError("connect timeout"))
+        manager = McpClientManager(
+            Mock(resolve_many=Mock(return_value={})),
+            runtime_root=Path.cwd(), session_factory=factory,
+        )
+        provider = McpToolsetProvider(
+            SimpleNamespace(get=AsyncMock(return_value=record)), manager,
+        )
+        handler = provider._make_handler(
+            record_id=record.id, expected_revision=record.revision,
+            tool_name="create", output_validator=None,
+        )
+        result = await handler({})
+        self.assertIs(result["ok"], False)
+        self.assertEqual(result["data"]["execution_status"], "not_started")
+        self.assertIn("connect timeout", result["error"])
+        self.assertIn("工具尚未调用", result["error"])
+        self.assertEqual(factory.await_count, 1)
+        await manager.aclose()
+
     def manager(self, record, close_error):
         self.closes = 0
         self.opens = 0
@@ -56,9 +114,11 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         )
         result = await handler({})
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
+        self.assertIsNone(result["ok"])
+        self.assertEqual(result["data"]["execution_status"], "unknown")
         self.assertEqual(
             result["error"],
-            "与 offline 的连接中断，这次调用没有完成：call offline",
+            "与 offline 的连接中断，未取得最终结果：call offline；执行结果未知，可能已部分执行。",
         )
         self.assertEqual(self.closes, 1)
         self.assertEqual(self.opens, 1)  # No automatic retry.
@@ -140,7 +200,7 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         )
         result = await handler({})
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
-        self.assertEqual(result["error"], "与 Tavily 的连接中断，这次调用没有完成")
+        self.assertEqual(result["error"], "与 Tavily 的连接中断，未取得最终结果；执行结果未知，可能已部分执行。")
         self.assertNotIn("owner", result["error"])
         self.assertNotIn("CancelledError", result["error"])
         self.assertEqual(
@@ -204,7 +264,7 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
         self.assertEqual(
             result["error"],
-            "与 Tavily 的连接中断，这次调用没有完成：connection reset",
+            "与 Tavily 的连接中断，未取得最终结果：connection reset；执行结果未知，可能已部分执行。",
         )
         self.assertNotIn("owner", result["error"])
         self.assertNotIn("CancelledError", result["error"])

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import unittest
 from types import SimpleNamespace
 
 from pydantic import BaseModel, ConfigDict
 
 from redpanda.assistant.artifacts import MemoryArtifactStore
-from redpanda.assistant.context.projection import ModelContextProjector
+from redpanda.assistant.context.projection import ModelContextProjector, project_chat_messages
 from redpanda.assistant.control import (
     CONTROL_APPROVED,
     CONTROL_CONCLUDED,
@@ -234,6 +235,24 @@ async def _build_pending(*, handler=None):
 
 
 class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
+    async def test_model_sees_proposal_status_without_internal_payload(self):
+        journal, runtime, _control, request = await _build_pending()
+        events = await journal.snapshot(SESSION_ID)
+        proposal = _facts(events, CONTROL_PROPOSED)[0]
+        self.assertEqual(thaw_value(proposal.data["payload"]), {"value": "frozen"})
+        self.assertEqual(dict(request.payload), {"value": "frozen"})
+        messages = project_chat_messages(
+            events, runtime.projector.project_visible(SESSION_ID, events), "sys",
+        )
+        fact = next(
+            json.loads(message["content"])["data"]
+            for message in messages
+            if message["role"] == "user" and CONTROL_PROPOSED in message["content"]
+        )
+        self.assertEqual(set(fact), {"request_id", "action", "summary", "risk", "status"})
+        self.assertEqual(fact["summary"], request.summary)
+        self.assertIn("尚未执行", fact["status"])
+
     async def test_context_preparation_timing_excludes_model_call(self):
         from unittest.mock import patch
 
@@ -389,6 +408,18 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(scheduler.woken, [SESSION_ID])
         self.assertEqual(project_control(events).states[-1].phase, "succeeded")
+        messages = project_chat_messages(
+            events, runtime.projector.project_visible(SESSION_ID, events), "sys",
+        )
+        model_facts = [
+            json.loads(message["content"])["data"]
+            for message in messages
+            if message["role"] == "user"
+            and any(kind in message["content"] for kind in (CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED))
+        ]
+        self.assertEqual(len(model_facts), 2)
+        self.assertTrue(all("execution_id" not in fact for fact in model_facts))
+        self.assertEqual(model_facts[-1]["message"], "安装完成")
 
     async def test_rejection_is_terminal_and_idempotent(self):
         journal, runtime, control, request = await _build_pending()

@@ -24,6 +24,30 @@ from tests.skills.test_package import write_skill
 
 
 class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
+    async def test_no_change_result_contains_observable_update_facts_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = RedPandaHome(root / ".redpanda")
+            workspace.initialize()
+            source = root / "source"
+            write_skill(source, name="demo", body="same workflow\n")
+            service = SkillApplicationService(workspace)
+            await service.install_local(source)
+
+            result = await create_skill_update_proposal_spec(service).handler(
+                SkillUpdateProposalInput(skill_id="demo")
+            )
+
+            self.assertEqual(result["code"], "SKILL_ALREADY_CURRENT")
+            data = result["data"]
+            self.assertEqual(set(data), {
+                "skill_id", "changed", "source", "resolved_ref", "diff",
+                "semantic_summary", "summary_error",
+            })
+            self.assertEqual(data["skill_id"], "demo")
+            self.assertIs(data["changed"], False)
+            self.assertEqual((await service.registry.get("demo")).revision, 1)
+
     async def test_update_proposal_and_approval_use_frozen_candidate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -177,7 +201,8 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             )
 
             self.assertFalse(execution.succeeded)
-            self.assertIn("candidate 不存在", execution.message)
+            self.assertIn("安装内容已不可用", execution.message)
+            self.assertNotIn(request.payload["content_hash"], execution.message)
             self.assertIsNone(await service.registry.get("demo"))
 
     async def test_install_proposal_is_both_approval_boundary_and_exclusive(self):

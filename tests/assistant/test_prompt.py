@@ -36,11 +36,11 @@ from tests.fixtures.workspaces import workspace_record
 class DefaultAssistantPromptTests(unittest.TestCase):
     def test_guides_workspace_verification_after_file_writes(self):
         self.assertIn(
-            "修改文件或执行命令产生文件变化后，用 get_changes 核对实际效果，"
-            "并在最终汇报前确认仍保留的成果；不把外部修改或来源不明的改动算作自己完成。"
-            "read_file 可核对当前内容，不能补出未知原值。文件变化不能代替功能测试。",
+            "文件变化在 get_changes 支持的范围内时，用它核对实际效果",
             DEFAULT_ASSISTANT_PROMPT,
         )
+        self.assertIn("范围外或返回无法核对时", DEFAULT_ASSISTANT_PROMPT)
+        self.assertIn("不能补出未知原值", DEFAULT_ASSISTANT_PROMPT)
 
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

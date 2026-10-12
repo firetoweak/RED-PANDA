@@ -15,9 +15,9 @@ from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
 WRITE_FILE_DESCRIPTION = """
-用途：在工作区内创建文本文件，或在明确允许时整体覆盖已有文件；父目录不存在时自动创建。
+用途：创建文本文件，或在明确允许时整体覆盖已有文件；父目录不存在时自动创建。
 何时使用：新建文章、代码、计划等完整文件，或目标明确要求重写整个文件时使用；局部修改用 apply_patch，批量替换用 replace_all，查找和读取用 glob/grep/read_file。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；overwrite=false 时绝不覆盖已有文件。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；overwrite=false 时绝不覆盖已有文件。
 失败/截断后：结果不截断；FILE_EXISTS 后不要擅自改为 overwrite=true，应先读现有内容并改用局部编辑，目标明确要求整体重写时才覆盖；IS_A_DIR 时补充文件名；路径错误时修正 path 后重试。
 """.strip()
 

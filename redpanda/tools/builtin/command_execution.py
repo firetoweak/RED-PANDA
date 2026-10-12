@@ -28,7 +28,7 @@ EXECUTE_COMMAND_DESCRIPTION = """
 执行环境：各次调用独立，前一次命令中的环境激活、变量修改和目录切换不会自动带入本次调用。需要指定环境时，在 command 中明确调用对应的解释器、环境管理器，或先准备环境再执行；准备失败时不要继续执行后续项目命令。
 CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
 失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；超时或失败时不能假定命令成功，也不要无条件重试可能产生副作用的命令；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
-被用户打断时 code 为 COMMAND_INTERRUPTED，ok 为空，已捕获的 stdout/stderr 只是证据（output_is_result 为 false），执行结果未知，不要按失败重试，也不会自动撤销已经发生的副作用。
+被用户停止时 code 为 COMMAND_INTERRUPTED，ok 为空，命令已被终止，可能已部分执行；已捕获的 stdout/stderr 只是证据（output_is_result 为 false），不代表完整结果。续跑前先检查相关文件或外部状态，确认哪些操作已完成，再决定是否补做或重试；已发生的副作用不会自动撤销。
 """.strip()
 
 
@@ -164,18 +164,25 @@ def create_command_execution_spec(
                 "ok": None,
                 "code": COMMAND_INTERRUPTED,
                 "data": {**data, "output_is_result": False},
-                "error": "命令已被打断，执行结果未知。",
+                "error": "命令因用户停止而被中断，执行结果未知，可能已部分执行。",
                 "hint": (
-                    "已捕获的 stdout/stderr 只是打断前的输出证据，不构成命令结果。"
-                    "外部副作用可能已经发生，不会自动撤销。"
+                    "命令进程已被终止。已捕获的 stdout/stderr 只是中断前的输出证据，"
+                    "不代表完整结果或当前文件、外部状态。已发生的副作用不会自动撤销。"
+                    "续跑前请先检查相关文件或外部状态，确认哪些操作已完成，"
+                    "再决定是否补做或重试，避免重复产生副作用。"
                 ),
             }
         if result.timed_out:
             return {
                 "ok": False,
                 "code": "COMMAND_TIMEOUT",
-                "data": data,
-                "error": f"命令执行超过 {raw.timeout_seconds} 秒",
+                "data": {**data, "output_is_result": False},
+                "error": f"命令执行超过 {raw.timeout_seconds} 秒，已因超时终止，可能已部分执行。",
+                "hint": (
+                    "已捕获的 stdout/stderr 只是超时前的输出证据，不代表完整结果。"
+                    "已发生的副作用不会自动撤销。续跑前请先检查相关文件或外部状态，"
+                    "确认已完成的操作，再决定是否调整超时、补做或重试。"
+                ),
             }
         if result.io_errors:
             return {

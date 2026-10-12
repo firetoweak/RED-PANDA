@@ -39,10 +39,10 @@ function showComposer(running = false, inputTokens: number | null = null) {
   const onSend = vi.fn(async () => {});
   const props = {
     sessionId: "session", workspaceId: "workspace-test", connectionId: "connection",
-    disabled: false, sending: false, running, paused: false, shouldWake: false,
-    pauseBusy: false, retryBusy: false, autoAuthorize: false, autoAuthorizeBusy: false,
+    disabled: false, sending: false, running, shouldWake: false,
+    stopBusy: false, retryBusy: false, autoAuthorize: false, autoAuthorizeBusy: false,
     inputTokens,
-    onSend, onSetPaused: vi.fn(), onRetry: vi.fn(), onToggleAutoAuthorize: vi.fn(),
+    onSend, onStop: vi.fn(), onRetry: vi.fn(), onToggleAutoAuthorize: vi.fn(),
   };
   const ui = (active: boolean) => <Provider store={store}><MantineProvider><Composer {...props} running={active} /></MantineProvider></Provider>;
   const view = render(ui(running));

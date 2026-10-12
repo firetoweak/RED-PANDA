@@ -29,25 +29,25 @@ RG_NOT_FOUND_HINT = "本机缺少 ripgrep，grep 暂不可用；已知路径时�
 FD_NOT_FOUND_HINT = "本机缺少 fd，glob 暂不可用；已知路径时改用 read_file，并告诉用户需要安装 fd。"
 
 GLOB_DESCRIPTION = """
-用途：在工作区内按名称模式查找文件或目录。
+用途：按名称模式查找文件或目录。
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
 默认范围：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .fdignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接；结果只包含工作区内的路径。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
 """.strip()
 
 GREP_DESCRIPTION = """
-用途：在工作区内用正则搜索文本，返回每个匹配行的位置和内容。
+用途：用正则搜索文本，返回每个匹配行的位置和内容。
 何时使用：不知道内容出现在哪个文件、修改前需要定位原文时使用；找文件名用 glob，阅读匹配位置的完整上下文用 read_file。
 默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的文件或目录会搜索该路径，对目录而言进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path/query；content_truncated=true 时用 read_file 查看该行；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
 """.strip()
 
 READ_FILE_DESCRIPTION = """
-用途：读取工作区内已知文本文件的行范围，返回内容、行号和分页状态。
+用途：读取已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则；offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换；文件体积不是拒绝条件。
+关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换；文件体积不是拒绝条件。
 失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
 """.strip()
 

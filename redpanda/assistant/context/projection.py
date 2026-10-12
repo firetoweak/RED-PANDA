@@ -17,6 +17,9 @@ from redpanda.assistant.artifacts import (
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import is_file_attachment_id
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
+from redpanda.assistant.control import (
+    CONTROL_PROPOSED, CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
+)
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from redpanda.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
@@ -41,7 +44,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 10
+PROJECTOR_VERSION = 12
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -147,8 +150,13 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
         # 起过 attempt 却没有结果。Journal 分不出「还在跑」和「已中断」，
         # 那是进程事实，不在事件里，所以这里只说到它知道的为止。
         code = "NO_RESULT_YET"
-        error = f"该调用已开始执行但还没有结果（工具={tool_name}）。"
-        hint = "可能仍在执行，也可能已中断；重试前先确认副作用。"
+        error = f"该调用已开始执行，但未取得最终结果，原因未知，可能已部分执行（工具={tool_name}）。"
+        hint = (
+            "无法确认该调用是否仍在执行，也无法确认是否因进程异常、连接中断或其他原因停止。"
+            "不要把缺少结果当作未执行或执行失败。续跑前请先检查相关文件、外部状态"
+            "及仍在运行的操作，确认哪些操作已完成，再决定是否等待、补做或重试，"
+            "避免重复产生副作用。"
+        )
     elif state.dispatch_eligible_by_event_id is None:
         code = "AWAITING_AUTHORIZATION"
         error = f"该调用正在等待用户授权（工具={tool_name}）。"
@@ -301,6 +309,25 @@ def _translate_visible_events(
                     continue
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
+            if payload.fact_type == CONTROL_PROPOSED:
+                shown_data = {
+                    key: shown_data[key]
+                    for key in ("request_id", "action", "summary", "risk")
+                }
+                shown_data["status"] = "等待用户确认，操作尚未执行。"
+            elif payload.fact_type == CONTROL_EXECUTION_STARTED:
+                shown_data = {
+                    key: shown_data[key] for key in ("request_id", "action")
+                }
+                shown_data["status"] = (
+                    "操作已开始；若后续没有最终结果，执行结果未知，可能已部分执行。"
+                    "继续前先检查实际状态，不直接重试；仅凭开始记录无法确定中断原因。"
+                )
+            elif payload.fact_type in {CONTROL_SUCCEEDED, CONTROL_FAILED}:
+                shown_data = {
+                    key: shown_data[key]
+                    for key in ("request_id", "action", "message", "data")
+                }
             if payload.fact_type == WORKSPACE_RESCUE_FACT:
                 result = workspace_rescue_result(payload.data)
                 shown_data = {**thaw_value(payload.data["result"]), "note": workspace_file_result_note(result)}

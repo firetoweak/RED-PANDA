@@ -132,7 +132,7 @@ class SkillCandidateStore:
         metadata_path = directory / "candidate.json"
         if not metadata_path.is_file():
             raise SkillCandidateNotFoundError(
-                f"Skill update candidate 不存在: {candidate_hash}"
+                "本次检查的更新内容已不可用，请重新检查更新。"
             )
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
         candidate = SkillUpdateCandidate.from_dict(payload)
