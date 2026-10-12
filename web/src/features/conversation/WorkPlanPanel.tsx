@@ -11,7 +11,7 @@ const STATUS_LABEL = {
   completed: "已完成",
 };
 
-export function WorkPlanPanel({ plan }: { plan: WorkPlan | null }) {
+export function WorkPlanPanel({ plan, stopped = false }: { plan: WorkPlan | null; stopped?: boolean }) {
   const [opened, setOpened] = useState(false);
   if (plan === null) {
     return null;
@@ -31,9 +31,10 @@ export function WorkPlanPanel({ plan }: { plan: WorkPlan | null }) {
         <Group justify="space-between" wrap="nowrap" gap="xs">
           <Stack gap={2} style={{ minWidth: 0 }}>
             <Text size="sm" fw={600} truncate>{title} · {plan.objective}</Text>
+            <Text size="xs" c="dimmed">模型记录的计划进度{stopped ? " · 执行已停止" : ""}</Text>
             {ongoing.length === 0 ? null : (
               <Text size="xs" c="dimmed" truncate>
-                进行中：{ongoing.map((step) => step.text).join("、")}
+                计划标记为进行中：{ongoing.map((step) => step.text).join("、")}
               </Text>
             )}
           </Stack>

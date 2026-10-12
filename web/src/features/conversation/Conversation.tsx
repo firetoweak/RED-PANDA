@@ -455,7 +455,8 @@ export function Conversation() {
         )}
         <Stack className="composer-column" gap={8}>
         <WorkspaceFileResultAlert result={conversation.workspace_file_result} />
-        <WorkPlanPanel key={activePlan === null ? "none" : "active"} plan={activePlan} />
+        <WorkPlanPanel key={activePlan === null ? "none" : "active"} plan={activePlan}
+          stopped={!running && (conversation.session.paused || lastError != null)} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
