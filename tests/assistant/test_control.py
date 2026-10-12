@@ -234,6 +234,35 @@ async def _build_pending(*, handler=None):
 
 
 class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
+    async def test_context_preparation_timing_excludes_model_call(self):
+        from unittest.mock import patch
+
+        clock = [0.0]
+        journal = MemoryJournal()
+        snapshot = journal.snapshot
+
+        async def timed_snapshot(session_id):
+            clock[0] += 2
+            return await snapshot(session_id)
+
+        class Llm:
+            async def chat(self, *args, **kwargs):
+                clock[0] += 10
+                return LLMCallResult(LLMResponse(content="done"), LLMUsage(1, 1))
+
+        runtime = _runtime(journal, AssistantControlPlane((_operation(_proposal),)), llm=Llm())
+        await runtime.receive_user_message(SESSION_ID, "hello", delivery_id="hello")
+        with (
+            patch("redpanda.assistant.decision.perf_counter", lambda: clock[0]),
+            patch.object(journal, "snapshot", timed_snapshot),
+            self.assertLogs("redpanda.assistant.decision", level="INFO") as captured,
+        ):
+            await runtime.advance(SESSION_ID)
+        self.assertEqual(len(captured.records), 1)
+        self.assertEqual(captured.records[0].stage, "system")
+        self.assertEqual(captured.records[0].operation, "context_prepare")
+        self.assertEqual(captured.records[0].elapsed_ms, 2000)
+
     async def test_request_is_committed_with_step_before_preparation(self):
         observed_step = []
         journal = MemoryJournal()

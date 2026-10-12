@@ -18,6 +18,7 @@ from redpanda.assistant.workspaces import bound_workspace
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal
 from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.timing import install_timing_logging
 
 
 async def run_worker(connection, session_id, path, config_factory, home_root, command_environment):
@@ -143,6 +144,9 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 peer.failure = done.exception()
 
         task.add_done_callback(completed)
+
+    loop = asyncio.get_running_loop()
+    install_timing_logging(forward=lambda values: loop.call_soon_threadsafe(notify, "timing", values))
 
     assembly = await build_assistant_assembly(
         config,

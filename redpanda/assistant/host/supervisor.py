@@ -346,7 +346,10 @@ class HostSupervisor:
         worker = None
 
         async def signal(kind, *values):
-            if kind == "usage":
+            if kind == "timing":
+                from redpanda.timing import emit_worker_timing
+                emit_worker_timing(values[0])
+            elif kind == "usage":
                 if (
                     self.context_usage_sink is not None
                     and self.compact.store.reader_job(session_id) is None

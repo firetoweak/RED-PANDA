@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import tempfile
@@ -73,6 +74,35 @@ class FileSearchContractTest(unittest.TestCase):
 
 
 class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_search_execution_deadline_comes_from_tool_arguments(self):
+        timeout = asyncio.timeout
+        for name, raw, code in (
+            ("glob", GlobInput(pattern="*", timeout_seconds=17), "GLOB_TIMEOUT"),
+            ("grep", GrepInput(query="needle", timeout_seconds=23), "RG_TIMEOUT"),
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                async def blocked(*args):
+                    await asyncio.Future()
+
+                proc = SimpleNamespace(
+                    returncode=None,
+                    communicate=AsyncMock(side_effect=blocked),
+                    stdout=SimpleNamespace(readline=AsyncMock(side_effect=blocked)),
+                    stderr=SimpleNamespace(read=AsyncMock(return_value=b"")),
+                    wait=AsyncMock(return_value=-15),
+                )
+                proc.terminate = lambda: setattr(proc, "returncode", -15)
+                with (
+                    patch("redpanda.tools.builtin.file_read.shutil.which", return_value=name),
+                    patch("redpanda.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
+                    patch("redpanda.tools.builtin.file_read.asyncio.timeout", side_effect=lambda _: timeout(0)) as deadline,
+                ):
+                    result = await _handlers(Path(directory))[name].handler(raw)
+                deadline.assert_called_once_with(raw.timeout_seconds)
+                self.assertEqual(result["code"], code)
+                self.assertIn(str(raw.timeout_seconds), result["error"])
+                self.assertEqual(proc.returncode, -15)
+
     async def test_glob_missing_dependency_is_an_explicit_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("redpanda.tools.builtin.file_read.shutil.which", return_value=None):

@@ -22,6 +22,7 @@ from redpanda.mcp.composition import build_mcp
 from redpanda.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
 from redpanda.skills.composition import build_skills
 from redpanda.skills.summarizer import LlmSkillDiffSummarizer
+from redpanda.timing import install_timing_logging
 
 
 class UnboundHostLlm:
@@ -64,6 +65,7 @@ async def bootstrap_assistant(
     session_failed_sink=None,
     schedule_changed_sink=None,
 ) -> AsyncIterator[BootstrappedAssistant]:
+    install_timing_logging()
     command_environment = dict(os.environ)
     install_host_environment()
     config = load_app_config() if app_config is None else app_config

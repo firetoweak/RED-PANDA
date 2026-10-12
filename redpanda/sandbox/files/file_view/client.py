@@ -1,11 +1,15 @@
 from __future__ import annotations
 import json
+import logging
 import os
 from pathlib import Path
 import queue
 import subprocess
 import threading
+from time import perf_counter
 from .native import Running
+
+_LOGGER = logging.getLogger(__name__)
 
 def native_executable() -> Path:
     configured = os.environ.get("REDPANDA_SANDBOX_EXECUTABLE")
@@ -45,17 +49,17 @@ class Client:
         except BaseException:
             if self.process.poll() is None:
                 self.process.terminate()
-                self.process.wait(timeout=20)
+                self.process.wait()
             self.process.stdin.close()
             self.process.stdout.close()
-            self.reader.join(timeout=10)
+            self.reader.join()
             self.log.close()
             raise
 
     def _reply(self):
-        line = self.replies.get(timeout=60)
+        line = self.replies.get()
         if line is None:
-            self.process.wait(timeout=10)
+            self.process.wait()
             raise ServiceFailure(f'service exit {self.process.returncode}: '+(self.store/'service.log').read_text(encoding='utf-8',errors='replace'))
         value = json.loads(line)
         if type(value) is not dict: raise ServiceFailure('response must be an object')
@@ -63,10 +67,17 @@ class Client:
         return value
 
     def request(self, op, **fields):
-        with self.lock:
-            self.process.stdin.write(json.dumps({'op':op,**fields},ensure_ascii=False)+'\n')
-            self.process.stdin.flush()
-            return self._reply()
+        started = perf_counter()
+        try:
+            with self.lock:
+                self.process.stdin.write(json.dumps({'op':op,**fields},ensure_ascii=False)+'\n')
+                self.process.stdin.flush()
+                return self._reply()
+        finally:
+            _LOGGER.info('file view request timing', extra={
+                'stage': 'system', 'operation': 'file_view_request',
+                'request_operation': op, 'elapsed_ms': (perf_counter()-started)*1000,
+            })
 
     def begin(self, command_id):
         from .publication import unfinished
@@ -91,10 +102,10 @@ class Client:
     def close(self):
         if self.process.poll() is None:
             self.request('shutdown')
-            self.process.wait(timeout=20)
+            self.process.wait()
         self.process.stdin.close()
         self.process.stdout.close()
-        self.reader.join(timeout=10)
+        self.reader.join()
         self.log.close()
 
     def __enter__(self): return self

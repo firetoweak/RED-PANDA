@@ -6,6 +6,8 @@ import asyncio
 from dataclasses import dataclass, field
 from inspect import isawaitable
 import json
+import logging
+from time import perf_counter
 
 import httpx
 
@@ -27,6 +29,7 @@ from thinllm.types import (
 _NORMALIZED_DELTA_FIELDS = frozenset({"role", "content", "tool_calls"})
 _TRANSIENT_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
 _RETRY_DELAYS = (0.5, 1.0, 2.0)
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,14 +114,40 @@ class ChatCompletionsClient:
         while True:
             stream = _Stream()
             try:
-                await self._stream(payload, stream, on_content_delta, on_reasoning_delta)
+                started = perf_counter()
+                outcome = "failed"
+                try:
+                    await self._stream(payload, stream, on_content_delta, on_reasoning_delta)
+                    result = self._result(stream)
+                    outcome = "completed"
+                except asyncio.CancelledError:
+                    outcome = "cancelled"
+                    raise
+                finally:
+                    _LOGGER.info("model request timing", extra={
+                        "stage": "model_request", "attempt": attempt + 1,
+                        "elapsed_ms": (perf_counter() - started) * 1000,
+                        "outcome": outcome, "provider": self._endpoint.provider,
+                        "model": model,
+                    })
             except LLMTransientError:
                 if stream.started or attempt == len(_RETRY_DELAYS):
                     raise
-                await asyncio.sleep(_RETRY_DELAYS[attempt])
+                started = perf_counter()
+                outcome = "cancelled"
+                try:
+                    await asyncio.sleep(_RETRY_DELAYS[attempt])
+                    outcome = "completed"
+                finally:
+                    _LOGGER.info("model retry wait timing", extra={
+                        "stage": "model_retry_wait", "attempt": attempt + 1,
+                        "elapsed_ms": (perf_counter() - started) * 1000,
+                        "outcome": outcome, "provider": self._endpoint.provider,
+                        "model": model,
+                    })
                 attempt += 1
                 continue
-            return self._result(stream)
+            return result
 
     async def _stream(
         self,

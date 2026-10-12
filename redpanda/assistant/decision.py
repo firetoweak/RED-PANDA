@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import replace
+from time import perf_counter
 from typing import AbstractSet, Protocol
 
 from redpanda.assistant.compact.core import (
@@ -55,6 +57,8 @@ from redpanda.llm.api import (
     LLMResponse,
     ToolCall,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ToolRunner(Protocol):
@@ -382,32 +386,40 @@ class JournalBackedLlmDecisionMaker:
         # Journal facts are bounded by the frame position, freezing this Step's
         # visible world. Schemas read the same bounded events: a control proposal
         # still awaiting the user must not offer another control tool.
-        self._control.begin_decision(frame.state.session_id)
-        journal_tail = await self._journal.snapshot(frame.state.session_id)
-        events = tuple(
-            event
-            for event in journal_tail
-            if event.sequence <= frame.observed_journal_position
-        )
-        prompt = self._prompt_for(frame)
-        schemas, control_names = self.schemas_for(frame.state, events)
-        allowed_tool_names = _tool_names(schemas)
-        visible = frame.state
-        if self._compact is not None and self._compact.is_reader:
-            prepared = await self._compact.prepare_reader(events, visible)
-        else:
-            if self._compact is not None:
-                visible = self._compact.visible(events, visible)
-            prepared = self._projector.prepare(
-                events,
-                visible,
-                frame.state.session_id,
-                prompt,
-                prefix=None if self._compact is None else self._compact.prefix,
+        started = perf_counter()
+        try:
+            self._control.begin_decision(frame.state.session_id)
+            journal_tail = await self._journal.snapshot(frame.state.session_id)
+            events = tuple(
+                event
+                for event in journal_tail
+                if event.sequence <= frame.observed_journal_position
             )
-        prepared, notice = self.with_loop_guard(
-            prepared, events, frame.observed_journal_position
-        )
+            prompt = self._prompt_for(frame)
+            schemas, control_names = self.schemas_for(frame.state, events)
+            allowed_tool_names = _tool_names(schemas)
+            visible = frame.state
+            if self._compact is not None and self._compact.is_reader:
+                prepared = await self._compact.prepare_reader(events, visible)
+            else:
+                if self._compact is not None:
+                    visible = self._compact.visible(events, visible)
+                prepared = self._projector.prepare(
+                    events,
+                    visible,
+                    frame.state.session_id,
+                    prompt,
+                    prefix=None if self._compact is None else self._compact.prefix,
+                )
+            prepared, notice = self.with_loop_guard(
+                prepared, events, frame.observed_journal_position
+            )
+        finally:
+            _LOGGER.info("context preparation timing", extra={
+                "stage": "system", "operation": "context_prepare",
+                "session_id": frame.state.session_id,
+                "elapsed_ms": (perf_counter() - started) * 1000,
+            })
         window = (
             None if self._compact is None or self._compact.window is None
             else self._compact.window["id"]

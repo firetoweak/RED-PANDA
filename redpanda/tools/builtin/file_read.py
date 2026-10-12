@@ -58,9 +58,7 @@ MAX_GREP_HIT_CHARS = 2_000
 MAX_GREP_PAGE_CHARS = 8_000
 MAX_GREP_SUBMATCHES = 100
 MAX_RG_ERROR_CHARS = 4_000
-GREP_TIMEOUT_SECONDS = 30
 GREP_SHUTDOWN_TIMEOUT_SECONDS = 5
-GLOB_TIMEOUT_SECONDS = 30
 
 
 class GlobInput(BaseModel):
@@ -78,6 +76,7 @@ class GlobInput(BaseModel):
     )
     offset: int = Field(default=0, ge=0, description="跳过的匹配结果数量，从 0 开始")
     max_results: int = Field(default=10, ge=1, le=100, description="最多返回的结果数量，范围 1 到 100")
+    timeout_seconds: int = Field(default=30, ge=1, description="本次路径搜索执行的最长秒数")
 
 
 class ReadFileInput(BaseModel):
@@ -99,6 +98,7 @@ class GrepInput(BaseModel):
     )
     offset: int = Field(default=0, ge=0, description="跳过的匹配行数量，从 0 开始")
     max_results: int = Field(default=10, ge=1, le=100, description="最多返回的匹配数量，范围 1 到 100")
+    timeout_seconds: int = Field(default=30, ge=1, description="本次内容搜索执行的最长秒数")
 
 
 def _require_existing(
@@ -232,7 +232,7 @@ async def _fd_entries(executable: str, search_root: Path, raw: GlobInput) -> dic
     timed_out = False
     try:
         try:
-            async with asyncio.timeout(GLOB_TIMEOUT_SECONDS):
+            async with asyncio.timeout(raw.timeout_seconds):
                 stdout, stderr = await proc.communicate()
         except TimeoutError:
             timed_out = True
@@ -249,7 +249,7 @@ async def _fd_entries(executable: str, search_root: Path, raw: GlobInput) -> dic
         return {
             "ok": False,
             "code": "GLOB_TIMEOUT",
-            "error": f"路径搜索超过 {GLOB_TIMEOUT_SECONDS} 秒",
+            "error": f"路径搜索超过 {raw.timeout_seconds} 秒",
         }
     stderr_text = stderr.decode("utf-8", errors="replace").strip()[:MAX_RG_ERROR_CHARS]
     if proc.returncode != 0 or stderr_text:
@@ -426,7 +426,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
         protocol_error: str | None = None
         try:
             try:
-                async with asyncio.timeout(GREP_TIMEOUT_SECONDS):
+                async with asyncio.timeout(raw.timeout_seconds):
                     while raw_bytes := await proc.stdout.readline():
                         raw_line = raw_bytes.decode("utf-8", errors="replace")
                         if not raw_line.strip():
@@ -525,7 +525,7 @@ def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
             return {
                 "ok": False,
                 "code": "RG_TIMEOUT",
-                "error": f"rg 搜索超过 {GREP_TIMEOUT_SECONDS} 秒",
+                "error": f"rg 搜索超过 {raw.timeout_seconds} 秒",
                 **resolved_path.result_fields(),
             }
         if protocol_error is not None:

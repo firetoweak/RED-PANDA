@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import unittest
 from unittest.mock import patch
@@ -222,6 +223,68 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
             result = await client.chat([], "test/logical-model")
 
         self.assertEqual(result.response.content, "ok")
+
+    async def test_attempt_timing_excludes_retry_wait_and_finishes_after_stream_end(self):
+        clock = [0.0]
+        first_delta = asyncio.Event()
+        finish_stream = asyncio.Event()
+        requests = []
+
+        async def stream():
+            clock[0] += 3
+            yield b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n'
+            await finish_stream.wait()
+            clock[0] += 4
+            yield b'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\ndata: [DONE]\n\n'
+
+        def handle(request):
+            requests.append(request)
+            if len(requests) == 1:
+                clock[0] += 2
+                return httpx.Response(503, json={"error": {"message": "busy"}})
+            return httpx.Response(200, content=stream())
+
+        async def retry_wait(_delay):
+            clock[0] += 5
+
+        with (
+            patch("thinllm.chat_completions.perf_counter", lambda: clock[0]),
+            patch("thinllm.chat_completions.asyncio.sleep", retry_wait),
+            self.assertLogs("thinllm.chat_completions", level="INFO") as captured,
+        ):
+            async with ChatCompletionsClient(_endpoint(), transport=httpx.MockTransport(handle)) as client:
+                task = asyncio.create_task(client.chat(
+                    [{"role": "user", "content": "private request text"}], "test/logical-model",
+                    on_content_delta=lambda _: first_delta.set(),
+                ))
+                await asyncio.wait_for(first_delta.wait(), 5)
+                self.assertEqual([record.stage for record in captured.records], ["model_request", "model_retry_wait"])
+                finish_stream.set()
+                self.assertEqual((await task).response.content, "ok")
+        self.assertEqual([record.elapsed_ms for record in captured.records], [2000, 5000, 7000])
+        self.assertEqual([record.attempt for record in captured.records], [1, 1, 2])
+        self.assertEqual([record.outcome for record in captured.records], ["failed", "completed", "completed"])
+        for record in captured.records:
+            self.assertNotIn("private request text", str(record.__dict__))
+            self.assertNotIn("provider-key", str(record.__dict__))
+
+    async def test_retry_exhaustion_records_four_attempts_and_three_separate_waits(self):
+        requests = []
+
+        def handle(request):
+            requests.append(request)
+            return httpx.Response(503, json={"error": {"message": "busy"}})
+
+        with self.assertLogs("thinllm.chat_completions", level="INFO") as captured:
+            async with ChatCompletionsClient(_endpoint(), transport=httpx.MockTransport(handle)) as client:
+                with self.assertRaises(LLMTransientError):
+                    await client.chat([], "test/logical-model")
+        self.assertEqual(len(requests), 4)
+        attempts = [record for record in captured.records if record.stage == "model_request"]
+        waits = [record for record in captured.records if record.stage == "model_retry_wait"]
+        self.assertEqual([record.attempt for record in attempts], [1, 2, 3, 4])
+        self.assertEqual([record.attempt for record in waits], [1, 2, 3])
+        self.assertTrue(all(record.outcome == "failed" for record in attempts))
 
     async def test_failure_after_the_stream_started_is_not_retried(self):
         requests: list[httpx.Request] = []
