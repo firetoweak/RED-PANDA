@@ -5,7 +5,6 @@ export type ComposerAttachment = {
   kind: "image" | "file";
   file: File | null;
   size: number;
-  sourcePath: string | null;
   error: string | null;
   attachmentId: string | null;
   state: "uploading" | "done" | "error";

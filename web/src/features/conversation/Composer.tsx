@@ -26,7 +26,6 @@ import {
 } from "react";
 
 import {
-  useAttachLocalFileMutation,
   useGetSessionModelQuery,
   useGetModelSettingsQuery,
   useGetWorkspacesQuery,
@@ -110,7 +109,6 @@ export function Composer({
   )?.task_root;
   const [uploadAttachment] = useUploadAttachmentMutation();
   const [selectLocalFile] = useSelectLocalFileMutation();
-  const [attachLocalFile] = useAttachLocalFileMutation();
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const parkedPendingRef = useRef(parked?.pending ?? []);
@@ -261,7 +259,6 @@ export function Composer({
         kind,
         file,
         size: file.size,
-        sourcePath: null,
         error: null,
         previewUrl,
         attachmentId: null,
@@ -271,73 +268,34 @@ export function Composer({
     await upload(localId, file);
   }
 
-  async function addLocalPath() {
+  async function addLocalPath(retryId?: string) {
     if (connectionId === null || disabled) {
       return;
     }
+    const localId = retryId ?? createClientId();
+    setPending((current) => retryId === undefined ? [
+      ...current,
+      {
+        localId, name: "本机文件", kind: "file", file: null, size: 0,
+        error: null, previewUrl: null, attachmentId: null, state: "uploading",
+      },
+    ] : current.map((item) => item.localId === localId
+      ? { ...item, state: "uploading", error: null } : item));
     try {
-      const selection = await selectLocalFile().unwrap();
+      const selection = await selectLocalFile({ connectionId, sessionId }).unwrap();
       if (selection.file === null) {
+        setPending((current) => current.filter((item) => item.localId !== localId));
         return;
       }
       const chosen = selection.file;
-      const localId = createClientId();
-      setPending((current) => [
-        ...current,
-        {
-          localId,
-          name: chosen.name,
-          kind: "file",
-          file: null,
-          size: 0,
-          sourcePath: chosen.path,
-          error: null,
-          previewUrl: null,
-          attachmentId: null,
-          state: "uploading",
-        },
-      ]);
-      await attachPath(localId, chosen.path);
-    } catch (error) {
-      setPending((current) => [
-        ...current,
-        {
-          localId: createClientId(),
-          name: "本机文件",
-          kind: "file",
-          file: null,
-          size: 0,
-          sourcePath: null,
-          error: uploadError(error),
-          previewUrl: null,
-          attachmentId: null,
-          state: "error",
-        },
-      ]);
-    }
-  }
-
-  async function attachPath(localId: string, path: string) {
-    if (connectionId === null || disabled) {
-      return;
-    }
-    setPending((current) => current.map((item) =>
-      item.localId === localId ? { ...item, state: "uploading", error: null } : item,
-    ));
-    try {
-      const attached = await attachLocalFile({
-        connectionId,
-        sessionId,
-        path,
-      }).unwrap();
       setPending((current) =>
         current.map((item) =>
           item.localId === localId
             ? {
                 ...item,
-                attachmentId: attached.attachment_id,
-                name: attached.name,
-                size: attached.size,
+                attachmentId: chosen.attachment_id,
+                name: chosen.name,
+                size: chosen.size,
                 kind: "file",
                 state: "done",
               }
@@ -389,8 +347,8 @@ export function Composer({
   }
 
   function retryAttachment(item: ComposerAttachment) {
-    if (item.sourcePath !== null) {
-      void attachPath(item.localId, item.sourcePath);
+    if (item.file === null) {
+      void addLocalPath(item.localId);
       return;
     }
     if (item.file !== null) {
@@ -503,7 +461,7 @@ export function Composer({
           {pending.map((item) => item.kind === "file" ? (
             <FileAttachmentTile key={item.localId} name={item.name} size={item.size}
               state={item.state} error={item.error}
-              onRetry={disabled || (item.file === null && item.sourcePath === null) ? undefined : () => retryAttachment(item)}
+              onRetry={disabled ? undefined : () => retryAttachment(item)}
               onRemove={() => removeAttachment(item)} />
           ) : (
             <div key={item.localId}>
@@ -585,7 +543,7 @@ export function Composer({
       </Group>
       <Group className="composer-meta" justify="space-between" gap="sm">
         <Group gap={10} wrap="nowrap">
-          <Tooltip label="添加本机文件，也可拖入或粘贴">
+          <Tooltip label="选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件">
             <ActionIcon
               aria-label="Add attachment"
               disabled={busy || connectionId === null}

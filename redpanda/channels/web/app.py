@@ -33,7 +33,6 @@ from redpanda.channels.web.channel import WebChannel
 from redpanda.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
-    select_file,
 )
 from redpanda.channels.web.hub import WebEventHub
 from redpanda.sandbox.registry import (
@@ -160,10 +159,6 @@ class WorkspaceCreateRequest(BaseModel):
     name: str
     task_root: str
     full_access: bool = False
-
-
-class AttachLocalFileRequest(ConnectionRequest):
-    path: str
 
 
 def create_web_app(
@@ -369,16 +364,6 @@ def create_web_app(
             }
         }
 
-    @app.post("/api/files/select")
-    async def pick_local_file():
-        selected = await select_file()
-        return {
-            "file": None if selected is None else {
-                "path": str(selected),
-                "name": selected.name or str(selected),
-            }
-        }
-
     @app.post("/api/sessions/{session_id}/select")
     async def select_session(
         session_id: str,
@@ -421,20 +406,22 @@ def create_web_app(
             "height": ref.height,
         }
 
-    @app.post("/api/sessions/{session_id}/attachments/from-path", status_code=201)
+    @app.post("/api/sessions/{session_id}/attachments/select")
     async def attach_local_file(
         session_id: str,
-        body: AttachLocalFileRequest,
+        body: ConnectionRequest,
         request: Request,
     ):
-        ref = await _channel(request).save_file_path(
-            body.connection_id, session_id, Path(body.path),
+        ref = await _channel(request).select_local_file(
+            body.connection_id, session_id,
         )
         return {
-            "kind": "file",
-            "attachment_id": ref.attachment_id,
-            "name": ref.name,
-            "size": ref.size,
+            "file": None if ref is None else {
+                "kind": "file",
+                "attachment_id": ref.attachment_id,
+                "name": ref.name,
+                "size": ref.size,
+            },
         }
 
     @app.get("/api/sessions/{session_id}/attachments/{attachment_id:path}")

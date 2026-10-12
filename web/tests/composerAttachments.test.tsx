@@ -7,10 +7,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Composer } from "../src/features/conversation/Composer";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
-const { upload, selectLocal, attachLocal } = vi.hoisted(() => ({
+const { upload, selectLocal } = vi.hoisted(() => ({
   upload: vi.fn(),
   selectLocal: vi.fn(),
-  attachLocal: vi.fn(),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionModelQuery: () => ({ data: {
@@ -24,13 +23,11 @@ vi.mock("../src/api/redpandaApi", () => ({
   useGetWorkspacesQuery: () => ({ data: [] }),
   useUploadAttachmentMutation: () => [upload],
   useSelectLocalFileMutation: () => [selectLocal],
-  useAttachLocalFileMutation: () => [attachLocal],
 }));
 
 beforeEach(() => {
   upload.mockReset();
   selectLocal.mockReset();
-  attachLocal.mockReset();
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(document, "fonts", { configurable: true, value: { addEventListener() {}, removeEventListener() {} } });
@@ -96,22 +93,35 @@ it("运行中停放的文件在当前轮结束后一起发送", async () => {
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
 });
 
-it("挂入本机文件只登记路径，不走整件上传", async () => {
+it("本机选择直接返回已挂入附件，浏览器不传服务器路径", async () => {
   selectLocal.mockReturnValue({ unwrap: async () => ({
-    file: { path: "D:\\logs\\a.log", name: "a.log" },
-  }) });
-  attachLocal.mockReturnValue({ unwrap: async () => ({
-    kind: "file", attachment_id: `file:${"a".repeat(32)}`, name: "a.log", size: 12,
+    file: { kind: "file", attachment_id: `file:${"a".repeat(32)}`, name: "a.log", size: 12 },
   }) });
   const { onSend } = showComposer();
   fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
   await waitFor(() => expect(screen.getByText("a.log")).toBeVisible());
   expect(upload).not.toHaveBeenCalled();
-  expect(attachLocal).toHaveBeenCalledWith({
-    connectionId: "connection", sessionId: "session", path: "D:\\logs\\a.log",
+  expect(selectLocal).toHaveBeenCalledWith({
+    connectionId: "connection", sessionId: "session",
   });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
+});
+
+it("本机选择失败可重新选择，取消会移除失败项并恢复发送", async () => {
+  selectLocal.mockReturnValueOnce({ unwrap: async () => { throw { data: { detail: "无法打开本机选择窗口" } }; } })
+    .mockReturnValueOnce({ unwrap: async () => ({ file: null }) });
+  const { onSend } = showComposer();
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "hello" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+  await screen.findByText("无法打开本机选择窗口");
+  expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+  expect(selectLocal).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText("本机文件")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith("hello", []));
 });
 
 it("没有实时用量推送时也显示会话返回的历史用量", () => {

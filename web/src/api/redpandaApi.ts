@@ -11,7 +11,6 @@ import { truncateAfterUserMessage } from "./truncateAfterUserMessage";
 import {
   conversationViewSchema,
   directorySelectionSchema,
-  fileSelectionSchema,
   modelSettingsSchema,
   modelTestResultSchema,
   sessionModelSchema,
@@ -20,7 +19,6 @@ import {
   workspaceSchema,
   type ConversationView,
   type DirectorySelection,
-  type FileSelection,
   type ModelConfig,
   type ModelSettings,
   type ModelTestResult,
@@ -63,10 +61,6 @@ type BranchAfterTurn = SelectSession & {
 
 type UploadAttachment = SelectSession & {
   file: File;
-};
-
-type AttachLocalFile = SelectSession & {
-  path: string;
 };
 
 type AuthorizeCommand = SelectSession & {
@@ -198,9 +192,13 @@ export const redpandaApi = createApi({
           ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
           : response,
     }),
-    selectLocalFile: build.mutation<FileSelection, void>({
-      query: () => ({ url: "/files/select", method: "POST" }),
-      transformResponse: (value: unknown) => fileSelectionSchema.parse(value),
+    selectLocalFile: build.mutation<{ file: AttachmentRef | null }, SelectSession>({
+      query: ({ connectionId, sessionId }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/attachments/select`,
+        method: "POST",
+        body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => z.object({ file: attachmentRefSchema.nullable() }).strict().parse(value),
       transformErrorResponse: (response) =>
         response.status === 503
           ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
@@ -343,14 +341,6 @@ export const redpandaApi = createApi({
           body,
         };
       },
-      transformResponse: (value: unknown) => attachmentRefSchema.parse(value),
-    }),
-    attachLocalFile: build.mutation<AttachmentRef, AttachLocalFile>({
-      query: ({ connectionId, sessionId, path }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/attachments/from-path`,
-        method: "POST",
-        body: { connection_id: connectionId, path },
-      }),
       transformResponse: (value: unknown) => attachmentRefSchema.parse(value),
     }),
     cancelTurn: build.mutation<ConversationView, SelectSession>({
@@ -507,7 +497,6 @@ export const {
   useSendInputMutation,
   useEditAndForkMutation,
   useUploadAttachmentMutation,
-  useAttachLocalFileMutation,
   useCancelTurnMutation,
   useAuthorizeCommandMutation,
   useResolveControlMutation,

@@ -828,21 +828,24 @@ class WebFirstSliceTest(unittest.TestCase):
             )
             self.assertEqual(self.workspaces.workspaces, ())
 
-    def test_file_selection_only_returns_a_choice_without_attaching(self):
+    def test_file_selection_attaches_or_cancels_without_returning_a_path(self):
         selected = Path(self._directory.name) / "notes.txt"
         selected.write_text("x")
         for choice in (selected, None):
-            with self.subTest(choice=choice), patch.object(
-                web_app, "select_file", return_value=choice
+            with self.subTest(choice=choice), patch(
+                "redpanda.channels.web.channel.select_file", return_value=choice
             ):
-                response = self.client.post("/api/files/select")
+                response = self.client.post("/api/sessions/session-old/attachments/select",
+                    json={"connection_id": self.connection.connection_id})
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(
-                response.json(),
-                {"file": None if choice is None else {
-                    "path": str(selected), "name": selected.name,
-                }},
-            )
+            if choice is None:
+                self.assertEqual(response.json(), {"file": None})
+            else:
+                ref = response.json()["file"]
+                self.assertEqual((ref["kind"], ref["name"], ref["size"]), ("file", "notes.txt", 1))
+                self.assertNotIn("path", ref)
+        self.assertEqual(self.client.post("/api/files/select").status_code, 405)
+
 
     def test_directory_picker_only_converts_known_desktop_unavailability(self):
         with patch.object(

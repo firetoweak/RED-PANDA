@@ -12,6 +12,15 @@ from redpanda.assistant.attachments import (
     is_valid_attachment_id,
 )
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
+from redpanda.channels.web.directory_picker import select_file
+
+
+class WebConnectionInactive(Exception):
+    """浏览器连接已经失效，需要重新连接。"""
+
+
+class WebInputInvalid(Exception):
+    """Web 输入不符合已知的用户输入约束。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,13 +107,15 @@ class WebChannel:
         await self.conversation(session_id)
         return await self._store().for_session(session_id).save_file_upload(read, name)
 
-    async def save_file_path(
-        self, connection_id: str, session_id: str, source: Path,
-    ) -> FileAttachment:
+    async def select_local_file(
+        self, connection_id: str, session_id: str,
+    ) -> FileAttachment | None:
         self._require_connection(connection_id)
         await self.conversation(session_id)
-        if not isinstance(source, Path) or not source.is_absolute():
-            raise AttachmentRejected("必须是本机绝对路径")
+        source = await select_file()
+        if source is None:
+            return None
+        self._require_connection(connection_id)
         return await asyncio.to_thread(
             self._store().for_session(session_id).save_file_path, source,
         )
