@@ -71,7 +71,7 @@
 | acp-channel | [acp-channel.md](./acp-channel.md) | `acp_chat.py` ACP 入口 | 未 live（需 ACP 客户端） |
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 未 live |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 未 live |
-| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写 | 未 live |
+| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 未 live |
 | setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_sandbox.py`、`sandbox_runtime.py`、`dev.sh` | 未 live（本轮只读源码） |
 
 ## 入口 → 地图条目 覆盖表
@@ -146,6 +146,7 @@
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
 | 残留 FUSE 挂载清理 | `native/sandbox/src/main.rs` `clear_stale_mount` | crash-recovery |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
+| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/sandbox/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
 | 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
 
 ### 有意不覆盖

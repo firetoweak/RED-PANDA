@@ -49,3 +49,63 @@
 - **疑似问题：附件无回收。** 回滚/改写丢弃的轮次中的附件永远留在来源抽屉，长期占磁盘；且新会话可能还能按 id 读到它们。
 - **疑似问题：新会话依赖来源目录。** 附件与压缩产物通过继承抽屉引用来源会话目录；若来源目录被手动或未来的清理逻辑删除，新会话的附件与窗口文档会读失败（`read` 注释：附件缺失视为持久化损坏，原样抛出）。
 - 需要 `live_model_ready` 与 `sandbox.ready`；把 compact 阈值改回原值。
+
+---
+
+# 补充：人机混合修改的文件回滚
+
+同一文件既有助手修改又有人手修改时，回滚（人点 `会话和文件一起回滚`，或模型调用 `restore_workspace`）怎么处理。来源：`native/sandbox/src/restore.rs`（`choose`、`Summary`）、`native/sandbox/src/restore/namespace.rs`（`reverse`、`plan`）、`redpanda/sandbox/files/operations.py`（`restore`、冲突原因表）、`redpanda/assistant/workspace_versions.py`（`settle_fork`、`restore`）、`redpanda/tools/builtin/workspace_restore.py`、`redpanda/assistant/context/prompt.py`、`redpanda/assistant/context/projection.py`、`web/src/features/conversation/Conversation.tsx`、设计文档 `docs/架构/Sandbox/文件操作与回退.md`。
+
+源码事实（判据以此为准）：
+- **归因按字节位置，不按作者**：文档：「归因依据是操作前后结果。记录助手改变的位置及其前后内容，而非监视自然人身份。」
+- **底层只返回两组路径**：`restore_summary = {changed_paths, preserved_paths}`（`restore.rs` 的 `Summary`），没有每个文件的原因，也没有冲突清单。冲突时整个回退失败，只报**第一个**冲突路径与原因（`operations.py`：`无法回退 <path>：<原因>。`，原因如 `文件长度已变化，无法安全恢复`、`文件已被替换`、`文件类型已变化`、`目录包含需要保留的文件`），**不改动任何文件**。
+- **长度检查先于策略**：`choose()` 中 `current.size != source.size` 直接 `length_changed` 冲突，preserve 和 original 都一样。
+- **preserve**（模型默认，Web 回滚固定使用）：只撤销「当前值仍等于助手结果」的字节；人改过的字节保留并计入 `preserved_paths`。助手追加了尾部而人改了尾部 → 整个文件保持现状并计入 preserved。
+- **original**：助手改过的字节一律恢复为助手修改前的值（覆盖人在这些位置上的修改）；助手没碰过的字节保留。只有模型调用 `restore_workspace` 时可选，Web 无此选项。
+- **助手新建的文件**（namespace.rs `effect.before is None`）：preserve 下若当前内容≠助手写入内容 → 整个文件保留（blocked），计入 preserved；original 下 → 删除该文件（`Image::missing()`），人的修改一起删掉。文件身份变了（编辑器以「写新文件再改名」方式保存）→ `identity_changed` 冲突，整个回退失败。
+- **模型能看到什么**：工具描述（`workspace_restore.py`）原文：「policy=preserve 保留用户后来改变的值；original 允许恢复助手改变位置的原值。两种策略都保留助手未改变的位置……成功结果说明实际改动的文件或目录，以及保留后续值的位置；同一路径可能同时出现。unchanged 表示本次没有改变文件，preserved 表示因保留后续值而未改变文件，不能据此宣称已完全撤销。」工具结果：`{"effect": "restored"|"partially_restored"|"preserved"|"unchanged", "changed_files", "preserved_files", "changed_count", "preserved_count", "truncated"}`；失败：`{"code": "WORKSPACE_RESTORE_FAILED", "error": "无法回退 ...", "hint": "本次回退没有修改文件；请核对相关文件的当前内容后再选择策略。"}`。系统提示（`prompt.py`）只说「文件回退只处理助手对工作区文件的修改；用户其他文件保持现状」。**没有任何文字指导模型对混合文件做语义合并、读 diff 或手工重做**。
+- **人从 Web 回滚**：`Conversation.tsx` 的对话框只有说明「对话会截到这一步……工作区文件可以一起退回这一步，也可以保持现在的样子。」与两个按钮；`restart()` 收到响应后只做 `navigate(...)`。**没有预检、没有结果报告**。`settle_fork` 把结果写成领域事实：preserved 时 `assistant.workspace_carryover`（`文件回退保留了后续改动，当前文件可能与保留的对话记录不同；请读取相关文件核对。` + `files`），失败时 `assistant.workspace_rescue`（带 `error`）。这两个事实只经 `projection.py` 进入**模型**上下文（失败时显示为 `文件没有成功回退到所选位置，请核对当前文件后继续。`）；`redpanda/assistant/conversations.py` 与 `web/src/` 中都没有引用它们，**用户界面看不到**。回退失败时 `POST .../restarts` 仍返回 201，会话已截短而文件没动。
+
+人的修改在各情况下的结局（按源码推导，待 live 证实）：
+
+| 情况 | 人的修改长度不变（原位改字节） | 人的修改改变了文件长度 |
+|---|---|---|
+| A 助手与人都改了同一文件，preserve | 人改的字节**保留**；助手改的其余字节被撤销；文件可能变成语义上混杂的内容；计入 preserved | 整个回退**失败**，所有文件不动（`文件长度已变化，无法安全恢复`） |
+| A，original（仅模型） | 人在助手改过的位置上的修改被**覆盖**；其他位置保留 | 同上，失败 |
+| B1 助手新建、人后改，preserve | 文件**整体保留**（不删），计入 preserved | 同左（新建文件走 blocked 分支，不做长度检查） |
+| B1，original（仅模型） | 文件**被删除**，人的修改一起丢失 | 同左，被删除 |
+| B1，人用「另存再改名」方式保存 | `identity_changed`，整体失败 | 同左 |
+| B2 人新建、助手后改，人没有再改 | 恢复成人写的版本（助手修改前的内容），人的内容**保留** | — |
+| B2 人新建、助手改、人又改 | 同情况 A | 同情况 A |
+
+## Sub-features
+
+- `mixed-a-same-length`、`mixed-a-length-change`、`mixed-b1-preserve`、`mixed-b1-original`、`mixed-b2`、`mixed-web-report`（Web 回滚后是否告诉用户）、`mixed-model-report`（模型是否如实汇报 preserved）。
+
+## How to get to it (user POV)
+
+- 开自动放行，让助手 `apply_patch` 把 `mix.txt`（`hello world`）改成 `HELLO world`（长度不变），然后在 shell 里**原地**改：`printf 'HELLO WORLD' > mix.txt`（同长）或 `printf 'HELLO world!!' > mix.txt`（变长）。
+- B1：让助手 `write_file` 新建 `agent.txt`（`abc`），人原地改为 `abX`。B2：人先建 `human.txt`，让助手改它。
+- 然后分别：在助手那一步之前的步骤上点 `从这一步之后重开` → `会话和文件一起回滚`；或让助手 `请用 restore_workspace（policy=preserve / original）撤销刚才对这些文件的修改，并如实汇报结果`。
+
+## Driving it with the browser + shell
+
+- **A 同长 + Web 回滚**：(a) `mix.txt` 为 `hello WORLD`（人的大写 `WORLD` 保留，助手的 `HELLO` 撤销）；新会话 journal 有 `assistant.workspace_carryover`，`files` 含 `mix.txt`。(b) `POST .../restarts` 201。(c) 未涉及的文件不变。(d) **界面没有任何提示说 `mix.txt` 被部分保留** → 按源码预期如此，记为疑似问题（用户不知道文件处于混合状态）。
+- **A 变长 + Web 回滚**：(a) 所有工作区文件（包括其他本该能回退的文件）**都没变**；新会话 journal 有 `assistant.workspace_rescue`，`error` 为 `无法回退 mix.txt：文件长度已变化，无法安全恢复。`。(b) 仍是 201，对话已截短、页面正常跳转。(c) 人的修改完整保留。(d) **界面不提示失败**——这就是此前发现的「回滚静默失败」形态之一，判为问题。
+- **A + 模型 preserve**：(a) 同上的文件结果。(b) 工具结果 `effect` 为 `partially_restored` 或 `preserved`，`preserved_files` 含 `mix.txt`；变长时为 `WORKSPACE_RESTORE_FAILED` 和上述 `error`/`hint`。(d) 模型回复若宣称「已完全撤销」→ 判失败（违反工具描述）。
+- **A + 模型 original**：(a) 同长时 `mix.txt` 变回 `hello world`，人的 `WORLD` 被覆盖；`preserved_files` 不含它。(d) 模型在选 original 前是否告知用户会覆盖人的修改——源码不要求，记录观察。
+- **B1 preserve（Web 或模型）**：(a) `agent.txt` 仍为 `abX`，计入 preserved（模型结果 `preserved_files` / 新会话 carryover `files`）。(c) 文件未被删除。
+- **B1 original（模型）**：(a) `agent.txt` **不存在**；结果 `changed_files` 含它。(d) 这是人的修改被删除的路径，确认模型回复是否提到；源码不阻止，记为风险。
+- **B1 另存改名**：用 `cp agent.txt t && mv t agent.txt` 改内容后回滚 → (a) 整体失败，`error` 为 `无法回退 agent.txt：文件已被替换。`，其他文件也不回退。
+- **B2**：人建 `human.txt`=`mine`，助手改为 `theirs`（同长不必），回滚 → (a) `human.txt`=`mine`。若人在助手之后又改，按 A 的判据。
+- **撤销回退**：任一成功的模型回退后，让模型引用这次 `restore_workspace` 的 id 再撤销 → (a) 文件回到回退前的确切字节（含人的值，文档「撤销回退时恢复真正的执行前状态，包括当时存在的用户值」）。
+
+## Gotchas
+
+- **疑似问题：Web 回滚无预检、无结果报告。** 用户点 `会话和文件一起回滚` 前看不到哪些文件有人工修改，之后也看不到哪些被保留或回退失败；结果只写进模型上下文。
+- **疑似问题：一个冲突导致整次回退失败，且只报第一个冲突。** 人对任何一个助手改过的文件做了变长修改，所有文件都不回退；HTTP 仍是 201。
+- **疑似问题：长度变化就判冲突。** 人最常见的编辑（加一行）都会改长度，所以实际上「保留人工修改」只在原位同长修改时生效。
+- **疑似问题：preserve 是字节级合并。** 同长的人工修改与助手修改交错时，结果可能是语义上不成立的混合内容，只以 preserved 路径提示，没有 diff。
+- **疑似问题：没有引导模型做语义处理。** 工具描述与系统提示只要求如实汇报 changed/preserved，没有要求读 diff、征求用户、或手工重做。
+- **original 会删除或覆盖人工修改**（B1 删除文件、A 覆盖同位置）；只能由模型选择，Web 不提供。
+- 每个用例都在临时工作区里做，并用 `sha256sum` 记录前后哈希作为证据。
