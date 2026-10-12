@@ -170,6 +170,7 @@ def create_web_app(
     workspaces=None,
     models=None,
     model_llm=None,
+    static_dir: Path | None = None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
@@ -600,8 +601,8 @@ def create_web_app(
             body.title,
         )
 
-    assets = Path(__file__).parents[3] / "web" / "dist"
-    if assets.is_dir():
+    if static_dir is not None:
+        assets = static_dir
         app.mount("/assets", StaticFiles(directory=assets / "assets"), name="assets")
 
         @app.get("/{path:path}")

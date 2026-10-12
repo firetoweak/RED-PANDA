@@ -8,7 +8,15 @@ import uvicorn
 from redpanda.channels.web import create_web_app
 
 
-app = create_web_app()
+STATIC_DIR = Path(__file__).resolve().parent / "web" / "dist"
+
+
+def production_app(workspace_path: Path | None = None):
+    return create_web_app(workspace_path=workspace_path,
+                          static_dir=STATIC_DIR if STATIC_DIR.is_dir() else None)
+
+
+app = production_app()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -49,9 +57,7 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         uvicorn.run(
-            "web_chat:app" if args.dev else create_web_app(
-                workspace_path=args.workspace
-            ),
+            "web_chat:app" if args.dev else production_app(args.workspace),
             host=args.host,
             port=args.port,
             reload=args.dev,

@@ -85,7 +85,7 @@ sh scripts/dev.sh
 
 日常启动支持 Python 与前端热重载。开发者可在自备环境运行 `python -m pytest`；前端测试使用 `npm --prefix web test`。
 
-[GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试，以及前端测试和构建。沙箱源码变化另行构建并验证运行包；真实模型与完整业务流程需另外验证。
+[GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试、完整 process 测试与沙箱运行包验证，以及前端测试和构建。本地使用 `python scripts/ci.py` 共用验证入口；提交后用 `python scripts/ci.py --clean` 验证干净 HEAD。真实模型与完整业务流程需另外验证。
 
 `redpanda-env` 用于运行工具；修改项目源码时，开发环境由你自行选择。测试方法见[开发指南](docs/开发指南.md)。
 

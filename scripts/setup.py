@@ -43,11 +43,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     uv = ROOT / ".tools/uv" / ("uv.exe" if WINDOWS else "uv")
     print("[1/4] 安装 Python 依赖", flush=True)
-    subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "pip", "-r", "requirements.txt"],
+    # uv-created environments do not contain pip; keep it available for developer commands.
+    subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "pip"], cwd=ROOT, check=True)
+    subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "-r", "requirements.lock", "--require-hashes"],
                    cwd=ROOT, check=True)
     print("[2/4] 检查并补齐前端依赖", flush=True)
     npm = shutil.which("npm.cmd" if WINDOWS else "npm")
-    subprocess.run([npm, "--prefix", "web", "install"], cwd=ROOT, check=True)
+    subprocess.run([npm, "--prefix", "web", "ci"], cwd=ROOT, check=True)
     print("[3/4] 准备沙箱运行包与平台运行组件", flush=True)
     subprocess.run([sys.executable, "-m", "scripts.sandbox_runtime", "install", "--with-runtime"],
                    cwd=ROOT, check=True)

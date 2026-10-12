@@ -41,6 +41,23 @@ MODEL_CONFIG = {"model": {"default": "deepseek/test-model", "candidates": [
 ]}}
 
 
+def test_static_resources_are_explicit(tmp_path):
+    assets = tmp_path / "dist"
+    (assets / "assets").mkdir(parents=True)
+    (assets / "index.html").write_text("frontend", encoding="utf-8")
+    (assets / "assets/app.js").write_text("script", encoding="utf-8")
+    for directory in (None, assets):
+        app = create_web_app(channel=SimpleNamespace(), static_dir=directory)
+        with TestClient(app) as client:
+            if directory is None:
+                assert client.get("/").status_code == 404
+                assert client.get("/assets/app.js").status_code == 404
+            else:
+                assert client.get("/conversation").text == "frontend"
+                assert client.get("/assets/app.js").text == "script"
+        assert "/api/files/select" not in {route.path for route in app.routes}
+
+
 class _Sessions:
     def __init__(self, queries):
         self.queries = queries
@@ -845,7 +862,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 ref = response.json()["file"]
                 self.assertEqual((ref["kind"], ref["name"], ref["size"]), ("file", "notes.txt", 1))
                 self.assertNotIn("path", ref)
-        self.assertIn(self.client.post("/api/files/select").status_code, (404, 405))
+        self.assertNotIn("/api/files/select", {route.path for route in self.client.app.routes})
 
     def test_known_input_connection_and_authorization_errors_keep_their_meaning(self):
         body = {"connection_id": self.connection.connection_id, "delivery_id": "input-1", "text": " "}
