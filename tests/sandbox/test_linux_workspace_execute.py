@@ -68,7 +68,7 @@ def test_replaced_file_conflicts_on_restore(tmp_path):
         await view.execute(operation_id("s", "edit"), change)
         edited.unlink()
         edited.write_text("replaced", encoding="utf-8")
-        with pytest.raises(WorkspaceRestoreFailed, match=r"(identity_changed|length_changed): /edit.txt"):
+        with pytest.raises(WorkspaceRestoreFailed, match=r"无法回退 edit\.txt：文件已被替换。"):
             await view.restore(INITIAL, identity=operation_id("s", "restore"), policy="original")
         assert edited.read_text(encoding="utf-8") == "replaced"
 
