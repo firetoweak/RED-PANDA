@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from itertools import accumulate
+from itertools import accumulate, repeat
 import os
 from pathlib import Path, PurePosixPath
 import stat
@@ -18,11 +18,11 @@ MAX_FILES = 100
 MAX_CONTENT_CHARS = 12_000
 
 
-async def read_changes(path: Path, *, filesystem=None, offset: int = 0, text_offset: int = 0) -> dict:
+async def read_changes(path: Path, *, filesystem=None, operations=None, offset: int = 0, text_offset: int = 0) -> dict:
     if filesystem is None:
         return {"ok": False, "code": "CHANGES_UNAVAILABLE",
                 "error": "此路径无法核对助手修改，请读取相关文件确认当前内容。"}
-    return await filesystem.changes(path, offset=offset, text_offset=text_offset)
+    return await filesystem.changes(path, operations=operations, offset=offset, text_offset=text_offset)
 
 
 def _origin(owners):
@@ -162,7 +162,7 @@ def _stamp(info):
     return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode
 
 
-def _current(root, path, chunk_size, keys):
+def _current(root, path, chunk_size, keys, *, full_content=False):
     """Read only observed blocks; keep current bytes out of the evidence store."""
     opened = False
     try:
@@ -190,6 +190,8 @@ def _current(root, path, chunk_size, keys):
             before = os.fstat(file.fileno())
             identity = native.identity(file)
             blocks = {}
+            if full_content:
+                keys = map(str, range((before.st_size + chunk_size - 1) // chunk_size))
             for key in keys:
                 offset = int(key) * chunk_size
                 file.seek(offset)
@@ -259,11 +261,11 @@ def _identity_bindings(store, receipts):
     return bindings
 
 
-def _file_state(root, store, path, changes, identities, budget, text_offset=0):
+def _observe_file(root, store, path, changes, identities, *, full_content=False, owners=None):
     metadata = {}
     blocks = {}
     chunk_size = changes[0]["before"]["chunk_size"]
-    for change in changes:
+    for change, owner in zip(changes, repeat(1) if owners is None else owners, strict=owners is not None):
         before, after = change["before"], change["after"]
         if before["chunk_size"] != chunk_size or after["chunk_size"] != chunk_size:
             raise ValueError("block geometry differs")
@@ -274,7 +276,7 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0):
                 following = identities.get(following, following)
             value = metadata.setdefault(name, _Value(previous, previous))
             value.observe(previous, 2)
-            value.observe(following, 1)
+            value.observe(following, owner)
         keys = before["blocks"].keys() | after["blocks"].keys() | blocks.keys()
         for key in keys:
             previous, following = _bytes(store, before, key), _bytes(store, after, key)
@@ -285,23 +287,31 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0):
             if previous is not None:
                 blocks[key].observe(previous, 2)
             if following is not None:
-                blocks[key].observe(following, 1)
-    current, data = _current(root, path, chunk_size, sorted(blocks, key=int))
+                blocks[key].observe(following, owner)
+    current, data = _current(root, path, chunk_size, sorted(blocks, key=int), full_content=full_content)
     for name, value in metadata.items():
         value.observe(current[name], 2)
     for key, value in blocks.items():
-        value.observe(data[key] if current["kind"] == "file" else b"", 2)
-    observed_bytes = sum(len(value) for value in data.values())
+        value.observe(data.get(key, b"") if current["kind"] == "file" else b"", 2)
+    observed_bytes = sum(len(data.get(key, b"")) for key in blocks)
     unobserved_bytes = current["size"] - observed_bytes if current["kind"] == "file" else 0
     # Bytes beyond every observed file length were absent in both the baseline
     # and every assistant result. Their external origin needs no content read.
     extent = max((value["size"] for change in changes
                   for value in (change["before"], change["after"]) if value["kind"] == "file"), default=0)
     appended = max(0, current["size"] - extent) if current["kind"] == "file" else 0
-    for key, value in data.items():
+    for key in blocks:
+        value = data.get(key, b"")
         start = int(key) * chunk_size
         appended -= max(0, start + len(value) - max(start, extent))
     unobserved_bytes -= appended
+    return metadata, blocks, current, data, unobserved_bytes, appended
+
+
+def _file_state(root, store, path, changes, identities, budget, text_offset=0, *, owners=None):
+    metadata, blocks, current, data, unobserved_bytes, appended = _observe_file(
+        root, store, path, changes, identities, owners=owners)
+    chunk_size = changes[0]["before"]["chunk_size"]
     agent = any(1 in value.owners for value in blocks.values()) or any(value.owner == 1 for value in metadata.values())
     external = (appended > 0 or any(2 in value.owners for value in blocks.values())
                 or any(value.owner == 2 for value in metadata.values()))
@@ -333,30 +343,39 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0):
     }, budget
 
 
-def attribution(root: Path, store: Path, path: Path, *, offset=0, text_offset=0):
+def operation_changes(store, operations=None):
+    """Retain all later observations after a scope first touches each path."""
+    selected = None if operations is None else set(operations)
+    by_path, receipts = {}, {}
+    for identity in read_index(store)["active"]:
+        receipt = receipts[identity] = _receipt(store, identity)
+        owner = 1 if selected is None or identity in selected else 2
+        for change in receipt["changes"]:
+            name = change["path"]
+            if owner == 1 or name in by_path:
+                by_path.setdefault(name, []).append((change, owner))
+    return by_path, receipts
+
+
+def attribution(root: Path, store: Path, path: Path, *, operations=None, offset=0, text_offset=0):
     relative = path.relative_to(root).as_posix()
     selected = PurePosixPath("/" if relative == "." else "/" + relative)
-    index = read_index(store)
-    by_path = {}
-    receipts = {}
-    for identity in index["active"]:
-        receipt = receipts[identity] = _receipt(store, identity)
-        for change in receipt["changes"]:
-            name = PurePosixPath(change["path"])
-            if name.is_relative_to(selected):
-                by_path.setdefault(change["path"], []).append(change)
+    grouped, receipts = operation_changes(store, operations)
+    by_path = {name: observations for name, observations in grouped.items()
+               if PurePosixPath(name).is_relative_to(selected)}
     identities = _identity_bindings(store, receipts) if by_path else {}
     if text_offset and (len(by_path) != 1 or selected.as_posix() not in by_path):
         return {"ok": False, "code": "TEXT_OFFSET_REQUIRES_FILE",
                 "error": "续读文本时，请把 path 指定为需要核对的单个文件。"}
     files, budget = [], MAX_CONTENT_CHARS
     for name in sorted(by_path)[offset:offset + MAX_FILES]:
-        state, budget = _file_state(root, store, name, by_path[name], identities, budget, text_offset)
+        changes, owners = zip(*by_path[name])
+        state, budget = _file_state(root, store, name, changes, identities, budget, text_offset, owners=owners)
         files.append(state)
     next_offset = offset + len(files) if len(by_path) > offset + len(files) else None
     truncated = next_offset is not None or any(item["truncated"] for item in files)
     return {
-        "ok": True, "code": "CHANGES_READ", "scope": "agent_touched_files",
+        "ok": True, "code": "CHANGES_READ", "scope": "workspace" if operations is None else "session",
         "changes": files, "truncated": truncated,
         "next_offset": next_offset,
         "content_complete": not (offset or text_offset or truncated) and all(item["content_complete"] for item in files),

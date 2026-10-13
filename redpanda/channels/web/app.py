@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from anyio import CancelScope
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,7 @@ from redpanda.assistant.host.session_store import (
     SessionForkUnavailableError,
 )
 from redpanda.assistant.file_attachments import is_file_attachment_id
+from redpanda.assistant.conversations import FileChangesConflict, FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
@@ -354,6 +355,28 @@ def create_web_app(
     @app.post("/api/sessions", status_code=201)
     async def create_session(body: CreateSessionRequest, request: Request):
         return await _channel(request).create(body.connection_id, body.workspace_id)
+
+    @app.get("/api/sessions/{session_id}/changes")
+    async def file_changes(session_id: str, request: Request, path: str | None = None,
+                           revision: str | None = None, offset: int = Query(default=0, ge=0)):
+        if path is not None:
+            logical = PurePosixPath(path)
+            if (not path or logical.is_absolute() or logical.as_posix() != path
+                    or ".." in logical.parts or path == "." or any(char in path for char in "\\:\0")):
+                raise HTTPException(422, "文件路径必须是工作区内的相对路径。")
+        elif offset or revision is not None:
+            raise HTTPException(422, "续读时必须指定文件。")
+        try:
+            result = await _channel(request).file_changes(session_id, path=path, offset=offset)
+        except FileChangesConflict as error:
+            raise HTTPException(409, str(error)) from error
+        except FileChangesUnavailable as error:
+            raise HTTPException(503, str(error)) from error
+        if result is None:
+            raise HTTPException(404, "该文件已没有当前会话的变更，请刷新列表。")
+        if revision is not None and result["revision"] != revision:
+            raise HTTPException(409, "文件变化已更新，请刷新后查看。")
+        return result
 
     @app.get("/api/sessions/{session_id}/subagents/{command_id}")
     async def observe_subagent(session_id: str, command_id: str, request: Request):

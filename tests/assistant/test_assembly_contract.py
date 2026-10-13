@@ -6,7 +6,7 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import pytest
 
 from redpanda.assistant.assembly import build_assistant_assembly
@@ -16,8 +16,9 @@ from redpanda.assistant.work_plan import UPDATE_PLAN, WORK_PLAN_CONTEXT
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import DecisionCancelled, MemoryJournal, StepCommitted
+from redpanda.runtime import DecisionCancelled, MemoryJournal, SqliteJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
+from redpanda.sandbox.files import operation_id
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import (
     SettlingScheduler,
@@ -248,6 +249,39 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
+    async def test_get_changes_binds_current_session_operations_by_default(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            changes = AsyncMock(return_value={"ok": True, "code": "CHANGES_READ", "scope": "session",
+                "changes": [], "content_complete": True, "truncated": False, "next_offset": None})
+            journal_path = root / "sessions" / ("a" * 64) / "journal.sqlite"
+            journal_path.parent.mkdir(parents=True)
+            journal = SqliteJournal(journal_path)
+            await journal.create_session("entry")
+            with (
+                patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=RedPandaHome(root / "home")),
+                patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
+                patch("redpanda.sandbox.files.operations.WorkspaceFiles.changes", changes),
+            ):
+                assembly = await build_assistant_assembly(
+                    AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=CapturingLlm()),
+                    lambda *_: None, journal, session_id="entry", workspace=workspace_record(workspace),
+                )
+                try:
+                    await assembly.runtime.receive_user_message("entry", "inspect", delivery_id="input")
+                    step = (await assembly.runtime.advance("entry")).step
+                    context = AttemptContext("entry", "query", "attempt-query", 1)
+                    result = await assembly.bindings["get_changes"].handler(context, {})
+                    self.assertTrue(result["ok"])
+                    changes.assert_awaited_once_with(workspace, operations=tuple(
+                        operation_id("entry", command.command_id) for command in step.commands), offset=0, text_offset=0)
+                    await assembly.bindings["get_changes"].handler(context, {"scope": "workspace"})
+                    changes.assert_awaited_with(workspace, operations=None, offset=0, text_offset=0)
+                finally:
+                    await assembly.scheduler.close()
+
     async def test_workspace_route_follows_each_command_effect(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

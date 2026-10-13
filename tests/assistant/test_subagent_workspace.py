@@ -1,5 +1,6 @@
 import asyncio
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -21,7 +22,7 @@ def test_child_does_not_inherit_full_access_or_write_outside_its_tree(tmp_path):
         assert child.workspace_id == parent.workspace_id
         assert child.full_access is False
         assert [root.path for root in workspace_view(child).roots] == [child_root]
-        runner = await build_builtin_tools(child, isolated=True)
+        runner = await build_builtin_tools(child, isolated=True, session_operations=AsyncMock(return_value=()))
         assert runner.requires_authorization("write_file") is False
         result = await runner.execute("write_file", {"path": str(parent_root / "escape"), "content": "outside"})
         assert result["ok"] is False
@@ -48,7 +49,8 @@ def test_generated_child_can_write_with_long_home(tmp_path):
         home = RedPandaHome(tmp_path / "home")
         root = child_root(home, "parent", "parent/sub-command_" + "a" * 32)
         root.mkdir(parents=True)
-        runner = await build_builtin_tools(child_workspace(workspace_record(tmp_path), root), isolated=True)
+        runner = await build_builtin_tools(child_workspace(workspace_record(tmp_path), root), isolated=True,
+                                           session_operations=AsyncMock(return_value=()))
         result = await runner.execute("write_file", {"path": "result.txt", "content": "marker\n"})
         assert result["ok"] is True
         assert (root / "result.txt").read_text() == "marker\n"

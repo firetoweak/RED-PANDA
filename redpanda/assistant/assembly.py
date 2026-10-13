@@ -29,7 +29,7 @@ from redpanda.assistant.decision import (
     bind_executor_tools,
 )
 from redpanda.assistant.runner import SessionScheduler
-from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary
+from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, session_file_operations
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.review import ChildWorkspaceReview
@@ -119,10 +119,14 @@ async def build_assistant_assembly(
         versions = workspace_files(home, workspace)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
+    async def current_file_operations():
+        return await session_file_operations(journal, await journal.snapshot(session_id))
+
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
         command_environment=command_environment,
         sandbox=versions,
+        session_operations=current_file_operations,
     )
     command_interrupts = builtin_tools.command_interrupts
 
@@ -287,7 +291,6 @@ async def build_assistant_assembly(
         **subagents.bindings(),
         **compact_context.bindings(),
     }
-    bindings = _with_tool_progress(bindings, tool_progress_sink)
     for name in builtin_tools.names():
         binding = bindings[name]
         async def projected(context, arguments, _handler=binding.handler,
@@ -302,6 +305,7 @@ async def build_assistant_assembly(
                         "error": "当前无法执行工作区文件操作，请让用户检查应用安装后重试。"}
         bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,
                                      requires_authorization=binding.requires_authorization)
+    bindings = _with_tool_progress(bindings, tool_progress_sink)
     decision = JournalBackedLlmDecisionMaker(
         journal,
         config.llm,

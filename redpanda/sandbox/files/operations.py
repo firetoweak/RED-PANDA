@@ -116,14 +116,21 @@ class WorkspaceFiles:
             finally:
                 self._mount.reset(token)
 
-    async def changes(self, path: Path | None = None, *, offset: int = 0, text_offset: int = 0) -> dict:
+    async def changes(self, path: Path | None = None, *, operations=None, offset: int = 0, text_offset: int = 0) -> dict:
         """Verify current results of this workspace's published file operations."""
         from .changes import attribution
         target = self.root if path is None else path
         target.relative_to(self.root)
         from functools import partial
         return await self.read(lambda: settled(partial(attribution, self.root, self.storage, target,
-                                                      offset=offset, text_offset=text_offset)))
+                                                      operations=operations, offset=offset, text_offset=text_offset)))
+
+    async def review(self, operations, *, path=None, offset=0):
+        from functools import partial
+        from .review import review_changes
+
+        return await self.read(lambda: settled(partial(
+            review_changes, self.root, self.storage, operations, path=path, offset=offset)))
 
     def _history(self):
         head = self.storage / "HEAD"

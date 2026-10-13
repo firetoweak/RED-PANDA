@@ -69,6 +69,7 @@ class BuiltinToolRunner:
 async def build_builtin_tools(
     workspace: WorkspaceRecord,
     *,
+    session_operations: Callable[[], Awaitable[tuple[str, ...]]],
     materials_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
@@ -101,7 +102,7 @@ async def build_builtin_tools(
         )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
-    for spec in create_environment_tool_specs(binding, interrupts):
+    for spec in create_environment_tool_specs(binding, interrupts, session_operations=session_operations):
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)

@@ -1,6 +1,8 @@
-# RED PANDA 验证功能地图（完整版，基于 main@1a4790a）
+# RED PANDA 验证功能地图
 
 本目录是验证小熊猫的功能地图。先读本页，再按改动打开对应的功能文件。说明用中文写；路由、按钮文字、命令、选择器、API 路径、文件名一律照源码原样写，不翻译。
+
+原有条目的历史验证基线与日期保留在各自状态里。2026-10-13 按当前工作区新增会话变更审阅的增量地图，不表示全量重验，也不将源码核对或自动化测试标为真实 UI 通过。
 
 ## 基线前置条件
 
@@ -46,7 +48,7 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（24 个）
+## 功能列表（25 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -56,6 +58,7 @@
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件上传、`本机文件`、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具 | 通过（2026-10-12，main@1a4790a） |
+| session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → `会话变更` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
 | edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 通过（2026-10-12，main@1a4790a；改写后模型回复偏题，待查） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、`重试`、`退回编辑栏` | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
@@ -95,6 +98,7 @@
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | session-sidebar、web-session-chat |
+| `GET /api/sessions/{id}/changes`（摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions` | web-session-chat、session-sidebar |
 | `POST /api/sessions/{id}/select` | session-sidebar |
 | `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | session-sidebar |
@@ -145,6 +149,7 @@
 | 未完成命令 `CommandPhase.UNKNOWN` / `NO_RESULT_YET` | `runtime/state.py`、`assistant/context/projection.py`、`assistant/conversations.py` | crash-recovery |
 | 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
+| 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`sandbox/files/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
 | 残留 FUSE 挂载清理 | `native/sandbox/src/main.rs` `clear_stale_mount` | crash-recovery |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
 | 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/sandbox/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
@@ -166,6 +171,7 @@
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。
+- 会话变更面板与模型工具 `get_changes` 默认使用当前会话范围（含分支继承的修改）；工具显式 `scope=workspace` 才覆盖工作区所有会话的助手操作。工具可以保留已触碰文件的 `external`、`unchanged` 等状态供核对，面板列表只显示当前仍保留的会话成果。混合来源、二进制或原文不完整的文件不提供精确面板行数；外部编辑暂需手动刷新。
 - 人手动（Web）回滚：固定用 `preserve`，只回滚 agent 的改动，不覆盖人的改动；字节混合可接受。成功条件要求提示说明「此文件 agent 改过、人也改过，只回滚了 agent 的部分」。当前界面文案「文件部分回退，部分后续值已保留」未写清这一点，记为剩余缺口。
 - 回滚失败：给用户看得见的失败提示就算成功；不保证文件一定恢复，201 加失败的文件结果是正常的。普通步骤回滚返回 201 也正常。
 - 工作计划由模型制定和控制，没有完整状态机。

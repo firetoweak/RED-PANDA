@@ -1,6 +1,6 @@
 ---
 name: verify-redpanda
-description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, chat, tool authorization, and file rewind — and capture proof. Use when changing Web, sandbox file restore, model settings, or when a change needs a real-app check before it ships."
+description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, chat, tool authorization, session file changes, and file rewind — and capture proof. Use when changing Web, sandbox file review or restore, model settings, or when a change needs a real-app check before it ships."
 ---
 
 # Verify RED PANDA
@@ -95,6 +95,8 @@ Use the browser automation in the session (Playwright or Chrome DevTools). The v
 `curl` is only the read-only confirmation written next to an action. Posting to `/api/workspaces`, `/api/sessions`, or `/api/sessions/.../inputs` does not prove the page.
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
+
+For session file review, read `features/session-file-changes.md`. Open the summary above the composer, then a file in `会话变更`; verify the retained net effect, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. The panel and `get_changes` use the current session scope, including inherited branch changes; the model tool expands to all workspace sessions only with explicit `scope=workspace`. Preparing changed files through a coding round requires both Doctor prerequisites; a unit test or direct POST does not prove the panel.
 
 Wait until the sidebar text is `已连接`. `正在连接…` means the event stream is not up; run Doctor again instead of typing.
 

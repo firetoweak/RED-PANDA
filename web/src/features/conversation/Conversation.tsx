@@ -47,6 +47,7 @@ import {
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
+import { FileChangesPanel } from "./FileChangesPanel";
 import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ExecutionProcess } from "./ExecutionProcess";
@@ -524,6 +525,7 @@ export function Conversation() {
                 : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")}
           </Alert>
         ) : null}
+        <FileChangesPanel key={sessionId} sessionId={sessionId} />
         <Composer
           sessionId={sessionId}
           workspaceId={conversation.workspace_id}
