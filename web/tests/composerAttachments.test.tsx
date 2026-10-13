@@ -26,6 +26,7 @@ vi.mock("../src/api/redpandaApi", () => ({
 }));
 
 beforeEach(() => {
+  localStorage.clear();
   upload.mockReset();
   selectLocal.mockReset();
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -34,11 +35,11 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-function showComposer(running = false, inputTokens: number | null = null) {
+function showComposer(running = false, inputTokens: number | null = null, sessionId = "session") {
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   const onSend = vi.fn(async () => {});
   const props = {
-    sessionId: "session", workspaceId: "workspace-test", connectionId: "connection",
+    sessionId, workspaceId: "workspace-test", connectionId: "connection",
     disabled: false, sending: false, running, shouldWake: false,
     stopBusy: false, retryBusy: false, autoAuthorize: false, autoAuthorizeBusy: false,
     inputTokens,
@@ -134,4 +135,64 @@ it("没有本窗口调用记录时提示未知用量而不是零", () => {
   showComposer();
   expect(screen.getByRole("img", { name: /暂无本窗口用量/ })).toBeVisible();
   expect(screen.queryByRole("img", { name: /0% 已用/ })).not.toBeInTheDocument();
+});
+
+it("切换会话和重新打开页面后恢复各自的文字草稿，清空也会保存", () => {
+  const first = showComposer();
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "第一条草稿\n继续写" } });
+  first.unmount();
+  const second = showComposer(false, null, "other-session");
+  expect(screen.getByLabelText("消息")).toHaveValue("");
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "另一条草稿" } });
+  second.unmount();
+  const restored = showComposer();
+  expect(screen.getByLabelText("消息")).toHaveValue("第一条草稿\n继续写");
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "" } });
+  restored.unmount();
+  showComposer();
+  expect(screen.getByLabelText("消息")).toHaveValue("");
+});
+
+it("发送等待确认或失败时保留草稿，确认成功才清除", async () => {
+  const first = showComposer();
+  let reject!: (error: Error) => void;
+  first.onSend.mockImplementationOnce(() => new Promise<void>((_, fail) => { reject = fail; }));
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "需要保存" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  first.unmount();
+  const retry = showComposer();
+  expect(screen.getByLabelText("消息")).toHaveValue("需要保存");
+  reject(new Error("offline"));
+  await Promise.resolve();
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(screen.getByLabelText("消息")).toHaveValue(""));
+  retry.unmount();
+  showComposer();
+  expect(screen.getByLabelText("消息")).toHaveValue("");
+});
+
+it("发送确认后不覆盖用户在等待期间新写的文字", async () => {
+  const view = showComposer();
+  let resolve!: () => void;
+  view.onSend.mockImplementationOnce(() => new Promise<void>((done) => { resolve = done; }));
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "已提交" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "下一条草稿" } });
+  resolve();
+  await waitFor(() => expect(screen.getByLabelText("消息")).toHaveValue("下一条草稿"));
+  view.unmount();
+  showComposer();
+  expect(screen.getByLabelText("消息")).toHaveValue("下一条草稿");
+});
+
+it("重新打开页面后将停放文字恢复到编辑栏，保留新输入且不自动发送", () => {
+  const view = showComposer(true);
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "等待发送" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "继续补充" } });
+  view.unmount();
+  const restored = showComposer(true);
+  expect(screen.getByLabelText("消息")).toHaveValue("等待发送\n继续补充");
+  restored.stop();
+  expect(restored.onSend).not.toHaveBeenCalled();
 });

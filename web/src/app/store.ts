@@ -6,7 +6,7 @@ import runtimeReducer, { hydrateDrafts } from "../realtime/runtimeSlice";
 const DRAFT_KEY = "redpanda.draftSessions";
 
 function readDrafts(): Record<string, string> {
-  const raw = sessionStorage.getItem(DRAFT_KEY);
+  const raw = localStorage.getItem(DRAFT_KEY);
   if (raw === null || raw === "") {
     return {};
   }
@@ -33,7 +33,7 @@ export const store = configureStore({
     getDefaultMiddleware().concat(redpandaApi.middleware),
 });
 
-const savedDrafts = sessionStorage.getItem(DRAFT_KEY);
+const savedDrafts = localStorage.getItem(DRAFT_KEY);
 if (savedDrafts !== null && savedDrafts !== "") {
   store.dispatch(hydrateDrafts(readDrafts()));
 }
@@ -46,9 +46,9 @@ store.subscribe(() => {
   }
   persistedDrafts = drafts;
   if (Object.keys(drafts).length === 0) {
-    sessionStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(DRAFT_KEY);
   } else {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
   }
 });
 
