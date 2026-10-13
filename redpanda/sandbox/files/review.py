@@ -3,7 +3,7 @@ from difflib import SequenceMatcher
 from hashlib import sha256
 import json
 
-from .changes import _identity_bindings, _observe_file, _origin, _ranges, operation_changes
+from .changes import _identity_bindings, _observe_file, _origin, _ranges, operation_changes, original_complete
 
 
 PAGE_LINES = 200
@@ -19,10 +19,7 @@ def _review_file(root, store, path, changes, owners, identities):
     external = appended > 0 or any(2 in block.owners for block in blocks.values()) or any(
         value.owner == 2 for value in metadata.values())
     chunk_size = changes[0]["before"]["chunk_size"]
-    original_size = metadata["size"].baseline if metadata["kind"].baseline == "file" else 0
-    original_observed = sum(min(len(block.baseline), max(0, original_size - int(key) * chunk_size))
-                            for key, block in blocks.items())
-    incomplete_original = original_observed != original_size
+    incomplete_original = not original_complete(metadata, blocks, chunk_size)
     current_bytes = b"".join(data[key] for key in sorted(data, key=int))
     rows, added, removed = [], 0, 0
     partial = bool(missing or appended or external or incomplete_original)

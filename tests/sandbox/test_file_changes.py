@@ -404,6 +404,17 @@ def test_scoped_review_does_not_claim_exact_deletion_without_complete_original(t
     assert file["partial"] and file["removed"] is None
 
 
+def test_scoped_tool_deletion_does_not_claim_complete_evidence_without_original_bytes(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
+    evidence.path.unlink()
+    with patch("redpanda.sandbox.files.changes.MAX_CONTENT_CHARS", 200_000):
+        result = attribution(evidence.root, evidence.store, evidence.path, operations=tuple(evidence.active))
+    assert not result["content_complete"]
+    assert not result["changes"][0]["content_complete"]
+    assert any("修改前" in reason for reason in result["changes"][0]["limitations"])
+
+
 def test_scoped_changes_distinguish_own_lines_from_other_sessions_and_prior_changes(tmp_path):
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"a\nb\nc\n"), evidence.file(b"x\nb\nc\n"))

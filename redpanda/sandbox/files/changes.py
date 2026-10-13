@@ -308,6 +308,13 @@ def _observe_file(root, store, path, changes, identities, *, full_content=False,
     return metadata, blocks, current, data, unobserved_bytes, appended
 
 
+def original_complete(metadata, blocks, chunk_size):
+    size = metadata["size"].baseline if metadata["kind"].baseline == "file" else 0
+    observed = sum(min(len(block.baseline), max(0, size - int(key) * chunk_size))
+                   for key, block in blocks.items())
+    return observed == size
+
+
 def _file_state(root, store, path, changes, identities, budget, text_offset=0, *, owners=None):
     metadata, blocks, current, data, unobserved_bytes, appended = _observe_file(
         root, store, path, changes, identities, owners=owners)
@@ -331,6 +338,8 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0, *
         properties.append({"origin": _origin([value.owner]), "description": description})
     if unobserved_bytes:
         limitations.append("文件有未观察的内容，结果仅覆盖有原值可比较的部分。")
+    if not original_complete(metadata, blocks, chunk_size):
+        limitations.append("文件有未观察的修改前内容，不能把已展示片段当成完整修改。")
     if appended:
         limitations.append("外部追加内容尚未展示，请读取当前文件核对。")
     if truncated:
