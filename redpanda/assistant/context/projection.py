@@ -21,6 +21,7 @@ from redpanda.assistant.control import (
     CONTROL_PROPOSED, CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
 )
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
+from redpanda.assistant.system_messages import system_message
 from redpanda.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
     workspace_rescue_result, workspace_file_result_note,
@@ -44,7 +45,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 12
+PROJECTOR_VERSION = 13
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -301,6 +302,13 @@ def _translate_visible_events(
             )
             continue
         if isinstance(payload, DomainFactCommitted):
+            notice = system_message(event)
+            if notice is not None:
+                items.append(_Projected(
+                    {"role": "user", "content": notice.model_text()},
+                    "system_notice", sequence=event.sequence,
+                ))
+                continue
             if payload.fact_type == WORKSPACE_RESTORE_FACT:
                 continue
             if payload.fact_type == WORKSPACE_VERSION_FACT:
@@ -377,11 +385,6 @@ def _project_step(step: StepState) -> list[_Projected]:
         items.append(_Projected(
             {"role": "user", "content": metadata[WORK_PLAN_CONTEXT]},
             "work_plan", sequence=step.sequence,
-        ))
-    if metadata is not None and "loop_guard_notice" in metadata:
-        items.append(_Projected(
-            {"role": "user", "content": metadata["loop_guard_notice"]["text"]},
-            "notice", sequence=step.sequence,
         ))
     shown = [
         (state, effect)

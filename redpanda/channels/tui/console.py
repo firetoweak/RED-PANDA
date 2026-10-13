@@ -257,6 +257,8 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
             )
         ),
         session_failed_sink=lambda _session_id, message: stream_output.note(message),
+        system_notice_sink=lambda _session_id, notice: stream_output.note(notice["text"])
+        if notice["severity"] == "warning" else None,
     ) as app:
         image_paste = ImagePaste(AttachmentGateway(app.sessions_root))
         # 只追加粘贴绑定。PromptSession 自己会把它和回车提交绑在一起；

@@ -18,6 +18,7 @@ export function truncateAfterUserMessage(
   }
   return {
     ...conversation,
+    system_notice: null,
     items: [...conversation.items.slice(0, index), {
       ...target, text,
       images: target.images.filter((ref) => artifactRefs.includes(ref)),

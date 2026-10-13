@@ -17,6 +17,7 @@ from redpanda.assistant.delivery import DeliverySink, PreviewSink
 from redpanda.config import AppConfig, assistant_config_from_app, load_app_config, config_path, write_json
 from redpanda.model_settings import ModelSettings
 from redpanda.llm.connections import ModelConnections
+from redpanda.llm.jev import JevClient
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.composition import build_mcp
 from redpanda.sandbox.files import clear_stale_mounts
@@ -65,6 +66,7 @@ async def bootstrap_assistant(
     session_activity_sink=None,
     session_failed_sink=None,
     schedule_changed_sink=None,
+    system_notice_sink=None,
 ) -> AsyncIterator[BootstrappedAssistant]:
     install_timing_logging()
     command_environment = dict(os.environ)
@@ -93,6 +95,7 @@ async def bootstrap_assistant(
         sink,
         workspaces=workspaces,
         llm=llm,
+        jev=JevClient(home.jev_path),
         command_environment=command_environment,
         models=models,
         context_usage_sink=context_usage_sink,
@@ -106,6 +109,7 @@ async def bootstrap_assistant(
         session_activity_sink=session_activity_sink,
         session_failed_sink=session_failed_sink,
         schedule_changed_sink=schedule_changed_sink,
+        system_notice_sink=system_notice_sink,
     )
     mcp = build_mcp(home)
     skills = build_skills(

@@ -4,7 +4,6 @@ import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import replace
 from time import perf_counter
 from typing import AbstractSet, Protocol
 
@@ -16,7 +15,6 @@ from redpanda.assistant.compact.core import (
 )
 from redpanda.assistant.artifacts import ArtifactGateway
 from redpanda.assistant.content import READ_CONTENT
-from redpanda.assistant.loop_guard import LoopGuard, NOTICE
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT
 from redpanda.assistant.control import (
     CONTROL_REQUEST_METADATA,
@@ -232,7 +230,6 @@ class JournalBackedLlmDecisionMaker:
         context_usage_sink: Callable[[str, int, int], None] | None = None,
         subagents: SubAgentHost | None = None,
         compact: CompactContext | None = None,
-        loop_guard: LoopGuard | None = None,
         preview: PreviewEmitter | None = None,
         exclusive_tool_names: AbstractSet[str] = frozenset(),
     ) -> None:
@@ -253,7 +250,6 @@ class JournalBackedLlmDecisionMaker:
         self._compact_threshold_tokens = compact_threshold_tokens
         self._subagents = subagents
         self._compact = compact
-        self._loop_guard = LoopGuard() if loop_guard is None else loop_guard
         self._preview = PreviewEmitter() if preview is None else preview
 
     def set_model(self, model: str, compact_threshold_tokens: int, reasoning_effort: str | None = None) -> None:
@@ -372,16 +368,6 @@ class JournalBackedLlmDecisionMaker:
             ),
         )
 
-    def with_loop_guard(self, prepared, events, position):
-        notice = self._loop_guard.inspect(events, position)
-        if notice is not None:
-            messages = [*prepared.messages, {"role": "user", "content": notice["text"]}]
-            prepared = replace(
-                prepared, messages=messages,
-                source_sequences=(*prepared.source_sequences, 0),
-            )
-        return prepared, notice
-
     async def decide(self, frame: DecisionFrame) -> RecordedDecision:
         # Journal facts are bounded by the frame position, freezing this Step's
         # visible world. Schemas read the same bounded events: a control proposal
@@ -411,9 +397,6 @@ class JournalBackedLlmDecisionMaker:
                     prompt,
                     prefix=None if self._compact is None else self._compact.prefix,
                 )
-            prepared, notice = self.with_loop_guard(
-                prepared, events, frame.observed_journal_position
-            )
         finally:
             _LOGGER.info("context preparation timing", extra={
                 "stage": "system", "operation": "context_prepare",
@@ -561,8 +544,6 @@ class JournalBackedLlmDecisionMaker:
             metadata[CONTROL_REQUEST_METADATA] = control_request
         if result.response.message_extensions:
             metadata[MESSAGE_EXTENSIONS] = result.response.message_extensions
-        if notice is not None:
-            metadata[NOTICE] = notice
         if prepared.work_plan_context is not None:
             metadata[WORK_PLAN_CONTEXT] = prepared.work_plan_context
         return RecordedDecision(

@@ -302,6 +302,12 @@ export function Conversation() {
   return (
     <Box className="conversation-layout">
     <Box component="section" className="conversation">
+      {conversation.system_notice === null ? null : (
+        <Alert color={conversation.system_notice.severity === "warning" ? "yellow" : "blue"}
+          icon={<IconAlertCircle size={18} />} title="系统运行提醒" m="md">
+          {conversation.system_notice.text}
+        </Alert>
+      )}
       {items.length === 0 ? (
         <ConversationWelcome />
       ) : (

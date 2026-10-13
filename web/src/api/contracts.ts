@@ -137,6 +137,11 @@ export const conversationViewSchema = z
     session: sessionViewSchema,
     compact_count: z.number().int().nonnegative(),
     context_input_tokens: z.number().int().nonnegative().nullable(),
+    system_notice: z.object({
+      text: z.string().min(1),
+      severity: z.enum(["info", "warning"]),
+      related_session_id: z.string().nullable(),
+    }).strict().nullable(),
     compact_phase: z.enum(["running", "ready", "failed"]).nullable(),
     waiting_until: z.string().datetime({ offset: true }).nullable(),
     work_plan: workPlanSchema.nullable(),

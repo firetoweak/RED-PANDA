@@ -50,6 +50,91 @@ async def until(predicate, timeout=30):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_jev_pause_interrupts_worker_and_persists_system_warning(self):
+        import httpx
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.llm.jev import JevClient
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.progress_watch import PAUSED
+        from tests.llm.test_jev import settings, response
+
+        cancelled, entered, notices = asyncio.Event(), asyncio.Event(), []
+        requests = []
+
+        class Pausable(ProcessLlm):
+            async def chat(inner, messages, model, **kwargs):
+                requests.append(messages)
+                if len(requests) == 1:
+                    return LLMCallResult(LLMResponse(content="", calls=(
+                        ToolCall("read", "read_file", '{"path":"input.txt"}'),
+                    )), LLMUsage(10, 5))
+                try:
+                    entered.set()
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+        (self.root / "input.txt").write_text("evidence", encoding="utf-8")
+        self.home.jev_path.write_text(settings(timeout_seconds=5.0).model_dump_json(), encoding="utf-8")
+
+        async def decide(_):
+            await entered.wait()
+            return httpx.Response(200, json=response())
+
+        self.host.jev = JevClient(self.home.jev_path, transport=httpx.MockTransport(decide))
+        self.host.llm = Pausable(self.root)
+        self.host.system_notice_sink = lambda *values: notices.append(values)
+        await self.host.create("one", self.workspace.workspace_id)
+        await self.host.select("web", "one")
+        await self.host.receive_user_message("one", "调查问题", delivery_id="input")
+        await until(lambda: bool(notices))
+        self.assertTrue(cancelled.is_set())
+        self.assertTrue(self.host.is_paused("one"))
+        self.assertEqual(len(requests), 2)
+        conversation = await AssistantQueries(self.store, self.host).conversation("one")
+        self.assertEqual(conversation.system_notice["text"], PAUSED)
+        self.assertEqual(conversation.system_notice["severity"], "warning")
+        self.assertEqual(sum(item.kind == "user" for item in conversation.items), 1)
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_sidecar_reminder_is_durable_and_only_enters_the_next_model_request(self):
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.assistant.system_messages import SYSTEM_MESSAGE
+        from redpanda.runtime import DomainFactCommitted, StepCommitted
+        from copy import deepcopy
+
+        requests, notices = [], []
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        class Repeating(ProcessLlm):
+            async def chat(inner, messages, model, **kwargs):
+                requests.append(deepcopy(messages))
+                count = len(requests)
+                if count == 4:
+                    entered.set()
+                    await release.wait()
+                calls = (ToolCall("read", "read_file", '{"path":"input.txt"}'),) if count <= 4 else ()
+                return LLMCallResult(LLMResponse(content="done" if not calls else "", calls=calls), LLMUsage(10, 5))
+
+        (self.root / "input.txt").write_text("same evidence", encoding="utf-8")
+        self.host.llm = Repeating(self.root)
+        self.host.system_notice_sink = lambda *values: notices.append(values)
+        await self.host.create("one", self.workspace.workspace_id)
+        await self.host.select("web", "one")
+        await self.host.receive_user_message("one", "检查文件", delivery_id="input")
+        await asyncio.wait_for(entered.wait(), 30)
+        await until(lambda: bool(notices))
+        self.assertFalse(any("<system_notice>" in str(m["content"]) for m in requests[3]))
+        release.set()
+        await until(lambda: ("one", "done") in self.output)
+        self.assertTrue(any("<system_notice>" in str(m["content"]) for m in requests[4]))
+        events = await SqliteJournal(self.store.require("one")).snapshot("one")
+        self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
+                             and e.payload.fact_type == SYSTEM_MESSAGE for e in events), 1)
+        self.assertTrue(all("loop_guard_notice" not in e.payload.decision_metadata
+                            for e in events if isinstance(e.payload, StepCommitted)))
+        self.assertTrue(self.host.failures.empty())
+
     async def test_workspace_command_keeps_launch_environment_across_worker_spawn(self):
         import json
         import os

@@ -11,7 +11,6 @@ from redpanda.assistant.attachments import (
 )
 from redpanda.assistant.compact.core import CompactContext, CompactBoundary, FIND_HISTORY, SUBMIT
 from redpanda.assistant.content import READ_CONTENT, READ_CONTENT_SCHEMA
-from redpanda.assistant.loop_guard import LoopGuard
 from redpanda.assistant.work_plan import UPDATE_PLAN, UPDATE_PLAN_SCHEMA, update_plan_binding
 from redpanda.assistant.delivery import (
     DELIVER_TOOL_NAME,
@@ -325,7 +324,6 @@ async def build_assistant_assembly(
         subagents=subagents,
         compact=compact_context,
         exclusive_tool_names=exclusive_tools,
-        loop_guard=LoopGuard(),
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)

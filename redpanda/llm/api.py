@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from redpanda.llm.jev import JevChoice, JevSettings
 
 from thinllm import (
     ContentDeltaSink,
@@ -29,6 +30,9 @@ __all__ = [
     "ContentDeltaSink",
     "InvalidLLMResponse",
     "LLMApi",
+    "JevApi",
+    "JevChoice",
+    "JevSettings",
     "LLMAuthenticationError",
     "LLMCallResult",
     "LLMContextLengthError",
@@ -65,3 +69,11 @@ class LLMApi(Protocol):
         reasoning_effort: str | None = None,
     ) -> LLMCallResult:
         ...
+
+
+class JevApi(Protocol):
+    """Optional, version-pinned Choice evaluation; None means unavailable."""
+
+    def settings(self) -> JevSettings | None: ...
+
+    async def evaluate(self, state: str, question: dict, settings: JevSettings) -> JevChoice | None: ...

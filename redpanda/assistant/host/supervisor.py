@@ -32,6 +32,8 @@ from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import session_view
+from redpanda.assistant.progress_watch import watch_session
+from redpanda.llm.api import JevApi
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
     RETURN_FACT,
@@ -73,6 +75,7 @@ class Worker:
     active_preview: str | None = None
     active_thinking: str | None = None
     live_tools: dict[str, str] = field(default_factory=dict)
+    run_revision: int = 0
 
 
 class HostSupervisor:
@@ -86,6 +89,7 @@ class HostSupervisor:
         sink,
         *,
         llm,
+        jev: JevApi | None = None,
         command_environment=None,
         models=None,
         context_usage_sink=None,
@@ -99,6 +103,7 @@ class HostSupervisor:
         session_activity_sink=None,
         session_failed_sink=None,
         schedule_changed_sink=None,
+        system_notice_sink=None,
         workspaces=None,
     ):
         self.store = store
@@ -106,6 +111,9 @@ class HostSupervisor:
         self.home = home
         self.sink = sink
         self.llm = llm
+        self.jev = jev
+        self.system_notice_sink = system_notice_sink
+        self._progress_tasks: set[asyncio.Task] = set()
         # 启动来源的副本；不跟随产品 PATH 补全或后续 Worker 环境变化。
         self.command_environment = dict(
             os.environ if command_environment is None else command_environment
@@ -505,7 +513,13 @@ class HostSupervisor:
         self.workers[session_id] = worker
         worker.reader = asyncio.create_task(self._watch(session_id, worker))
         self._track(session_id, worker.reader)
+        task = asyncio.create_task(watch_session(self, session_id, worker),
+                                   name=f"progress-watch:{session_id}")
+        self._progress_tasks.add(task)
+        task.add_done_callback(self._progress_tasks.discard)
+        self._track(session_id, task)
         return worker
+
 
     def _track(self, session_id, task):
         self.watchers.add(task)
@@ -705,6 +719,8 @@ class HostSupervisor:
                     break
             await worker.transition.wait()
         try:
+            if operation in {"resume", "cancel_turn"}:
+                worker.run_revision += 1
             if just_started and operation != "apply_auto_authorize":
                 await worker.peer.request(
                     "apply_auto_authorize",
@@ -1048,7 +1064,7 @@ class HostSupervisor:
         stopped = await asyncio.gather(*(
             self._reclaim_child(
                 child_id,
-                {"parent_session_id": session_id, "reason": "用户中断父会话"},
+                {"parent_session_id": session_id, "reason": "父会话已中断"},
             )
             for child_id in await self._running_children(session_id)
         ), return_exceptions=True)
@@ -1153,10 +1169,13 @@ class HostSupervisor:
         return await self.failures.get()
 
     async def close(self):
+        self.closed = True
+        for task in self._progress_tasks:
+            task.cancel()
+        await asyncio.gather(*self._progress_tasks, return_exceptions=True)
         if self._automation_task is not None:
             self._automation_task.cancel()
             await asyncio.gather(self._automation_task, return_exceptions=True)
-        self.closed = True
         workers = tuple(self.workers.values())
         for worker in workers:
             if worker.process.is_alive():

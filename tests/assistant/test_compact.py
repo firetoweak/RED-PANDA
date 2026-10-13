@@ -230,7 +230,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), 3)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_repeated_reads_are_reminded_and_can_complete(self):
+    async def test_repeated_reads_can_complete_without_decision_guard_metadata(self):
         (self.root / "repeat_reads").touch()
         (self.root / "release_compact").touch()
         await self.host.create("chat", self.workspace.workspace_id)
@@ -243,9 +243,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         events = await SqliteJournal(self.store.require(job["reader"])).snapshot(job["reader"])
         steps = [e.payload for e in events if isinstance(e.payload, StepCommitted)]
         self.assertEqual(len(steps), 11)
-        notices = [s.decision_metadata["loop_guard_notice"] for s in steps if "loop_guard_notice" in s.decision_metadata]
-        self.assertEqual(len(notices), 3)
-        self.assertTrue(all(n["evidence"][0]["new_count"] == 3 for n in notices))
+        self.assertTrue(all("loop_guard_notice" not in s.decision_metadata for s in steps))
         self.assertTrue(self.host.failures.empty())
 
     async def test_handoff_reads_frozen_prefix_attachments_from_source(self):

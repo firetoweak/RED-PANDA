@@ -11,6 +11,7 @@ from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
+from redpanda.assistant.system_messages import current_system_message
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
 from redpanda.assistant.subagent.subagent import (
@@ -118,6 +119,7 @@ class ConversationView:
     work_plan: dict | None = None
     work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
     context_input_tokens: int | None = None
+    system_notice: dict | None = None
     subagent_terminals: tuple[UnreportedChildReturn, ...] = ()
 
 
@@ -406,6 +408,7 @@ def project_conversation(
         work_plan=project_work_plan(events),
         work_plan_updates=project_work_plan_updates(events),
         context_input_tokens=latest_input_tokens(events),
+        system_notice=current_system_message(events),
     )
 
 

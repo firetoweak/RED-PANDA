@@ -36,6 +36,10 @@ class RedPandaHome:
         return self.root / "connections.json"
 
     @property
+    def jev_path(self) -> Path:
+        return self.root / "jev.json"
+
+    @property
     def workspaces_path(self) -> Path:
         return self.root / "workspaces.json"
 

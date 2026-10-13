@@ -1,17 +1,10 @@
-"""Session-local notices derived exclusively from committed Journal facts."""
-
-import json
+"""Mechanical observations; consumed exclusively by the independent progress watch."""
 
 from redpanda.assistant.loop_guard_strategies import ConsecutiveActions
-from redpanda.runtime import StepCommitted
+from redpanda.assistant.system_messages import system_message
 
 
-NOTICE = "loop_guard_notice"
-
-
-def committed_notice(payload):
-    metadata = payload.decision_metadata
-    return None if metadata is None else metadata.get(NOTICE)
+SOURCE = "progress_check"
 
 
 class LoopGuard:
@@ -22,11 +15,9 @@ class LoopGuard:
         covered = 0
         events = tuple(event for event in events if event.sequence <= position)
         for event in events:
-            if not isinstance(event.payload, StepCommitted):
-                continue
-            notice = committed_notice(event.payload)
-            if notice is not None:
-                covered = notice["covered_through"]
+            notice = system_message(event)
+            if notice is not None and event.delivery is not None and event.delivery.source == SOURCE:
+                covered = next(e.sequence for e in events if e.event_id == event.causation_id)
 
         evidence = []
         for strategy in self.strategies:
@@ -47,19 +38,7 @@ class LoopGuard:
                 })
         if not evidence:
             return None
-        text = (
-            "<loop_guard_notice>\n"
-            "来源：系统对你近期调用的观察，不是用户新指令。\n"
-            + "\n".join(
-                hit["observation"] + " 涉及的调用 id："
-                + json.dumps([ref["command_id"] for ref in hit["references"]], ensure_ascii=False)
-                for hit in evidence
-            )
-            + "\n请审视这些操作是否推进了目标，并据此决定下一步。"
-            "\n这是行为重复提醒，不代表已经判定无进展。\n</loop_guard_notice>"
-        )
         return {
-            "text": text,
             "covered_after": covered,
             "covered_through": position,
             "evidence": evidence,

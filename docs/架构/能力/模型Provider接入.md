@@ -1,12 +1,14 @@
 # 模型 Provider 接入
 
-RED PANDA 只拥有模型调用的窄协议 `LLMApi`。Host 按 Provider 持有 OpenAI-compatible Chat Completions 客户端，供选择该 Provider 的 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
+RED PANDA 的对话模型调用使用窄协议 `LLMApi`。Host 按 Provider 持有 OpenAI-compatible Chat Completions 客户端，供选择该 Provider 的 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
 
 ```text
 Assistant → LLMApi → Worker LLM Port → Host LLM Client → Provider
 ```
 
 Worker 通过 Host LLM port 调用，不能直接连接 Provider。
+
+独立判决模型使用表达其原生选择结果的窄协议，由 Host 为旁路检查装配客户端。Assistant 拥有问题、状态摘要与动作解释；协议适配只负责连接、输入输出校验和已知调用失败，不将判决包装成对话回复，也不进入 Worker 的对话调用链路。
 
 ## thinllm 与 RED PANDA 的分界
 

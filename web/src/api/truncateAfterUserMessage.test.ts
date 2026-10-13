@@ -57,7 +57,7 @@ const conversation: ConversationView = {
   },
   compact_count: 0,
   compact_phase: null,
-  waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+  waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], system_notice: null, context_input_tokens: null,
 };
 
 describe("truncateAfterUserMessage", () => {
