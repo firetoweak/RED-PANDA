@@ -11,6 +11,7 @@ from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
 from redpanda.sandbox.workspace import (
     FilesystemPermission, PermissionBinding, RootBinding, WorkspaceScope, WorkspaceViewSnapshot,
 )
+from pydantic import ValidationError
 from redpanda.tools.builtin.get_changes import GetChangesInput, create_get_changes_specs
 
 
@@ -18,10 +19,11 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name).resolve()
+        self.session_operations = AsyncMock(return_value=("a" * 64,))
         self.filesystem = SimpleNamespace(
             root=self.root, native_path=lambda path: path, logical_path=lambda path: path,
             changes=AsyncMock(return_value={
-                "ok": True, "code": "CHANGES_READ", "scope": "agent_touched_files",
+                "ok": True, "code": "CHANGES_READ", "scope": "session",
                 "changes": [{"path": "file.txt", "origin": "agent", "edits": [
                     {"origin": "agent", "byte_offset": 0, "before": "old", "after": "new", "truncated": False},
                 ], "properties": [], "content_complete": True, "limitations": [], "truncated": False}],
@@ -38,16 +40,24 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    async def query(self, path=".", *, binding=None):
-        return await create_get_changes_specs(binding or self.binding)[0].handler(GetChangesInput(path=path))
+    async def query(self, path=".", *, binding=None, scope="session"):
+        return await create_get_changes_specs(binding or self.binding, self.session_operations)[0].handler(GetChangesInput(path=path, scope=scope))
 
     async def test_delegates_to_file_management_and_exposes_logical_locations(self):
         result = await self.query("file.txt")
-        self.filesystem.changes.assert_awaited_once_with(self.root / "file.txt", offset=0, text_offset=0)
+        self.filesystem.changes.assert_awaited_once_with(self.root / "file.txt", operations=("a" * 64,), offset=0, text_offset=0)
+        self.session_operations.assert_awaited_once_with()
         item = result["changes"][0]
         self.assertEqual(item["location"]["path"], (self.root / "file.txt").as_uri())
         self.assertEqual(item["edits"][0]["after"], "new")
         self.assertNotIn("repository_location", result)
+
+    async def test_workspace_scope_is_explicit_and_does_not_query_session_operations(self):
+        await self.query(scope="workspace")
+        self.filesystem.changes.assert_awaited_once_with(self.root, operations=None, offset=0, text_offset=0)
+        self.session_operations.assert_not_awaited()
+        with self.assertRaises(ValidationError):
+            GetChangesInput(scope="all")
 
     async def test_unavailable_file_tracking_does_not_claim_a_clean_workspace(self):
         binding = replace(self.binding, execution_attachment=ExecutionAttachment("local-test", object()))

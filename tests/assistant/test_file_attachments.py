@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import AsyncMock
 
 from redpanda.assistant.attachments import (
     AttachmentGateway,
@@ -59,6 +60,7 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
             material = store.files.materialize(ref.attachment_id)
             runner = await build_builtin_tools(
                 WorkspaceRecord("workspace-test", "test", task, True, "2026-09-27"),
+                session_operations=AsyncMock(return_value=()),
                 materials_root=store.files.materials,
             )
             read = await runner.execute("read_file", {"path": str(material)})

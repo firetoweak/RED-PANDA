@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 import { z } from "zod";
+import { fileChangesSchema, fileDiffSchema, type FileChanges, type FileDiff } from "./fileChanges";
 
 import {
   bindOwner,
@@ -127,8 +128,18 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel"],
+  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel", "FileChanges"],
   endpoints: (build) => ({
+    getFileChanges: build.query<FileChanges, string>({
+      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
+      transformResponse: (value: unknown) => fileChangesSchema.parse(value),
+      providesTags: ["FileChanges"],
+    }),
+    getFileDiff: build.query<FileDiff, { sessionId: string; path: string; revision: string; offset: number }>({
+      query: ({ sessionId, ...params }) => ({ url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params }),
+      transformResponse: (value: unknown) => fileDiffSchema.parse(value),
+      providesTags: ["FileChanges"],
+    }),
     getModelSettings: build.query<ModelSettings, void>({
       query: () => "/model-settings",
       transformResponse: (value: unknown) => modelSettingsSchema.parse(value),
@@ -479,6 +490,8 @@ export const redpandaApi = createApi({
 });
 
 export const {
+  useGetFileChangesQuery,
+  useGetFileDiffQuery,
   useCreateSessionMutation,
   useGetModelSettingsQuery,
   useSaveModelSettingsMutation,

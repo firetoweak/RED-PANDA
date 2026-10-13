@@ -18,9 +18,11 @@ from redpanda.assistant.subagent.subagent import (
     project_pending, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.assistant.workspaces import bound_workspace_id
+from redpanda.assistant.workspaces import bound_workspace, bound_workspace_id
+from redpanda.sandbox.files import ChangesReadConflict, child_root, child_workspace, workspace_files
+from redpanda.sandbox.api import file_error_message
 from redpanda.assistant.workspace_versions import (
-    WorkspaceFileResult, WorkspaceVersionFact, project_workspace_file_result, project_workspace_versions,
+    WorkspaceFileResult, WorkspaceVersionFact, project_workspace_file_result, project_workspace_versions, session_file_operations,
 )
 from redpanda.runtime import (
     CommandPhase,
@@ -46,6 +48,14 @@ ToolStatus = Literal[
 ]
 SessionActivity = Literal["running", "idle"]
 UNKNOWN_TOOL_ERROR = "执行已开始，但未取得最终结果，原因未知，可能已部分执行"
+
+
+class FileChangesConflict(Exception):
+    """文件在查询期间改变，需要重新读取。"""
+
+
+class FileChangesUnavailable(Exception):
+    """无法读取文件变更。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +225,21 @@ class AssistantQueries:
             self._store.require(session_id)
         ).snapshot(session_id)
         return await self._conversation(session_id, events, view=view)
+
+    async def file_changes(self, session_id: str, *, path=None, offset=0):
+        journal = SqliteJournal(self._store.require(session_id))
+        events = await journal.snapshot(session_id)
+        workspace = bound_workspace(session_id, events, self._sessions.workspaces)
+        parent = project_parent(events)
+        if parent is not None:
+            workspace = child_workspace(workspace, child_root(self._sessions.home, parent, session_id))
+        operations = await session_file_operations(journal, events)
+        try:
+            return await workspace_files(self._sessions.home, workspace).review(operations, path=path, offset=offset)
+        except ChangesReadConflict as error:
+            raise FileChangesConflict(str(error)) from error
+        except OSError as error:
+            raise FileChangesUnavailable(file_error_message(error)) from error
 
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state

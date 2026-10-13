@@ -6,7 +6,7 @@ import sys
 import threading
 from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -121,7 +121,7 @@ def test_local_tool_edit_captures_only_changed_blocks_and_preserves_newlines(tmp
         file = view.root / "file"
         source = b"TARGET\n" + b"A" * (4 * 65536) + b"TARGET\r\n"
         file.write_bytes(source)
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view)
+        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view, session_operations=AsyncMock(return_value=()))
         identity = operation_id("s", "replace")
         result = await view.execute(identity, lambda: tools.execute("replace_all", {
             "path": "file", "old_block": "TARGET", "new_block": "CHANGE",
@@ -139,7 +139,7 @@ def test_write_failure_exposes_only_logical_file_information(tmp_path):
     from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view)
+        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view, session_operations=AsyncMock(return_value=()))
         original = Path.open
         def denied(path, *args, **kwargs):
             if path.name == "blocked.txt":
@@ -457,7 +457,8 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
             subprocess.run(["git", "-C", str(view.root), *args], capture_output=True, check=True)
         git("init"); git("add", ".")
         git("-c", "user.name=Test", "-c", "user.email=test@local", "commit", "-m", "baseline")
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view)
+        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view,
+                                          session_operations=AsyncMock(return_value=(operation_id("s", "discovery"),)))
         async def inspect():
             view.native_path(code).write_text("print('after')\n")
             found = await tools.execute("glob", {"pattern": "*.py"})

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-from redpanda.runtime import DomainFactCommitted
+from redpanda.runtime import DomainFactCommitted, StepCommitted
 from redpanda.runtime.model import CommandPhase
 from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceFiles, operation_id, validate_version
 
@@ -12,6 +12,21 @@ from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, W
 WORKSPACE_VERSION_FACT = "assistant.workspace_version"
 WORKSPACE_RESTORE_FACT = "assistant.workspace_restore"
 WORKSPACE_RESCUE_FACT = "assistant.workspace_rescue"
+
+
+async def session_file_operations(journal, events) -> tuple[str, ...]:
+    """Resolve file-operation owners, including the inherited branch prefix."""
+    if not events:
+        return ()
+    spans = await journal.history_through(events[-1].sequence)
+    return tuple(
+        operation_id(span.session_id, command.command_id)
+        for span in spans
+        for event in events
+        if span.first_sequence <= event.sequence <= span.last_sequence and isinstance(event.payload, StepCommitted)
+        for command in event.payload.step.commands
+    )
+
 
 SEMANTIC_RESTORE_HINT = (
     "机械回退不保证符合用户意图。请读取相关文件的当前内容，核对已有修改证据；"

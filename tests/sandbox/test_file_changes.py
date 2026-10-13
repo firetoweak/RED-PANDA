@@ -9,6 +9,7 @@ import pytest
 
 from redpanda.sandbox.files import WorkspaceFiles
 from redpanda.sandbox.files.changes import attribution
+from redpanda.sandbox.files.review import review_changes
 from redpanda.sandbox.files.file_view import native
 from redpanda.sandbox.files.file_view.publication import image, save_block
 
@@ -239,7 +240,7 @@ def test_unrelated_external_files_are_not_discovered_or_returned(tmp_path):
     (evidence.root / "unrelated.txt").write_text("external")
     result = attribution(evidence.root, evidence.store, evidence.root)
     assert [item["path"] for item in result["changes"]] == ["file"]
-    assert result["scope"] == "agent_touched_files"
+    assert result["scope"] == "workspace"
     assert result["content_complete"]
 
 
@@ -247,7 +248,7 @@ def test_empty_agent_history_only_claims_no_agent_related_results(tmp_path):
     evidence = Evidence(tmp_path)
     result = attribution(evidence.root, evidence.store, evidence.root)
     assert result["changes"] == []
-    assert result["scope"] == "agent_touched_files"
+    assert result["scope"] == "workspace"
 
 
 def test_new_file_and_deleted_file_have_real_before_and_after_content(tmp_path):
@@ -331,3 +332,133 @@ def test_directory_query_can_continue_past_the_file_limit(tmp_path):
         second = attribution(evidence.root, evidence.store, evidence.root, offset=first["next_offset"])
     assert first["next_offset"] == 1 and second["next_offset"] is None
     assert [item["path"] for page in (first, second) for item in page["changes"]] == ["file", "other"]
+
+
+def test_scoped_review_starts_at_selected_operation_and_keeps_interleaved_origins(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\nb\nc\n"), evidence.file(b"x\nb\nc\n"))
+    evidence.operation(evidence.file(b"x\nb\nc\n"), evidence.file(b"x\ny\nc\n"))
+    selected = evidence.active[-1]
+    evidence.operation(evidence.file(b"x\ny\nc\n"), evidence.file(b"x\ny\nz\n"))
+    evidence.path.write_bytes(b"x\ny\nz\n")
+    summary = review_changes(evidence.root, evidence.store, [selected])
+    file = summary["files"][0]
+    assert file["origin"] == "mixed" and file["partial"]
+    diff = review_changes(evidence.root, evidence.store, [selected], path="file")
+    assert diff["revision"] == file["revision"]
+    changed = [line for line in diff["lines"] if line["kind"] in ("add", "delete")]
+    assert {line["text"] for line in changed} == {"b\n", "c\n", "y\n", "z\n"}
+    assert all(line["origin"] != "agent" for line in changed)  # adjacent changes form a mixed hunk
+    assert review_changes(evidence.root, evidence.store, ["f" * 64])["files"] == []
+
+
+def test_scoped_review_excludes_overwritten_and_reverted_effects(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\n"), evidence.file(b"b\n"))
+    selected = evidence.active[0]
+    evidence.operation(evidence.file(b"b\n"), evidence.file(b"c\n"))
+    evidence.path.write_bytes(b"c\n")
+    assert review_changes(evidence.root, evidence.store, [selected])["files"] == []
+    evidence.operation(evidence.file(b"c\n"), evidence.file(b"a\n"), restore=True)
+    evidence.path.write_bytes(b"a\n")
+    assert review_changes(evidence.root, evidence.store, evidence.active)["files"] == []
+
+
+def test_scoped_review_counts_entire_diff_before_paginating_lines(tmp_path):
+    evidence = Evidence(tmp_path)
+    old = b"".join(f"old {i}\n".encode() for i in range(160))
+    new = b"".join(f"new {i}\n".encode() for i in range(160))
+    evidence.operation(evidence.file(old), evidence.file(new))
+    evidence.path.write_bytes(new)
+    summary = review_changes(evidence.root, evidence.store, evidence.active)
+    assert (summary["added"], summary["removed"], summary["partial"]) == (160, 160, False)
+    first = review_changes(evidence.root, evidence.store, evidence.active, path="file")
+    second = review_changes(evidence.root, evidence.store, evidence.active, path="file", offset=first["next_offset"])
+    assert first["revision"] == second["revision"] == summary["files"][0]["revision"]
+    assert second["next_offset"] is None
+    assert [row["new_line"] for row in first["lines"] + second["lines"] if row["kind"] == "add"] == list(range(1, 161))
+    evidence.path.write_bytes(new + b"external\n")
+    assert review_changes(evidence.root, evidence.store, evidence.active)["files"][0]["revision"] != first["revision"]
+
+
+def test_scoped_review_does_not_count_sparse_or_binary_fragments_as_lines(tmp_path):
+    evidence = Evidence(tmp_path)
+    original = b"a\n" * 65536
+    edited = b"b\n" + original[2:]
+    evidence.operation(evidence.file(original, complete=False), evidence.file(edited, complete=False))
+    evidence.path.write_bytes(edited)
+    file = review_changes(evidence.root, evidence.store, evidence.active)["files"][0]
+    assert file["partial"] and file["added"] is None
+    evidence.operation(evidence.file(edited), evidence.file(b"\0" + edited[1:]))
+    evidence.path.write_bytes(b"\0" + edited[1:])
+    file = review_changes(evidence.root, evidence.store, evidence.active)["files"][0]
+    assert file["binary"] and file["added"] is None
+
+
+def test_scoped_review_does_not_claim_exact_deletion_without_complete_original(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
+    evidence.path.unlink()
+    file = review_changes(evidence.root, evidence.store, evidence.active)["files"][0]
+    assert file["status"] == "deleted"
+    assert file["partial"] and file["removed"] is None
+
+
+def test_scoped_tool_deletion_does_not_claim_complete_evidence_without_original_bytes(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
+    evidence.path.unlink()
+    with patch("redpanda.sandbox.files.changes.MAX_CONTENT_CHARS", 200_000):
+        result = attribution(evidence.root, evidence.store, evidence.path, operations=tuple(evidence.active))
+    assert not result["content_complete"]
+    assert not result["changes"][0]["content_complete"]
+    assert any("修改前" in reason for reason in result["changes"][0]["limitations"])
+
+
+def test_scoped_changes_distinguish_own_lines_from_other_sessions_and_prior_changes(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\nb\nc\n"), evidence.file(b"x\nb\nc\n"))
+    evidence.operation(evidence.file(b"x\nb\nc\n"), evidence.file(b"x\nb\nz\n"))
+    selected = (evidence.active[-1],)
+    evidence.operation(evidence.file(b"x\nb\nz\n"), evidence.file(b"x\ny\nz\n"))
+    evidence.path.write_bytes(b"x\ny\nz\n")
+    scoped = attribution(evidence.root, evidence.store, evidence.root, operations=selected)
+    assert scoped["scope"] == "session"
+    file = scoped["changes"][0]
+    assert file["origin"] == "mixed"
+    assert [(edit["before"], edit["after"], edit["origin"]) for edit in file["edits"]] == [
+        ("b\n", "y\n", "external"), ("c\n", "z\n", "agent"),
+    ]
+    workspace = attribution(evidence.root, evidence.store, evidence.root)
+    assert workspace["scope"] == "workspace"
+    assert workspace["changes"][0]["edits"][0]["before"] == "a\n"
+    assert attribution(evidence.root, evidence.store, evidence.root, operations=())["changes"] == []
+
+
+def test_scoped_changes_report_overwritten_and_reverted_content_without_claiming_it(tmp_path):
+    evidence = Evidence(tmp_path)
+    evidence.operation(evidence.file(b"a\n"), evidence.file(b"b\n"))
+    selected = (evidence.active[-1],)
+    evidence.operation(evidence.file(b"b\n"), evidence.file(b"c\n"))
+    evidence.path.write_bytes(b"c\n")
+    file = attribution(evidence.root, evidence.store, evidence.path, operations=selected)["changes"][0]
+    assert file["origin"] == "external"
+    assert [edit["origin"] for edit in file["edits"]] == ["external"]
+    evidence.operation(evidence.file(b"c\n"), evidence.file(b"a\n"), restore=True)
+    evidence.path.write_bytes(b"a\n")
+    file = attribution(evidence.root, evidence.store, evidence.path, operations=selected)["changes"][0]
+    assert file["origin"] == "unchanged" and file["edits"] == []
+
+
+def test_scoped_review_describes_creation_deletion_and_empty_net_result(tmp_path):
+    evidence = Evidence(tmp_path)
+    missing = image()
+    evidence.operation(missing, evidence.file(b"new\n"))
+    evidence.path.write_bytes(b"new\n")
+    file = review_changes(evidence.root, evidence.store, evidence.active)["files"][0]
+    assert (file["status"], file["added"], file["removed"]) == ("added", 1, 0)
+    evidence.operation(evidence.file(b"new\n"), missing)
+    evidence.path.unlink()
+    assert review_changes(evidence.root, evidence.store, evidence.active)["files"] == []
+    file = review_changes(evidence.root, evidence.store, [evidence.active[-1]])["files"][0]
+    assert (file["status"], file["added"], file["removed"]) == ("deleted", 0, 1)

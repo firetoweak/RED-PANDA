@@ -24,12 +24,14 @@ READ_ONLY_WORKSPACE_TOOLS = frozenset({"glob", "grep", "read_file", "get_changes
 def create_environment_tool_specs(
     binding: EnvironmentBinding,
     interrupts: CommandInterrupts | None = None,
+    *,
+    session_operations,
 ) -> list[ToolSpec]:
     return [
         *create_file_read_specs(binding),
         *create_file_write_specs(binding),
         *create_file_manage_specs(binding),
-        *create_get_changes_specs(binding),
+        *create_get_changes_specs(binding, session_operations),
         create_command_execution_spec(binding)
         if interrupts is None
         else create_command_execution_spec(binding, interrupts.current),
