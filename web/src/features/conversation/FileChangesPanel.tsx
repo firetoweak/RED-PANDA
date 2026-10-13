@@ -15,8 +15,8 @@ function Counts({ file }: { file: { added: number | null; removed: number | null
 
 function Diff({ sessionId, file, refresh }: { sessionId: string; file: ChangedFile; refresh: () => void }) {
   const [offset, setOffset] = useState(0);
-  const { currentData: data, isFetching, isError } = useGetFileDiffQuery({ sessionId, path: file.path, revision: file.revision, offset });
-  if (isError) return <Alert color="orange">文件变化已更新或暂时无法读取。<Button variant="subtle" onClick={refresh}>刷新列表</Button></Alert>;
+  const { currentData: data, isFetching, isError, refetch } = useGetFileDiffQuery({ sessionId, path: file.path, revision: file.revision, offset });
+  if (isError) return <Alert color="orange">文件变化已更新或暂时无法读取。<Button variant="subtle" onClick={() => { refresh(); void refetch(); }}>刷新列表</Button></Alert>;
   if (data === undefined) return <Loader size="sm" />;
   return <Stack gap="xs">
     {data.partial && <Text size="xs" c="dimmed">部分统计：混合来源、二进制或不完整原文不计入精确行数；? 表示无法确定的旧行号。</Text>}

@@ -8,6 +8,22 @@ import { FileChangesPanel } from "../src/features/conversation/FileChangesPanel"
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+it("retries a failed diff as well as its summary when the file revision stays the same", async () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  const summaryRefetch = vi.fn(), diffRefetch = vi.fn();
+  hooks.summary.mockReturnValue({ currentData: {
+    files: [{ path: "src/app.py", status: "modified", added: 1, removed: 1, partial: false, binary: false, origin: "agent", revision: "a".repeat(64) }],
+    added: 1, removed: 1, partial: false,
+  }, isFetching: false, isError: false, refetch: summaryRefetch });
+  hooks.diff.mockReturnValue({ currentData: undefined, isFetching: false, isError: true, refetch: diffRefetch });
+  render(<MantineProvider><FileChangesPanel sessionId="session" /></MantineProvider>);
+  fireEvent.click(screen.getByRole("button", { name: /1 个文件已更改/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /src\/app.py/ }));
+  fireEvent.click(screen.getByRole("button", { name: "刷新列表" }));
+  expect(summaryRefetch).toHaveBeenCalledOnce();
+  expect(diffRefetch).toHaveBeenCalledOnce();
+});
+
 it("opens a file with line numbers and resets pagination when its revision changes", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   let revision = "a".repeat(64);

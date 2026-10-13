@@ -251,7 +251,7 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
 class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
     async def test_get_changes_binds_current_session_operations_by_default(self):
         with TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             workspace = root / "workspace"
             workspace.mkdir()
             changes = AsyncMock(return_value={"ok": True, "code": "CHANGES_READ", "scope": "session",
