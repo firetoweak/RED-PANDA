@@ -285,6 +285,10 @@ impl State {
                         self.fs.set_hidden(stats.ino, true).await?;
                         stats = self.fs.getattr(stats.ino).await?.ok_or(FsError::NotFound)?;
                     }
+                    if offset & 4 != 0 {
+                        self.fs.chmod(stats.ino, stats.mode & !0o222).await?;
+                        stats = self.fs.getattr(stats.ino).await?.ok_or(FsError::NotFound)?;
+                    }
                     *self.lookups.entry(stats.ino).or_default() += 1;
                     let (_, normalized) = self.resolve_named(path).await?;
                     (stats, file, normalized)

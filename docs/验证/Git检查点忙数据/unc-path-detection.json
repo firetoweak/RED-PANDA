@@ -1,0 +1,4 @@
+{
+  "3.53.2": "static int winIsUNCPath(const char *zFile){\n  if( zFile[0]=='\\\\' && zFile[1]=='\\\\' ){\n    return 1;\n  }\n  return sqlite3_win_test_unc_locking;\n}",
+  "3.53.4": "static int winIsUNCPath(const char *zFile){\n  if( zFile[0]=='\\\\' && zFile[1]=='\\\\' ){\n    if( zFile[2]=='?'\n     && zFile[3]=='\\\\'\n     && sqlite3Isalpha(zFile[4])\n     && zFile[5]==':'\n     && winIsDirSep(zFile[6])\n    ){\n      return sqlite3_win_test_unc_locking;\n    }else{\n      return 1;\n    }\n  }\n  return sqlite3_win_test_unc_locking;\n}"
+}

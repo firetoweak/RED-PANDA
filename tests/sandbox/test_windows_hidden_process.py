@@ -197,14 +197,14 @@ def test_interrupted_hidden_directory_publication_resumes_owned_object(tmp_path,
         set_hidden(mount / "new", True)
         client.request("finish")
         client.request("accept", command_id="create")
-        original = native.set_path_hidden
+        original = native.set_path_attributes
         def interrupted(*args):
             raise RuntimeError("interrupted before attributes")
-        monkeypatch.setattr(native, "set_path_hidden", interrupted)
+        monkeypatch.setattr(native, "set_path_attributes", interrupted)
         with pytest.raises(RuntimeError, match="interrupted before attributes"):
             pub.publish(client)
         identity = native.directory_identity(base / "new")
-        monkeypatch.setattr(native, "set_path_hidden", original)
+        monkeypatch.setattr(native, "set_path_attributes", original)
         pending = pub.unfinished(client.store)
         assert len(pending) == 1
         assert pub.execute(client, pending[0])["state"] == "complete"

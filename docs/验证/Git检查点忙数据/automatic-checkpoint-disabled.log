@@ -1,0 +1,6 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\wal-analysis.exe --off`
+sqlite=3.53.2 autocheckpoint=1000 busy_timeout=5000
+writer_autocheckpoint=0
+auto_disabled_production_result=Ok(())
+automatic_checkpoint_started=false

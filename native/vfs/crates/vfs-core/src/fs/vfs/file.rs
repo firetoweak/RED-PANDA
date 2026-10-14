@@ -261,10 +261,7 @@ impl File for VfsFile {
             .execute(move |conn| {
                 let _owned = &owned;
 
-                conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)?.execute([])?;
-                owned.pool.checkpoint(conn)?;
-                conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)?.execute([])?;
-                Ok(())
+                owned.pool.sync(conn)
             })
             .await
     }

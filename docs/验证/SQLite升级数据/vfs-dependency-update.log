@@ -1,0 +1,7 @@
+    Updating git repository `https://github.com/rusqlite/rusqlite`
+    Updating crates.io index
+    Removing libsqlite3-sys v0.38.2
+      Adding libsqlite3-sys v0.38.1 (https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946)
+    Removing rusqlite v0.40.2
+      Adding rusqlite v0.40.1 (https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946)
+note: pass `--verbose` to see 39 unchanged dependencies behind latest

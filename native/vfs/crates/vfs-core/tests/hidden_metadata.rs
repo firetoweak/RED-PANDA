@@ -1,6 +1,37 @@
 use vfs_core::{error::Result, FileSystem, Vfs, VfsOptions};
 
 #[tokio::test]
+async fn implicit_parent_copyup_preserves_directory_permissions() -> Result<()> {
+    use std::sync::Arc;
+    use vfs_core::OverlayFS;
+    let dir = tempfile::tempdir()?;
+    let base = Vfs::open(VfsOptions::ephemeral()).await?;
+    let parent = FileSystem::mkdir(&base.fs, 1, "parent", 0o555, 0, 0).await?;
+    let (_, file) = FileSystem::create_file(&base.fs, parent.ino, "file", 0o644, 0, 0).await?;
+    file.pwrite(0, b"base").await?;
+    file.fsync().await?;
+    let delta = Vfs::open(VfsOptions::ephemeral()).await?;
+    let overlay = OverlayFS::new(Arc::new(base.fs.clone()), delta.fs.clone());
+    overlay.init(dir.path().to_str().unwrap()).await?;
+    let parent = overlay.lookup(1, "parent").await?.unwrap();
+    let child = overlay.lookup(parent.ino, "file").await?.unwrap();
+    overlay
+        .open(child.ino, libc::O_RDWR)
+        .await?
+        .pwrite(0, b"edit")
+        .await?;
+    assert_eq!(
+        overlay.getattr(parent.ino).await?.unwrap().mode & 0o7777,
+        0o555
+    );
+    assert_eq!(
+        delta.fs.lookup(1, "parent").await?.unwrap().mode & 0o7777,
+        0o555
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn hidden_is_inode_metadata_and_survives_freeze_and_reopen() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("state.db");

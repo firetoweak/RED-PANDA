@@ -74,6 +74,7 @@ static NTSTATUS security_name(FSP_FILE_SYSTEM *fs,PWSTR name,PUINT32 attr,PSECUR
     if(attr)*attr=fi.FileAttributes;return security_copy(fs,sd,size);
 }
 static NTSTATUS security_get(FSP_FILE_SYSTEM *fs,PVOID ctx,PSECURITY_DESCRIPTOR sd,SIZE_T *size) {return security_copy(fs,sd,size);}
+static NTSTATUS security_set(FSP_FILE_SYSTEM *fs,PVOID ctx,SECURITY_INFORMATION information,PSECURITY_DESCRIPTOR sd) {return STATUS_NOT_SUPPORTED;}
 static VOID cleanup(FSP_FILE_SYSTEM *fs,PVOID ctx,PWSTR name,ULONG flags) {
     MOUNT_CONTEXT *c=ctx;if(c->node==1||c->cleaned)return;
     char path[4096];int length=(flags&FspCleanupDelete)?flat(name?name:c->name,path):0;
@@ -92,9 +93,10 @@ static NTSTATUS open_file(FSP_FILE_SYSTEM *fs,PWSTR name,UINT32 options,UINT32 a
 }
 static NTSTATUS create_file(FSP_FILE_SYSTEM *fs,PWSTR name,UINT32 options,UINT32 access,UINT32 attributes,PSECURITY_DESCRIPTOR sd,UINT64 allocation,PVOID *ctx,FSP_FSCTL_FILE_INFO *fi) {
     if(options&FILE_DELETE_ON_CLOSE)return STATUS_NOT_SUPPORTED;
+    if(attributes&~(FILE_ATTRIBUTE_READONLY|FILE_ATTRIBUTE_HIDDEN|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ARCHIVE|FILE_ATTRIBUTE_NORMAL))return STATUS_NOT_SUPPORTED;
     if(kind(name)!=2)return STATUS_NOT_SUPPORTED;
     MOUNT_CONTEXT *c=calloc(1,sizeof *c);if(!c)return STATUS_INSUFFICIENT_RESOURCES;
-    NTSTATUS st=named(fs,name,7,((options&FILE_DIRECTORY_FILE)!=0)|(attributes&FILE_ATTRIBUTE_HIDDEN),&c->node,fi);if(!NT_SUCCESS(st)) {free(c);return st;}
+    NTSTATUS st=named(fs,name,7,((options&FILE_DIRECTORY_FILE)!=0)|(attributes&FILE_ATTRIBUTE_HIDDEN)|((attributes&FILE_ATTRIBUTE_READONLY)<<2),&c->node,fi);if(!NT_SUCCESS(st)) {free(c);return st;}
     if(c->root)c->node=1;c->root=(fi->FileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0;wcscpy(c->name,name);*ctx=c;return STATUS_SUCCESS;
 }
 static NTSTATUS resize_rpc(FSP_FILE_SYSTEM *fs,MOUNT_CONTEXT *c,uint64_t size,FSP_FSCTL_FILE_INFO *fi) {
@@ -103,7 +105,13 @@ static NTSTATUS resize_rpc(FSP_FILE_SYSTEM *fs,MOUNT_CONTEXT *c,uint64_t size,FS
     if(NT_SUCCESS(st))st=decoded(FALSE,out,n,fi);free(out);return st;
 }
 static NTSTATUS overwrite_file(FSP_FILE_SYSTEM *fs,PVOID ctx,UINT32 attributes,BOOLEAN replace,UINT64 allocation,FSP_FSCTL_FILE_INFO *fi) {
-    return resize_rpc(fs,ctx,0,fi);
+    if(attributes&~(FILE_ATTRIBUTE_READONLY|FILE_ATTRIBUTE_HIDDEN|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ARCHIVE|FILE_ATTRIBUTE_NORMAL))return STATUS_NOT_SUPPORTED;
+    NTSTATUS st=get_info(fs,ctx,fi);if(!NT_SUCCESS(st))return st;
+    UINT32 desired=(replace?attributes:(fi->FileAttributes|attributes))&~FILE_ATTRIBUTE_ARCHIVE;
+    st=resize_rpc(fs,ctx,0,fi);if(!NT_SUCCESS(st))return st;
+    MOUNT_CONTEXT *c=ctx;void *out=0;uint32_t n=0;
+    st=rpc(fs,16,c->node,desired,0,0,&out,&n);
+    if(NT_SUCCESS(st))st=decoded(FALSE,out,n,fi);free(out);return st;
 }
 static NTSTATUS read_file(FSP_FILE_SYSTEM *fs,PVOID ctx,PVOID buffer,UINT64 offset,ULONG len,PULONG bytes) {
     MOUNT_CONTEXT *c=ctx;*bytes=0;if(c->root)return STATUS_FILE_IS_A_DIRECTORY;
@@ -185,7 +193,7 @@ done:
 static FSP_FILE_SYSTEM_INTERFACE Interface={
     .GetVolumeInfo=volume,.GetSecurityByName=security_name,.Create=create_file,.Open=open_file,.Overwrite=overwrite_file,
     .Cleanup=cleanup,.Close=close_file,.Read=read_file,.Write=write_file,.Flush=flush_file,
-    .GetFileInfo=get_info,.SetBasicInfo=set_basic,.SetFileSize=set_size,.SetDelete=set_delete,.Rename=rename_file,.GetSecurity=security_get,.ReadDirectory=read_directory,
+    .GetFileInfo=get_info,.SetBasicInfo=set_basic,.SetFileSize=set_size,.SetDelete=set_delete,.Rename=rename_file,.GetSecurity=security_get,.SetSecurity=security_set,.ReadDirectory=read_directory,
 };
 NTSTATUS vfs_bridge_start(PWSTR mountpoint,VFS_CALLBACK callback,void *context,BOOL case_sensitive,FSP_FILE_SYSTEM **result) {
     BRIDGE *bridge=calloc(1,sizeof *bridge);if(!bridge)return STATUS_INSUFFICIENT_RESOURCES;

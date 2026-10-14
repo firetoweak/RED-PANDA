@@ -1,4 +1,4 @@
-use super::{block, choose, restored_hidden, valid_path, verify, Conflict, Policy};
+use super::{block, choose, restore_metadata, valid_path, verify, Conflict, Policy};
 use crate::{storage, tracking::TrackingFS, Change, Sealed};
 use anyhow::{ensure, Context, Result};
 use serde::Deserialize;
@@ -244,6 +244,7 @@ fn merge(target: &mut Option<Image>, image: &Image) -> Result<()> {
                 && value.chunk_size == image.chunk_size
                 && value.mode == image.mode
                 && value.hidden == image.hidden
+                && value.readonly == image.readonly
                 && value.target == image.target,
             "alias metadata differs"
         );
@@ -263,6 +264,7 @@ fn same_content(a: &Image, b: &Image) -> bool {
         && a.size == b.size
         && a.mode == b.mode
         && a.hidden == b.hidden
+        && a.readonly == b.readonly
         && a.target == b.target
         && a.blocks
             .iter()
@@ -399,8 +401,7 @@ fn reverse(
                 let path = effect.after_names.first().expect("directory has no name");
                 let current = &paths[path].desired;
                 let mut desired = current.clone();
-                let (hidden, kept) = restored_hidden(after, before, current, policy);
-                desired.hidden = hidden;
+                let kept = restore_metadata(after, before, current, &mut desired, policy);
                 if kept {
                     preserved.insert(path.clone());
                 }
@@ -765,12 +766,6 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
             file.truncate(entry.desired.size).await?;
         }
         file.fsync().await?;
-        if let Some(mode) = entry.desired.mode {
-            let ino = storage::resolve(fs, path)
-                .await?
-                .context("file absent after write")?;
-            fs.chmod(ino, mode).await?;
-        }
     }
     for (path, entry) in &plan.paths {
         if entry.desired.kind != "symlink" {
@@ -791,6 +786,42 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
         fs.symlink(parent, &name, target, 0, 0).await?;
     }
     for (path, entry) in &plan.paths {
+        if entry.desired.kind == "missing" || entry.desired.kind == "symlink" {
+            continue;
+        }
+        let ino = storage::resolve(fs, path)
+            .await?
+            .context("metadata target absent")?;
+        if let Some(mode) = entry.desired.mode {
+            if fs
+                .getattr(ino)
+                .await?
+                .context("metadata inode absent")?
+                .mode
+                & 0o7777
+                != mode
+            {
+                fs.chmod(ino, mode).await?;
+            }
+        }
+        if let Some(readonly) = entry.desired.readonly {
+            let mode = fs
+                .getattr(ino)
+                .await?
+                .context("metadata inode absent")?
+                .mode;
+            if (mode & 0o222 == 0) != readonly {
+                fs.chmod(
+                    ino,
+                    if readonly {
+                        mode & !0o222
+                    } else {
+                        mode | 0o222
+                    },
+                )
+                .await?;
+            }
+        }
         if let Some(hidden) = entry.desired.hidden {
             let ino = storage::resolve(fs, path)
                 .await?

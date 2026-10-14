@@ -59,12 +59,20 @@ pub struct Conflict {
 
 fn validate(image: &Image) -> Result<()> {
     ensure!(
+        image.mode.is_none_or(|mode| mode <= 0o7777),
+        "invalid file mode"
+    );
+    ensure!(
         image.chunk_size == vfs_core::config::DEFAULT_CHUNK_SIZE as u64,
         "invalid block geometry"
     );
     if image.kind == "missing" {
         ensure!(image.identity.is_none(), "missing object has identity");
-        ensure!(image.hidden.is_none(), "missing object has attributes");
+        ensure!(image.mode.is_none(), "missing object has permissions");
+        ensure!(
+            image.hidden.is_none() && image.readonly.is_none(),
+            "missing object has attributes"
+        );
     } else {
         ensure!(
             image.identity.as_ref().is_none_or(|id| !id.is_empty()),
@@ -159,19 +167,40 @@ fn verify(cas: &Path, image: &Image) -> Result<()> {
     Ok(())
 }
 
-fn restored_hidden(
+fn restored_value<T: Copy + PartialEq>(
+    source: Option<T>,
+    destination: Option<T>,
+    current: Option<T>,
+    policy: &Policy,
+) -> (Option<T>, bool) {
+    if source == destination {
+        return (current, false);
+    }
+    if matches!(policy, Policy::Preserve) && current != source {
+        return (current, current != destination);
+    }
+    (destination, false)
+}
+fn restore_metadata(
     source: &Image,
     destination: &Image,
     current: &Image,
+    desired: &mut Image,
     policy: &Policy,
-) -> (Option<bool>, bool) {
-    if source.hidden == destination.hidden {
-        return (current.hidden, false);
-    }
-    if matches!(policy, Policy::Preserve) && current.hidden != source.hidden {
-        return (current.hidden, current.hidden != destination.hidden);
-    }
-    (destination.hidden, false)
+) -> bool {
+    let (hidden, kept_hidden) =
+        restored_value(source.hidden, destination.hidden, current.hidden, policy);
+    let (readonly, kept_readonly) = restored_value(
+        source.readonly,
+        destination.readonly,
+        current.readonly,
+        policy,
+    );
+    let (mode, kept_mode) = restored_value(source.mode, destination.mode, current.mode, policy);
+    desired.mode = mode;
+    desired.hidden = hidden;
+    desired.readonly = readonly;
+    kept_hidden || kept_readonly || kept_mode
 }
 
 fn choose(
@@ -182,14 +211,14 @@ fn choose(
 ) -> Result<std::result::Result<(Image, bool), Conflict>> {
     let source = &change.after;
     let destination = &change.before;
-    if source.hidden != destination.hidden
+    if (source.hidden != destination.hidden
+        || source.readonly != destination.readonly
+        || source.mode != destination.mode)
         && source.size == destination.size
         && source.blocks == destination.blocks
-        && source.mode == destination.mode
     {
         let mut desired = current.clone();
-        let (hidden, kept) = restored_hidden(source, destination, current, policy);
-        desired.hidden = hidden;
+        let kept = restore_metadata(source, destination, current, &mut desired, policy);
         return Ok(Ok((desired, kept)));
     }
     if current.size != source.size {
@@ -217,7 +246,6 @@ fn choose(
     }
     let mut desired = current.clone();
     desired.size = destination.size;
-    let mut preserved = false;
     let mut kept_external = false;
     for key in keys {
         let source_bytes = block(cas, source, key)?;
@@ -231,7 +259,6 @@ fn choose(
                     && source_bytes[index] != result[index]
                     && data[index] != source_bytes[index]
                 {
-                    preserved = true;
                     kept_external |= data[index] != result[index];
                 }
                 result[index] = data[index];
@@ -249,12 +276,7 @@ fn choose(
             *hash = None;
         }
     }
-    if !preserved {
-        desired.mode = destination.mode;
-    }
-    let (hidden, kept) = restored_hidden(source, destination, current, policy);
-    desired.hidden = hidden;
-    kept_external |= kept;
+    kept_external |= restore_metadata(source, destination, current, &mut desired, policy);
     validate(&desired)?;
     Ok(Ok((desired, kept_external)))
 }

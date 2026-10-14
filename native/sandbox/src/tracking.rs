@@ -12,6 +12,10 @@ use vfs_core::{
     BoxedFile, DirEntry, File, FileSystem, FilesystemStats, Stats, TimeChange, WriteRange,
 };
 
+fn unsupported(message: &'static str) -> Error {
+    std::io::Error::new(std::io::ErrorKind::Unsupported, message).into()
+}
+
 // Name-map locks never span an await. The capture mutex serializes first-touch evidence.
 pub struct Tracking {
     pub inner: Arc<dyn FileSystem>,
@@ -256,19 +260,37 @@ impl FileSystem for TrackingFS {
         Ok(r)
     }
     async fn set_hidden(&self, ino: i64, hidden: bool) -> Result<()> {
+        if ino == 1 {
+            return Err(unsupported("task root metadata cannot be changed"));
+        }
         self.touch(ino, Some((0, 0))).await?;
         self.inner.set_hidden(ino, hidden).await
     }
     async fn chmod(&self, i: i64, m: u32) -> Result<()> {
+        if i == 1 {
+            return Err(unsupported("task root metadata cannot be changed"));
+        }
+        if self
+            .inner
+            .getattr(i)
+            .await?
+            .ok_or(vfs_core::FsError::NotFound)?
+            .is_symlink()
+        {
+            return Err(unsupported("symlink mode changes are not supported"));
+        }
         // Metadata only: an empty range records mode without reading file bytes.
         self.touch(i, Some((0, 0))).await?;
         self.inner.chmod(i, m).await
     }
-    async fn chown(&self, i: i64, u: Option<u32>, g: Option<u32>) -> Result<()> {
-        self.inner.chown(i, u, g).await
+    async fn chown(&self, _: i64, _: Option<u32>, _: Option<u32>) -> Result<()> {
+        Err(unsupported("ownership changes are not supported"))
     }
-    async fn utimens(&self, i: i64, a: TimeChange, m: TimeChange) -> Result<()> {
-        self.inner.utimens(i, a, m).await
+    async fn utimens(&self, _: i64, a: TimeChange, m: TimeChange) -> Result<()> {
+        if matches!(a, TimeChange::Omit) && matches!(m, TimeChange::Omit) {
+            return Ok(());
+        }
+        Err(unsupported("explicit timestamp changes are not supported"))
     }
     async fn open(&self, i: i64, f: i32) -> Result<BoxedFile> {
         if f & libc::O_TRUNC != 0 {
@@ -297,12 +319,18 @@ impl FileSystem for TrackingFS {
         Ok((s, self.wrap(ino, f)))
     }
     async fn mknod(&self, p: i64, n: &str, m: u32, r: u64, u: u32, g: u32) -> Result<Stats> {
+        if m & 0o170000 != 0o100000 {
+            return Err(unsupported("special file creation is not supported"));
+        }
         let path = self.namespace(p, n).await?;
         let s = self.inner.mknod(p, n, m, r, u, g).await?;
         self.bind(s.ino, path);
         Ok(s)
     }
     async fn symlink(&self, p: i64, n: &str, t: &str, u: u32, g: u32) -> Result<Stats> {
+        if cfg!(windows) {
+            return Err(unsupported("Windows symlinks are not supported"));
+        }
         let path = self.namespace(p, n).await?;
         let s = self.inner.symlink(p, n, t, u, g).await?;
         self.bind(s.ino, path);
@@ -317,11 +345,8 @@ impl FileSystem for TrackingFS {
         self.namespace(p, n).await?;
         self.inner.rmdir(p, n).await
     }
-    async fn link(&self, i: i64, p: i64, n: &str) -> Result<Stats> {
-        let path = self.namespace(p, n).await?;
-        let s = self.inner.link(i, p, n).await?;
-        self.bind(s.ino, path);
-        Ok(s)
+    async fn link(&self, _: i64, _: i64, _: &str) -> Result<Stats> {
+        Err(unsupported("hard-link namespace changes are not supported"))
     }
     async fn rename(&self, p: i64, n: &str, q: i64, m: &str) -> Result<()> {
         self.rename_with_replaced_ino(p, n, q, m).await?;
@@ -342,6 +367,14 @@ impl FileSystem for TrackingFS {
                 "case-only rename is not supported by workspace evidence",
             )
             .into());
+        }
+        if self
+            .inner
+            .lookup(p, n)
+            .await?
+            .is_some_and(|s| s.is_directory())
+        {
+            return Err(unsupported("directory rename is not supported"));
         }
         self.single_link(p, n).await?;
         self.single_link(q, m).await?;

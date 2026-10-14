@@ -1,0 +1,72 @@
+[
+  {
+    "iteration": 0,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\0\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3048149999813177
+  },
+  {
+    "iteration": 1,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\1\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4286509999656118
+  },
+  {
+    "iteration": 2,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\2\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.386191500001587
+  },
+  {
+    "iteration": 3,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\3\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3974757999530993
+  },
+  {
+    "iteration": 4,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\4\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.418781099957414
+  },
+  {
+    "iteration": 5,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\5\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.465333699947223
+  },
+  {
+    "iteration": 6,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\6\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3705478999763727
+  },
+  {
+    "iteration": 7,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\7\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3812444999930449
+  },
+  {
+    "iteration": 8,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\8\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3310915000038221
+  },
+  {
+    "iteration": 9,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-4e7d0209\\9\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4670604999992065
+  }
+]

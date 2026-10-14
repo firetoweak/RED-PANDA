@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-14",
+  "platform": "Windows x64",
+  "elevated": false,
+  "schema": "0.13",
+  "branch": "codex/filesystem-execution-windows-hook",
+  "base_commit": "a4ae646",
+  "uncommitted_changes": true,
+  "core_tests": {
+    "passed": 193,
+    "ignored": 2
+  },
+  "native_mount_tests": {
+    "passed": 1
+  },
+  "native_tracking_tests": {
+    "passed": 1
+  },
+  "python_full_summary": "========== 1116 passed, 21 skipped, 4 warnings in 368.51s (0:06:08) ===========",
+  "python_targeted_summary": "167 passed, 21 subtests passed in 48.10s",
+  "git_workflow_repetitions": 10,
+  "observed_unresolved_issue": "One intermediate targeted run failed at Git finish with WAL checkpoint is busy; 10 independent workflow repetitions and final suites passed. Root cause not established; no retry or error suppression added.",
+  "linux_fuse_run_locally": false,
+  "filesystem_build": {
+    "target": "x86_64-pc-windows-gnullvm",
+    "profile": "release",
+    "sqlite_c_flags": "-DSQLITE_DIRECT_OVERFLOW_READ=0",
+    "source_sha256": {
+      "native/vfs": "dbf31578bcd2162efdf804b69ad53a81ab3ee83d8c5908f8329d125c47bfce2c",
+      "native/sandbox": "e205262ce26e16331cdd365556afa6ccf77894e1f1f2b925b4ae9d2b27f9ecf1",
+      ".cargo/config.toml": "52ae2a0a98b8d32b7fe08a24b92677160dece4a5c813117e3e81bd78f273c108",
+      "scripts/build_sandbox.py": "2857b6a4a56c6af6bb702dd3a129f96434f2284f95af384fc1b63600097a6864"
+    },
+    "files": {
+      "libunwind.dll": "b0636a4281610124704adb2be2edf5642e830d86c68b7f27dbc9c8154705a780",
+      "licenses/FACTORY-README.md": "ee9714807983523eb1377bd7d29c936bfd9c794a988aced4a1a626361e8583da",
+      "licenses/FACTORY-SOURCE.md": "b84da47a501486eb7cd86cdfa5e8e71a7284a55f83adc20d3dfa5b8528b189ee",
+      "licenses/LICENSE-fuser.md": "e5de4041803ce3d7b1b269165677baabbeb9e43252ad176a877bd544ca04d748",
+      "licenses/LICENSE-libmimalloc-sys-0.1.49.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-libsqlite3-sys-0.38.2.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-mimalloc-0.1.52.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-mimalloc-native.txt": "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9",
+      "licenses/LICENSE-nfsserve.md": "99cbb513e18ecf180a25f5c2e8f2980a91ead909c191fd4c34323497d13a3c74",
+      "licenses/LICENSE-rusqlite-0.40.2.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-SQLite.txt": "49cf7bcb103eb3244150a23bb23d840370a4762914faf1b450072a4b03c14670",
+      "licenses/LICENSE-tokio-rusqlite-0.8.0.txt": "3970ecb00e1ebaa4eeec6819aad0a572a0436b29077e8fade4853143fa776b30",
+      "licenses/LLVM-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+      "licenses/WINFSP-LICENSE.txt": "68ae2fa9d8e6110ebdc9a236beecf118e279f8a26530daf09c9e682c231f7879",
+      "redpanda-sandbox.exe": "3b7c891ac4e28f6e0c6c669f3dfd064ffae64183d6617a571df48971eca31595",
+      "winfsp-x64.dll": "3e2bb88e543cebf98fa579382f22032cbc1c64c8082c48eedf99f48a0448de31"
+    }
+  },
+  "execution_artifacts": {
+    "redpanda-hook.dll": "4fe1d5655781d8b13bc6608642dc2fd19b53970539a0e80145a9b64e9a8cf141",
+    "redpanda-command.exe": "88f9bab4613ea97425da6225f10cbc5b7d8f18d07b4de4d544fa4688817cf3fb",
+    "licenses/DETOURS-LICENSE.md": "f854ae8aabc0404652b48a2b3bf7f21ec174c69d73f5596934c20884eb0639ef",
+    "licenses/DETOURS-SOURCE.md": "96112961134277a31525379b62980764b558fb34fb2692c78a2278e4e4e076f8",
+    "licenses/LLVM-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+  },
+  "archives": {
+    "redpanda-sandbox-windows-x86_64.zip": "617043a9d30b8a7bb6ca3c3ed8cd484d4e3c10e5e86a9c6a0347a08bbe04c0d1",
+    "redpanda-execution-windows-x86_64.zip": "726121037858360fa8e8f1f9fa375d10495fdb934f826a379d94a624aec18cf8"
+  },
+  "source_sha256": {
+    ".github/workflows/sandbox-linux.yml": "803713432f03da9ee42621b0cbd42e3bf4bfde429025d4bc972272f963de0b98",
+    ".github/workflows/sandbox-windows.yml": "4dfe2ba8f4a357320c5d764611a841fead281dd66eaa4c9e58b4f354b57d4098",
+    "native/sandbox/Cargo.lock": "016a3854757389eefc495cd74a1f9e28ca6f48faae4e1dcd02cc4f0431bdeeec",
+    "native/sandbox/Cargo.toml": "1944d84962746c66642bd0d6d8fc74e7ecb143ffb6db60cb642594f50c7acf61",
+    "native/sandbox/src/main.rs": "0a532fb6c49f445bb5dd79ac83c8d5abefce10622f388d2b84594b4cd7442aef",
+    "native/sandbox/src/restore.rs": "6c9c2048fe84c4b1d793ce8e9e2e13e9e665a1362e0c994143e47a8ca7a19774",
+    "native/sandbox/src/restore/namespace.rs": "849965099bebdcd0cedfe81ecc6bb3e297cdeaf4f67b9c24990e4394367a547b",
+    "native/sandbox/src/storage.rs": "7f32ba07024cf49aad407550ee4fe0d151fc92d65170e61005012e0b3a68ee83",
+    "native/sandbox/src/tracking.rs": "8e552fc52ac01f29744a703d21d7071cfb2aabeeca0377d109f99c3f4209b733",
+    "native/sandbox/tests/tracking_contracts.rs": "bb2430c3dc68902951fa32d70a5fe5e73f5b0271e659c51d5b8bf3b2efcdc5be",
+    "native/vfs/crates/vfs-core/src/fs/host/windows.rs": "95cdc59ab00a0e7829f4f470278278e8ffdcf8b0d65b9e1533b4135f9ec68768",
+    "native/vfs/crates/vfs-core/src/fs/overlay/copyup.rs": "b4b9044130c23729048374817870843c96c88dfaa6cc2b3c5ea282dd91cd1140",
+    "native/vfs/crates/vfs-core/tests/hidden_metadata.rs": "7b8c3a7c6f5f33838269e0a60f251e4324108ab16d77a6d2d8d9003ff89a899f",
+    "native/vfs/crates/vfs-mount/src/windows.rs": "0338fc48e6123ba7e7b012c191ac5387bfaa321d163f28251404138e6295ab7d",
+    "native/vfs/crates/vfs-mount/src/windows/bridge.c": "2ed08883840bdd301a3fd39da7291b7090ae7fd27718529a7b80cbed0c782631",
+    "redpanda/filesystem/changes.py": "c7dc8d6843c86105a0a1b540b86e2ee792874944319cba408786606a8c996430",
+    "redpanda/filesystem/file_view/native.py": "49b6c17e25788adcf59a6c8db8e7494caa20199c1878057e46dd7e2179f154e5",
+    "redpanda/filesystem/file_view/native_posix.py": "26487c1a095924caa9212529f7a28903b8d5f5c658f357e9a2d292bfee7dd09e",
+    "redpanda/filesystem/file_view/native_win.py": "8c4d3dda9e71525667267f0707995b9deb6b070505c2190194f3e1a288813b16",
+    "redpanda/filesystem/file_view/publication.py": "5dc5c0cb084929d0696ebf9a4dcb945af477512c4dd22ead178d26a1e978f9bd",
+    "redpanda/filesystem/review.py": "f68f69b72fec0119c0fb9e3e6ec87f46e2412bf400b7bb83b8952174aad8636d",
+    "redpanda/tools/builtin/command_execution.py": "0d21fb471d703e167f05d09e9976f62a748e3fcd35162a84eb796aad7a21a6b2",
+    "tests/execution/test_windows_task_process.py": "e98d79255c403daa0edd800e1b6a6965b1c9eca7aa656da7b919faad265881ee",
+    "tests/fixtures/windows_attributes.py": "ed0eabc84be17eb7f517a53de726c775d6eb2e808632a59f8331128eb7b670ec",
+    "tests/sandbox/test_file_changes.py": "3457bc1a7bbc298d4af8da23915b6f156e9c0010af2e0b9dec336b27a82e86a1",
+    "tests/sandbox/test_posix_metadata_process.py": "61a191ae6879289c6a3874c9710815bd823233c99dee6ceeb80a508f71ddbb56",
+    "tests/sandbox/test_windows_hidden_process.py": "620889694d7f9d39b63623b484b5f49e260b697012ce3721e93b4e9683633fc2",
+    "tests/sandbox/test_windows_readonly_process.py": "226f7987bd6b4e05901b7fce472ae82334bd211fee26fd78959b9dd2b0013032"
+  },
+  "evidence_sha256": {
+    "acl-stream-tests.log": "27c2def9a1ea968f374325a2965e16416193687a42ee8d0a16e61797915edf79",
+    "build.log": "b1221fb67def2279f0f2075d67f3f64869f96743c8ea3189d04d3f27ed1b1133",
+    "core-tests.log": "a5ccff23fd7964ffe6805d1b378ab7323672765ae966619f21b72a07f3fee8a6",
+    "format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "full-tests.log": "44f7077dda028ee4d94516e7e40cd55da34be8a8917690ef4d6c725cb4e8de90",
+    "full-tests.xml": "02ed34162c50b01aa56a1b65937f4f3a5d05fae1c18f08af23efb85ccd8e28e6",
+    "git-repeat-tests.log": "b9040e733f6b2009f9c07028129bc35ff820608ab265105be32c3580bd92f332",
+    "mounts-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-mount.log": "e4283591fba3c1b099d8827ae367446aa12159b4f99d84f9b4db3654c44a5a48",
+    "pre-final-full-tests.log": "cb5ea50bd21d353f192a84494737b2fcfbece5d77151c55f5facdf4a4561ad9e",
+    "pre-final-full-tests.xml": "d8c24f23d97aff79f6fc5ac7183f4eafc59ad9c66cbba91baa8e7a6ce275c503",
+    "service-clippy.log": "c69b622a23ed934df1ca5ff2ea4d3b489c0f9a9f230321e6ef61fc828b1b0ce9",
+    "targeted-tests.log": "3f344dc445d2be63c76eb96abfe7425f444117746ec3326ba27571fc566e2f6f",
+    "targeted-tests.xml": "b56011c947bd0c6bddb02cc7fe091a718e7ce78bbf6806f9388cea8f1ded5af3",
+    "tracking-contracts.log": "5e35a4048260de7a42b91782be0d2d1d59039a2b8429e202bd29ffeccdd80593",
+    "vfs-clippy.log": "aca5a81547cf422a759a44db1bdde00701faf3427f392d548f02ace5becd0d14"
+  }
+}

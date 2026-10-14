@@ -29,6 +29,31 @@ async def tools_at(root, storage):
     return view, tools
 
 
+def test_readonly_attribute_is_tracked_through_hook_and_host_clear_is_denied(tmp_path):
+    async def scenario():
+        root=tmp_path/"project";root.mkdir();path=root/"file";path.write_text("bytes")
+        view,tools=await tools_at(root,tmp_path/"store")
+        try:
+            identity=operation_id("test","readonly")
+            result=await view.execute(identity,lambda:tools.execute("execute_command",{
+                "command":"[IO.File]::SetAttributes((Join-Path $PWD.Path 'file'),[IO.FileAttributes]::ReadOnly); (Get-Item file).IsReadOnly",
+            }))
+            assert result["data"]["exit_code"]==0,result
+            assert "True" in result["data"]["stdout"]["content"]
+            assert path.stat().st_file_attributes&1
+            receipt=json.loads((view.storage/"commands"/identity/"sealed.json").read_text())
+            assert receipt["changes"][0]["after"]["readonly"] is True
+            result=await view.read(lambda:tools.execute("execute_command",{
+                "workspace_effect":"read_only",
+                "command":"try {[IO.File]::SetAttributes((Join-Path $PWD.Path 'file'),[IO.FileAttributes]::Normal);exit 9} catch [UnauthorizedAccessException] {Write-Output DENIED}",
+            }))
+            assert result["data"]["exit_code"]==0 and "DENIED" in result["data"]["stdout"]["content"],result
+            assert path.stat().st_file_attributes&1
+        finally:
+            path.chmod(0o666)
+    asyncio.run(scenario())
+
+
 def test_default_git_init_publishes_hidden_git_directory_through_task_hook(tmp_path):
     git = shutil.which("git")
     assert git is not None, "Git is required for the Windows coding process contract"

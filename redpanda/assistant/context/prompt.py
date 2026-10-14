@@ -4,6 +4,7 @@ from pathlib import Path
 
 def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: bool) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
+    system = platform.system()
     workspace = f"工作区：{workspace_root}"
     if own_copy:
         workspace += "（这是你自己的副本，不是用户的目录）"
@@ -14,15 +15,18 @@ def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: boo
     )
     return "\n".join((
         "<environment>",
-        f"系统：{platform.system()}",
+        f"系统：{system}",
         workspace,
         f"相对路径从工作区开始；{access}",
         "只读查询可并行；要验证某次修改，等修改调用返回后再查询。",
         "命令内修改项目文件使用相对路径。",
         "get_changes 和文件回退只处理助手对工作区文件的修改；用户其他文件保持现状，.gitignore 不影响回退范围。",
-        "命令仍可访问本机其他位置；命令通过绝对路径造成的修改，以及软件安装、工作区外缓存和网络操作不在 get_changes 核对与文件回退范围。",
+        "命令工具不提供进程、系统或网络隔离，仍可访问本机其他位置；不能假定运行环境另有沙箱。任务目录之外的写入、用户环境安装、系统配置、工作区外缓存和网络副作用不在 get_changes 核对与文件回退范围。",
         "外部服务工具直接修改本机文件时，不能依赖 get_changes 核对这次操作，也不能依赖 restore_workspace 撤销；项目常规文件修改使用专用文件工具。",
-        "当前不支持目录重命名、只改大小写重命名、硬链接路径修改、ACL、ADS 和 reparse。",
+        "任务文件不支持目录重命名、硬链接路径修改或完整内存映射（mmap）一致性；不提供完整的符号链接语义。",
+        "Windows 任务文件还不支持只改大小写的重命名、符号链接与重解析点（reparse）、ACL 或备用数据流（ADS）。"
+        if system == "Windows" else
+        "POSIX 符号链接不支持单独修改链接权限。",
         "</environment>",
     ))
 

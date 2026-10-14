@@ -65,6 +65,16 @@ jobs:
           rustup toolchain install "$channel" --profile minimal
       - name: Build Linux
         run: python scripts/build_sandbox.py
+      - name: Verify tracked filesystem mutation boundaries
+        working-directory: native/sandbox
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
+        run: cargo test --locked --test tracking_contracts
+      - name: Verify checkpoint coordination and failure cleanup
+        working-directory: native/vfs
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
+        run: cargo test --locked -p vfs-core --lib pool::checkpoint_tests
       - name: Package release build
         run: python -m scripts.sandbox_runtime package --platform linux-x86_64
       - name: Prepare verification environment

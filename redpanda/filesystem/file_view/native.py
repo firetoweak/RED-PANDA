@@ -7,13 +7,13 @@ if os.name == "nt":
     from .native_win import (
         directory_metadata,
         directory_identity,
-        hidden,
+        attributes,
         identity,
         identity_handle,
         open_file,
         remove_open,
-        set_hidden,
-        set_path_hidden,
+        set_attributes,
+        set_path_attributes,
     )
 else:
     from .native_posix import (
@@ -21,13 +21,14 @@ else:
         identity,
         open_file,
         remove_open,
+        set_path_mode,
     )
 
-    def hidden(file):
-        return None
+    def attributes(file):
+        return {"hidden": None, "readonly": None}
 
     def directory_metadata(path):
-        return directory_identity(path), None
+        return directory_identity(path), {"hidden": None, "readonly": None}
 
 __all__ = [
     "directory_identity",

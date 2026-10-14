@@ -94,6 +94,18 @@ def directory_identity(path):
     )
 
 
+def set_path_mode(path, expected, desired, identity):
+    fd = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if _format(info, _birth_ns(fd, b"", AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW)) != identity or info.st_mode & 0o7777 != expected:
+            return False
+        os.chmod(f"/proc/self/fd/{fd}", desired)
+        return True
+    finally:
+        os.close(fd)
+
+
 class _Opened:
     def __init__(self, file, path):
         self._file = file

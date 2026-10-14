@@ -14,6 +14,22 @@ pub enum Error {
     #[error("database error")]
     Database(#[from] tokio_rusqlite::rusqlite::Error),
 
+    /// Preserve a WAL callback error even if SQLite replaces its statement error.
+    #[error("automatic SQLite checkpoint failed (operation error: {operation:?})")]
+    AutomaticCheckpoint {
+        operation: Option<Box<Error>>,
+        #[source]
+        checkpoint: tokio_rusqlite::rusqlite::Error,
+    },
+
+    /// A connection with an unrestored temporary setting cannot be reused.
+    #[error("failed to restore SQLite synchronous mode (checkpoint error: {checkpoint:?})")]
+    SynchronousRestore {
+        checkpoint: Option<Box<Error>>,
+        #[source]
+        restore: tokio_rusqlite::rusqlite::Error,
+    },
+
     /// IO error
     #[error("io error")]
     Io(#[from] std::io::Error),

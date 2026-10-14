@@ -1,0 +1,177 @@
+{
+  "date": "2026-10-14",
+  "platform": "Windows x64",
+  "elevated": false,
+  "sqlite_version": "3.53.4",
+  "sqlite_source_id": "2026-07-24 19:02:57 bf7c7f30031888f4e796e429ab3978879485813aaca6f641c7b33e4e09459bcc",
+  "sqlite3_c_sha256": "b1dd5d74ec7f29055a6684fa06fb3c2f6821c87dd38f9a458dfd2e8a1db28189",
+  "upstream_revision": "901f9946efdaaa289e6b1c5bd56dc67f4b651e51",
+  "dependencies": {
+    "native/vfs": [
+      {
+        "name": "libsqlite3-sys",
+        "version": "0.38.1",
+        "source": "git+https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946efdaaa289e6b1c5bd56dc67f4b651e51",
+        "dependencies": [
+          "cc",
+          "pkg-config",
+          "vcpkg"
+        ]
+      },
+      {
+        "name": "rusqlite",
+        "version": "0.40.1",
+        "source": "git+https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946efdaaa289e6b1c5bd56dc67f4b651e51",
+        "dependencies": [
+          "bitflags",
+          "fallible-iterator",
+          "fallible-streaming-iterator",
+          "hashlink",
+          "libsqlite3-sys",
+          "smallvec",
+          "sqlite-wasm-rs"
+        ]
+      }
+    ],
+    "native/sandbox": [
+      {
+        "name": "libsqlite3-sys",
+        "version": "0.38.1",
+        "source": "git+https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946efdaaa289e6b1c5bd56dc67f4b651e51",
+        "dependencies": [
+          "cc",
+          "pkg-config",
+          "vcpkg"
+        ]
+      },
+      {
+        "name": "rusqlite",
+        "version": "0.40.1",
+        "source": "git+https://github.com/rusqlite/rusqlite?rev=901f9946efdaaa289e6b1c5bd56dc67f4b651e51#901f9946efdaaa289e6b1c5bd56dc67f4b651e51",
+        "dependencies": [
+          "bitflags",
+          "fallible-iterator",
+          "fallible-streaming-iterator",
+          "hashlink",
+          "libsqlite3-sys",
+          "smallvec",
+          "sqlite-wasm-rs"
+        ]
+      }
+    ]
+  },
+  "core_tests": {
+    "passed": 194,
+    "ignored": 2
+  },
+  "tracking_tests": {
+    "passed": 1
+  },
+  "native_mount_tests": {
+    "passed": 1
+  },
+  "native_crash_tests": {
+    "passed": 1,
+    "termination_points": 6
+  },
+  "python_full_summary": "========== 1116 passed, 21 skipped, 4 warnings in 377.08s (0:06:17) ===========",
+  "python_subtests": 198,
+  "git_workflow_repetitions": 30,
+  "old_version_control": "Expected regression failure; not a failure of the upgraded build.",
+  "schema": "0.13",
+  "branch": "codex/filesystem-execution-windows-hook",
+  "uncommitted": true,
+  "linux_fuse_run_locally": false,
+  "remaining_independent_issues": [
+    "Automatic versus explicit checkpoint coordination",
+    "Restore temporary synchronous setting after failure"
+  ],
+  "filesystem_build": {
+    "target": "x86_64-pc-windows-gnullvm",
+    "profile": "release",
+    "sqlite_c_flags": "-DSQLITE_DIRECT_OVERFLOW_READ=0",
+    "source_sha256": {
+      "native/vfs": "f31f7b23e5f66650ca0112353a2391aa1a64d5f57d38ea8569dbacec57e96b01",
+      "native/sandbox": "870be2ea0957ff93da03ea309bba43a6d8e90b6d2865cd168852da7b7e5fc9de",
+      ".cargo/config.toml": "52ae2a0a98b8d32b7fe08a24b92677160dece4a5c813117e3e81bd78f273c108",
+      "scripts/build_sandbox.py": "2857b6a4a56c6af6bb702dd3a129f96434f2284f95af384fc1b63600097a6864"
+    },
+    "files": {
+      "libunwind.dll": "b0636a4281610124704adb2be2edf5642e830d86c68b7f27dbc9c8154705a780",
+      "licenses/FACTORY-README.md": "ee9714807983523eb1377bd7d29c936bfd9c794a988aced4a1a626361e8583da",
+      "licenses/FACTORY-SOURCE.md": "b84da47a501486eb7cd86cdfa5e8e71a7284a55f83adc20d3dfa5b8528b189ee",
+      "licenses/LICENSE-fuser.md": "e5de4041803ce3d7b1b269165677baabbeb9e43252ad176a877bd544ca04d748",
+      "licenses/LICENSE-libmimalloc-sys-0.1.49.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-libsqlite3-sys-0.38.1.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-mimalloc-0.1.52.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-mimalloc-native.txt": "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9",
+      "licenses/LICENSE-nfsserve.md": "99cbb513e18ecf180a25f5c2e8f2980a91ead909c191fd4c34323497d13a3c74",
+      "licenses/LICENSE-rusqlite-0.40.1.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-SQLite.txt": "49cf7bcb103eb3244150a23bb23d840370a4762914faf1b450072a4b03c14670",
+      "licenses/LICENSE-tokio-rusqlite-0.8.0.txt": "3970ecb00e1ebaa4eeec6819aad0a572a0436b29077e8fade4853143fa776b30",
+      "licenses/LLVM-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+      "licenses/WINFSP-LICENSE.txt": "68ae2fa9d8e6110ebdc9a236beecf118e279f8a26530daf09c9e682c231f7879",
+      "redpanda-sandbox.exe": "51ebe26d2d4f31520b899f6693ec316dadac15c58cac82ce8f6a33757446302e",
+      "winfsp-x64.dll": "3e2bb88e543cebf98fa579382f22032cbc1c64c8082c48eedf99f48a0448de31"
+    }
+  },
+  "execution_build": {
+    "target": "windows-x86_64",
+    "profile": "release",
+    "source_sha256": {
+      "native/execution/.clang-format": "673e355d906cde6400cee822557e8366472ea1841d3f14ad720e0fca08018b1d",
+      "native/execution/hook.cpp": "1ec04f9a84a052348c7b2de981ae870e723eb54139e944c2e6d0b630f478c3fe",
+      "native/execution/hook.def": "1ee995a3825e1b8a3ed0e8223f185cbb7860142c43e50da5d33f77e0d8f449e7",
+      "native/execution/launcher.cpp": "0f6404a59b9fa6e808f88bb1a1d45ce665e8b51beaaf332e9cb51f25ec2e6347",
+      "native/execution/policy.h": "db73ad7e40dc20efb5edd9a647de3ac33d3c22641ffcbff10d47c92c29329eb9",
+      "native/execution/README.md": "fc00b360fcd3c0472120286f1ad5100b81f6afbd576ae64419d2b02837ede4bc",
+      "native/execution/vendor/detours/LICENSE.md": "f854ae8aabc0404652b48a2b3bf7f21ec174c69d73f5596934c20884eb0639ef",
+      "native/execution/vendor/detours/SOURCE.md": "96112961134277a31525379b62980764b558fb34fb2692c78a2278e4e4e076f8",
+      "native/execution/vendor/detours/src/creatwth.cpp": "8cde51b30714b4b8a31dcff57ea58878b6110bbce5f44f5472c623597cc37275",
+      "native/execution/vendor/detours/src/detours.cpp": "e69de5f30c58de667763229932614a8f9e099fd953b083d5ee8a4eb744a410ed",
+      "native/execution/vendor/detours/src/detours.h": "7b4d7928b82dfbcf7559142b2dedebf0ea34063d7f3d7e1d996befe6f19b1f71",
+      "native/execution/vendor/detours/src/detver.h": "1ba5f3cb0218c7ffd478dd2cce524b61bce42c967d4c03d1462882d48a227e52",
+      "native/execution/vendor/detours/src/disasm.cpp": "13c38684b1c1018828138301b57863feb37be70557d39ffe171849a0894ff395",
+      "native/execution/vendor/detours/src/disolarm.cpp": "9d0d2519a8e45809b9dc7aa69fbabbe4dd1657c0bec6fb1595d664cd0fe57746",
+      "native/execution/vendor/detours/src/disolarm64.cpp": "9d90e7d1890c89285f4666c61f4323ecc98f5b05ebab7041967d8211723728ce",
+      "native/execution/vendor/detours/src/disolia64.cpp": "7e76161e2af3140598306f947f51388ce4b7bede3028fdeaf9163a59c1df080b",
+      "native/execution/vendor/detours/src/disolx64.cpp": "508e36655e69e9340d9cb6a170ea7d8d3ead5f3ae3725b298696407e7edc9251",
+      "native/execution/vendor/detours/src/disolx86.cpp": "2ca65c70c08f451473ac04871adfb2cd223e62144fe99458b8991c393c29cac7",
+      "native/execution/vendor/detours/src/image.cpp": "a039466a8edc0248042c9df804a2d13bb8a4e03cb038fb10b4b762b2e5d214a9",
+      "native/execution/vendor/detours/src/modules.cpp": "7e39db43c16d6c3e425d33d49c0842620d10bc963da0c7b57f4565a0942d537b",
+      "native/execution/vendor/detours/src/uimports.cpp": "0e3008a53b9b06d156dafcf46a24bd1ed4bb852c4adfc455fb0a45994afb63b7",
+      "scripts/build_execution.py": "f30df8d69df9068a425e3f191cb73dc3ca41d0719b95429dfe3833b33ee06754"
+    },
+    "files": {
+      "redpanda-hook.dll": "6191409a9372eb855a70edca36aac3816b383963f85fe997fc41b9216f48928d",
+      "redpanda-command.exe": "d13797805ccc62486bb34903fce6bb5b7d51f83ff224665ff23dac0b58597b5e",
+      "licenses/DETOURS-LICENSE.md": "f854ae8aabc0404652b48a2b3bf7f21ec174c69d73f5596934c20884eb0639ef",
+      "licenses/DETOURS-SOURCE.md": "96112961134277a31525379b62980764b558fb34fb2692c78a2278e4e4e076f8",
+      "licenses/LLVM-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee"
+    }
+  },
+  "archives": {
+    "redpanda-sandbox-windows-x86_64.zip": "282afb9bec2eb00af073c9b0d1317e6f48439baced569c2feb982584c14b66fa",
+    "redpanda-execution-windows-x86_64.zip": "76d08f593f0a30fef9615dde49934719d943c2ff2623dea1e909130b03e84c49"
+  },
+  "evidence_sha256": {
+    "actionlint.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build.log": "1d8eecc4594aac51cdc4cdc9d663a25eaf42e381bae4f76dc6290a0ee41eff94",
+    "checkpoint-regression.log": "82f8112ed2c86c7443d8f1a941477ae6d2d8b3578f8653dfa84e6b20c8af5bcd",
+    "core-tests.log": "c77e2c01e6b7b45c20801abc222bdd91e9b51c6eb4d3c6a53326b51403562d5f",
+    "format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "full-tests.log": "9e1ca60aa238c9366d32ca3c30d0b37ad22a6ca2e1ab69a9c712a5282672608b",
+    "full-tests.xml": "5045d08cb6fe513a8f4d7889da59e9fe4c0e5fe69633226e29fe670b28416bbe",
+    "git-results.json": "c6ec23c77bb382c5e8412b2ba66bf7dbf05db4c4ff3b53158a944b3b1bd29a47",
+    "git-workflow.log": "d2165cb12bf2a1ddb938410efce66c8bf5ff01732591c6ef9140d844de1cdf99",
+    "mounts-after.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "native-crash.log": "c33426b933bfcc205d16522584cf167cd536630905b7a0ba603779ac7849fdae",
+    "native-mount.log": "c7e47be1fbf32c006a9f7d09f165a1a2b68c9e2e25bed7f859026678bc131286",
+    "old-version-regression.log": "a4036523b1bb1f9f8949d23b676166f49539477e061a5d5131ba67c7041db78e",
+    "service-clippy.log": "3ec2b81c4335866d48ea810e678809018cd17328c3b4773b643d9c9575511130",
+    "service-dependency-update.log": "d8624dc47dc1643d76010115b42925048cf1778629fb4e8df649a8a4073559bd",
+    "tracking-contracts.log": "a564dfa5a6ea1a71a785142eb9ab3630a30a3fb53d13a525f8c8c5f360c3cd68",
+    "vfs-clippy.log": "76334003333f7d4c1239e090ca6d285746b4c8c69852263cce02af7c08e248ca",
+    "vfs-dependency-update.log": "63dd3276e6a2f7b8cc464e456f2f9c8ed627d8a0f343bf103d680a4fb4c32cc1"
+  }
+}

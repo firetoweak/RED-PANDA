@@ -56,8 +56,6 @@ const STORAGE_INLINE: i64 = 1;
 const DENTRY_CACHE_MAX_SIZE: usize = 10000;
 const NEGATIVE_DENTRY_CACHE_MAX_SIZE: usize = 10000;
 const FILE_BACKED_MAX_CONNECTIONS: usize = 8;
-const BASELINE_SYNCHRONOUS_SQL: &str = "PRAGMA synchronous = NORMAL";
-const DURABLE_SYNCHRONOUS_SQL: &str = "PRAGMA synchronous = FULL";
 const ATTR_CACHE_MAX_SIZE: usize = 10000;
 
 /// A filesystem backed by SQLite

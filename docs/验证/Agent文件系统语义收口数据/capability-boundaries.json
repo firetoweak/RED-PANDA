@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-14",
+  "scope": "Capability descriptions and architecture documentation only; follows the full filesystem validation.",
+  "source_sha256": {
+    "redpanda/assistant/context/prompt.py": "c55d47b1dbe284915e6363c1fb2d96810e784b3c34f5fc7f96dff14f4cbe8c99",
+    "redpanda/tools/builtin/command_execution.py": "6a47877f0a080d7822e4e2d9c3dd1657f228631034e19c64fded8ebc02ce7b96",
+    "redpanda/tools/builtin/workspace_restore.py": "05dbac48bc895252e21b4ee785ef425bb2a157021622ad1da43b618ac18518c2",
+    "docs/架构/能力/执行环境.md": "abe2366f0eaa8b09d827c1e39e89e9c44d1a69a52b83d35490e493267676f6f3",
+    "docs/架构/Agent文件系统/文件操作与回退.md": "7dbbc50d8df76639ad145a89f8caf189e053d5820e1d2b7d62f2271f216473df",
+    "docs/架构/入口/Web.md": "ef6e482ec0484f8c02a961b843d72af26d70ab094893d7b79b4d66ff12d3eb76",
+    "docs/架构/入口/入口与授权.md": "38eee1220b374c2d17d5e75ce3d1eee8cfa879847e181859caadc62f765be5a6",
+    "docs/架构/未开始/交互式资源.md": "30fc6363c54e41b79ebafd2d79871f26da4fb37b2f973d1bf294074cbc757b92",
+    "docs/运行指南.md": "1e1e1cd42ef480a9425c645a28d6d6ad50ebed859136593cfb94e77e6455efc1"
+  },
+  "evidence_sha256": {
+    "capability-boundaries.log": "70c85c2e82b0d0e2e20b7112b283153bed9d33ccfe6f5c0f631c0b018f8fb014",
+    "capability-boundaries.xml": "747d888cd66605d86112d5818f2d803aa3acdb70719725a54d3f3da46ca6f3f3",
+    "capability-restore.log": "68bef35cf1735f7b1ef306101178a7ce16d6fb749545b2577ec72335edac88f9",
+    "capability-restore.xml": "60a6ebd70e81f0734b23ca8b8b4f974a9ae35605b68e4905c0073f8d17b97f4e"
+  },
+  "checks": {
+    "prompt_tools_architecture_passed": 38,
+    "process_deselected": 21,
+    "restore_tool_passed": 2
+  }
+}

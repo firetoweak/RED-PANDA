@@ -31,7 +31,7 @@ class Evidence:
         if not complete:
             blocks = {"0": blocks["0"]}
         return image("file", len(data), self.identity, complete=complete, blocks=blocks,
-                     hidden=False if os.name == "nt" else None,
+                     hidden=False if os.name == "nt" else None, readonly=False if os.name == "nt" else None,
                      mode=None if os.name == "nt" else stat.S_IMODE(self.path.stat().st_mode))
 
     def operation(self, before, after, *, published=True, restore=False):

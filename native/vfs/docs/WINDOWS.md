@@ -82,11 +82,16 @@ The native test checks base, delta and nested Unicode file names, with and witho
 replacement, normalized handle paths, enumeration and spelling after reopening.
 It refuses directory rename and creation with delete-on-close.
 The read-only attribute maps to the core's write-mode bits and remains in the
-delta. The hidden attribute has independent inode storage, is read from HostFS,
+delta; Agent filesystem evidence, publication and restoration record it separately
+from POSIX mode. This includes directories and initial/overwrite attributes.
+The hidden attribute has independent inode storage, is read from HostFS,
 and survives copy-up, rename and freezing. Default Git for Windows initialization
 is supported without changing Git configuration. Other attribute changes and
 timestamp updates remain refused. Agent filesystem evidence, host publication
-and restoration include the hidden flag; metadata-only effects do not copy bytes.
+and restoration include both flags; metadata-only effects do not copy bytes.
+Unsupported creation/overwrite attributes refuse before file creation or truncation;
+the ordinary Windows archive creation hint remains accepted. Explicit archive changes
+are not supported. Publication preserves unrelated host attribute bits.
 It does not implement ACL/ADS/reparse operations, other metadata updates, hard-link
 creation or a full mmap coherence contract. It exposes a synthetic virtual volume
 capacity, not a disk quota or actual free-space measurement. Lookup references are

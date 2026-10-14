@@ -36,30 +36,34 @@ def basic_info(handle):
     checked(get_info(handle,0,c.byref(info),c.sizeof(info)))
     return info
 
-def hidden(file):
-    return bool(basic_info(msvcrt.get_osfhandle(file.fileno())).attributes & 2)
+def attributes_handle(handle):
+    value = basic_info(handle).attributes
+    return {'hidden':bool(value & 2), 'readonly':bool(value & 1)}
 
-def set_hidden_handle(handle, value):
-    attributes = basic_info(handle).attributes & ~0x80
-    attributes = attributes | 2 if value else attributes & ~2
-    info = FileBasic(attributes=attributes or 0x80)
+def attributes(file):
+    return attributes_handle(msvcrt.get_osfhandle(file.fileno()))
+
+def set_attributes_handle(handle, values):
+    value = basic_info(handle).attributes & ~0x83
+    value |= (2 if values['hidden'] else 0) | (1 if values['readonly'] else 0)
+    info = FileBasic(attributes=value or 0x80)
     checked(set_info(handle,0,c.byref(info),c.sizeof(info)))
 
-def set_hidden(file, value):
-    set_hidden_handle(msvcrt.get_osfhandle(file.fileno()),value)
+def set_attributes(file, values):
+    set_attributes_handle(msvcrt.get_osfhandle(file.fileno()),values)
 
 def directory_metadata(path):
     handle = create_file(str(path),0x80,0,None,3,0x2200000,None)
     if handle == INVALID: raise c.WinError(c.get_last_error())
-    try: return identity_handle(handle), bool(basic_info(handle).attributes & 2)
+    try: return identity_handle(handle), attributes_handle(handle)
     finally: checked(close_handle(handle))
 
-def set_path_hidden(path, expected, desired, identity):
+def set_path_attributes(path, expected, desired, identity):
     handle = create_file(str(path),0x180,0,None,3,0x2200000,None)
     if handle == INVALID: raise c.WinError(c.get_last_error())
     try:
-        if identity_handle(handle)!=identity or bool(basic_info(handle).attributes & 2)!=expected: return False
-        set_hidden_handle(handle,desired)
+        if identity_handle(handle)!=identity or attributes_handle(handle)!=expected: return False
+        set_attributes_handle(handle,desired)
         return True
     finally: checked(close_handle(handle))
 

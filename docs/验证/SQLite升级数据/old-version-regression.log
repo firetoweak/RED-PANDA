@@ -1,0 +1,19 @@
+    Updating crates.io index
+     Locking 90 packages to latest compatible versions
+   Compiling sqlite-upgrade-red v0.0.0 (C:\LocalData\work\helpMe\RED-PANDA\.tools\sqlite-upgrade-red)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.59s
+     Running tests\windows_checkpoint.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\sqlite-upgrade-red/f7a9b161f51a84bd\out\windows_checkpoint-f7a9b161f51a84bd.exe)
+
+running 1 test
+linked SQLite 3.53.2
+Error: Database(SqliteFailure(Error { code: DatabaseBusy, extended_code: 5 }, Some("WAL checkpoint is busy")))
+test extended_local_path_can_checkpoint_after_parallel_readers_finish ... FAILED
+
+failures:
+
+failures:
+    extended_local_path_can_checkpoint_after_parallel_readers_finish
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.86s
+
+error: test failed, to rerun pass `--test windows_checkpoint`

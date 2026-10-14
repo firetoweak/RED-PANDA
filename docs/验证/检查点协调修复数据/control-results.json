@@ -1,0 +1,14 @@
+[
+  {
+    "case": "automatic_checkpoint_yields_to_explicit_gate_and_reclaims_on_next_commit",
+    "returncode": 101,
+    "expected_failure": true,
+    "log": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-control-automatic_checkpoint_yields_to_explicit_gate_and_reclaims_on_next_commit.log"
+  },
+  {
+    "case": "failed_sync_restores_normal_before_reusing_the_connection",
+    "returncode": 101,
+    "expected_failure": true,
+    "log": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-control-failed_sync_restores_normal_before_reusing_the_connection.log"
+  }
+]

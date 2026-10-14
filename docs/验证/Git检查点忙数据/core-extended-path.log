@@ -1,0 +1,9 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling wal-analysis v0.0.0 (C:\LocalData\work\helpMe\RED-PANDA\.tools\wal-analysis)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.08s
+     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\read_race.exe --extended`
+sqlite=3.53.2 extended=true
+all_4000_reads_finished=true slots_available=8 idle=2
+checkpoint_after_all_readers=Err(Database(SqliteFailure(Error { code: DatabaseBusy, extended_code: 5 }, Some("WAL checkpoint is busy")))) elapsed_ms=5518

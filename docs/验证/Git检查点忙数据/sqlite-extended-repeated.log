@@ -1,0 +1,12 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\sqlite_read_race.exe --extended`
+sqlite=3.53.2 extended=true completed_reads=20000 txn_states=[0, 0, 0] autocheckpoint=0
+checkpoint=(1, 3, 3) elapsed_ms=5516
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.14s
+     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\sqlite_read_race.exe --extended`
+sqlite=3.53.2 extended=true completed_reads=20000 txn_states=[0, 0, 0] autocheckpoint=0
+checkpoint=(1, 3, 3) elapsed_ms=5532
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\sqlite_read_race.exe --extended`
+sqlite=3.53.2 extended=true completed_reads=20000 txn_states=[0, 0, 0] autocheckpoint=0
+checkpoint=(1, 3, 3) elapsed_ms=5498

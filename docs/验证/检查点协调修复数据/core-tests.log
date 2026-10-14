@@ -1,0 +1,293 @@
+   Compiling vfs-core v1.1.1 (C:\LocalData\work\helpMe\RED-PANDA\native\vfs\crates\vfs-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.55s
+     Running unittests src\lib.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/70bf5d47d4165088\out\vfs_core-70bf5d47d4165088.exe)
+
+running 151 tests
+test config::tests::core_config_ignores_legacy_partial_origin_env ... ok
+test config::tests::runtime_env_bool_grammar_is_shared ... ok
+test fs::vfs::vfs_tests::corrupt_path_child_inode_returns_corrupt_and_is_not_cached ... ok
+test fs::vfs::vfs_tests::corrupt_lookup_child_inode_returns_corrupt_and_is_not_negative_cached ... ok
+test fs::vfs::vfs_tests::file_pread_basic ... ok
+test fs::vfs::vfs_tests::file_open_nonexistent_fails ... ok
+test fs::vfs::vfs_tests::file_pread_past_eof ... ok
+test fs::vfs::vfs_tests::ensure_current_restores_readdir_cookie_index_for_current_databases ... ok
+test fs::vfs::vfs_tests::file_pread_across_chunks ... ok
+test fs::vfs::vfs_tests::current_schema_conflicting_column_definition_is_rejected ... ok
+test fs::vfs::vfs_tests::deferred_reap_discards_pending_before_reap_hooks ... ok
+test config::tests::env_reader_is_the_only_runtime_env_entry ... ok
+test fs::vfs::vfs_tests::concurrent_writers_overlay_merge ... ok
+test fs::vfs::vfs_tests::file_create_then_pwrite_writes_file ... ok
+test fs::vfs::vfs_tests::corrupt_mode_mutations_return_corrupt_without_namespace_changes ... ok
+test fs::vfs::vfs_tests::core_config_batcher_enabled_flows_through_options ... ok
+test fs::vfs::vfs_tests::file_pread_pwrite_roundtrip ... ok
+test fs::vfs::vfs_tests::attr_cache_invalidates_mutations_and_preserves_visibility ... ok
+test fs::vfs::vfs_tests::file_pwrite_across_chunks ... ok
+test fs::vfs::vfs_tests::file_pwrite_extend_file ... ok
+test fs::vfs::vfs_tests::file_truncate_across_chunk_boundary ... ok
+test fs::vfs::vfs_tests::file_truncate_nonexistent_open_fails ... ok
+test fs::vfs::vfs_tests::file_pwrite_basic ... ok
+test fs::vfs::vfs_tests::import_session_preserves_tree_and_chunk_limits ... ok
+test fs::vfs::vfs_tests::file_truncate_smaller_within_chunk ... ok
+test fs::vfs::vfs_tests::file_truncate_extend_file ... ok
+test fs::vfs::vfs_tests::import_entries_builds_tree_with_correct_content_and_stats ... ok
+test fs::vfs::vfs_tests::file_truncate_to_zero ... ok
+test fs::vfs::vfs_tests::identical_chunked_files_share_cas_rows ... ok
+test fs::vfs::vfs_tests::fsync_drains_overlay_to_sqlite ... ok
+test fs::vfs::vfs_tests::file_truncate_at_chunk_boundary ... ok
+test fs::vfs::vfs_tests::inline_rename_replace_reap_rollback_keeps_pending_writes_until_commit ... ok
+test fs::vfs::vfs_tests::inline_unlink_reap_rollback_keeps_pending_writes_until_commit ... ok
+test fs::vfs::vfs_tests::lifecycle_reap_hook_fires_atomically ... ok
+test fs::vfs::vfs_tests::negative_dentry_cache_invalidates_on_namespace_mutations ... ok
+test fs::vfs::vfs_tests::pread_after_uncommitted_pwrite_partial_overlap ... ok
+test fs::vfs::vfs_tests::never_batched_attr_cache_fill_survives_unrelated_generation_bumps ... ok
+test fs::vfs::vfs_tests::pread_after_uncommitted_pwrite_sees_pending ... ok
+test fs::vfs::vfs_tests::pread_in_unwritten_region_returns_sqlite ... ok
+test fs::vfs::vfs_tests::overlay_reads_flag_off_falls_back_to_drain_on_write ... ok
+test fs::vfs::vfs_tests::store_characterization_range_normalization_keeps_sparse_gaps ... ok
+test fs::vfs::vfs_tests::store_characterization_range_normalization_rejects_offset_overflow ... ok
+test fs::vfs::vfs_tests::readdir_plus_after_rejects_deleted_cookie ... ok
+test fs::vfs::vfs_tests::schema_alter_non_duplicate_errors_propagate ... ok
+test fs::vfs::vfs_tests::store_characterization_range_normalization_merges_overlaps_in_order ... ok
+test fs::vfs::vfs_tests::read_file_follows_terminal_symlink ... ok
+test fs::vfs::vfs_tests::lifecycle_reaps_open_unlink_and_mount_sweep ... ok
+test fs::vfs::vfs_tests::schema_alter_duplicate_columns_are_idempotent_on_reopen ... ok
+test fs::vfs::vfs_tests::overwrite_repoints_mapping_and_decrements_old_chunk ... ok
+test fs::vfs::vfs_tests::readdir_plus_after_uses_unique_dentry_cookies_for_hardlinks ... ok
+test fs::vfs::vfs_tests::path_api_delegates_to_trait_semantics ... ok
+test fs::vfs::vfs_tests::stat_coherent_before_drain ... ok
+test fs::vfs::vfs_tests::readdir_plus_after_query_plan_uses_bounded_dentry_indexes ... ok
+test fs::vfs::vfs_tests::test_binary_data_with_null_bytes ... ok
+test fs::vfs::vfs_tests::never_batched_attr_cache_fill_survives_prunes_at_retired_map_saturation ... ok
+test fs::vfs::vfs_tests::test_chmod_nonexistent_fails ... ok
+test fs::vfs::vfs_tests::test_chmod_preserves_file_type ... ok
+test fs::vfs::vfs_tests::test_64k_chunk_boundary_uses_single_default_chunk ... ok
+test fs::vfs::vfs_tests::test_batcher_bytes_trigger_restamps_after_explicit_times ... ok
+test fs::vfs::vfs_tests::test_batcher_discard_pending_updates_total ... ok
+test fs::vfs::vfs_tests::test_chunk_size_accessor ... ok
+test fs::vfs::vfs_tests::test_chunk_ordering_in_database ... ok
+test fs::vfs::vfs_tests::test_delete_file_removes_all_chunks ... ok
+test fs::vfs::vfs_tests::test_chmod_regular_file ... ok
+test fs::vfs::vfs_tests::test_chunk_ordering ... ok
+test fs::vfs::vfs_tests::test_batcher_global_cap_triggers_full_drain_and_tracks_total ... ok
+test fs::vfs::vfs_tests::test_config_persistence ... ok
+test fs::vfs::vfs_tests::test_default_chunk_size ... ok
+test fs::vfs::vfs_tests::test_chmod_symlink ... ok
+test fs::vfs::vfs_tests::row_decode_corruption_returns_error ... ok
+test fs::vfs::vfs_tests::test_empty_file ... ok
+test fs::vfs::vfs_tests::retired_generations_prune_without_cache_fill_aba ... ok
+test fs::vfs::vfs_tests::test_chunk_index_uniqueness ... ok
+test fs::vfs::vfs_tests::test_file_exactly_chunk_size ... ok
+test fs::vfs::vfs_tests::test_in_memory_connections_use_memory_journal ... ok
+test fs::vfs::vfs_tests::test_chunked_truncate_back_to_inline_when_dense ... ok
+test fs::vfs::vfs_tests::test_inline_small_file_and_overwrite ... ok
+test fs::vfs::vfs_tests::test_file_spanning_multiple_chunks ... ok
+test fs::vfs::vfs_tests::test_pwrite_ranges_disjoint_inplace_writes_stay_inline ... ok
+test fs::vfs::vfs_tests::test_inline_transitions_to_chunked_over_threshold ... ok
+test fs::vfs::vfs_tests::test_file_backed_connections_use_production_pragmas ... ok
+test fs::vfs::vfs_tests::test_fsync_restores_synchronous_normal ... ok
+test fs::vfs::vfs_tests::test_file_fsync_restores_synchronous_normal ... ok
+test fs::vfs::vfs_tests::test_pwrite_ranges_sparse_write_transitions_to_chunked ... ok
+test fs::vfs::vfs_tests::test_file_one_byte_over_chunk_size ... ok
+test fs::vfs::vfs_tests::test_overwrite_existing_file ... ok
+test fs::vfs::vfs_tests::test_sparse_chunked_truncate_below_threshold_stays_chunked ... ok
+test fs::vfs::vfs_tests::test_overwrite_with_larger_file ... ok
+test fs::vfs::vfs_tests::test_file_smaller_than_chunk_size ... ok
+test fs::vfs::vfs_tests::test_utimens_with_pending_writes_is_visible_and_committed_with_data ... ok
+test fs::vfs::vfs_tests::test_setattr_after_batched_write_preserves_explicit_times ... ok
+test fs::vfs::vfs_tests::test_roundtrip_byte_for_byte ... ok
+test fs::vfs::vfs_tests::test_mount_sweep_reaps_crashed_orphans ... ok
+test fs::vfs::vfs_tests::test_multiple_files_different_sizes ... ok
+test fs::vfs::vfs_tests::test_v04_database_is_rejected_without_mutating_old_format ... ok
+test fs::vfs::vfs_tests::trait_rename_directory ... ok
+test fs::vfs::vfs_tests::test_file_backed_vfs_concurrent_operations_complete ... ok
+test fs::vfs::vfs_tests::test_pwrite_ranges_preserves_order_and_inline_storage ... ok
+test fs::vfs::vfs_tests::trait_rename_file_same_directory ... ok
+test fs::vfs::vfs_tests::test_very_large_file ... ok
+test fs::vfs::vfs_tests::trait_rename_directory_to_file_fails ... ok
+test fs::vfs::vfs_tests::test_pwrite_ranges_batched_drains_explicitly ... ok
+test fs::vfs::vfs_tests::test_sparse_write_transitions_inline_to_chunked ... ok
+test fs::vfs::vfs_tests::trait_rename_directory_into_own_subtree_fails ... ok
+test fs::vfs::vfs_tests::trait_rename_nonexistent_source_fails ... ok
+test fs::vfs::vfs_tests::trait_rename_file_to_different_directory ... ok
+test fs::vfs::vfs_tests::trait_rename_overwrite_nonempty_directory_fails ... ok
+test fs::vfs::vfs_tests::trait_rename_overwrite_existing_file ... ok
+test fs::vfs::vfs_tests::readdir_plus_after_returns_bounded_cookie_pages ... ok
+test fs::vfs::vfs_tests::test_write_after_setattr_restamps_times_on_commit ... ok
+test fs::vfs::vfs_tests::truncate_drops_pending_beyond_new_size ... ok
+test fs::vfs::vfs_tests::trait_rename_file_to_directory_fails ... ok
+test fs::vfs::vfs_tests::test_unlink_while_open_defers_reap ... ok
+test fs::vfs::vfs_tests::trait_rename_corrupt_dentry_cycle_returns_invalid_path ... ok
+test fs::vfs::vfs_tests::test_write_after_stashed_utimens_restamps_mtime_keeps_atime ... ok
+test pool::checkpoint_tests::failed_sync_restores_normal_before_reusing_the_connection ... ok
+test fs::vfs::vfs_tests::trait_rename_root_fails ... ok
+test fs::vfs::vfs_tests::truncate_keeps_refcounts_exact_and_dedupes_zero_chunks ... ok
+test fs::vfs::vfs_tests::trait_rename_to_root_fails ... ok
+test semantics::access::tests::conformance_table_matches_kernel_default_permissions ... ok
+test semantics::access::tests::setattr_authorization_cases_match_kernel_rules ... ok
+test fs::vfs::vfs_tests::unlink_during_pending_writes_no_orphan ... ok
+test semantics::access::tests::sticky_delete_and_killpriv_cases_match_posix ... ok
+test fs::vfs::vfs_tests::unlink_reap_leaves_zero_refcount_chunk_for_gc ... ok
+test pool::checkpoint_tests::failed_setting_restoration_preserves_both_errors_and_stops_reuse ... ok
+test semantics::handles::tests::readdirplus_can_reuse_a_live_write_authority_token ... ok
+test semantics::handles::tests::write_authority_tokens_are_invalidated_by_inode ... ok
+test semantics::handles::tests::write_authority_tokens_evict_least_recently_used_token ... ok
+test telemetry::tests::macro_counters_accumulate_expected_values ... ok
+test telemetry::tests::sdk_only_usage_does_not_emit_report ... ok
+test fs::vfs::vfs_tests::versioned_cache_fill_skips_stale_attrs_after_drain ... ok
+test fs::vfs::vfs_tests::truncate_clips_range_spanning_boundary ... ok
+test telemetry::tests::snapshot_has_core_and_base_sections ... ok
+test telemetry::tests::summary_json_is_structured_with_sections_and_flat_counters ... ok
+test semantics::handles::tests::open_cached_upgrades_read_handle_on_first_write_open ... ok
+test tests::test_db_path_is_absolute ... ok
+test semantics::handles::tests::reap_hook_invalidates_authority_tokens ... ok
+test semantics::handles::tests::open_cached_reuses_and_invalidates_handles_by_inode ... ok
+test fs::vfs::vfs_tests::trait_rename_updates_ctime ... ok
+test schema::tests::empty_chunk_with_nonempty_digest_is_corruption ... ok
+test tests::test_vfs_creation ... ok
+test tests::test_filesystem_operations ... ok
+test pool::checkpoint_tests::automatic_checkpoint_io_failure_is_not_hidden_by_a_successful_commit ... ok
+test tests::open_read_only_rejects_filesystem_write_without_mutating_family ... ok
+test tests::open_read_only_preserves_single_file_artifact_family ... ok
+test pool::checkpoint_tests::automatic_checkpoint_yields_to_explicit_gate_and_reclaims_on_next_commit ... ok
+test semantics::tests::committed_write_and_inode_barrier_share_the_durability_contract ... ok
+test fs::vfs::vfs_tests::tier_four_drains_explicit_to_enqueues_ratio_under_0_2 ... ok
+test pool::checkpoint_tests::explicit_sync_waits_for_an_active_automatic_checkpoint ... ok
+test schema::tests::schema_interrupted_init_reopens_or_errors_cleanly ... ok
+test schema::tests::open_paths_reject_old_schema_without_upgrading ... ok
+
+test result: ok. 151 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.57s
+
+     Running tests\artifacts.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/319d0d7fef9deda8\out\artifacts-319d0d7fef9deda8.exe)
+
+running 1 test
+test snapshot_into_is_consistent_under_concurrent_writes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests\concurrency_integrity.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/6f1594c33ed6a725\out\concurrency_integrity-6f1594c33ed6a725.exe)
+
+running 1 test
+test concurrent_sdk_operations_preserve_database_integrity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests\current_state.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/e5ab1c5db2561dc1\out\current_state-e5ab1c5db2561dc1.exe)
+
+running 2 tests
+test mutations_keep_only_current_state_and_sqlite_recovery ... ok
+test chunk_collection_preserves_live_sharing_and_frozen_artifacts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\filesystem_identity.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/9e19ccf1109ba096\out\filesystem_identity-9e19ccf1109ba096.exe)
+
+running 7 tests
+test old_unnamespaced_format_is_refused_without_rewriting_it ... ok
+test separate_deltas_and_equal_content_files_keep_distinct_identity ... ok
+test identity_survives_snapshot_path_changes_and_writable_copy ... ok
+test named_lookup_preserves_distinct_hardlink_entry_spellings ... ok
+test missing_or_malformed_namespace_is_refused_without_regeneration ... ok
+test three_stacked_deltas_preserve_independent_files_and_inherited_aliases ... ok
+test missing_name_lookup_through_32_layers_does_not_repeat_base_traversal ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests\hidden_metadata.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/6218e40b2e085d0f\out\hidden_metadata-6218e40b2e085d0f.exe)
+
+running 3 tests
+test implicit_parent_copyup_preserves_directory_permissions ... ok
+test materializing_inherited_changes_keeps_file_and_directory_hidden_flags ... ok
+test hidden_is_inode_metadata_and_survives_freeze_and_reopen ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\host_layout.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/2c473e563b6613af\out\host_layout-2c473e563b6613af.exe)
+
+running 1 test
+test host_file_impl_lives_in_common_module ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\local_schema.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/b534124477d3c68f\out\local_schema-b534124477d3c68f.exe)
+
+running 1 test
+test fresh_database_contains_only_filesystem_tables ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\snapshot_restore.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/112fe5a0fa513460\out\snapshot_restore-112fe5a0fa513460.exe)
+
+running 1 test
+test snapshot_restore_preserves_one_file_agent_state_after_checkpoint ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\sqlite_executor.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/38d2941541d3b28d\out\sqlite_executor-38d2941541d3b28d.exe)
+
+running 15 tests
+test cancelled_panic_preserves_the_original_payload_at_the_barrier ... ok
+test cancelled_unknown_failure_is_reported_by_the_barrier_with_original_type ... ok
+test bundled_sqlite_uses_the_page_cache_for_overflow_reads ... ok
+test cancellation_before_first_connection_opens_still_waits_for_the_admitted_job ... ok
+test canceled_first_open_keeps_its_original_open_error_until_the_barrier ... ok
+test cancelled_transaction_retains_its_slot_until_commit_finishes ... ok
+test cached_stats_cannot_hide_an_observed_internal_database_failure ... ok
+test directory_listing_preserves_a_driver_type_error_instead_of_hiding_the_entry ... ok
+test import_rollback_does_not_publish_directory_ids_or_results_from_the_failed_batch ... ok
+test namespace_replace_keeps_the_open_destination_alive_until_its_last_handle_drops ... ok
+test persisted_whiteouts_hide_the_host_file_after_overlay_reload ... ok
+test partial_passthrough_rejects_corrupt_inline_metadata_instead_of_reading_the_base ... ok
+test real_host_partial_copyup_preserves_base_and_never_reexposes_the_truncated_tail ... ok
+test canonical_windows_paths_open_the_same_immutable_artifact ... ok
+test sdk_snapshot_drains_acknowledged_bytes_and_remains_an_immutable_single_file_on_reopen ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\type_replacement.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/0f93de8a0c52764b\out\type_replacement-0f93de8a0c52764b.exe)
+
+running 3 tests
+test directory_replacing_a_host_file_accepts_children ... ok
+test file_replacing_a_host_directory_can_be_written ... ok
+test directory_replacing_a_host_file_accepts_nested_children ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\windows_checkpoint.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/774d80fb2d69e2da\out\windows_checkpoint-774d80fb2d69e2da.exe)
+
+running 1 test
+test extended_local_path_can_checkpoint_after_parallel_readers_finish ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests\windows_filesystem.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/60aea2110e1d15e8\out\windows_filesystem-60aea2110e1d15e8.exe)
+
+running 11 tests
+test host_startup_is_lazy_and_readonly ... ok
+test native_identity_survives_rename_hardlinks_and_lookup_order ... ok
+test current_format_refuses_old_or_malformed_origins_without_repair ... ok
+test full_chunk_overwrite_does_not_read_base_bytes ... ok
+test delta_names_and_whiteouts_follow_windows_ordinal_semantics ... ok
+test partial_handle_keeps_unlinked_inode_until_close ... ok
+test content_policy_allows_time_drift_but_cannot_replace_identity ... ok
+test case_only_rename_preserves_requested_spelling_and_identity ... ok
+test replaced_partial_origin_is_removed_from_live_directory_enumeration ... ok
+test origin_mapping_reopens_with_a_different_base_inode_allocation ... ok
+test every_overlay_handle_reports_the_visible_inode ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\windows_write_crash.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/fda81a69d762f3f3\out\windows_write_crash-fda81a69d762f3f3.exe)
+
+running 2 tests
+test interrupted_writes_recover_whole_transactions_and_flushed_versions ... ignored, kills only private workers; retains bounded fixtures
+test write_worker ... ignored, internal worker; invoked only by the crash test
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\windows_write_errors.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/440fd183a10065b8\out\windows_write_errors-440fd183a10065b8.exe)
+
+running 1 test
+test failed_multichunk_write_preserves_data_and_metadata ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

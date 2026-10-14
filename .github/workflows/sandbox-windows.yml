@@ -76,6 +76,29 @@ jobs:
         run: python scripts/build_sandbox.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
       - name: Package release build
         run: python -m scripts.sandbox_runtime package --platform windows-x86_64
+      - name: Verify tracked filesystem mutation boundaries
+        shell: pwsh
+        run: |
+          @'
+          import os, subprocess
+          from scripts.build_sandbox import ROOT, prepare_environment
+          prepared = prepare_environment(ROOT / '.tools/llvm-mingw-20261006-ucrt-x86_64/bin')
+          environment = prepared.variables
+          environment['CARGO_TARGET_DIR'] = str(ROOT / '.tools/sandbox/target')
+          environment['PATH'] = str(ROOT / 'redpanda/filesystem/bin') + os.pathsep + environment['PATH']
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/sandbox/Cargo.toml'),
+              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'tracking_contracts'],
+              env=environment, check=True)
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
+              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'windows_checkpoint'],
+              env=environment, check=True)
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
+              '--target', 'x86_64-pc-windows-gnullvm', '--lib', 'pool::checkpoint_tests'],
+              env=environment, check=True)
+          '@ | python -
       - name: Package Windows task runtime
         run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/sandbox'))"
       - name: Prepare verification environment

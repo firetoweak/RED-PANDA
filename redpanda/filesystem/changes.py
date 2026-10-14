@@ -179,13 +179,20 @@ def _current(root, path, chunk_size, keys, *, full_content=False):
                 raise ChangesReadConflict("文件在查询期间发生变化，请重新查询")
             return current, {}
         if stat.S_ISDIR(info.st_mode):
-            identity, hidden = native.directory_metadata(native_path)
-            current = image("directory", identity=identity, chunk_size=chunk_size, hidden=hidden)
+            identity, attributes = native.directory_metadata(native_path)
+            current = image("directory", identity=identity, chunk_size=chunk_size, mode=None if os.name == "nt" else stat.S_IMODE(info.st_mode), **attributes)
             if _stamp(info) != _stamp(native_path.lstat()):
                 raise ChangesReadConflict("目录在查询期间发生变化，请重新查询")
             return current, {}
         if not stat.S_ISREG(info.st_mode):
             raise ChangesReadConflict("该路径不是普通文件、目录或符号链接")
+        if not keys and not full_content:
+            identity, attributes = native.directory_metadata(native_path)
+            current = image("file", info.st_size, identity, chunk_size, False,
+                            mode=None if os.name == "nt" else stat.S_IMODE(info.st_mode), **attributes)
+            if _stamp(info) != _stamp(native_path.lstat()):
+                raise ChangesReadConflict("文件在查询期间发生变化，请重新查询")
+            return current, {}
         with native.open_file(native_path, shared_read=True) as file:
             opened = True
             before = os.fstat(file.fileno())
@@ -200,7 +207,7 @@ def _current(root, path, chunk_size, keys, *, full_content=False):
             if _stamp(before) != _stamp(os.fstat(file.fileno())) or _stamp(before) != _stamp(native_path.lstat()):
                 raise ChangesReadConflict("文件在查询期间发生变化，请重新查询")
             return image("file", before.st_size, identity, chunk_size, False,
-                         mode=None if os.name == "nt" else stat.S_IMODE(before.st_mode), hidden=native.hidden(file)), blocks
+                         mode=None if os.name == "nt" else stat.S_IMODE(before.st_mode), **native.attributes(file)), blocks
     except (FileNotFoundError, NotADirectoryError):
         # A disappearance after opening is a race, not a stable missing file.
         if opened:
@@ -270,7 +277,7 @@ def _observe_file(root, store, path, changes, identities, *, full_content=False,
         before, after = change["before"], change["after"]
         if before["chunk_size"] != chunk_size or after["chunk_size"] != chunk_size:
             raise ValueError("block geometry differs")
-        for name in ("kind", "size", "mode", "hidden", "target", "identity"):
+        for name in ("kind", "size", "mode", "hidden", "readonly", "target", "identity"):
             previous, following = before[name], after[name]
             if name == "identity":
                 previous = identities.get(previous, previous)
@@ -326,7 +333,7 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0, *
     origin = "mixed" if agent and external else "agent" if agent else "external" if external else "unknown" if unobserved_bytes else "unchanged"
     edits, limitations, truncated, budget, next_text_offset = _edits(blocks, chunk_size, budget, text_offset)
     properties = []
-    names = {"kind": "类型", "size": "大小（字节）", "mode": "权限", "hidden": "隐藏属性", "target": "链接目标"}
+    names = {"kind": "类型", "size": "大小（字节）", "mode": "权限", "hidden": "隐藏属性", "readonly": "只读属性", "target": "链接目标"}
     for name, value in metadata.items():
         if not value.owner:
             continue

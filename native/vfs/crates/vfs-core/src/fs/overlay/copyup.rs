@@ -177,7 +177,9 @@ impl OverlayFS {
                 &self.delta,
                 current_delta_ino,
                 component,
-                0o755,
+                base_stats
+                    .as_ref()
+                    .map_or(0o755, |stats| stats.mode & 0o7777),
                 dir_uid,
                 dir_gid,
             )

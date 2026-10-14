@@ -17,6 +17,12 @@ use tokio_rusqlite::{
     Connection,
 };
 
+mod checkpoint;
+
+#[cfg(test)]
+#[path = "../tests/internal/checkpoint.rs"]
+mod checkpoint_tests;
+
 type Panic = Box<dyn Any + Send>;
 enum Failure {
     Error(Error),
@@ -224,6 +230,7 @@ impl ConnectionPool {
         let reusable = connection.clone();
         connection
             .call_raw(move |db| {
+                let checkpoint = checkpoint::Observer::new(&inner.checkpoint);
                 let result = catch_unwind(AssertUnwindSafe(|| {
                     if is_new {
                         db.busy_timeout(Duration::from_secs(5))?;
@@ -234,6 +241,9 @@ impl ConnectionPool {
                             )?;
                         }
                     }
+                    if matches!(&inner.source, Source::Writable(_)) {
+                        unsafe { checkpoint.install(db) };
+                    }
                     let result = operation(db);
                     if result.is_ok() {
                         assert!(
@@ -243,6 +253,17 @@ impl ConnectionPool {
                     }
                     result
                 }));
+                // Also remove the borrowed callback after a panic. A worker
+                // connection never retains a pointer into a completed job.
+                db.wal_hook(None);
+                let result = match (result, checkpoint.take_error()) {
+                    (Ok(result), Some(checkpoint)) => Ok(Err(Error::AutomaticCheckpoint {
+                        operation: result.err().map(Box::new),
+                        checkpoint,
+                    })),
+                    (result, _) => result,
+                };
+                drop(checkpoint);
                 // A legitimate filesystem rejection must not discard the only
                 // in-memory database. Unknown failures stop admission and retain
                 // the original error/panic in the delivery envelope.
@@ -342,6 +363,22 @@ impl ConnectionPool {
             .into());
         }
         Ok(())
+    }
+
+    pub(crate) fn sync(&self, conn: &rusqlite::Connection) -> Result<()> {
+        conn.prepare_cached("PRAGMA synchronous = FULL")?
+            .execute([])?;
+        let checkpoint = self.checkpoint(conn);
+        match conn
+            .prepare_cached("PRAGMA synchronous = NORMAL")
+            .and_then(|mut statement| statement.execute([]))
+        {
+            Ok(_) => checkpoint,
+            Err(restore) => Err(Error::SynchronousRestore {
+                checkpoint: checkpoint.err().map(Box::new),
+                restore,
+            }),
+        }
     }
 }
 

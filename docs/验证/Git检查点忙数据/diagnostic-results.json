@@ -1,0 +1,212 @@
+[
+  {
+    "iteration": 0,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\0\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.8503871000139043
+  },
+  {
+    "iteration": 1,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\1\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.3932947000139393
+  },
+  {
+    "iteration": 2,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\2\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.606770099955611
+  },
+  {
+    "iteration": 3,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\3\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4474311999510974
+  },
+  {
+    "iteration": 4,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\4\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5277708999929018
+  },
+  {
+    "iteration": 5,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\5\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.544207600003574
+  },
+  {
+    "iteration": 6,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\6\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4842805999796838
+  },
+  {
+    "iteration": 7,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\7\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5229205000214279
+  },
+  {
+    "iteration": 8,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\8\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.6391011999803595
+  },
+  {
+    "iteration": 9,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\9\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4234616000321694
+  },
+  {
+    "iteration": 10,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\10\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4823808000073768
+  },
+  {
+    "iteration": 11,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\11\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4366373000084423
+  },
+  {
+    "iteration": 12,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\12\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.608193400024902
+  },
+  {
+    "iteration": 13,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\13\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4212473999941722
+  },
+  {
+    "iteration": 14,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\14\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4159144999575801
+  },
+  {
+    "iteration": 15,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\15\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4825942000024952
+  },
+  {
+    "iteration": 16,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\16\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5182507999707013
+  },
+  {
+    "iteration": 17,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\17\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.556180800020229
+  },
+  {
+    "iteration": 18,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\18\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4074999999720603
+  },
+  {
+    "iteration": 19,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\19\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4281207000021823
+  },
+  {
+    "iteration": 20,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\20\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5400739999604411
+  },
+  {
+    "iteration": 21,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\21\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.539520199992694
+  },
+  {
+    "iteration": 22,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\22\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4479465000331402
+  },
+  {
+    "iteration": 23,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\23\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.507718599983491
+  },
+  {
+    "iteration": 24,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\24\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4283837000257336
+  },
+  {
+    "iteration": 25,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\25\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5167449999717064
+  },
+  {
+    "iteration": 26,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\26\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.5458512000041083
+  },
+  {
+    "iteration": 27,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\27\\store",
+    "phase": "publish",
+    "status": "passed",
+    "seconds": 1.4433680000365712
+  },
+  {
+    "iteration": 28,
+    "store": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\checkpoint-git-da519d5a\\28\\store",
+    "phase": "git",
+    "status": "failed",
+    "error": "ServiceFailure('database error: WAL checkpoint is busy: Error code 5: database is locked')",
+    "execution": {
+      "exit_code": 128,
+      "timed_out": false,
+      "interrupted": false,
+      "duration_ms": 5780.967900005635
+    },
+    "seconds": 28.621965800004546
+  }
+]

@@ -1,0 +1,214 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.15, pytest-9.1.1, pluggy-1.6.0
+redpanda tests: all（default + process）
+rootdir: C:\LocalData\work\helpMe\RED-PANDA
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 1136 items / 1 skipped
+
+tests\architecture\test_import_boundaries.py .................           [  1%]
+tests\assistant\test_assembly_contract.py .......                        [  2%]
+tests\assistant\test_attachments.py ................                     [  3%]
+tests\assistant\test_authorization.py ....                               [  3%]
+tests\assistant\test_auto_authorize.py ..                                [  4%]
+tests\assistant\test_branch_after_turn.py .                              [  4%]
+tests\assistant\test_builtin_tools.py .                                  [  4%]
+tests\assistant\test_catalog.py .                                        [  4%]
+tests\assistant\test_command_interrupt.py ...                            [  4%]
+tests\assistant\test_compact.py ............                             [  5%]
+tests\assistant\test_config.py ...........                               [  6%]
+tests\assistant\test_console.py ......                                   [  7%]
+tests\assistant\test_content.py .........                                [  7%]
+tests\assistant\test_context.py ............................             [ 10%]
+tests\assistant\test_context_windows.py .........                        [ 11%]
+tests\assistant\test_control.py ...................                      [ 12%]
+tests\assistant\test_conversations.py ...................                [ 14%]
+tests\assistant\test_delivery.py .......                                 [ 15%]
+tests\assistant\test_edit_attachments.py .                               [ 15%]
+tests\assistant\test_failures.py ......                                  [ 15%]
+tests\assistant\test_file_attachments.py .......                         [ 16%]
+tests\assistant\test_file_changes.py .                                   [ 16%]
+tests\assistant\test_host_activity.py .....                              [ 16%]
+tests\assistant\test_initialize.py .........                             [ 17%]
+tests\assistant\test_llm_port.py .                                       [ 17%]
+tests\assistant\test_loop_guard.py .....                                 [ 18%]
+tests\assistant\test_management_surface.py ...                           [ 18%]
+tests\assistant\test_mcp_arguments.py .                                  [ 18%]
+tests\assistant\test_mcp_attachments.py ...........                      [ 19%]
+tests\assistant\test_model_settings.py .......                           [ 20%]
+tests\assistant\test_paths.py ...                                        [ 20%]
+tests\assistant\test_process_env.py ......                               [ 20%]
+tests\assistant\test_projection_images.py ....                           [ 21%]
+tests\assistant\test_prompt.py .....                                     [ 21%]
+tests\assistant\test_restart_from_step.py ...                            [ 22%]
+tests\assistant\test_runner.py ..............                            [ 23%]
+tests\assistant\test_session_metadata.py ....                            [ 23%]
+tests\assistant\test_session_pause.py .....                              [ 24%]
+tests\assistant\test_session_store.py .......                            [ 24%]
+tests\assistant\test_session_workspace.py ....                           [ 25%]
+tests\assistant\test_sessions.py ........                                [ 25%]
+tests\assistant\test_skills.py .....                                     [ 26%]
+tests\assistant\test_subagent.py ..........................              [ 28%]
+tests\assistant\test_subagent_observation.py .                           [ 28%]
+tests\assistant\test_subagent_recovery.py ....                           [ 28%]
+tests\assistant\test_subagent_workspace.py ...                           [ 29%]
+tests\assistant\test_supervisor.py ..................................    [ 32%]
+tests\assistant\test_toolsets.py ..........                              [ 33%]
+tests\assistant\test_vfs_coding_process.py ...                           [ 33%]
+tests\assistant\test_work_plan.py .......                                [ 33%]
+tests\assistant\test_worker.py .                                         [ 33%]
+tests\assistant\test_worker_spawn.py ....                                [ 34%]
+tests\assistant\test_workspace_versions.py ..................            [ 35%]
+tests\automation\test_cancellation.py .......                            [ 36%]
+tests\benchmarks\test_context_cache.py ..                                [ 36%]
+tests\channels\test_acp.py ........                                      [ 37%]
+tests\channels\test_directory_picker.py ....                             [ 37%]
+tests\channels\test_web.py ........................................      [ 41%]
+tests\channels\test_web_attachment_scope.py ....                         [ 41%]
+tests\channels\test_web_changes.py .                                     [ 41%]
+tests\channels\test_web_entry.py ..                                      [ 41%]
+tests\channels\test_web_file_attachments.py ..                           [ 42%]
+tests\channels\test_web_hub.py ..........                                [ 42%]
+tests\cli\test_application.py ............                               [ 44%]
+tests\cli\test_approval.py .......                                       [ 44%]
+tests\cli\test_management_tools.py .....                                 [ 45%]
+tests\cli\test_process_manifest.py ..                                    [ 45%]
+tests\cli\test_registry.py .......                                       [ 45%]
+tests\cli\test_runtime.py ....                                           [ 46%]
+tests\execution\test_execution_delivery_process.py .                     [ 46%]
+tests\execution\test_windows_task_process.py ..................          [ 47%]
+tests\execution\test_windows_task_status.py .......                      [ 48%]
+tests\llm\test_codec.py ...                                              [ 48%]
+tests\llm\test_connections.py .....                                      [ 49%]
+tests\llm\test_images.py ...                                             [ 49%]
+tests\mcp\test_approval.py ..........................                    [ 51%]
+tests\mcp\test_lifecycle_errors.py ...........                           [ 52%]
+tests\mcp\test_mcp.py ............................................       [ 56%]
+tests\runtime\test_attempt_outcome_race.py ..                            [ 56%]
+tests\runtime\test_authorization_policy.py ...                           [ 57%]
+tests\runtime\test_boundary_slice.py ..........                          [ 57%]
+tests\runtime\test_decision_cancellation.py ..                           [ 58%]
+tests\runtime\test_durable_slice.py ......                               [ 58%]
+tests\runtime\test_semantic_slice.py ................                    [ 60%]
+tests\runtime\test_worker_recovery.py ...                                [ 60%]
+tests\sandbox\file_view\test_blocks.py ........                          [ 61%]
+tests\sandbox\file_view\test_contracts.py .............................  [ 63%]
+tests\sandbox\file_view\test_restore.py ..............                   [ 64%]
+tests\sandbox\file_view\test_restore_namespace.py ...............        [ 66%]
+tests\sandbox\test_bash.py ........ssssss                                [ 67%]
+tests\sandbox\test_child_env.py .............                            [ 68%]
+tests\sandbox\test_child_files.py ..                                     [ 68%]
+tests\sandbox\test_child_files_process.py ........                       [ 69%]
+tests\sandbox\test_command_wait.py ...                                   [ 69%]
+tests\sandbox\test_environment.py ....s...                               [ 70%]
+tests\sandbox\test_file_changes.py ..................................    [ 73%]
+tests\sandbox\test_file_view_client.py .                                 [ 73%]
+tests\sandbox\test_linux_workspace_execute.py ssss                       [ 73%]
+tests\sandbox\test_posix_metadata_process.py ssssssss                    [ 74%]
+tests\sandbox\test_subagent_worktrees_process.py .......                 [ 75%]
+tests\sandbox\test_text_files.py ......                                  [ 75%]
+tests\sandbox\test_vfs_workspace_process.py ............................ [ 78%]
+....                                                                     [ 78%]
+tests\sandbox\test_windows_hidden_process.py ............                [ 79%]
+tests\sandbox\test_windows_readonly_process.py ................          [ 80%]
+tests\sandbox\test_workspace_read.py ..........                          [ 81%]
+tests\sandbox\test_workspace_registry.py ..............                  [ 83%]
+tests\scripts\test_build_sandbox.py .....                                [ 83%]
+tests\scripts\test_ci.py .                                               [ 83%]
+tests\scripts\test_ci_process.py ..                                      [ 83%]
+tests\scripts\test_dev_process.py .                                      [ 83%]
+tests\scripts\test_execution_runtime.py ..                               [ 83%]
+tests\scripts\test_install_winfsp.py ........                            [ 84%]
+tests\scripts\test_sandbox_runtime.py .......................            [ 86%]
+tests\scripts\test_sandbox_runtime_process.py .                          [ 86%]
+tests\scripts\test_setup.py .......                                      [ 87%]
+tests\skills\test_application.py ..........                              [ 88%]
+tests\skills\test_approval.py ............                               [ 89%]
+tests\skills\test_installation.py ......                                 [ 89%]
+tests\skills\test_management_tools.py ..                                 [ 90%]
+tests\skills\test_package.py .....s                                      [ 90%]
+tests\skills\test_runtime.py ...                                         [ 90%]
+tests\skills\test_source_lifecycle_errors.py .....                       [ 91%]
+tests\skills\test_sources.py ..........                                  [ 92%]
+tests\thinllm\test_chat_completions.py ...........                       [ 93%]
+tests\thinllm\test_providers.py ...                                      [ 93%]
+tests\thinllm\test_types.py ....                                         [ 93%]
+tests\tools\test_command_execution.py ..............................     [ 96%]
+tests\tools\test_command_io_errors.py ....                               [ 96%]
+tests\tools\test_exec_policy.py .....                                    [ 97%]
+tests\tools\test_file_read.py .................                          [ 98%]
+tests\tools\test_get_changes.py ......                                   [ 99%]
+tests\tools\test_schema_hygiene.py .......                               [ 99%]
+tests\tools\test_workspace_restore.py ..                                 [100%]
+
+============================== warnings summary ===============================
+tests/assistant/test_compact.py::CompactTest::test_multiturn_reading_finishes_without_changing_tools
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x00000212B34287C0>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\.tools\python\cpython-3.13-windows-x86_64-none\Lib\traceback.py", line 452, in _extract_from_extended_frame_gen
+      @classmethod
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/assistant/test_compact.py::CompactTest::test_repeated_reads_are_reminded_and_can_complete
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x00000212B33EF150>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\redpanda\runtime\model.py", line 112, in <genexpr>
+      if any(type(key) is not str for key in value):
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/assistant/test_compact.py::CompactTest::test_restart_stops_compact_request_before_fork_and_rejects_late_result
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x00000212B3429260>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\redpanda\runtime\events.py", line 64, in <genexpr>
+      return 2 + sum(_payload_size(item, depth + 1) + 1 for item in value)
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/assistant/test_supervisor.py::SupervisorTest::test_restart_parent_with_active_children_finishes_and_keeps_child_work
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x00000212B3783970>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\.tools\python\cpython-3.13-windows-x86_64-none\Lib\traceback.py", line 292, in __init__
+      def __init__(self, filename, lineno, name, *, lookup_line=True,
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\LocalData\work\helpMe\RED-PANDA\.tools\sqlite-upgrade-full.xml -
+=========================== short test summary info ===========================
+SKIPPED [1] tests\sandbox\test_linux_sandbox_edges.py:14: 需要 Linux 与可用的 FUSE
+SKIPPED [1] tests\sandbox\test_bash.py:172: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:206: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:224: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:145: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:190: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:159: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_environment.py:81: 当前环境无法创建符号链接: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\19403\\AppData\\Local\\Temp\\tmpva2oa3f0\\outside' -> 'C:\\Users\\19403\\AppData\\Local\\Temp\\tmpva2oa3f0\\root\\link'
+SKIPPED [1] tests\sandbox\test_linux_workspace_execute.py:28: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [1] tests\sandbox\test_linux_workspace_execute.py:58: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [2] tests\sandbox\test_linux_workspace_execute.py:78: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [8] tests\sandbox\test_posix_metadata_process.py:15: Linux permission metadata
+SKIPPED [1] tests\skills\test_package.py:124: current platform cannot create symlinks
+========== 1116 passed, 21 skipped, 4 warnings in 377.08s (0:06:17) ===========

@@ -1,0 +1,37 @@
+{
+  "integrity_check": [
+    [
+      "ok"
+    ]
+  ],
+  "foreign_key_check": [],
+  "status_before": {
+    "receipt": null,
+    "restore_summary": null,
+    "status": "unknown"
+  },
+  "recovery_status": "sealed",
+  "status_after": "sealed",
+  "recovered_paths": [
+    "/.git",
+    "/.git/description",
+    "/.git/hooks",
+    "/.git/hooks/applypatch-msg.sample",
+    "/.git/hooks/commit-msg.sample",
+    "/.git/hooks/fsmonitor-watchman.sample",
+    "/.git/hooks/post-update.sample",
+    "/.git/hooks/pre-applypatch.sample",
+    "/.git/hooks/pre-commit.sample",
+    "/.git/hooks/pre-merge-commit.sample",
+    "/.git/hooks/pre-push.sample"
+  ],
+  "execution": {
+    "exit_code": 128,
+    "timed_out": false,
+    "interrupted": false,
+    "duration_ms": 5674.046000000089
+  },
+  "published_to_host": false,
+  "host_git_exists": false,
+  "note": "Recover seals partial effects; it does not rerun Git or prove that git init completed."
+}

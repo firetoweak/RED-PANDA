@@ -405,6 +405,7 @@ impl Service {
                 || before.identity != after.identity
                 || before.mode != after.mode
                 || before.hidden != after.hidden
+                || before.readonly != after.readonly
                 || before.target != after.target
             {
                 changes.push(Change {

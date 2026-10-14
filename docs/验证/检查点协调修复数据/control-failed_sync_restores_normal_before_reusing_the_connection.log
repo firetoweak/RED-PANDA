@@ -1,0 +1,55 @@
+warning: constant `AUTO_CHECKPOINT_PAGES` is never used
+ --> crates\vfs-core\src\pool\checkpoint.rs:9:7
+  |
+9 | const AUTO_CHECKPOINT_PAGES: c_int = 1000;
+  |       ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `gate` is never read
+  --> crates\vfs-core\src\pool\checkpoint.rs:12:5
+   |
+11 | pub(super) struct Observer<'a> {
+   |                   -------- field in this struct
+12 |     gate: &'a Mutex<()>,
+   |     ^^^^
+
+warning: method `install` is never used
+  --> crates\vfs-core\src\pool\checkpoint.rs:26:26
+   |
+16 | impl<'a> Observer<'a> {
+   | --------------------- method in this implementation
+...
+26 |     pub(super) unsafe fn install(&self, connection: &Connection) {
+   |                          ^^^^^^^
+
+warning: function `automatic` is never used
+  --> crates\vfs-core\src\pool\checkpoint.rs:41:22
+   |
+41 | unsafe extern "C" fn automatic(
+   |                      ^^^^^^^^^
+
+warning: `vfs-core` (lib test) generated 4 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+     Running unittests src\lib.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/70bf5d47d4165088\out\vfs_core-70bf5d47d4165088.exe)
+
+running 1 test
+test pool::checkpoint_tests::failed_sync_restores_normal_before_reusing_the_connection ... FAILED
+
+failures:
+
+---- pool::checkpoint_tests::failed_sync_restores_normal_before_reusing_the_connection stdout ----
+
+thread 'pool::checkpoint_tests::failed_sync_restores_normal_before_reusing_the_connection' (49680) panicked at crates\vfs-core\src\..\tests\internal\checkpoint.rs:262:5:
+assertion `left == right` failed
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    pool::checkpoint_tests::failed_sync_restores_normal_before_reusing_the_connection
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 150 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p vfs-core --lib`

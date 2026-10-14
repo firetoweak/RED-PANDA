@@ -159,6 +159,8 @@ pub struct Image {
     pub mode: Option<u32>,
     #[serde(deserialize_with = "Option::<bool>::deserialize")]
     pub hidden: Option<bool>,
+    #[serde(deserialize_with = "Option::<bool>::deserialize")]
+    pub readonly: Option<bool>,
     pub target: Option<String>,
 }
 impl Image {
@@ -172,6 +174,7 @@ impl Image {
             blocks: Default::default(),
             mode: None,
             hidden: None,
+            readonly: None,
             target: None,
         }
     }
@@ -193,11 +196,10 @@ pub async fn resolve(fs: &dyn FileSystem, path: &str) -> vfs_core::error::Result
     Ok(Some(ino))
 }
 fn file_mode(mode: u32) -> Option<u32> {
-    // Windows publication does not chmod. Recording a mode there would make
-    // every host file look changed.
+    // Windows records its read-only flag separately. POSIX records all permission bits.
     #[cfg(unix)]
     {
-        Some(mode & 0o777)
+        Some(mode & 0o7777)
     }
     #[cfg(not(unix))]
     {
@@ -219,6 +221,8 @@ pub async fn metadata(
         let mut image = Image::missing();
         image.kind = "directory".into();
         image.hidden = cfg!(windows).then_some(stats.hidden);
+        image.readonly = cfg!(windows).then_some(stats.mode & 0o222 == 0);
+        image.mode = file_mode(stats.mode);
         image.identity = identity;
         image.chunk_size = chunk_size;
         return Ok(image);
@@ -264,6 +268,7 @@ pub async fn metadata(
         blocks: Default::default(),
         mode: file_mode(stats.mode),
         hidden: cfg!(windows).then_some(stats.hidden),
+        readonly: cfg!(windows).then_some(stats.mode & 0o222 == 0),
         target: None,
     })
 }

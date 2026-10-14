@@ -1,0 +1,2125 @@
+
+830691us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+830692us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+830693us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+830760us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+830762us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+830763us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+830764us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+830764us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+830765us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+830766us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+830770us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+830770us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+830771us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+830831us ThreadId(29) job start conn=0x216d2cf1ba8
+830833us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+830834us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+830836us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+830841us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+830843us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+830843us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+830845us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+830866us ThreadId(25) job start conn=0x216d033cee8
+830868us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+830871us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+830872us ThreadId(25) job done conn=0x216d033cee8 result=None
+830896us ThreadId(21) job start conn=0x216d030f628
+830899us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+830905us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+830907us ThreadId(21) job done conn=0x216d030f628 result=None
+831405us ThreadId(25) job start conn=0x216d033cee8
+831408us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+831413us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+831414us ThreadId(25) job done conn=0x216d033cee8 result=None
+831431us ThreadId(21) job start conn=0x216d030f628
+831433us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+831437us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+831438us ThreadId(21) job done conn=0x216d030f628 result=None
+831559us ThreadId(29) job start conn=0x216d2cf1ba8
+831560us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+831589us ThreadId(29) job start conn=0x216d2cf1ba8
+831589us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+831590us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+831597us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+831603us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+831611us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=6us
+831668us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+831676us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=5us
+831678us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+831680us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+831780us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+831789us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=7us
+831789us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+831791us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+831792us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+831794us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=1us
+831796us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+831799us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+831810us ThreadId(29) job start conn=0x216d2cf1ba8
+831812us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+831813us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+831817us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+831820us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+831822us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+831824us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+831827us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
+            FROM fs_dentry 
+831827us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+831829us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+831839us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+831840us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+831840us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 elapsed=0ns
+831841us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+832161us ThreadId(29) job start conn=0x216d2cf1ba8
+832164us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832165us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+832169us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+832174us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+832176us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+832176us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+832178us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+832197us ThreadId(25) job start conn=0x216d033cee8
+832200us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832203us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+832204us ThreadId(25) job done conn=0x216d033cee8 result=None
+832225us ThreadId(21) job start conn=0x216d030f628
+832230us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832237us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+832239us ThreadId(21) job done conn=0x216d030f628 result=None
+832366us ThreadId(29) job start conn=0x216d2cf1ba8
+832369us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832370us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+832377us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=5us
+832381us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+832383us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+832384us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+832386us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+832407us ThreadId(25) job start conn=0x216d033cee8
+832411us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832415us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+832416us ThreadId(25) job done conn=0x216d033cee8 result=None
+832437us ThreadId(21) job start conn=0x216d030f628
+832439us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832441us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+832441us ThreadId(21) job done conn=0x216d030f628 result=None
+832573us ThreadId(25) job start conn=0x216d033cee8
+832574us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832575us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+832576us ThreadId(25) job done conn=0x216d033cee8 result=None
+832593us ThreadId(21) job start conn=0x216d030f628
+832595us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+832598us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+832599us ThreadId(21) job done conn=0x216d030f628 result=None
+832694us ThreadId(29) job start conn=0x216d2cf1ba8
+832701us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN IMMEDIATE
+832704us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+832714us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=8us
+832715us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+832720us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=3us
+832721us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+832727us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d306c8 INSERT INTO fs_inode (mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
+                 VALUES (?, 1, ?, ?, 0, ?, ?,
+832773us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)
+832793us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+832796us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d306c8 elapsed=0ns
+832803us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 COMMIT
+832805us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+832810us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=4us
+832811us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+832816us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=3us
+833367us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+833370us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+833371us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833373us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+833374us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+833385us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833411us ThreadId(29) job start conn=0x216d2cf1ba8
+833414us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+833415us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+833418us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=2us
+833418us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+833420us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+833420us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+833422us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+833426us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+833427us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833428us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+833429us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833522us ThreadId(29) job start conn=0x216d2cf1ba8
+833528us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 BEGIN IMMEDIATE
+833528us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+833530us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+833531us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+833532us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+833533us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=1000000ns
+833552us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 UPDATE fs_inode SET mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+833555us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+833557us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+833566us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+833567us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+833567us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833568us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+833569us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+833571us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833738us ThreadId(29) job start conn=0x216d2cf1ba8
+833744us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+833747us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+833755us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=7us
+833756us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+833760us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=2us
+833760us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+833764us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+833771us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+833773us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833776us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=2us
+833778us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833815us ThreadId(29) job start conn=0x216d2cf1ba8
+833818us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+833820us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+833825us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+833828us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833831us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=2us
+833832us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+833834us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833862us ThreadId(29) job start conn=0x216d2cf1ba8
+833865us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+833866us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+833872us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+833875us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+833876us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+833879us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=2us
+833881us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833911us ThreadId(29) job start conn=0x216d2cf1ba8
+833913us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+833991us ThreadId(29) job start conn=0x216d2cf1ba8
+833992us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834194us ThreadId(29) job start conn=0x216d2cf1ba8
+834197us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+834199us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+834204us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+834207us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+834213us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=5us
+834214us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+834215us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834225us ThreadId(29) job start conn=0x216d2cf1ba8
+834226us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+834226us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+834228us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+834230us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+834231us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+834232us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+834233us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834242us ThreadId(29) job start conn=0x216d2cf1ba8
+834243us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834328us ThreadId(29) job start conn=0x216d2cf1ba8
+834331us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN DEFERRED
+834332us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+834334us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+834335us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+834337us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+834339us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+834341us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+834342us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+834343us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+834344us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+834344us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834410us ThreadId(29) job start conn=0x216d2cf1ba8
+834411us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN DEFERRED
+834412us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+834413us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+834413us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+834415us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+834416us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+834417us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+834418us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+834419us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+834419us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+834420us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834467us ThreadId(29) job start conn=0x216d2cf1ba8
+834469us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+834478us ThreadId(29) job start conn=0x216d2cf1ba8
+834490us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+834491us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+834493us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+834493us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+834497us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 PRAGMA wal_checkpoint(TRUNCATE)
+834498us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+834505us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=5us
+834505us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+834507us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+834509us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+834511us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+835290us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+835295us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=2us
+835296us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+835299us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+835379us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+835381us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+835382us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+835383us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+835384us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+835385us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+835387us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=1000000ns
+835396us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+835397us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+835398us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835433us ThreadId(29) job start conn=0x216d2cf1ba8
+835436us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30308 SELECT ino FROM fs_dentry WHERE parent_ino = ? AND name = ?
+835437us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+835440us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+835443us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+835445us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+835445us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30308 elapsed=0ns
+835450us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835459us ThreadId(29) job start conn=0x216d2cf1ba8
+835460us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+835461us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+835463us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+835466us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+835467us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+835468us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+835469us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835489us ThreadId(25) job start conn=0x216d033cee8
+835491us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+835493us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+835494us ThreadId(25) job done conn=0x216d033cee8 result=None
+835508us ThreadId(21) job start conn=0x216d030f628
+835510us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+835512us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+835512us ThreadId(21) job done conn=0x216d030f628 result=None
+835684us ThreadId(29) job start conn=0x216d2cf1ba8
+835686us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835763us ThreadId(29) job start conn=0x216d2cf1ba8
+835765us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835819us ThreadId(29) job start conn=0x216d2cf1ba8
+835820us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835875us ThreadId(29) job start conn=0x216d2cf1ba8
+835878us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+835887us ThreadId(29) job start conn=0x216d2cf1ba8
+835895us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+835896us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+835898us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+835898us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+835902us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 PRAGMA wal_checkpoint(TRUNCATE)
+835903us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+835909us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=5us
+835909us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+835911us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+835912us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+835913us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+835983us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+835985us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+835986us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+835987us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+835987us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+835988us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+835989us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+835995us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+835995us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+835996us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836153us ThreadId(29) job start conn=0x216d2cf1ba8
+836157us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+836158us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+836163us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=4us
+836166us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+836168us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+836168us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+836170us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836182us ThreadId(29) job start conn=0x216d2cf1ba8
+836183us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+836183us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+836185us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+836187us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+836188us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+836189us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+836190us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836200us ThreadId(29) job start conn=0x216d2cf1ba8
+836201us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836240us ThreadId(29) job start conn=0x216d2cf1ba8
+836241us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836300us ThreadId(29) job start conn=0x216d2cf1ba8
+836303us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836336us ThreadId(29) job start conn=0x216d2cf1ba8
+836352us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+836355us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+836356us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+836357us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+836361us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 PRAGMA wal_checkpoint(TRUNCATE)
+836362us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+836369us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=6us
+836370us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+836373us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=2us
+836374us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+836376us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+836468us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+836471us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=2us
+836472us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+836473us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+836474us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+836475us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+836477us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+836485us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+836486us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+836487us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836679us ThreadId(29) job start conn=0x216d2cf1ba8
+836684us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+836686us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+836690us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+836693us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+836695us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+836696us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+836698us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836727us ThreadId(29) job start conn=0x216d2cf1ba8
+836733us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+836736us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+836745us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=8us
+836750us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+836752us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+836756us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=3us
+836758us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836789us ThreadId(29) job start conn=0x216d2cf1ba8
+836790us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836906us ThreadId(29) job start conn=0x216d2cf1ba8
+836908us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+836934us ThreadId(29) job start conn=0x216d2cf1ba8
+836939us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 BEGIN IMMEDIATE
+836942us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+836950us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=7us
+836952us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+836955us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=2us
+836957us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+836960us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+836963us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+836967us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d49598 UPDATE fs_inode SET mode = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+                     RETURNING ino
+836983us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d49598 elapsed=0ns
+836992us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 COMMIT
+836993us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+836998us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=3us
+836999us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+837002us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+837523us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+837527us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+837528us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+837530us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+837531us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+837533us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+837561us ThreadId(29) job start conn=0x216d2cf1ba8
+837564us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+837565us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+837568us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=2us
+837569us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+837570us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+837570us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+837571us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+837575us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+837576us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+837577us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+837579us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+837656us ThreadId(29) job start conn=0x216d2cf1ba8
+837659us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+837685us ThreadId(29) job start conn=0x216d2cf1ba8
+837698us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+837699us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+837701us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+837701us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+837706us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 PRAGMA wal_checkpoint(TRUNCATE)
+837707us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+837716us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=8us
+837717us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+837721us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=2us
+837723us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+837726us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=2us
+838442us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+838446us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=2us
+838447us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+838449us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+838535us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+838537us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+838538us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+838539us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+838539us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+838540us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+838542us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=1000000ns
+838551us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+838552us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+838553us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+838651us ThreadId(29) job start conn=0x216d2cf1ba8
+838656us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 BEGIN DEFERRED
+838657us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+838660us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+838661us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+838666us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=4us
+838669us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+838672us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 COMMIT
+838673us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+838675us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+838675us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+838676us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+838740us ThreadId(29) job start conn=0x216d2cf1ba8
+838741us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+838759us ThreadId(29) job start conn=0x216d2cf1ba8
+838759us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+838777us ThreadId(29) job start conn=0x216d2cf1ba8
+838780us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 BEGIN IMMEDIATE
+838781us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+838783us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+838784us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+838786us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+838786us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+838789us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+838790us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+838792us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+838794us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+838811us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_data WHERE ino = ?
+838812us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+838827us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+838830us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+838832us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+838833us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+838835us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+838836us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+838837us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+839189us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+839192us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+839193us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+839194us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+839195us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+839198us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839207us ThreadId(29) job start conn=0x216d2cf1ba8
+839209us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+839210us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+839212us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=1us
+839213us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+839214us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+839214us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+839216us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+839219us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+839220us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+839221us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+839222us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839278us ThreadId(29) job start conn=0x216d2cf1ba8
+839279us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839289us ThreadId(29) job start conn=0x216d2cf1ba8
+839289us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839293us ThreadId(29) job start conn=0x216d2cf1ba8
+839297us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN IMMEDIATE
+839298us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+839301us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+839302us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+839303us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+839304us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+839306us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+839308us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+839309us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+839310us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+839319us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_data WHERE ino = ?
+839320us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+839330us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+839332us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+839334us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 COMMIT
+839345us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+839346us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+839347us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+839348us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+839349us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+839350us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839358us ThreadId(29) job start conn=0x216d2cf1ba8
+839359us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+839360us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+839361us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=1us
+839362us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+839363us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+839363us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+839364us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=0us
+839366us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+839367us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+839368us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+839368us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839440us ThreadId(29) job start conn=0x216d2cf1ba8
+839443us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+839452us ThreadId(29) job start conn=0x216d2cf1ba8
+839459us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+839460us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+839461us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+839461us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+839465us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 PRAGMA wal_checkpoint(TRUNCATE)
+839466us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+839470us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+839470us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+839472us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+839473us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+839474us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+840260us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+840266us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=3us
+840267us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+840271us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+840377us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+840380us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+840381us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+840383us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+840383us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+840385us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+840387us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=1000000ns
+840396us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+840397us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+840398us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+840845us ThreadId(25) job start conn=0x216d033cee8
+840849us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+840856us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+840858us ThreadId(25) job done conn=0x216d033cee8 result=None
+840879us ThreadId(21) job start conn=0x216d030f628
+840883us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+840889us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+840890us ThreadId(21) job done conn=0x216d030f628 result=None
+841026us ThreadId(29) job start conn=0x216d2cf1ba8
+841028us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841038us ThreadId(29) job start conn=0x216d2cf1ba8
+841039us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+841039us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+841045us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 PRAGMA wal_checkpoint(TRUNCATE)
+841046us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+841050us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+841051us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+841052us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+841053us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+841054us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=0us
+841123us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+841125us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+841125us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+841128us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+841128us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+841130us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=1us
+841131us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+841133us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841144us ThreadId(29) job start conn=0x216d2cf1ba8
+841146us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+841146us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+841149us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+841151us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+841152us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+841154us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+841157us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
+            FROM fs_dentry 
+841157us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+841165us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=7us
+841174us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+841175us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+841176us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 elapsed=0ns
+841177us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841393us ThreadId(29) job start conn=0x216d2cf1ba8
+841395us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+841396us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+841399us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+841400us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+841401us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+841402us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+841403us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841413us ThreadId(29) job start conn=0x216d2cf1ba8
+841414us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+841414us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+841416us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+841417us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+841418us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+841419us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+841420us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841430us ThreadId(29) job start conn=0x216d2cf1ba8
+841430us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841459us ThreadId(29) job start conn=0x216d2cf1ba8
+841460us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841495us ThreadId(29) job start conn=0x216d2cf1ba8
+841497us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841532us ThreadId(29) job start conn=0x216d2cf1ba8
+841533us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+841899us ThreadId(25) job start conn=0x216d033cee8
+841905us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+841914us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+841917us ThreadId(25) job done conn=0x216d033cee8 result=None
+841951us ThreadId(21) job start conn=0x216d030f628
+841955us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+841960us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+841962us ThreadId(21) job done conn=0x216d030f628 result=None
+842101us ThreadId(29) job start conn=0x216d2cf1ba8
+842107us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 BEGIN IMMEDIATE
+842108us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+842115us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=6us
+842116us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+842119us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+842120us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+842143us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d49bd8 DELETE FROM fs_dentry WHERE parent_ino = ? AND name = ?
+842149us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d49bd8 elapsed=0ns
+842174us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d48418 UPDATE fs_inode
+                         SET nlink = nlink - 1, ctime = ?, ctime_nsec = ?
+                         WHERE ino = ?
+                         RETURNING ino
+842183us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d48418 elapsed=0ns
+842196us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d48918 SELECT nlink FROM fs_inode WHERE ino = ?
+842197us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d48918 elapsed=0ns
+842203us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 DELETE FROM fs_inode WHERE ino = ? AND nlink = 0
+842206us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+842209us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 DELETE FROM fs_origin WHERE delta_ino = ?
+842227us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+842233us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 DELETE FROM fs_chunk_override WHERE delta_ino = ?
+842241us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+842243us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24f88 DELETE FROM fs_partial_origin WHERE delta_ino = ?
+842243us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24f88 elapsed=0ns
+842244us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+842245us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+842248us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_data WHERE ino = ?
+842249us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+842250us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_symlink WHERE ino = ?
+842255us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+842258us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30f88 UPDATE fs_dentry
+                     SET parent_ino = ?, name = ?
+                     WHERE parent_ino = ? AND name = ?
+                     RETURNING id
+842276us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30f88 elapsed=0ns
+842279us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f2c8 UPDATE fs_inode SET ctime = ?, ctime_nsec = ? WHERE ino = ?
+                     RETURNING ino
+842283us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f2c8 elapsed=0ns
+842285us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f548 UPDATE fs_inode
+                     SET mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ?
+                     WHERE ino = ?
+                     RETURNING ino
+842288us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f548 elapsed=0ns
+842291us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+842292us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+842295us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=2us
+842295us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+842297us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+842848us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+842852us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+842853us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+842855us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+842856us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=1000000ns
+842861us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+842890us ThreadId(29) job start conn=0x216d2cf1ba8
+842910us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d496d8 SELECT 1 FROM fs_inode WHERE ino = ?
+842911us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+842914us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=2us
+842915us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+842916us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=1us
+842916us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+842918us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+842921us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+842922us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+842922us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d496d8 elapsed=0ns
+842924us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN IMMEDIATE
+842925us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+842926us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+842927us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+842928us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=0us
+842929us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+842936us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_origin WHERE delta_ino = ?
+842937us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+842942us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_chunk_override WHERE delta_ino = ?
+842943us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+842945us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_partial_origin WHERE delta_ino = ?
+842945us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+842948us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+842949us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+842950us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+842950us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+842951us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+842952us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+842953us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+842972us ThreadId(29) job start conn=0x216d2cf1ba8
+842976us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+842978us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+842982us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+842988us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+842990us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+842991us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+842992us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+843014us ThreadId(25) job start conn=0x216d033cee8
+843018us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+843023us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+843024us ThreadId(25) job done conn=0x216d033cee8 result=None
+843041us ThreadId(21) job start conn=0x216d030f628
+843043us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+843046us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+843047us ThreadId(21) job done conn=0x216d030f628 result=None
+843217us ThreadId(29) job start conn=0x216d2cf1ba8
+843218us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+843229us ThreadId(29) job start conn=0x216d2cf1ba8
+843231us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+843232us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+843238us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+843241us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+843242us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+843244us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+843245us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+843351us ThreadId(29) job start conn=0x216d2cf1ba8
+843352us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+843360us ThreadId(29) job start conn=0x216d2cf1ba8
+843366us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+843367us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+843367us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+843368us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+843370us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 PRAGMA wal_checkpoint(TRUNCATE)
+843371us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+843374us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=2us
+843374us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+843376us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+843377us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+843379us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+844192us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+844196us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=2us
+844197us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+844199us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+844290us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+844293us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+844294us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+844295us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+844296us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+844297us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+844299us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=1000000ns
+844308us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+844309us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+844310us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844513us ThreadId(29) job start conn=0x216d2cf1ba8
+844516us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+844517us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+844521us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+844527us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+844528us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+844530us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+844531us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844561us ThreadId(29) job start conn=0x216d2cf1ba8
+844563us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+844564us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+844566us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+844567us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+844569us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+844569us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+844571us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844579us ThreadId(29) job start conn=0x216d2cf1ba8
+844581us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+844581us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+844583us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+844584us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+844585us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+844586us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+844587us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844596us ThreadId(29) job start conn=0x216d2cf1ba8
+844597us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844625us ThreadId(29) job start conn=0x216d2cf1ba8
+844626us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844700us ThreadId(29) job start conn=0x216d2cf1ba8
+844701us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+844724us ThreadId(29) job start conn=0x216d2cf1ba8
+844731us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+844732us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+844733us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+844733us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+844736us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 PRAGMA wal_checkpoint(TRUNCATE)
+844737us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+844741us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+844741us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+844743us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+844744us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+844745us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+844803us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+844804us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+844805us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+844806us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+844806us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+844807us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+844808us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+844812us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+844813us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+844813us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+845162us ThreadId(25) job start conn=0x216d033cee8
+845165us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+845170us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+845171us ThreadId(25) job done conn=0x216d033cee8 result=None
+845189us ThreadId(21) job start conn=0x216d030f628
+845191us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+845193us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+845194us ThreadId(21) job done conn=0x216d030f628 result=None
+845317us ThreadId(29) job start conn=0x216d2cf1ba8
+845320us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+845334us ThreadId(29) job start conn=0x216d2cf1ba8
+845335us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+845335us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+845342us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 PRAGMA wal_checkpoint(TRUNCATE)
+845344us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+845353us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=8us
+845354us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+845358us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=3us
+845360us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+845363us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+845491us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+845497us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=3us
+845497us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+845500us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+845501us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+845504us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=1us
+845506us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+845509us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+845521us ThreadId(29) job start conn=0x216d2cf1ba8
+845524us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+845525us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+845589us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=62us
+845595us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=1000000ns
+845596us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+845598us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+845602us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
+            FROM fs_dentry 
+845603us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+845605us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+845614us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+845615us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+845616us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 elapsed=0ns
+845617us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+845963us ThreadId(29) job start conn=0x216d2cf1ba8
+845966us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+845968us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+845972us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+845977us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+845979us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+845980us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+845981us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+846009us ThreadId(25) job start conn=0x216d033cee8
+846013us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846017us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+846019us ThreadId(25) job done conn=0x216d033cee8 result=None
+846040us ThreadId(21) job start conn=0x216d030f628
+846042us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846044us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+846044us ThreadId(21) job done conn=0x216d030f628 result=None
+846185us ThreadId(29) job start conn=0x216d2cf1ba8
+846188us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846190us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+846195us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=4us
+846201us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+846203us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+846204us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+846205us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+846226us ThreadId(25) job start conn=0x216d033cee8
+846228us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846230us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+846231us ThreadId(25) job done conn=0x216d033cee8 result=None
+846248us ThreadId(21) job start conn=0x216d030f628
+846250us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846254us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+846256us ThreadId(21) job done conn=0x216d030f628 result=None
+846383us ThreadId(25) job start conn=0x216d033cee8
+846384us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846387us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+846387us ThreadId(25) job done conn=0x216d033cee8 result=None
+846404us ThreadId(21) job start conn=0x216d030f628
+846406us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+846410us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+846411us ThreadId(21) job done conn=0x216d030f628 result=None
+846534us ThreadId(29) job start conn=0x216d2cf1ba8
+846537us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN IMMEDIATE
+846538us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+846543us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=4us
+846544us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+846546us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+846547us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+846550us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d306c8 INSERT INTO fs_inode (mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
+                 VALUES (?, 1, ?, ?, 0, ?, ?,
+846580us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)
+846587us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+846589us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d306c8 elapsed=0ns
+846593us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d258e8 COMMIT
+846594us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+846597us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+846597us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+846598us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+846831us ThreadId(26) job start conn=0x216d038a608
+846834us ThreadId(26) job done conn=0x216d038a608 result=None
+847029us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+847033us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+847034us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847036us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+847037us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d258e8 elapsed=1000000ns
+847049us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847091us ThreadId(29) job start conn=0x216d2cf1ba8
+847099us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+847102us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+847112us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=8us
+847113us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+847117us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=2us
+847117us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847122us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=3us
+847130us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+847132us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847136us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=2us
+847140us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847220us ThreadId(29) job start conn=0x216d2cf1ba8
+847229us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d258e8 BEGIN IMMEDIATE
+847231us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847240us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=7us
+847242us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+847246us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=3us
+847247us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d258e8 elapsed=0ns
+847274us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 UPDATE fs_inode SET mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+847280us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+847283us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+847322us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+847326us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=3us
+847328us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847331us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=2us
+847332us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+847336us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847483us ThreadId(29) job start conn=0x216d2cf1ba8
+847488us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+847489us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+847494us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=4us
+847495us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+847496us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=1us
+847497us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847505us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+847511us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+847512us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847513us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+847515us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847544us ThreadId(29) job start conn=0x216d2cf1ba8
+847546us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+847547us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847550us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+847551us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847553us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+847554us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+847556us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847583us ThreadId(29) job start conn=0x216d2cf1ba8
+847585us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+847585us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847587us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+847589us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+847589us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847591us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+847591us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847614us ThreadId(29) job start conn=0x216d2cf1ba8
+847615us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847700us ThreadId(29) job start conn=0x216d2cf1ba8
+847703us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847871us ThreadId(29) job start conn=0x216d2cf1ba8
+847875us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+847876us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847881us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+847884us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847886us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+847887us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+847888us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847898us ThreadId(29) job start conn=0x216d2cf1ba8
+847899us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+847900us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+847902us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+847904us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+847905us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+847907us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+847908us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+847918us ThreadId(29) job start conn=0x216d2cf1ba8
+847918us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+848018us ThreadId(29) job start conn=0x216d2cf1ba8
+848024us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN DEFERRED
+848025us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+848027us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+848029us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+848032us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=3us
+848035us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+848038us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+848039us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+848041us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+848042us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+848043us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+848132us ThreadId(29) job start conn=0x216d2cf1ba8
+848138us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN DEFERRED
+848139us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+848141us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+848143us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+848147us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+848151us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+848153us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+848154us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+848155us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+848156us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+848157us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+848215us ThreadId(29) job start conn=0x216d2cf1ba8
+848217us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+848226us ThreadId(29) job start conn=0x216d2cf1ba8
+848236us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+848237us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+848238us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+848238us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+848242us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+848242us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+848248us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=5us
+848249us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+848250us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+848252us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+848253us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+849187us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+849193us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=3us
+849194us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+849197us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+849307us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+849309us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+849310us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+849311us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+849312us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+849313us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+849315us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=1000000ns
+849326us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+849327us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+849329us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849445us ThreadId(29) job start conn=0x216d2cf1ba8
+849446us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849482us ThreadId(29) job start conn=0x216d2cf1ba8
+849482us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849526us ThreadId(29) job start conn=0x216d2cf1ba8
+849528us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849577us ThreadId(29) job start conn=0x216d2cf1ba8
+849578us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849586us ThreadId(29) job start conn=0x216d2cf1ba8
+849594us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+849595us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+849595us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+849596us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+849599us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+849599us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+849603us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+849604us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+849605us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+849606us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+849608us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+849679us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+849681us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+849681us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+849683us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+849683us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+849684us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+849685us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+849690us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+849690us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+849691us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849839us ThreadId(29) job start conn=0x216d2cf1ba8
+849841us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+849842us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+849844us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+849848us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+849849us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+849850us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+849851us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849861us ThreadId(29) job start conn=0x216d2cf1ba8
+849862us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+849863us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+849865us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+849867us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+849867us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+849869us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+849869us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849878us ThreadId(29) job start conn=0x216d2cf1ba8
+849879us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849909us ThreadId(29) job start conn=0x216d2cf1ba8
+849910us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849957us ThreadId(29) job start conn=0x216d2cf1ba8
+849957us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+849977us ThreadId(29) job start conn=0x216d2cf1ba8
+849986us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+849987us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+849988us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+849988us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+849991us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+849992us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+849997us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=4us
+849997us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+849999us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+850000us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+850002us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+850076us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+850079us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+850079us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+850081us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+850081us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+850082us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+850083us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+850087us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+850088us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+850089us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850251us ThreadId(29) job start conn=0x216d2cf1ba8
+850254us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+850256us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+850259us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+850261us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+850269us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=6us
+850269us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+850271us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850280us ThreadId(29) job start conn=0x216d2cf1ba8
+850282us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+850282us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+850284us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+850286us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+850286us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+850287us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+850288us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850297us ThreadId(29) job start conn=0x216d2cf1ba8
+850297us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850356us ThreadId(29) job start conn=0x216d2cf1ba8
+850356us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850364us ThreadId(29) job start conn=0x216d2cf1ba8
+850367us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN IMMEDIATE
+850367us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+850369us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+850370us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+850371us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+850372us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+850373us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+850375us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+850377us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d49598 UPDATE fs_inode SET mode = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+                     RETURNING ino
+850388us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d49598 elapsed=0ns
+850392us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+850393us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+850395us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+850395us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+850397us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+850815us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+850819us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+850820us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+850822us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+850823us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+850825us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850838us ThreadId(29) job start conn=0x216d2cf1ba8
+850841us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+850842us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+850846us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=2us
+850846us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+850847us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+850847us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+850849us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+850853us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+850854us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+850855us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+850857us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850905us ThreadId(29) job start conn=0x216d2cf1ba8
+850906us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+850915us ThreadId(29) job start conn=0x216d2cf1ba8
+850922us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+850923us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+850924us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+850924us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+850927us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+850928us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+850932us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+850932us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+850934us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+850935us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+850936us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+851635us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+851640us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=3us
+851641us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+851644us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+851743us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+851745us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+851746us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+851752us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=5us
+851752us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+851753us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+851756us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=1000000ns
+851768us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+851769us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+851770us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+851859us ThreadId(29) job start conn=0x216d2cf1ba8
+851864us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN DEFERRED
+851865us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+851868us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+851869us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+851875us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=5us
+851878us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+851881us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+851882us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+851884us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+851884us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+851885us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+851946us ThreadId(29) job start conn=0x216d2cf1ba8
+851947us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+851970us ThreadId(29) job start conn=0x216d2cf1ba8
+851971us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+851985us ThreadId(29) job start conn=0x216d2cf1ba8
+851989us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 BEGIN IMMEDIATE
+851991us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+851995us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+851995us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+851998us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+851999us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+852002us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+852005us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+852008us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+852010us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+852027us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 DELETE FROM fs_data WHERE ino = ?
+852027us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+852043us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+852046us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+852048us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+852049us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+852054us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=4us
+852055us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+852056us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+852398us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+852401us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+852401us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+852403us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+852404us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=1000000ns
+852407us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852428us ThreadId(29) job start conn=0x216d2cf1ba8
+852433us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+852435us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+852442us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=5us
+852442us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+852445us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=1us
+852445us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+852447us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+852452us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+852454us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+852456us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+852458us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852517us ThreadId(29) job start conn=0x216d2cf1ba8
+852518us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852529us ThreadId(29) job start conn=0x216d2cf1ba8
+852529us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852535us ThreadId(29) job start conn=0x216d2cf1ba8
+852539us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN IMMEDIATE
+852540us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+852542us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=2us
+852543us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+852545us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+852546us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+852548us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+852551us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+852553us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+852554us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+852563us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 DELETE FROM fs_data WHERE ino = ?
+852564us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+852575us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 UPDATE fs_inode SET size = ?, data_inline = ?, storage_kind = ?, mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+852577us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+852579us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 COMMIT
+852635us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+852639us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+852640us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+852642us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+852643us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+852646us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852655us ThreadId(29) job start conn=0x216d2cf1ba8
+852658us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+852658us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+852665us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=5us
+852665us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+852666us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+852666us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+852668us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+852671us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+852672us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+852674us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+852675us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852728us ThreadId(29) job start conn=0x216d2cf1ba8
+852730us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+852740us ThreadId(29) job start conn=0x216d2cf1ba8
+852750us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+852751us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+852753us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+852753us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+852757us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+852758us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+852764us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=5us
+852765us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+852767us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+852768us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+852771us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+853482us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+853488us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=4us
+853489us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+853492us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+853587us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+853589us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+853590us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+853591us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+853592us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+853593us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+853595us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=1000000ns
+853604us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+853605us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+853606us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+854170us ThreadId(25) job start conn=0x216d033cee8
+854175us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+854183us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+854184us ThreadId(25) job done conn=0x216d033cee8 result=None
+854206us ThreadId(21) job start conn=0x216d030f628
+854208us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+854210us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+854211us ThreadId(21) job done conn=0x216d030f628 result=None
+854380us ThreadId(29) job start conn=0x216d2cf1ba8
+854383us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+854407us ThreadId(29) job start conn=0x216d2cf1ba8
+854409us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+854409us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+854417us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 PRAGMA wal_checkpoint(TRUNCATE)
+854419us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+854425us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=6us
+854426us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+854428us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+854430us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+854432us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+854516us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+854519us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+854519us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+854521us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+854521us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+854522us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+854524us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+854526us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+854538us ThreadId(29) job start conn=0x216d2cf1ba8
+854541us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+854542us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+854544us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+854547us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+854548us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+854549us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+854552us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
+            FROM fs_dentry 
+854553us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+854554us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+854564us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+854566us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+854566us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 elapsed=0ns
+854568us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+854940us ThreadId(29) job start conn=0x216d2cf1ba8
+854944us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+854946us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+854949us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+854952us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+854954us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+854954us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+854956us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+854990us ThreadId(29) job start conn=0x216d2cf1ba8
+854992us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+854993us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+854995us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+854996us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+854997us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+855006us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=8us
+855007us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+855027us ThreadId(29) job start conn=0x216d2cf1ba8
+855029us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+855076us ThreadId(29) job start conn=0x216d2cf1ba8
+855078us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+855134us ThreadId(29) job start conn=0x216d2cf1ba8
+855136us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+855182us ThreadId(29) job start conn=0x216d2cf1ba8
+855183us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+855633us ThreadId(25) job start conn=0x216d033cee8
+855637us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+855643us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+855647us ThreadId(25) job done conn=0x216d033cee8 result=None
+855669us ThreadId(21) job start conn=0x216d030f628
+855671us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+855674us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+855674us ThreadId(21) job done conn=0x216d030f628 result=None
+855865us ThreadId(29) job start conn=0x216d2cf1ba8
+855875us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d258e8 BEGIN IMMEDIATE
+855879us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+855896us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=16us
+855898us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+855937us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=37us
+855939us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d258e8 elapsed=0ns
+855945us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d49bd8 DELETE FROM fs_dentry WHERE parent_ino = ? AND name = ?
+855954us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d49bd8 elapsed=0ns
+855958us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d48418 UPDATE fs_inode
+                         SET nlink = nlink - 1, ctime = ?, ctime_nsec = ?
+                         WHERE ino = ?
+                         RETURNING ino
+855976us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d48418 elapsed=0ns
+855983us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d48918 SELECT nlink FROM fs_inode WHERE ino = ?
+855986us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d48918 elapsed=0ns
+856008us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_inode WHERE ino = ? AND nlink = 0
+856015us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+856023us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_origin WHERE delta_ino = ?
+856024us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+856035us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_chunk_override WHERE delta_ino = ?
+856037us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+856041us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d266f8 DELETE FROM fs_partial_origin WHERE delta_ino = ?
+856042us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d266f8 elapsed=0ns
+856045us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30588 SELECT chunk_index, digest FROM fs_data WHERE ino = ? ORDER BY chunk_index
+856046us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30588 elapsed=0ns
+856052us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_data WHERE ino = ?
+856054us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+856058us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 DELETE FROM fs_symlink WHERE ino = ?
+856059us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+856063us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30f88 UPDATE fs_dentry
+                     SET parent_ino = ?, name = ?
+                     WHERE parent_ino = ? AND name = ?
+                     RETURNING id
+856078us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30f88 elapsed=0ns
+856084us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f2c8 UPDATE fs_inode SET ctime = ?, ctime_nsec = ? WHERE ino = ?
+                     RETURNING ino
+856092us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f2c8 elapsed=0ns
+856096us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f548 UPDATE fs_inode
+                     SET mtime = ?, ctime = ?, mtime_nsec = ?, ctime_nsec = ?
+                     WHERE ino = ?
+                     RETURNING ino
+856103us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f548 elapsed=0ns
+856108us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 COMMIT
+856110us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+856117us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=5us
+856118us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+856123us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+856687us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+856692us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+856693us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+856694us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+856696us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=1000000ns
+856700us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+856715us ThreadId(29) job start conn=0x216d2cf1ba8
+856718us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d496d8 SELECT 1 FROM fs_inode WHERE ino = ?
+856718us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+856721us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=0 elapsed=2us
+856722us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=9
+856723us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=9 rc=0 elapsed=0us
+856723us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+856724us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+856727us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+856728us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+856728us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d496d8 elapsed=0ns
+856732us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 BEGIN IMMEDIATE
+856732us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+856734us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+856734us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+856735us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+856736us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+856747us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 DELETE FROM fs_origin WHERE delta_ino = ?
+856747us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+856755us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 DELETE FROM fs_chunk_override WHERE delta_ino = ?
+856756us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+856758us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 DELETE FROM fs_partial_origin WHERE delta_ino = ?
+856759us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+856760us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 COMMIT
+856760us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+856762us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+856762us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+856763us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+856764us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+856765us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+856776us ThreadId(29) job start conn=0x216d2cf1ba8
+856777us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+856777us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+856779us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+856782us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+856783us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=0us
+856784us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+856784us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+856804us ThreadId(25) job start conn=0x216d033cee8
+856806us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+856808us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+856809us ThreadId(25) job done conn=0x216d033cee8 result=None
+856832us ThreadId(21) job start conn=0x216d030f628
+856837us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+856845us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+856847us ThreadId(21) job done conn=0x216d030f628 result=None
+857038us ThreadId(29) job start conn=0x216d2cf1ba8
+857040us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+857059us ThreadId(29) job start conn=0x216d2cf1ba8
+857063us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+857064us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+857069us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=4us
+857073us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+857075us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+857077us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+857078us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+857186us ThreadId(29) job start conn=0x216d2cf1ba8
+857187us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+857195us ThreadId(29) job start conn=0x216d2cf1ba8
+857202us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+857203us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+857204us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+857204us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+857207us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 PRAGMA wal_checkpoint(TRUNCATE)
+857208us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+857211us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=3us
+857211us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+857213us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+857214us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+857216us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=1us
+858135us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+858141us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=3us
+858143us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+858146us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=2us
+858240us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+858242us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+858243us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+858244us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+858244us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+858246us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+858248us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=2000000ns
+858257us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+858258us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+858259us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+858945us ThreadId(29) job start conn=0x216d2cf1ba8
+858950us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+858951us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+858955us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+858960us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+858961us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+858963us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+858965us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+858996us ThreadId(29) job start conn=0x216d2cf1ba8
+858999us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+858999us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859001us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+859003us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859004us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+859004us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+859006us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859017us ThreadId(29) job start conn=0x216d2cf1ba8
+859018us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+859019us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859020us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+859022us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+859022us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859023us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+859024us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859034us ThreadId(29) job start conn=0x216d2cf1ba8
+859035us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859073us ThreadId(29) job start conn=0x216d2cf1ba8
+859075us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859117us ThreadId(29) job start conn=0x216d2cf1ba8
+859118us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859161us ThreadId(29) job start conn=0x216d2cf1ba8
+859162us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859170us ThreadId(29) job start conn=0x216d2cf1ba8
+859177us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+859177us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+859178us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+859178us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+859181us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 PRAGMA wal_checkpoint(TRUNCATE)
+859182us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+859184us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=2us
+859185us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+859186us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+859187us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+859188us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+859248us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+859250us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+859251us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+859252us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+859252us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+859253us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+859254us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=1000000ns
+859258us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+859259us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+859260us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859396us ThreadId(29) job start conn=0x216d2cf1ba8
+859400us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+859402us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859406us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+859409us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859411us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+859412us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+859414us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859423us ThreadId(29) job start conn=0x216d2cf1ba8
+859425us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+859425us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859427us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+859428us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+859429us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859430us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+859431us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859440us ThreadId(29) job start conn=0x216d2cf1ba8
+859441us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859471us ThreadId(29) job start conn=0x216d2cf1ba8
+859472us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859564us ThreadId(29) job start conn=0x216d2cf1ba8
+859568us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 BEGIN DEFERRED
+859568us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+859571us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+859571us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859573us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+859575us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+859577us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 COMMIT
+859577us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859579us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+859579us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+859580us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859650us ThreadId(29) job start conn=0x216d2cf1ba8
+859653us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 BEGIN DEFERRED
+859654us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+859656us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+859657us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+859660us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+859663us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+859665us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 COMMIT
+859670us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+859671us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+859672us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+859673us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859733us ThreadId(29) job start conn=0x216d2cf1ba8
+859736us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+859746us ThreadId(29) job start conn=0x216d2cf1ba8
+859756us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+859757us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+859758us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+859759us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+859762us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 PRAGMA wal_checkpoint(TRUNCATE)
+859763us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+859769us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=4us
+859770us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+859772us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+859773us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+859775us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+859853us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+859857us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=2us
+859857us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+859859us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+859859us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+859861us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=1us
+859863us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+859870us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+859871us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+859872us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860033us ThreadId(29) job start conn=0x216d2cf1ba8
+860037us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+860039us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+860043us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=4us
+860046us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+860048us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+860048us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+860050us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860061us ThreadId(29) job start conn=0x216d2cf1ba8
+860063us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+860063us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+860065us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+860066us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+860067us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+860068us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=0us
+860069us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860079us ThreadId(29) job start conn=0x216d2cf1ba8
+860079us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860114us ThreadId(29) job start conn=0x216d2cf1ba8
+860114us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860197us ThreadId(29) job start conn=0x216d2cf1ba8
+860197us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860223us ThreadId(29) job start conn=0x216d2cf1ba8
+860229us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+860230us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+860231us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+860231us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+860233us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 PRAGMA wal_checkpoint(TRUNCATE)
+860234us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+860237us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=2us
+860237us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+860239us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+860239us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+860241us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+860304us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+860306us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+860306us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+860307us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+860308us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+860309us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+860310us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+860314us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 PRAGMA synchronous = NORMAL
+860314us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2ff48 elapsed=0ns
+860315us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860770us ThreadId(25) job start conn=0x216d033cee8
+860774us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+860780us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+860781us ThreadId(25) job done conn=0x216d033cee8 result=None
+860818us ThreadId(21) job start conn=0x216d030f628
+860821us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+860827us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+860828us ThreadId(21) job done conn=0x216d030f628 result=None
+860960us ThreadId(29) job start conn=0x216d2cf1ba8
+860961us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+860978us ThreadId(29) job start conn=0x216d2cf1ba8
+860979us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+860979us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+860984us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25438 PRAGMA wal_checkpoint(TRUNCATE)
+860985us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+860990us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=4us
+860990us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+860992us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+860992us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=10
+860994us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=10 rc=0 elapsed=1us
+861057us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=4 flags=9
+861059us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=4 flags=9 rc=0 elapsed=1us
+861060us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+861061us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=0us
+861061us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+861062us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=0us
+861064us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25438 elapsed=0ns
+861065us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+861074us ThreadId(29) job start conn=0x216d2cf1ba8
+861076us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30088 SELECT mode FROM fs_inode WHERE ino = ?
+861076us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+861078us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+861081us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30088 elapsed=0ns
+861081us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+861083us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+861085us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
+            FROM fs_dentry 
+861086us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+861087us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=1us
+861096us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+861097us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+861097us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fcc8 elapsed=0ns
+861098us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+861311us ThreadId(29) job start conn=0x216d2cf1ba8
+861315us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861317us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+861321us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+861326us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+861328us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+861328us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+861330us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+861351us ThreadId(25) job start conn=0x216d033cee8
+861355us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861360us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+861361us ThreadId(25) job done conn=0x216d033cee8 result=None
+861384us ThreadId(21) job start conn=0x216d030f628
+861385us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861388us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+861388us ThreadId(21) job done conn=0x216d030f628 result=None
+861522us ThreadId(29) job start conn=0x216d2cf1ba8
+861524us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861525us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+861530us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=3us
+861534us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+861536us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+861536us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fa48 elapsed=0ns
+861537us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+861554us ThreadId(25) job start conn=0x216d033cee8
+861556us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861559us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+861560us ThreadId(25) job done conn=0x216d033cee8 result=None
+861573us ThreadId(21) job start conn=0x216d030f628
+861575us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861577us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+861577us ThreadId(21) job done conn=0x216d030f628 result=None
+861675us ThreadId(25) job start conn=0x216d033cee8
+861678us ThreadId(25) sql conn=0x216d033cee8 stmt=0x216d0358458 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861683us ThreadId(25) sql done conn=0x216d033cee8 stmt=0x216d0358458 elapsed=0ns
+861684us ThreadId(25) job done conn=0x216d033cee8 result=None
+861699us ThreadId(21) job start conn=0x216d030f628
+861700us ThreadId(21) sql conn=0x216d030f628 stmt=0x216d033ece8 SELECT name FROM fs_dentry WHERE parent_ino = ? ORDER BY name
+861702us ThreadId(21) sql done conn=0x216d030f628 stmt=0x216d033ece8 elapsed=0ns
+861702us ThreadId(21) job done conn=0x216d030f628 result=None
+861777us ThreadId(29) job start conn=0x216d2cf1ba8
+861779us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN IMMEDIATE
+861780us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=6
+861783us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=6 rc=0 elapsed=2us
+861783us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+861785us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+861786us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+861789us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d306c8 INSERT INTO fs_inode (mode, nlink, uid, gid, size, atime, mtime, ctime, atime_nsec, mtime_nsec, ctime_nsec, data_inline, storage_kind)
+                 VALUES (?, 1, ?, ?, 0, ?, ?,
+861815us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d258e8 INSERT INTO fs_dentry (name, parent_ino, ino) VALUES (?, ?, ?)
+861821us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d258e8 elapsed=0ns
+861823us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d306c8 elapsed=0ns
+861827us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24ad8 COMMIT
+861828us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=5
+861830us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=5 rc=0 elapsed=1us
+861830us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+861832us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=1us
+862276us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+862279us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=2us
+862280us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+862282us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+862283us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24ad8 elapsed=1000000ns
+862298us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862339us ThreadId(29) job start conn=0x216d2cf1ba8
+862341us ThreadId(26) job start conn=0x216d038a608
+862347us ThreadId(26) sql conn=0x216d038a608 stmt=0x216d0358098 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+862349us ThreadId(26) lock request file=0x216d0317180 offset=4 count=1 flags=10
+862357us ThreadId(26) lock result file=0x216d0317180 offset=4 count=1 flags=10 rc=0 elapsed=6us
+862358us ThreadId(26) lock request file=0x216d0317180 offset=4 count=1 flags=9
+862358us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d24ad8 BEGIN IMMEDIATE
+862360us ThreadId(26) lock result file=0x216d0317180 offset=4 count=1 flags=9 rc=0 elapsed=1us
+862360us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=6
+862361us ThreadId(26) lock request file=0x216d0317180 offset=4 count=1 flags=6
+862365us ThreadId(26) lock result file=0x216d0317180 offset=4 count=1 flags=6 rc=0 elapsed=2us
+862366us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=6 rc=0 elapsed=3us
+862373us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+862376us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+862377us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d24ad8 elapsed=0ns
+862402us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 UPDATE fs_inode SET mtime = ?, mtime_nsec = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?
+862404us ThreadId(26) sql done conn=0x216d038a608 stmt=0x216d0358098 elapsed=0ns
+862406us ThreadId(26) lock request file=0x216d0317180 offset=4 count=1 flags=5
+862407us ThreadId(26) lock result file=0x216d0317180 offset=4 count=1 flags=5 rc=0 elapsed=0us
+862407us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+862409us ThreadId(26) job done conn=0x216d038a608 result=None
+862410us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+862430us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+862432us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=1us
+862433us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=5
+862435us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=5 rc=0 elapsed=1us
+862436us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+862440us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862507us ThreadId(29) job start conn=0x216d2cf1ba8
+862508us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862664us ThreadId(29) job start conn=0x216d2cf1ba8
+862669us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2f688 SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?
+862670us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+862675us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=4us
+862676us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=10
+862677us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=10 rc=0 elapsed=1us
+862678us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=9
+862679us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=9 rc=0 elapsed=1us
+862680us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+862682us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=1us
+862686us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2f688 elapsed=0ns
+862688us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+862689us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=1us
+862691us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862720us ThreadId(29) job start conn=0x216d2cf1ba8
+862723us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+862724us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+862729us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=3us
+862731us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+862733us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=1us
+862733us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+862735us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862745us ThreadId(29) job start conn=0x216d2cf1ba8
+862746us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+862746us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+862748us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=1us
+862750us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+862750us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+862752us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=0us
+862752us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862762us ThreadId(29) job start conn=0x216d2cf1ba8
+862763us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862798us ThreadId(29) job start conn=0x216d2cf1ba8
+862799us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862928us ThreadId(29) job start conn=0x216d2cf1ba8
+862932us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 SELECT base_ino, base_path, base_size, base_fingerprint_size,
+                        base_mtime, base_mtime_nsec, base_ctime, base_ctime_nsec, created_at,
+                        
+862934us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+862944us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=9us
+862947us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+862949us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=1us
+862950us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fe08 elapsed=0ns
+862951us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862960us ThreadId(29) job start conn=0x216d2cf1ba8
+862962us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d30e48 SELECT ino FROM fs_inode WHERE ino = ?
+862962us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+862964us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=1us
+862966us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d30e48 elapsed=0ns
+862966us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+862967us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=0us
+862968us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+862977us ThreadId(29) job start conn=0x216d2cf1ba8
+862978us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+863121us ThreadId(29) job start conn=0x216d2cf1ba8
+863128us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN DEFERRED
+863130us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+863134us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+863136us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+863146us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=8us
+863152us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+863156us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+863157us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+863162us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=3us
+863163us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+863165us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+863293us ThreadId(29) job start conn=0x216d2cf1ba8
+863299us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 BEGIN DEFERRED
+863300us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+863302us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 SELECT size, data_inline, storage_kind
+             FROM fs_inode WHERE ino = ?
+863303us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=6
+863309us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=6 rc=0 elapsed=5us
+863313us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d2fb88 elapsed=0ns
+863315us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 COMMIT
+863316us ThreadId(29) lock request file=0x216d0396d30 offset=5 count=1 flags=5
+863318us ThreadId(29) lock result file=0x216d0396d30 offset=5 count=1 flags=5 rc=0 elapsed=1us
+863318us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=0ns
+863319us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+863395us ThreadId(29) job start conn=0x216d2cf1ba8
+863397us ThreadId(29) job done conn=0x216d2cf1ba8 result=None
+863421us ThreadId(29) job start conn=0x216d2cf1ba8
+863429us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d310c8 PRAGMA synchronous = FULL
+863430us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d310c8 elapsed=0ns
+863430us ThreadId(29) checkpoint mutex wait conn=0x216d2cf1ba8
+863431us ThreadId(29) checkpoint mutex acquired conn=0x216d2cf1ba8
+863434us ThreadId(29) sql conn=0x216d2cf1ba8 stmt=0x216d2d25d98 PRAGMA wal_checkpoint(TRUNCATE)
+863434us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=10
+863438us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=10 rc=0 elapsed=2us
+863438us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=10
+863440us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=10 rc=0 elapsed=1us
+863440us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+863442us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=1us
+877474us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+877488us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=9us
+893218us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+893234us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=12us
+908556us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+908607us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=44us
+924081us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+924093us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=8us
+954122us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+954148us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=11us
+985570us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+985585us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=10us
+1016993us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1017024us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=27us
+1048754us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1048769us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=11us
+1078921us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1078937us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=11us
+1142056us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1142071us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=11us
+1204577us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1204598us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=15us
+1312623us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1312656us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=26us
+1420103us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1420334us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=11us
+1528008us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1528137us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=112us
+1637346us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1637359us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=9us
+1746097us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1746123us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=18us
+1855261us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1855276us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=10us
+1965915us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+1965934us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=13us
+2073956us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2073970us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=9us
+2182257us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2182303us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=35us
+2289436us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2289511us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=57us
+2398046us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2398109us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=50us
+2505408us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2505431us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=17us
+2615832us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2615910us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=59us
+2724034us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2724121us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=67us
+2832038us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2832081us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=32us
+2939404us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+2939468us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=49us
+3048397us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3048442us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=33us
+3156553us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3156619us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=52us
+3265525us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3265582us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=43us
+3372742us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3372762us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=15us
+3480931us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3481000us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=51us
+3588887us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3588973us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=64us
+3696514us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3696551us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=29us
+3803991us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3804032us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=32us
+3912663us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+3912699us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=27us
+4019394us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4019519us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=100us
+4128296us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4128386us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=66us
+4236690us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4236731us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=31us
+4344286us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4344349us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=48us
+4450501us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4450552us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=38us
+4558729us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4558893us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=130us
+4665867us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4665926us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=46us
+4774547us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4774614us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=47us
+4882100us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4882425us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=294us
+4989132us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+4989227us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=74us
+5094838us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5094900us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=47us
+5201998us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5202081us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=64us
+5311168us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5311228us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=47us
+5416982us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5417004us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=16us
+5526370us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5526456us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=64us
+5632463us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5632479us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=12us
+5740379us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5740433us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=41us
+5846912us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5846988us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=59us
+5954263us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+5954285us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=16us
+6061265us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+6061319us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=40us
+6169612us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+6169666us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=41us
+6277522us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+6277572us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=39us
+6355275us ThreadId(29) lock request file=0x216d0396d30 offset=4 count=1 flags=10
+6355330us ThreadId(29) lock result file=0x216d0396d30 offset=4 count=1 flags=10 rc=5 elapsed=38us
+6355353us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=10
+6355370us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=10 rc=0 elapsed=12us
+6358339us ThreadId(29) lock request file=0x216d0396d30 offset=3 count=1 flags=9
+6358381us ThreadId(29) lock result file=0x216d0396d30 offset=3 count=1 flags=9 rc=0 elapsed=22us
+6358393us ThreadId(29) lock request file=0x216d0396d30 offset=0 count=1 flags=9
+6358410us ThreadId(29) lock result file=0x216d0396d30 offset=0 count=1 flags=9 rc=0 elapsed=11us
+6358414us ThreadId(29) lock request file=0x216d0396d30 offset=1 count=1 flags=9
+6358430us ThreadId(29) lock result file=0x216d0396d30 offset=1 count=1 flags=9 rc=0 elapsed=10us
+6358450us ThreadId(29) sql done conn=0x216d2cf1ba8 stmt=0x216d2d25d98 elapsed=5495000000ns
