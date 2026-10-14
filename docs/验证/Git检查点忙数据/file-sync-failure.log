@@ -1,7 +1,0 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
-     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\wal-analysis.exe --file`
-sqlite=3.53.2 autocheckpoint=1000 busy_timeout=5000
-writer_autocheckpoint=1000
-production_result=Err(Database(SqliteFailure(Error { code: DatabaseBusy, extended_code: 5 }, Some("WAL checkpoint is busy")))) file_sync=true elapsed_us=3033
-reused_connection_synchronous_after_failure=2
-committed_bytes=8388608

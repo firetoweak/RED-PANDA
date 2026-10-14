@@ -4,7 +4,7 @@
 来源、上游版本和本地补丁见 [SOURCE.md](SOURCE.md)，许可证保留在 `licenses/`。
 
 ```text
-native/sandbox → vfs-mount → vfs-fuse → vfs-core
+native/filesystem → vfs-mount → vfs-fuse → vfs-core
                     └────────────────→ vfs-core
 ```
 
@@ -15,7 +15,7 @@ macOS HostFS 保留，但当前原生文件管理服务没有 macOS 挂载执行
 
 不再提供独立 VFS CLI、NFS、会话交接、KV、工具调用审计、数据库加密配置或远端 chunk 源。
 本目录是 Agent 文件系统使用的底层 VFS 库；`vfs-core` 管理当前文件状态和冻结制品，
-`native/sandbox` 与 `redpanda/filesystem` 共同管理操作历史、回退和子任务文件交换。
+`native/filesystem` 与 `redpanda/filesystem` 共同管理操作历史、回退和子任务文件交换。
 Agent 文件系统独立拥有审计与回退语义，可以在沙箱内运行。命令执行管理受管进程，Sandbox 独立施加执行限制；文件视图本身不提供进程或网络隔离。当前目录和程序中的 sandbox 名称不代表上述职责归属。
 
 数据库和显式配置的只读 base 是文件视图的依据。缓存和句柄不能成为第二事实源。

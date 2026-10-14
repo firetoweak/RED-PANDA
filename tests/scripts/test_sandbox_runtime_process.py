@@ -16,9 +16,9 @@ def test_packaged_runtime_mounts_without_developer_toolchains(tmp_path, monkeypa
     archive = runtime.ROOT / f"dist/sandbox/redpanda-sandbox-{target}.zip"
     if not archive.exists():
         pytest.skip("需要先构建并打包沙箱运行程序")
-    config = tmp_path / "native/sandbox/release.json"
+    config = tmp_path / "native/filesystem/release.json"
     config.parent.mkdir(parents=True)
-    shutil.copyfile(runtime.ROOT / "native/sandbox/release.json", config)
+    shutil.copyfile(runtime.ROOT / "native/filesystem/release.json", config)
     monkeypatch.delenv("REDPANDA_FILESYSTEM_EXECUTABLE", raising=False)
     monkeypatch.setattr(runtime, "download", lambda url, destination:
                         shutil.copyfile(archive.with_name(url.rsplit("/", 1)[1]), destination))

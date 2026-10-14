@@ -43,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $channel = python -c 'import tomllib; print(tomllib.load(open("native/sandbox/rust-toolchain.toml", "rb"))["toolchain"]["channel"])'
+          $channel = python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])'
           rustup toolchain install "$channel-x86_64-pc-windows-gnullvm" --profile minimal
           if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
           New-Item -ItemType Directory -Force .tools | Out-Null
@@ -87,7 +87,7 @@ jobs:
           environment['CARGO_TARGET_DIR'] = str(ROOT / '.tools/sandbox/target')
           environment['PATH'] = str(ROOT / 'redpanda/filesystem/bin') + os.pathsep + environment['PATH']
           subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
-              '--manifest-path', str(ROOT / 'native/sandbox/Cargo.toml'),
+              '--manifest-path', str(ROOT / 'native/filesystem/Cargo.toml'),
               '--target', 'x86_64-pc-windows-gnullvm', '--test', 'tracking_contracts'],
               env=environment, check=True)
           subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',

@@ -1,4 +1,4 @@
-"""Build RED PANDA's native sandbox with the VFS sources in this repository."""
+"""Build RED PANDA's native Agent File System service with the local VFS sources."""
 from __future__ import annotations
 
 import argparse
@@ -37,7 +37,7 @@ def prepare_environment(llvm_dir: Path | None = None, winfsp_dir: Path | None = 
     """检查本机依赖，只为构建子进程准备环境，不修改用户工具链设置。"""
     environment = dict(os.environ)
     errors = []
-    channel = tomllib.loads((ROOT / "native/sandbox/rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
+    channel = tomllib.loads((ROOT / "native/filesystem/rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
     toolchain = channel + "-x86_64-pc-windows-gnullvm" if WINDOWS else channel
     rustup = shutil.which("rustup")
     if rustup is None:
@@ -83,7 +83,7 @@ def prepare_environment(llvm_dir: Path | None = None, winfsp_dir: Path | None = 
         if not os.access("/etc/mtab", os.R_OK):
             errors.append("/etc/mtab 不可读；fusermount3 需要它完成卸载。")
     else:
-        errors.append("原生沙箱当前只支持 Windows x64 与 Linux。")
+        errors.append("原生文件服务当前只支持 Windows x64 与 Linux。")
     if errors:
         raise MissingBuildDependencies(errors)
     environment["LIBSQLITE3_FLAGS"] = "-DSQLITE_DIRECT_OVERFLOW_READ=0"
@@ -144,7 +144,7 @@ def main():
         command.append("--release")
     if args.offline:
         command.append("--offline")
-    subprocess.run(command, cwd=ROOT / "native/sandbox", env=environment, check=True)
+    subprocess.run(command, cwd=ROOT / "native/filesystem", env=environment, check=True)
 
     output = ROOT / "redpanda/filesystem/bin"
     output.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ def main():
     record = {"target": args.target or "host", "profile": profile,
               "sqlite_c_flags": environment["LIBSQLITE3_FLAGS"],
               "source_sha256": {"native/vfs": source_digest(factory),
-                                "native/sandbox": source_digest(ROOT / "native/sandbox"),
+                                "native/filesystem": source_digest(ROOT / "native/filesystem"),
                                 ".cargo/config.toml": hashlib.sha256((ROOT / ".cargo/config.toml").read_bytes()).hexdigest(),
                                 "scripts/build_sandbox.py": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "files": files}

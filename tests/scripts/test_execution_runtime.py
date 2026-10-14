@@ -8,7 +8,7 @@ from scripts import execution_runtime as runtime
 
 
 def build(root):
-    config=root/"native/sandbox/release.json";config.parent.mkdir(parents=True)
+    config=root/"native/filesystem/release.json";config.parent.mkdir(parents=True)
     config.write_text(json.dumps({"version":"0.4.2","repository":"example/project"}))
     directory=root/"redpanda/execution/bin";directory.mkdir(parents=True)
     for name in runtime.REQUIRED:
@@ -21,8 +21,8 @@ def build(root):
 def test_execution_package_installs_and_reuses_verified_artifacts(tmp_path,monkeypatch):
     producer=tmp_path/"producer";source=build(producer)
     archive=runtime.package(producer,tmp_path/"release")
-    consumer=tmp_path/"consumer";config=consumer/"native/sandbox/release.json";config.parent.mkdir(parents=True)
-    shutil.copyfile(producer/"native/sandbox/release.json",config)
+    consumer=tmp_path/"consumer";config=consumer/"native/filesystem/release.json";config.parent.mkdir(parents=True)
+    shutil.copyfile(producer/"native/filesystem/release.json",config)
     calls=[]
     def download(url,path):
         calls.append(url);shutil.copyfile(archive.with_name(url.rsplit("/",1)[1]),path)

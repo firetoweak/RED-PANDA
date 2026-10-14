@@ -18,5 +18,5 @@ web/dist/
 web/*.tsbuildinfo
 redpanda/filesystem/bin/
 redpanda/execution/bin/
-native/sandbox/target/
+native/filesystem/target/
 dist/

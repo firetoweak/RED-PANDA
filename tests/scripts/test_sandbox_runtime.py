@@ -10,7 +10,7 @@ from scripts import sandbox_runtime as runtime
 
 
 def configure(root, version="0.4.1"):
-    config = root / "native/sandbox/release.json"
+    config = root / "native/filesystem/release.json"
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(json.dumps({"version": version, "repository": "example/project"}), encoding="utf-8")
 
@@ -27,7 +27,7 @@ def make_build(root, target):
         path.parent.mkdir(exist_ok=True)
         path.write_bytes(f"compiled {name}".encode())
     record = {"target": "x86_64-pc-windows-gnullvm" if target.startswith("windows") else "x86_64-unknown-linux-gnu",
-              "profile": "release", "source_sha256": {"native/sandbox": "source"},
+              "profile": "release", "source_sha256": {"native/filesystem": "source"},
               "files": {name: runtime.digest(directory / name) for name in names}}
     (directory / "BUILD.json").write_text(json.dumps(record), encoding="utf-8")
     return directory

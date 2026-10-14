@@ -1,6 +1,6 @@
 # 工具编码回合
 
-在会话里打开 `自动放行写文件等工具`，让模型改文件、跑命令，时间线依次出现 `read_file`、`apply_patch`、`execute_command`，磁盘上的文件真的变了。工具来源 `redpanda/tools/builtin/`（`file_read.py`、`file_write.py`、`file_manage.py`、`command_execution.py`、`get_changes.py`），文件视图由 `native/sandbox` 提供。
+在会话里打开 `自动放行写文件等工具`，让模型改文件、跑命令，时间线依次出现 `read_file`、`apply_patch`、`execute_command`，磁盘上的文件真的变了。工具来源 `redpanda/tools/builtin/`（`file_read.py`、`file_write.py`、`file_manage.py`、`command_execution.py`、`get_changes.py`），文件视图由 `native/filesystem` 提供。
 
 ## Sub-features
 

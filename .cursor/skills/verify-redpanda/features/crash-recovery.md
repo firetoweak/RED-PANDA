@@ -9,7 +9,7 @@
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`journal/sqlite.py` 的 `events_delivery_identity` 唯一索引）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`（它是 `ValueError` 的子类）。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：408/425/429/500/502/503/504 与 `httpx.TransportError` → `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次；流一旦开始（收到任何一行）就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `InvalidLLMResponse`（`模型响应不符合约定`）；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。读超时 60 秒、连接超时 10 秒。
 - **失败可见与再试**：已识别的模型请求失败只停该会话，当前失败原因记录在会话上（`session.last_error`），刷新后仍可查询；`runnable` 只表示仍有待处理输入，不代表模型请求正在执行。点 `重试`沿用原待处理输入继续，不新增用户消息、不重复已完成的工具。
-- **FUSE 挂载**：`native/sandbox/src/main.rs` 的 `clear_stale_mount` 在下次挂载前遇到 `ENOTCONN` 时执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`），**Linux 没有对应的崩溃测试**。
+- **FUSE 挂载**：`native/filesystem/src/main.rs` 的 `clear_stale_mount` 在下次挂载前遇到 `ENOTCONN` 时执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`），**Linux 没有对应的崩溃测试**。
 - **定时任务**：`redpanda/automation/recovery.py` 处理重启后 UNKNOWN 的定时命令。
 
 ## Sub-features

@@ -1,8 +1,2 @@
 # 工作区文本统一使用 LF，避免 Windows Git autocrlf 与 Obsidian 互相改写。
 * text=auto eol=lf
-
-# 原始验证证据按字节保留，避免换行转换破坏已记录的 SHA256。
-"docs/验证/Agent文件系统语义收口数据/**" -text -whitespace
-"docs/验证/Git检查点忙数据/**" -text -whitespace
-"docs/验证/SQLite升级数据/**" -text -whitespace
-"docs/验证/检查点协调修复数据/**" -text -whitespace

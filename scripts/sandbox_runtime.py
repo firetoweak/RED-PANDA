@@ -32,7 +32,7 @@ def host_platform() -> str:
 
 
 def release_config(root: Path) -> dict:
-    config = json.loads((root / "native/sandbox/release.json").read_text(encoding="utf-8"))
+    config = json.loads((root / "native/filesystem/release.json").read_text(encoding="utf-8"))
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", config["version"]):
         raise ValueError("沙箱运行包版本必须为 major.minor.patch。")
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", config["repository"]):
@@ -178,7 +178,7 @@ def ensure_platform_runtime(root: Path) -> None:
         if shutil.which("fusermount3") is None:
             raise ValueError("缺少 FUSE 运行组件：Ubuntu/Debian 执行 sudo apt-get install -y fuse3；Fedora 执行 sudo dnf install -y fuse3。")
         if not os.access("/dev/fuse", os.R_OK | os.W_OK) or not os.access("/etc/mtab", os.R_OK):
-            raise ValueError("FUSE 运行条件未就绪：需可读写 /dev/fuse 且可读 /etc/mtab，见 native/sandbox/README.md。")
+            raise ValueError("FUSE 运行条件未就绪：需可读写 /dev/fuse 且可读 /etc/mtab，见 native/filesystem/README.md。")
 
 
 def main(argv: list[str] | None = None) -> int:

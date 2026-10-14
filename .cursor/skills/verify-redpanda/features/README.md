@@ -150,15 +150,15 @@
 | 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
 | 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`sandbox/files/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
-| 残留 FUSE 挂载清理 | `native/sandbox/src/main.rs` `clear_stale_mount` | crash-recovery |
+| 残留 FUSE 挂载清理 | `native/filesystem/src/main.rs` `clear_stale_mount` | crash-recovery |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
-| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/sandbox/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
+| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/filesystem/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
 | 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
 
 ### 有意不覆盖
 
 - `thinllm/`：底层 LLM 适配库，不是用户入口；经 model-settings 的 `测试` 间接覆盖。
-- `native/vfs`、`native/sandbox` 的 Rust 内部 API：由 `cargo test` 覆盖，用户只经文件工具与回滚感知，见 tool-coding-round、file-rewind。
+- `native/vfs`、`native/filesystem` 的 Rust 内部 API：由 `cargo test` 覆盖，用户只经文件工具与回滚感知，见 tool-coding-round、file-rewind。
 - `redpanda/runtime/journal` 的内部恢复逻辑：用户不可直接触发；判据里通过 `GET /api/sessions/{id}` 读 journal 投影。
 - macOS 文件视图：源码未实现，始终跳过。
 

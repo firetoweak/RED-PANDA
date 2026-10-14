@@ -1,4 +1,0 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
-     Running `C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\sqlite_read_race.exe`
-sqlite=3.53.2 extended=false completed_reads=20000 txn_states=[0, 0, 0] autocheckpoint=0
-checkpoint=(0, 0, 0) elapsed_ms=0

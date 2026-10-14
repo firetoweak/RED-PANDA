@@ -1,6 +1,6 @@
 # Windows 任务命令运行组件
 
-此目录拥有任务启动、进程内宿主拒写策略、子进程接入和 Job 回收。文件视图、文件服务与历史仍归 [`../sandbox/`](../sandbox/README.md) 和 Agent 文件系统。生产 Python 接入位于 `redpanda/execution/local/`。
+此目录拥有任务启动、进程内宿主拒写策略、子进程接入和 Job 回收。文件视图、文件服务与历史仍归 [`../filesystem/`](../filesystem/README.md) 和 Agent 文件系统。生产 Python 接入位于 `redpanda/execution/local/`。
 
 支持普通 Windows x64 开发工具，通过 Microsoft Detours 拦截文件变更及受支持的进程创建；不是对抗恶意进程的操作系统隔离。`CreateProcessW/A` 经过挂起、策略传递和握手后放行。其他经过本 DLL 的 `NtCreateUserProcess`、旧 `NtCreateProcess/Ex` 入口拒绝执行；显式挂起、调试、脱离 Job 和 x86 子进程也被拒绝。代理服务及直接系统调用不在这一保证内。
 

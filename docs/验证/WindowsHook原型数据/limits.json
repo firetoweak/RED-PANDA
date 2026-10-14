@@ -1,7 +1,0 @@
-{
-  "name": "existing-outside-hardlink-and-stream",
-  "returncode": 0,
-  "stderr": "",
-  "host_content": "BASE",
-  "covered": true
-}

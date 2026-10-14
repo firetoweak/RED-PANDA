@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
-     Running tests\windows_write_crash.rs (C:\LocalData\work\helpMe\RED-PANDA\.tools\sandbox\target\x86_64-pc-windows-gnullvm\debug\build\vfs-core/fda81a69d762f3f3\out\windows_write_crash-fda81a69d762f3f3.exe)
-
-running 1 test
-test interrupted_writes_recover_whole_transactions_and_flushed_versions ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.99s
-

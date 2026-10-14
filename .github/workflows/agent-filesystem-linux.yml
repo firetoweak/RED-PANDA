@@ -61,12 +61,12 @@ jobs:
           "$tools/fd" --version
           "$tools/rg" --version
 
-          channel=$(python -c 'import tomllib; print(tomllib.load(open("native/sandbox/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+          channel=$(python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
           rustup toolchain install "$channel" --profile minimal
       - name: Build Agent File System for Linux
         run: python scripts/build_sandbox.py
       - name: Verify tracked filesystem mutation boundaries
-        working-directory: native/sandbox
+        working-directory: native/filesystem
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
         run: cargo test --locked --test tracking_contracts

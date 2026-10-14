@@ -17,8 +17,8 @@ def test_packaged_execution_runtime_enforces_host_read_only_without_toolchain(tm
     root=Path(__file__).resolve().parents[2]
     archive=root/"dist/sandbox/redpanda-execution-windows-x86_64.zip"
     assert archive.is_file(),"Build and package the Windows task runtime before process verification"
-    config=tmp_path/"native/sandbox/release.json";config.parent.mkdir(parents=True)
-    shutil.copyfile(root/"native/sandbox/release.json",config)
+    config=tmp_path/"native/filesystem/release.json";config.parent.mkdir(parents=True)
+    shutil.copyfile(root/"native/filesystem/release.json",config)
     monkeypatch.setattr(execution_runtime.delivery,"download",lambda url,target:shutil.copyfile(archive.with_name(url.rsplit("/",1)[1]),target))
     launcher=execution_runtime.install(tmp_path)
     monkeypatch.setattr(windows_task,"native_task_launcher",lambda:launcher)

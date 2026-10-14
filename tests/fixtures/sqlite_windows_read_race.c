@@ -1,3 +1,8 @@
+/* Manual upstream regression fixture, separate from the product build.
+ * Compile with the sqlite3.c/sqlite3.h version under comparison and run with
+ * --extended. Inspect the checkpoint row: SQL rc=0 alone does not mean that
+ * the checkpoint completed. The product regression is windows_checkpoint.rs.
+ */
 #define _WIN32_WINNT 0x0602
 #include <windows.h>
 #include <stdio.h>

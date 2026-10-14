@@ -78,7 +78,7 @@ def test_build_packages_detected_runtime_and_uses_prepared_toolchain(tmp_path, m
                  tmp_path / "native/vfs/SOURCE.md", tmp_path / ".cargo/config.toml"):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("test artifact", encoding="utf-8")
-    (tmp_path / "native/sandbox").mkdir(parents=True)
+    (tmp_path / "native/filesystem").mkdir(parents=True)
     prepared = build_sandbox.BuildEnvironment({"LIBSQLITE3_FLAGS": "-DSQLITE_DIRECT_OVERFLOW_READ=0"},
                                               "rustup", "explicit-host", sdk, llvm)
     monkeypatch.setattr(build_sandbox, "ROOT", tmp_path)

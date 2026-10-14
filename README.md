@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 sh scripts/setup.sh
 ```
 
-脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的原生文件服务，并引导你配置模型。Windows 还会安装独立的[任务命令组件](native/execution/README.md)，并按需安装 WinFsp 驱动，首次安装驱动需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/sandbox/README.md#linux)。重复执行会校验并复用已有运行包，保留自行编译的原生组件。
+脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的原生文件服务，并引导你配置模型。Windows 还会安装独立的[任务命令组件](native/execution/README.md)，并按需安装 WinFsp 驱动，首次安装驱动需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/filesystem/README.md#linux)。重复执行会校验并复用已有运行包，保留自行编译的原生组件。
 
 **运行不需要 Rust、LLVM、开发 SDK、预装 Python 或 Docker。** 安装参数见[运行指南](docs/运行指南.md#准备选项)。
 

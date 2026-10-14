@@ -1,12 +1,12 @@
 # 构建与测试
 
-本文只负责底层 VFS 库、挂载适配器及原生故障测试。工具链准备、产品构建与 Python 文件管理测试统一见[原生构建与验证说明](../../sandbox/BUILD.md)。
+本文只负责底层 VFS 库、挂载适配器及原生故障测试。工具链准备、产品构建与 Python 文件管理测试统一见[原生构建与验证说明](../../filesystem/BUILD.md)。
 
 工具链固定为 `nightly-2026-08-07`；从 `native/vfs/` 执行以下 Rust 命令。挂载与崩溃测试串行运行，跳过或仅编译成功不代表运行验证。
 
 ## Windows x64
 
-先按[原生服务的 Windows 构建说明](../../sandbox/BUILD.md#windows)准备 gnullvm、LLVM MinGW 与 WinFsp SDK 环境，然后执行：
+先按[原生服务的 Windows 构建说明](../../filesystem/BUILD.md#windows)准备 gnullvm、LLVM MinGW 与 WinFsp SDK 环境，然后执行：
 
 ```powershell
 cargo fmt --all -- --check
@@ -32,7 +32,7 @@ scripts/gate.sh
 ```
 
 该入口运行格式、Clippy、库测试和结构检查。原生挂载/产品流程仍须在构建 sandbox 后
-显式运行[原生构建与验证说明](../../sandbox/BUILD.md#范围与验证)中的 process 测试。macOS 仅保留核心 HostFS；本地 Windows 验证不覆盖它。
+显式运行[原生构建与验证说明](../../filesystem/BUILD.md#范围与验证)中的 process 测试。macOS 仅保留核心 HostFS；本地 Windows 验证不覆盖它。
 
 ## SQLite 构建约定
 
