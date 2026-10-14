@@ -380,6 +380,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Sessions"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -392,6 +393,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, request_id: requestId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Sessions"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);

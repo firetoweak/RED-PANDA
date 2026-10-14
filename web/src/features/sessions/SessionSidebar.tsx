@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   AppShell,
-  Badge,
   Box,
   Button,
   Collapse,
@@ -23,6 +22,8 @@ import {
   IconPlus,
   IconAdjustments,
   IconTrash,
+  IconAlertCircle,
+  IconCircleCheck,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useEffect, useState } from "react";
@@ -388,14 +389,16 @@ function SessionRow({
     (state) => state.runtime.sessions[session.session_id]?.activity ?? session.activity,
   );
   const showSpinner = activity === "running" || session.has_active_subagents;
-  const activityLabel = activity === "running"
-    ? "运行中"
-    : session.has_active_subagents
-      ? "等待子 Agent"
-      : "空闲";
   const unread = useAppSelector(
     (state) => state.runtime.sessions[session.session_id]?.unread ?? 0,
   );
+  const status = session.needs_attention ? "attention"
+    : showSpinner ? "running"
+    : unread > 0 ? "completed" : "idle";
+  const activityLabel = status === "attention" ? "需要操作"
+    : status === "completed" ? "执行已结束，有新结果"
+    : activity === "running" ? "运行中"
+    : session.has_active_subagents ? "等待子 Agent" : "空闲";
   const [archiveSession] = useArchiveSessionMutation();
   const [setSessionTitle] = useSetSessionTitleMutation();
   const [editing, setEditing] = useState(false);
@@ -451,9 +454,12 @@ function SessionRow({
     >
       <Tooltip label={activityLabel} openDelay={400} position="right">
         <span
-          className={`activity-dot activity-dot-${showSpinner ? "running" : "idle"}`}
+          className={`activity-dot activity-dot-${status}`}
           aria-label={activityLabel}
-        />
+        >
+          {status === "attention" ? <IconAlertCircle size={13} />
+            : status === "completed" ? <IconCircleCheck size={13} /> : null}
+        </span>
       </Tooltip>
       {editing ? (
         <TextInput
@@ -501,11 +507,7 @@ function SessionRow({
       )}
       {editing ? null : (
         <Group className="session-row-meta" gap={2} wrap="nowrap">
-          {unread > 0 ? (
-            <Badge size="xs" variant="filled">
-              {unread}
-            </Badge>
-          ) : updatedAt === "" ? null : (
+          {updatedAt === "" ? null : (
             <Text className="session-time" c="dimmed" fz={11}>
               {updatedAt}
             </Text>

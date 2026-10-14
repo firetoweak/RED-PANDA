@@ -176,7 +176,7 @@ class _Queries:
 
     async def list_sessions(self):
         return (
-            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False),
+            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False, False),
         )
 
     async def conversation(self, session_id, *, view=None):

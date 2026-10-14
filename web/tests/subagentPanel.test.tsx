@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { SubagentObservation } from "../src/api/contracts";
 import { SubagentPanel } from "../src/features/conversation/SubagentPanel";
+import { ContentPage } from "../src/features/conversation/ContentPage";
 import { SubagentCallCard } from "../src/features/conversation/SubagentCallCard";
 import runtimeReducer, { bindOwner, connected, previewDelta, previewStarted, sessionActivity, thinkingDelta, thinkingStarted, toolProgress, viewing } from "../src/realtime/runtimeSlice";
 
@@ -50,7 +51,9 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   store.dispatch(thinkingDelta({ sessionId: "child", outputId: "live", text: "实时思考" }));
   const onClose = vi.fn();
   const show = (commandId: string) => <Provider store={store}><MantineProvider>
-    <SubagentPanel parentSessionId="parent" commandId={commandId} onClose={onClose} />
+    <ContentPage title="子 Agent" onClose={onClose}>
+      <SubagentPanel parentSessionId="parent" commandId={commandId} />
+    </ContentPage>
   </MantineProvider></Provider>;
   const view = render(show("delegate"));
   expect(query.read).toHaveBeenLastCalledWith({ parentSessionId: "parent", commandId: "delegate" });
@@ -73,10 +76,11 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   view.rerender(show("other-delegate"));
   expect(screen.getByText("另一个任务")).toBeInTheDocument();
   expect(screen.queryByText("正在输出")).toBeNull();
-  fireEvent.click(screen.getByLabelText("关闭子 Agent 面板"));
+  fireEvent.click(screen.getByLabelText("关闭内容页"));
   expect(onClose).toHaveBeenCalledOnce();
   expect(store.getState().runtime.ownerSessionId).toBe("parent");
   expect(store.getState().runtime.viewingSessionId).toBe("parent");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("派出回执提供观察入口，使用已提交的 Command 身份", () => {

@@ -166,6 +166,7 @@ it("recovers a model failure from the conversation after refresh and retries wit
     const path = new URL(request.url).pathname;
     const body = request.method === "POST" ? await request.json() : null;
     requests.push({ path, method: request.method, body });
+    if (path.endsWith("/changes")) return Response.json({ files: [], added: 0, removed: 0, partial: false });
     if (path.endsWith("/retry")) {
       view.session.last_error = null;
       view.session.status = "waiting";
@@ -188,6 +189,14 @@ it("recovers a model failure from the conversation after refresh and retries wit
   await waitFor(() => expect(store.getState().runtime.ownerSessionId).toBe("session"));
   // 刷新后的状态只来自 GET / conversation，没有 session_failed 事件。
   expect(store.getState().runtime.sessions.session.lastError).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+  expect(screen.getByRole("region", { name: "执行已停止 · 错误详情" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /0 个文件已更改/ }));
+  expect(screen.getByRole("region", { name: "文件改动" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "执行已停止 · 错误详情" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "关闭内容页" }));
+  expect(screen.queryByRole("region", { name: "文件改动" })).not.toBeInTheDocument();
+  expect(store.getState().runtime.ownerSessionId).toBe("session");
   fireEvent.click(screen.getByRole("button", { name: "再试" }));
   await waitFor(() => expect(requests.filter((request) => request.path.endsWith("/retry"))).toEqual([
     { path: "/api/sessions/session/retry", method: "POST", body: { connection_id: "refreshed-connection" } },

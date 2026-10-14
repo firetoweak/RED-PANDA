@@ -1,8 +1,9 @@
 import { MantineProvider } from "@mantine/core";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { WorkspaceFileResultAlert } from "../src/features/conversation/WorkspaceFileResultAlert";
+import type { ConversationView } from "../src/api/contracts";
 
 afterEach(() => {
   cleanup();
@@ -35,4 +36,42 @@ it("exposes every changed path, actual deletion and the original-policy warning"
   expect(screen.getByText("file-104.py")).toBeInTheDocument();
   expect(screen.getByText("其中已删除（1）")).toBeInTheDocument();
   expect(screen.getByText(/原值策略允许覆盖/)).toBeInTheDocument();
+});
+
+const unchangedResult: NonNullable<ConversationView["workspace_file_result"]> = {
+  policy: "preserve", effect: "unchanged", changed_files: [], preserved_files: [],
+  deleted_files: [], failed_files: [], error: null,
+};
+
+it("手动关闭文件处理提示后，查询刷新不再显示", () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false, addEventListener() {}, removeEventListener() {},
+  }));
+  const { rerender } = render(<MantineProvider>
+    <WorkspaceFileResultAlert result={unchangedResult} />
+  </MantineProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "关闭文件处理提示" }));
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  rerender(<MantineProvider>
+    <WorkspaceFileResultAlert result={{ ...unchangedResult }} />
+  </MantineProvider>);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+it("继续执行后自动收起文件处理提示，执行结束也不再显示", () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false, addEventListener() {}, removeEventListener() {},
+  }));
+  const { rerender } = render(<MantineProvider>
+    <WorkspaceFileResultAlert result={unchangedResult} running={false} />
+  </MantineProvider>);
+  expect(screen.getByRole("status")).toBeInTheDocument();
+  rerender(<MantineProvider>
+    <WorkspaceFileResultAlert result={unchangedResult} running />
+  </MantineProvider>);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  rerender(<MantineProvider>
+    <WorkspaceFileResultAlert result={{ ...unchangedResult }} running={false} />
+  </MantineProvider>);
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });

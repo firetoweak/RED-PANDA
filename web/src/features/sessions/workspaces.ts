@@ -84,6 +84,7 @@ export function workspaceSessionRows(
             updated_at: null,
             activity: "idle" as const,
             has_active_subagents: false,
+            needs_attention: false,
           },
         ];
   return {

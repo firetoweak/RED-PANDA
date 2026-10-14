@@ -1,4 +1,5 @@
 import { Alert, Box, Stack, Text } from "@mantine/core";
+import { useEffect, useState } from "react";
 
 import type { ConversationView } from "../../api/contracts";
 
@@ -11,10 +12,19 @@ const EFFECT_LABEL = {
   kept: "文件保持现状，未跟随会话回退",
 };
 
-export function WorkspaceFileResultAlert({ result }: {
+export function WorkspaceFileResultAlert({ result, running = false }: {
   result: ConversationView["workspace_file_result"];
+  running?: boolean;
 }) {
-  if (result === null) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (running && result !== null) {
+      setDismissed(true);
+    }
+  }, [running, result]);
+
+  if (result === null || running || dismissed) {
     return null;
   }
   const incomplete = ["failed", "partially_restored", "preserved", "kept"].includes(result.effect);
@@ -29,6 +39,9 @@ export function WorkspaceFileResultAlert({ result }: {
       title="会话已回退 · 文件处理结果"
       color={result.effect === "failed" ? "red" : incomplete ? "yellow" : "blue"}
       role="status"
+      withCloseButton
+      closeButtonLabel="关闭文件处理提示"
+      onClose={() => setDismissed(true)}
     >
       <Stack gap={6}>
         <Text size="sm" fw={600}>{EFFECT_LABEL[result.effect]}</Text>

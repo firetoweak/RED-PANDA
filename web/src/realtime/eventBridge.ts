@@ -90,6 +90,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         message: payload.message,
       }),
     );
+    dispatch(redpandaApi.util.invalidateTags(["Sessions"]));
   });
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
@@ -234,6 +235,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     dispatch(
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
+        "Sessions",
       ]),
     );
   });

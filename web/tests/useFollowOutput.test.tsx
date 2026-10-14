@@ -48,9 +48,12 @@ function Harness({
   const follow = useFollowOutput(sessionId, active, attached);
   latest = follow;
   return (
-    <div ref={follow.viewportRef} data-testid="viewport">
-      <div ref={follow.contentRef} data-testid="content" />
-    </div>
+    <>
+      <div ref={follow.viewportRef} data-testid="viewport">
+        <div ref={follow.contentRef} data-testid="content" />
+      </div>
+      <div ref={follow.wheelAreaRef} data-testid="plan-area" />
+    </>
   );
 }
 
@@ -160,5 +163,26 @@ describe("useFollowOutput", () => {
 
     fireEvent.wheel(viewport, { deltaY: -120 });
     expect(latest.following).toBe(false);
+  });
+
+  it("固定计划区的滚轮滚动对话，并同步流式跟随状态", () => {
+    const { getByTestId } = render(<Harness active />);
+    const viewport = getByTestId("viewport");
+    const area = getByTestId("plan-area");
+    const metrics = installMetrics(viewport, {
+      scrollHeight: 2000, clientHeight: 600, scrollTop: 1400,
+    });
+
+    fireEvent.wheel(area, { deltaY: -120 });
+    expect(metrics.scrollTop).toBe(1280);
+    expect(latest.following).toBe(false);
+
+    metrics.scrollHeight = 2600;
+    flushResize();
+    expect(metrics.scrollTop).toBe(1280);
+
+    fireEvent.wheel(area, { deltaY: 720 });
+    expect(metrics.scrollTop).toBe(2000);
+    expect(latest.following).toBe(true);
   });
 });

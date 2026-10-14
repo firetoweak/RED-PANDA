@@ -42,6 +42,7 @@ export const sessionSummarySchema = z
     updated_at: z.string().datetime({ offset: true }).nullable(),
     activity: z.enum(["running", "idle"]),
     has_active_subagents: z.boolean(),
+    needs_attention: z.boolean(),
   })
   .strict();
 

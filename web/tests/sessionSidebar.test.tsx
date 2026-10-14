@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import type { SessionSummary, Workspace } from "../src/api/contracts";
 import { SessionSidebar } from "../src/features/sessions/SessionSidebar";
-import runtimeReducer, { sessionActivity } from "../src/realtime/runtimeSlice";
+import runtimeReducer, { outputFinal, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
 function workspace(workspaceId: string, name: string): Workspace {
   return {
@@ -67,13 +67,13 @@ function renderSidebar(initialEntry: string) {
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("父会话空闲时仍显示子任务旋钮，回收后恢复空闲标记", () => {
+it("侧栏区分执行、待操作和结束，后台 step 输出仍保持旋钮", () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   queries.workspaces = [workspace("workspace", "工作区")];
   queries.sessions = [{
     session_id: "parent", workspace_id: "workspace", title: "父会话",
-    updated_at: null, activity: "idle", has_active_subagents: true,
+    updated_at: null, activity: "idle", has_active_subagents: true, needs_attention: false,
   }];
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" }));
@@ -92,6 +92,35 @@ it("父会话空闲时仍显示子任务旋钮，回收后恢复空闲标记", (
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "running" })); });
   expect(screen.getByLabelText("运行中")).toHaveClass("activity-dot-running");
+
+  act(() => {
+    store.dispatch(viewing("other-session"));
+    store.dispatch(outputFinal({ sessionId: "parent", outputId: "step-1", text: "继续调查" }));
+    store.dispatch(outputFinal({ sessionId: "parent", outputId: "step-2", text: "调用工具" }));
+  });
+  expect(screen.getByLabelText("运行中")).toHaveClass("activity-dot-running");
+  expect(screen.queryByText("2")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("需要操作")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("执行已结束，有新结果")).not.toBeInTheDocument();
+
+  queries.sessions = [{ ...queries.sessions[0], needs_attention: true }];
+  view.rerender(sidebar());
+  expect(screen.getByLabelText("需要操作")).toHaveClass("activity-dot-attention");
+  // 看过会话也不能清掉尚未处理的确认。
+  act(() => { store.dispatch(viewing("parent")); });
+  expect(screen.getByLabelText("需要操作")).toHaveClass("activity-dot-attention");
+
+  queries.sessions = [{ ...queries.sessions[0], needs_attention: false }];
+  view.rerender(sidebar());
+  expect(screen.getByLabelText("运行中")).toHaveClass("activity-dot-running");
+  act(() => {
+    store.dispatch(viewing("other-session"));
+    store.dispatch(outputFinal({ sessionId: "parent", outputId: "final", text: "完成" }));
+    store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" }));
+  });
+  expect(screen.getByLabelText("执行已结束，有新结果")).toHaveClass("activity-dot-completed");
+  act(() => { store.dispatch(viewing("parent")); });
+  expect(screen.getByLabelText("空闲")).toHaveClass("activity-dot-idle");
 });
 
 it("删除工作区要先确认：取消不碰接口，确认才带上工作区 id", async () => {
@@ -131,7 +160,7 @@ it("删掉正在聊天的工作区后，离开到剩下的工作区", async () =
   queries.workspaces = [workspace("workspace-a", "旧项目"), workspace("workspace-b", "新项目")];
   queries.sessions = [{
     session_id: "session-1", workspace_id: "workspace-a", title: "旧会话",
-    updated_at: null, activity: "idle", has_active_subagents: false,
+    updated_at: null, activity: "idle", has_active_subagents: false, needs_attention: false,
   }];
   renderSidebar("/sessions/session-1");
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/session-1");

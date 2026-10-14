@@ -25,6 +25,7 @@ function session(
     updated_at: updatedAt,
     activity: "idle",
     has_active_subagents: false,
+    needs_attention: false,
   };
 }
 
@@ -154,6 +155,7 @@ describe("workspaceSessionRows", () => {
       updated_at: null,
       activity: "idle",
       has_active_subagents: false,
+      needs_attention: false,
     });
     expect(shown.slice(1)).toEqual(sessions);
   });
