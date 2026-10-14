@@ -58,7 +58,9 @@ impl OverlayFS {
         Ok(())
     }
 
-    pub(super) async fn cleanup_partial_origin_if_unlinked(&self, delta_ino: i64) -> Result<()> {
+    // Core reaping owns persistent sidecars. Forget the cached origin only
+    // after the inode is gone; hardlinks and open files may still retain it.
+    pub(super) async fn forget_reaped_origin(&self, delta_ino: i64) -> Result<()> {
         self.delta.get_pool().check_ready()?;
 
         let owned = self.clone();
@@ -75,17 +77,6 @@ impl OverlayFS {
                 }
                 drop(rows);
 
-                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
-                txn.execute("DELETE FROM fs_origin WHERE delta_ino = ?", (delta_ino,))?;
-                txn.execute(
-                    "DELETE FROM fs_chunk_override WHERE delta_ino = ?",
-                    (delta_ino,),
-                )?;
-                txn.execute(
-                    "DELETE FROM fs_partial_origin WHERE delta_ino = ?",
-                    (delta_ino,),
-                )?;
-                txn.commit()?;
                 owned
                     .origin_map
                     .write()
