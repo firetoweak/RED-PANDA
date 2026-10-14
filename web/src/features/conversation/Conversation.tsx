@@ -468,7 +468,7 @@ export function Conversation() {
           )}
         </Box>
         <Stack className="composer-column" gap={8}>
-        <WorkspaceFileResultAlert result={conversation.workspace_file_result} running={running} />
+        <WorkspaceFileResultAlert result={conversation.workspace_file_result} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}

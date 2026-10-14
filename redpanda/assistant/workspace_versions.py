@@ -6,6 +6,7 @@ from typing import Literal
 
 from redpanda.runtime import DomainFactCommitted, StepCommitted
 from redpanda.runtime.model import CommandPhase
+from redpanda.runtime.projections import turn_notice_current
 from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceFiles, operation_id, validate_version
 
 
@@ -91,12 +92,21 @@ def workspace_file_result_note(result):
 
 
 def project_workspace_file_result(events):
+    """文件回退结果对用户可见的那一份。
+
+    模型上下文另有一份投影，这里只负责人看到的提示：用户在新分支里提交
+    下一条消息后，这次回退的结果就不再呈现。
+    """
     result = None
+    settled_at = None
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == WORKSPACE_RESCUE_FACT:
             result = workspace_rescue_result(payload.data)
-    return result
+            settled_at = event.sequence
+    if result is None or settled_at is None:
+        return None
+    return result if turn_notice_current(events, settled_at) else None
 
 
 def workspace_rescue_result(data):

@@ -262,6 +262,24 @@ def test_fork_reports_unchanged_or_kept_files_without_repeating_restoration():
     asyncio.run(scenario())
 
 
+def test_file_result_notice_belongs_to_the_turn_that_produced_it():
+    """用户在新分支里提交下一条消息后，这次回退的结果不再呈现。
+
+    事实留在 Journal 里，模型照样看得到；过期的只是人看到的那一份。
+    """
+    async def scenario():
+        runtime, boundary, versions, events, _ = await restore_history(["a" * 64] * 4)
+        branch_point = project_workspace_versions(events)[-1].version
+        versions.record.side_effect = None
+        versions.record.return_value = branch_point
+        await boundary.settle_fork(True, "travel")
+        assert project_workspace_file_result(await runtime.snapshot("s")).effect == "unchanged"
+
+        await runtime.receive_user_message("s", "继续", delivery_id="next")
+        assert project_workspace_file_result(await runtime.snapshot("s")) is None
+    asyncio.run(scenario())
+
+
 def test_undoing_restore_uses_its_saved_pre_restore_files():
     async def scenario():
         runtime, boundary, versions, events, visible = await restore_history(["a" * 64, "b" * 64, "c" * 64, "c" * 64])

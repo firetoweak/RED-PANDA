@@ -100,6 +100,20 @@ export const workPlanSchema = z.object({
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
 
+export const workspaceFileResultSchema = z
+  .object({
+    policy: z.enum(["preserve", "original", "keep"]),
+    effect: z.enum(["restored", "partially_restored", "preserved", "unchanged", "kept", "failed"]),
+    changed_files: z.array(z.string().min(1)),
+    preserved_files: z.array(z.string().min(1)),
+    deleted_files: z.array(z.string().min(1)),
+    failed_files: z.array(z.string().min(1)),
+    error: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type WorkspaceFileResult = z.infer<typeof workspaceFileResultSchema>;
+
 export const conversationViewSchema = z
   .object({
     session_id: z.string().min(1),
@@ -160,15 +174,7 @@ export const conversationViewSchema = z
       version: z.string().regex(/^(initial|[0-9a-f]{64})$/).nullable(),
       error: z.string().min(1).nullable(),
     }).strict().nullable(),
-    workspace_file_result: z.object({
-      policy: z.enum(["preserve", "original", "keep"]),
-      effect: z.enum(["restored", "partially_restored", "preserved", "unchanged", "kept", "failed"]),
-      changed_files: z.array(z.string().min(1)),
-      preserved_files: z.array(z.string().min(1)),
-      deleted_files: z.array(z.string().min(1)),
-      failed_files: z.array(z.string().min(1)),
-      error: z.string().min(1).nullable(),
-    }).strict().nullable(),
+    workspace_file_result: workspaceFileResultSchema.nullable(),
   })
   .strict();
 
