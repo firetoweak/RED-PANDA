@@ -672,7 +672,7 @@ impl FileSystem for OverlayFS {
                 Err(e) => return Err(e),
             }
             if let Some(delta_ino) = removed_delta_ino {
-                self.cleanup_partial_origin_if_unlinked(delta_ino).await?;
+                self.forget_reaped_origin(delta_ino).await?;
             }
         }
 
@@ -711,10 +711,16 @@ impl FileSystem for OverlayFS {
         // Try to remove from delta. Walk the delta layer to find the parent,
         // since the overlay parent may map to Base even when a copy-up exists in delta.
         if let Some(dpi) = self.resolve_delta_parent(&parent_info).await? {
+            let removed_delta_ino = FileSystem::lookup(&self.delta, dpi, name)
+                .await?
+                .map(|stats| stats.ino);
             match FileSystem::rmdir(&self.delta, dpi, name).await {
                 Ok(()) => {}
                 Err(crate::error::Error::Fs(FsError::NotFound)) => {}
                 Err(e) => return Err(e),
+            }
+            if let Some(delta_ino) = removed_delta_ino {
+                self.forget_reaped_origin(delta_ino).await?;
             }
         }
 
@@ -904,8 +910,7 @@ impl FileSystem for OverlayFS {
                 .get_inode_info(replaced_ino)
                 .expect("rename replacement inode was looked up");
             if replaced.layer == Layer::Delta {
-                self.cleanup_partial_origin_if_unlinked(replaced.underlying_ino)
-                    .await?;
+                self.forget_reaped_origin(replaced.underlying_ino).await?;
             }
         }
         self.refresh_overlay_mapping(src_stats.ino, Layer::Delta, delta_src_ino, &new_path);
