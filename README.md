@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 sh scripts/setup.sh
 ```
 
-脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的沙箱，并引导你配置模型。Windows 会按需安装 WinFsp 驱动，首次安装需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/sandbox/README.md#linux)。重复执行会跳过已有运行包，并保留自行编译的沙箱。
+脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的原生文件服务，并引导你配置模型。Windows 还会安装独立的[任务命令组件](native/execution/README.md)，并按需安装 WinFsp 驱动，首次安装驱动需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/sandbox/README.md#linux)。重复执行会校验并复用已有运行包，保留自行编译的原生组件。
 
 **运行不需要 Rust、LLVM、开发 SDK、预装 Python 或 Docker。** 安装参数见[运行指南](docs/运行指南.md#准备选项)。
 
@@ -85,7 +85,7 @@ sh scripts/dev.sh
 
 日常启动支持 Python 与前端热重载。开发者可在自备环境运行 `python -m pytest`；前端测试使用 `npm --prefix web test`。
 
-[GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试、完整 process 测试与沙箱运行包验证，以及前端测试和构建。本地使用 `python scripts/ci.py` 共用验证入口；提交后用 `python scripts/ci.py --clean` 验证干净 HEAD。真实模型与完整业务流程需另外验证。
+[GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试、完整 process 测试与原生文件服务运行包验证，以及前端测试和构建。本地使用 `python scripts/ci.py` 共用验证入口；提交后用 `python scripts/ci.py --clean` 验证干净 HEAD。真实模型与完整业务流程需另外验证。
 
 `redpanda-env` 用于运行工具；修改项目源码时，开发环境由你自行选择。测试方法见[开发指南](docs/开发指南.md)。
 

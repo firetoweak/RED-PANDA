@@ -22,7 +22,7 @@
 - **setup**：(a) `redpanda-env/bin/python --version` 与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`、`workspaces.json`。(b) 退出码 0。(c) 已有的 `config.json`、`connections.json` 不被覆盖（先写入标记内容再跑一次，逐字节比较）。(d) 卸掉 `rg` 的 PATH 后运行 → 明确报缺少工具并非 0 退出，不留半成品 venv。
 - **setup.py --check**：(c) 不创建 `redpanda-env`，只打印检查结果。
 - **initialize --if-needed**：已配置时 (c) 不进入向导、文件不变；未配置时进入向导。
-- **build_sandbox --check**：缺 `fusermount3` 或 `/dev/fuse` 不可写时非 0 并说明原因。正常构建后 (a) `redpanda/sandbox/bin/` 下出现 `redpanda-sandbox` 二进制，Doctor 的 `sandbox.ready` 为 true。
+- **build_sandbox --check**：缺 `fusermount3` 或 `/dev/fuse` 不可写时非 0 并说明原因。正常构建后 (a) `redpanda/filesystem/bin/` 下出现 `redpanda-sandbox` 二进制，Doctor 的 `sandbox.ready` 为 true。
 - **sandbox_runtime install**：已有本地构建时不带 `--replace` → (c) 本地二进制不被替换；带 `--replace` → 被发布包替换（需网络）。(d) 断网时安装 → 明确报错，原二进制保留。
 - **dev.sh**：未 `npm ci` 时报上面的提示并退出 1。
 

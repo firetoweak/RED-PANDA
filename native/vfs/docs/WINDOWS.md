@@ -3,7 +3,7 @@
 This fork owns general filesystem semantics in `vfs-core` and transport/lifecycle
 in `vfs-mount`. It does not own Command IDs, before/after evidence, publication,
 undo policies or receipts. Those belong to an application using this library.
-RED PANDA integration lives in the adjacent sandbox and Python adapter.
+RED PANDA integration lives in the native file-management service and Python adapter (currently under directories named sandbox).
 
 ## Core contracts
 
@@ -30,7 +30,7 @@ namespace and inode. Independent files in different layers remain distinct, whil
 hard links and copy-up retain their original identity. Frozen artifacts preserve
 the namespace; missing or malformed current namespaces are refused. Origins
 and frozen artifacts use this identity representation. Core has no row journal
-or relational-history reconstruction; Sandbox owns file-operation evidence.
+or relational-history reconstruction; the independent Agent filesystem owns file-operation evidence.
 Native identities identify physical files, not equivalent checkouts on another
 machine. Rebinding to another base is not implicit; even identical bytes do not
 authorize substituting a different physical origin.

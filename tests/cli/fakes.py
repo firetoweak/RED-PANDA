@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from redpanda.sandbox.command import CapturedOutput, CommandResult
+from redpanda.execution.command import CapturedOutput, CommandResult
 
 
 def make_result(

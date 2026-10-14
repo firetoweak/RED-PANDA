@@ -13,7 +13,7 @@
 
 ## 数据落点速查（判据里反复用到）
 
-来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/sandbox/files/children.py`：
+来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/filesystem/children.py`：
 
 | 内容 | 位置 |
 |---|---|

@@ -1,0 +1,161 @@
+{
+  "fixture": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\windows-execution-tools\\run-pd38lvto",
+  "commands": [
+    {
+      "name": "node",
+      "result": {
+        "ok": true,
+        "code": "COMMAND_COMPLETED",
+        "data": {
+          "execution_location": {
+            "environment_id": "local",
+            "path": "file:///C:/LocalData/work/helpMe/RED-PANDA/.tools/windows-execution-tools/run-pd38lvto/project"
+          },
+          "workspace_membership": {
+            "root_id": "project",
+            "scope": "task_workspace",
+            "display_path": "."
+          },
+          "cwd": ".",
+          "command_cwd": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\windows-execution-tools\\run-pd38lvto\\store\\mount",
+          "workspace_effect": "may_write",
+          "exit_code": 0,
+          "stdout": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "stderr": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "duration_ms": 698,
+          "timed_out": false,
+          "io_errors": []
+        },
+        "error": null,
+        "hint": null
+      }
+    },
+    {
+      "name": "clang",
+      "result": {
+        "ok": true,
+        "code": "COMMAND_COMPLETED",
+        "data": {
+          "execution_location": {
+            "environment_id": "local",
+            "path": "file:///C:/LocalData/work/helpMe/RED-PANDA/.tools/windows-execution-tools/run-pd38lvto/project"
+          },
+          "workspace_membership": {
+            "root_id": "project",
+            "scope": "task_workspace",
+            "display_path": "."
+          },
+          "cwd": ".",
+          "command_cwd": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\windows-execution-tools\\run-pd38lvto\\store\\mount",
+          "workspace_effect": "may_write",
+          "exit_code": 0,
+          "stdout": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "stderr": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "duration_ms": 1148,
+          "timed_out": false,
+          "io_errors": []
+        },
+        "error": null,
+        "hint": null
+      }
+    },
+    {
+      "name": "git-add",
+      "result": {
+        "ok": true,
+        "code": "COMMAND_COMPLETED",
+        "data": {
+          "execution_location": {
+            "environment_id": "local",
+            "path": "file:///C:/LocalData/work/helpMe/RED-PANDA/.tools/windows-execution-tools/run-pd38lvto/project"
+          },
+          "workspace_membership": {
+            "root_id": "project",
+            "scope": "task_workspace",
+            "display_path": "."
+          },
+          "cwd": ".",
+          "command_cwd": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\windows-execution-tools\\run-pd38lvto\\store\\mount",
+          "workspace_effect": "may_write",
+          "exit_code": 0,
+          "stdout": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "stderr": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "duration_ms": 972,
+          "timed_out": false,
+          "io_errors": []
+        },
+        "error": null,
+        "hint": null
+      }
+    },
+    {
+      "name": "git-diff",
+      "result": {
+        "ok": true,
+        "code": "COMMAND_COMPLETED",
+        "data": {
+          "execution_location": {
+            "environment_id": "local",
+            "path": "file:///C:/LocalData/work/helpMe/RED-PANDA/.tools/windows-execution-tools/run-pd38lvto/project"
+          },
+          "workspace_membership": {
+            "root_id": "project",
+            "scope": "task_workspace",
+            "display_path": "."
+          },
+          "cwd": ".",
+          "command_cwd": "C:\\LocalData\\work\\helpMe\\RED-PANDA\\.tools\\windows-execution-tools\\run-pd38lvto\\project",
+          "workspace_effect": "read_only",
+          "exit_code": 0,
+          "stdout": {
+            "content": " node.txt    | 1 +\n program.cpp | 1 +\n 2 files changed, 2 insertions(+)\n",
+            "total_chars": 72,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "stderr": {
+            "content": "",
+            "total_chars": 0,
+            "truncated": false,
+            "omitted_chars": 0
+          },
+          "duration_ms": 677,
+          "timed_out": false,
+          "io_errors": []
+        },
+        "error": null,
+        "hint": null
+      }
+    }
+  ]
+}

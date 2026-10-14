@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
 
-from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.filesystem.workspace import (
     FilesystemPermission, PermissionBinding, RootBinding, WorkspaceScope, WorkspaceViewSnapshot,
 )
 from pydantic import ValidationError
@@ -30,11 +30,12 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
                 "content_complete": True, "truncated": False,
             }),
         )
-        self.binding = EnvironmentBinding(
-            "local-test", WorkspaceViewSnapshot((RootBinding("project", WorkspaceScope.TASK, self.root),)),
-            PermissionBinding((("project", FilesystemPermission.READ_WRITE),)),
-            self.root, "powershell", "pwsh.exe",
-            ExecutionAttachment("local-test", object(), filesystem=self.filesystem),
+        self.binding = FileAccess(
+            environment_id='local-test',
+            workspace_view=WorkspaceViewSnapshot((RootBinding('project', WorkspaceScope.TASK, self.root),)),
+            permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
+            cwd=self.root,
+            filesystem=self.filesystem,
         )
 
     def tearDown(self):
@@ -60,7 +61,7 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
             GetChangesInput(scope="all")
 
     async def test_unavailable_file_tracking_does_not_claim_a_clean_workspace(self):
-        binding = replace(self.binding, execution_attachment=ExecutionAttachment("local-test", object()))
+        binding = replace(self.binding, filesystem=None)
         result = await self.query(binding=binding)
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "CHANGES_UNAVAILABLE")

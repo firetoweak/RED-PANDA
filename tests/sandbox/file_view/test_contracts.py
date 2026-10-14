@@ -9,16 +9,17 @@ import time
 import unittest
 from unittest.mock import patch
 import pytest
-from redpanda.sandbox.files.file_view.client import native_executable
+from redpanda.filesystem.file_view.client import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
 if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
-from redpanda.sandbox.files.file_view import Client, ServiceFailure
-from redpanda.sandbox.files.file_view import publication as pub
-from redpanda.sandbox.files.file_view.native import Running
+from redpanda.filesystem.file_view import ServiceFailure
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import publication as pub
+from redpanda.execution.process import Running
 
 
 class Contracts(unittest.TestCase):
@@ -28,7 +29,7 @@ class Contracts(unittest.TestCase):
         (base/'a.txt').write_bytes(b'AAA____AAA')
         return root,base,root/'store'
 
-    def client(self,store,base): return Client(EXE,store,base)
+    def client(self,store,base): return CommandClient(EXE,store,base)
 
     def change(self,client,name,code):
         result=client.run(name,[sys.executable,'-c',code])
@@ -247,7 +248,7 @@ class Contracts(unittest.TestCase):
         _,base,store=self.fixture('environment')
         service=dict(os.environ,VIEW_ORIGIN='service')
         command=dict(os.environ,VIEW_ORIGIN='command')
-        with Client(EXE,store,base,service_environment=service,command_environment=command) as client:
+        with CommandClient(EXE,store,base,service_environment=service,command_environment=command) as client:
             result=client.run('c1',[sys.executable,'-c',"import os;from pathlib import Path;Path('env').write_text(os.environ['VIEW_ORIGIN'])"])
             self.assertEqual(result['execution']['exit_code'],0)
             client.request('accept',command_id='c1');pub.publish(client)

@@ -203,7 +203,7 @@ def credential_fields(value) -> list[str]:
 
 def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
     system = sys.platform
-    configured = process_env(pid, "REDPANDA_SANDBOX_EXECUTABLE") if pid and Path(f"/proc/{pid}").is_dir() else None
+    configured = process_env(pid, "REDPANDA_FILESYSTEM_EXECUTABLE") if pid and Path(f"/proc/{pid}").is_dir() else None
     if configured:
         executable = Path(configured)
     else:

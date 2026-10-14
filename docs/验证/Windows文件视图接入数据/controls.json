@@ -1,0 +1,25 @@
+{
+  "is_admin": true,
+  "results": {
+    "existing": {
+      "hresult": "0x80070005",
+      "message": "拒绝访问。"
+    },
+    "absent": {
+      "hresult": "0x80070005",
+      "message": "拒绝访问。"
+    },
+    "ntpaths": {
+      "hresult": "0x80070005",
+      "message": "拒绝访问。"
+    },
+    "after-privileges": {
+      "hresult": "0x80070005",
+      "message": "拒绝访问。"
+    }
+  },
+  "temporary_token_privileges": {
+    "SeBackupPrivilege": 0,
+    "SeRestorePrivilege": 0
+  }
+}

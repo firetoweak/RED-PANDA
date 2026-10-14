@@ -2,16 +2,16 @@ import os
 import unittest
 from unittest.mock import patch
 
-from redpanda.sandbox.command import (
+from redpanda.execution.command import (
     BoundedTextCapture,
     CaptureLimit,
     strip_terminal_control,
 )
-from redpanda.sandbox.local.child_env import (
+from redpanda.execution.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
 )
-from redpanda.sandbox.local.powershell import CommandEnvironmentPolicy
+from redpanda.execution.local.powershell import CommandEnvironmentPolicy
 
 
 class ChildEnvOverlayTest(unittest.TestCase):
@@ -22,7 +22,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_is_replaced_with_latest_persistent_value(self):
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value="C:\\new;C:\\tools",
         ):
             env = CommandEnvironmentPolicy().build(
@@ -32,7 +32,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_falls_back_to_host_snapshot_without_persistent_value(self):
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             env = CommandEnvironmentPolicy().build({"PATH": "C:\\old"})
@@ -40,7 +40,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_path_is_added_when_host_snapshot_lacks_it(self):
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value="C:\\new",
         ):
             env = CommandEnvironmentPolicy().build({"SYSTEMROOT": "C:\\Windows"})
@@ -48,7 +48,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_explicit_path_override_wins_without_duplicate_windows_names(self):
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value="system-tools",
         ):
             env = CommandEnvironmentPolicy(fixed_values={"PATH": "work-tools"}).build({"Path": "host-tools"})
@@ -59,7 +59,7 @@ class ChildEnvOverlayTest(unittest.TestCase):
 
     def test_workspace_policy_preserves_activation_without_reading_registry(self):
         source = {"Path": "project-tools;system-tools", "CONDA_PREFIX": "project-env"}
-        with patch("redpanda.sandbox.local.powershell.latest_persistent_path") as refresh:
+        with patch("redpanda.execution.local.powershell.latest_persistent_path") as refresh:
             env = CommandEnvironmentPolicy(
                 forward_names=tuple(source), refresh_path=False,
             ).build(source)

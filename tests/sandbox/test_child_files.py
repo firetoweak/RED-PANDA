@@ -4,8 +4,8 @@ import threading
 import pytest
 
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.files.children import ChildFiles, child_root
-from redpanda.sandbox.files.lifecycle import settled
+from redpanda.filesystem.children import ChildFiles, child_root
+from redpanda.filesystem.lifecycle import settled
 from tests.fixtures.workspaces import workspace_record
 
 

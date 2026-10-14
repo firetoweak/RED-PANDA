@@ -1,6 +1,6 @@
 # 工作区管理
 
-用户在侧栏 `新建工作区` 登记一个本机目录作为 Agent 的任务根。来源：`web/src/features/sessions/CreateWorkspaceModal.tsx`、`redpanda/sandbox/registry.py`、`app.py` 的 `/api/workspaces*`。
+用户在侧栏 `新建工作区` 登记一个本机目录作为 Agent 的任务根。来源：`web/src/features/sessions/CreateWorkspaceModal.tsx`、`redpanda/filesystem/registry.py`、`app.py` 的 `/api/workspaces*`。
 
 ## Sub-features
 

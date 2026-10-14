@@ -61,7 +61,7 @@ def prepare_environment(llvm_dir: Path | None = None, winfsp_dir: Path | None = 
             errors.append("缺少 LLVM MinGW：请将 bin 目录加入 PATH，或使用 --llvm-dir 指定 bin 目录。")
         else:
             llvm = llvm.resolve()
-            for name in ("x86_64-w64-mingw32-clang.exe", "llvm-ar.exe", "libunwind.dll"):
+            for name in ("x86_64-w64-mingw32-clang.exe", "x86_64-w64-mingw32-clang++.exe", "llvm-ar.exe", "libunwind.dll"):
                 if not (llvm / name).is_file():
                     errors.append(f"LLVM MinGW 缺少 {llvm / name}。")
             if not (llvm.parent / "LICENSE.TXT").is_file():
@@ -146,7 +146,7 @@ def main():
         command.append("--offline")
     subprocess.run(command, cwd=ROOT / "native/sandbox", env=environment, check=True)
 
-    output = ROOT / "redpanda/sandbox/bin"
+    output = ROOT / "redpanda/filesystem/bin"
     output.mkdir(parents=True, exist_ok=True)
     profile = "debug" if args.debug else "release"
     artifact_dir = target / profile if not args.target else target / args.target / profile
@@ -166,6 +166,9 @@ def main():
         runtime = prepared.llvm
         shutil.copy2(runtime / "libunwind.dll", output)
         shutil.copy2(runtime.parent / "LICENSE.TXT", licenses / "LLVM-LICENSE.txt")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from scripts.build_execution import build
+        build(ROOT, prepared.llvm, profile)
 
     files = {path.relative_to(output).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
              for path in sorted(output.rglob("*")) if path.is_file() and path.name != "BUILD.json"}

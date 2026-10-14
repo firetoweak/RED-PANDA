@@ -1,0 +1,100 @@
+from __future__ import annotations
+import json
+import logging
+import os
+from pathlib import Path
+import queue
+import subprocess
+import threading
+from time import perf_counter
+
+_LOGGER = logging.getLogger(__name__)
+
+def native_executable() -> Path:
+    configured = os.environ.get("REDPANDA_FILESYSTEM_EXECUTABLE")
+    if configured is not None:
+        return Path(configured)
+    name = "redpanda-sandbox.exe" if os.name == "nt" else "redpanda-sandbox"
+    return Path(__file__).resolve().parents[1] / "bin" / name
+
+class ServiceFailure(RuntimeError):
+    pass
+
+class Client:
+    """One owner and one synchronous control stream; native tools run in callers."""
+    def __init__(self, executable, store, base, *, service_environment=None):
+        self.store, self.base = Path(store).resolve(), Path(base).resolve()
+        if os.name == 'nt' and not str(self.store).startswith('\\\\?\\'):
+            self.store = Path('\\\\?\\' + str(self.store))
+        self.store.mkdir(parents=True,exist_ok=True)
+        self.log = (self.store/'service.log').open('ab')
+        popen = {}
+        if os.name == 'nt':
+            popen['creationflags'] = 0x08000000
+        self.process = subprocess.Popen([str(executable),str(self.store),str(self.base)],cwd=self.store,
+            env=dict(os.environ if service_environment is None else service_environment),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,encoding='utf-8',**popen)
+        self.replies = queue.Queue()
+        self.lock = threading.Lock()
+        def read():
+            for line in self.process.stdout: self.replies.put(line)
+            self.replies.put(None)
+        self.reader = threading.Thread(target=read,daemon=True)
+        self.reader.start()
+        try:
+            self.ready = self._reply()
+            if self.ready.get('status')!='ready' or self.ready.get('version')!=3:
+                raise ServiceFailure('unsupported handshake')
+        except BaseException:
+            if self.process.poll() is None:
+                self.process.terminate()
+                self.process.wait()
+            self.process.stdin.close()
+            self.process.stdout.close()
+            self.reader.join()
+            self.log.close()
+            raise
+
+    def _reply(self):
+        line = self.replies.get()
+        if line is None:
+            self.process.wait()
+            raise ServiceFailure(f'service exit {self.process.returncode}: '+(self.store/'service.log').read_text(encoding='utf-8',errors='replace'))
+        value = json.loads(line)
+        if type(value) is not dict: raise ServiceFailure('response must be an object')
+        if value.get('status') == 'error': raise ServiceFailure(value['error'])
+        return value
+
+    def request(self, op, **fields):
+        started = perf_counter()
+        try:
+            with self.lock:
+                self.process.stdin.write(json.dumps({'op':op,**fields},ensure_ascii=False)+'\n')
+                self.process.stdin.flush()
+                return self._reply()
+        finally:
+            _LOGGER.info('file view request timing', extra={
+                'stage': 'system', 'operation': 'file_view_request',
+                'request_operation': op, 'elapsed_ms': (perf_counter()-started)*1000,
+            })
+
+    def begin(self, command_id):
+        from .publication import unfinished
+        if unfinished(self.store): raise RuntimeError('unfinished host transaction requires reconciliation')
+        return self.request('begin',command_id=command_id)
+
+    def restore(self, command_id, targets, policy):
+        from .publication import unfinished
+        if unfinished(self.store): raise RuntimeError('unfinished host transaction requires reconciliation')
+        return self.request('restore',command_id=command_id,targets=targets,policy=policy)
+
+    def close(self):
+        if self.process.poll() is None:
+            self.request('shutdown')
+            self.process.wait()
+        self.process.stdin.close()
+        self.process.stdout.close()
+        self.reader.join()
+        self.log.close()
+
+    def __enter__(self): return self
+    def __exit__(self,*_): self.close()

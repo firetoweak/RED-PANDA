@@ -1,30 +1,34 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import logging
 from collections.abc import Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    environment_error,
-)
-from redpanda.sandbox.command import (
+from redpanda.filesystem import FileAccess
+from redpanda.execution.api import CommandEnvironment
+from redpanda.tools.results import environment_error
+from redpanda.execution.command import (
     CommandResult,
+    CommandConstraintError,
     CommandStartError,
     ShellNotFoundError,
 )
-from redpanda.sandbox.workspace import EnvironmentInputError
+from redpanda.filesystem.workspace import EnvironmentInputError
 from redpanda.tools.builtin.exec_policy import command_requires_authorization
 from redpanda.tools.spec import PydanticParameters, ToolSpec
+
+_LOGGER = logging.getLogger(__name__)
 
 
 EXECUTE_COMMAND_DESCRIPTION = """
 用途：使用 {shell_name} 在本机执行 CLI 命令。
 何时使用：用于依赖安装、构建、测试、格式化、静态检查、Git、包管理器和运行脚本；常规文件发现、搜索、读取和修改应使用专用文件工具。
-关键限制：相对 cwd 从工作区开始，绝对 cwd 按本机路径规则；cwd 只决定启动目录，命令本身不受工作区限制，可能改动本机任何位置的文件；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。
-影响声明：只读查询使用 read_only；可能修改工作区文件、生成缓存或无法确定时使用 may_write。read_only 查询可并行，必须能独立完成，不要用它等待其他修改完成或触发修改、回退。误标为 read_only 的文件修改不能回退。要验证某次修改，等修改调用返回后再查询。
+关键限制：相对 cwd 从工作区开始，绝对 cwd 按本机路径规则；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。{write_constraint}
+影响声明：只读查询使用 read_only；可能修改工作区文件、生成缓存或无法确定时使用 may_write。read_only 查询可并行，必须能独立完成，不要用它等待其他修改完成或触发修改、回退。要验证某次修改，等修改调用返回后再查询。
 执行环境：各次调用独立，前一次命令中的环境激活、变量修改和目录切换不会自动带入本次调用。需要指定环境时，在 command 中明确调用对应的解释器、环境管理器，或先准备环境再执行；准备失败时不要继续执行后续项目命令。
 CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
 失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；超时或失败时不能假定命令成功，也不要无条件重试可能产生副作用的命令；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
@@ -68,12 +72,13 @@ def _result_data(result: CommandResult) -> dict[str, Any]:
 
 
 def create_command_execution_spec(
-    binding: EnvironmentBinding,
+    binding: FileAccess,
+    commands: CommandEnvironment,
     interrupt_source: Callable[[], asyncio.Event | None] = lambda: None,
 ) -> ToolSpec:
     """`interrupt_source` 由调用方显式提供，默认不可打断。"""
 
-    runner = binding.execution_attachment.command_executor
+    runner = commands.command_executor
     async def execute_command(raw: ExecuteCommandInput) -> dict[str, Any]:
         if not raw.command.strip():
             return {
@@ -140,14 +145,35 @@ def create_command_execution_spec(
                 ),
             }
         except CommandStartError as exc:
+            _LOGGER.warning("Command did not start: %s", exc)
             return {
                 "ok": False,
                 "code": "COMMAND_START_FAILED",
-                "error": "命令未能启动，请检查 Shell、启动目录、访问权限和可用资源。",
+                "error": "命令未能启动，请确认本机命令执行组件已安装，并检查 Shell、启动目录、访问权限和可用资源。",
                 "execution_location": resolved_cwd.location.to_dict(),
                 "workspace_membership": (
                     resolved_cwd.workspace_membership.to_dict()
                 ),
+            }
+        except CommandConstraintError as exc:
+            _LOGGER.warning("Workspace command constraint failed: %s", exc)
+            return {
+                "ok": None,
+                "code": "COMMAND_CONSTRAINT_FAILED",
+                "error": (
+                    "命令请求了不受支持的进程启动方式；仅支持本机 x64 前台工具。任务已停止，可能已部分执行。"
+                    if exc.unsupported_process else
+                    "命令无法继续满足本机执行限制，已停止，可能已部分执行。"
+                ),
+                "data": {
+                    "execution_location": resolved_cwd.location.to_dict(),
+                    "workspace_membership": resolved_cwd.workspace_membership.to_dict(),
+                    "cwd": resolved_cwd.workspace_membership.display_path,
+                    "command_cwd": str(cwd),
+                    "workspace_effect": raw.workspace_effect,
+                    **_result_data(exc.result), "exit_code": None, "output_is_result": False,
+                },
+                "hint": "先检查相关文件或外部状态，再决定是否调整命令或重试。",
             }
 
         data = {
@@ -156,6 +182,7 @@ def create_command_execution_spec(
                 resolved_cwd.workspace_membership.to_dict()
             ),
             "cwd": resolved_cwd.workspace_membership.display_path,
+            "command_cwd": str(cwd),
             "workspace_effect": raw.workspace_effect,
             **_result_data(result),
         }
@@ -201,8 +228,16 @@ def create_command_execution_spec(
     return ToolSpec(
         name="execute_command",
         description=EXECUTE_COMMAND_DESCRIPTION.format(
-            shell_name=binding.shell_name,
-            shell_path=binding.shell_path,
+            shell_name=commands.shell_name,
+            shell_path=commands.shell_path,
+            write_constraint=(
+                "Windows 任务命令禁止直接写入宿主工作区，read_only 声明也不能绕过该限制。"
+                "仅支持本机 x64 前台工具，不支持要求调试、暂停启动或独立存活的子进程。"
+                "可能写入的命令使用相对路径或从当前目录生成绝对路径；实际启动目录见 command_cwd，"
+                "不要跨调用复用该路径。文件工具仍使用工作区路径。工作区之外的副作用不受这项限制。"
+                if os.name == "nt" else
+                "cwd 只决定启动目录，命令可能改动本机任何位置的文件；误标为 read_only 的修改不能回退。"
+            ),
         ),
         parameters=PydanticParameters(ExecuteCommandInput),
         handler=execute_command,

@@ -14,11 +14,11 @@ if sys.platform != "linux":
     pytest.skip("需要 Linux 与可用的 FUSE", allow_module_level=True)
 
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.files import clear_stale_mounts, workspace_files
-from redpanda.sandbox.files.file_view import Client
-from redpanda.sandbox.files.file_view import publication as pub
-from redpanda.sandbox.files.file_view.native_posix import identity, open_file
-from redpanda.sandbox.files.operations import (
+from redpanda.filesystem import clear_stale_mounts, workspace_files
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import publication as pub
+from redpanda.filesystem.file_view.native_posix import identity, open_file
+from redpanda.filesystem.operations import (
     INITIAL,
     WorkspaceFiles,
     native_executable,
@@ -138,7 +138,7 @@ def test_fifo_rejection_leaves_the_service_usable(tmp_path):
     root = tmp_path / "base"
     root.mkdir()
     (root / "keep.txt").write_text("A", encoding="utf-8")
-    client = Client(native_executable(), tmp_path / "store", root)
+    client = CommandClient(native_executable(), tmp_path / "store", root)
     try:
         begin = client.begin("c1")
         os.mkfifo(Path(begin["mount"]) / "pipe")
@@ -162,7 +162,7 @@ def test_sigkill_mount_is_cleared_on_restart_and_the_view_resumes(tmp_path):
     root.mkdir()
     (root / "keep.txt").write_text("A", encoding="utf-8")
     view = workspace_files(home, SimpleNamespace(task_root=root))
-    client = Client(native_executable(), view.storage, root)
+    client = CommandClient(native_executable(), view.storage, root)
     begin = client.begin("c1")
     assert begin["status"] == "active"
     os.kill(client.process.pid, signal.SIGKILL)
@@ -173,7 +173,7 @@ def test_sigkill_mount_is_cleared_on_restart_and_the_view_resumes(tmp_path):
     clear_stale_mounts(home)
 
     assert begin["mount"] not in Path("/proc/self/mounts").read_text(encoding="utf-8")
-    nxt = Client(native_executable(), view.storage, root)
+    nxt = CommandClient(native_executable(), view.storage, root)
     try:
         assert nxt.request("status", command_id="c1")["status"] == "unknown"
         again = nxt.begin("c2")
@@ -189,7 +189,7 @@ def test_setsid_child_does_not_survive_the_command(tmp_path):
     root = tmp_path / "base"
     root.mkdir()
     store = tmp_path / "store"
-    client = Client(native_executable(), store, root)
+    client = CommandClient(native_executable(), store, root)
     try:
         code = (
             "import subprocess,sys,time;subprocess.Popen([sys.executable,'-c',"

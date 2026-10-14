@@ -5,9 +5,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from redpanda.sandbox.api import EnvironmentBinding, environment_error, file_error_message
-from redpanda.sandbox.files import read_changes, ChangesReadConflict
-from redpanda.sandbox.workspace import EnvironmentInputError, WorkspaceScope
+from redpanda.filesystem import FileAccess
+from redpanda.tools.results import environment_error, file_error_message
+from redpanda.filesystem import read_changes, ChangesReadConflict
+from redpanda.filesystem.workspace import EnvironmentInputError, WorkspaceScope
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -28,13 +29,13 @@ class GetChangesInput(BaseModel):
     text_offset: int = Field(default=0, ge=0, description="单文件差异的续读位置；使用该文件返回的 next_text_offset")
 
 
-def create_get_changes_specs(binding: EnvironmentBinding, session_operations: Callable[[], Awaitable[tuple[str, ...]]]) -> list[ToolSpec]:
+def create_get_changes_specs(binding: FileAccess, session_operations: Callable[[], Awaitable[tuple[str, ...]]]) -> list[ToolSpec]:
     resolver = binding.resolver
 
     async def get_changes(raw: GetChangesInput) -> dict[str, Any]:
         try:
             resolved = resolver.resolve(raw.path)
-            filesystem = (binding.execution_attachment.filesystem
+            filesystem = (binding.filesystem
                           if resolved.workspace_membership.scope is WorkspaceScope.TASK else None)
             logical = (filesystem.logical_path(resolved.native_path)
                        if filesystem is not None else resolved.native_path)

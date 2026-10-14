@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.sandbox.command import CaptureLimit, ShellNotFoundError
-from redpanda.sandbox.local.bash import (
+from redpanda.execution.command import CaptureLimit, ShellNotFoundError
+from redpanda.execution.local.bash import (
     BashCommandEnvironmentPolicy,
     BashCommandRunner,
 )
-from redpanda.sandbox.local.provider import create_local_environment_provider
+from redpanda.execution.local.provider import create_local_command_environment
 
 
 BASH = shutil.which("bash") if os.name == "posix" else None
@@ -52,7 +52,7 @@ class BashCommandEnvironmentPolicyTest(unittest.TestCase):
 class BashDiscoveryTest(unittest.TestCase):
     def test_discovers_bash(self):
         with patch(
-            "redpanda.sandbox.local.bash.shutil.which",
+            "redpanda.execution.local.bash.shutil.which",
             return_value="/usr/bin/bash",
         ):
             runner = BashCommandRunner()
@@ -61,7 +61,7 @@ class BashDiscoveryTest(unittest.TestCase):
 
     def test_fails_when_bash_is_unavailable(self):
         with patch(
-            "redpanda.sandbox.local.bash.shutil.which",
+            "redpanda.execution.local.bash.shutil.which",
             return_value=None,
         ):
             with self.assertRaisesRegex(ShellNotFoundError, "bash"):
@@ -70,28 +70,30 @@ class BashDiscoveryTest(unittest.TestCase):
 
 class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
     def test_selects_bash_for_non_windows(self):
+        root = Path.cwd()
         with (
-            patch("redpanda.sandbox.local.provider.os.name", "other"),
+            patch("redpanda.execution.local.provider.os.name", "other"),
             patch(
-                "redpanda.sandbox.local.bash.BashCommandRunner"
+                "redpanda.execution.local.bash.BashCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "/usr/bin/bash"
-            provider = create_local_environment_provider()
+            provider = create_local_command_environment(task_root=root)
 
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "bash")
         self.assertEqual(provider.shell_path, "/usr/bin/bash")
 
     def test_selects_powershell_for_windows(self):
+        root = Path.cwd()
         with (
-            patch("redpanda.sandbox.local.provider.os.name", "nt"),
+            patch("redpanda.execution.local.provider.os.name", "nt"),
             patch(
-                "redpanda.sandbox.local.powershell.PowerShellCommandRunner"
+                "redpanda.execution.local.powershell.PowerShellCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "C:/PowerShell/7/pwsh.exe"
-            provider = create_local_environment_provider()
+            provider = create_local_command_environment(task_root=root)
 
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "powershell")
@@ -108,9 +110,9 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
         source["JAVA_HOME"] = "/other/jdk"
         with (
             patch.dict(os.environ, {"PATH": "/product/bin", "JAVA_HOME": "/product/jdk"}),
-            patch("redpanda.sandbox.local.bash.shutil.which", return_value="/usr/bin/bash"),
+            patch("redpanda.execution.local.bash.shutil.which", return_value="/usr/bin/bash"),
             patch(
-                "redpanda.sandbox.local.bash.asyncio.create_subprocess_exec",
+                "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=RuntimeError("stop after environment capture")),
             ) as spawn,
             self.assertRaisesRegex(RuntimeError, "stop after environment capture"),
@@ -125,11 +127,11 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "redpanda.sandbox.local.bash.shutil.which",
+                "redpanda.execution.local.bash.shutil.which",
                 return_value="/usr/bin/bash",
             ),
             patch(
-                "redpanda.sandbox.local.bash.asyncio.create_subprocess_exec",
+                "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=RuntimeError("internal bug")),
             ),
         ):

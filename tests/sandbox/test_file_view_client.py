@@ -3,7 +3,7 @@ import threading
 import unittest
 from unittest.mock import Mock, patch
 
-from redpanda.sandbox.files.file_view.client import Client
+from redpanda.filesystem.file_view.client import Client
 
 
 class FileViewClientTimingTest(unittest.TestCase):
@@ -14,8 +14,8 @@ class FileViewClientTimingTest(unittest.TestCase):
         client.replies = Mock()
         client.replies.get.return_value = json.dumps({"status": "sealed"})
         with (
-            patch("redpanda.sandbox.files.file_view.client.perf_counter", side_effect=(5, 65)),
-            self.assertLogs("redpanda.sandbox.files.file_view.client", level="INFO") as captured,
+            patch("redpanda.filesystem.file_view.client.perf_counter", side_effect=(5, 65)),
+            self.assertLogs("redpanda.filesystem.file_view.client", level="INFO") as captured,
         ):
             self.assertEqual(client.request("finish", command_id="private-command"), {"status": "sealed"})
         client.replies.get.assert_called_once_with()

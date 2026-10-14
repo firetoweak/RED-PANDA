@@ -17,7 +17,7 @@ def configure(root, version="0.4.1"):
 
 def make_build(root, target):
     configure(root)
-    directory = root / "redpanda/sandbox/bin"
+    directory = root / "redpanda/filesystem/bin"
     directory.mkdir(parents=True)
     names = {runtime.PLATFORMS[target], "licenses/SOURCE.md"}
     if target.startswith("windows"):
@@ -40,7 +40,7 @@ def delivery(tmp_path, monkeypatch):
     configure(consumer)
     archive = runtime.package(producer, tmp_path / "release", "windows-x86_64")
     monkeypatch.setattr(runtime, "host_platform", lambda: "windows-x86_64")
-    monkeypatch.delenv("REDPANDA_SANDBOX_EXECUTABLE", raising=False)
+    monkeypatch.delenv("REDPANDA_FILESYSTEM_EXECUTABLE", raising=False)
     requests = []
 
     def download(url, destination):
@@ -92,7 +92,7 @@ def test_reinstall_preserves_local_build_and_explicit_override(delivery, monkeyp
     assert runtime.install(root) == local
     custom = tmp_path / "custom.exe"
     custom.write_bytes(b"custom")
-    monkeypatch.setenv("REDPANDA_SANDBOX_EXECUTABLE", str(custom))
+    monkeypatch.setenv("REDPANDA_FILESYSTEM_EXECUTABLE", str(custom))
     assert runtime.install(root) == custom
     assert requests == []
 
@@ -114,7 +114,7 @@ def test_pinned_version_change_updates_only_managed_package(delivery):
     executable = runtime.install(root)
     configure(producer, "0.4.2")
     configure(root, "0.4.2")
-    source = producer / "redpanda/sandbox/bin"
+    source = producer / "redpanda/filesystem/bin"
     (source / "redpanda-sandbox.exe").write_bytes(b"new release")
     record = json.loads((source / "BUILD.json").read_text())
     record["files"]["redpanda-sandbox.exe"] = runtime.digest(source / "redpanda-sandbox.exe")
@@ -149,7 +149,7 @@ def test_bad_delivery_never_replaces_existing_program(delivery, corruption):
     with pytest.raises(ValueError):
         runtime.install(root, replace=True)
     assert original.read_bytes() == before
-    assert not (root / "redpanda/sandbox/escaped").exists()
+    assert not (root / "redpanda/filesystem/escaped").exists()
 
 
 def test_failed_directory_swap_restores_previous_program(delivery, monkeypatch):

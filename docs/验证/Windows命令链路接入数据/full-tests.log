@@ -1,0 +1,57 @@
+............................................................... [  5%]
+................................................. [ 10%]
+.................................................................... [ 16%]
+................................................................... [ 22%]
+.................................................................................................................................. [ 34%]
+........................................................................................................................... [ 45%]
+..................................................................... [ 51%]
+.............................................................. [ 57%]
+.............................................................. [ 63%]
+.............................................................ssssss..............................s......................... [ 74%]
+.............ssss....................................................... [ 81%]
+........................................................................ [ 87%]
+...........................s.................... [ 92%]
+............................................... [ 96%]
+........................................    [100%]
+============================== warnings summary ===============================
+tests/assistant/test_compact.py::CompactTest::test_child_rollover_keeps_report_in_its_own_session
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x000002922055B970>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\.tools\python\cpython-3.13-windows-x86_64-none\Lib\multiprocessing\connection.py", line 1036, in _exhaustive_wait
+      def _exhaustive_wait(handles, timeout):
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+tests/channels/test_web.py::WebFirstSliceTest::test_edit_forwards_only_retained_attachment_refs
+  C:\LocalData\work\helpMe\RED-PANDA\redpanda-env\Lib\site-packages\_pytest\unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored in: <_io.BytesIO object at 0x0000029220553830>
+  
+  Traceback (most recent call last):
+    File "C:\LocalData\work\helpMe\RED-PANDA\.tools\python\cpython-3.13-windows-x86_64-none\Lib\threading.py", line 303, in __enter__
+      def __enter__(self):
+      
+  BufferError: Existing exports of data: object cannot be re-sized
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\sandbox\test_linux_sandbox_edges.py:14: 需要 Linux 与可用的 FUSE
+SKIPPED [1] tests\sandbox\test_bash.py:172: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:206: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:224: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:145: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:190: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_bash.py:159: 需要 POSIX Bash
+SKIPPED [1] tests\sandbox\test_environment.py:81: 当前环境无法创建符号链接: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\19403\\AppData\\Local\\Temp\\tmpkqabwsqx\\outside' -> 'C:\\Users\\19403\\AppData\\Local\\Temp\\tmpkqabwsqx\\root\\link'
+SKIPPED [1] tests\sandbox\test_linux_workspace_execute.py:28: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [1] tests\sandbox\test_linux_workspace_execute.py:58: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [2] tests\sandbox\test_linux_workspace_execute.py:78: 需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE
+SKIPPED [1] tests\skills\test_package.py:124: current platform cannot create symlinks
+1083 passed, 13 skipped, 2 warnings, 198 subtests passed in 375.64s (0:06:15)

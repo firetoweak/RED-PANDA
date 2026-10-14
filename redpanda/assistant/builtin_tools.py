@@ -6,10 +6,10 @@ from pathlib import Path
 
 from redpanda.assistant.tool_results import runtime_tool_result
 from redpanda.runtime.model import AuthorizationPolicy
-from redpanda.sandbox.api import EnvironmentSelection
-from redpanda.sandbox.local.provider import create_local_environment_provider
-from redpanda.sandbox.registry import WorkspaceRecord, workspace_view
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.execution.local.provider import create_local_command_environment
+from redpanda.filesystem.registry import WorkspaceRecord, workspace_view
+from redpanda.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
@@ -21,7 +21,7 @@ from redpanda.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
 from redpanda.tools.builtin import (
     CommandInterrupts,
     READ_ONLY_WORKSPACE_TOOLS,
-    create_environment_tool_specs,
+    create_workspace_tool_specs,
     create_workspace_restore_spec,
     create_subagent_workspace_specs,
 )
@@ -73,7 +73,7 @@ async def build_builtin_tools(
     materials_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
-    sandbox=None,
+    filesystem=None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -82,13 +82,14 @@ async def build_builtin_tools(
             *view.roots,
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
-    provider = create_local_environment_provider(command_environment)
-    binding = await provider.attach(EnvironmentSelection(
-        environment_id=provider.environment_id,
+    commands = create_local_command_environment(command_environment, task_root=workspace.task_root)
+    binding = FileAccess(
+        environment_id="local",
         workspace_view=view,
-        cwd=str(workspace.task_root),
-    ))
-    binding = replace(binding, execution_attachment=replace(binding.execution_attachment, filesystem=sandbox))
+        permission_binding=PermissionBinding.read_write(view),
+        cwd=workspace.task_root,
+        filesystem=filesystem,
+    )
     if materials_root is not None:
         binding = replace(
             binding,
@@ -97,12 +98,11 @@ async def build_builtin_tools(
                     (root_id, FilesystemPermission.READ_ONLY if root_id == "session_materials" else access)
                     for root_id, access in binding.permission_binding.filesystem
                 ),
-                network_access=binding.permission_binding.network_access,
             ),
         )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
-    for spec in create_environment_tool_specs(binding, interrupts, session_operations=session_operations):
+    for spec in create_workspace_tool_specs(binding, commands, interrupts, session_operations=session_operations):
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)

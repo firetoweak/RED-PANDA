@@ -1,0 +1,25 @@
+[
+  {
+    "name": "hook-ntfs",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "unhooked-winfsp",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "C:/LocalData/work/helpMe/RED-PANDA/.tools/windows-hook-probe/git-control-_51mlufx/store/mount/.git: Function not implemented\n"
+  },
+  {
+    "name": "unhooked-hidden-attribute",
+    "success": false,
+    "winerror": 50
+  },
+  {
+    "name": "unhooked-winfsp-hide-disabled",
+    "returncode": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]

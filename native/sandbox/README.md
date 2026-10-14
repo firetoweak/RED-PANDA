@@ -6,9 +6,11 @@
 
 ## 运行包
 
-正常使用安装已编译的沙箱运行包，**不需要 Rust、LLVM 或开发 SDK**。项目准备脚本自动下载 [`release.json`](release.json) 固定版本的[运行包](https://github.com/firetoweak/RED-PANDA/releases)，校验 SHA256 后安装；已有相同版本时跳过。
+正常使用安装已编译的原生文件服务运行包，**不需要 Rust、LLVM 或开发 SDK**。项目准备脚本自动下载 [`release.json`](release.json) 固定版本的[运行包](https://github.com/firetoweak/RED-PANDA/releases)，校验 SHA256 后安装；已有相同版本时跳过。
 
-安装位置为 `redpanda/sandbox/bin/`。Windows 包含程序、WinFsp 用户态 DLL 和 libunwind；Linux 包含程序。两种运行包都保留 `BUILD.json` 和许可证，Linux 安装时自动设置执行权限。
+安装位置为 `redpanda/filesystem/bin/`。Windows 包含程序、WinFsp 用户态 DLL 和 libunwind；Linux 包含程序。两种运行包都保留 `BUILD.json` 和许可证，Linux 安装时自动设置执行权限。
+
+Windows 准备入口还会独立安装[任务命令组件](../execution/README.md)到 `redpanda/execution/bin/`，用于任务启动与宿主拒写。它不属于文件管理服务，两者各自校验并保留构建记录。
 
 自行编译的程序会保留，不被准备脚本覆盖；修改过的下载包会提示你确认处理。需要明确替换为发布包时，使用自己的 Python 或项目运行环境执行：
 
@@ -18,7 +20,7 @@ python -m scripts.sandbox_runtime install --replace
 
 下载或校验失败不会替换已有程序。不要只拷贝可执行文件而遗漏同包的运行库。
 
-也可用 `REDPANDA_SANDBOX_EXECUTABLE` 指向其他位置的程序，其运行库仍须随程序完整保存。不要混用其他版本或历史实验的程序。
+也可用 `REDPANDA_FILESYSTEM_EXECUTABLE` 指向其他位置的程序，其运行库仍须随程序完整保存。不要混用其他版本或历史实验的程序。
 
 ## 平台运行组件
 
@@ -44,12 +46,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_winfsp.ps1
 
 ## 能力边界
 
-这是**工作区文件状态回退机制**，不提供完整操作系统隔离。命令继承用户现有开发环境；挂载外写入、环境安装、系统配置和网络副作用无法随文件一起回退。
+这是 **Agent 文件系统的原生文件管理服务**，负责文件变化证据、恢复与子任务成果，不提供操作系统安全隔离。当前目录、程序与发布包中的 sandbox 名称不代表沙箱能力。Agent 文件系统可以在本机或外部沙箱内运行，沙箱的生命周期不决定文件历史的保留。命令继承用户现有开发环境；挂载外写入、环境安装、系统配置和网络副作用无法随文件一起回退。
 
 具体文件操作限制见[构建与验证说明](BUILD.md#范围与验证)及 [VFS Windows 平台说明](../vfs/docs/WINDOWS.md)。
 
 ## 深入阅读
 
 - [构建、分发与验证](BUILD.md)：工具链安装、路径参数、挂载排查和测试命令。
-- [Sandbox 设计](../../docs/架构/Sandbox/总览.md)：文件管理、执行环境与子任务成果交换的职责。
+- [Agent 文件系统设计](../../docs/架构/Agent文件系统/总览.md)：文件审计、回退、子任务成果交换与沙箱的职责边界。
 - [底层 VFS 测试](../vfs/docs/TESTING.md)：Rust、挂载与崩溃测试。

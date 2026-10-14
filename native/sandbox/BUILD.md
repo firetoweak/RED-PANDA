@@ -1,6 +1,6 @@
-# 原生沙箱开发、构建与分发
+# 原生文件管理服务开发、构建与分发
 
-**仅在修改或自行编译原生组件时需要本说明。** 运行 RED PANDA 使用编译好的沙箱程序，平台运行要求见[沙箱运行说明](README.md)。普通安装不需要下面的编译工具。
+**仅在修改或自行编译原生组件时需要本说明。** 运行 RED PANDA 使用编译好的文件服务程序，平台运行要求见[文件服务运行说明](README.md)。普通安装不需要下面的编译工具。
 
 ## 开发环境
 
@@ -125,7 +125,7 @@ rustup toolchain install nightly-2026-08-07 --profile minimal --component rustfm
 - `ls -l /dev/fuse` 应为当前用户可读写。常见权限是 `crw-rw-rw-`。节点不存在时执行 `sudo modprobe fuse`。权限为 `crw-rw----` 且属组为 `fuse` 时，执行 `sudo usermod -aG fuse "$USER"` 并重新登录。
 - `/etc/mtab` 必须可读。Ubuntu 上它是指向 `/proc/self/mounts` 的符号链接。`fusermount3` 用它查找挂载项；这个文件不存在时卸载失败。
 - 普通用户通过 `fusermount3` 挂载，不需要 root。
-- 沙箱挂载的 `allow_other` 默认为关闭，不读取 `user_allow_other`。只有挂载点要给其他用户访问时，才在 `/etc/fuse.conf` 取消 `user_allow_other` 的注释。
+- 文件视图挂载的 `allow_other` 默认为关闭，不读取 `user_allow_other`。只有挂载点要给其他用户访问时，才在 `/etc/fuse.conf` 取消 `user_allow_other` 的注释。
 
 ## 首次构建
 
@@ -157,13 +157,13 @@ Windows 命令使用上面解压的目录；已有其他 LLVM MinGW 安装时，
 | `--debug` | 构建 debug 程序 |
 | `--offline` | 在 Cargo 依赖已下载时离线构建 |
 
-这些选项用于 `scripts/build_sandbox.py`；项目环境准备脚本不接收沙箱路径参数。
+这些选项用于 `scripts/build_sandbox.py`；项目环境准备脚本不接收文件服务路径参数。
 
 Cargo 使用仓库内 `../vfs/` 路径依赖。构建临时目录在项目 `.tools/` 内；`CARGO_TARGET_DIR` 可指定其他构建输出位置。
 
 ## 运行与分发
 
-输出在 `redpanda/sandbox/bin/`。Windows 文件名是 `redpanda-sandbox.exe`，同目录还有 WinFsp 用户态 DLL，以及 GNU LLVM target 需要的运行库。Linux 文件名是 `redpanda-sandbox`。Python 默认从这个目录启动程序，无需旧实验包、旧实验目录的 PATH 或额外配置；`REDPANDA_SANDBOX_EXECUTABLE` 可显式选择另一个构建。
+输出在 `redpanda/filesystem/bin/`。Windows 文件名是 `redpanda-sandbox.exe`，同目录还有 WinFsp 用户态 DLL，以及 GNU LLVM target 需要的运行库。Linux 文件名是 `redpanda-sandbox`。Python 默认从这个目录启动程序，无需旧实验包、旧实验目录的 PATH 或额外配置；`REDPANDA_FILESYSTEM_EXECUTABLE` 可显式选择另一个构建。
 
 `BUILD.json` 记录当前 VFS、Rust 应用、构建脚本的源码 SHA256 和输出文件 SHA256，不依赖另一个仓库的 Git 状态；附带的 `licenses/` 保存构建所用依赖的声明与 VFS 首次导入来源。生成文件不提交到源码库。发布 Windows 二进制时，需一并携带同目录 DLL、构建来源和许可证声明，运行机器仍需安装 WinFsp 驱动。发布 Linux 二进制时，运行机器仍需 `fusermount3` 和可访问的 `/dev/fuse`。构建脚本不安装系统组件。
 
@@ -197,4 +197,4 @@ python -m pytest -m process tests/sandbox/file_view tests/sandbox/test_vfs_works
 
 Windows 需要已构建程序与 WinFsp；Linux 需要已构建程序、`fusermount3` 和可访问的 `/dev/fuse`。未满足条件的测试会跳过，不能据此声称已运行验证。Linux 命令与边界还可显式运行 `tests/sandbox/test_linux_workspace_execute.py`、`tests/sandbox/test_linux_sandbox_edges.py`。
 
-底层 Rust 测试、挂载与崩溃测试见[VFS 测试说明](../vfs/docs/TESTING.md)。产品设计从[Sandbox 总览](../../docs/架构/Sandbox/总览.md)进入；有日期的实验与验证记录从[文档索引](../../docs/README.md)查阅。
+底层 Rust 测试、挂载与崩溃测试见[VFS 测试说明](../vfs/docs/TESTING.md)。产品设计从[Agent 文件系统总览](../../docs/架构/Agent文件系统/总览.md)进入；有日期的实验与验证记录从[文档索引](../../docs/README.md)查阅。

@@ -17,7 +17,7 @@ from redpanda.assistant.subagent.subagent import (
 from redpanda.assistant.workspaces import bound_workspace
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.timing import install_timing_logging
 
 

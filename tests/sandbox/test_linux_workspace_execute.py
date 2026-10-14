@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from redpanda.sandbox.files.operations import (
+from redpanda.filesystem.operations import (
     INITIAL,
     WorkspaceRestoreFailed,
     WorkspaceFiles,

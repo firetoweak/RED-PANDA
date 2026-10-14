@@ -20,7 +20,7 @@ from redpanda.runtime import (
     SqliteJournal,
     UserMessageReceived,
 )
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 
 
 async def _append_user_message(store, session_id: str, text: str) -> None:

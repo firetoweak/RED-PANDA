@@ -10,7 +10,7 @@ from redpanda.config import assistant_config_from_app, load_app_config
 from thinllm import ChatCompletionsClient
 from redpanda.llm.config import load_endpoint
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.runtime import (
     CommandOutcomeReceived,
     InvokeTool,

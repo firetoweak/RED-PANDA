@@ -19,8 +19,8 @@ from redpanda.assistant.subagent.subagent import (
 )
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.workspaces import bound_workspace, bound_workspace_id
-from redpanda.sandbox.files import ChangesReadConflict, child_root, child_workspace, workspace_files
-from redpanda.sandbox.api import file_error_message
+from redpanda.filesystem import ChangesReadConflict, child_root, child_workspace, workspace_files
+from redpanda.tools.results import file_error_message
 from redpanda.assistant.workspace_versions import (
     WorkspaceFileResult, WorkspaceVersionFact, project_workspace_file_result, project_workspace_versions, session_file_operations,
 )

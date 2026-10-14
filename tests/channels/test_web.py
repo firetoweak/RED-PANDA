@@ -33,7 +33,7 @@ from redpanda.channels.web.app import create_web_app, report_worker_failures
 from redpanda.channels.web.channel import WebChannel
 from redpanda.channels.web.directory_picker import DirectoryPickerUnavailable
 from redpanda.channels.web.hub import WebEventHub
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 
 
 MODEL_CONFIG = {"model": {"default": "deepseek/test-model", "candidates": [

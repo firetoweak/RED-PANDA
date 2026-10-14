@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.sandbox.files.operations import WorkspaceFiles
+from redpanda.filesystem.operations import WorkspaceFiles
 
 
 def workspace(tmp_path):
@@ -84,7 +84,7 @@ def test_cancelled_reader_releases_publication_lock(tmp_path):
             await task
         with patch.object(view, "_publish", lambda _: None):
             await asyncio.wait_for(view._publish_pending(None), 5)
-        with pytest.raises(RuntimeError, match="outside a sandbox operation"):
+        with pytest.raises(RuntimeError, match="outside a file operation"):
             view.native_path(view.root)
     asyncio.run(scenario())
 
@@ -108,7 +108,7 @@ def test_publication_wait_cannot_exhaust_the_executor_needed_to_release_a_reader
         async def query():
             entered.set()
             await release.wait()
-        with patch("redpanda.sandbox.files.lifecycle.sqlite3.connect", observe):
+        with patch("redpanda.filesystem.lifecycle.sqlite3.connect", observe):
             reading = asyncio.create_task(view.read(query))
             await asyncio.wait_for(entered.wait(), 5)
             with patch.object(view, "_publish", lambda _: None):
@@ -126,7 +126,7 @@ def test_cancelled_publication_wait_does_not_wait_for_the_reader(tmp_path, monke
     def bounded(*args, **kwargs):
         kwargs["timeout"] = min(kwargs["timeout"], 0.2)
         return connect(*args, **kwargs)
-    monkeypatch.setattr("redpanda.sandbox.files.lifecycle.sqlite3.connect", bounded)
+    monkeypatch.setattr("redpanda.filesystem.lifecycle.sqlite3.connect", bounded)
     async def scenario():
         view = workspace(tmp_path)
         entered, release = asyncio.Event(), asyncio.Event()
@@ -179,7 +179,7 @@ def test_waiting_publication_does_not_block_a_readers_dependent_query(tmp_path):
             entered.set()
             await dependent.wait()
             return await other.read(inner)
-        with patch("redpanda.sandbox.files.lifecycle.sqlite3.connect", observe):
+        with patch("redpanda.filesystem.lifecycle.sqlite3.connect", observe):
             reading = asyncio.create_task(view.read(query))
             await asyncio.wait_for(entered.wait(), 5)
             with patch.object(view, "_publish", lambda _: (view.root / "file.txt").write_text("next")):
@@ -199,7 +199,7 @@ def test_lock_storage_failure_is_not_retried_as_contention(tmp_path):
         view = workspace(tmp_path)
         failure = sqlite3.OperationalError("disk I/O error")
         failure.sqlite_errorcode = sqlite3.SQLITE_IOERR
-        with patch("redpanda.sandbox.files.lifecycle.sqlite3.connect", side_effect=failure) as connect:
+        with patch("redpanda.filesystem.lifecycle.sqlite3.connect", side_effect=failure) as connect:
             with pytest.raises(sqlite3.OperationalError) as raised:
                 await view.read(lambda: asyncio.sleep(0))
             assert raised.value is failure

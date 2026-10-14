@@ -6,15 +6,16 @@ import threading
 import time
 import unittest
 import pytest
-from redpanda.sandbox.files.file_view.client import native_executable
+from redpanda.filesystem.file_view.client import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
 if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
-from redpanda.sandbox.files.file_view import Client, ServiceFailure
-from redpanda.sandbox.files.file_view import publication as pub
+from redpanda.filesystem.file_view import ServiceFailure
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import publication as pub
 
 CHUNK = 65536
 
@@ -48,7 +49,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_restore_then_restore_the_restore_keeps_one_forward_history(self):
         base, store = self.fixture('restore_roundtrip')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             old_head = client.request('info')['commit']
             result = client.restore('undo', ['edit'], 'preserve')
@@ -67,7 +68,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_discarding_restoration_does_not_move_the_view(self):
         base, store = self.fixture('restore_discard')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'sealed')
             client.request('discard', command_id='undo')
@@ -76,7 +77,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_range_is_a_contiguous_ordered_suffix(self):
         base, store = self.fixture('restore_range')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'first', "with open('file','r+b') as f: f.write(b'XXX')")
             self.change(client, 'second', "with open('file','r+b') as f: f.write(b'YYY')")
             old_head = client.request('info')['commit']
@@ -94,7 +95,7 @@ class RestoreContracts(unittest.TestCase):
         for policy, expected in [('original', b'AAA__U'), ('preserve', b'AHA__U')]:
             with self.subTest(policy=policy):
                 base, store = self.fixture('restore_human_'+policy)
-                with Client(EXE, store, base) as client:
+                with CommandClient(EXE, store, base) as client:
                     self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XYZ')")
                     pub.publish(client)
                     with (base/'file').open('r+b') as file:
@@ -110,7 +111,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_sealed_restoration_survives_lost_reply_and_owner_restart(self):
         base, store = self.fixture('restore_reopen')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             # Do not consume the restore acknowledgement before terminating the owner.
             client.process.stdin.write(json.dumps({'op': 'restore', 'command_id': 'undo', 'targets': ['edit'], 'policy': 'original'})+'\n')
@@ -121,7 +122,7 @@ class RestoreContracts(unittest.TestCase):
                 time.sleep(0.01)
             client.process.kill()
             client.process.wait(timeout=20)
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'sealed')
             self.assertEqual(client.restore('undo', ['edit'], 'preserve')['status'], 'request_mismatch')
             client.request('accept', command_id='undo')
@@ -133,7 +134,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_interrupted_restore_stays_unknown_and_is_not_reexecuted(self):
         base, store = self.fixture('restore_interrupted', 16*1024*1024)
-        client = Client(EXE, store, base)
+        client = CommandClient(EXE, store, base)
         try:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'X'*(16*1024*1024))")
             old_head = client.request('info')['commit']
@@ -159,7 +160,7 @@ class RestoreContracts(unittest.TestCase):
             self.assertEqual(len(errors), 1)
         finally:
             client.close()
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.assertEqual(client.request('info')['commit'], old_head)
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'unknown')
             self.assertEqual(client.request('recover', command_id='undo')['status'], 'incomplete_restore')
@@ -170,7 +171,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_corrupt_evidence_is_rejected_before_a_candidate_is_created(self):
         base, store = self.fixture('restore_corrupt')
-        client = Client(EXE, store, base)
+        client = CommandClient(EXE, store, base)
         try:
             receipt = self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             head = (store/'HEAD').read_bytes()
@@ -188,7 +189,7 @@ class RestoreContracts(unittest.TestCase):
     def test_native_aliases_share_a_single_restore_result(self):
         base, store = self.fixture('restore_alias')
         os.link(base/'file', base/'alias')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'X')\nwith open('alias','r+b') as f: f.seek(10);f.write(b'Y')")
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'sealed')
             client.request('accept', command_id='undo')
@@ -199,7 +200,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_replaced_object_conflicts_even_when_bytes_match(self):
         base, store = self.fixture('restore_identity')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             pub.publish(client)
             with (base/'replacement').open('wb') as file:
@@ -211,7 +212,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_preserve_keeps_a_human_value_in_the_removed_tail(self):
         base, store = self.fixture('restore_human_tail')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','ab') as f: f.write(b'X'*4000)")
             pub.publish(client)
             with (base/'file').open('r+b') as file:
@@ -227,14 +228,14 @@ class RestoreContracts(unittest.TestCase):
 
     def test_completed_restore_can_be_sealed_without_reexecuting_writes(self):
         base, store = self.fixture('restore_completed')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "with open('file','r+b') as f: f.write(b'XXX')")
             result = client.restore('undo', ['edit'], 'original')
             self.assertEqual(result['status'], 'sealed')
             before = (store/'commands/undo/before.json').read_bytes()
         # Remove just the final envelope to model interruption before its publication.
         (store/'commands/undo/sealed.json').unlink()
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.assertEqual(client.request('status', command_id='undo')['status'], 'unknown')
             self.assertEqual(client.request('recover', command_id='undo')['status'], 'sealed')
             self.assertEqual((store/'commands/undo/before.json').read_bytes(), before)
@@ -245,7 +246,7 @@ class RestoreContracts(unittest.TestCase):
         metrics = []
         for megabytes in (8, 64):
             base, store = self.fixture('restore_cost_'+str(megabytes), megabytes*1024*1024)
-            with Client(EXE, store, base) as client:
+            with CommandClient(EXE, store, base) as client:
                 self.change(client, 'edit', f"with open('file','r+b') as f: f.seek({CHUNK-1000});f.write(b'X'*2000)")
                 before = client.request('info')['host']['data_read_bytes']
                 result = client.restore('undo', ['edit'], 'original')
@@ -261,7 +262,7 @@ class RestoreContracts(unittest.TestCase):
     def test_append_and_truncate_restore_lengths_without_touching_prefix(self):
         for action in ('append', 'truncate'):
             base, store = self.fixture('restore_length_'+action, 2*CHUNK)
-            with Client(EXE, store, base) as client:
+            with CommandClient(EXE, store, base) as client:
                 code = "with open('file','ab') as f: f.write(b'X'*4000)" if action=='append' else f"with open('file','r+b') as f: f.truncate({2*CHUNK-100})"
                 self.change(client, 'edit', code)
                 self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'sealed')
@@ -272,7 +273,7 @@ class RestoreContracts(unittest.TestCase):
 
     def test_created_file_can_be_restored_without_publishing(self):
         base, store = self.fixture('restore_structure')
-        with Client(EXE, store, base) as client:
+        with CommandClient(EXE, store, base) as client:
             self.change(client, 'edit', "from pathlib import Path;Path('new').write_bytes(b'new')")
             result = client.restore('undo', ['edit'], 'original')
             self.assertEqual(result['status'], 'sealed')

@@ -6,7 +6,7 @@ import shutil
 import pytest
 
 from scripts import sandbox_runtime as runtime
-from redpanda.sandbox.files.file_view.client import Client
+from tests.fixtures.file_view import CommandClient
 
 pytestmark = pytest.mark.process
 
@@ -19,7 +19,7 @@ def test_packaged_runtime_mounts_without_developer_toolchains(tmp_path, monkeypa
     config = tmp_path / "native/sandbox/release.json"
     config.parent.mkdir(parents=True)
     shutil.copyfile(runtime.ROOT / "native/sandbox/release.json", config)
-    monkeypatch.delenv("REDPANDA_SANDBOX_EXECUTABLE", raising=False)
+    monkeypatch.delenv("REDPANDA_FILESYSTEM_EXECUTABLE", raising=False)
     monkeypatch.setattr(runtime, "download", lambda url, destination:
                         shutil.copyfile(archive.with_name(url.rsplit("/", 1)[1]), destination))
     executable = runtime.install(tmp_path)
@@ -39,7 +39,7 @@ def test_packaged_runtime_mounts_without_developer_toolchains(tmp_path, monkeypa
     base = tmp_path / "workspace"
     base.mkdir()
     (base / "file.txt").write_text("before", encoding="utf-8")
-    with Client(executable, tmp_path / "store", base, service_environment=environment) as client:
+    with CommandClient(executable, tmp_path / "store", base, service_environment=environment) as client:
         begin = client.begin("edit")
         assert begin["status"] == "active"
         (Path(begin["mount"]) / "file.txt").write_text("after", encoding="utf-8")

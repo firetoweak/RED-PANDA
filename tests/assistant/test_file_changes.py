@@ -6,8 +6,8 @@ from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
-from redpanda.sandbox.files import operation_id
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem import operation_id
+from redpanda.filesystem.registry import WorkspaceRegistry
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

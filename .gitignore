@@ -16,6 +16,7 @@ start-*.ps1
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
-redpanda/sandbox/bin/
+redpanda/filesystem/bin/
+redpanda/execution/bin/
 native/sandbox/target/
 dist/

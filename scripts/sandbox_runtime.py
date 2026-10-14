@@ -45,11 +45,12 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def manifest_files(record: dict, target: str) -> set[str]:
+def manifest_files(record: dict, target: str, *, required: set[str] | None = None) -> set[str]:
     files = record["files"]
-    required = {PLATFORMS[target]}
-    if target == "windows-x86_64":
-        required.update({"winfsp-x64.dll", "libunwind.dll", "licenses/WINFSP-LICENSE.txt", "licenses/LLVM-LICENSE.txt"})
+    if required is None:
+        required = {PLATFORMS[target]}
+        if target == "windows-x86_64":
+            required.update({"winfsp-x64.dll", "libunwind.dll", "licenses/WINFSP-LICENSE.txt", "licenses/LLVM-LICENSE.txt"})
     if not required.issubset(files) or not any(name.startswith("licenses/") for name in files):
         raise ValueError("沙箱运行包缺少程序、运行库或许可证。")
     for name, expected in files.items():
@@ -62,8 +63,8 @@ def manifest_files(record: dict, target: str) -> set[str]:
     return set(files)
 
 
-def verify(directory: Path, record: dict, target: str) -> None:
-    for name in manifest_files(record, target):
+def verify(directory: Path, record: dict, target: str, *, required: set[str] | None = None) -> None:
+    for name in manifest_files(record, target, required=required):
         path = directory / name
         if not path.is_file() or path.is_symlink() or digest(path) != record["files"][name]:
             raise ValueError(f"沙箱文件缺失或校验失败：{name}")
@@ -71,7 +72,7 @@ def verify(directory: Path, record: dict, target: str) -> None:
 
 def package(root: Path, output: Path, target: str) -> Path:
     config = release_config(root)
-    source = root / "redpanda/sandbox/bin"
+    source = root / "redpanda/filesystem/bin"
     record = json.loads((source / "BUILD.json").read_text(encoding="utf-8"))
     if record["profile"] != "release":
         raise ValueError("发布运行包必须先完成 release 构建。")
@@ -104,15 +105,15 @@ def download(url: str, destination: Path) -> None:
 
 def install(root: Path, *, replace: bool = False) -> Path:
     target = host_platform()
-    configured = os.environ.get("REDPANDA_SANDBOX_EXECUTABLE")
+    configured = os.environ.get("REDPANDA_FILESYSTEM_EXECUTABLE")
     if configured is not None:
         executable = Path(configured).resolve()
         if not executable.is_file():
-            raise ValueError(f"REDPANDA_SANDBOX_EXECUTABLE 指定的程序不存在：{executable}")
+            raise ValueError(f"REDPANDA_FILESYSTEM_EXECUTABLE 指定的程序不存在：{executable}")
         print(f"使用指定沙箱：{executable}")
         return executable
     config = release_config(root)
-    destination = root / "redpanda/sandbox/bin"
+    destination = root / "redpanda/filesystem/bin"
     executable = destination / PLATFORMS[target]
     record_path = destination / "BUILD.json"
     record = json.loads(record_path.read_text(encoding="utf-8")) if record_path.exists() and not replace else {}
@@ -195,6 +196,9 @@ def main(argv: list[str] | None = None) -> int:
             package(ROOT, args.output, args.platform)
         else:
             install(ROOT, replace=args.replace)
+            if sys.platform == "win32":
+                from scripts.execution_runtime import install as install_execution
+                install_execution(ROOT, replace=args.replace)
             if args.with_runtime:
                 ensure_platform_runtime(ROOT)
     except (ValueError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:

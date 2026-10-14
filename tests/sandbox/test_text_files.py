@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from redpanda.sandbox.files import read_text, replace_text, write_text
+from redpanda.filesystem import read_text, replace_text, write_text
 
 
 @pytest.mark.parametrize("source", [b"left\nTARGET\nright\n", b"left\r\nTARGET\r\nright\r\n",

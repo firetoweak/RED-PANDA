@@ -21,7 +21,7 @@ from redpanda.cli.models import (
 from redpanda.cli.registry import CliRegistry
 from redpanda.cli.runtime import CliToolCatalog
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.command import EnvironmentCommandExecutor
+from redpanda.execution.command import CommandExecutor
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class CliApplicationService:
     def __init__(
         self,
         home: RedPandaHome,
-        command_executor: EnvironmentCommandExecutor,
+        command_executor: CommandExecutor,
         registry: CliRegistry | None = None,
         *,
         max_catalog_chars: int = 20_000,

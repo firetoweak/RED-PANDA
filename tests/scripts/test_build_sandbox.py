@@ -14,7 +14,7 @@ def test_windows_build_environment_uses_explicit_host_and_keeps_process_environm
     files = [sdk / name for name in ("inc/winfsp/winfsp.h", "lib/winfsp-x64.lib",
                                     "bin/winfsp-x64.dll", "License.txt")]
     files += [llvm / name for name in ("x86_64-w64-mingw32-clang.exe", "llvm-ar.exe",
-                                      "libclang.dll", "libunwind.dll")]
+                                      "x86_64-w64-mingw32-clang++.exe", "libclang.dll", "libunwind.dll")]
     files.append(llvm.parent / "LICENSE.TXT")
     for path in files:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,10 +94,12 @@ def test_build_packages_detected_runtime_and_uses_prepared_toolchain(tmp_path, m
         artifact.write_bytes(b"native artifact")
 
     monkeypatch.setattr(build_sandbox.subprocess, "run", compile_native)
+    from scripts import build_execution
+    monkeypatch.setattr(build_execution, "build", lambda root, llvm, profile: None)
     build_sandbox.main()
     assert calls == [["rustup", "run", "explicit-host", "cargo", "build", "--locked",
                       "--target", "x86_64-pc-windows-gnullvm", "--release"]]
-    output = tmp_path / "redpanda/sandbox/bin"
+    output = tmp_path / "redpanda/filesystem/bin"
     assert (output / "redpanda-sandbox.exe").read_bytes() == b"native artifact"
     assert (output / "libunwind.dll").is_file()
     assert (output / "winfsp-x64.dll").is_file()

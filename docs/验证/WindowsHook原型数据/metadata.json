@@ -1,0 +1,72 @@
+{
+  "recorded_at": "2026-10-14T02:14:17.500778+00:00",
+  "elevated": false,
+  "detours_commit": "1dbd4ea281d73d478aa8d09a8b83fbd265f715f7",
+  "versions": {
+    "clang": "clang version 23.1.3 (https://github.com/llvm/llvm-project.git 0d261d1ca552c95a8f007e061c787ac7132fbcbc)\nTarget: x86_64-w64-windows-gnu\nThread model: posix\nInstalledDir: C:/LocalData/work/helpMe/RED-PANDA/.tools/llvm-mingw-20261006-ucrt-x86_64/bin\nConfiguration file: C:/LocalData/work/helpMe/RED-PANDA/.tools/llvm-mingw-20261006-ucrt-x86_64/bin/x86_64-w64-windows-gnu.cfg",
+    "git": "git version 2.47.0.windows.2",
+    "node": "v24.19.0",
+    "powershell_5": "5.1.26100.9549",
+    "powershell_7": "7.6.5",
+    "winfsp": "2.2.26215.fde790d"
+  },
+  "files_sha256": {
+    "hook.cpp": "8948a8d744e848e6a8bc7317d4aee2a04e5a82ee97d7ec7a14291cc214e59ffe",
+    "hook.def": "1ee995a3825e1b8a3ed0e8223f185cbb7860142c43e50da5d33f77e0d8f449e7",
+    "launcher.cpp": "1e7b337dc16031cb11c1ce268d44dd905849f55e4728de9b949c9519113af760",
+    "policy.h": "f06ea43ccc22b0b804ef2df19ecf210b6bd9a3598f9dff3f8b391b433d9dd1eb",
+    "build.ps1": "412ef09fae5ad34d6e0c4048bb09772ce504ca81ec1d0728d9059fc8f96d46f8",
+    "cases.py": "d531fa9911f0072fb52fbeae95333d441593b70dec9f65c4ef1640d532abaf90",
+    "run_probe.py": "e0d763f1404e9ab1f77fb20ecb812c44fa7a02dbd90ed81adcd48c735262d182",
+    "git_control.py": "4cbaa4c46baebd43e9428b1363c48e8f786770f278d0af99d094ba85ad98afc7",
+    "limits_probe.py": "180eb80e0d22d33bf1140549d0a0d50144d091bbb8a3df02602e2b6768075a3c",
+    "benchmark.py": "5095a4ad1c0b7c6655e09d2a6f76e41f420c34f3407f70aac3da9074df7ba35c",
+    "metadata.py": "60f6fee28d807df80c9a99812e300374534fabedb7338950de26a47f4e7e4753",
+    "hook.dll": "96449d498083fd70693b10c8b125545adddd0dff4e8ab02df3851bdd6ff19e76",
+    "hook-attach-failure.dll": "9ab4a99845688e89cdea0ae4a893c2c8eaa06f5ca979e5c327993438a75667f1",
+    "launcher.exe": "61760452366382d2d9eb87e8923bffadab227f15b0275c45ac7f7b93c06e410c",
+    "launcher-no-policy.exe": "22f181425b5146ef82e4b8459c4c757afd8e00b74f20f3d2ef2d5255e49d12cf"
+  },
+  "hook_imports": [
+    "api-ms-win-crt-runtime-l1-1-0.dll",
+    "api-ms-win-crt-private-l1-1-0.dll",
+    "api-ms-win-crt-string-l1-1-0.dll",
+    "KERNEL32.dll",
+    "api-ms-win-crt-convert-l1-1-0.dll",
+    "api-ms-win-crt-heap-l1-1-0.dll",
+    "api-ms-win-crt-stdio-l1-1-0.dll",
+    "api-ms-win-crt-locale-l1-1-0.dll",
+    "api-ms-win-crt-environment-l1-1-0.dll",
+    "api-ms-win-crt-filesystem-l1-1-0.dll"
+  ],
+  "native_build": {
+    "target": "x86_64-pc-windows-gnullvm",
+    "profile": "debug",
+    "sqlite_c_flags": "-DSQLITE_DIRECT_OVERFLOW_READ=0",
+    "source_sha256": {
+      "native/vfs": "2c77c616487f105982ec9c86214e209a324017fcb7a1aa9b498c6fe010e6d6b9",
+      "native/sandbox": "33cd1a037993983db8dd5b58d0494c6455a8c7203079ac645bd887b3f05339be",
+      ".cargo/config.toml": "52ae2a0a98b8d32b7fe08a24b92677160dece4a5c813117e3e81bd78f273c108",
+      "scripts/build_sandbox.py": "8483c5077c8404b6e107269213f446f2001a7ca98b6521325fffcb97c77a934e"
+    },
+    "files": {
+      "libunwind.dll": "b0636a4281610124704adb2be2edf5642e830d86c68b7f27dbc9c8154705a780",
+      "licenses/FACTORY-README.md": "2a9460cbbd7afe81982774d18197d3a607e2454ba9b23560b857d19ca9492266",
+      "licenses/FACTORY-SOURCE.md": "b84da47a501486eb7cd86cdfa5e8e71a7284a55f83adc20d3dfa5b8528b189ee",
+      "licenses/LICENSE-fuser.md": "e5de4041803ce3d7b1b269165677baabbeb9e43252ad176a877bd544ca04d748",
+      "licenses/LICENSE-libmimalloc-sys-0.1.49.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-libsqlite3-sys-0.38.2.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-mimalloc-0.1.52.txt": "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b",
+      "licenses/LICENSE-mimalloc-native.txt": "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9",
+      "licenses/LICENSE-nfsserve.md": "99cbb513e18ecf180a25f5c2e8f2980a91ead909c191fd4c34323497d13a3c74",
+      "licenses/LICENSE-rusqlite-0.40.2.txt": "c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f",
+      "licenses/LICENSE-SQLite.txt": "49cf7bcb103eb3244150a23bb23d840370a4762914faf1b450072a4b03c14670",
+      "licenses/LICENSE-tokio-rusqlite-0.8.0.txt": "3970ecb00e1ebaa4eeec6819aad0a572a0436b29077e8fade4853143fa776b30",
+      "licenses/LLVM-LICENSE.txt": "8d85c1057d742e597985c7d4e6320b015a9139385cff4cbae06ffc0ebe89afee",
+      "licenses/WINFSP-LICENSE.txt": "68ae2fa9d8e6110ebdc9a236beecf118e279f8a26530daf09c9e682c231f7879",
+      "redpanda-sandbox.exe": "01394f35024a20ad5df6f6b8d52af6bb7412cd6e689efd7df589545a4be54771",
+      "winfsp-x64.dll": "3e2bb88e543cebf98fa579382f22032cbc1c64c8082c48eedf99f48a0448de31"
+    }
+  },
+  "native_executable_sha256": "01394f35024a20ad5df6f6b8d52af6bb7412cd6e689efd7df589545a4be54771"
+}

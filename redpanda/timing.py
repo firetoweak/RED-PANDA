@@ -8,7 +8,7 @@ _FIELDS = ("stage", "operation", "attempt", "elapsed_ms", "outcome", "provider",
 _LOGGERS = (
     "thinllm.chat_completions",
     "redpanda.assistant.decision",
-    "redpanda.sandbox.files.file_view.client",
+    "redpanda.filesystem.file_view.client",
     __name__,
 )
 

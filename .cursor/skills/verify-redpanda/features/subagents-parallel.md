@@ -1,6 +1,6 @@
 # 并行多个子 Agent
 
-主 Agent 在同一次决策里发出多个 `delegate`，各子 Agent 在自己的文件副本里并行修改；之后并发地验收、合并、收回。来源：`redpanda/assistant/subagent/subagent.py`（`delegate` 描述、`CHILD_BUILTIN_TOOL_NAMES`、`record_interrupted_return`、`rehydrate`）、`redpanda/sandbox/files/children.py`（`ChildFiles.create/finish/compare/merge/discard`）、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/assistant/host/supervisor.py`（`_reclaim_child`、`archive`、`wait_quiescent`、`_children_still_running`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`。
+主 Agent 在同一次决策里发出多个 `delegate`，各子 Agent 在自己的文件副本里并行修改；之后并发地验收、合并、收回。来源：`redpanda/assistant/subagent/subagent.py`（`delegate` 描述、`CHILD_BUILTIN_TOOL_NAMES`、`record_interrupted_return`、`rehydrate`）、`redpanda/filesystem/children.py`（`ChildFiles.create/finish/compare/merge/discard`）、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/assistant/host/supervisor.py`（`_reclaim_child`、`archive`、`wait_quiescent`、`_children_still_running`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`。
 
 源码事实（判据以此为准）：
 - `delegate` 描述明确允许「同一次决策里各发一次 delegate，子 Agent 之间并行推进」，并警告「并行的子 Agent 改同一批文件，合入时会冲突」。

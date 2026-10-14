@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from redpanda.sandbox.registry import WorkspaceRecord
+from redpanda.filesystem.registry import WorkspaceRecord
 
 
 def workspace_record(

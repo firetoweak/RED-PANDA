@@ -18,7 +18,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import DecisionCancelled, MemoryJournal, SqliteJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
-from redpanda.sandbox.files import operation_id
+from redpanda.filesystem import operation_id
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import (
     SettlingScheduler,
@@ -32,10 +32,10 @@ def version_backend():
     async def execute(self, identity, callback):
         return await callback()
     with (
-        patch("redpanda.sandbox.files.operations.WorkspaceFiles.record", return_value="a" * 64),
-        patch("redpanda.sandbox.files.operations.WorkspaceFiles.execute", execute),
-        patch("redpanda.sandbox.files.operations.WorkspaceFiles.native_path", lambda self, path: path),
-        patch("redpanda.sandbox.files.operations.WorkspaceFiles.logical_path", lambda self, path: path),
+        patch("redpanda.filesystem.operations.WorkspaceFiles.record", return_value="a" * 64),
+        patch("redpanda.filesystem.operations.WorkspaceFiles.execute", execute),
+        patch("redpanda.filesystem.operations.WorkspaceFiles.native_path", lambda self, path: path),
+        patch("redpanda.filesystem.operations.WorkspaceFiles.logical_path", lambda self, path: path),
     ):
         yield
 
@@ -263,7 +263,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             with (
                 patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=RedPandaHome(root / "home")),
                 patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
-                patch("redpanda.sandbox.files.operations.WorkspaceFiles.changes", changes),
+                patch("redpanda.filesystem.operations.WorkspaceFiles.changes", changes),
             ):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=CapturingLlm()),
@@ -299,8 +299,8 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             with (
                 patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=home),
                 patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
-                patch("redpanda.sandbox.files.operations.WorkspaceFiles.read", read),
-                patch("redpanda.sandbox.files.operations.WorkspaceFiles.execute", execute),
+                patch("redpanda.filesystem.operations.WorkspaceFiles.read", read),
+                patch("redpanda.filesystem.operations.WorkspaceFiles.execute", execute),
             ):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(model_name="test", compact_threshold_tokens=200_000,

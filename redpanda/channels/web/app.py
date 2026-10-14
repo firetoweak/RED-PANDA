@@ -38,7 +38,7 @@ from redpanda.channels.web.directory_picker import (
     select_directory,
 )
 from redpanda.channels.web.hub import WebEventHub
-from redpanda.sandbox.registry import (
+from redpanda.filesystem.registry import (
     WorkspaceNotFound,
     WorkspacePathTaken,
     WorkspaceRegistryError,

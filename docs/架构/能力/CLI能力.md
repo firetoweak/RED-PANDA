@@ -35,7 +35,7 @@ cwd 不在共享之列：执行命令的 cwd 由模型每次按当前 Environmen
 `load_cli(id)` 是纯事实加载，不运行 `<cli> --help`。理由：
 
 1. 与 `load_skill` 读文本对齐，加载入口保持无副作用；
-2. `--help` 可能挂起、交互、失败，应交由 `execute_command` 的沙箱 + 超时 + 审批兜底；
+2. `--help` 可能挂起、交互、失败，应交由 `execute_command` 的执行管理、超时与审批处理，实际隔离以执行环境为准；
 3. 避免"发现"和"执行"混在一个入口，符合"Runtime 不做语义判断"。
 
 子命令发现因此是**渐进式**的：`load_cli` 只给出"这个 CLI 存在、在哪、什么版本、体检如何"，模型需要哪个子命令就现查哪一层，不预生成清单。
@@ -56,7 +56,7 @@ CLI 管理使用产品环境，其命令在执行前刷新本机持久化安装�
 
 不拆两套执行器实现。底层同一个 ProcessRunner，按用途分 profile：normal（普通超时、非交互，agent 日常命令）与 install（长超时、显式非交互参数，包管理器安装）。
 
-install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI Application，不经过 per-Session 的 EnvironmentBinding——包管理器安装与 workspace 无关。依赖方向是 `redpanda/cli → redpanda/sandbox`。
+install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI Application，不经过 会话的任务文件访问绑定——包管理器安装与 workspace 无关。CLI 复用独立的命令执行能力，不接管文件系统历史或沙箱生命周期。
 
 需要管理员提权的包明确失败并提示手动安装：UAC 弹窗会使子进程进入另一安全上下文，输出采集断裂，不做。
 

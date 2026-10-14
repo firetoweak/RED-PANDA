@@ -1,15 +1,15 @@
 """Parent ownership and acceptance of delegated file results."""
 from redpanda.assistant.subagent.subagent import project_delegate_intents, project_failed_delegations
-from redpanda.sandbox.files import operation_id
+from redpanda.filesystem import operation_id
 
 
 class ChildWorkspaceReview:
-    def __init__(self, runtime, session_id, files, transport, sandbox):
+    def __init__(self, runtime, session_id, files, transport, filesystem):
         self.runtime = runtime
         self.session_id = session_id
         self.files = files
         self.transport = transport
-        self.sandbox = sandbox
+        self.filesystem = filesystem
 
     async def review(self, command_id, tool_call_id, paths=None, *, merge=False, offset=0):
         try:
@@ -32,7 +32,7 @@ class ChildWorkspaceReview:
         if merge:
             async def apply():
                 try:
-                    result = await self.files.merge(self.session_id, intent.child_session_id, self.sandbox)
+                    result = await self.files.merge(self.session_id, intent.child_session_id, self.filesystem)
                 except OSError:
                     return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
                             "error": "无法合入子任务文件；请检查磁盘空间、文件占用和访问权限后重试。"}
@@ -42,6 +42,6 @@ class ChildWorkspaceReview:
                 return {"ok": True, "code": "SUBAGENT_MERGED",
                         "data": {"tool_call_id": tool_call_id, "changed_files": list(result.changed_paths[:100]),
                                  "changed_count": len(result.changed_paths), "truncated": len(result.changed_paths) > 100}}
-            return await self.sandbox.execute(operation_id(self.session_id, command_id), apply)
+            return await self.filesystem.execute(operation_id(self.session_id, command_id), apply)
         data = await self.files.compare(self.session_id, intent.child_session_id, tuple(paths or ()), offset=offset)
         return {"ok": True, "code": "SUBAGENT_CHANGES", "data": data}

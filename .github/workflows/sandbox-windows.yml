@@ -76,6 +76,8 @@ jobs:
         run: python scripts/build_sandbox.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
       - name: Package release build
         run: python -m scripts.sandbox_runtime package --platform windows-x86_64
+      - name: Package Windows task runtime
+        run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/sandbox'))"
       - name: Prepare verification environment
         run: python -m venv redpanda-env
       - name: Verify process contracts

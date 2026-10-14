@@ -1,6 +1,6 @@
 # 子 Agent
 
-主 Agent 用 `delegate` 派出子任务，子 Agent 在独立工作副本里干活，`report` 交回结论；主 Agent 可 `reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合并。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/sandbox/files/children.py`、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
+主 Agent 用 `delegate` 派出子任务，子 Agent 在独立工作副本里干活，`report` 交回结论；主 Agent 可 `reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合并。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/filesystem/children.py`、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
 
 ## Sub-features
 

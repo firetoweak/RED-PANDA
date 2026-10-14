@@ -41,11 +41,16 @@ def clean_checkout(targets: list[str]) -> None:
 
 def require_process_inputs() -> None:
     from scripts.sandbox_runtime import host_platform
-    from redpanda.sandbox.files.file_view.client import native_executable
+    from redpanda.filesystem.file_view.client import native_executable
 
     archive = ROOT / f"dist/sandbox/redpanda-sandbox-{host_platform()}.zip"
     required = [native_executable(), archive, archive.with_suffix(".zip.sha256"),
                 ROOT / "redpanda-env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")]
+    if os.name == "nt":
+        from redpanda.execution.local.windows_task import native_task_launcher
+        commands = ROOT / "dist/sandbox/redpanda-execution-windows-x86_64.zip"
+        required.extend([native_task_launcher(), native_task_launcher().with_name("redpanda-hook.dll"),
+                         commands, commands.with_suffix(".zip.sha256")])
     for path in required:
         if not path.is_file():
             raise SystemExit(f"process 验证缺少必需文件：{path}")

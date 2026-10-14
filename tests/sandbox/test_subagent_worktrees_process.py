@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import pytest
-from redpanda.sandbox.files.git import ReviewWorktrees
+from redpanda.filesystem.git import ReviewWorktrees
 pytestmark = pytest.mark.process
 def git(root, *args):
     return subprocess.check_output(["git", "-C", str(root), *args], stderr=subprocess.PIPE)
