@@ -1,4 +1,4 @@
-use super::{block, choose, valid_path, verify, Conflict, Policy};
+use super::{block, choose, restored_hidden, valid_path, verify, Conflict, Policy};
 use crate::{storage, tracking::TrackingFS, Change, Sealed};
 use anyhow::{ensure, Context, Result};
 use serde::Deserialize;
@@ -243,6 +243,7 @@ fn merge(target: &mut Option<Image>, image: &Image) -> Result<()> {
                 && value.identity == image.identity
                 && value.chunk_size == image.chunk_size
                 && value.mode == image.mode
+                && value.hidden == image.hidden
                 && value.target == image.target,
             "alias metadata differs"
         );
@@ -261,6 +262,7 @@ fn same_content(a: &Image, b: &Image) -> bool {
     a.kind == b.kind
         && a.size == b.size
         && a.mode == b.mode
+        && a.hidden == b.hidden
         && a.target == b.target
         && a.blocks
             .iter()
@@ -387,14 +389,22 @@ fn reverse(
                     }
                 }
             }
-            (Some(before), Some(_)) => {
+            (Some(before), Some(after)) => {
                 if effect.before_names != effect.after_names {
                     return Ok(Err(conflict(
                         "unsupported_directory_rename",
                         effect.before_names.first().unwrap(),
                     )));
                 }
-                before.clone()
+                let path = effect.after_names.first().expect("directory has no name");
+                let current = &paths[path].desired;
+                let mut desired = current.clone();
+                let (hidden, kept) = restored_hidden(after, before, current, policy);
+                desired.hidden = hidden;
+                if kept {
+                    preserved.insert(path.clone());
+                }
+                desired
             }
             (Some(before), None) => {
                 ensure!(before.complete, "structural preimage is incomplete");
@@ -692,6 +702,14 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
         if entry.desired.kind != "file" {
             continue;
         }
+        if entry.expected.kind == "file"
+            && entry.expected.identity == entry.desired.identity
+            && entry.expected.size == entry.desired.size
+            && entry.expected.blocks == entry.desired.blocks
+            && entry.expected.mode == entry.desired.mode
+        {
+            continue;
+        }
         let identity = entry
             .desired
             .identity
@@ -771,6 +789,22 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
             .context("symlink target absent")?;
         let (parent, name) = location(fs, path).await?;
         fs.symlink(parent, &name, target, 0, 0).await?;
+    }
+    for (path, entry) in &plan.paths {
+        if let Some(hidden) = entry.desired.hidden {
+            let ino = storage::resolve(fs, path)
+                .await?
+                .context("metadata target absent")?;
+            if fs
+                .getattr(ino)
+                .await?
+                .context("metadata inode absent")?
+                .hidden
+                != hidden
+            {
+                fs.set_hidden(ino, hidden).await?;
+            }
+        }
     }
     fs.finalize().await?;
     Ok(())

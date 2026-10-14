@@ -1,11 +1,11 @@
 # RED PANDA VFS 文件存储格式
 
-**Version:** 0.12
+**Version:** 0.13
 
 ## Introduction
 
 This local format stores current filesystem state and overlay lineage.
-Only version 0.12 is accepted. File-operation history belongs to the independent Agent filesystem; core provides current-state transactions and frozen artifacts.
+Only version 0.13 is accepted. File-operation history belongs to the independent Agent filesystem; core provides current-state transactions and frozen artifacts.
 
 All timestamps in this specification use Unix epoch format (seconds since 1970-01-01 00:00:00 UTC) with optional nanosecond precision via separate `_nsec` columns.
 
@@ -132,7 +132,7 @@ CREATE TABLE fs_config (
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `schema_version` | On-disk schema version | `0.12` |
+| `schema_version` | On-disk schema version | `0.13` |
 | `filesystem_id` | Immutable UUID v4 creation namespace of this delta | Generated once at database creation |
 | `chunk_size` | Size of data chunks in bytes | `65536` |
 | `inline_threshold` | Maximum dense regular-file size stored inline in `fs_inode.data_inline` | `16384` |
@@ -153,6 +153,7 @@ Stores file and directory metadata.
 CREATE TABLE fs_inode (
   ino INTEGER PRIMARY KEY AUTOINCREMENT,
   mode INTEGER NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0, 1)),
   nlink INTEGER NOT NULL DEFAULT 0,
   uid INTEGER NOT NULL DEFAULT 0,
   gid INTEGER NOT NULL DEFAULT 0,
@@ -173,6 +174,7 @@ CREATE TABLE fs_inode (
 
 - `ino` - Inode number (unique identifier)
 - `mode` - File type and permissions (Unix mode bits)
+- `hidden` - Explicit Windows hidden flag, independent of the file name; preserved by copy-up, rename, hard links and frozen artifacts
 - `nlink` - Number of hard links pointing to this inode
 - `uid` - Owner user ID
 - `gid` - Owner group ID
@@ -508,7 +510,7 @@ When creating a new agent database, initialize the filesystem configuration and 
 
 ```sql
 -- Initialize filesystem configuration
-INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.12');
+INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.13');
 INSERT INTO fs_config (key, value) VALUES ('chunk_size', '65536');
 INSERT INTO fs_config (key, value) VALUES ('inline_threshold', '16384');
 
@@ -524,7 +526,7 @@ Where `16877` = `0o040755` (directory with rwxr-xr-x permissions).
 ### Format Boundary
 
 `PRAGMA user_version = 12` identifies the local-only filesystem format. `MIN_SUPPORTED` is
-0.12. Initialization, writable open and read-only open MUST refuse any older
+0.13. Initialization, writable open and read-only open MUST refuse any older
 format before running schema DDL. The older application tables and remote-chunk
 layouts are outside this local filesystem contract; no migration path is provided.
 A current database with missing or incompatible identity columns is corrupt
@@ -786,6 +788,10 @@ in the writable source. Collection is separate from operation-history retention.
 ## Revision History
 
 Older entries describe the upstream history, including features removed by this fork.
+
+### Version 0.13 (RED PANDA)
+
+Adds inode hidden metadata. WinFsp converts `HIDDEN` to the core flag; the Agent filesystem records, publishes and restores it. Other formats are rejected without migration.
 
 ### Version 0.12 (RED PANDA)
 

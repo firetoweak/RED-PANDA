@@ -22,7 +22,7 @@ uses size/write/change time and persistent identity; an explicit application con
 validator may use hashes instead. This is chunk COW, not byte-range ownership.
 The application captures Command intervals separately.
 
-Schema 0.12 accepts only local filesystem storage and refuses other formats
+Schema 0.13 accepts only local filesystem storage and refuses other formats
 before DDL. It retains the persistent namespaces introduced in 0.10;
 old process-local or unnamespaced inode identities cannot be rebound reliably.
 Each fresh delta persists a UUID namespace; its own file identities include that
@@ -82,9 +82,11 @@ The native test checks base, delta and nested Unicode file names, with and witho
 replacement, normalized handle paths, enumeration and spelling after reopening.
 It refuses directory rename and creation with delete-on-close.
 The read-only attribute maps to the core's write-mode bits and remains in the
-delta; all other attribute changes and timestamp updates are refused. Git for
-Windows requires explicit `core.hideDotFiles=false` for initialization because
-hidden attributes have no stored representation.
+delta. The hidden attribute has independent inode storage, is read from HostFS,
+and survives copy-up, rename and freezing. Default Git for Windows initialization
+is supported without changing Git configuration. Other attribute changes and
+timestamp updates remain refused. Agent filesystem evidence, host publication
+and restoration include the hidden flag; metadata-only effects do not copy bytes.
 It does not implement ACL/ADS/reparse operations, other metadata updates, hard-link
 creation or a full mmap coherence contract. It exposes a synthetic virtual volume
 capacity, not a disk quota or actual free-space measurement. Lookup references are

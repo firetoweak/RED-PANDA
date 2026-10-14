@@ -125,6 +125,7 @@ fn stats(file: &NativeFile, ino: i64) -> Result<Stats> {
         mtime_nsec,
         ctime,
         ctime_nsec,
+        hidden: basic.FileAttributes & FILE_ATTRIBUTE_HIDDEN != 0,
         rdev: 0,
     })
 }
@@ -448,6 +449,10 @@ impl FileSystem for HostFS {
             cache.identities.remove(&entry.node.id);
         }
     }
+    async fn set_hidden(&self, _: i64, _: bool) -> Result<()> {
+        Err(FsError::OperationNotPermitted.into())
+    }
+
     async fn chmod(&self, _: i64, _: u32) -> Result<()> {
         Err(FsError::OperationNotPermitted.into())
     }

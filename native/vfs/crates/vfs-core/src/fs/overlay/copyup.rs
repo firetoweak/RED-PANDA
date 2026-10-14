@@ -183,6 +183,9 @@ impl OverlayFS {
             )
             .await?;
             current_delta_ino = new_stats.ino;
+            if let Some(stats) = &base_stats {
+                self.delta.set_hidden(new_stats.ino, stats.hidden).await?;
+            }
 
             // Create origin mapping if directory exists in base, so that
             // lookups return consistent overlay inodes
@@ -291,6 +294,8 @@ impl OverlayFS {
             stats.ino
         };
 
+        self.delta.set_hidden(delta_ino, base_stats.hidden).await?;
+
         // Store origin mapping
         self.add_origin_mapping(delta_ino, base_ino).await?;
 
@@ -375,7 +380,7 @@ impl OverlayFS {
         txn.execute(
             "UPDATE fs_inode
              SET mode = ?, uid = ?, gid = ?, size = ?, atime = ?, mtime = ?, ctime = ?,
-                 atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, data_inline = NULL, storage_kind = ?
+                 atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, hidden = ?, data_inline = NULL, storage_kind = ?
              WHERE ino = ?",
             (
                 base_stats.mode as i64,
@@ -388,6 +393,7 @@ impl OverlayFS {
                 base_stats.atime_nsec as i64,
                 base_stats.mtime_nsec as i64,
                 base_stats.ctime_nsec as i64,
+                base_stats.hidden,
                 STORAGE_CHUNKED,
                 delta_ino,
             ),

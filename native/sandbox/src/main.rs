@@ -404,6 +404,7 @@ impl Service {
                 || before.blocks != after.blocks
                 || before.identity != after.identity
                 || before.mode != after.mode
+                || before.hidden != after.hidden
                 || before.target != after.target
             {
                 changes.push(Change {

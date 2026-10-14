@@ -99,6 +99,9 @@ impl FileSystem for FaultFS {
     async fn readdir_plus(&self, ino: i64) -> CoreResult<Option<Vec<DirEntry>>> {
         self.inner.readdir_plus(ino).await
     }
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> CoreResult<()> {
+        self.inner.set_hidden(ino, hidden).await
+    }
     async fn chmod(&self, ino: i64, mode: u32) -> CoreResult<()> {
         self.inner.chmod(ino, mode).await
     }

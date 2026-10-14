@@ -27,10 +27,12 @@ def valid_operation(value):
     else: raise ValueError('unknown operation kind')
 
 def valid_image(value):
-    fields(value,('kind','size','identity','chunk_size','complete','blocks','mode','target'))
+    fields(value,('kind','size','identity','chunk_size','complete','blocks','mode','hidden','target'))
     if value['kind'] not in ('file','directory','missing','symlink') or type(value['size']) is not int or value['size']<0 or type(value['chunk_size']) is not int or value['chunk_size']<=0 or type(value['complete']) is not bool or type(value['blocks']) is not dict: raise ValueError('invalid image')
     if value['identity'] is not None and type(value['identity']) is not str: raise ValueError('invalid identity')
     if value['mode'] is not None and (type(value['mode']) is not int or not 0<=value['mode']<=0o777): raise ValueError('invalid mode')
+    if value['hidden'] is not None and type(value['hidden']) is not bool: raise ValueError('invalid hidden attribute')
+    if value['kind']=='missing' and value['hidden'] is not None: raise ValueError('missing file has attributes')
     if value['kind']=='symlink':
         if type(value['target']) is not str or value['blocks'] or not value['complete']: raise ValueError('invalid symlink')
     elif value['target'] is not None: raise ValueError('invalid target')
@@ -45,8 +47,8 @@ def valid_image(value):
         if any(str(i) not in value['blocks'] for i in range(count)): raise ValueError('incomplete full image')
     return value
 
-def image(kind='missing',size=0,identity=None,chunk_size=65536,complete=True,blocks=None,mode=None,target=None):
-    return {'kind':kind,'size':size,'identity':identity,'chunk_size':chunk_size,'complete':complete,'blocks':{} if blocks is None else blocks,'mode':mode,'target':target}
+def image(kind='missing',size=0,identity=None,chunk_size=65536,complete=True,blocks=None,mode=None,target=None,hidden=None):
+    return {'kind':kind,'size':size,'identity':identity,'chunk_size':chunk_size,'complete':complete,'blocks':{} if blocks is None else blocks,'mode':mode,'hidden':hidden,'target':target}
 
 def blob(store, value, key):
     offset=int(key)*value['chunk_size']
@@ -114,11 +116,13 @@ def actual(base,relative,template=None,store=None):
         if path.is_symlink():
             info=path.lstat()
             return image('symlink',len(os.fsencode(os.readlink(path))),native.directory_identity(path),chunk_size,True,mode=stat.S_IMODE(info.st_mode),target=os.readlink(path)),None
-        if path.is_dir(): return image('directory',identity=native.directory_identity(path),chunk_size=chunk_size),None
+        if path.is_dir():
+            identity,hidden=native.directory_metadata(path)
+            return image('directory',identity=identity,chunk_size=chunk_size,hidden=hidden),None
         with native.open_file(path) as file:
             held=os.fstat(file.fileno())
             size=held.st_size
-            value=image('file',size,native.identity(file),chunk_size,False,mode=None if os.name=='nt' else stat.S_IMODE(held.st_mode))
+            value=image('file',size,native.identity(file),chunk_size,False,mode=None if os.name=='nt' else stat.S_IMODE(held.st_mode),hidden=native.hidden(file))
             if template is not None and size==template['size']:
                 indexes=range((size+chunk_size-1)//chunk_size) if template['complete'] else sorted(map(int,template['blocks']))
                 for index in indexes:
@@ -137,11 +141,21 @@ def actual(base,relative,template=None,store=None):
         raise
 
 def same(a,b):
-    return a['kind']==b['kind'] and a['size']==b['size'] and a['mode']==b['mode'] and a['target']==b['target'] and {k:v for k,v in a['blocks'].items() if v is not None}=={k:v for k,v in b['blocks'].items() if v is not None}
+    return a['kind']==b['kind'] and a['size']==b['size'] and a['mode']==b['mode'] and a['hidden']==b['hidden'] and a['target']==b['target'] and {k:v for k,v in a['blocks'].items() if v is not None}=={k:v for k,v in b['blocks'].items() if v is not None}
+
+def choose_hidden(source,destination,current,mode):
+    if source['hidden']==destination['hidden']: return current['hidden']
+    if mode=='publish' and current['hidden']!=source['hidden']: raise Conflict('user attributes overlap publication')
+    if mode=='preserve' and current['hidden']!=source['hidden']: return current['hidden']
+    return destination['hidden']
 
 def choose(store,before,after,current,mode):
     for value in (before,after,current): valid_image(value)
     source,destination=(after,before) if mode in ('original','preserve') else (before,after)
+    if (source['kind']==destination['kind']==current['kind']=='file'
+        and source['hidden']!=destination['hidden'] and source['size']==destination['size']
+        and source['blocks']==destination['blocks'] and source['mode']==destination['mode']):
+        return {**current,'hidden':choose_hidden(source,destination,current,mode)},{'changed_bytes':0,'preserved_bytes':0}
     if source['kind']==destination['kind']==current['kind']=='file' and current['size']==source['size']:
         blocks={};restored=preserved=0
         for key in sorted(source['blocks'].keys()|destination['blocks'].keys(),key=int):
@@ -159,7 +173,9 @@ def choose(store,before,after,current,mode):
             restored+=abs(len(a)-len(b))
             blocks[key]=save_block(store,bytes(result)) if result else None
         wanted=current['mode'] if mode=='preserve' and preserved else destination['mode']
-        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks,mode=wanted),{'changed_bytes':restored,'preserved_bytes':preserved}
+        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks,mode=wanted,hidden=choose_hidden(source,destination,current,mode)),{'changed_bytes':restored,'preserved_bytes':preserved}
+    if source['kind']==destination['kind']==current['kind']=='directory':
+        return {**destination,'hidden':choose_hidden(source,destination,current,mode)},{'changed_bytes':0,'preserved_bytes':0}
     if same(source,current): return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
     if mode=='preserve': return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
     if mode=='original' and current['kind']==source['kind'] and current['size']==source['size']: return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
@@ -242,6 +258,7 @@ def matches_open(file,store,value):
     held=os.fstat(file.fileno())
     if held.st_size!=value['size'] or native.identity(file)!=value['identity']: return False
     if value['mode'] is not None and stat.S_IMODE(held.st_mode)!=value['mode']: return False
+    if native.hidden(file)!=value['hidden']: return False
     for key in value['blocks']:
         expected=blob(store,value,key)
         if not expected: continue
@@ -259,12 +276,18 @@ def apply_step(client,transaction,step,path):
     if current['kind'] in ('file','directory','symlink') and owned_identity is not None and current['identity']!=owned_identity: raise Conflict('file identity changed during transaction')
     if same(current,desired): step['state']='done';atomic(path,transaction);return
     if not same(current,expected):
-        if step['state']!='applying' or not mixed(client.store,current,expected,desired): raise Conflict('transaction state changed externally')
+        metadata_pending=owned_identity is not None and current['kind']==desired['kind'] and same(current,{**desired,'hidden':current['hidden']})
+        if step['state']!='applying' or not (metadata_pending or mixed(client.store,current,expected,desired)): raise Conflict('transaction state changed externally')
     step['state']='applying';atomic(path,transaction)
     target_path=target(client.base,step['path'])
-    if desired['kind']=='directory':
-        target_path.mkdir()
-        step['created_identity']=native.directory_identity(target_path);atomic(path,transaction)
+    metadata_only=current['kind']==desired['kind'] and same(current,{**desired,'hidden':current['hidden']})
+    if metadata_only and desired['hidden'] is not None:
+        if not native.set_path_hidden(target_path,current['hidden'],desired['hidden'],current['identity']): raise Conflict('file changed before attributes')
+    elif desired['kind']=='directory':
+        if current['kind']=='missing':
+            target_path.mkdir()
+            step['created_identity']=native.directory_identity(target_path);atomic(path,transaction)
+        if desired['hidden'] is not None and not native.set_path_hidden(target_path,False,desired['hidden'],step['created_identity']): raise Conflict('directory changed before attributes')
     elif desired['kind']=='symlink':
         if current['kind']=='directory': target_path.rmdir()
         elif current['kind']!='missing': target_path.unlink()
@@ -297,6 +320,7 @@ def apply_step(client,transaction,step,path):
                 file.seek(int(key)*desired['chunk_size']);file.write(data)
             if create or current['size']!=desired['size']: file.truncate(desired['size'])
             if os.name!='nt' and desired['mode'] is not None: os.fchmod(file.fileno(),desired['mode'])
+            if desired['hidden'] is not None: native.set_hidden(file,desired['hidden'])
             file.flush();os.fsync(file.fileno())
             try: live=os.lstat(target_path)
             except FileNotFoundError: raise Conflict('file identity changed during write') from None

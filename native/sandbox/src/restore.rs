@@ -64,6 +64,7 @@ fn validate(image: &Image) -> Result<()> {
     );
     if image.kind == "missing" {
         ensure!(image.identity.is_none(), "missing object has identity");
+        ensure!(image.hidden.is_none(), "missing object has attributes");
     } else {
         ensure!(
             image.identity.as_ref().is_none_or(|id| !id.is_empty()),
@@ -158,6 +159,21 @@ fn verify(cas: &Path, image: &Image) -> Result<()> {
     Ok(())
 }
 
+fn restored_hidden(
+    source: &Image,
+    destination: &Image,
+    current: &Image,
+    policy: &Policy,
+) -> (Option<bool>, bool) {
+    if source.hidden == destination.hidden {
+        return (current.hidden, false);
+    }
+    if matches!(policy, Policy::Preserve) && current.hidden != source.hidden {
+        return (current.hidden, current.hidden != destination.hidden);
+    }
+    (destination.hidden, false)
+}
+
 fn choose(
     cas: &Path,
     change: &Change,
@@ -166,6 +182,16 @@ fn choose(
 ) -> Result<std::result::Result<(Image, bool), Conflict>> {
     let source = &change.after;
     let destination = &change.before;
+    if source.hidden != destination.hidden
+        && source.size == destination.size
+        && source.blocks == destination.blocks
+        && source.mode == destination.mode
+    {
+        let mut desired = current.clone();
+        let (hidden, kept) = restored_hidden(source, destination, current, policy);
+        desired.hidden = hidden;
+        return Ok(Ok((desired, kept)));
+    }
     if current.size != source.size {
         return Ok(Err(Conflict {
             reason: "length_changed",
@@ -226,6 +252,9 @@ fn choose(
     if !preserved {
         desired.mode = destination.mode;
     }
+    let (hidden, kept) = restored_hidden(source, destination, current, policy);
+    desired.hidden = hidden;
+    kept_external |= kept;
     validate(&desired)?;
     Ok(Ok((desired, kept_external)))
 }

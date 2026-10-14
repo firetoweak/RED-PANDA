@@ -4,6 +4,13 @@ Entries below describe changes at their respective implementation points, not
 the current supported feature set. Current local scope is defined by README.md
 and docs/SPEC.md; imported Windows and upstream entries retain their history.
 
+## RED PANDA hidden metadata
+
+- Format 0.13 persists the hidden flag on inodes, independently of names.
+- HostFS reads the flag; copy-up, rename, links and frozen artifacts retain it.
+- WinFsp supports hidden creation and mutation. Agent filesystem evidence,
+  publication and restoration include metadata-only changes without copying bytes.
+
 ## RED PANDA file-management boundary
 
 - Format 0.12 stores current filesystem state and overlay lineage; reject

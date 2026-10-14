@@ -111,6 +111,7 @@ pub(super) fn stat_to_stats(stat: &libc::stat) -> Stats {
         atime_nsec: stat.st_atime_nsec as u32,
         mtime_nsec: stat.st_mtime_nsec as u32,
         ctime_nsec: stat.st_ctime_nsec as u32,
+        hidden: false,
         rdev: stat.st_rdev,
     }
 }
@@ -131,6 +132,7 @@ pub(super) fn stat_to_stats(stat: &libc::stat) -> Stats {
         atime_nsec: stat.st_atime_nsec as u32,
         mtime_nsec: stat.st_mtime_nsec as u32,
         ctime_nsec: stat.st_ctime_nsec as u32,
+        hidden: false,
         rdev: stat.st_rdev as u64,
     }
 }

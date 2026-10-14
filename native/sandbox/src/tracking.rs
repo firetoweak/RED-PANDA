@@ -255,6 +255,10 @@ impl FileSystem for TrackingFS {
         }
         Ok(r)
     }
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> Result<()> {
+        self.touch(ino, Some((0, 0))).await?;
+        self.inner.set_hidden(ino, hidden).await
+    }
     async fn chmod(&self, i: i64, m: u32) -> Result<()> {
         // Metadata only: an empty range records mode without reading file bytes.
         self.touch(i, Some((0, 0))).await?;

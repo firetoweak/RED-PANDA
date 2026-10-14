@@ -27,6 +27,42 @@ def checked(ok):
 class FileId(c.Structure):
     _fields_ = [('volume',c.c_ulonglong),('file_id',c.c_ubyte*16)]
 
+class FileBasic(c.Structure):
+    _fields_ = [('creation',c.c_longlong),('access',c.c_longlong),
+                ('write',c.c_longlong),('change',c.c_longlong),('attributes',w.DWORD)]
+
+def basic_info(handle):
+    info = FileBasic()
+    checked(get_info(handle,0,c.byref(info),c.sizeof(info)))
+    return info
+
+def hidden(file):
+    return bool(basic_info(msvcrt.get_osfhandle(file.fileno())).attributes & 2)
+
+def set_hidden_handle(handle, value):
+    attributes = basic_info(handle).attributes & ~0x80
+    attributes = attributes | 2 if value else attributes & ~2
+    info = FileBasic(attributes=attributes or 0x80)
+    checked(set_info(handle,0,c.byref(info),c.sizeof(info)))
+
+def set_hidden(file, value):
+    set_hidden_handle(msvcrt.get_osfhandle(file.fileno()),value)
+
+def directory_metadata(path):
+    handle = create_file(str(path),0x80,0,None,3,0x2200000,None)
+    if handle == INVALID: raise c.WinError(c.get_last_error())
+    try: return identity_handle(handle), bool(basic_info(handle).attributes & 2)
+    finally: checked(close_handle(handle))
+
+def set_path_hidden(path, expected, desired, identity):
+    handle = create_file(str(path),0x180,0,None,3,0x2200000,None)
+    if handle == INVALID: raise c.WinError(c.get_last_error())
+    try:
+        if identity_handle(handle)!=identity or bool(basic_info(handle).attributes & 2)!=expected: return False
+        set_hidden_handle(handle,desired)
+        return True
+    finally: checked(close_handle(handle))
+
 def identity(file):
     return identity_handle(msvcrt.get_osfhandle(file.fileno()))
 

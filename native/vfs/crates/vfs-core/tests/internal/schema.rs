@@ -42,6 +42,7 @@ async fn open_paths_reject_old_schema_without_upgrading() -> Result<()> {
         SchemaVersion::V0_9,
         SchemaVersion::V0_10,
         SchemaVersion::V0_11,
+        SchemaVersion::V0_12,
     ] {
         let dir = tempdir()?;
         let db_path = dir.path().join(format!("old-{}.db", version.as_str()));

@@ -79,7 +79,7 @@ def _review_file(root, store, path, changes, owners, identities):
                                          origin=origin, text=new_lines[offset]))
         if old_line is not None:
             old_line += before.count(b"\n")
-    names = {"kind": "文件类型", "size": "大小（字节）", "mode": "权限", "target": "链接目标"}
+    names = {"kind": "文件类型", "size": "大小（字节）", "mode": "权限", "hidden": "隐藏属性", "target": "链接目标"}
     kinds = {"missing": "不存在", "file": "文件", "directory": "目录", "symlink": "符号链接"}
     properties = []
     for name, value in metadata.items():

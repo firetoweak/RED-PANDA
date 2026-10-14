@@ -157,6 +157,8 @@ pub struct Image {
     pub complete: bool,
     pub blocks: std::collections::BTreeMap<u64, Option<String>>,
     pub mode: Option<u32>,
+    #[serde(deserialize_with = "Option::<bool>::deserialize")]
+    pub hidden: Option<bool>,
     pub target: Option<String>,
 }
 impl Image {
@@ -169,6 +171,7 @@ impl Image {
             complete: true,
             blocks: Default::default(),
             mode: None,
+            hidden: None,
             target: None,
         }
     }
@@ -215,6 +218,7 @@ pub async fn metadata(
     if stats.is_directory() {
         let mut image = Image::missing();
         image.kind = "directory".into();
+        image.hidden = cfg!(windows).then_some(stats.hidden);
         image.identity = identity;
         image.chunk_size = chunk_size;
         return Ok(image);
@@ -259,6 +263,7 @@ pub async fn metadata(
         complete: false,
         blocks: Default::default(),
         mode: file_mode(stats.mode),
+        hidden: cfg!(windows).then_some(stats.hidden),
         target: None,
     })
 }

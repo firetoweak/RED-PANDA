@@ -592,6 +592,10 @@ impl FileSystem for HostFS {
         Ok(Some(result))
     }
 
+    async fn set_hidden(&self, _: i64, _: bool) -> Result<()> {
+        Err(FsError::OperationNotPermitted.into())
+    }
+
     async fn chmod(&self, ino: i64, mode: u32) -> Result<()> {
         let fd = self.get_inode_fd(ino)?;
 

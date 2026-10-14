@@ -415,7 +415,7 @@ class Contracts(unittest.TestCase):
             result=client.run('compile',[sys.executable,'-m','compileall','-q','.'])
             self.assertEqual(result['execution']['exit_code'],0)
             client.request('accept',command_id='compile')
-            result=client.run('git',[git,'-c','core.hideDotFiles=false','init','-q'])
+            result=client.run('git',[git,'init','-q'])
             self.assertEqual(result['execution']['exit_code'],0,(store/'commands/git/stderr.bin').read_bytes())
             client.request('accept',command_id='git')
             self.assertEqual(pub.publish(client)['state'],'complete')

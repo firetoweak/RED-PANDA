@@ -94,7 +94,7 @@ static NTSTATUS create_file(FSP_FILE_SYSTEM *fs,PWSTR name,UINT32 options,UINT32
     if(options&FILE_DELETE_ON_CLOSE)return STATUS_NOT_SUPPORTED;
     if(kind(name)!=2)return STATUS_NOT_SUPPORTED;
     MOUNT_CONTEXT *c=calloc(1,sizeof *c);if(!c)return STATUS_INSUFFICIENT_RESOURCES;
-    NTSTATUS st=named(fs,name,7,(options&FILE_DIRECTORY_FILE)!=0,&c->node,fi);if(!NT_SUCCESS(st)) {free(c);return st;}
+    NTSTATUS st=named(fs,name,7,((options&FILE_DIRECTORY_FILE)!=0)|(attributes&FILE_ATTRIBUTE_HIDDEN),&c->node,fi);if(!NT_SUCCESS(st)) {free(c);return st;}
     if(c->root)c->node=1;c->root=(fi->FileAttributes&FILE_ATTRIBUTE_DIRECTORY)!=0;wcscpy(c->name,name);*ctx=c;return STATUS_SUCCESS;
 }
 static NTSTATUS resize_rpc(FSP_FILE_SYSTEM *fs,MOUNT_CONTEXT *c,uint64_t size,FSP_FSCTL_FILE_INFO *fi) {

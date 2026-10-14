@@ -171,16 +171,17 @@ fn pack(stats: &Stats) -> Vec<u8> {
     let ticks = ((stats.mtime as i128 + 11_644_473_600) * 10_000_000
         + stats.mtime_nsec as i128 / 100) as u64;
     bytes.extend_from_slice(&ticks.to_le_bytes());
-    bytes.extend_from_slice(
-        &((if stats.is_directory() {
-            0x10u32
-        } else if stats.mode & 0o222 == 0 {
-            0
-        } else {
-            0x80u32
-        }) | if stats.mode & 0o222 == 0 { 1 } else { 0 })
-        .to_le_bytes(),
-    );
+    let mut attributes = if stats.is_directory() { 0x10u32 } else { 0 };
+    if stats.mode & 0o222 == 0 {
+        attributes |= 1;
+    }
+    if stats.hidden {
+        attributes |= 2;
+    }
+    if attributes == 0 {
+        attributes = 0x80;
+    }
+    bytes.extend_from_slice(&attributes.to_le_bytes());
     bytes
 }
 fn name(body: &[u8]) -> vfs_core::error::Result<&str> {
@@ -235,6 +236,7 @@ impl State {
                 let mut stats = file.fstat().await?;
                 if let Some(logical) = self.fs.getattr(opened.ino).await? {
                     stats.mode = logical.mode;
+                    stats.hidden = logical.hidden;
                 }
                 Ok(stats)
             }
@@ -272,13 +274,17 @@ impl State {
                 let path = name(body)?;
                 let (stats, file, normalized) = if op == 7 {
                     let (parent, child) = self.parent(path).await?;
-                    let (stats, file) = if offset != 0 {
+                    let (mut stats, file) = if offset & 1 != 0 {
                         (self.fs.mkdir(parent, &child, 0o755, 0, 0).await?, None)
                     } else {
                         let (stats, file) =
                             self.fs.create_file(parent, &child, 0o644, 0, 0).await?;
                         (stats, Some(file))
                     };
+                    if offset & 2 != 0 {
+                        self.fs.set_hidden(stats.ino, true).await?;
+                        stats = self.fs.getattr(stats.ino).await?.ok_or(FsError::NotFound)?;
+                    }
                     *self.lookups.entry(stats.ino).or_default() += 1;
                     let (_, normalized) = self.resolve_named(path).await?;
                     (stats, file, normalized)
@@ -301,7 +307,12 @@ impl State {
                         )
                     };
                     let stats = match &file {
-                        Some(file) => file.fstat().await?,
+                        Some(file) => {
+                            let mut current = file.fstat().await?;
+                            current.mode = stats.mode;
+                            current.hidden = stats.hidden;
+                            current
+                        }
                         None => stats,
                     };
                     (stats, file, normalized)
@@ -427,10 +438,10 @@ impl State {
                 Ok(Vec::new())
             }
             16 => {
-                if offset & !(1 | 0x10 | 0x80) != 0 {
+                if offset & !(1 | 2 | 0x10 | 0x80) != 0 {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Unsupported,
-                        "only the read-only attribute has a core representation",
+                        "unsupported file attributes",
                     )
                     .into());
                 }
@@ -445,6 +456,9 @@ impl State {
                 } else {
                     stats.mode | 0o222
                 };
+                if (offset & 2 != 0) != stats.hidden {
+                    self.fs.set_hidden(ino, offset & 2 != 0).await?;
+                }
                 if mode != stats.mode {
                     self.fs.chmod(ino, mode).await?;
                 }

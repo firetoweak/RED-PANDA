@@ -29,6 +29,29 @@ async def tools_at(root, storage):
     return view, tools
 
 
+def test_default_git_init_publishes_hidden_git_directory_through_task_hook(tmp_path):
+    git = shutil.which("git")
+    assert git is not None, "Git is required for the Windows coding process contract"
+    async def scenario():
+        root = tmp_path / "project"; root.mkdir()
+        (root / "file.txt").write_text("tracked bytes")
+        view = WorkspaceFiles(root, tmp_path / "store")
+        tools = await build_builtin_tools(
+            workspace_record(root), filesystem=view,
+            command_environment={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"},
+            session_operations=lambda: asyncio.sleep(0, result=()),
+        )
+        identity = operation_id("test", "git-init")
+        command = f"{ps(git, 'init')}; if ($LASTEXITCODE) {{exit $LASTEXITCODE}}; {ps(git, 'add', 'file.txt')}; if ($LASTEXITCODE) {{exit $LASTEXITCODE}}; {ps(git, 'diff', '--cached', '--name-only')}"
+        result = await view.execute(identity, lambda: tools.execute("execute_command", {"command": command}))
+        assert result["data"]["exit_code"] == 0, result
+        assert "file.txt" in result["data"]["stdout"]["content"]
+        assert (root / ".git").stat().st_file_attributes & 2
+        receipt = json.loads((view.storage / "commands" / identity / "sealed.json").read_text())
+        assert next(item for item in receipt["changes"] if item["path"] == "/.git")["after"]["hidden"] is True
+    asyncio.run(scenario())
+
+
 def test_read_only_task_can_read_but_cannot_modify_host(tmp_path):
     async def scenario():
         root = tmp_path / "项目"; root.mkdir(); (root / "value").write_text("BASE")

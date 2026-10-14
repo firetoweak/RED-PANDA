@@ -285,7 +285,7 @@ impl File for VfsFile {
             .as_ref()
             .map(|view| view.pending_generation(owned.ino));
         let mut stmt = conn
-            .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec FROM fs_inode WHERE ino = ?")
+            .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?")
             ?;
         let mut rows = stmt.query((owned.ino,))?;
 
