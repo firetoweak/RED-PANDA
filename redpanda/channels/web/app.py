@@ -164,6 +164,20 @@ class WorkspaceCreateRequest(BaseModel):
     full_access: bool = False
 
 
+class WorkspaceRenameRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def named(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must be a non-empty str")
+        return stripped
+
+
 def create_web_app(
     channel: WebChannel | None = None,
     hub: WebEventHub | None = None,
@@ -395,6 +409,12 @@ def create_web_app(
             task_root=Path(body.task_root),
             full_access=body.full_access,
         ).to_dict()
+
+    @app.patch("/api/workspaces/{workspace_id}")
+    async def rename_workspace(
+        workspace_id: str, body: WorkspaceRenameRequest, request: Request,
+    ):
+        return request.app.state.workspaces.rename(workspace_id, body.name).to_dict()
 
     @app.delete("/api/workspaces/{workspace_id}", status_code=204)
     async def delete_workspace(workspace_id: str, request: Request):

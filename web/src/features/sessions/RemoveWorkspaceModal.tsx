@@ -4,23 +4,23 @@ import { useState } from "react";
 import type { Workspace } from "../../api/contracts";
 import { useDeleteWorkspaceMutation } from "../../api/redpandaApi";
 
-type DeleteWorkspaceModalProps = {
+type RemoveWorkspaceModalProps = {
   opened: boolean;
   onClose: () => void;
-  onDeleted: () => void;
+  onRemoved: () => void;
   workspace: Workspace;
 };
 
 /**
- * 删除工作区只是把它从清单里摘掉：工作区目录和会话记录都不动，
+ * 移除工作区只是把它从清单里摘掉：工作区目录和会话记录都不动，
  * 但这个工作区和它下面的会话从此不再出现在侧栏。
  */
-export function DeleteWorkspaceModal({
+export function RemoveWorkspaceModal({
   opened,
   onClose,
-  onDeleted,
+  onRemoved,
   workspace,
-}: DeleteWorkspaceModalProps) {
+}: RemoveWorkspaceModalProps) {
   const [deleteWorkspace, { isLoading, isError, reset }] =
     useDeleteWorkspaceMutation();
 
@@ -33,22 +33,22 @@ export function DeleteWorkspaceModal({
     <Modal
       onClose={close}
       opened={opened}
-      title="删除工作区"
+      title="移除工作区"
       closeOnClickOutside={!isLoading}
       closeOnEscape={!isLoading}
       withCloseButton={!isLoading}
     >
       <Stack gap="sm">
         <Text size="sm">
-          删除后 <Text fw={600} span>{workspace.name}</Text> 不再出现在侧栏，
+          移除后 <Text fw={600} span>{workspace.name}</Text> 不再出现在侧栏，
           它下面的会话也不再列出。
         </Text>
         <Text c="dimmed" size="sm">
           工作区目录 {workspace.task_root} 不会被删除，会话记录也保留在本地。
         </Text>
         {isError ? (
-          <Alert color="red" title="删除失败">
-            工作区不存在，或者刚刚已经被删掉了。
+          <Alert color="red" title="移除失败">
+            未能移除工作区，请重试。
           </Alert>
         ) : null}
         <Group gap="sm" justify="flex-end">
@@ -62,12 +62,12 @@ export function DeleteWorkspaceModal({
               void deleteWorkspace({ workspaceId: workspace.workspace_id })
                 .unwrap()
                 .then(() => {
-                  onDeleted();
+                  onRemoved();
                   close();
                 }, () => undefined);
             }}
           >
-            删除
+            移除
           </Button>
         </Group>
       </Stack>

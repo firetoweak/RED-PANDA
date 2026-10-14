@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import json
 from pathlib import Path
@@ -224,6 +224,13 @@ class WorkspaceRegistry:
             name=name or resolved.name or str(resolved),
             task_root=resolved,
         )
+
+    def rename(self, workspace_id: str, name: str) -> WorkspaceRecord:
+        record = self.get(workspace_id)
+        renamed = replace(record, name=name)
+        self._workspaces[self._workspaces.index(record)] = renamed
+        self.save()
+        return renamed
 
     def delete(self, workspace_id: str) -> None:
         """从清单移除一条记录。

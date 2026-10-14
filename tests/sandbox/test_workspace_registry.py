@@ -57,6 +57,17 @@ class WorkspaceRegistryTest(unittest.TestCase):
         self.assertEqual(payload["version"], REGISTRY_VERSION)
         self.assertEqual(payload["workspaces"][0]["name"], "my-app")
 
+    def test_rename_persists_only_the_display_name(self):
+        registry = WorkspaceRegistry.load(self.registry_path)
+        original = registry.create(
+            name="original", task_root=self.make_project("project"), full_access=True,
+        )
+
+        renamed = registry.rename(original.workspace_id, "新名称")
+
+        self.assertEqual(renamed.to_dict(), {**original.to_dict(), "name": "新名称"})
+        self.assertEqual(WorkspaceRegistry.load(self.registry_path).workspaces, (renamed,))
+
     def test_get_rejects_unknown_workspace(self):
         registry = WorkspaceRegistry.load(self.registry_path)
 

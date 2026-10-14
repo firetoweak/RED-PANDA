@@ -15,13 +15,11 @@ import {
 } from "@mantine/core";
 import {
   IconArchive,
-  IconFolder,
   IconFolderPlus,
   IconMessageCircle,
   IconPencil,
   IconPlus,
   IconAdjustments,
-  IconTrash,
   IconAlertCircle,
   IconCircleCheck,
 } from "@tabler/icons-react";
@@ -42,7 +40,9 @@ import { lockDraft } from "../../realtime/runtimeSlice";
 import { redPandaMark } from "../../app/brand";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
-import { DeleteWorkspaceModal } from "./DeleteWorkspaceModal";
+import { RemoveWorkspaceModal } from "./RemoveWorkspaceModal";
+import { RenameWorkspaceModal } from "./RenameWorkspaceModal";
+import { WorkspaceHeader } from "./WorkspaceHeader";
 import {
   DRAFT_TITLE,
   draftSessionId,
@@ -60,6 +60,7 @@ type SessionSidebarProps = {
 };
 
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
   const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
@@ -81,9 +82,10 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(
     readCollapsedWorkspaces,
   );
-  const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(
+  const [removingWorkspace, setRemovingWorkspace] = useState<Workspace | null>(
     null,
   );
+  const [renamingWorkspace, setRenamingWorkspace] = useState<Workspace | null>(null);
   const workspaceRecords = new Map(
     workspaces.map((workspace) => [workspace.workspace_id, workspace]),
   );
@@ -128,7 +130,7 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
     onNavigate();
   }
 
-  function leaveDeletedWorkspace(workspace: Workspace) {
+  function leaveRemovedWorkspace(workspace: Workspace) {
     // 正在看这条工作区里的会话或草稿时，先离开它，否则页面停在一个已不存在的落点上。
     if (
       currentWorkspaceId === workspace.workspace_id ||
@@ -219,12 +221,18 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
               onClose={closeCreateWorkspace}
               opened={createWorkspaceOpened}
             />
-            {deletingWorkspace === null ? null : (
-              <DeleteWorkspaceModal
-                onClose={() => setDeletingWorkspace(null)}
-                onDeleted={() => leaveDeletedWorkspace(deletingWorkspace)}
+            {removingWorkspace === null ? null : (
+              <RemoveWorkspaceModal
+                onClose={() => setRemovingWorkspace(null)}
+                onRemoved={() => leaveRemovedWorkspace(removingWorkspace)}
                 opened
-                workspace={deletingWorkspace}
+                workspace={removingWorkspace}
+              />
+            )}
+            {renamingWorkspace === null ? null : (
+              <RenameWorkspaceModal
+                onClose={() => setRenamingWorkspace(null)}
+                workspace={renamingWorkspace}
               />
             )}
             {workspaceGroups.map((workspace) => {
@@ -247,58 +255,24 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                   }
                   key={workspace.id}
                 >
-                  <Group className="workspace-head" gap={0} wrap="nowrap">
-                    <UnstyledButton
-                      aria-expanded={!collapsed}
-                      className="workspace-toggle"
-                      onClick={() => toggleWorkspace(workspace.id)}
-                    >
-                      <Group gap={6} wrap="nowrap">
-                        <IconFolder size={14} />
-                        <Text
-                          className="workspace-name"
-                          fw={600}
-                          fz={12}
-                          truncate
-                        >
-                          {workspace.name}
-                        </Text>
-                      </Group>
-                    </UnstyledButton>
-                    <Tooltip
-                      label="在此工作区新建会话"
-                      openDelay={400}
-                      position="right"
-                    >
-                      <ActionIcon
-                        aria-label={`在 ${workspace.name} 新建会话`}
-                        className="workspace-add"
-                        disabled={connectionId === null}
-                        onClick={() => openDraft(workspace.id)}
-                        size="sm"
-                        variant="subtle"
-                      >
-                        <IconPlus size={14} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="删除工作区" openDelay={400} position="right">
-                      <ActionIcon
-                        aria-label={`删除 ${workspace.name}`}
-                        className="workspace-delete"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          const record = workspaceRecords.get(workspace.id);
-                          if (record !== undefined) {
-                            setDeletingWorkspace(record);
-                          }
-                        }}
-                        size="sm"
-                        variant="subtle"
-                      >
-                        <IconTrash size={14} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
+                  <WorkspaceHeader
+                    workspace={workspace}
+                    collapsed={collapsed}
+                    connectionId={connectionId}
+                    draftId={draftId}
+                    registered={workspaceRecords.has(workspace.id)}
+                    onToggle={() => toggleWorkspace(workspace.id)}
+                    onCreate={() => openDraft(workspace.id)}
+                    onRename={() => setRenamingWorkspace(workspaceRecords.get(workspace.id)!)}
+                    onRemove={() => setRemovingWorkspace(workspaceRecords.get(workspace.id)!)}
+                    onArchived={(archivedId) => {
+                      dispatch(lockDraft(archivedId));
+                      if (archivedId === sessionId) {
+                        navigate(`/workspaces/${encodeURIComponent(workspace.id)}`);
+                        onNavigate();
+                      }
+                    }}
+                  />
                   <Collapse expanded={!collapsed}>
                     <Stack className="workspace-sessions" gap={3}>
                       {shownSessions.map((session) => (

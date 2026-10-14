@@ -227,6 +227,15 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) => workspaceSchema.parse(value),
       invalidatesTags: ["Workspaces"],
     }),
+    renameWorkspace: build.mutation<Workspace, { workspaceId: string; name: string }>({
+      query: ({ workspaceId, name }) => ({
+        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
+        method: "PATCH",
+        body: { name },
+      }),
+      transformResponse: (value: unknown) => workspaceSchema.parse(value),
+      invalidatesTags: ["Workspaces"],
+    }),
     deleteWorkspace: build.mutation<void, { workspaceId: string }>({
       query: ({ workspaceId }) => ({
         url: `/workspaces/${encodeURIComponent(workspaceId)}`,
@@ -508,6 +517,7 @@ export const {
   useGetSessionModelQuery,
   useSetSessionModelMutation,
   useCreateWorkspaceMutation,
+  useRenameWorkspaceMutation,
   useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,

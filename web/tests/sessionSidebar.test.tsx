@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import type { SessionSummary, Workspace } from "../src/api/contracts";
 import { SessionSidebar } from "../src/features/sessions/SessionSidebar";
-import runtimeReducer, { outputFinal, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
+import runtimeReducer, { connected, hydrateDrafts, outputFinal, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
 function workspace(workspaceId: string, name: string): Workspace {
   return {
@@ -23,12 +23,14 @@ const queries = vi.hoisted(() => ({
   sessions: [] as SessionSummary[],
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+  renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+  archiveSession: vi.fn((_arg: { connectionId: string; sessionId: string }) => ({ unwrap: () => Promise.resolve() })),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionsQuery: () => ({ data: queries.sessions, isLoading: false }),
   useGetSessionTitlesQuery: () => ({ data: {} }),
   useGetWorkspacesQuery: () => ({ data: queries.workspaces, isLoading: false }),
-  useArchiveSessionMutation: () => [vi.fn()],
+  useArchiveSessionMutation: () => [queries.archiveSession],
   useSetSessionTitleMutation: () => [vi.fn()],
   useCreateWorkspaceMutation: () => [vi.fn(), {}],
   useSelectWorkspaceDirectoryMutation: () => [vi.fn(), {}],
@@ -36,17 +38,23 @@ vi.mock("../src/api/redpandaApi", () => ({
     queries.deleteWorkspace,
     { isLoading: false, isError: false, reset: vi.fn() },
   ],
+  useRenameWorkspaceMutation: () => [
+    queries.renameWorkspace,
+    { isLoading: false, isError: false },
+  ],
 }));
 
 function CurrentPath() {
   return <Text data-testid="current-path">{useLocation().pathname}</Text>;
 }
 
-function renderSidebar(initialEntry: string) {
+function renderSidebar(initialEntry: string, drafts: Record<string, string> = {}) {
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
-  return render(
+  store.dispatch(connected("connection"));
+  store.dispatch(hydrateDrafts(drafts));
+  const view = render(
     <Provider store={store}>
-      <MantineProvider>
+      <MantineProvider env="test">
         <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
             <Route path="/sessions/:sessionId" element={null} />
@@ -63,6 +71,7 @@ function renderSidebar(initialEntry: string) {
       </MantineProvider>
     </Provider>,
   );
+  return { ...view, store };
 }
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -123,7 +132,7 @@ it("侧栏区分执行、待操作和结束，后台 step 输出仍保持旋钮"
   expect(screen.getByLabelText("空闲")).toHaveClass("activity-dot-idle");
 });
 
-it("删除工作区要先确认：取消不碰接口，确认才带上工作区 id", async () => {
+it("移除工作区要先确认：取消不碰接口，确认才带上工作区 id", async () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   queries.deleteWorkspace.mockClear();
@@ -131,29 +140,31 @@ it("删除工作区要先确认：取消不碰接口，确认才带上工作区 
   queries.sessions = [];
   renderSidebar("/");
 
-  fireEvent.click(screen.getByLabelText("删除 工作区"));
-  expect(screen.getByText("删除工作区")).toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
+  expect(screen.getByRole("dialog", { name: "移除工作区" })).toBeInTheDocument();
   expect(queries.deleteWorkspace).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "删除" })).toBeNull(),
+    expect(screen.queryByRole("button", { name: "移除" })).toBeNull(),
   );
   expect(queries.deleteWorkspace).not.toHaveBeenCalled();
 
-  fireEvent.click(screen.getByLabelText("删除 工作区"));
-  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
+  fireEvent.click(screen.getByRole("button", { name: "移除" }));
   await waitFor(() =>
     expect(queries.deleteWorkspace).toHaveBeenCalledWith({
       workspaceId: "workspace",
     }),
   );
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "删除" })).toBeNull(),
+    expect(screen.queryByRole("button", { name: "移除" })).toBeNull(),
   );
 });
 
-it("删掉正在聊天的工作区后，离开到剩下的工作区", async () => {
+it("移除正在聊天的工作区后，离开到剩下的工作区", async () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   queries.deleteWorkspace.mockClear();
@@ -165,8 +176,9 @@ it("删掉正在聊天的工作区后，离开到剩下的工作区", async () =
   renderSidebar("/sessions/session-1");
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/session-1");
 
-  fireEvent.click(screen.getByLabelText("删除 旧项目"));
-  fireEvent.click(screen.getByRole("button", { name: "删除" }));
+  fireEvent.click(screen.getByLabelText("旧项目 工作区操作"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
+  fireEvent.click(screen.getByRole("button", { name: "移除" }));
 
   await waitFor(() =>
     expect(queries.deleteWorkspace).toHaveBeenCalledWith({
@@ -176,4 +188,89 @@ it("删掉正在聊天的工作区后，离开到剩下的工作区", async () =
   await waitFor(() =>
     expect(screen.getByTestId("current-path")).toHaveTextContent("/workspaces/workspace-b"),
   );
+});
+
+it("右键和省略号打开同一组工作区操作，右键不改变折叠状态", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.workspaces = [workspace("workspace", "项目")];
+  queries.sessions = [];
+  renderSidebar("/");
+
+  const toggle = screen.getByRole("button", { name: "项目" });
+  const expanded = toggle.getAttribute("aria-expanded");
+  fireEvent.contextMenu(toggle);
+  expect(await screen.findByRole("menuitem", { name: "重命名工作区" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "归档所有会话" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "移除工作区" })).toBeInTheDocument();
+  expect(toggle).toHaveAttribute("aria-expanded", expanded);
+  expect(screen.queryByLabelText("删除 项目")).not.toBeInTheDocument();
+
+  fireEvent.keyDown(screen.getByRole("menuitem", { name: "重命名工作区" }), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+  fireEvent.click(screen.getByLabelText("项目 工作区操作"));
+  expect(await screen.findByRole("menuitem", { name: "重命名工作区" })).toBeInTheDocument();
+});
+
+it("重命名回填当前名称，拒绝空白并只提交显示名称", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.renameWorkspace.mockClear();
+  queries.workspaces = [workspace("workspace", "旧名称")];
+  queries.sessions = [];
+  renderSidebar("/");
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: "旧名称" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "重命名工作区" }));
+  expect(await screen.findByRole("textbox", { name: /名称/ })).toHaveValue("旧名称");
+  fireEvent.change(screen.getByRole("textbox", { name: /名称/ }), { target: { value: "   " } });
+  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: /名称/ }), { target: { value: " 新名称 " } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(queries.renameWorkspace).toHaveBeenCalledWith({
+    workspaceId: "workspace", name: "新名称",
+  }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it("归档该工作区全部会话，含隐藏项与草稿，离开已归档的当前会话", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.archiveSession.mockClear();
+  queries.workspaces = [workspace("workspace-a", "项目 A"), workspace("workspace-b", "项目 B")];
+  queries.sessions = Array.from({ length: 7 }, (_, index) => ({
+    session_id: `session-${index}`, workspace_id: "workspace-a", title: `会话 ${index}`,
+    updated_at: null, activity: "idle", has_active_subagents: false, needs_attention: false,
+  }));
+  queries.sessions.push({ ...queries.sessions[0], session_id: "other", workspace_id: "workspace-b" });
+  const { store } = renderSidebar("/sessions/session-0", { "workspace-a": "draft-a", "workspace-b": "draft-b" });
+  expect(screen.queryByText("会话 6")).not.toBeInTheDocument();
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: "项目 A" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "归档所有会话" }));
+  await waitFor(() => expect(queries.archiveSession).toHaveBeenCalledTimes(8));
+  expect(queries.archiveSession.mock.calls.map(([arg]) => arg)).toEqual([
+    ...Array.from({ length: 7 }, (_, index) => ({ connectionId: "connection", sessionId: `session-${index}` })),
+    { connectionId: "connection", sessionId: "draft-a" },
+  ]);
+  await waitFor(() => expect(store.getState().runtime.draftSessions).toEqual({ "workspace-b": "draft-b" }));
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/workspaces/workspace-a"));
+});
+
+it("归档失败保留未成功的当前会话并显示错误", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.archiveSession.mockClear();
+  queries.archiveSession.mockImplementationOnce(() => ({ unwrap: () => Promise.reject(new Error("failed")) }));
+  queries.workspaces = [workspace("workspace", "项目")];
+  queries.sessions = [{
+    session_id: "session", workspace_id: "workspace", title: "会话",
+    updated_at: null, activity: "idle", has_active_subagents: false, needs_attention: false,
+  }];
+  renderSidebar("/sessions/session");
+
+  fireEvent.click(screen.getByLabelText("项目 工作区操作"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "归档所有会话" }));
+  expect(await screen.findByText("归档失败")).toBeInTheDocument();
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/session");
 });
