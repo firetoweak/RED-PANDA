@@ -287,6 +287,11 @@ impl FileSystem for TrackingFS {
         Err(unsupported("ownership changes are not supported"))
     }
     async fn utimens(&self, _: i64, a: TimeChange, m: TimeChange) -> Result<()> {
+        // Direct callers still refuse explicit timestamps: they have no
+        // restore semantics and must not become history. Agent filesystem
+        // FUSE mounts never deliver them; that mount ignores time setattr
+        // (writeback close and touch are the same request) and succeeds
+        // without calling here. Other mounts apply timestamps.
         if matches!(a, TimeChange::Omit) && matches!(m, TimeChange::Omit) {
             return Ok(());
         }

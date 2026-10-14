@@ -3,7 +3,7 @@
 //! The adopted FUSE transport and Vfs adapter are private implementation
 //! details. Callers receive only the mount entry point, mount options, and
 //! session handle needed for lifecycle management (`mount`,
-//! `FuseMountOptions`, `SessionHandle`).
+//! `FuseMountOptions`, `TimeSetattr`, `SessionHandle`).
 //!
 //! Owned invariants:
 //!
@@ -28,4 +28,4 @@ mod adapter;
 pub(crate) mod telemetry;
 pub(crate) mod transport;
 
-pub use adapter::{mount, FuseMountOptions, SessionHandle};
+pub use adapter::{mount, FuseMountOptions, SessionHandle, TimeSetattr};

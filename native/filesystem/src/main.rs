@@ -322,13 +322,19 @@ impl Service {
         clear_stale_mount(&point)?;
         #[cfg(unix)]
         std::fs::create_dir_all(&point)?;
-        candidate.mount = Some(
-            mount_fs(
-                Arc::new(TrackingFS(candidate.fs.clone())),
-                MountOpts::new(point.clone(), mount_backend()),
-            )
-            .await?,
-        );
+        // FUSE cannot tell writeback close timestamps from touch. This mount
+        // ignores time setattr so close succeeds and mtime is not evidence.
+        // Writeback stays at its default (on). Other VFS mounts keep Apply.
+        #[cfg(target_os = "linux")]
+        let mount_opts = {
+            let mut opts = MountOpts::new(point.clone(), mount_backend());
+            opts.time_setattr = vfs_mount::TimeSetattr::Ignore;
+            opts
+        };
+        #[cfg(not(target_os = "linux"))]
+        let mount_opts = MountOpts::new(point.clone(), mount_backend());
+        candidate.mount =
+            Some(mount_fs(Arc::new(TrackingFS(candidate.fs.clone())), mount_opts).await?);
         self.active = Some(candidate);
         Ok(
             json!({"status":"active","mount":point,"parent_depth":self.parent.depth,"parent_hashed_bytes":0,"begin_ms":start.elapsed().as_secs_f64()*1000.0}),

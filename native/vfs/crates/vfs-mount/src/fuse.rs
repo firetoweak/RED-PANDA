@@ -58,6 +58,7 @@ pub(super) fn mount_fuse(
         fsname: opts.fsname.clone(),
         uid: opts.uid,
         gid: opts.gid,
+        time_setattr: opts.time_setattr,
     };
 
     let mountpoint = opts.mountpoint.clone();

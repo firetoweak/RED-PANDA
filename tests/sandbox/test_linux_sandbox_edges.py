@@ -1,4 +1,5 @@
 """Linux edges: symlinks, mode, publish races, stale mounts, escaped children."""
+import errno
 import os
 from pathlib import Path
 import signal
@@ -141,11 +142,13 @@ def test_fifo_rejection_leaves_the_service_usable(tmp_path):
     client = CommandClient(native_executable(), tmp_path / "store", root)
     try:
         begin = client.begin("c1")
-        os.mkfifo(Path(begin["mount"]) / "pipe")
-        rejected = client.request("finish")
-        assert rejected["status"] == "rejected", rejected
-        assert "supported" in rejected["error"]
-        assert client.request("status", command_id="c1")["status"] == "rejected"
+        with pytest.raises(OSError) as caught:
+            os.mkfifo(Path(begin["mount"]) / "pipe")
+        assert caught.value.errno == errno.EOPNOTSUPP, caught.value
+        sealed = client.request("finish")
+        assert sealed["status"] == "sealed", sealed
+        assert not any(change["path"] == "/pipe" for change in sealed["receipt"]["changes"])
+        client.request("discard", command_id="c1")
         again = client.begin("c2")
         assert again["status"] == "active", again
         assert (Path(again["mount"]) / "keep.txt").read_text(encoding="utf-8") == "A"
@@ -203,5 +206,45 @@ def test_setsid_child_does_not_survive_the_command(tmp_path):
         assert not any(change["path"] == "/escaped" for change in changes)
         assert not (root / "escaped").exists()
         client.request("discard", command_id="c1")
+    finally:
+        client.close()
+
+
+def test_write_close_ignores_writeback_time_setattr(tmp_path):
+    """Write and close through agentFS succeed while FUSE writeback stays on.
+
+    Kernel writeback sends a timestamp SETATTR on close. Agent filesystem
+    mounts ignore that update, so close does not return EIO and a touch-only
+    file does not become history. Content changes still do.
+    """
+    root = tmp_path / "base"
+    root.mkdir()
+    (root / "keep.txt").write_text("A\n", encoding="utf-8")
+    (root / "clock.txt").write_text("still\n", encoding="utf-8")
+    environment = os.environ.copy()
+    environment["VFS_FUSE_WRITEBACK"] = "1"
+    environment["VFS_FUSE_WORKERS"] = "2"
+    client = CommandClient(
+        native_executable(),
+        tmp_path / "store",
+        root,
+        service_environment=environment,
+    )
+    try:
+        begin = client.begin("c1")
+        assert begin["status"] == "active", begin
+        mount = Path(begin["mount"])
+        (mount / "keep.txt").write_text("B\n", encoding="utf-8")
+        (mount / "new.txt").write_text("fresh\n", encoding="utf-8")
+        os.utime(mount / "clock.txt", (1_700_000_000, 1_700_000_000))
+        os.utime(mount / "keep.txt", None)
+        assert (mount / "keep.txt").read_text(encoding="utf-8") == "B\n"
+        assert (mount / "new.txt").read_text(encoding="utf-8") == "fresh\n"
+        assert (mount / "clock.txt").read_text(encoding="utf-8") == "still\n"
+        sealed = client.request("finish")
+        assert sealed["status"] == "sealed", sealed
+        changes = {change["path"] for change in sealed["receipt"]["changes"]}
+        assert "/clock.txt" not in changes
+        assert {"/keep.txt", "/new.txt"} <= changes
     finally:
         client.close()
