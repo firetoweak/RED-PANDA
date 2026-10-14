@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
 
 import httpx
@@ -190,6 +191,138 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
                 else:
                     self.assertNotIn("reasoning_content", messages[1])
                 self.assertEqual(messages[2]["reasoning_content"], "why")
+        self.assertNotIn("reasoning_content", history[1])
+
+    async def test_preserved_thinking_options_follow_each_provider_and_model(self):
+        cases = {
+            "bigmodel": [
+                ("glm-4.7", {"thinking": {"clear_thinking": False}}),
+                ("glm-4.6", {}),
+                ("glm-5.2", {"thinking": {"clear_thinking": False}}),
+                ("glm-5.3-flash", {"thinking": {"clear_thinking": False}}),
+                ("glm-unknown", {}),
+            ],
+            "qwen": [
+                ("qwen3.6-plus", {"preserve_thinking": True}),
+                ("qwen3-32b", {}),
+                ("qwen3.7-max-2026-05-20", {"preserve_thinking": True}),
+                ("qwen3.8-max", {"preserve_thinking": True}),
+                ("qwen3.8-omni-flash", {"preserve_thinking": True}),
+                ("qwen-unknown", {}),
+            ],
+            "openai": [("gpt-4.1", {})],
+            "stepfun": [("step-5-preview", {})],
+            "deepseek": [("deepseek-v4-pro", {})],
+            "vllm": [("glm-5.2", {})],
+            "ollama": [("qwen3.6-plus", {})],
+        }
+        history = [{"role": "assistant", "content": "answer", "reasoning_content": "  original\nreasoning  "}]
+        for provider, models in cases.items():
+            with self.subTest(provider=provider):
+                payloads = []
+
+                def handle(request):
+                    payloads.append(json.loads(request.content))
+                    return httpx.Response(200, content=_DONE_OK)
+
+                connection = {"api_key": "test", "base_url": "http://localhost/v1"}
+                async with ChatCompletionsClient(
+                    resolve_endpoint(f"{provider}/{models[0][0]}", connection),
+                    transport=httpx.MockTransport(handle),
+                ) as client:
+                    for model, expected in models:
+                        await client.chat(history, f"{provider}/{model}")
+                        payload = payloads[-1]
+                        options = {key: payload[key] for key in ("thinking", "preserve_thinking") if key in payload}
+                        self.assertEqual(options, expected, model)
+                        self.assertEqual(payload["messages"], history)
+
+    async def test_explicit_thinking_options_override_provider_defaults(self):
+        for model, options in (
+            ("bigmodel/glm-5.2", {"thinking": {"type": "disabled"}}),
+            ("qwen/qwen3.6-plus", {"preserve_thinking": False}),
+        ):
+            with self.subTest(model=model):
+                payloads = []
+
+                def handle(request):
+                    payloads.append(json.loads(request.content))
+                    return httpx.Response(200, content=_DONE_OK)
+
+                original = deepcopy(options)
+                async with ChatCompletionsClient(
+                    resolve_endpoint(model, {"api_key": "test"}),
+                    request_options=options,
+                    transport=httpx.MockTransport(handle),
+                ) as client:
+                    await client.chat([], model)
+                for key, value in options.items():
+                    self.assertEqual(payloads[0][key], value)
+                self.assertEqual(options, original)
+
+    async def test_all_native_reasoning_is_replayed_across_tools_and_user_turns(self):
+        payloads = []
+        reasoning_deltas = []
+        originals = []
+        history = [{"role": "user", "content": "inspect"}]
+        tools = [{"type": "function", "function": {"name": "read_file"}}]
+
+        def handle(request):
+            payloads.append(json.loads(request.content))
+            number = len(payloads)
+            delta = {"content": f"answer {number}"}
+            if number == 1:
+                delta["tool_calls"] = [{"index": 0, "id": "call-1", "type": "function",
+                                        "function": {"name": "read_file", "arguments": "{}"}}]
+            return httpx.Response(200, content=_stream(
+                {"choices": [{"delta": {"reasoning_content": f"  think {number}\n"}}]},
+                {"choices": [{"delta": {"reasoning_content": "keep whitespace  "}}]},
+                {"choices": [{"delta": {"native_state": {"signature": f"opaque-{number}"}}}]},
+                {"choices": [{"delta": delta}]},
+                {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 5}},
+            ))
+
+        async with ChatCompletionsClient(
+            resolve_endpoint("deepseek/deepseek-v4-pro", {"api_key": "test"}),
+            transport=httpx.MockTransport(handle),
+        ) as client:
+            for number in range(1, 4):
+                before = deepcopy(history)
+                result = await client.chat(history, "deepseek/deepseek-v4-pro", tools,
+                                           on_reasoning_delta=reasoning_deltas.append)
+                self.assertEqual(history, before)
+                self.assertEqual(payloads[-1]["messages"], before)
+                replayed = [message for message in payloads[-1]["messages"] if message["role"] == "assistant"]
+                self.assertEqual(replayed, originals)
+                response = result.response
+                self.assertEqual(response.message_extensions, {
+                    "reasoning_content": f"  think {number}\nkeep whitespace  ",
+                    "native_state": {"signature": f"opaque-{number}"},
+                })
+                message = {"role": "assistant", "content": response.content, **response.message_extensions}
+                if response.calls:
+                    message["tool_calls"] = [{"id": response.calls[0].id, "type": "function",
+                                              "function": {"name": "read_file", "arguments": "{}"}}]
+                originals.append(deepcopy(message))
+                history.append(message)
+                history.append({"role": "tool", "tool_call_id": "call-1", "content": "file content"}
+                               if number == 1 else {"role": "user", "content": "continue"})
+        self.assertEqual(reasoning_deltas, [part for number in range(1, 4)
+                                           for part in (f"  think {number}\n", "keep whitespace  ")])
+
+    async def test_invalid_reasoning_delta_is_rejected_before_preview(self):
+        for value in (1, True, [], {}):
+            with self.subTest(value=value):
+                reasoning = []
+                async with ChatCompletionsClient(
+                    _endpoint(),
+                    transport=httpx.MockTransport(lambda request: httpx.Response(
+                        200, content=_stream({"choices": [{"delta": {"reasoning_content": value}}]}),
+                    )),
+                ) as client:
+                    with self.assertRaisesRegex(InvalidLLMResponse, "reasoning_content delta must be str"):
+                        await client.chat([], "test/model", on_reasoning_delta=reasoning.append)
+                self.assertEqual(reasoning, [])
 
     async def test_http_error_codes_map_to_redpanda_errors(self):
         cases = (

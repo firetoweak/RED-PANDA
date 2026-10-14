@@ -22,6 +22,32 @@ PROVIDERS = {
 }
 
 
+# Only models whose hosted API documents preserved thinking are listed here.
+# https://docs.z.ai/guides/capabilities/thinking-mode
+_GLM_PRESERVED_THINKING_MODELS = frozenset({
+    "glm-4.7", "glm-4.7-flash", "glm-4.7-flashx",
+    "glm-5", "glm-5.1", "glm-5.2", "glm-5.3", "glm-5.3-flash", "glm-5.3-flashx",
+})
+# https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions
+_QWEN_PRESERVED_THINKING_MODELS = frozenset({
+    "qwen3.6-plus", "qwen3.6-plus-2026-04-02",
+    "qwen3.6-flash", "qwen3.6-flash-2026-04-16",
+    "qwen3.7-max", "qwen3.7-max-2026-05-20",
+    "qwen3.7-plus", "qwen3.7-plus-2026-05-26",
+    "qwen3.7-flash", "qwen3.7-flash-2026-07-15",
+    "qwen3.8-max", "qwen3.8-max-0902", "qwen3.8-flash", "qwen3.8-omni-flash",
+})
+
+
+def preserved_thinking_options(provider: str, model: str) -> dict[str, object]:
+    """Enable native history reuse without changing messages or forcing thinking on."""
+    if provider == "bigmodel" and model in _GLM_PRESERVED_THINKING_MODELS:
+        return {"thinking": {"clear_thinking": False}}
+    if provider == "qwen" and model in _QWEN_PRESERVED_THINKING_MODELS:
+        return {"preserve_thinking": True}
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class Endpoint:
     provider: str

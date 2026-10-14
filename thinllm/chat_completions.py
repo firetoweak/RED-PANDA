@@ -18,7 +18,7 @@ from thinllm.errors import (
     LLMProviderError,
     LLMTransientError,
 )
-from thinllm.providers import Endpoint
+from thinllm.providers import Endpoint, preserved_thinking_options
 from thinllm.types import (
     ContentDeltaSink,
     LLMCallResult,
@@ -97,9 +97,11 @@ class ChatCompletionsClient:
                 )
                 for message in messages
             ]
+        model_name = model.partition("/")[2]
         payload: dict[str, object] = {
+            **preserved_thinking_options(self._endpoint.provider, model_name),
             **self._request_options,
-            "model": model.partition("/")[2],
+            "model": model_name,
             "messages": messages,
             "stream": True,
             "stream_options": {"include_usage": True},
@@ -246,6 +248,11 @@ class ChatCompletionsClient:
         for key, value in delta.items():
             if key in _NORMALIZED_DELTA_FIELDS or value is None:
                 continue
+            if key == "reasoning_content" and type(value) is not str:
+                raise InvalidLLMResponse(
+                    "invalid_llm_response",
+                    "model reasoning_content delta must be str|null",
+                )
             self._collect_extension(stream.extensions, key, value)
             if key == "reasoning_content" and value:
                 await self._emit(on_reasoning_delta, value)

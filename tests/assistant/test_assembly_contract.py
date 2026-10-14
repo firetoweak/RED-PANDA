@@ -71,7 +71,7 @@ class CapturingLlm:
             LLMResponse(
                 content="done",
                 calls=calls,
-                message_extensions={"reasoning_content": "private-state"},
+                message_extensions={"reasoning_content": f"private-state-{len(self.requests)}"},
             ),
             LLMUsage(input_tokens=1, output_tokens=1),
         )
@@ -219,7 +219,7 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(
                         event.payload.decision_metadata["message_extensions"],
-                        {"reasoning_content": "private-state"},
+                        {"reasoning_content": "private-state-1"},
                     )
                     replayed = next(
                         message
@@ -228,7 +228,7 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                         and message.get("tool_calls")
                     )
                     self.assertEqual(
-                        replayed["reasoning_content"], "private-state"
+                        replayed["reasoning_content"], "private-state-1"
                     )
                     self.assertEqual(
                         replayed["tool_calls"][0]["id"],
@@ -239,6 +239,16 @@ class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(
                         second_event.payload.decision_metadata[WORK_PLAN_CONTEXT],
                         llm.requests[1]["messages"][-1]["content"],
+                    )
+
+                    await assembly.runtime.receive_user_message(
+                        session_id, "继续检查", delivery_id="user-2",
+                    )
+                    await settle_session(assembly.runtime, session_id, control=assembly.control)
+                    self.assertEqual(
+                        [message["reasoning_content"] for message in llm.requests[2]["messages"]
+                         if message["role"] == "assistant"],
+                        ["private-state-1", "private-state-2"],
                     )
 
                     names = assembly.control.names()

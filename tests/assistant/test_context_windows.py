@@ -181,6 +181,9 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             visible = restored.visible(events, StateProjector().project_visible(sid, events))
             self.assertNotIn(original.event_id, visible.visible_event_ids)
             self.assertIn('"source": "b2"', restored.prefix[0]["content"])
+            prepared = projector.prepare(events, visible, sid, "frozen system", prefix=restored.prefix)
+            self.assertNotIn("original analysis", json.dumps(prepared.messages))
+            self.assertNotIn("original reasoning", json.dumps(prepared.messages))
             args = {"offset": 0, "limit": 2}
             pages = []
             while True:
