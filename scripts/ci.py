@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> None:
         if target == "python":
             run([sys.executable, "-m", "pytest"])
         elif target == "process":
-            run([sys.executable, "-m", "pytest", "-m", "process"])
+            run([sys.executable, "-m", "pytest", "-m", "process", "-x"])
         else:
             run([npm, "test"], cwd=ROOT / "web")
             run([npm, "run", "build"], cwd=ROOT / "web")
