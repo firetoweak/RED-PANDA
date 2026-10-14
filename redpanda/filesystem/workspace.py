@@ -229,6 +229,17 @@ class FileAccess:
     def resolver(self) -> WorkspacePathResolver:
         return WorkspacePathResolver(self)
 
+    def task_deny_root(self) -> Path:
+        """宿主任务根。命令拒写约束使用这一路径，不使用挂载目录。"""
+        roots = [
+            root.path
+            for root in self.workspace_view.roots
+            if root.scope is WorkspaceScope.TASK
+        ]
+        if len(roots) != 1:
+            raise RuntimeError("任务写入约束需要唯一的宿主任务根")
+        return roots[0]
+
 
 class WorkspacePathResolver:
     def __init__(self, binding: FileAccess) -> None:

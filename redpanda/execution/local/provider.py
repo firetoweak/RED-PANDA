@@ -5,6 +5,7 @@ from pathlib import Path
 from collections.abc import Mapping
 
 from redpanda.execution.api import CommandEnvironment
+from redpanda.execution.constraint import TaskWriteConstraint
 
 
 def create_local_command_environment(
@@ -13,6 +14,7 @@ def create_local_command_environment(
     task_root: Path,
 ) -> CommandEnvironment:
     task_root = task_root.resolve()
+    constraint = TaskWriteConstraint(task_root)
     # 独立命令来源，包含用户准备的项目变量；不读取随后改变的产品环境。
     environment = dict(os.environ if command_environment is None else command_environment)
     if os.name == "nt":
@@ -21,7 +23,7 @@ def create_local_command_environment(
         )
 
         runner = PowerShellCommandRunner(
-            task_root=task_root,
+            write_constraint=constraint,
             environment=environment,
             environment_policy=CommandEnvironmentPolicy(
                 forward_names=tuple(environment), refresh_path=False,
@@ -33,6 +35,7 @@ def create_local_command_environment(
             BashCommandEnvironmentPolicy, BashCommandRunner,
         )
 
+        # Linux 写约束后端另接。这里不把 cwd 当成拒写实现。
         runner = BashCommandRunner(
             environment=environment,
             environment_policy=BashCommandEnvironmentPolicy(forward_names=tuple(environment)),
@@ -42,4 +45,5 @@ def create_local_command_environment(
         runner,
         shell_name=shell_name,
         shell_path=runner.executable,
+        write_constraint=constraint,
     )

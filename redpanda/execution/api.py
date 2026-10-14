@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from redpanda.execution.constraint import TaskWriteConstraint
+
 from .command import CommandExecutor
 
 
@@ -10,6 +12,7 @@ class CommandEnvironment:
     command_executor: CommandExecutor
     shell_name: str
     shell_path: str
+    write_constraint: TaskWriteConstraint | None = None
 
     def __post_init__(self) -> None:
         if not self.shell_name.strip() or not self.shell_path.strip():

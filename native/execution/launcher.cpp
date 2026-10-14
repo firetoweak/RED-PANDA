@@ -24,6 +24,9 @@ static bool send(HANDLE pipe, DWORD kind, DWORD stage, DWORD error,
   return WriteFile(pipe, &value, sizeof(value), &written, nullptr) &&
          written == sizeof(value);
 }
+// Inner-job reclaim: terminate, then wait until no active process remains.
+// The launcher is outside this job. Python's outer job is the other handle
+// and uses the same drain for the launcher itself.
 static bool reap(HANDLE job) {
   if (!TerminateJobObject(job, 130))
     return false;

@@ -17,6 +17,7 @@ from redpanda.execution.command import (
     ShellNotFoundError,
     wait_process,
 )
+from redpanda.execution.constraint import CommandConstraint, command_directory
 from redpanda.execution.local.child_env import (
     CHILD_ENV_OVERLAY,
 )
@@ -97,7 +98,7 @@ class BashCommandRunner:
     async def run(
         self,
         command: str,
-        cwd: Path,
+        cwd: Path | CommandConstraint,
         timeout_seconds: int,
         *,
         interrupt: asyncio.Event | None = None,
@@ -109,6 +110,8 @@ class BashCommandRunner:
         child_env = self.environment_policy.build(
             os.environ if self._environment is None else self._environment
         )
+        # 只取启动目录。Linux 拒写后端不在这里，不能把 cwd 当成宿主拒写。
+        start = command_directory(cwd)
         started = time.perf_counter()
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -117,7 +120,7 @@ class BashCommandRunner:
                 "--norc",
                 "-c",
                 command,
-                cwd=cwd,
+                cwd=start,
                 env=child_env,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,

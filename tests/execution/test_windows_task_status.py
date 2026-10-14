@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from redpanda.execution.command import BoundedTextCapture, CaptureLimit, CommandConstraintError, CommandResult
+from redpanda.execution.constraint import ConstraintFailure
 from redpanda.execution.local import windows_task
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows startup protocol")
@@ -31,6 +32,8 @@ def test_failure_after_start_preserves_output_as_partial_evidence(tmp_path, monk
     with pytest.raises(CommandConstraintError) as error:
         task.finish(result)
     assert error.value.result is result
+    assert error.value.failure is ConstraintFailure.UNSUPPORTED_PROCESS
+    assert error.value.unsupported_process
 
 
 @pytest.mark.parametrize("records",[[],[(1,1,0,0,0)],[(2,2,0,0,0)],[(1,3,99,5,0)],[(1,1,0,0,0),(1,3,2,5,0)]])

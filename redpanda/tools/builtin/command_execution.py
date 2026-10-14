@@ -4,6 +4,7 @@ import asyncio
 import os
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -74,6 +75,16 @@ def _result_data(result: CommandResult) -> dict[str, Any]:
     }
 
 
+def _command_location(binding: FileAccess, commands: CommandEnvironment, cwd: Path, may_write: bool):
+    constraint = commands.write_constraint
+    if constraint is None:
+        return cwd
+    deny_root = binding.task_deny_root()
+    if constraint.deny_root != deny_root:
+        raise RuntimeError("任务写入约束与文件访问的宿主任务根不一致")
+    return constraint.for_command(cwd, may_write=may_write)
+
+
 def create_command_execution_spec(
     binding: FileAccess,
     commands: CommandEnvironment,
@@ -124,14 +135,15 @@ def create_command_execution_spec(
                 ),
             }
 
+        location = _command_location(binding, commands, cwd, raw.workspace_effect == "may_write")
         try:
             interrupt = interrupt_source()
             if interrupt is None:
-                result = await runner.run(raw.command, cwd, raw.timeout_seconds)
+                result = await runner.run(raw.command, location, raw.timeout_seconds)
             else:
                 result = await runner.run(
                     raw.command,
-                    cwd,
+                    location,
                     raw.timeout_seconds,
                     interrupt=interrupt,
                 )

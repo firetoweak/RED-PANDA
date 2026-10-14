@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from redpanda.execution.constraint import CommandConstraint, ConstraintFailure
+
 
 # 终端控制序列与有害控制字符。命令输出是 untrusted external data：
 # ANSI/OSC 可伪造界面、隐藏文本，进模型上下文前统一剥除。
@@ -115,17 +117,23 @@ class CommandStartError(OSError):
 
 
 class CommandConstraintError(RuntimeError):
-    def __init__(self, result: CommandResult, stage: int, error: int):
+    def __init__(self, result: CommandResult, failure: ConstraintFailure):
+        if not isinstance(failure, ConstraintFailure):
+            raise TypeError("constraint failure must be ConstraintFailure")
         self.result = result
-        self.unsupported_process = stage == 3 and error == 50
-        super().__init__(f"Windows task constraint failed: stage={stage}, error={error}")
+        self.failure = failure
+        super().__init__(f"task write constraint failed: {failure.value}")
+
+    @property
+    def unsupported_process(self) -> bool:
+        return self.failure is ConstraintFailure.UNSUPPORTED_PROCESS
 
 
 class CommandExecutor(Protocol):
     async def run(
         self,
         command: str,
-        cwd: Path,
+        cwd: Path | CommandConstraint,
         timeout_seconds: int,
         *,
         interrupt: asyncio.Event | None = None,

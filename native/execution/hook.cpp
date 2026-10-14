@@ -64,48 +64,89 @@ static bool within(const std::wstring &path) {
              CSTR_EQUAL &&
          (path.size() == n || path[n] == L'\\' || path[n] == L':');
 }
-static std::wstring file_identity_path(HANDLE h) {
-  auto path = final_path(h);
-  if (path.empty())
-    return resolution_failed(GetLastError());
-  if (within(path))
-    return path;
+// One path identity. The final NT path resolves junctions and \\?\ / \??\
+// prefixes. Extra hard-link names belong to the same file: any name inside
+// the deny root protects it. New aliases extend this function, not a new hook.
+struct Identity {
+  bool failed = false;
+  std::wstring path;
+  bool in_root = false;
+};
+static Identity identify(HANDLE h) {
+  Identity id;
+  id.path = final_path(h);
+  if (id.path.empty()) {
+    resolution_failed(GetLastError());
+    id.failed = true;
+    return id;
+  }
+  if (within(id.path)) {
+    id.in_root = true;
+    return id;
+  }
   FILE_STANDARD_INFO info{};
-  if (!GetFileInformationByHandleEx(h, FileStandardInfo, &info, sizeof(info)))
-    return resolution_failed(GetLastError());
+  if (!GetFileInformationByHandleEx(h, FileStandardInfo, &info, sizeof(info))) {
+    resolution_failed(GetLastError());
+    id.failed = true;
+    return id;
+  }
+  // Directories are not hard-linked. Junctions are already resolved above.
   if (info.NumberOfLinks <= 1 || info.Directory)
-    return path;
-  // Existing NTFS hard links can name the same host file outside the root.
-  // Ask Windows for its names only when the handle actually has multiple links.
-  if (path.rfind(L"\\Device\\", 0) != 0)
-    return resolution_failed(ERROR_NOT_SUPPORTED);
-  auto separator = path.find(L'\\', 8);
-  if (separator == std::wstring::npos)
-    return resolution_failed(ERROR_BAD_PATHNAME);
-  auto volume = path.substr(0, separator);
+    return id;
+  if (id.path.rfind(L"\\Device\\", 0) != 0) {
+    resolution_failed(ERROR_NOT_SUPPORTED);
+    id.failed = true;
+    return id;
+  }
+  auto separator = id.path.find(L'\\', 8);
+  if (separator == std::wstring::npos) {
+    resolution_failed(ERROR_BAD_PATHNAME);
+    id.failed = true;
+    return id;
+  }
+  auto volume = id.path.substr(0, separator);
   auto dos = final_path(h, VOLUME_NAME_DOS);
-  if (dos.empty())
-    return resolution_failed(GetLastError());
+  if (dos.empty()) {
+    resolution_failed(GetLastError());
+    id.failed = true;
+    return id;
+  }
   auto stream = dos.find(L':', 6);
   if (stream != std::wstring::npos)
     dos.resize(stream);
   std::wstring name(32768, L'\0');
   DWORD length = DWORD(name.size());
   HANDLE names = FindFirstFileNameW(dos.c_str(), 0, &length, name.data());
-  if (names == INVALID_HANDLE_VALUE)
-    return resolution_failed(GetLastError());
+  if (names == INVALID_HANDLE_VALUE) {
+    resolution_failed(GetLastError());
+    id.failed = true;
+    return id;
+  }
   for (;;) {
     if (within(volume + name.c_str())) {
       FindClose(names);
-      return policy.root;
+      id.in_root = true;
+      return id;
     }
     length = DWORD(name.size());
     if (!FindNextFileNameW(names, &length, name.data())) {
       DWORD error = GetLastError();
       FindClose(names);
-      return error == ERROR_HANDLE_EOF ? path : resolution_failed(error);
+      if (error != ERROR_HANDLE_EOF) {
+        resolution_failed(error);
+        id.failed = true;
+      }
+      return id;
     }
   }
+}
+static std::wstring file_identity_path(HANDLE h) {
+  auto id = identify(h);
+  if (id.failed)
+    return {};
+  if (id.in_root)
+    return policy.root;
+  return id.path;
 }
 // Resolve existing objects through handles. For a new object resolve the
 // nearest existing parent, preserving RootDirectory for handle-relative native
@@ -165,9 +206,9 @@ static std::wstring resolve(POBJECT_ATTRIBUTES attrs,
     auto end = name.find_last_of(L'\\');
     if (end == std::wstring::npos) {
       if (attrs->RootDirectory) {
-        auto directory = final_path(attrs->RootDirectory);
+        auto directory = file_identity_path(attrs->RootDirectory);
         if (directory.empty())
-          return resolution_failed(GetLastError());
+          return {};
         return directory + L"\\" + name + suffix;
       }
       return resolution_failed(ERROR_BAD_PATHNAME);
@@ -273,12 +314,22 @@ static NTSTATUS NTAPI hooked_section(PHANDLE section, ACCESS_MASK access,
     return denied;
   return real_section(section, access, attrs, size, protect, flags, file);
 }
+// One admission policy: CreateProcessW/A without suspend, debug, or job
+// breakaway. `creating` admits only the native call under that CreateProcess.
+// Other process-create entries are rejected. Do not grow an Nt* allow-list;
+// a new bypass changes this policy or path identity.
+static constexpr DWORD rejected_create =
+    CREATE_SUSPENDED | CREATE_BREAKAWAY_FROM_JOB | DEBUG_PROCESS |
+    DEBUG_ONLY_THIS_PROCESS;
+static bool admit_process(DWORD flags) {
+  return (flags & rejected_create) == 0;
+}
+static void reject_process() { failed(Child, ERROR_NOT_SUPPORTED); }
 template <class Create>
 static BOOL child(Create create, DWORD flags, LPVOID env,
                   LPPROCESS_INFORMATION output) {
-  if (flags & (CREATE_SUSPENDED | CREATE_BREAKAWAY_FROM_JOB | DEBUG_PROCESS |
-               DEBUG_ONLY_THIS_PROCESS)) {
-    failed(Child, ERROR_NOT_SUPPORTED);
+  if (!admit_process(flags)) {
+    reject_process();
     SetLastError(ERROR_NOT_SUPPORTED);
     return FALSE;
   }
@@ -338,7 +389,7 @@ static NTSTATUS NTAPI hooked_user_process(PHANDLE p, PHANDLE t, ACCESS_MASK pa,
                                           ULONG tf, PVOID parameters,
                                           PVOID info, PVOID attributes) {
   if (!creating) {
-    failed(Child, ERROR_NOT_SUPPORTED);
+    reject_process();
     return NTSTATUS(0xc00000bb);
   }
   return real_user_process(p, t, pa, ta, po, to, pf, tf, parameters, info,
@@ -347,14 +398,14 @@ static NTSTATUS NTAPI hooked_user_process(PHANDLE p, PHANDLE t, ACCESS_MASK pa,
 static NTSTATUS NTAPI hooked_legacy_process(PHANDLE, ACCESS_MASK,
                                             POBJECT_ATTRIBUTES, HANDLE, BOOLEAN,
                                             HANDLE, HANDLE, HANDLE) {
-  failed(Child, ERROR_NOT_SUPPORTED);
+  reject_process();
   return NTSTATUS(0xc00000bb);
 }
 static NTSTATUS NTAPI hooked_legacy_process_ex(PHANDLE, ACCESS_MASK,
                                                POBJECT_ATTRIBUTES, HANDLE,
                                                ULONG, HANDLE, HANDLE, HANDLE,
                                                ULONG) {
-  failed(Child, ERROR_NOT_SUPPORTED);
+  reject_process();
   return NTSTATUS(0xc00000bb);
 }
 extern "C" __declspec(dllexport) void HookOrdinalOne() {}

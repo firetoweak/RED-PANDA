@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from redpanda.execution.command import CaptureLimit, ShellNotFoundError
+from redpanda.execution.constraint import CommandConstraint, TaskWriteConstraint
 from redpanda.execution.local.bash import (
     BashCommandEnvironmentPolicy,
     BashCommandRunner,
@@ -83,6 +84,8 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "bash")
         self.assertEqual(provider.shell_path, "/usr/bin/bash")
+        self.assertEqual(provider.write_constraint.deny_root, root.resolve())
+        self.assertNotIn("write_constraint", runner_type.call_args.kwargs)
 
     def test_selects_powershell_for_windows(self):
         root = Path.cwd()
@@ -98,6 +101,11 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "powershell")
         self.assertEqual(provider.shell_path, "C:/PowerShell/7/pwsh.exe")
+        self.assertEqual(provider.write_constraint.deny_root, root.resolve())
+        self.assertEqual(
+            runner_type.call_args.kwargs["write_constraint"].deny_root,
+            root.resolve(),
+        )
 
 
 class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
@@ -121,6 +129,26 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
         child = spawn.call_args.kwargs["env"]
         self.assertEqual(child["PATH"], "/project/bin")
         self.assertEqual(child["JAVA_HOME"], "/project/jdk")
+
+    async def test_command_constraint_supplies_cwd_and_does_not_invent_a_deny_backend(self):
+        runner = BashCommandRunner(executable="/usr/bin/bash")
+        mount = Path("/mnt/task-view")
+        constraint = CommandConstraint(Path("/host/task"), mount, True)
+
+        with (
+            patch(
+                "redpanda.execution.local.bash.shutil.which",
+                return_value="/usr/bin/bash",
+            ),
+            patch(
+                "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=RuntimeError("stop after cwd capture")),
+            ) as spawn,
+            self.assertRaisesRegex(RuntimeError, "stop after cwd capture"),
+        ):
+            await runner.run("printf ok", constraint, 10)
+
+        self.assertEqual(spawn.call_args.kwargs["cwd"], mount)
 
     async def test_unknown_process_start_error_passes_through(self):
         runner = BashCommandRunner(executable="/usr/bin/bash")
@@ -155,6 +183,16 @@ class BashCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.stdout.content, "stdout")
         self.assertEqual(result.stderr.content, "stderr")
         self.assertFalse(result.timed_out)
+
+    async def test_command_constraint_starts_in_its_directory(self):
+        runner = BashCommandRunner()
+        with tempfile.TemporaryDirectory() as directory:
+            mount = Path(directory)
+            constraint = CommandConstraint(Path("/host/task"), mount, True)
+            result = await runner.run("printf '%s' \"$PWD\"", constraint, 10)
+
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(Path(result.stdout.content).resolve(), mount.resolve())
 
     async def test_uses_bash_composition_semantics_and_cwd(self):
         runner = BashCommandRunner()

@@ -16,6 +16,11 @@ from redpanda.execution.command import (
     ShellNotFoundError,
     wait_process,
 )
+from redpanda.execution.constraint import (
+    CommandConstraint,
+    TaskWriteConstraint,
+    command_directory,
+)
 from redpanda.execution.local.child_env import (
     CHILD_ENV_OVERLAY,
     latest_persistent_path,
@@ -97,9 +102,9 @@ class PowerShellCommandRunner:
         capture_limit: CaptureLimit | None = None,
         *,
         environment: Mapping[str, str] | None = None,
-        task_root: Path | None = None,
+        write_constraint: TaskWriteConstraint | None = None,
     ) -> None:
-        self.task_root = task_root
+        self.write_constraint = write_constraint
         self._environment = (
             None if environment is None
             else {name.upper(): value for name, value in environment.items()}
@@ -133,7 +138,7 @@ class PowerShellCommandRunner:
     async def run(
         self,
         command: str,
-        cwd: Path,
+        cwd: Path | CommandConstraint,
         timeout_seconds: int,
         *,
         interrupt: asyncio.Event | None = None,
@@ -152,9 +157,11 @@ class PowerShellCommandRunner:
         )
         argv = [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", utf8_command]
         task = None
-        if self.task_root is not None:
+        bound = self._bound_constraint(cwd)
+        start = command_directory(cwd)
+        if bound is not None:
             from .windows_task import WindowsTask
-            task = WindowsTask(self.task_root, cwd, argv)
+            task = WindowsTask(bound.deny_root, bound.cwd, argv)
             spawn = {"startupinfo": task.startupinfo, "creationflags": 0x08000000}
             argv = task.argv
         else:
@@ -172,7 +179,7 @@ class PowerShellCommandRunner:
         try:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
-                cwd=cwd,
+                cwd=start,
                 env=child_env,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -286,3 +293,15 @@ class PowerShellCommandRunner:
             interrupted=interrupted,
         )
         return result if task is None else task.finish(result)
+
+    def _bound_constraint(self, cwd: Path | CommandConstraint) -> CommandConstraint | None:
+        if self.write_constraint is None:
+            if isinstance(cwd, CommandConstraint):
+                raise CommandStartError("产品命令不能套用任务写入约束")
+            return None
+        if (
+            not isinstance(cwd, CommandConstraint)
+            or cwd.deny_root != self.write_constraint.deny_root
+        ):
+            raise CommandStartError("任务命令缺少写入约束，已拒绝启动")
+        return cwd

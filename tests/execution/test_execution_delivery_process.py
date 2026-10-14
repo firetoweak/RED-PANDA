@@ -8,6 +8,7 @@ import pytest
 
 from scripts import execution_runtime
 from redpanda.execution.local import windows_task
+from redpanda.execution.constraint import TaskWriteConstraint
 from redpanda.execution.local.powershell import PowerShellCommandRunner
 
 pytestmark=[pytest.mark.process,pytest.mark.skipif(os.name!="nt",reason="Windows runtime")]
@@ -25,8 +26,9 @@ def test_packaged_execution_runtime_enforces_host_read_only_without_toolchain(tm
     async def scenario():
         workspace=tmp_path/"project";workspace.mkdir();(workspace/"file").write_text("BASE")
         environment=dict(os.environ);environment["PATH"]=str(Path(os.environ["SystemRoot"])/"System32")
-        runner=PowerShellCommandRunner(executable=str(Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"),environment=environment,task_root=workspace)
-        result=await runner.run("try {[IO.File]::WriteAllText('file','BAD');exit 9} catch [UnauthorizedAccessException] {Write-Output DENIED}",workspace,20)
+        constraint=TaskWriteConstraint(workspace)
+        runner=PowerShellCommandRunner(executable=str(Path(os.environ["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"),environment=environment,write_constraint=constraint)
+        result=await runner.run("try {[IO.File]::WriteAllText('file','BAD');exit 9} catch [UnauthorizedAccessException] {Write-Output DENIED}",constraint.for_command(workspace,may_write=False),20)
         assert result.exit_code==0,result
         assert "DENIED" in result.stdout.content
         assert (workspace/"file").read_text()=="BASE"
