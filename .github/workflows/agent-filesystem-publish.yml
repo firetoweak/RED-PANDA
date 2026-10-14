@@ -1,10 +1,10 @@
-name: Sandbox publish
+name: Agent File System publish
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish both runtime packages to GitHub Releases (requires green Sandbox Linux + Sandbox Windows on this SHA)
+        description: Publish filesystem and execution runtimes (requires green Agent File System Linux + Windows on this SHA)
         type: boolean
         default: false
 
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sandbox-publish-${{ github.ref }}
+  group: agent-filesystem-publish-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
           sha="${{ github.sha }}"
           mkdir -p dist/sandbox
-          for pair in "Sandbox Linux:sandbox-linux-x86_64" "Sandbox Windows:sandbox-windows-x86_64"; do
+          for pair in "agent-filesystem-linux.yml:agent-filesystem-linux-x86_64" "agent-filesystem-windows.yml:agent-filesystem-windows-x86_64"; do
             wf="${pair%%:*}"
             artifact="${pair##*:}"
             run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$wf" --commit "$sha" --status completed --limit 20 \
@@ -61,4 +61,4 @@ jobs:
           version=$(python -c 'from scripts.sandbox_runtime import ROOT, release_config; print(release_config(ROOT)["version"])')
           cd dist/sandbox
           sha256sum --check *.sha256
-          gh release create "sandbox-v$version" *.zip *.sha256 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Sandbox runtime $version" --notes "Windows x64 and Linux x64 runtime packages. Linux requires glibc 2.35+, FUSE 3 and /dev/fuse access. Windows requires the WinFsp driver. Rust, LLVM and development SDKs are not required. See native/sandbox/README.md for installation."
+          gh release create "sandbox-v$version" *.zip *.sha256 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Agent File System runtime $version" --notes "Agent File System runtimes for Windows x64 and Linux x64, plus the Windows task execution runtime. These components do not provide operating system sandbox isolation. Linux requires glibc 2.35+, FUSE 3 and /dev/fuse access. Windows requires the WinFsp driver. Rust, LLVM and development SDKs are not required. See native/sandbox/README.md for installation."

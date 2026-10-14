@@ -169,9 +169,9 @@ Cargo 使用仓库内 `../vfs/` 路径依赖。构建临时目录在项目 `.too
 
 ## 发布运行包
 
-原生源码变化会分别触发 [Sandbox Linux](../../.github/workflows/sandbox-linux.yml)（Ubuntu 22.04）与 [Sandbox Windows](../../.github/workflows/sandbox-windows.yml)（windows-latest）：各自构建 release 程序，打包运行库、构建记录、许可证及 SHA256，并执行真实安装与挂载验证。两边是独立 workflow，一边失败不会把另一边的 Checks 涂红。Linux 包要求 glibc 2.35 或更新版本；两端 CI 都会安装 fd 10.2 与 ripgrep 14.1（不用 Ubuntu 仓库里的旧 fd-find）。
+原生源码变化会分别触发 [Agent File System Linux](../../.github/workflows/agent-filesystem-linux.yml)（Ubuntu 22.04）与 [Agent File System Windows](../../.github/workflows/agent-filesystem-windows.yml)（windows-latest）：各自构建 release 程序，打包运行库、构建记录、许可证及 SHA256，并执行真实安装与挂载验证。两边是独立 workflow，一边失败不会把另一边的 Checks 涂红。Linux 包要求 glibc 2.35 或更新版本；两端 CI 都会安装 fd 10.2 与 ripgrep 14.1（不用 Ubuntu 仓库里的旧 fd-find）。Actions 产物分别名为 `agent-filesystem-linux-x86_64` 与 `agent-filesystem-windows-x86_64`，Windows 产物同时包含独立任务执行组件。
 
-需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，确认该 SHA 上 **Sandbox Linux** 与 **Sandbox Windows** 都已成功，再到 GitHub Actions 的 **Sandbox publish → Run workflow**，选择 `main` 并勾选 `publish`。发布 job 会核对两边产物齐全后再创建 `sandbox-v<版本>` Release；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。
+需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，确认该 SHA 上 **Agent File System Linux** 与 **Agent File System Windows** 都已成功，再到 GitHub Actions 的 **Agent File System publish → Run workflow**，选择 `main` 并勾选 `publish`。发布 job 按工作流文件名查找当前 SHA 的成功运行，核对两边产物齐全后再创建 `sandbox-v<版本>` Release，标题为 Agent File System runtime；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。发布标签与压缩包文件名仍对应当前安装器约定。
 
 发布只需在原生程序或通信协议变化时进行；Python、前端的普通修改继续复用固定版本。新的源码提交可以暂时保持同一个运行包版本，待原生功能准备好后再发布。
 

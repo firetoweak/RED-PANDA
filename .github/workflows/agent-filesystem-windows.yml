@@ -1,4 +1,4 @@
-name: Sandbox Windows
+name: Agent File System Windows
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sandbox-windows-${{ github.ref }}
+  group: agent-filesystem-windows-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    name: Build and verify (windows-x86_64)
+    name: Agent File System build and verify (windows-x86_64)
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -72,9 +72,9 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $tools
           & (Join-Path $tools 'fd.exe') --version
           & (Join-Path $tools 'rg.exe') --version
-      - name: Build Windows
+      - name: Build Agent File System for Windows
         run: python scripts/build_sandbox.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
-      - name: Package release build
+      - name: Package Agent File System runtime
         run: python -m scripts.sandbox_runtime package --platform windows-x86_64
       - name: Verify tracked filesystem mutation boundaries
         shell: pwsh
@@ -99,18 +99,18 @@ jobs:
               '--target', 'x86_64-pc-windows-gnullvm', '--lib', 'pool::checkpoint_tests'],
               env=environment, check=True)
           '@ | python -
-      - name: Package Windows task runtime
+      - name: Package Windows task execution runtime
         run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/sandbox'))"
       - name: Prepare verification environment
         run: python -m venv redpanda-env
-      - name: Verify process contracts
+      - name: Verify Agent File System and execution process contracts
         run: redpanda-env/Scripts/python.exe scripts/ci.py process
       - name: Verify installation contracts
         shell: bash
         run: redpanda-env/Scripts/python.exe -m pytest tests/scripts/test_sandbox_runtime.py tests/scripts/test_install_winfsp.py
       - uses: actions/upload-artifact@v7
         with:
-          name: sandbox-windows-x86_64
+          name: agent-filesystem-windows-x86_64
           path: dist/sandbox/*
           if-no-files-found: error
           compression-level: 0

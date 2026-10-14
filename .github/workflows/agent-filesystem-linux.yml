@@ -1,4 +1,4 @@
-name: Sandbox Linux
+name: Agent File System Linux
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sandbox-linux-${{ github.ref }}
+  group: agent-filesystem-linux-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    name: Build and verify (linux-x86_64)
+    name: Agent File System build and verify (linux-x86_64)
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
@@ -63,7 +63,7 @@ jobs:
 
           channel=$(python -c 'import tomllib; print(tomllib.load(open("native/sandbox/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
           rustup toolchain install "$channel" --profile minimal
-      - name: Build Linux
+      - name: Build Agent File System for Linux
         run: python scripts/build_sandbox.py
       - name: Verify tracked filesystem mutation boundaries
         working-directory: native/sandbox
@@ -75,17 +75,17 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
         run: cargo test --locked -p vfs-core --lib pool::checkpoint_tests
-      - name: Package release build
+      - name: Package Agent File System runtime
         run: python -m scripts.sandbox_runtime package --platform linux-x86_64
       - name: Prepare verification environment
         run: python -m venv redpanda-env
-      - name: Verify process contracts
+      - name: Verify Agent File System and execution process contracts
         run: redpanda-env/bin/python scripts/ci.py process
       - name: Verify installation contracts
         run: redpanda-env/bin/python -m pytest tests/scripts/test_sandbox_runtime.py tests/scripts/test_install_winfsp.py
       - uses: actions/upload-artifact@v7
         with:
-          name: sandbox-linux-x86_64
+          name: agent-filesystem-linux-x86_64
           path: dist/sandbox/*
           if-no-files-found: error
           compression-level: 0
