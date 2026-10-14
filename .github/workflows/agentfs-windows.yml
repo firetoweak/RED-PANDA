@@ -73,6 +73,7 @@ jobs:
           & (Join-Path $tools 'fd.exe') --version
           & (Join-Path $tools 'rg.exe') --version
       - name: Build agentFS for Windows
+        id: build
         run: python scripts/build_agentfs.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
       - name: Package agentFS runtime
         run: python -m scripts.agentfs_runtime package --platform windows-x86_64
@@ -105,6 +106,7 @@ jobs:
         shell: bash
         run: redpanda-env/Scripts/python.exe -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         with:
           name: agentFS-windows-x86_64
           path: dist/agentFS/*

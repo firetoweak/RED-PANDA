@@ -110,7 +110,8 @@ def test_native_coding_and_model_restore_are_one_history(tmp_path):
             tool_ids = {c.command_id for e in events if isinstance(e.payload, StepCommitted) for c in e.payload.step.commands if isinstance(c.effect, InvokeTool) and c.effect.name in {"read_file", "apply_patch", "write_file", "execute_command", "restore_workspace"}}
             outcomes = [e.payload for e in events if isinstance(e.payload, CommandOutcomeReceived) and e.payload.command_id in tool_ids]
             results = [outcome.outcome.value for outcome in outcomes]
-            assert all(result["ok"] for result in results), results
+            for result in results:
+                assert result["ok"], result
             return events
         try:
             events = await run(

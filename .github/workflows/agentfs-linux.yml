@@ -64,6 +64,7 @@ jobs:
           channel=$(python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
           rustup toolchain install "$channel" --profile minimal
       - name: Build agentFS for Linux
+        id: build
         run: python scripts/build_agentfs.py
       - name: Verify tracked filesystem mutation boundaries
         working-directory: native/filesystem
@@ -84,6 +85,7 @@ jobs:
       - name: Verify installation contracts
         run: redpanda-env/bin/python -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
       - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         with:
           name: agentFS-linux-x86_64
           path: dist/agentFS/*
