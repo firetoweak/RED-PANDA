@@ -63,6 +63,42 @@ class WorkspaceRegistryTest(unittest.TestCase):
         with self.assertRaises(WorkspaceNotFound):
             registry.get("workspace-missing")
 
+    def test_contains_answers_whether_the_workspace_is_registered(self):
+        registry = WorkspaceRegistry.load(self.registry_path)
+        record = registry.create(name="my-app", task_root=self.make_project("my-app"))
+
+        self.assertTrue(registry.contains(record.workspace_id))
+        self.assertFalse(registry.contains("workspace-missing"))
+
+    def test_delete_removes_the_record_and_persists(self):
+        registry = WorkspaceRegistry.load(self.registry_path)
+        project = self.make_project("my-app")
+        record = registry.create(name="my-app", task_root=project)
+
+        registry.delete(record.workspace_id)
+
+        self.assertEqual(registry.workspaces, ())
+        self.assertEqual(
+            WorkspaceRegistry.load(self.registry_path).workspaces,
+            (),
+        )
+        self.assertTrue(project.is_dir())
+
+    def test_delete_keeps_the_other_records(self):
+        registry = WorkspaceRegistry.load(self.registry_path)
+        kept = registry.create(name="kept", task_root=self.make_project("kept"))
+        dropped = registry.create(name="dropped", task_root=self.make_project("dropped"))
+
+        registry.delete(dropped.workspace_id)
+
+        self.assertEqual(registry.workspaces, (kept,))
+
+    def test_delete_rejects_unknown_workspace(self):
+        registry = WorkspaceRegistry.load(self.registry_path)
+
+        with self.assertRaises(WorkspaceNotFound):
+            registry.delete("workspace-missing")
+
     def test_duplicate_path_is_rejected(self):
         registry = WorkspaceRegistry.load(self.registry_path)
         project = self.make_project("my-app")

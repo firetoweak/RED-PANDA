@@ -177,13 +177,16 @@ body.is-resizing-sidebar {
   padding: 4px 10px 6px;
 }
 
-.workspace-add {
+.workspace-add,
+.workspace-delete {
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
 .workspace-group:hover .workspace-add,
-.workspace-add:focus-visible {
+.workspace-group:hover .workspace-delete,
+.workspace-add:focus-visible,
+.workspace-delete:focus-visible {
   opacity: 1;
 }
 

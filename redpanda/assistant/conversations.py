@@ -182,6 +182,9 @@ class AssistantQueries:
             workspace_id = bound_workspace_id(events)
             if workspace_id is None:
                 continue
+            if not self._sessions.workspaces.contains(workspace_id):
+                # 工作区已被删除：会话 Journal 保留，但不再出现在列表里。
+                continue
             if self._sessions.is_superseded(session_id):
                 continue
             if self._sessions.is_archived(session_id):

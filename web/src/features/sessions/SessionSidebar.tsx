@@ -22,12 +22,13 @@ import {
   IconPencil,
   IconPlus,
   IconAdjustments,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
-import type { SessionSummary } from "../../api/contracts";
+import type { SessionSummary, Workspace } from "../../api/contracts";
 import {
   useArchiveSessionMutation,
   useGetSessionsQuery,
@@ -40,6 +41,7 @@ import { lockDraft } from "../../realtime/runtimeSlice";
 import { redPandaMark } from "../../app/brand";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
+import { DeleteWorkspaceModal } from "./DeleteWorkspaceModal";
 import {
   DRAFT_TITLE,
   draftSessionId,
@@ -59,6 +61,8 @@ type SessionSidebarProps = {
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
+  const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
+    .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
@@ -75,6 +79,12 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   ] = useDisclosure(false);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(
     readCollapsedWorkspaces,
+  );
+  const [deletingWorkspace, setDeletingWorkspace] = useState<Workspace | null>(
+    null,
+  );
+  const workspaceRecords = new Map(
+    workspaces.map((workspace) => [workspace.workspace_id, workspace]),
   );
   const workspaceGroups = groupSessions(sessions, workspaces);
   const fallbackWorkspaceId = defaultWorkspaceId(workspaceGroups, workspaces);
@@ -114,6 +124,22 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
       return;
     }
     navigate(`/workspaces/${encodeURIComponent(targetId)}`);
+    onNavigate();
+  }
+
+  function leaveDeletedWorkspace(workspace: Workspace) {
+    // 正在看这条工作区里的会话或草稿时，先离开它，否则页面停在一个已不存在的落点上。
+    if (
+      currentWorkspaceId === workspace.workspace_id ||
+      routeWorkspaceId === workspace.workspace_id
+    ) {
+      const next = workspaceGroups.find(
+        (group) => group.id !== workspace.workspace_id,
+      );
+      navigate(
+        next === undefined ? "/" : `/workspaces/${encodeURIComponent(next.id)}`,
+      );
+    }
     onNavigate();
   }
 
@@ -192,6 +218,14 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
               onClose={closeCreateWorkspace}
               opened={createWorkspaceOpened}
             />
+            {deletingWorkspace === null ? null : (
+              <DeleteWorkspaceModal
+                onClose={() => setDeletingWorkspace(null)}
+                onDeleted={() => leaveDeletedWorkspace(deletingWorkspace)}
+                opened
+                workspace={deletingWorkspace}
+              />
+            )}
             {workspaceGroups.map((workspace) => {
               const collapsed = collapsedWorkspaces[workspace.id] === true;
               const expanded = expandedWorkspaces[workspace.id] === true;
@@ -244,6 +278,23 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                         variant="subtle"
                       >
                         <IconPlus size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="删除工作区" openDelay={400} position="right">
+                      <ActionIcon
+                        aria-label={`删除 ${workspace.name}`}
+                        className="workspace-delete"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const record = workspaceRecords.get(workspace.id);
+                          if (record !== undefined) {
+                            setDeletingWorkspace(record);
+                          }
+                        }}
+                        size="sm"
+                        variant="subtle"
+                      >
+                        <IconTrash size={14} />
                       </ActionIcon>
                     </Tooltip>
                   </Group>
