@@ -134,13 +134,13 @@ rustup toolchain install nightly-2026-08-07 --profile minimal --component rustfm
 **Windows（PowerShell）**
 
 ```powershell
-python scripts/build_sandbox.py --llvm-dir '.tools\llvm-mingw-20261006-ucrt-x86_64\bin'
+python scripts/build_agentfs.py --llvm-dir '.tools\llvm-mingw-20261006-ucrt-x86_64\bin'
 ```
 
 **Linux**
 
 ```sh
-python scripts/build_sandbox.py
+python scripts/build_agentfs.py
 ```
 
 Windows 命令使用上面解压的目录；已有其他 LLVM MinGW 安装时，将 `--llvm-dir` 改为它的 `bin` 目录。脚本自动准备编译器、链接器和 SDK 路径，默认生成 release 程序，并整理运行库与许可证。
@@ -157,32 +157,32 @@ Windows 命令使用上面解压的目录；已有其他 LLVM MinGW 安装时，
 | `--debug` | 构建 debug 程序 |
 | `--offline` | 在 Cargo 依赖已下载时离线构建 |
 
-这些选项用于 `scripts/build_sandbox.py`；项目环境准备脚本不接收文件服务路径参数。
+这些选项用于 `scripts/build_agentfs.py`；项目环境准备脚本不接收文件服务路径参数。
 
 Cargo 使用仓库内 `../vfs/` 路径依赖。构建临时目录在项目 `.tools/` 内；`CARGO_TARGET_DIR` 可指定其他构建输出位置。
 
 ## 运行与分发
 
-输出在 `redpanda/filesystem/bin/`。Windows 文件名是 `redpanda-sandbox.exe`，同目录还有 WinFsp 用户态 DLL，以及 GNU LLVM target 需要的运行库。Linux 文件名是 `redpanda-sandbox`。Python 默认从这个目录启动程序，无需旧实验包、旧实验目录的 PATH 或额外配置；`REDPANDA_FILESYSTEM_EXECUTABLE` 可显式选择另一个构建。
+输出在 `redpanda/filesystem/bin/`。Windows 文件名是 `redpanda-agentfs.exe`，同目录还有 WinFsp 用户态 DLL，以及 GNU LLVM target 需要的运行库。Linux 文件名是 `redpanda-agentfs`。Python 默认从这个目录启动程序，无需旧实验包、旧实验目录的 PATH 或额外配置；`REDPANDA_FILESYSTEM_EXECUTABLE` 可显式选择另一个构建。
 
 `BUILD.json` 记录当前 VFS、Rust 应用、构建脚本的源码 SHA256 和输出文件 SHA256，不依赖另一个仓库的 Git 状态；附带的 `licenses/` 保存构建所用依赖的声明与 VFS 首次导入来源。生成文件不提交到源码库。发布 Windows 二进制时，需一并携带同目录 DLL、构建来源和许可证声明，运行机器仍需安装 WinFsp 驱动。发布 Linux 二进制时，运行机器仍需 `fusermount3` 和可访问的 `/dev/fuse`。构建脚本不安装系统组件。
 
 ## 发布运行包
 
-原生源码变化会分别触发 [Agent File System Linux](../../.github/workflows/agent-filesystem-linux.yml)（Ubuntu 22.04）与 [Agent File System Windows](../../.github/workflows/agent-filesystem-windows.yml)（windows-latest）：各自构建 release 程序，打包运行库、构建记录、许可证及 SHA256，并执行真实安装与挂载验证。两边是独立 workflow，一边失败不会把另一边的 Checks 涂红。Linux 包要求 glibc 2.35 或更新版本；两端 CI 都会安装 fd 10.2 与 ripgrep 14.1（不用 Ubuntu 仓库里的旧 fd-find）。Actions 产物分别名为 `agent-filesystem-linux-x86_64` 与 `agent-filesystem-windows-x86_64`，Windows 产物同时包含独立任务执行组件。
+原生源码变化会分别触发 [agentFS Linux](../../.github/workflows/agentfs-linux.yml)（Ubuntu 22.04）与 [agentFS Windows](../../.github/workflows/agentfs-windows.yml)（windows-latest）：各自构建 release 程序，打包运行库、构建记录、许可证及 SHA256，并执行真实安装与挂载验证。两边是独立 workflow，一边失败不会把另一边的 Checks 涂红。Linux 包要求 glibc 2.35 或更新版本；两端 CI 都会安装 fd 10.2 与 ripgrep 14.1（不用 Ubuntu 仓库里的旧 fd-find）。Actions 产物分别名为 `agentFS-linux-x86_64` 与 `agentFS-windows-x86_64`，Windows 产物同时包含独立任务执行组件。
 
-需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，确认该 SHA 上 **Agent File System Linux** 与 **Agent File System Windows** 都已成功，再到 GitHub Actions 的 **Agent File System publish → Run workflow**，选择 `main` 并勾选 `publish`。发布 job 按工作流文件名查找当前 SHA 的成功运行，核对两边产物齐全后再创建 `sandbox-v<版本>` Release，标题为 Agent File System runtime；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。发布标签与压缩包文件名仍对应当前安装器约定。
+需要发布新版本时，先更新本目录 `release.json` 的版本并提交到主分支，确认该 SHA 上 **agentFS Linux** 与 **agentFS Windows** 都已成功，再到 GitHub Actions 的 **agentFS publish → Run workflow**，选择 `main` 并勾选 `publish`。发布 job 按工作流文件名查找当前 SHA 的成功运行，核对两边产物齐全后再创建 `agentFS-v<版本>` Release，标题为 agentFS runtime；已有版本不会被覆盖。普通 PR 或推送只构建验证，不发布。发布标签与压缩包文件名仍对应当前安装器约定。
 
 发布只需在原生程序或通信协议变化时进行；Python、前端的普通修改继续复用固定版本。新的源码提交可以暂时保持同一个运行包版本，待原生功能准备好后再发布。
 
 本地检查打包结果时，在完成 release 构建的仓库根目录执行：
 
 ```sh
-python -m scripts.sandbox_runtime package --platform windows-x86_64
+python -m scripts.agentfs_runtime package --platform windows-x86_64
 # Linux 使用 --platform linux-x86_64
 ```
 
-产物在 `dist/sandbox/`；`BUILD.json` 的包版本只写入压缩包，本地构建仍被识别为本地构建。重新运行项目准备脚本会保留它；切回发布包需显式执行 `python -m scripts.sandbox_runtime install --replace`。
+产物在 `dist/agentFS/`；`BUILD.json` 的包版本只写入压缩包，本地构建仍被识别为本地构建。重新运行项目准备脚本会保留它；切回发布包需显式执行 `python -m scripts.agentfs_runtime install --replace`。
 
 ## 范围与验证
 

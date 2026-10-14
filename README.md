@@ -36,9 +36,7 @@
 
 ### 1. 准备运行环境
 
-先自行安装 Git、[ripgrep](https://github.com/BurntSushi/ripgrep#installation)、[fd](https://github.com/sharkdp/fd#installation)、Node.js 与 npm（Node.js 22.x 至少 22.13，或 24.x）。Linux 还需 curl。这些系统工具由你安装，准备脚本只检查是否可用。
-
-获取项目：
+下载[源码 ZIP](https://github.com/firetoweak/RED-PANDA/archive/refs/heads/main.zip) 并解压，进入项目目录；已有 Git 也可以克隆：
 
 ```sh
 git clone https://github.com/firetoweak/RED-PANDA.git
@@ -59,7 +57,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 sh scripts/setup.sh
 ```
 
-脚本自动安装运行所需的 Python 3.13、创建 `redpanda-env`、补齐前后端依赖、下载匹配版本的原生文件服务，并引导你配置模型。Windows 还会安装独立的[任务命令组件](native/execution/README.md)，并按需安装 WinFsp 驱动，首次安装驱动需确认管理员权限；Linux 请先准备 [FUSE 运行组件](native/filesystem/README.md#linux)。重复执行会校验并复用已有运行包，保留自行编译的原生组件。
+脚本自动准备 Python、Node.js、ripgrep、fd，安装依赖并构建网页，下载匹配的原生文件服务。已有可用工具会复用，缺少的应用工具安装在项目自己的目录中，不修改用户或系统 PATH。
+
+Windows 还会自动补齐便携 Git 和[任务命令组件](native/execution/README.md)，按需安装 WinFsp 驱动，首次安装驱动需确认管理员权限。Linux 需有 curl；缺少 Git 或 FUSE 时，通过 apt-get / dnf 安装，可能需要输入 sudo 密码。受限环境的 FUSE 设备权限仍需管理员准备，见[平台运行条件](native/filesystem/README.md#平台运行组件)。
 
 **运行不需要 Rust、LLVM、开发 SDK、预装 Python 或 Docker。** 安装参数见[运行指南](docs/运行指南.md#准备选项)。
 
@@ -68,22 +68,22 @@ sh scripts/setup.sh
 **Windows（PowerShell）**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
 **Linux**
 
 ```sh
-sh scripts/dev.sh
+sh scripts/start.sh
 ```
 
-打开终端打印的浏览器地址，新建工作区、选择代码目录，再创建会话开始使用。以后直接运行启动命令即可，无需重复安装。
+打开终端打印的浏览器地址，在侧栏「模型配置」中添加连接和默认模型，再新建工作区、选择代码目录并创建会话。以后直接运行启动命令即可，无需重复安装。启动使用构建好的网页，不运行 Vite，也不需要系统安装 Node.js。
 
 模型可在侧栏「模型配置」中管理；API Key 保存在个人目录的 `~/.redpanda/connections.json`。详见[模型配置](docs/模型配置.md)。
 
 ## 开发与测试
 
-日常启动支持 Python 与前端热重载。开发者可在自备环境运行 `python -m pytest`；前端测试使用 `npm --prefix web test`。
+修改源码时，用 `scripts/dev.ps1` / `scripts/dev.sh` 启动 Python 与前端热重载。开发者可在自备环境运行 `python -m pytest`；前端测试使用 `npm --prefix web test`。
 
 [GitHub CI](https://github.com/firetoweak/RED-PANDA/actions) 自动运行 Windows / Linux 的日常 Python 测试、完整 process 测试与原生文件服务运行包验证，以及前端测试和构建。本地使用 `python scripts/ci.py` 共用验证入口；提交后用 `python scripts/ci.py --clean` 验证干净 HEAD。真实模型与完整业务流程需另外验证。
 

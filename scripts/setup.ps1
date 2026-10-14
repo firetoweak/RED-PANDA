@@ -1,5 +1,5 @@
 param(
-    [switch]$NoConfigure,
+    [switch]$Configure,
     [switch]$Check
 )
 $ErrorActionPreference = "Stop"
@@ -62,7 +62,7 @@ try {
     }
 
     $setupArgs = @()
-    if ($NoConfigure) { $setupArgs += "--no-configure" }
+    if ($Configure) { $setupArgs += "--configure" }
     if ($Check) { $setupArgs += "--check" }
     & $python -m scripts.setup @setupArgs
     if ($LASTEXITCODE -ne 0) {

@@ -14,7 +14,7 @@ def native_executable() -> Path:
     configured = os.environ.get("REDPANDA_FILESYSTEM_EXECUTABLE")
     if configured is not None:
         return Path(configured)
-    name = "redpanda-sandbox.exe" if os.name == "nt" else "redpanda-sandbox"
+    name = "redpanda-agentfs.exe" if os.name == "nt" else "redpanda-agentfs"
     return Path(__file__).resolve().parents[1] / "bin" / name
 
 class ServiceFailure(RuntimeError):

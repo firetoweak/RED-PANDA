@@ -20,8 +20,8 @@ Detours 源码已固定并随仓库保存，来源和 MIT 许可见 [`vendor/det
 python scripts/build_execution.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
 ```
 
-`scripts/build_sandbox.py` 的 Windows 构建也会构建命令组件。输出为 `redpanda/execution/bin/` 中的启动器、DLL、许可证和 `BUILD.json`；文件服务仍输出到自己的目录。
+`scripts/build_agentfs.py` 的 Windows 构建也会构建命令组件。输出为 `redpanda/execution/bin/` 中的启动器、DLL、许可证和 `BUILD.json`；文件服务仍输出到自己的目录。
 
-文件服务和命令组件各自形成运行包，使用同一固定发布版本，Windows CI 同时上传。命令组件包为 `redpanda-execution-windows-x86_64.zip`。准备入口 `python -m scripts.sandbox_runtime install` 在 Windows 安装两者，分别校验并替换；一个组件安装成功不会把另一个组件缺失视为可用。正常运行不需要编译器。自行构建的组件会被校验并保留；需要替换时使用 `install --replace`。
+文件服务和命令组件各自形成运行包，使用同一固定发布版本，Windows CI 同时上传。命令组件包为 `redpanda-execution-windows-x86_64.zip`。准备入口 `python -m scripts.agentfs_runtime install` 在 Windows 安装两者，分别校验并替换；一个组件安装成功不会把另一个组件缺失视为可用。正常运行不需要编译器。自行构建的组件会被校验并保留；需要替换时使用 `install --replace`。
 
 本次进程契约见 `tests/execution/`，按项目规范运行 `python -m pytest --all`。过程与限制见[生产接入验证](../../docs/验证/Windows命令链路接入.md)。

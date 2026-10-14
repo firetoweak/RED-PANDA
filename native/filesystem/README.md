@@ -19,7 +19,7 @@ Windows 准备入口还会独立安装[任务命令组件](../execution/README.m
 自行编译的程序会保留，不被准备脚本覆盖；修改过的下载包会提示你确认处理。需要明确替换为发布包时，使用自己的 Python 或项目运行环境执行：
 
 ```sh
-python -m scripts.sandbox_runtime install --replace
+python -m scripts.agentfs_runtime install --replace
 ```
 
 下载或校验失败不会替换已有程序。不要只拷贝可执行文件而遗漏同包的运行库。
@@ -40,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_winfsp.ps1
 
 ### Linux
 
-需要 `fuse3` 提供的 `fusermount3`。Ubuntu / Debian 使用 `sudo apt-get install -y fuse3`，Fedora / RHEL 使用 `sudo dnf install -y fuse3`。
+需要 `fuse3` 提供的 `fusermount3`。准备脚本在缺少组件时通过 apt-get / dnf 安装，可能需要输入 sudo 密码。也可自行安装：Ubuntu / Debian 使用 `sudo apt-get install -y fuse3`，Fedora / RHEL 使用 `sudo dnf install -y fuse3`。
 
 `/dev/fuse` 必须存在且当前用户可读写，`/etc/mtab` 必须可读。设备不存在时由管理员加载 FUSE；设备权限不足时由管理员配置访问权限。容器或受限环境还需允许访问 FUSE 设备。
 
@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install_winfsp.ps1
 
 ## 能力边界
 
-这是 **Agent 文件系统的原生文件管理服务**，负责文件变化证据、恢复与子任务成果，不提供操作系统安全隔离。程序与发布包中的 sandbox 名称不代表沙箱能力。Agent 文件系统可以在本机或外部沙箱内运行，沙箱的生命周期不决定文件历史的保留。命令继承用户现有开发环境；挂载外写入、环境安装、系统配置和网络副作用无法随文件一起回退。
+这是 **Agent 文件系统的原生文件管理服务**，负责文件变化证据、恢复与子任务成果，不提供操作系统安全隔离。Agent 文件系统可以在本机或外部沙箱内运行，沙箱的生命周期不决定文件历史的保留。命令继承用户现有开发环境；挂载外写入、环境安装、系统配置和网络副作用无法随文件一起回退。
 
 具体文件操作限制见[构建与验证说明](BUILD.md#范围与验证)及 [VFS Windows 平台说明](../vfs/docs/WINDOWS.md)。
 

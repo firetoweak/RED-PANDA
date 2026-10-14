@@ -8,9 +8,10 @@ import web_chat
 
 
 class WebEntryTests(unittest.TestCase):
+    @patch("web_chat.host_process_environment", return_value={"PATH": "/application/tools"})
     @patch("web_chat.uvicorn.run")
     @patch("web_chat.subprocess.Popen")
-    def test_dev_starts_and_stops_vite(self, popen, run):
+    def test_dev_starts_and_stops_vite(self, popen, run, product_environment):
         frontend = Mock()
         frontend.poll.return_value = None
         popen.return_value = frontend
@@ -21,6 +22,7 @@ class WebEntryTests(unittest.TestCase):
         popen.assert_called_once_with(
             ["node", web / "node_modules" / "vite" / "bin" / "vite.js"],
             cwd=web,
+            env={"PATH": "/application/tools"},
             creationflags=(web_chat.subprocess.CREATE_NEW_PROCESS_GROUP
                            if web_chat.os.name == "nt" else 0),
         )

@@ -76,7 +76,7 @@
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
 | rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，修复后；四类问题对应修复已落地，UI 待复跑） |
-| setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_sandbox.py`、`sandbox_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
+| setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_agentfs.py`、`agentfs_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
 
 ## 入口 → 地图条目 覆盖表
 
@@ -135,9 +135,9 @@
 | `acp_chat.py [--workspace]` | acp-channel |
 | `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--no-configure] [--check]` | setup-and-sandbox-install |
 | `python -m redpanda.initialize --configure / --if-needed` | setup-and-sandbox-install |
-| `scripts/build_sandbox.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
-| `scripts/sandbox_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
-| `scripts/sandbox_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
+| `scripts/build_agentfs.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
+| `scripts/agentfs_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
+| `scripts/agentfs_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
 | `scripts/install_winfsp.ps1` | setup-and-sandbox-install（仅 Windows，未 live） |
 | `scripts/dev.sh`、`scripts/dev.ps1` | setup-and-sandbox-install |
 

@@ -112,7 +112,7 @@ struct Service {
     _owner: File,
 }
 #[cfg(not(any(windows, target_os = "linux")))]
-compile_error!("redpanda-sandbox mounts on Windows (WinFsp) and Linux (FUSE)");
+compile_error!("redpanda-agentfs mounts on Windows (WinFsp) and Linux (FUSE)");
 
 fn local_path(path: &Path) -> Result<PathBuf> {
     let p = path.canonicalize()?;
@@ -777,7 +777,7 @@ fn emit(v: &Value) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<_> = std::env::args_os().collect();
-    ensure!(args.len() == 3, "usage: redpanda-sandbox STORE BASE");
+    ensure!(args.len() == 3, "usage: redpanda-agentfs STORE BASE");
     let mut service = Service::open(PathBuf::from(&args[1]), PathBuf::from(&args[2])).await?;
     emit(
         &json!({"status":"ready","version":3,"depth":service.parent.depth,"cold_hashed_bytes":service.parent.hashed_bytes}),

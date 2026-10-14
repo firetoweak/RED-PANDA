@@ -1,4 +1,4 @@
-"""打包或安装预编译沙箱；运行包安装不调用编译工具。"""
+"""打包或安装预编译原生文件服务；运行包安装不调用编译工具。"""
 from __future__ import annotations
 
 import argparse
@@ -17,13 +17,13 @@ from urllib.request import urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PLATFORMS = {"windows-x86_64": "redpanda-sandbox.exe", "linux-x86_64": "redpanda-sandbox"}
+PLATFORMS = {"windows-x86_64": "redpanda-agentfs.exe", "linux-x86_64": "redpanda-agentfs"}
 
 
 def host_platform() -> str:
     name = f"{platform.system().lower()}-x86_64"
     if platform.machine().lower() not in {"amd64", "x86_64"} or name not in PLATFORMS:
-        raise ValueError("沙箱运行包目前只支持 Windows x64 和 Linux x64。")
+        raise ValueError("原生文件服务运行包目前只支持 Windows x64 和 Linux x64。")
     if name == "linux-x86_64":
         libc, version = platform.libc_ver()
         if libc != "glibc" or not version or tuple(map(int, version.split("."))) < (2, 35):
@@ -34,9 +34,9 @@ def host_platform() -> str:
 def release_config(root: Path) -> dict:
     config = json.loads((root / "native/filesystem/release.json").read_text(encoding="utf-8"))
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", config["version"]):
-        raise ValueError("沙箱运行包版本必须为 major.minor.patch。")
+        raise ValueError("原生文件服务运行包版本必须为 major.minor.patch。")
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", config["repository"]):
-        raise ValueError("沙箱运行包仓库必须为 owner/repository。")
+        raise ValueError("原生文件服务运行包仓库必须为 owner/repository。")
     return config
 
 
@@ -52,14 +52,14 @@ def manifest_files(record: dict, target: str, *, required: set[str] | None = Non
         if target == "windows-x86_64":
             required.update({"winfsp-x64.dll", "libunwind.dll", "licenses/WINFSP-LICENSE.txt", "licenses/LLVM-LICENSE.txt"})
     if not required.issubset(files) or not any(name.startswith("licenses/") for name in files):
-        raise ValueError("沙箱运行包缺少程序、运行库或许可证。")
+        raise ValueError("原生文件服务运行包缺少程序、运行库或许可证。")
     for name, expected in files.items():
         path = PurePosixPath(name)
         if (not name or path.is_absolute() or ".." in path.parts or "\\" in name
                 or ":" in name or path.as_posix() != name or name == "BUILD.json"
                 or any(part.endswith((".", " ")) for part in path.parts)
                 or not re.fullmatch(r"[0-9a-f]{64}", expected)):
-            raise ValueError(f"沙箱运行包清单无效：{name}")
+            raise ValueError(f"原生文件服务运行包清单无效：{name}")
     return set(files)
 
 
@@ -67,7 +67,7 @@ def verify(directory: Path, record: dict, target: str, *, required: set[str] | N
     for name in manifest_files(record, target, required=required):
         path = directory / name
         if not path.is_file() or path.is_symlink() or digest(path) != record["files"][name]:
-            raise ValueError(f"沙箱文件缺失或校验失败：{name}")
+            raise ValueError(f"原生文件服务文件缺失或校验失败：{name}")
 
 
 def package(root: Path, output: Path, target: str) -> Path:
@@ -82,7 +82,7 @@ def package(root: Path, output: Path, target: str) -> Path:
     verify(source, record, target)
     record["package"] = {"version": config["version"], "platform": target}
     output.mkdir(parents=True, exist_ok=True)
-    archive = output / f"redpanda-sandbox-{target}.zip"
+    archive = output / f"agentFS-{target}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
         bundle.writestr("BUILD.json", json.dumps(record, ensure_ascii=False, indent=2))
         for name in sorted(record["files"]):
@@ -99,7 +99,7 @@ def download(url: str, destination: Path) -> None:
             shutil.copyfileobj(response, stream)
     except HTTPError as error:
         if error.code == 404:
-            raise ValueError("当前版本的沙箱运行包尚未发布，请查看仓库 Releases；无需安装 Rust 来运行。") from error
+            raise ValueError("当前版本的原生文件服务运行包尚未发布，请查看仓库 Releases；无需安装 Rust 来运行。") from error
         raise
 
 
@@ -110,7 +110,7 @@ def install(root: Path, *, replace: bool = False) -> Path:
         executable = Path(configured).resolve()
         if not executable.is_file():
             raise ValueError(f"REDPANDA_FILESYSTEM_EXECUTABLE 指定的程序不存在：{executable}")
-        print(f"使用指定沙箱：{executable}")
+        print(f"使用指定原生文件服务：{executable}")
         return executable
     config = release_config(root)
     destination = root / "redpanda/filesystem/bin"
@@ -118,7 +118,7 @@ def install(root: Path, *, replace: bool = False) -> Path:
     record_path = destination / "BUILD.json"
     record = json.loads(record_path.read_text(encoding="utf-8")) if record_path.exists() and not replace else {}
     if executable.is_file() and "package" not in record and not replace:
-        print(f"保留本地构建的沙箱：{executable}")
+        print(f"保留本地构建的原生文件服务：{executable}")
         return executable
     if "package" in record and not replace:
         try:
@@ -126,19 +126,19 @@ def install(root: Path, *, replace: bool = False) -> Path:
         except ValueError as error:
             raise ValueError(f"{error}；为保留本地修改，已停止覆盖。确认重新下载时使用 install --replace。") from error
         if record["package"] == {"version": config["version"], "platform": target}:
-            print(f"沙箱运行包 {config['version']} 已就绪，跳过下载。")
+            print(f"原生文件服务运行包 {config['version']} 已就绪，跳过下载。")
             return executable
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=".sandbox-", dir=destination.parent))
+    staging = Path(tempfile.mkdtemp(prefix=".agentfs-", dir=destination.parent))
     backup = staging / "previous"
     try:
-        archive = staging / f"redpanda-sandbox-{target}.zip"
-        base = f"https://github.com/{config['repository']}/releases/download/sandbox-v{config['version']}"
+        archive = staging / f"agentFS-{target}.zip"
+        base = f"https://github.com/{config['repository']}/releases/download/agentFS-v{config['version']}"
         download(f"{base}/{archive.name}", archive)
         checksum = staging / "checksum"
         download(f"{base}/{archive.name}.sha256", checksum)
         if checksum.read_text(encoding="ascii").split() != [digest(archive), archive.name]:
-            raise ValueError("沙箱下载包 SHA256 校验失败；原有程序未更改。")
+            raise ValueError("原生文件服务下载包 SHA256 校验失败；原有程序未更改。")
         unpacked = staging / "bin"
         unpacked.mkdir()
         with zipfile.ZipFile(archive) as bundle:
@@ -148,7 +148,7 @@ def install(root: Path, *, replace: bool = False) -> Path:
             names = [entry.filename for entry in bundle.infolist()]
             expected = manifest_files(record, target) | {"BUILD.json"}
             if len(names) != len({name.casefold() for name in names}) or set(names) != expected:
-                raise ValueError("沙箱压缩包内容与清单不一致。")
+                raise ValueError("原生文件服务压缩包内容与清单不一致。")
             bundle.extractall(unpacked)
         verify(unpacked, record, target)
         (unpacked / PLATFORMS[target]).chmod(0o755)
@@ -166,7 +166,7 @@ def install(root: Path, *, replace: bool = False) -> Path:
         # 恢复失败时保留备份，供用户取回，不能随临时目录一起删除。
         if not backup.exists():
             shutil.rmtree(staging)
-    print(f"沙箱运行包 {config['version']} 已安装：{executable}")
+    print(f"原生文件服务运行包 {config['version']} 已安装：{executable}")
     return executable
 
 
@@ -176,7 +176,8 @@ def ensure_platform_runtime(root: Path) -> None:
                         str(root / "scripts/install_winfsp.ps1")], check=True)
     elif sys.platform == "linux":
         if shutil.which("fusermount3") is None:
-            raise ValueError("缺少 FUSE 运行组件：Ubuntu/Debian 执行 sudo apt-get install -y fuse3；Fedora 执行 sudo dnf install -y fuse3。")
+            from scripts.runtime_tools import install_linux_packages
+            install_linux_packages(["fuse3"])
         if not os.access("/dev/fuse", os.R_OK | os.W_OK) or not os.access("/etc/mtab", os.R_OK):
             raise ValueError("FUSE 运行条件未就绪：需可读写 /dev/fuse 且可读 /etc/mtab，见 native/filesystem/README.md。")
 
@@ -184,12 +185,12 @@ def ensure_platform_runtime(root: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_subparsers(dest="action", required=True)
-    installer = actions.add_parser("install", help="安装或复用沙箱运行包")
-    installer.add_argument("--replace", action="store_true", help="用发布包替换本地沙箱，包括本地构建")
+    installer = actions.add_parser("install", help="安装或复用原生文件服务运行包")
+    installer.add_argument("--replace", action="store_true", help="用发布包替换本地原生文件服务，包括本地构建")
     installer.add_argument("--with-runtime", action="store_true", help="同时检查 FUSE，或安装 WinFsp 驱动（不含 SDK）")
     packager = actions.add_parser("package", help="将 release 构建打包供发布")
     packager.add_argument("--platform", choices=PLATFORMS, required=True)
-    packager.add_argument("--output", type=Path, default=ROOT / "dist/sandbox")
+    packager.add_argument("--output", type=Path, default=ROOT / "dist/agentFS")
     args = parser.parse_args(argv)
     try:
         if args.action == "package":
@@ -202,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.with_runtime:
                 ensure_platform_runtime(ROOT)
     except (ValueError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
-        parser.exit(1, f"沙箱准备失败：{error}\n")
+        parser.exit(1, f"原生文件服务准备失败：{error}\n")
     return 0
 
 

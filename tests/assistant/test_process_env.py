@@ -15,6 +15,19 @@ from redpanda.assistant.host.process_env import (
 
 
 class HostProcessEnvironmentTest(unittest.TestCase):
+    def setUp(self):
+        product_tools = patch("redpanda.assistant.host.process_env.application_tool_paths", return_value=[])
+        self.addCleanup(product_tools.stop)
+        product_tools.start()
+
+    def test_application_tools_do_not_change_the_command_environment_source(self):
+        original = {"PATH": "/workspace/tools", "FOO": "bar"}
+        with patch("redpanda.assistant.host.process_env.application_tool_paths", return_value=["/application/tools"]), \
+             patch("redpanda.assistant.host.process_env.user_session_environment", return_value=None):
+            product = host_process_environment(original)
+        self.assertEqual(product["PATH"].split(os.pathsep), ["/application/tools", "/workspace/tools"])
+        self.assertEqual(original, {"PATH": "/workspace/tools", "FOO": "bar"})
+
     def test_keeps_current_path_prefix_and_appends_missing_session_dirs(self):
         # Drive-letter paths contain ":", which is os.pathsep on Linux.
         # Windows PATH uses ";", so the same strings stay one entry there.

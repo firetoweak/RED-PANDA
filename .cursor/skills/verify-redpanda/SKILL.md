@@ -40,7 +40,7 @@ sh scripts/setup.sh
 File-tool and rewind proofs also need the native sandbox. Linux needs `fusermount3` and a writable `/dev/fuse`. macOS has no file view; do not build or drive file rewind there.
 
 ```sh
-./redpanda-env/bin/python scripts/build_sandbox.py
+./redpanda-env/bin/python scripts/build_agentfs.py
 ```
 
 Pick another `PORT` if `8876` is already listening. Then start the server in its own tmux session and record the process id. `exec` keeps that id on `web_chat.py`.
@@ -52,7 +52,7 @@ tmux new-session -d -s "$SESSION" -c "$PWD" \
 
 Ready means `doctor.py` exits 0. The log line `Uvicorn running on http://127.0.0.1:$PORT` is the same moment, not a substitute for Doctor. If the log stops before that line, read `web.log` and do not drive the port.
 
-Windows, from the repository root in PowerShell, uses the same variables. Build with `.\redpanda-env\Scripts\python.exe scripts/build_sandbox.py` after WinFsp is installed, then:
+Windows, from the repository root in PowerShell, uses the same variables. Build with `.\redpanda-env\Scripts\python.exe scripts/build_agentfs.py` after WinFsp is installed, then:
 
 ```powershell
 $env:REDPANDA_HOME = $env:REDPANDA_HOME
@@ -75,7 +75,7 @@ Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 m
 
 `live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
-`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-sandbox` is missing, or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
+`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing, or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
 
 Add `--require-model` or `--require-sandbox` only when the feature you are about to drive cannot be skipped.
 

@@ -6,7 +6,7 @@ import zipfile
 
 import pytest
 
-from scripts import sandbox_runtime as runtime
+from scripts import agentfs_runtime as runtime
 
 
 def configure(root, version="0.4.1"):
@@ -66,6 +66,7 @@ def test_package_has_runtime_files_and_leaves_local_build_unmarked(tmp_path, tar
     source = make_build(tmp_path, target)
     original = (source / "BUILD.json").read_bytes()
     archive = runtime.package(tmp_path, tmp_path / "dist", target)
+    assert archive.name == f"agentFS-{target}.zip"
     assert archive.with_suffix(".zip.sha256").read_bytes() == (
         f"{runtime.digest(archive)}  {archive.name}\n".encode("ascii")
     )
@@ -79,16 +80,16 @@ def test_package_has_runtime_files_and_leaves_local_build_unmarked(tmp_path, tar
 def test_fresh_install_is_pinned_and_second_run_is_offline(delivery, monkeypatch):
     _, root, _, requests = delivery
     executable = runtime.install(root)
-    assert executable.read_bytes() == b"compiled redpanda-sandbox.exe"
+    assert executable.read_bytes() == b"compiled redpanda-agentfs.exe"
     assert len(requests) == 2
-    assert all("/sandbox-v0.4.1/" in url for url in requests)
+    assert all("/agentFS-v0.4.1/" in url for url in requests)
     monkeypatch.setattr(runtime, "download", lambda *args: pytest.fail("already installed"))
     assert runtime.install(root) == executable
 
 
 def test_reinstall_preserves_local_build_and_explicit_override(delivery, monkeypatch, tmp_path):
     _, root, _, requests = delivery
-    local = make_build(root, "windows-x86_64") / "redpanda-sandbox.exe"
+    local = make_build(root, "windows-x86_64") / "redpanda-agentfs.exe"
     assert runtime.install(root) == local
     custom = tmp_path / "custom.exe"
     custom.write_bytes(b"custom")
@@ -106,7 +107,7 @@ def test_changed_managed_binary_is_protected_unless_replacement_is_explicit(deli
     assert len(requests) == 2
     assert executable.read_bytes() == b"local edit"
     runtime.install(root, replace=True)
-    assert executable.read_bytes() == b"compiled redpanda-sandbox.exe"
+    assert executable.read_bytes() == b"compiled redpanda-agentfs.exe"
 
 
 def test_pinned_version_change_updates_only_managed_package(delivery):
@@ -115,27 +116,27 @@ def test_pinned_version_change_updates_only_managed_package(delivery):
     configure(producer, "0.4.2")
     configure(root, "0.4.2")
     source = producer / "redpanda/filesystem/bin"
-    (source / "redpanda-sandbox.exe").write_bytes(b"new release")
+    (source / "redpanda-agentfs.exe").write_bytes(b"new release")
     record = json.loads((source / "BUILD.json").read_text())
-    record["files"]["redpanda-sandbox.exe"] = runtime.digest(source / "redpanda-sandbox.exe")
+    record["files"]["redpanda-agentfs.exe"] = runtime.digest(source / "redpanda-agentfs.exe")
     (source / "BUILD.json").write_text(json.dumps(record))
     runtime.package(producer, archive.parent, "windows-x86_64")
     runtime.install(root)
     assert executable.read_bytes() == b"new release"
-    assert "/sandbox-v0.4.2/" in requests[-1]
+    assert "/agentFS-v0.4.2/" in requests[-1]
 
 
 @pytest.mark.parametrize("corruption", ["archive_hash", "file_hash", "version", "platform", "extra_path", "manifest_path"])
 def test_bad_delivery_never_replaces_existing_program(delivery, corruption):
     _, root, archive, _ = delivery
-    original = make_build(root, "windows-x86_64") / "redpanda-sandbox.exe"
+    original = make_build(root, "windows-x86_64") / "redpanda-agentfs.exe"
     before = original.read_bytes()
     if corruption == "archive_hash":
         archive.with_suffix(".zip.sha256").write_text("0" * 64 + f"  {archive.name}\n")
     else:
         def corrupt(files):
             if corruption == "file_hash":
-                files["redpanda-sandbox.exe"] = b"tampered"
+                files["redpanda-agentfs.exe"] = b"tampered"
             elif corruption == "extra_path":
                 files["../escaped"] = b"escaped"
             else:
@@ -154,12 +155,12 @@ def test_bad_delivery_never_replaces_existing_program(delivery, corruption):
 
 def test_failed_directory_swap_restores_previous_program(delivery, monkeypatch):
     _, root, _, _ = delivery
-    original = make_build(root, "windows-x86_64") / "redpanda-sandbox.exe"
+    original = make_build(root, "windows-x86_64") / "redpanda-agentfs.exe"
     before = original.read_bytes()
     rename = Path.rename
 
     def fail_install(path, destination):
-        if path.name == "bin" and path.parent.name.startswith(".sandbox-"):
+        if path.name == "bin" and path.parent.name.startswith(".agentfs-"):
             raise PermissionError("program in use")
         return rename(path, destination)
 
@@ -171,7 +172,7 @@ def test_failed_directory_swap_restores_previous_program(delivery, monkeypatch):
 
 def test_download_failure_keeps_previous_program(delivery, monkeypatch):
     _, root, _, _ = delivery
-    original = make_build(root, "windows-x86_64") / "redpanda-sandbox.exe"
+    original = make_build(root, "windows-x86_64") / "redpanda-agentfs.exe"
     before = original.read_bytes()
     def unavailable(*args):
         raise OSError("network unavailable")

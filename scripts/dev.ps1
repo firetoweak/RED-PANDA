@@ -7,7 +7,7 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf) -or
 }
 Push-Location $projectRoot
 try {
-    & $python web_chat.py --dev @args
+    & $python -m scripts.launch --dev @args
     exit $LASTEXITCODE
 }
 finally {

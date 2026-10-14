@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import zipfile
 
-from scripts import sandbox_runtime as delivery
+from scripts import agentfs_runtime as delivery
 
 REQUIRED = {"redpanda-command.exe", "redpanda-hook.dll", "licenses/DETOURS-LICENSE.md",
             "licenses/DETOURS-SOURCE.md", "licenses/LLVM-LICENSE.txt"}
@@ -55,7 +55,7 @@ def install(root: Path, *, replace: bool = False) -> Path:
     backup = staging / "previous"
     try:
         archive = staging / "redpanda-execution-windows-x86_64.zip"
-        base = f"https://github.com/{config['repository']}/releases/download/sandbox-v{config['version']}"
+        base = f"https://github.com/{config['repository']}/releases/download/agentFS-v{config['version']}"
         delivery.download(f"{base}/{archive.name}", archive)
         checksum = staging / "checksum"
         delivery.download(f"{base}/{archive.name}.sha256", checksum)

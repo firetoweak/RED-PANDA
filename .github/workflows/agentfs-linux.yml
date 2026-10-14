@@ -1,4 +1,4 @@
-name: Agent File System Linux
+name: agentFS Linux
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agent-filesystem-linux-${{ github.ref }}
+  group: agentfs-linux-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    name: Agent File System build and verify (linux-x86_64)
+    name: agentFS build and verify (linux-x86_64)
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
@@ -63,30 +63,30 @@ jobs:
 
           channel=$(python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
           rustup toolchain install "$channel" --profile minimal
-      - name: Build Agent File System for Linux
-        run: python scripts/build_sandbox.py
+      - name: Build agentFS for Linux
+        run: python scripts/build_agentfs.py
       - name: Verify tracked filesystem mutation boundaries
         working-directory: native/filesystem
         env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/agentfs/target
         run: cargo test --locked --test tracking_contracts
-      - name: Verify Agent File System core contracts
+      - name: Verify agentFS core contracts
         working-directory: native/vfs
         env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/agentfs/target
         run: cargo test --locked -p vfs-core --lib --tests
-      - name: Package Agent File System runtime
-        run: python -m scripts.sandbox_runtime package --platform linux-x86_64
+      - name: Package agentFS runtime
+        run: python -m scripts.agentfs_runtime package --platform linux-x86_64
       - name: Prepare verification environment
         run: python -m venv redpanda-env
-      - name: Verify Agent File System and execution process contracts
+      - name: Verify agentFS and execution process contracts
         run: redpanda-env/bin/python scripts/ci.py process
       - name: Verify installation contracts
-        run: redpanda-env/bin/python -m pytest tests/scripts/test_sandbox_runtime.py tests/scripts/test_install_winfsp.py
+        run: redpanda-env/bin/python -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
       - uses: actions/upload-artifact@v7
         with:
-          name: agent-filesystem-linux-x86_64
-          path: dist/sandbox/*
+          name: agentFS-linux-x86_64
+          path: dist/agentFS/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

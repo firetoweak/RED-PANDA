@@ -131,9 +131,9 @@ def main():
     tools.mkdir(exist_ok=True)
 
     environment = prepared.variables
-    target = Path(environment.get("CARGO_TARGET_DIR", tools / "sandbox/target")).resolve()
+    target = Path(environment.get("CARGO_TARGET_DIR", tools / "agentfs/target")).resolve()
     environment["CARGO_TARGET_DIR"] = str(target)
-    temporary = tools / "sandbox/tmp"
+    temporary = tools / "agentfs/tmp"
     temporary.mkdir(parents=True, exist_ok=True)
     environment["TMP"] = environment["TEMP"] = str(temporary)
 
@@ -150,7 +150,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     profile = "debug" if args.debug else "release"
     artifact_dir = target / profile if not args.target else target / args.target / profile
-    binary_name = "redpanda-sandbox.exe" if windows else "redpanda-sandbox"
+    binary_name = "redpanda-agentfs.exe" if windows else "redpanda-agentfs"
     shutil.copy2(artifact_dir / binary_name, output)
     licenses = output / "licenses"
     licenses.mkdir(exist_ok=True)
@@ -177,7 +177,7 @@ def main():
               "source_sha256": {"native/vfs": source_digest(factory),
                                 "native/filesystem": source_digest(ROOT / "native/filesystem"),
                                 ".cargo/config.toml": hashlib.sha256((ROOT / ".cargo/config.toml").read_bytes()).hexdigest(),
-                                "scripts/build_sandbox.py": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
+                                "scripts/build_agentfs.py": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
               "files": files}
     (output / "BUILD.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     print(output / binary_name)

@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 
 from redpanda.channels.web import create_web_app
+from redpanda.assistant.host.process_env import host_process_environment
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "web" / "dist"
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> None:
         frontend = subprocess.Popen(
             ["node", web / "node_modules" / "vite" / "bin" / "vite.js"],
             cwd=web,
+            env=host_process_environment(),
             # Uvicorn uses Ctrl+C for reloads on Windows; Vite must survive them.
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )

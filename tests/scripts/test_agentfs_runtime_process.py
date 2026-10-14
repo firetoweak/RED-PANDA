@@ -5,7 +5,7 @@ import shutil
 
 import pytest
 
-from scripts import sandbox_runtime as runtime
+from scripts import agentfs_runtime as runtime
 from tests.fixtures.file_view import CommandClient
 
 pytestmark = pytest.mark.process
@@ -13,9 +13,9 @@ pytestmark = pytest.mark.process
 
 def test_packaged_runtime_mounts_without_developer_toolchains(tmp_path, monkeypatch):
     target = runtime.host_platform()
-    archive = runtime.ROOT / f"dist/sandbox/redpanda-sandbox-{target}.zip"
+    archive = runtime.ROOT / f"dist/agentFS/agentFS-{target}.zip"
     if not archive.exists():
-        pytest.skip("需要先构建并打包沙箱运行程序")
+        pytest.skip("需要先构建并打包 agentFS 运行程序")
     config = tmp_path / "native/filesystem/release.json"
     config.parent.mkdir(parents=True)
     shutil.copyfile(runtime.ROOT / "native/filesystem/release.json", config)

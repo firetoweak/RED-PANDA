@@ -16,7 +16,7 @@
 
 - `kill-web`：`kill -9` Web 进程（连同 Worker）后同 home 重启。
 - `kill-worker`：只 `kill -9` 某会话的 Worker 子进程。
-- `kill-sandbox`：工具执行中杀掉 `redpanda-sandbox`/FUSE 进程。
+- `kill-sandbox`：工具执行中杀掉 `redpanda-agentfs`/FUSE 进程。
 - `network-loss`：模型请求期间断网。
 - `model-errors`：超时、429、5xx、流被截断、无效 key。
 - `pending-auth-survives`：待授权跨重启保留。
@@ -39,7 +39,7 @@
   - (d) 发 `继续` 或点 `重试` → 模型收到 `NO_RESULT_YET` 提示，应先检查 `out.txt` 再决定；若系统自动重跑了该命令（`out.txt` 出现两行），判失败。
   - 残留：`pgrep -af 'sleep 30'` 应为空或在 30 秒内结束；`mount | grep -i fuse` 无残留挂载，或下一次文件工具调用前被 `clear_stale_mount` 清掉（再次跑 `read_file` 成功即证）。
 - **kill -9 Worker**：只杀 Worker 子进程。(b) SSE 出现 `session_failed`，界面显示 `Session 进程失败：...`。(a) 再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。
-- **kill 沙箱/FUSE 进程**：`apply_patch` 或 `execute_command` 期间 `pkill -9 redpanda-sandbox`。(a) 该工具以失败或 UNKNOWN 结束，不得报告成功；工作区文件要么是旧内容要么是新内容，不得是半截。(c) 用户工作区目录本身仍可访问（`ls $SCRATCH_WORKSPACE` 不报 `Transport endpoint is not connected`）。(d) 立即再发一次文件操作 → 成功（残留挂载被清理）。若挂载点残留且后续工具一直失败，记为问题。
+- **kill 沙箱/FUSE 进程**：`apply_patch` 或 `execute_command` 期间 `pkill -9 redpanda-agentfs`。(a) 该工具以失败或 UNKNOWN 结束，不得报告成功；工作区文件要么是旧内容要么是新内容，不得是半截。(c) 用户工作区目录本身仍可访问（`ls $SCRATCH_WORKSPACE` 不报 `Transport endpoint is not connected`）。(d) 立即再发一次文件操作 → 成功（残留挂载被清理）。若挂载点残留且后续工具一直失败，记为问题。
 - **断网**：模型请求中 `iptables` 或关闭网卡阻断出站（或把 base URL 指向不监听的端口）。(b) 约 3.5 秒内（0.5+1+2 秒重试）出现 `模型服务暂时不可用：... transport failed`。(a) journal 有失败事实，没有半条助手消息。(d) 恢复网络后点 `重试` → 同一触发重跑，不重复用户消息（`GET` 里该用户消息只有一条）。
 - **429 / 5xx（流开始前）**：假服务前两次返回 429，第三次正常 → (a) 回合成功，journal 只有一条助手回复。四次都 429 → `模型服务暂时不可用：<provider> 429: ...`。
 - **流中断**：假服务先发几个 `data:` 块再断开、不发 `[DONE]` → (b) `模型响应不符合约定：model stream ended without the [DONE] marker` 或传输错误，**不重试**。(a) 已流出的预览文字不作为最终回复写入 journal（界面 `preview.aborted`）。
