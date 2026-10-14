@@ -396,6 +396,10 @@ def create_web_app(
             full_access=body.full_access,
         ).to_dict()
 
+    @app.delete("/api/workspaces/{workspace_id}", status_code=204)
+    async def delete_workspace(workspace_id: str, request: Request):
+        request.app.state.workspaces.delete(workspace_id)
+
     @app.post("/api/workspaces/select-directory")
     async def pick_workspace_directory():
         selected = await select_directory()

@@ -484,6 +484,23 @@ class WebFirstSliceTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_deleting_a_workspace_removes_only_the_registry_record(self):
+        task_root = Path(self._directory.name) / "task"
+        task_root.mkdir()
+        record = self.workspaces.create(name="demo", task_root=task_root)
+
+        response = self.client.delete(f"/api/workspaces/{record.workspace_id}")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.workspaces.workspaces, ())
+        self.assertTrue(task_root.is_dir())
+
+    def test_deleting_an_unknown_workspace_is_a_client_error(self):
+        response = self.client.delete("/api/workspaces/workspace-missing")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("workspace-missing", response.json()["detail"])
+
     def test_selecting_another_session_only_changes_owner_selection(self):
         response = self.client.post(
             "/api/sessions/session-old/select",

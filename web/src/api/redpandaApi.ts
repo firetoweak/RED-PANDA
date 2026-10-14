@@ -227,6 +227,13 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) => workspaceSchema.parse(value),
       invalidatesTags: ["Workspaces"],
     }),
+    deleteWorkspace: build.mutation<void, { workspaceId: string }>({
+      query: ({ workspaceId }) => ({
+        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Workspaces", "Sessions"],
+    }),
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
@@ -499,6 +506,7 @@ export const {
   useGetSessionModelQuery,
   useSetSessionModelMutation,
   useCreateWorkspaceMutation,
+  useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
   useGetSessionsQuery,

@@ -470,8 +470,19 @@ class ConversationProjectionTest(unittest.TestCase):
         self.assertEqual(rejected.items[0].tools[0].status, "rejected")
 
 
+class _Workspaces:
+    """list_sessions 只问 registry 一件事：这个工作区还在不在。"""
+
+    def __init__(self, *workspace_ids: str) -> None:
+        self._workspace_ids = set(workspace_ids)
+
+    def contains(self, workspace_id: str) -> bool:
+        return workspace_id in self._workspace_ids
+
+
 class Idle:
     superseded: frozenset[str] = frozenset()
+    workspaces = _Workspaces("workspace-1")
 
     def activity(self, session_id):
         return "idle"
