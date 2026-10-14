@@ -76,7 +76,7 @@ jobs:
         run: python scripts/build_sandbox.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
       - name: Package Agent File System runtime
         run: python -m scripts.sandbox_runtime package --platform windows-x86_64
-      - name: Verify tracked filesystem mutation boundaries
+      - name: Verify Agent File System native contracts
         shell: pwsh
         run: |
           @'
@@ -92,11 +92,7 @@ jobs:
               env=environment, check=True)
           subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
               '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
-              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'windows_checkpoint'],
-              env=environment, check=True)
-          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
-              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
-              '--target', 'x86_64-pc-windows-gnullvm', '--lib', 'pool::checkpoint_tests'],
+              '--target', 'x86_64-pc-windows-gnullvm', '--lib', '--tests'],
               env=environment, check=True)
           '@ | python -
       - name: Package Windows task execution runtime

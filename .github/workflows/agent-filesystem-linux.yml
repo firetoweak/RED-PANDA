@@ -70,11 +70,11 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
         run: cargo test --locked --test tracking_contracts
-      - name: Verify checkpoint coordination and failure cleanup
+      - name: Verify Agent File System core contracts
         working-directory: native/vfs
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/sandbox/target
-        run: cargo test --locked -p vfs-core --lib pool::checkpoint_tests
+        run: cargo test --locked -p vfs-core --lib --tests
       - name: Package Agent File System runtime
         run: python -m scripts.sandbox_runtime package --platform linux-x86_64
       - name: Prepare verification environment

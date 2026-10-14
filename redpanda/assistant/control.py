@@ -11,9 +11,9 @@ from redpanda.runtime.events import (
     DomainFactCommitted,
     Event,
     StepCommitted,
-    UserMessageReceived,
 )
 from redpanda.runtime.json_values import thaw_value
+from redpanda.runtime.projections import turn_notice_current
 from redpanda.runtime.state import DecisionFrame
 from redpanda.tools.control import (
     ControlApprovalExecution,
@@ -421,13 +421,7 @@ def project_control_message(events: Sequence[Event]) -> str | None:
             terminal_at = event.sequence
     if terminal_at is None:
         return message
-    for event in events:
-        if (
-            isinstance(event.payload, UserMessageReceived)
-            and event.sequence > terminal_at
-        ):
-            return None
-    return message
+    return message if turn_notice_current(events, terminal_at) else None
 
 
 def execution_id_for(request_id: str) -> str:

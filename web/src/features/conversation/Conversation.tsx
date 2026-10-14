@@ -47,9 +47,11 @@ import {
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
-import { FileChangesPanel } from "./FileChangesPanel";
+import { FileChangesPanel, FileChangesSummary } from "./FileChangesPanel";
 import { createClientId } from "./clientId";
 import { EditableUserMessage } from "./EditableUserMessage";
+import { ErrorDetails, ErrorNotice } from "./ErrorNotice";
+import { ContentPage } from "./ContentPage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatMessageTime } from "./messageTime";
@@ -74,6 +76,9 @@ import { useFollowOutput } from "./useFollowOutput";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
 
+type OpenPage = { kind: "changes" } | { kind: "subagent"; commandId: string }
+  | { kind: "error"; title: string; message: string };
+
 export function Conversation() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
@@ -83,7 +88,7 @@ export function Conversation() {
   const ownerSessionId = useAppSelector((state) => state.runtime.ownerSessionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
   const sessionId = routeId;
-  const [observedCommandId, setObservedCommandId] = useState<string | null>(null);
+  const [openPage, setOpenPage] = useState<OpenPage | null>(null);
   const runtime = useAppSelector((state) => state.runtime.sessions[sessionId]);
   const selected = useGetConversationQuery(sessionId, {
     skip: routeSessionId === undefined,
@@ -355,7 +360,7 @@ export function Conversation() {
                     onRestart={setRewindStepId}
                     restartDisabled={connectionId === null || restarting.isLoading}
                     steps={turn.process}
-                    onObserveSubagent={setObservedCommandId}
+                    onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
                   />
                 )}
                 {thinking === null ? null : (
@@ -443,7 +448,7 @@ export function Conversation() {
         </ScrollArea>
       )}
       <Box className="composer-dock">
-        {items.length === 0 || followOutput.following ? null : (
+        {items.length === 0 || (!running && followOutput.following) ? null : (
           <Button
             className="jump-to-latest"
             leftSection={<IconArrowDown size={14} />}
@@ -454,10 +459,16 @@ export function Conversation() {
             跳到最新
           </Button>
         )}
+        <Box ref={followOutput.wheelAreaRef}>
+          {activePlan === null ? null : (
+            <Box className="composer-column" mb={8}>
+              <WorkPlanPanel plan={activePlan}
+                stopped={!running && (conversation.session.paused || lastError != null)} />
+            </Box>
+          )}
+        </Box>
         <Stack className="composer-column" gap={8}>
         <WorkspaceFileResultAlert result={conversation.workspace_file_result} />
-        <WorkPlanPanel key={activePlan === null ? "none" : "active"} plan={activePlan}
-          stopped={!running && (conversation.session.paused || lastError != null)} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
@@ -474,41 +485,26 @@ export function Conversation() {
           </Alert>
         )}
         {lastError == null ? null : (
-          <Alert
-            className="composer-error"
-            color="red"
-            icon={<IconAlertCircle size={16} />}
-            py="xs"
-          >
-            <Group gap="sm" justify="space-between" wrap="nowrap">
-              <Text className="pre-wrap" ff="monospace" fz={11}>
-                执行已停止。{lastError}
-              </Text>
-              <Button
-                disabled={connectionId === null}
-                loading={retrying.isLoading}
-                onClick={() => {
-                  if (connectionId === null) {
-                    return;
-                  }
-                  void retryTurn({ connectionId, sessionId }).unwrap();
-                }}
-                size="compact-xs"
-                variant="white"
-              >
-                再试
-              </Button>
-            </Group>
-          </Alert>
+          <ErrorNotice title="执行已停止" message={lastError}
+            onOpen={(message) => setOpenPage({ kind: "error", title: "执行已停止", message })}>
+            <Button
+              disabled={connectionId === null}
+              loading={retrying.isLoading}
+              onClick={() => {
+                if (connectionId === null) {
+                  return;
+                }
+                void retryTurn({ connectionId, sessionId }).unwrap();
+              }}
+              size="compact-xs"
+              variant="white"
+            >
+              再试
+            </Button>
+          </ErrorNotice>
         )}
         {sending.isError || editing.isError || retrying.isError || branching.isError || stopping.isError ? (
-          <Alert
-            className="composer-error"
-            color="red"
-            icon={<IconAlertCircle size={16} />}
-            py="xs"
-          >
-            {stopping.isError
+          <ErrorNotice title="操作失败" onOpen={(message) => setOpenPage({ kind: "error", title: "操作失败", message })} message={stopping.isError
               ? requestErrorMessage(stopping.error, "停止失败，请确认后端连接后重试。")
               : branching.isError
               ? requestErrorMessage(
@@ -522,10 +518,9 @@ export function Conversation() {
                 )
               : retrying.isError
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
-                : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")}
-          </Alert>
+                : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")} />
         ) : null}
-        <FileChangesPanel key={sessionId} sessionId={sessionId} />
+        <FileChangesSummary sessionId={sessionId} onOpen={() => setOpenPage({ kind: "changes" })} />
         <Composer
           sessionId={sessionId}
           workspaceId={conversation.workspace_id}
@@ -678,9 +673,16 @@ export function Conversation() {
         )}
       </Modal>
     </Box>
-    {observedCommandId === null ? null : <SubagentPanel
-      key={observedCommandId} parentSessionId={sessionId} commandId={observedCommandId}
-      onClose={() => setObservedCommandId(null)} />}
+    {openPage === null ? null : (
+      <ContentPage title={openPage.kind === "changes" ? "文件改动"
+        : openPage.kind === "subagent" ? "子 Agent" : `${openPage.title} · 错误详情`}
+        onClose={() => setOpenPage(null)}>
+        {openPage.kind === "changes" ? <FileChangesPanel sessionId={sessionId} />
+          : openPage.kind === "subagent" ? <SubagentPanel key={openPage.commandId}
+            parentSessionId={sessionId} commandId={openPage.commandId} />
+          : <ErrorDetails message={openPage.message} />}
+      </ContentPage>
+    )}
     </Box>
   );
 }

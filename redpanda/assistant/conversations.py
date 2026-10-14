@@ -17,7 +17,7 @@ from redpanda.assistant.subagent.subagent import (
     RETURN_FACT, UnreportedChildReturn, project_delegate_intents, project_parent,
     project_pending, project_unreported_returns,
 )
-from redpanda.assistant.runner import SessionNotFoundError
+from redpanda.assistant.runner import SessionNotFoundError, pending_authorization_ids
 from redpanda.assistant.workspaces import bound_workspace, bound_workspace_id
 from redpanda.filesystem import ChangesReadConflict, child_root, child_workspace, workspace_files
 from redpanda.tools.results import file_error_message
@@ -66,6 +66,7 @@ class SessionSummary:
     updated_at: datetime | None
     activity: SessionActivity
     has_active_subagents: bool
+    needs_attention: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +183,9 @@ class AssistantQueries:
             workspace_id = bound_workspace_id(events)
             if workspace_id is None:
                 continue
+            if not self._sessions.workspaces.contains(workspace_id):
+                # 工作区已被删除：会话 Journal 保留，但不再出现在列表里。
+                continue
             if self._sessions.is_superseded(session_id):
                 continue
             if self._sessions.is_archived(session_id):
@@ -192,6 +196,7 @@ class AssistantQueries:
                 workspace_id=workspace_id,
                 activity=self._sessions.activity(session_id),
                 title=self._sessions.session_title(session_id),
+                last_error=self._sessions.current_failure(session_id),
             )
             terminals = project_unreported_returns(
                 events, await self._child_returns(events),
@@ -310,6 +315,7 @@ def project_session_summary(
     workspace_id: str,
     activity: SessionActivity,
     title: str | None = None,
+    last_error: str | None = None,
 ) -> SessionSummary:
     if title is None:
         title = "新会话"
@@ -330,6 +336,11 @@ def project_session_summary(
         ),
         activity=activity,
         has_active_subagents=bool(project_pending(events)),
+        needs_attention=bool(
+            last_error is not None
+            or pending_authorization_ids(replay(session_id, events).state)
+            or pending_approval_view(events) is not None
+        ),
     )
 
 

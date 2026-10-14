@@ -177,14 +177,28 @@ body.is-resizing-sidebar {
   padding: 4px 10px 6px;
 }
 
-.workspace-add {
+.workspace-add,
+.workspace-menu {
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.workspace-group:hover .workspace-add,
-.workspace-add:focus-visible {
+.workspace-head:hover .workspace-add,
+.workspace-head:hover .workspace-menu,
+.workspace-head:focus-within .workspace-add,
+.workspace-head:focus-within .workspace-menu,
+.workspace-add:focus-visible,
+.workspace-menu:focus-visible,
+.workspace-menu[aria-expanded="true"],
+.workspace-menu[data-loading] {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .workspace-add,
+  .workspace-menu {
+    opacity: 1;
+  }
 }
 
 .workspace-name {
@@ -268,6 +282,11 @@ body.is-resizing-sidebar {
   animation: activity-spin 0.8s linear infinite;
 }
 
+.activity-dot-attention::before,
+.activity-dot-completed::before { content: none; }
+.activity-dot-attention { color: var(--mantine-color-red-6); }
+.activity-dot-completed { color: var(--mantine-color-green-6); }
+
 @keyframes activity-spin {
   to {
     transform: rotate(360deg);
@@ -311,24 +330,34 @@ body.is-resizing-sidebar {
   min-width: 0;
 }
 
-.subagent-panel {
+.content-page {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  flex: 0 0 min(var(--subagent-panel-width), calc(100% - 320px));
+  flex: 0 0 min(var(--content-page-width), calc(100% - 320px));
   min-width: 0;
   min-height: 0;
   border-left: 1px solid var(--rp-border);
   background: var(--rp-canvas);
 }
-
-.subagent-panel-header {
-  padding: 18px 16px;
+.content-page-header {
+  padding: 10px 12px;
   border-bottom: 1px solid var(--rp-border);
+  background: var(--rp-surface);
 }
-
-.subagent-panel-controls { padding-right: 44px; }
-.subagent-panel-resize {
+.content-page-title { min-width: 0; }
+.content-page-body { display: grid; min-height: 0; min-width: 0; }
+.content-page-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--rp-border); }
+.content-page-scroll { min-height: 0; }
+.error-details-page .content-page-scroll { padding: 16px; }
+.error-details-page, .subagent-page, .file-changes-page {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+.content-page-resize {
   position: absolute;
   top: 0;
   left: -4px;
@@ -338,7 +367,7 @@ body.is-resizing-sidebar {
   cursor: col-resize;
   touch-action: none;
 }
-.subagent-panel-resize::after {
+.content-page-resize::after {
   content: "";
   position: absolute;
   left: 3px;
@@ -346,25 +375,20 @@ body.is-resizing-sidebar {
   height: 100%;
   background: var(--rp-border-strong);
 }
-.subagent-panel-resize:hover::after,
-.subagent-panel-resize:focus-visible::after,
-.subagent-panel-resize.is-dragging::after { background: var(--rp-accent-ring); }
-body.is-resizing-subagent { cursor: col-resize; user-select: none; }
+.content-page-resize:hover::after,
+.content-page-resize:focus-visible::after,
+.content-page-resize.is-dragging::after { background: var(--rp-accent-ring); }
+body.is-resizing-content-page { cursor: col-resize; user-select: none; }
+.subagent-panel-header { padding: 12px; border-bottom: 1px solid var(--rp-border); }
 .subagent-panel-scroll { min-height: 0; }
 .subagent-panel-content { padding: 16px 12px 48px; }
 .subagent-process .execution-steps { padding-top: 4px; }
 .subagent-jump { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); }
 
 @media (max-width: 64em) {
-  .subagent-panel-resize { display: none; }
-  .subagent-panel-controls { padding-right: 0; }
-  .subagent-panel {
-    position: fixed;
-    z-index: 200;
-    inset: 0 0 0 auto;
-    width: min(var(--subagent-panel-width), 100vw);
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
-  }
+  .content-page-resize { display: none; }
+  .conversation-layout:has(> .content-page) > .conversation { display: none; }
+  .content-page { flex: 1; border-left: 0; }
 }
 
 .conversation {
@@ -792,7 +816,7 @@ body.is-resizing-subagent { cursor: col-resize; user-select: none; }
 .changed-file:hover, .changed-file.is-selected { background: var(--rp-accent-fill); }
 .changed-file-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mantine-font-family-monospace); }
 .changes-partial, .diff-origin { color: var(--mantine-color-orange-6); font-size: 10px; }
-.file-diff { overflow: auto; border: 1px solid var(--rp-border); border-radius: 6px; max-height: 60vh; font: 12px/1.7 var(--mantine-font-family-monospace); }
+.file-diff { border: 1px solid var(--rp-border); border-radius: 6px; font: 12px/1.7 var(--mantine-font-family-monospace); }
 .diff-line { display: flex; min-width: max-content; padding-right: 8px; }
 .diff-number { flex: 0 0 45px; text-align: right; padding-right: 8px; color: var(--mantine-color-dimmed); user-select: none; }
 .diff-sign { flex: 0 0 18px; user-select: none; }
@@ -807,3 +831,23 @@ body.is-resizing-subagent { cursor: col-resize; user-select: none; }
   .welcome-mascot { width: 90px; }
   .conversation-welcome { gap: 6px; }
 }
+
+.file-changes-body { display: flex; min-height: 0; min-width: 0; }
+.file-changes-diff { flex: 1; display: grid; min-width: 0; min-height: 0; }
+.file-diff-page { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+.file-diff-scroll { min-height: 0; min-width: 0; }
+.file-diff-pagination { padding: 8px 12px; border-top: 1px solid var(--rp-border); }
+.file-changes-files { display: grid; grid-template-rows: auto minmax(0, 1fr); flex: 0 0 240px; max-width: 35%; min-width: 0; border-left: 1px solid var(--rp-border); background: var(--rp-surface); }
+.file-tree-scroll { min-height: 0; min-width: 0; }
+.file-changes-files .changed-files { padding: 0 6px 12px; }
+.file-tree-group { min-width: 0; }
+.file-tree-group > summary { padding: 6px 2px; cursor: pointer; font-size: 12px; color: var(--mantine-color-dimmed); overflow-wrap: anywhere; }
+.file-tree-group > summary svg { vertical-align: middle; margin-right: 5px; }
+.file-tree-children { padding-left: 10px; }
+.file-changes-files .changed-file { gap: 4px; padding: 7px 5px; border: 0; }
+.file-changes-files .changed-file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-changes-files .changes-counts { flex-shrink: 0; margin-left: 0; }
+.file-change-status { flex-shrink: 0; font: 10px var(--mantine-font-family-monospace); }
+.file-change-added { color: var(--mantine-color-green-6); }
+.file-change-deleted { color: var(--mantine-color-red-6); }
+.file-change-modified { color: var(--rp-accent-text); }

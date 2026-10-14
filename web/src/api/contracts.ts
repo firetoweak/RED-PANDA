@@ -42,6 +42,7 @@ export const sessionSummarySchema = z
     updated_at: z.string().datetime({ offset: true }).nullable(),
     activity: z.enum(["running", "idle"]),
     has_active_subagents: z.boolean(),
+    needs_attention: z.boolean(),
   })
   .strict();
 
@@ -98,6 +99,20 @@ export const workPlanSchema = z.object({
 }).strict();
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
+
+export const workspaceFileResultSchema = z
+  .object({
+    policy: z.enum(["preserve", "original", "keep"]),
+    effect: z.enum(["restored", "partially_restored", "preserved", "unchanged", "kept", "failed"]),
+    changed_files: z.array(z.string().min(1)),
+    preserved_files: z.array(z.string().min(1)),
+    deleted_files: z.array(z.string().min(1)),
+    failed_files: z.array(z.string().min(1)),
+    error: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type WorkspaceFileResult = z.infer<typeof workspaceFileResultSchema>;
 
 export const conversationViewSchema = z
   .object({
@@ -159,15 +174,7 @@ export const conversationViewSchema = z
       version: z.string().regex(/^(initial|[0-9a-f]{64})$/).nullable(),
       error: z.string().min(1).nullable(),
     }).strict().nullable(),
-    workspace_file_result: z.object({
-      policy: z.enum(["preserve", "original", "keep"]),
-      effect: z.enum(["restored", "partially_restored", "preserved", "unchanged", "kept", "failed"]),
-      changed_files: z.array(z.string().min(1)),
-      preserved_files: z.array(z.string().min(1)),
-      deleted_files: z.array(z.string().min(1)),
-      failed_files: z.array(z.string().min(1)),
-      error: z.string().min(1).nullable(),
-    }).strict().nullable(),
+    workspace_file_result: workspaceFileResultSchema.nullable(),
   })
   .strict();
 

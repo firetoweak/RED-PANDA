@@ -1277,11 +1277,11 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     )?;
                     stmt.execute((parent_ino, name))?;
 
-                    // Removing an empty directory drops both its parent dentry and its
-                    // synthetic "." link. No live namespace path can reference the
-                    // inode afterward, so retaining it at nlink=1 would create an
-                    // unreachable inode that integrity checks correctly reject.
-                    conn.execute("DELETE FROM fs_inode WHERE ino = ?", (ino,))?;
+                    // Removing an empty directory drops both its parent dentry and
+                    // synthetic "." link. Reap its origin and other sidecar rows in
+                    // this transaction, just like the last unlink of a file.
+                    conn.execute("UPDATE fs_inode SET nlink = 0 WHERE ino = ?", (ino,))?;
+                    owned.reap_inode_with_conn(conn, ino)?;
 
                     // Decrement parent nlink (removed directory's ".." link) and update timestamps
                     let dur = SystemTime::now().duration_since(UNIX_EPOCH)?;

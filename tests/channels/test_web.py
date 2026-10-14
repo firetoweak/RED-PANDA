@@ -176,7 +176,7 @@ class _Queries:
 
     async def list_sessions(self):
         return (
-            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False),
+            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False, False),
         )
 
     async def conversation(self, session_id, *, view=None):
@@ -483,6 +483,39 @@ class WebFirstSliceTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_workspace_rename_validates_and_trims_the_display_name(self):
+        record = self.workspaces.create(name="demo", task_root=Path(self._directory.name))
+        url = f"/api/workspaces/{record.workspace_id}"
+        for body in ({"name": " "}, {"name": 12}, {"name": "x", "task_root": "other"}):
+            with self.subTest(body=body):
+                self.assertEqual(self.client.patch(url, json=body).status_code, 422)
+        self.assertEqual(self.workspaces.get(record.workspace_id), record)
+
+        response = self.client.patch(url, json={"name": " 新名称 "})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {**record.to_dict(), "name": "新名称"})
+        self.assertEqual(
+            self.client.patch("/api/workspaces/workspace-missing", json={"name": "x"}).status_code,
+            404,
+        )
+
+    def test_deleting_a_workspace_removes_only_the_registry_record(self):
+        task_root = Path(self._directory.name) / "task"
+        task_root.mkdir()
+        record = self.workspaces.create(name="demo", task_root=task_root)
+
+        response = self.client.delete(f"/api/workspaces/{record.workspace_id}")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.workspaces.workspaces, ())
+        self.assertTrue(task_root.is_dir())
+
+    def test_deleting_an_unknown_workspace_is_a_client_error(self):
+        response = self.client.delete("/api/workspaces/workspace-missing")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("workspace-missing", response.json()["detail"])
 
     def test_selecting_another_session_only_changes_owner_selection(self):
         response = self.client.post(

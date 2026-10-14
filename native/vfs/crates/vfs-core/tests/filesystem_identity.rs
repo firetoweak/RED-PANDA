@@ -10,6 +10,45 @@ use vfs_core::{
 use vfs_core::{OverlayFS, PartialOriginMode, PartialOriginPolicy};
 
 #[tokio::test]
+async fn removing_copied_base_directory_preserves_deletion_across_reopen() -> Result<()> {
+    let dir = tempdir()?;
+    let base_path = dir.path().join("base");
+    std::fs::create_dir_all(base_path.join("refs"))?;
+    let db = dir.path().join("delta.db");
+    {
+        let sdk = open(&db).await?;
+        let overlay = OverlayFS::new(Arc::new(vfs_core::HostFS::new(&base_path)?), sdk.fs.clone());
+        overlay.init(base_path.to_str().unwrap()).await?;
+        let refs = overlay.lookup(1, "refs").await?.unwrap();
+        let identity = overlay.file_identity(refs.ino)?;
+        // A metadata change materializes the base directory and its origin.
+        overlay.chmod(refs.ino, 0o700).await?;
+        let copied = sdk.fs.lookup(1, "refs").await?.unwrap();
+        assert_eq!(overlay.file_identity(refs.ino)?, identity);
+
+        overlay.rmdir(1, "refs").await?;
+        assert!(overlay.lookup(1, "refs").await?.is_none());
+        assert!(overlay.readdir(1).await?.unwrap().is_empty());
+        assert!(sdk.fs.getattr(copied.ino).await?.is_none());
+        overlay.finalize().await?;
+        let conn = Connection::open(&db)?;
+        let report = vfs_core::schema::integrity::check(
+            &conn,
+            &vfs_core::schema::integrity::CheckOpts::new(&db),
+        )?;
+        assert!(report.ok, "{report:?}");
+    }
+    let sdk = open(&db).await?;
+    let overlay = OverlayFS::new(Arc::new(vfs_core::HostFS::new(&base_path)?), sdk.fs.clone());
+    overlay.load().await?;
+    assert!(overlay.lookup(1, "refs").await?.is_none());
+    assert!(overlay.readdir(1).await?.unwrap().is_empty());
+    assert!(base_path.join("refs").is_dir());
+    overlay.finalize().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn three_stacked_deltas_preserve_independent_files_and_inherited_aliases() -> Result<()> {
     for mode in [PartialOriginMode::Off, PartialOriginMode::On] {
         let dir = tempdir()?;

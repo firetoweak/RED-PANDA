@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   AppShell,
-  Badge,
   Box,
   Button,
   Collapse,
@@ -16,18 +15,19 @@ import {
 } from "@mantine/core";
 import {
   IconArchive,
-  IconFolder,
   IconFolderPlus,
   IconMessageCircle,
   IconPencil,
   IconPlus,
   IconAdjustments,
+  IconAlertCircle,
+  IconCircleCheck,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
-import type { SessionSummary } from "../../api/contracts";
+import type { SessionSummary, Workspace } from "../../api/contracts";
 import {
   useArchiveSessionMutation,
   useGetSessionsQuery,
@@ -40,6 +40,9 @@ import { lockDraft } from "../../realtime/runtimeSlice";
 import { redPandaMark } from "../../app/brand";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
+import { RemoveWorkspaceModal } from "./RemoveWorkspaceModal";
+import { RenameWorkspaceModal } from "./RenameWorkspaceModal";
+import { WorkspaceHeader } from "./WorkspaceHeader";
 import {
   DRAFT_TITLE,
   draftSessionId,
@@ -57,8 +60,11 @@ type SessionSidebarProps = {
 };
 
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
+  const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
+    .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
@@ -75,6 +81,13 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   ] = useDisclosure(false);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(
     readCollapsedWorkspaces,
+  );
+  const [removingWorkspace, setRemovingWorkspace] = useState<Workspace | null>(
+    null,
+  );
+  const [renamingWorkspace, setRenamingWorkspace] = useState<Workspace | null>(null);
+  const workspaceRecords = new Map(
+    workspaces.map((workspace) => [workspace.workspace_id, workspace]),
   );
   const workspaceGroups = groupSessions(sessions, workspaces);
   const fallbackWorkspaceId = defaultWorkspaceId(workspaceGroups, workspaces);
@@ -114,6 +127,22 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
       return;
     }
     navigate(`/workspaces/${encodeURIComponent(targetId)}`);
+    onNavigate();
+  }
+
+  function leaveRemovedWorkspace(workspace: Workspace) {
+    // 正在看这条工作区里的会话或草稿时，先离开它，否则页面停在一个已不存在的落点上。
+    if (
+      currentWorkspaceId === workspace.workspace_id ||
+      routeWorkspaceId === workspace.workspace_id
+    ) {
+      const next = workspaceGroups.find(
+        (group) => group.id !== workspace.workspace_id,
+      );
+      navigate(
+        next === undefined ? "/" : `/workspaces/${encodeURIComponent(next.id)}`,
+      );
+    }
     onNavigate();
   }
 
@@ -192,6 +221,20 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
               onClose={closeCreateWorkspace}
               opened={createWorkspaceOpened}
             />
+            {removingWorkspace === null ? null : (
+              <RemoveWorkspaceModal
+                onClose={() => setRemovingWorkspace(null)}
+                onRemoved={() => leaveRemovedWorkspace(removingWorkspace)}
+                opened
+                workspace={removingWorkspace}
+              />
+            )}
+            {renamingWorkspace === null ? null : (
+              <RenameWorkspaceModal
+                onClose={() => setRenamingWorkspace(null)}
+                workspace={renamingWorkspace}
+              />
+            )}
             {workspaceGroups.map((workspace) => {
               const collapsed = collapsedWorkspaces[workspace.id] === true;
               const expanded = expandedWorkspaces[workspace.id] === true;
@@ -212,41 +255,24 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                   }
                   key={workspace.id}
                 >
-                  <Group className="workspace-head" gap={0} wrap="nowrap">
-                    <UnstyledButton
-                      aria-expanded={!collapsed}
-                      className="workspace-toggle"
-                      onClick={() => toggleWorkspace(workspace.id)}
-                    >
-                      <Group gap={6} wrap="nowrap">
-                        <IconFolder size={14} />
-                        <Text
-                          className="workspace-name"
-                          fw={600}
-                          fz={12}
-                          truncate
-                        >
-                          {workspace.name}
-                        </Text>
-                      </Group>
-                    </UnstyledButton>
-                    <Tooltip
-                      label="在此工作区新建会话"
-                      openDelay={400}
-                      position="right"
-                    >
-                      <ActionIcon
-                        aria-label={`在 ${workspace.name} 新建会话`}
-                        className="workspace-add"
-                        disabled={connectionId === null}
-                        onClick={() => openDraft(workspace.id)}
-                        size="sm"
-                        variant="subtle"
-                      >
-                        <IconPlus size={14} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
+                  <WorkspaceHeader
+                    workspace={workspace}
+                    collapsed={collapsed}
+                    connectionId={connectionId}
+                    draftId={draftId}
+                    registered={workspaceRecords.has(workspace.id)}
+                    onToggle={() => toggleWorkspace(workspace.id)}
+                    onCreate={() => openDraft(workspace.id)}
+                    onRename={() => setRenamingWorkspace(workspaceRecords.get(workspace.id)!)}
+                    onRemove={() => setRemovingWorkspace(workspaceRecords.get(workspace.id)!)}
+                    onArchived={(archivedId) => {
+                      dispatch(lockDraft(archivedId));
+                      if (archivedId === sessionId) {
+                        navigate(`/workspaces/${encodeURIComponent(workspace.id)}`);
+                        onNavigate();
+                      }
+                    }}
+                  />
                   <Collapse expanded={!collapsed}>
                     <Stack className="workspace-sessions" gap={3}>
                       {shownSessions.map((session) => (
@@ -337,14 +363,16 @@ function SessionRow({
     (state) => state.runtime.sessions[session.session_id]?.activity ?? session.activity,
   );
   const showSpinner = activity === "running" || session.has_active_subagents;
-  const activityLabel = activity === "running"
-    ? "运行中"
-    : session.has_active_subagents
-      ? "等待子 Agent"
-      : "空闲";
   const unread = useAppSelector(
     (state) => state.runtime.sessions[session.session_id]?.unread ?? 0,
   );
+  const status = session.needs_attention ? "attention"
+    : showSpinner ? "running"
+    : unread > 0 ? "completed" : "idle";
+  const activityLabel = status === "attention" ? "需要操作"
+    : status === "completed" ? "执行已结束，有新结果"
+    : activity === "running" ? "运行中"
+    : session.has_active_subagents ? "等待子 Agent" : "空闲";
   const [archiveSession] = useArchiveSessionMutation();
   const [setSessionTitle] = useSetSessionTitleMutation();
   const [editing, setEditing] = useState(false);
@@ -400,9 +428,12 @@ function SessionRow({
     >
       <Tooltip label={activityLabel} openDelay={400} position="right">
         <span
-          className={`activity-dot activity-dot-${showSpinner ? "running" : "idle"}`}
+          className={`activity-dot activity-dot-${status}`}
           aria-label={activityLabel}
-        />
+        >
+          {status === "attention" ? <IconAlertCircle size={13} />
+            : status === "completed" ? <IconCircleCheck size={13} /> : null}
+        </span>
       </Tooltip>
       {editing ? (
         <TextInput
@@ -450,11 +481,7 @@ function SessionRow({
       )}
       {editing ? null : (
         <Group className="session-row-meta" gap={2} wrap="nowrap">
-          {unread > 0 ? (
-            <Badge size="xs" variant="filled">
-              {unread}
-            </Badge>
-          ) : updatedAt === "" ? null : (
+          {updatedAt === "" ? null : (
             <Text className="session-time" c="dimmed" fz={11}>
               {updatedAt}
             </Text>

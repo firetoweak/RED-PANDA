@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from redpanda.runtime.events import Event
+from redpanda.runtime.events import Event, UserMessageReceived
 from redpanda.runtime.model import CanonicalState
 from redpanda.runtime.state import StateProjector
 
@@ -40,6 +40,18 @@ class ReplayView:
     state: CanonicalState
     trace: TraceView
     artifacts: ArtifactResolution
+
+
+def turn_notice_current(events: tuple[Event, ...], sequence: int) -> bool:
+    """这条事实之后用户没有再提交消息，它产生的提示仍属于当前轮次。
+
+    提示跟着轮次走：用户提交下一条消息就开始新一轮，上一轮的结果不再
+    呈现。事实本身留在 journal 里，过期只影响人看到的提示。
+    """
+    return not any(
+        isinstance(event.payload, UserMessageReceived) and event.sequence > sequence
+        for event in events
+    )
 
 
 def diagnose_artifacts(

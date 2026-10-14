@@ -227,6 +227,22 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) => workspaceSchema.parse(value),
       invalidatesTags: ["Workspaces"],
     }),
+    renameWorkspace: build.mutation<Workspace, { workspaceId: string; name: string }>({
+      query: ({ workspaceId, name }) => ({
+        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
+        method: "PATCH",
+        body: { name },
+      }),
+      transformResponse: (value: unknown) => workspaceSchema.parse(value),
+      invalidatesTags: ["Workspaces"],
+    }),
+    deleteWorkspace: build.mutation<void, { workspaceId: string }>({
+      query: ({ workspaceId }) => ({
+        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Workspaces", "Sessions"],
+    }),
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
@@ -373,6 +389,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Sessions"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -385,6 +402,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, request_id: requestId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Sessions"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -499,6 +517,8 @@ export const {
   useGetSessionModelQuery,
   useSetSessionModelMutation,
   useCreateWorkspaceMutation,
+  useRenameWorkspaceMutation,
+  useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
   useGetSessionsQuery,

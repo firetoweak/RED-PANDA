@@ -36,6 +36,7 @@ import { ModelSelector } from "../models/ModelSelector";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { createClientId } from "./clientId";
+import { clearSentComposerText, restoreComposerText, saveComposerText } from "./composerDraft";
 import {
   composeSendContent,
   parkedPreviewText,
@@ -88,7 +89,7 @@ export function Composer({
   onRetry,
   inputTokens,
 }: ComposerProps) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => restoreComposerText(sessionId));
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
   const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -133,6 +134,10 @@ export function Composer({
     (text.trim() !== "" || ready.length > 0);
 
   useEffect(() => {
+    saveComposerText(sessionId, text, parked?.text ?? "");
+  }, [sessionId, text, parked]);
+
+  useEffect(() => {
     return () => {
       for (const item of pendingRef.current) {
         releasePreview(item);
@@ -168,13 +173,14 @@ export function Composer({
     }
   }, [running, parked, sending]);
 
-  async function sendDraft(draft: ComposerDraft) {
+  async function sendDraft(draft: ComposerDraft, field: "text" | "parkedText") {
     const done = draft.pending.filter(
       (item) => item.state === "done" && item.attachmentId !== null,
     );
     const content = composeSendContent(draft.text, done);
     const artifactRefs = done.map((item) => item.attachmentId as string);
     await onSendRef.current(content, artifactRefs);
+    clearSentComposerText(sessionId, field, draft.text);
     for (const item of draft.pending) {
       releasePreview(item);
     }
@@ -186,10 +192,10 @@ export function Composer({
       return;
     }
     flushingRef.current = true;
-    parkedRef.current = null;
-    setParked(null);
     try {
-      await sendDraft(draft);
+      await sendDraft(draft, "parkedText");
+      parkedRef.current = null;
+      setParked(null);
     } catch {
       parkedRef.current = draft;
       setParked(draft);
@@ -204,17 +210,17 @@ export function Composer({
       return;
     }
     const draft: ComposerDraft = { text, pending };
-    setText("");
     setPending([]);
     if (running) {
+      setText("");
       parkedRef.current = draft;
       setParked(draft);
       return;
     }
     try {
-      await sendDraft(draft);
+      await sendDraft(draft, "text");
+      setText((current) => current === draft.text ? "" : current);
     } catch {
-      setText(draft.text);
       setPending(draft.pending);
     }
   }

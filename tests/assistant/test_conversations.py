@@ -15,6 +15,7 @@ from redpanda.assistant.sessions import SessionView
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
 from redpanda.runtime import (
     Command,
+    CommandAuthorized,
     CommandOutcome,
     CommandOutcomeReceived,
     CommandRejected,
@@ -63,6 +64,21 @@ def committed_step(event_id, trigger, content, commands):
             commands=commands,
         )
     )
+
+
+def canonical_step_event(events, event_id, content, commands, metadata=None):
+    frame = StateProjector().project("session-1", events).next_decision
+    step = Step(
+        step_id=f"decision-{event_id}",
+        trigger_event_id=frame.trigger_event.event_id,
+        decision_cursor=frame.decision_cursor,
+        basis_state_version=frame.basis_state_version,
+        observed_journal_position=frame.observed_journal_position,
+        decision=ModelDecision(content, tuple(command.effect for command in commands)),
+        commands=commands,
+    )
+    return event(events[-1].sequence + 1, event_id, StepCommitted(step, metadata),
+                 causation_id=frame.trigger_event.event_id)
 
 
 class ConversationProjectionTest(unittest.TestCase):
@@ -360,11 +376,8 @@ class ConversationProjectionTest(unittest.TestCase):
         events = (
             event(1, "user-1", UserMessageReceived("第一行\n第二行")),
             event(2, "user-2", UserMessageReceived("之后")),
-            event(
-                3, "step-2",
-                committed_step("decision-2", "user-2", "回复", ()),
-            ),
         )
+        events += (canonical_step_event(events, "step-2", "回复", ()),)
 
         summary = project_session_summary(
             "session-1",
@@ -391,15 +404,15 @@ class ConversationProjectionTest(unittest.TestCase):
     def test_idle_summary_keeps_subagent_active_until_report_is_received(self):
         child_id = child_session_id("session-1", "delegate-1")
         command = Command("delegate-1", InvokeTool(DELEGATE, (("task", "调查问题"),)))
-        events = (
-            event(1, "user-1", UserMessageReceived("调查问题")),
-            event(2, "step-1", committed_step("decision-1", "user-1", "", (command,))),
-            event(3, "dispatch-1", DispatchAttemptStarted("attempt-1", command.command_id)),
+        events = (event(1, "user-1", UserMessageReceived("调查问题")),)
+        events += (canonical_step_event(events, "step-1", "", (command,)),)
+        events += (
+            event(3, "dispatch-1", DispatchAttemptStarted("attempt-1", command.command_id), causation_id="step-1"),
             event(4, "outcome-1", CommandOutcomeReceived(
                 command.command_id, "attempt-1", CommandOutcome(OutcomeStatus.SUCCEEDED, value={
                     "ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id},
                 }),
-            )),
+            ), causation_id="dispatch-1"),
             event(5, "report-1", DomainFactCommitted(REPORT_FACT, {"child_session_id": child_id})),
         )
         for snapshot, active in ((events[:4], True), (events, False)):
@@ -409,6 +422,50 @@ class ConversationProjectionTest(unittest.TestCase):
                 )
                 self.assertEqual(summary.activity, "idle")
                 self.assertEqual(summary.has_active_subagents, active)
+
+    def test_summary_attention_tracks_pending_authorization_and_current_failure(self):
+        command = Command("write", InvokeTool("write_file", ()), requires_authorization=True)
+        events = (event(1, "user-1", UserMessageReceived("修改文件")),)
+        events += (canonical_step_event(events, "step-1", "修改", (command,)),)
+        events += (event(3, "approved", CommandAuthorized("write"), causation_id="step-1"),)
+        for snapshot, error, expected in (
+            (events[:1], None, False),
+            (events[:2], None, True),
+            (events, None, False),
+            (events, "模型调用失败，请重试", True),
+        ):
+            with self.subTest(length=len(snapshot), error=error):
+                summary = project_session_summary(
+                    "session-1", snapshot, workspace_id="workspace-1",
+                    activity="running", last_error=error,
+                )
+                self.assertEqual(summary.needs_attention, expected)
+
+    def test_summary_attention_tracks_pending_control_confirmation(self):
+        from redpanda.assistant.control import CONTROL_APPROVED, CONTROL_PROPOSED, CONTROL_REQUEST_METADATA
+
+        events = (event(1, "user-1", UserMessageReceived("安装工具")),)
+        events += (canonical_step_event(events, "step-1", "请确认安装", (), {
+            CONTROL_REQUEST_METADATA: {
+                "request_id": "install", "tool": "install_tool", "action": "install",
+                "arguments": {},
+            },
+        }),)
+        events += (
+            event(3, "proposed", DomainFactCommitted(CONTROL_PROPOSED, {
+                "request_id": "install", "action": "install", "payload": {},
+                "summary": "安装工具", "risk": "执行安装命令",
+            })),
+            event(4, "approved", DomainFactCommitted(CONTROL_APPROVED, {
+                "request_id": "install", "action": "install",
+            })),
+        )
+        for snapshot, expected in ((events[:2], False), (events[:3], True), (events, False)):
+            with self.subTest(length=len(snapshot)):
+                summary = project_session_summary(
+                    "session-1", snapshot, workspace_id="workspace-1", activity="idle",
+                )
+                self.assertEqual(summary.needs_attention, expected)
 
     def test_user_message_carries_image_refs(self):
         attachment_id = "sha256:" + "a" * 64
@@ -470,8 +527,19 @@ class ConversationProjectionTest(unittest.TestCase):
         self.assertEqual(rejected.items[0].tools[0].status, "rejected")
 
 
+class _Workspaces:
+    """list_sessions 只问 registry 一件事：这个工作区还在不在。"""
+
+    def __init__(self, *workspace_ids: str) -> None:
+        self._workspace_ids = set(workspace_ids)
+
+    def contains(self, workspace_id: str) -> bool:
+        return workspace_id in self._workspace_ids
+
+
 class Idle:
     superseded: frozenset[str] = frozenset()
+    workspaces = _Workspaces("workspace-1")
 
     def activity(self, session_id):
         return "idle"

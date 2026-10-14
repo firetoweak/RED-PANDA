@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import json
 import os
@@ -158,6 +158,11 @@ class WorkspaceRegistry:
                 return record
         raise WorkspaceNotFound(workspace_id)
 
+    def contains(self, workspace_id: str) -> bool:
+        return any(
+            record.workspace_id == workspace_id for record in self._workspaces
+        )
+
     def find_by_path(self, path: Path) -> WorkspaceRecord | None:
         """按最深匹配找 path 所属的工作区；不属于任何工作区时返回 None。"""
         resolved = path.resolve()
@@ -219,6 +224,29 @@ class WorkspaceRegistry:
             name=name or resolved.name or str(resolved),
             task_root=resolved,
         )
+
+    def rename(self, workspace_id: str, name: str) -> WorkspaceRecord:
+        record = self.get(workspace_id)
+        renamed = replace(record, name=name)
+        self._workspaces[self._workspaces.index(record)] = renamed
+        self.save()
+        return renamed
+
+    def delete(self, workspace_id: str) -> None:
+        """从清单移除一条记录。
+
+        只移除工作区登记：工作区目录、会话 Journal 一个字节都不动。
+        绑定到它的会话从此不再被列出，规则与「没有归属的会话不列出」相同。
+        """
+        remaining = [
+            record
+            for record in self._workspaces
+            if record.workspace_id != workspace_id
+        ]
+        if len(remaining) == len(self._workspaces):
+            raise WorkspaceNotFound(workspace_id)
+        self._workspaces = remaining
+        self.save()
 
 
 def workspace_view(record: WorkspaceRecord) -> WorkspaceViewSnapshot:

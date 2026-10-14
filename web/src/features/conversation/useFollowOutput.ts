@@ -10,6 +10,7 @@ export function useFollowOutput(
 ) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const wheelAreaRef = useRef<HTMLDivElement>(null);
   const lastSessionId = useRef<string | undefined>(undefined);
   // 是否仍吸附在底部。用户上滑离开底部后为 false，此时不再自动滚动。
   const [following, setFollowing] = useState(true);
@@ -78,6 +79,21 @@ export function useFollowOutput(
     viewport.addEventListener("scroll", onScroll, { passive: true });
     viewport.addEventListener("wheel", onWheel, { passive: true });
 
+    // 固定计划区不在视口内，滚轮操作仍用于浏览对话。
+    const wheelArea = wheelAreaRef.current;
+    const onAreaWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.deltaY === 0) {
+        return;
+      }
+      event.preventDefault();
+      onWheel(event);
+      const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? viewport.clientHeight : 1;
+      viewport.scrollTop += event.deltaY * unit;
+      syncFollowing();
+    };
+    wheelArea?.addEventListener("wheel", onAreaWheel, { passive: false });
+
     let observer: ResizeObserver | undefined;
     if (active) {
       // 内容长高时，只有"变化前就贴着底部"才跟随；否则保持用户当前位置。
@@ -92,9 +108,10 @@ export function useFollowOutput(
     return () => {
       viewport.removeEventListener("scroll", onScroll);
       viewport.removeEventListener("wheel", onWheel);
+      wheelArea?.removeEventListener("wheel", onAreaWheel);
       observer?.disconnect();
     };
   }, [active, attached, isAtBottom, sessionId]);
 
-  return { contentRef, viewportRef, following, scrollToBottom };
+  return { contentRef, viewportRef, wheelAreaRef, following, scrollToBottom };
 }
