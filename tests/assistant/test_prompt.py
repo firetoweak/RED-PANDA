@@ -53,6 +53,8 @@ PROSE_VOCABULARY = frozenset(
         "PANDA",
         "Skill",
         "Toolset",
+        "coding",
+        "agent",
         "diff",
         "env",
         "false",
