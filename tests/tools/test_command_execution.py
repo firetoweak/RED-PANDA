@@ -14,12 +14,10 @@ import pytest
 
 from pydantic import ValidationError
 
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    ExecutionAttachment,
-)
-from redpanda.sandbox.command import CaptureLimit, ShellNotFoundError
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.execution.api import CommandEnvironment
+from redpanda.execution.command import CaptureLimit, ShellNotFoundError
+from redpanda.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
@@ -33,7 +31,7 @@ from redpanda.tools.builtin.command_execution import (
     create_command_execution_spec,
 )
 from redpanda.tools.spec import EmptyInput, pydantic_tool_spec
-from redpanda.sandbox.local.powershell import (
+from redpanda.execution.local.powershell import (
     CommandEnvironmentPolicy,
     PowerShellCommandRunner,
 )
@@ -95,7 +93,7 @@ class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
 
         # PATH 的持久化重读由 test_child_env 覆盖；这里钉住白名单转发语义。
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             child_env = policy.build({
@@ -113,7 +111,7 @@ class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
         policy = CommandEnvironmentPolicy(forward_names=("helper_allowed",))
 
         with patch(
-            "redpanda.sandbox.local.powershell.latest_persistent_path",
+            "redpanda.execution.local.powershell.latest_persistent_path",
             return_value=None,
         ):
             child_env = policy.build({"HELPER_ALLOWED": "yes"})
@@ -132,21 +130,14 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
             view = WorkspaceViewSnapshot((
                 RootBinding("project", WorkspaceScope.TASK, workspace_root),
             ))
-            binding = EnvironmentBinding(
-                environment_id="linux-test",
+            binding = FileAccess(
+                environment_id='linux-test',
                 workspace_view=view,
-                permission_binding=PermissionBinding((
-                    ("project", FilesystemPermission.READ_WRITE),
-                )),
+                permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
                 cwd=workspace_root,
-                shell_name="bash",
-                shell_path="/bin/bash",
-                execution_attachment=ExecutionAttachment(
-                    "linux-test",
-                    MissingShellRunner(),
-                ),
             )
-            spec = create_command_execution_spec(binding)
+            commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash")
+            spec = create_command_execution_spec(binding, commands)
 
             result = await spec.handler(ExecuteCommandInput(
                 command="true",
@@ -174,21 +165,14 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
             view = WorkspaceViewSnapshot((
                 RootBinding("project", WorkspaceScope.TASK, workspace_root),
             ))
-            binding = EnvironmentBinding(
-                environment_id="failure-test",
+            binding = FileAccess(
+                environment_id='failure-test',
                 workspace_view=view,
-                permission_binding=PermissionBinding((
-                    ("project", FilesystemPermission.READ_WRITE),
-                )),
+                permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
                 cwd=workspace_root,
-                shell_name="bash",
-                shell_path="/bin/bash",
-                execution_attachment=ExecutionAttachment(
-                    "failure-test",
-                    BrokenRunner(),
-                ),
             )
-            spec = create_command_execution_spec(binding)
+            commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash")
+            spec = create_command_execution_spec(binding, commands)
 
             with self.assertRaisesRegex(RuntimeError, "internal executor bug"):
                 await spec.handler(ExecuteCommandInput(command="true"))
@@ -197,7 +181,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 class PowerShellDiscoveryTest(unittest.TestCase):
     def test_prefers_powershell_7(self):
         with patch(
-            "redpanda.sandbox.local.powershell.shutil.which",
+            "redpanda.execution.local.powershell.shutil.which",
             side_effect=lambda name, *, path: {
                 "pwsh.exe": "C:/PowerShell/7/pwsh.exe",
                 "powershell.exe": "C:/Windows/powershell.exe",
@@ -209,7 +193,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
 
     def test_uses_windows_powershell_when_version_7_is_unavailable(self):
         with patch(
-            "redpanda.sandbox.local.powershell.shutil.which",
+            "redpanda.execution.local.powershell.shutil.which",
             side_effect=lambda name, *, path: {
                 "powershell.exe": "C:/Windows/powershell.exe",
             }.get(name),
@@ -220,7 +204,7 @@ class PowerShellDiscoveryTest(unittest.TestCase):
 
     def test_fails_when_no_powershell_is_available(self):
         with patch(
-            "redpanda.sandbox.local.powershell.shutil.which",
+            "redpanda.execution.local.powershell.shutil.which",
             return_value=None,
         ):
             with self.assertRaisesRegex(
@@ -454,21 +438,17 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             RootBinding("project", WorkspaceScope.TASK, self.workspace_root),
         ))
         runner = PowerShellCommandRunner()
-        self.binding = EnvironmentBinding(
-            environment_id="local-test",
+        self.binding = FileAccess(
+            environment_id='local-test',
             workspace_view=view,
-            permission_binding=PermissionBinding((
-                ("project", FilesystemPermission.READ_WRITE),
-            )),
+            permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
             cwd=self.workspace_root,
-            shell_name="powershell",
-            shell_path=POWERSHELL,
-            execution_attachment=ExecutionAttachment("local-test", runner),
         )
+        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL)
         registry = ToolRegistry()
         registry.register(
             create_command_execution_spec(
-                self.binding,
+                self.binding, self.commands,
             )
         )
         self.executor = ToolsExecutor(registry)
@@ -508,19 +488,16 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["workspace_effect"], "read_only")
 
     async def test_permission_binding_rejects_potential_write_command(self):
-        read_only_binding = EnvironmentBinding(
+        read_only_binding = FileAccess(
             environment_id=self.binding.environment_id,
             workspace_view=self.binding.workspace_view,
-            permission_binding=PermissionBinding((
-                ("project", FilesystemPermission.READ_ONLY),
-            )),
+            permission_binding=PermissionBinding((('project', FilesystemPermission.READ_ONLY),)),
             cwd=self.binding.cwd,
-            shell_name=self.binding.shell_name,
-            shell_path=self.binding.shell_path,
-            execution_attachment=self.binding.execution_attachment,
+            filesystem=self.binding.filesystem,
         )
+        read_only_commands = CommandEnvironment(self.commands.command_executor, self.commands.shell_name, self.commands.shell_path)
         registry = ToolRegistry()
-        registry.register(create_command_execution_spec(read_only_binding))
+        registry.register(create_command_execution_spec(read_only_binding, read_only_commands))
         executor = ToolsExecutor(registry)
 
         denied = await executor.execute(

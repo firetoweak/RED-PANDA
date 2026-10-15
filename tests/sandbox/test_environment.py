@@ -1,12 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    EnvironmentSelection,
-    ExecutionAttachment,
-)
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.filesystem.workspace import (
     EnvironmentLocation,
     FilesystemPermission,
     PathOutsideWorkspaceView,
@@ -18,20 +14,15 @@ from redpanda.sandbox.workspace import (
 
 
 class EnvironmentPathContractTest(unittest.TestCase):
-    def binding(self, root: Path, *, cwd: Path | None = None) -> EnvironmentBinding:
+    def binding(self, root: Path, *, cwd: Path | None = None) -> FileAccess:
         view = WorkspaceViewSnapshot((
             RootBinding("project", WorkspaceScope.TASK, root),
         ))
-        return EnvironmentBinding(
-            environment_id="local-test",
+        return FileAccess(
+            environment_id='local-test',
             workspace_view=view,
-            permission_binding=PermissionBinding((
-                ("project", FilesystemPermission.READ_WRITE),
-            )),
+            permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
             cwd=cwd or root,
-            shell_name="powershell",
-            shell_path="pwsh.exe",
-            execution_attachment=ExecutionAttachment("local-test", object()),
         )
 
     def test_relative_path_resolves_from_binding_cwd(self):
@@ -117,15 +108,7 @@ class EnvironmentPathContractTest(unittest.TestCase):
             self.assertEqual(membership.root_id, "package")
             self.assertEqual(membership.display_path, "a.py")
 
-    def test_environment_selection_has_a_serializable_round_trip(self):
+    def test_workspace_view_has_a_serializable_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
-            binding = self.binding(Path(directory))
-            selection = EnvironmentSelection(
-                binding.environment_id,
-                binding.workspace_view,
-                str(binding.cwd),
-            )
-
-            restored = EnvironmentSelection.from_dict(selection.to_dict())
-
-            self.assertEqual(restored, selection)
+            view = self.binding(Path(directory)).workspace_view
+            self.assertEqual(WorkspaceViewSnapshot.from_dict(view.to_dict()), view)

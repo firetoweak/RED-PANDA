@@ -11,11 +11,11 @@ import pytest
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.workspace_versions import project_workspace_versions, workspace_version_event, WORKSPACE_RESCUE_FACT
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.sandbox.files import workspace_files
+from redpanda.filesystem import workspace_files
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.files.file_view.client import native_executable
+from redpanda.filesystem.file_view.client import native_executable
 from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, MemoryJournal, SqliteJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
@@ -38,7 +38,7 @@ class CodingModel:
 
 
 def test_read_only_shell_commands_overlap_without_native_operations(tmp_path, monkeypatch):
-    monkeypatch.setenv("REDPANDA_SANDBOX_EXECUTABLE", str(tmp_path / "absent-sandbox"))
+    monkeypatch.setenv("REDPANDA_FILESYSTEM_EXECUTABLE", str(tmp_path / "absent-sandbox"))
     async def scenario():
         root = tmp_path / "project"
         root.mkdir()
@@ -110,7 +110,8 @@ def test_native_coding_and_model_restore_are_one_history(tmp_path):
             tool_ids = {c.command_id for e in events if isinstance(e.payload, StepCommitted) for c in e.payload.step.commands if isinstance(c.effect, InvokeTool) and c.effect.name in {"read_file", "apply_patch", "write_file", "execute_command", "restore_workspace"}}
             outcomes = [e.payload for e in events if isinstance(e.payload, CommandOutcomeReceived) and e.payload.command_id in tool_ids]
             results = [outcome.outcome.value for outcome in outcomes]
-            assert all(result["ok"] for result in results), results
+            for result in results:
+                assert result["ok"], result
             return events
         try:
             events = await run(

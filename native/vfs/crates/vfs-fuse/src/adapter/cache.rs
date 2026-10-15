@@ -440,6 +440,7 @@ mod tests {
             atime_nsec: 4,
             mtime_nsec: 5,
             ctime_nsec: 6,
+            hidden: false,
             rdev: 0,
         }
     }

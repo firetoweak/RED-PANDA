@@ -5,7 +5,7 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_root"
 
 if [ "$(uname -s)" != Linux ]; then
-  printf '%s\n' "The native sandbox currently supports Windows x64 and Linux. Use setup.ps1 on Windows." >&2
+  printf '%s\n' "RED PANDA supports Windows x64 and Linux x64. Use setup.ps1 on Windows." >&2
   exit 1
 fi
 

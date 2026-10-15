@@ -17,31 +17,46 @@ async fn snapshot_into_is_consistent_under_concurrent_writes() -> Result<()> {
     file.fsync().await?;
     drop(file);
 
-    // Churn writer racing the snapshot copy: every file it creates is
-    // either absent from the snapshot or fully intact — never torn.
+    // Creation and the first write are separate operations: a snapshot between
+    // them may legitimately contain an empty file. Seed the files first so
+    // this race tests atomic content writes without assuming atomic creation.
+    for index in 0..4 {
+        let (_, file) = vfs
+            .fs
+            .create_file(&format!("/churn-{index}.txt"), 0o100644, 0, 0)
+            .await?;
+        file.pwrite(0, &[b'x'; 8192]).await?;
+        file.fsync().await?;
+    }
     let writer_fs = vfs.fs.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let writer_stop = stop.clone();
+    let (started, ready) = tokio::sync::oneshot::channel();
     let writer = tokio::spawn(async move {
-        let mut created = 0u32;
+        let mut writes = 0u32;
+        let mut started = Some(started);
         while !writer_stop.load(Ordering::Relaxed) {
-            let path = format!("/churn-{created}.txt");
-            let (_, file) = writer_fs.create_file(&path, 0o100644, 0, 0).await?;
-            file.pwrite(0, &[b'x'; 8192]).await?;
+            let path = format!("/churn-{}.txt", writes % 4);
+            let file = writer_fs.open(&path).await?;
+            let byte = b'y' + ((writes / 4) % 2) as u8;
+            file.pwrite(0, &[byte; 8192]).await?;
             file.fsync().await?;
-            created += 1;
+            writes += 1;
+            if let Some(started) = started.take() {
+                started.send(()).unwrap();
+            }
             // Allow the snapshot task to race repeated committed writes.
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         }
-        Ok::<u32, Error>(created)
+        Ok::<u32, Error>(writes)
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    ready.await.expect("writer stopped before its first write");
     let snapshot_path = dir.path().join("snapshot.db");
     vfs.snapshot_into(&snapshot_path).await?;
     stop.store(true, Ordering::Relaxed);
-    let created = writer.await.expect("writer task panicked")?;
-    assert!(created > 0, "churn writer made no progress");
+    let writes = writer.await.expect("writer task panicked")?;
+    assert!(writes > 0, "churn writer made no progress");
     drop(vfs);
 
     for suffix in ["-wal", "-shm"] {
@@ -67,7 +82,13 @@ async fn snapshot_into_is_consistent_under_concurrent_writes() -> Result<()> {
                 .read_file(&format!("/{entry}"))
                 .await?
                 .unwrap_or_else(|| panic!("churn file {rest} listed but unreadable"));
-            assert_eq!(content, vec![b'x'; 8192], "torn churn file {entry}");
+            assert_eq!(content.len(), 8192, "truncated churn file {entry}");
+            let byte = content[0];
+            assert!(matches!(byte, b'x' | b'y' | b'z'));
+            assert!(
+                content.iter().all(|value| *value == byte),
+                "torn churn file {entry}"
+            );
         }
     }
     Ok(())

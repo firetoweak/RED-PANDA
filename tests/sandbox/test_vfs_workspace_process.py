@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.sandbox.files.operations import INITIAL, WorkspaceFiles, native_executable, operation_id
+from redpanda.filesystem.operations import INITIAL, WorkspaceFiles, native_executable, operation_id
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
     not native_executable().is_file(),
@@ -33,7 +33,7 @@ def test_record_does_not_enumerate_workspace(tmp_path):
 
 
 def test_record_finishes_known_publication_before_exposing_its_file_boundary(tmp_path):
-    from redpanda.sandbox.files.file_view import publication
+    from redpanda.filesystem.file_view import publication
     async def scenario():
         view = backend(tmp_path)
         async def edit():
@@ -95,7 +95,7 @@ def test_restore_reports_actual_effect_and_preserved_values(tmp_path, before, ag
 
 @pytest.mark.parametrize("policy", ["preserve", "original"])
 def test_restore_length_conflict_reports_file_and_leaves_user_content(tmp_path, policy):
-    from redpanda.sandbox.files.operations import WorkspaceRestoreFailed
+    from redpanda.filesystem.operations import WorkspaceRestoreFailed
     async def scenario():
         view = backend(tmp_path)
         file = view.root / "file"
@@ -121,7 +121,7 @@ def test_local_tool_edit_captures_only_changed_blocks_and_preserves_newlines(tmp
         file = view.root / "file"
         source = b"TARGET\n" + b"A" * (4 * 65536) + b"TARGET\r\n"
         file.write_bytes(source)
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view, session_operations=AsyncMock(return_value=()))
+        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view, session_operations=AsyncMock(return_value=()))
         identity = operation_id("s", "replace")
         result = await view.execute(identity, lambda: tools.execute("replace_all", {
             "path": "file", "old_block": "TARGET", "new_block": "CHANGE",
@@ -139,7 +139,7 @@ def test_write_failure_exposes_only_logical_file_information(tmp_path):
     from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view, session_operations=AsyncMock(return_value=()))
+        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view, session_operations=AsyncMock(return_value=()))
         original = Path.open
         def denied(path, *args, **kwargs):
             if path.name == "blocked.txt":
@@ -226,7 +226,7 @@ def test_failed_tool_result_still_reports_actual_and_unexpected_file_effects(tmp
 def test_subagent_review_merge_is_captured_by_parent_projection(tmp_path):
     from redpanda.assistant.subagent.review import ChildWorkspaceReview
     from redpanda.paths import RedPandaHome
-    from redpanda.sandbox.files import ChildFiles, child_workspace, workspace_files
+    from redpanda.filesystem import ChildFiles, child_workspace, workspace_files
     from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
@@ -388,7 +388,7 @@ def test_publication_in_another_process_waits_for_reader(tmp_path):
         source = """
 import asyncio, sys
 from pathlib import Path
-from redpanda.sandbox.files.operations import WorkspaceFiles
+from redpanda.filesystem.operations import WorkspaceFiles
 async def main():
     view = WorkspaceFiles(Path(sys.argv[1]), Path(sys.argv[2]))
     view._publish = lambda _: (view.root / 'file.txt').write_text('next')
@@ -457,7 +457,7 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
             subprocess.run(["git", "-C", str(view.root), *args], capture_output=True, check=True)
         git("init"); git("add", ".")
         git("-c", "user.name=Test", "-c", "user.email=test@local", "commit", "-m", "baseline")
-        tools = await build_builtin_tools(workspace_record(view.root), sandbox=view,
+        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view,
                                           session_operations=AsyncMock(return_value=(operation_id("s", "discovery"),)))
         async def inspect():
             view.native_path(code).write_text("print('after')\n")
@@ -481,7 +481,7 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows 共享模式会拒绝正在打开的内部元数据替换")
 def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persistent_lock(tmp_path):
-    from redpanda.sandbox.files.file_view import publication
+    from redpanda.filesystem.file_view import publication
     path = tmp_path / "metadata.json"
     publication.atomic(path, {"value": "before"})
     held = publication.native.open_file(path)
@@ -499,7 +499,7 @@ def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persiste
     thread = threading.Thread(target=reader)
     thread.start()
     try:
-        with patch("redpanda.sandbox.files.file_view.publication.os.replace", observe):
+        with patch("redpanda.filesystem.file_view.publication.os.replace", observe):
             publication.atomic(path, {"value": "after"})
     finally:
         thread.join(timeout=2)
@@ -512,10 +512,11 @@ def test_internal_metadata_replace_tolerates_a_brief_reader_and_exposes_persiste
 
 
 def test_native_history_pointer_handles_a_brief_reader(tmp_path):
-    from redpanda.sandbox.files.file_view import Client, publication
+    from tests.fixtures.file_view import CommandClient
+    from redpanda.filesystem.file_view import publication
     root = tmp_path / "project"
     root.mkdir()
-    with Client(native_executable(), tmp_path / "store", root) as client:
+    with CommandClient(native_executable(), tmp_path / "store", root) as client:
         for name in ("first", "second"):
             mount = Path(client.begin(name)["mount"])
             (mount / "file").write_text(name)

@@ -1019,7 +1019,7 @@ pub(super) fn mode(conn: &Connection, ino: i64) -> Result<Option<u32>> {
 
 pub(super) fn getattr(conn: &Connection, ino: i64) -> Result<Option<Stats>> {
     let mut stmt = conn
-        .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec FROM fs_inode WHERE ino = ?")
+        .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?")
         ?;
     let mut rows = stmt.query((ino,))?;
 
@@ -1055,6 +1055,11 @@ pub(super) fn stats_from_row_at(
         atime_nsec: required_u32(row, start + 10, "atime_nsec")?,
         mtime_nsec: required_u32(row, start + 11, "mtime_nsec")?,
         ctime_nsec: required_u32(row, start + 12, "ctime_nsec")?,
+        hidden: match required_u32(row, start + 13, "hidden")? {
+            0 => false,
+            1 => true,
+            _ => return Err(corrupt_column("hidden", "expected boolean")),
+        },
         rdev: required_u64(row, start + 9, "rdev")?,
     })
 }

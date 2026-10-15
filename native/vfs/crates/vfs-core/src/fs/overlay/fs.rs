@@ -334,6 +334,33 @@ impl FileSystem for OverlayFS {
         self.delta.chmod(delta_ino, mode).await
     }
 
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> Result<()> {
+        trace!("OverlayFS::set_hidden: ino={}, hidden={}", ino, hidden);
+
+        let info = self.get_inode_info(ino).ok_or(FsError::NotFound)?;
+        if info.layer == Layer::Base && self.is_whiteout(&info.path) {
+            return Err(FsError::NotFound.into());
+        }
+
+        let delta_ino = match info.layer {
+            Layer::Delta => info.underlying_ino,
+            Layer::Base => {
+                let base_stats = self
+                    .base
+                    .getattr(info.underlying_ino)
+                    .await?
+                    .ok_or(FsError::NotFound)?;
+                if self.partial_origin_policy.permits(&base_stats) {
+                    self.partial_copy_up_and_update_mapping(ino, &info).await?
+                } else {
+                    self.copy_up_and_update_mapping(ino, &info).await?
+                }
+            }
+        };
+
+        self.delta.set_hidden(delta_ino, hidden).await
+    }
+
     async fn chown(&self, ino: i64, uid: Option<u32>, gid: Option<u32>) -> Result<()> {
         trace!(
             "OverlayFS::chown: ino={}, uid={:?}, gid={:?}",

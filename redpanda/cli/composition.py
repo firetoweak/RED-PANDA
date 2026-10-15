@@ -17,7 +17,7 @@ from redpanda.cli.application import CliApplicationService
 from redpanda.cli.management_tools import create_cli_management_specs
 from redpanda.cli.runtime import CliToolCatalog
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.command import EnvironmentCommandExecutor
+from redpanda.execution.command import CommandExecutor
 from redpanda.tools.control import ControlOperation
 from redpanda.tools.spec import ToolSpec
 
@@ -35,12 +35,12 @@ class CliAssembly:
 
 def build_cli(
     home: RedPandaHome,
-    command_executor: EnvironmentCommandExecutor | None = None,
+    command_executor: CommandExecutor | None = None,
 ) -> CliAssembly:
     """装配 CLI 域。
 
     command_executor 是进程级单例：包管理器操作与体检和 workspace 无关，
-    不经过 per-Session 的 EnvironmentBinding。
+    不依赖会话的任务文件范围。
     """
     if command_executor is None:
         command_executor = _default_command_executor()
@@ -74,11 +74,11 @@ def build_cli(
     )
 
 
-def _default_command_executor() -> EnvironmentCommandExecutor:
+def _default_command_executor() -> CommandExecutor:
     if os.name == "nt":
-        from redpanda.sandbox.local.powershell import PowerShellCommandRunner
+        from redpanda.execution.local.powershell import PowerShellCommandRunner
 
         return PowerShellCommandRunner()
-    from redpanda.sandbox.local.bash import BashCommandRunner
+    from redpanda.execution.local.bash import BashCommandRunner
 
     return BashCommandRunner()

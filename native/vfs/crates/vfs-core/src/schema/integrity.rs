@@ -218,6 +218,12 @@ fn check_storage_invariants(conn: &Connection, report: &mut Report) -> Result<()
     add_zero_count_check(
         conn,
         report,
+        "metadata.hidden_valid",
+        "SELECT COUNT(*) FROM fs_inode WHERE typeof(hidden) != 'integer' OR hidden NOT IN (0, 1)",
+    )?;
+    add_zero_count_check(
+        conn,
+        report,
         "storage.kind_valid",
         "SELECT COUNT(*) FROM fs_inode WHERE storage_kind NOT IN (0, 1)",
     )?;

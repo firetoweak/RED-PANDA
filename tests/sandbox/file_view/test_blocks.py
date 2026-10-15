@@ -7,15 +7,16 @@ import tracemalloc
 import unittest
 from unittest.mock import patch
 import pytest
-from redpanda.sandbox.files.file_view.client import native_executable
+from redpanda.filesystem.file_view.client import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
 if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
-from redpanda.sandbox.files.file_view import Client,ServiceFailure
-from redpanda.sandbox.files.file_view import publication as pub
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import ServiceFailure
+from redpanda.filesystem.file_view import publication as pub
 
 CHUNK=65536
 
@@ -53,7 +54,7 @@ class Blocks(unittest.TestCase):
         metrics=[]
         for label,size in [('32m',32*1024*1024),('256m',256*1024*1024)]:
             root,base,store=self.fixture('blocks_cost_'+label,size)
-            with Client(EXE,store,base) as client:
+            with CommandClient(EXE,store,base) as client:
                 start=time.monotonic()
                 receipt=self.change(client,'c1',f"with open('large','r+b') as f: f.seek({CHUNK-2000});f.write(b'X'*4000)")
                 elapsed=(time.monotonic()-start)*1000
@@ -87,7 +88,7 @@ class Blocks(unittest.TestCase):
 
     def test_sparse_command_pairs_fold_and_undo_in_reverse(self):
         _,base,store=self.fixture('blocks_batch',4*CHUNK)
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',"with open('large','r+b') as f: f.seek(10);f.write(b'XXX');f.seek(10);f.write(b'YYY')")
             self.change(client,'c2',f"with open('large','r+b') as f: f.seek({2*CHUNK+10});f.write(b'ZZZ')")
             self.assertTrue(pub.publish(client)['finalized'])
@@ -102,7 +103,7 @@ class Blocks(unittest.TestCase):
     def test_shrink_records_removed_tail_and_keeps_user_prefix(self):
         size=16*1024*1024
         _,base,store=self.fixture('blocks_truncate',size)
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             receipt=self.change(client,'c1',f"with open('large','r+b') as f: f.truncate({size-100})")
             self.assertEqual(set(receipt['changes'][0]['before']['blocks']),{str(size//CHUNK-1)})
             with (base/'large').open('r+b') as file:
@@ -116,7 +117,7 @@ class Blocks(unittest.TestCase):
     def test_delete_restore_streams_without_full_file_memory(self):
         size=8*1024*1024
         _,base,store=self.fixture('blocks_delete',size)
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('large').unlink()")
             io=IOCount();tracemalloc.start()
             with patch.object(pub.native,'open_file',io.open):
@@ -130,13 +131,13 @@ class Blocks(unittest.TestCase):
         for version in (1,2):
             _,base,store=self.fixture('blocks_old_'+str(version),CHUNK);store.mkdir()
             pub.atomic(store/'config.json',{'version':version,'base':str(base)})
-            with self.assertRaisesRegex(ServiceFailure,'workspace config differs'): Client(EXE,store,base)
+            with self.assertRaisesRegex(ServiceFailure,'workspace config differs'): CommandClient(EXE,store,base)
 
     def test_append_and_user_tail_follow_explicit_policy(self):
         for policy in ('original','preserve'):
             size=2*CHUNK
             _,base,store=self.fixture('blocks_append_'+policy,size)
-            with Client(EXE,store,base) as client:
+            with CommandClient(EXE,store,base) as client:
                 receipt=self.change(client,'c1',"with open('large','ab') as f: f.write(b'X'*4000)")
                 self.assertEqual(receipt['changes'][0]['before']['blocks'],{'2':None})
                 self.assertTrue(pub.publish(client)['finalized'])
@@ -150,7 +151,7 @@ class Blocks(unittest.TestCase):
 
     def test_recovery_after_first_block_keeps_other_host_blocks(self):
         _,base,store=self.fixture('blocks_recovery',4*CHUNK)
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',f"with open('large','r+b') as f: f.seek({CHUNK-1000});f.write(b'X'*2000)")
             real=pub.native.open_file
             class Interrupted:
@@ -170,7 +171,7 @@ class Blocks(unittest.TestCase):
         # A user edit outside the selected blocks must survive reconciliation.
         with (base/'large').open('r+b') as file:
             file.seek(3*CHUNK+10);file.write(b'U')
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             self.assertTrue(pub.execute(client,pending[0])['finalized'])
             with (base/'large').open('rb') as file:
                 file.seek(CHUNK-1000);self.assertEqual(file.read(2000),b'X'*2000)
@@ -179,7 +180,7 @@ class Blocks(unittest.TestCase):
     def test_aliases_share_the_first_preimage_in_one_command(self):
         _,base,store=self.fixture('blocks_alias',2*CHUNK)
         os.link(base/'large',base/'alias')
-        with Client(EXE,store,base) as client:
+        with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',"with open('large','r+b') as f: f.seek(10);f.write(b'X')\nwith open('alias','r+b') as f: f.seek(20);f.write(b'Y')")
             self.assertTrue(pub.publish(client)['finalized'])
             self.assertTrue(pub.undo(client,'c1','original')['finalized'])

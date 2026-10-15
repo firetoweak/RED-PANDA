@@ -12,7 +12,8 @@ MCP_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "mcp"
 SKILLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "skills"
 CLI_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "cli"
 TOOLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "tools"
-SANDBOX_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "sandbox"
+FILESYSTEM_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "filesystem"
+EXECUTION_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "execution"
 CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "channels"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "config.py"
 BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "bootstrap.py"
@@ -25,8 +26,21 @@ def _imported_modules(path: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            modules.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                relative = path.relative_to(RUNTIME_ROOT.parents[1]).with_suffix("")
+                package = relative.parts[:-1]
+                base = package[:len(package) - node.level + 1]
+                module = ".".join((*base, *((node.module,) if node.module else ())))
+            else:
+                module = node.module
+            if module:
+                modules.add(module)
+                for alias in node.names:
+                    imported = f"{module}.{alias.name}"
+                    candidate = RUNTIME_ROOT.parents[1].joinpath(*imported.split("."))
+                    if candidate.with_suffix(".py").is_file() or (candidate / "__init__.py").is_file():
+                        modules.add(imported)
     return modules
 
 
@@ -56,7 +70,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_cli_does_not_import_runtime_or_product_layers(self):
-        # cli 声明的对外依赖只有 sandbox（进程执行能力）与 tools（ToolSpec 契约）。
+        # CLI consumes command execution and tool contracts.
         offenders: list[str] = []
         forbidden = {
             "redpanda.assistant",
@@ -176,17 +190,15 @@ class LayerImportBoundaryTest(unittest.TestCase):
             "redpanda.runtime",
             "redpanda.tools",
         }
-        # sandbox 对 channels 只开放 registry：WorkspaceRecord / WorkspaceRegistry
-        # 是各层共享的工作区元数据定义，不含进程执行能力；执行面
-        # （api / command / local / workspace 及包本身）仍然禁止。
-        allowed_sandbox = {"redpanda.sandbox.registry"}
+        # Channels consume workspace registration, never execution or file internals.
+        allowed_filesystem = {"redpanda.filesystem.registry"}
         for path in sorted(CHANNELS_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
             leaked = sorted(_imports_any(modules, forbidden))
             leaked += sorted(
                 module
-                for module in _imports_any(modules, {"redpanda.sandbox"})
-                if module not in allowed_sandbox
+                for module in _imports_any(modules, {"redpanda.filesystem", "redpanda.execution"})
+                if module not in allowed_filesystem
             )
             if leaked:
                 offenders.append(
@@ -201,6 +213,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 "redpanda.tools.executor",
                 "redpanda.tools.registry",
             },
+            "conversations.py": {"redpanda.tools.results"},
             "decision.py": {"redpanda.tools.builtin"},
             "runner.py": {"redpanda.tools.builtin"},
             "cli.py": {"redpanda.tools.spec"},
@@ -253,13 +266,18 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 )
         self.assertEqual(offenders, [])
 
-    def test_tools_do_not_import_sandbox_implementations(self):
+    def test_tools_do_not_import_execution_implementations(self):
         offenders: list[str] = []
         for path in sorted(TOOLS_ROOT.rglob("*.py")):
             leaked = sorted(
                 _imports_any(
                     _imported_modules(path),
-                    {"redpanda.sandbox.local"},
+                    {
+                        "redpanda.execution.local",
+                        "redpanda.execution.process",
+                        "redpanda.execution.process_win",
+                        "redpanda.execution.process_posix",
+                    },
                 )
             )
             if leaked:
@@ -293,21 +311,22 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_file_management_consumers_use_public_entry_points(self):
-        """File-view transport, persistence and Git stay behind Sandbox files."""
-        files_root = SANDBOX_ROOT / "files"
+        """File-view transport, persistence and Git stay behind the file capability."""
+        files_root = FILESYSTEM_ROOT
         offenders = []
-        for path in SANDBOX_ROOT.parent.rglob("*.py"):
+        for path in FILESYSTEM_ROOT.parent.rglob("*.py"):
             if path.is_relative_to(files_root):
                 continue
             implementations = sorted(
                 module for module in _imported_modules(path)
-                if module.startswith("redpanda.sandbox.files.")
+                if module.startswith("redpanda.filesystem.")
+                and module not in {"redpanda.filesystem.workspace", "redpanda.filesystem.registry"}
             )
             if implementations:
                 offenders.append(f"{path}: {', '.join(implementations)}")
         self.assertEqual(offenders, [])
 
-    def test_sandbox_does_not_import_product_or_runtime_layers(self):
+    def test_file_and_execution_capabilities_are_independent(self):
         offenders: list[str] = []
         forbidden = {
             "redpanda.assistant",
@@ -319,11 +338,10 @@ class LayerImportBoundaryTest(unittest.TestCase):
             "redpanda.skills",
             "redpanda.tools",
         }
-        for path in SANDBOX_ROOT.rglob("*.py"):
-            modules = _imported_modules(path)
-            leaked = sorted(_imports_any(modules, forbidden))
-            if leaked:
-                offenders.append(
-                    f"{path.relative_to(SANDBOX_ROOT)}: {', '.join(leaked)}"
-                )
+        for capability, other in ((FILESYSTEM_ROOT, "redpanda.execution"),
+                                  (EXECUTION_ROOT, "redpanda.filesystem")):
+            for path in capability.rglob("*.py"):
+                leaked = sorted(_imports_any(_imported_modules(path), forbidden | {other}))
+                if leaked:
+                    offenders.append(f"{path.relative_to(capability.parent)}: {', '.join(leaked)}")
         self.assertEqual(offenders, [])

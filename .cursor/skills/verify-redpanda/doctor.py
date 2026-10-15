@@ -203,11 +203,11 @@ def credential_fields(value) -> list[str]:
 
 def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
     system = sys.platform
-    configured = process_env(pid, "REDPANDA_SANDBOX_EXECUTABLE") if pid and Path(f"/proc/{pid}").is_dir() else None
+    configured = process_env(pid, "REDPANDA_FILESYSTEM_EXECUTABLE") if pid and Path(f"/proc/{pid}").is_dir() else None
     if configured:
         executable = Path(configured)
     else:
-        name = "redpanda-sandbox.exe" if os.name == "nt" else "redpanda-sandbox"
+        name = "redpanda-agentfs.exe" if os.name == "nt" else "redpanda-agentfs"
         executable = repo / "redpanda" / "sandbox" / "bin" / name
     sandbox = {
         "platform": system,
@@ -219,7 +219,7 @@ def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
     if system == "darwin":
         sandbox["reason"] = "macOS file view is not implemented"
     elif not executable.is_file():
-        sandbox["reason"] = "native sandbox binary is absent; run scripts/build_sandbox.py"
+        sandbox["reason"] = "native sandbox binary is absent; run scripts/build_agentfs.py"
     elif system.startswith("linux"):
         fuse = os.access("/dev/fuse", os.R_OK | os.W_OK)
         mount = shutil.which("fusermount3")

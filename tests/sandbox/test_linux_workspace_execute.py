@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from redpanda.sandbox.files.operations import (
+from redpanda.filesystem.operations import (
     INITIAL,
     WorkspaceRestoreFailed,
     WorkspaceFiles,
@@ -15,7 +15,7 @@ from redpanda.sandbox.files.operations import (
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
     sys.platform != "linux" or not native_executable().is_file(),
-    reason="需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE",
+    reason="需要 Linux 上已构建的 redpanda-agentfs 与可用的 FUSE",
 )]
 
 

@@ -58,6 +58,7 @@ pub(super) fn mount_fuse(
         fsname: opts.fsname.clone(),
         uid: opts.uid,
         gid: opts.gid,
+        time_setattr: opts.time_setattr,
     };
 
     let mountpoint = opts.mountpoint.clone();
@@ -220,6 +221,11 @@ impl vfs_core::FileSystem for ReadWriteLaneFsAdapter {
     ) -> std::result::Result<Option<Vec<vfs_core::DirEntry>>, vfs_core::error::Error> {
         let _lane = self.lock_read_fs().await;
         self.inner.readdir_plus(ino).await
+    }
+
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> vfs_core::error::Result<()> {
+        let _lane = self.lock_write_fs().await;
+        self.inner.set_hidden(ino, hidden).await
     }
 
     async fn chmod(&self, ino: i64, mode: u32) -> std::result::Result<(), vfs_core::error::Error> {

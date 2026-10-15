@@ -8,4 +8,4 @@ if [ ! -x "$python" ] || [ ! -f "$project_root/web/node_modules/vite/bin/vite.js
   exit 1
 fi
 cd "$project_root"
-exec "$python" web_chat.py --dev "$@"
+exec "$python" -m scripts.launch --dev "$@"

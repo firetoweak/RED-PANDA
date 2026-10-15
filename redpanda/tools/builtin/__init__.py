@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from redpanda.sandbox.api import EnvironmentBinding
+from redpanda.filesystem import FileAccess
+from redpanda.execution.api import CommandEnvironment
 from redpanda.tools.builtin.command_execution import (
     COMMAND_INTERRUPTED,
     create_command_execution_spec,
@@ -21,8 +22,9 @@ from redpanda.tools.spec import ToolSpec
 READ_ONLY_WORKSPACE_TOOLS = frozenset({"glob", "grep", "read_file", "get_changes"})
 
 
-def create_environment_tool_specs(
-    binding: EnvironmentBinding,
+def create_workspace_tool_specs(
+    binding: FileAccess,
+    commands: CommandEnvironment,
     interrupts: CommandInterrupts | None = None,
     *,
     session_operations,
@@ -32,7 +34,7 @@ def create_environment_tool_specs(
         *create_file_write_specs(binding),
         *create_file_manage_specs(binding),
         *create_get_changes_specs(binding, session_operations),
-        create_command_execution_spec(binding)
+        create_command_execution_spec(binding, commands)
         if interrupts is None
-        else create_command_execution_spec(binding, interrupts.current),
+        else create_command_execution_spec(binding, commands, interrupts.current),
     ]

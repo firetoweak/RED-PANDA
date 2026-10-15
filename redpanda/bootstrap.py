@@ -19,8 +19,8 @@ from redpanda.model_settings import ModelSettings
 from redpanda.llm.connections import ModelConnections
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.composition import build_mcp
-from redpanda.sandbox.files import clear_stale_mounts
-from redpanda.sandbox.registry import WorkspaceRecord, WorkspaceRegistry
+from redpanda.filesystem import clear_stale_mounts
+from redpanda.filesystem.registry import WorkspaceRecord, WorkspaceRegistry
 from redpanda.skills.composition import build_skills
 from redpanda.skills.summarizer import LlmSkillDiffSummarizer
 from redpanda.timing import install_timing_logging

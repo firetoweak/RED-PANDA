@@ -13,7 +13,7 @@
 
 ## 数据落点速查（判据里反复用到）
 
-来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/sandbox/files/children.py`：
+来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/filesystem/children.py`：
 
 | 内容 | 位置 |
 |---|---|
@@ -76,7 +76,7 @@
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
 | rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，修复后；四类问题对应修复已落地，UI 待复跑） |
-| setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_sandbox.py`、`sandbox_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
+| setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_agentfs.py`、`agentfs_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
 
 ## 入口 → 地图条目 覆盖表
 
@@ -135,9 +135,9 @@
 | `acp_chat.py [--workspace]` | acp-channel |
 | `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--no-configure] [--check]` | setup-and-sandbox-install |
 | `python -m redpanda.initialize --configure / --if-needed` | setup-and-sandbox-install |
-| `scripts/build_sandbox.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
-| `scripts/sandbox_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
-| `scripts/sandbox_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
+| `scripts/build_agentfs.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
+| `scripts/agentfs_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
+| `scripts/agentfs_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
 | `scripts/install_winfsp.ps1` | setup-and-sandbox-install（仅 Windows，未 live） |
 | `scripts/dev.sh`、`scripts/dev.ps1` | setup-and-sandbox-install |
 
@@ -150,15 +150,15 @@
 | 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
 | 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`sandbox/files/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
-| 残留 FUSE 挂载清理 | `native/sandbox/src/main.rs` `clear_stale_mount` | crash-recovery |
+| 残留 FUSE 挂载清理 | `native/filesystem/src/main.rs` `clear_stale_mount` | crash-recovery |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
-| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/sandbox/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
+| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/filesystem/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
 | 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
 
 ### 有意不覆盖
 
 - `thinllm/`：底层 LLM 适配库，不是用户入口；经 model-settings 的 `测试` 间接覆盖。
-- `native/vfs`、`native/sandbox` 的 Rust 内部 API：由 `cargo test` 覆盖，用户只经文件工具与回滚感知，见 tool-coding-round、file-rewind。
+- `native/vfs`、`native/filesystem` 的 Rust 内部 API：由 `cargo test` 覆盖，用户只经文件工具与回滚感知，见 tool-coding-round、file-rewind。
 - `redpanda/runtime/journal` 的内部恢复逻辑：用户不可直接触发；判据里通过 `GET /api/sessions/{id}` 读 journal 投影。
 - macOS 文件视图：源码未实现，始终跳过。
 

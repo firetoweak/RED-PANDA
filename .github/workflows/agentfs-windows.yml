@@ -1,0 +1,115 @@
+name: agentFS Windows
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentfs-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+  FD_VERSION: '10.2.0'
+  RG_VERSION: '14.1.1'
+
+jobs:
+  build:
+    name: agentFS build and verify (windows-x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Prepare Windows build and runtime dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $channel = python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])'
+          rustup toolchain install "$channel-x86_64-pc-windows-gnullvm" --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
+          New-Item -ItemType Directory -Force .tools | Out-Null
+          Invoke-WebRequest 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-x86_64.zip' -OutFile .tools/llvm.zip
+          Expand-Archive .tools/llvm.zip -DestinationPath .tools
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_winfsp.ps1 -Developer
+          if ($LASTEXITCODE -ne 0) { throw 'WinFsp installation failed' }
+
+          $tools = Join-Path $PWD '.tools\bin'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+
+          $fdZip = Join-Path $PWD '.tools\fd.zip'
+          $fdUrl = "https://github.com/sharkdp/fd/releases/download/v$env:FD_VERSION/fd-v$env:FD_VERSION-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest $fdUrl -OutFile $fdZip
+          Expand-Archive $fdZip -DestinationPath .tools\fd-extract -Force
+          $fdExe = Get-ChildItem -Path .tools\fd-extract -Recurse -Filter fd.exe | Select-Object -First 1
+          Copy-Item $fdExe.FullName (Join-Path $tools 'fd.exe') -Force
+
+          $rgZip = Join-Path $PWD '.tools\rg.zip'
+          $rgUrl = "https://github.com/BurntSushi/ripgrep/releases/download/$env:RG_VERSION/ripgrep-$env:RG_VERSION-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest $rgUrl -OutFile $rgZip
+          Expand-Archive $rgZip -DestinationPath .tools\rg-extract -Force
+          $rgExe = Get-ChildItem -Path .tools\rg-extract -Recurse -Filter rg.exe | Select-Object -First 1
+          Copy-Item $rgExe.FullName (Join-Path $tools 'rg.exe') -Force
+
+          Add-Content -Path $env:GITHUB_PATH -Value $tools
+          & (Join-Path $tools 'fd.exe') --version
+          & (Join-Path $tools 'rg.exe') --version
+      - name: Build agentFS for Windows
+        id: build
+        run: python scripts/build_agentfs.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
+      - name: Package agentFS runtime
+        run: python -m scripts.agentfs_runtime package --platform windows-x86_64
+      - name: Verify agentFS native contracts
+        shell: pwsh
+        run: |
+          @'
+          import os, subprocess
+          from scripts.build_agentfs import ROOT, prepare_environment
+          prepared = prepare_environment(ROOT / '.tools/llvm-mingw-20261006-ucrt-x86_64/bin')
+          environment = prepared.variables
+          environment['CARGO_TARGET_DIR'] = str(ROOT / '.tools/agentfs/target')
+          environment['PATH'] = str(ROOT / 'redpanda/filesystem/bin') + os.pathsep + environment['PATH']
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/filesystem/Cargo.toml'),
+              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'tracking_contracts'],
+              env=environment, check=True)
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
+              '--target', 'x86_64-pc-windows-gnullvm', '--lib', '--tests'],
+              env=environment, check=True)
+          '@ | python -
+      - name: Package Windows task execution runtime
+        run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/agentFS'))"
+      - name: Prepare verification environment
+        run: python -m venv redpanda-env
+      - name: Verify agentFS and execution process contracts
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process
+      - name: Verify installation contracts
+        shell: bash
+        run: redpanda-env/Scripts/python.exe -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        with:
+          name: agentFS-windows-x86_64
+          path: dist/agentFS/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

@@ -1,6 +1,9 @@
 #![cfg(all(windows, feature = "winfsp"))]
 use anyhow::Result;
-use std::{os::windows::ffi::OsStrExt, sync::Arc};
+use std::{
+    os::windows::{ffi::OsStrExt, fs::MetadataExt},
+    sync::Arc,
+};
 use vfs_core::{HostFS, OverlayFS, Vfs, VfsOptions};
 use vfs_mount::{mount_fs, Backend, MountOpts};
 
@@ -11,7 +14,8 @@ unsafe extern "system" {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires installed WinFsp runtime and SDK build"]
-async fn readonly_attribute_uses_core_mode_and_other_attributes_are_refused() -> Result<()> {
+async fn readonly_and_hidden_attributes_use_core_metadata_and_unsupported_bits_are_refused(
+) -> Result<()> {
     let temp = tempfile::tempdir()?;
     let base = temp.path().join("base");
     std::fs::create_dir(&base)?;
@@ -38,7 +42,10 @@ async fn readonly_attribute_uses_core_mode_and_other_attributes_are_refused() ->
     assert_ne!(unsafe { SetFileAttributesW(wide.as_ptr(), 128) }, 0);
     assert!(!std::fs::metadata(&path)?.permissions().readonly());
     assert!(!opened.metadata()?.permissions().readonly());
-    assert_eq!(unsafe { SetFileAttributesW(wide.as_ptr(), 2) }, 0);
+    assert_ne!(unsafe { SetFileAttributesW(wide.as_ptr(), 2) }, 0);
+    assert_eq!(std::fs::metadata(&path)?.file_attributes() & 2, 2);
+    assert_eq!(opened.metadata()?.file_attributes() & 2, 2);
+    assert_eq!(unsafe { SetFileAttributesW(wide.as_ptr(), 4) }, 0);
     assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(50));
     drop(opened);
     mount.unmount().await?;

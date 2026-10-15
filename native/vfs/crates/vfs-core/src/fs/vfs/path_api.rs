@@ -91,9 +91,8 @@ impl Vfs {
 
     /// Synchronize file data to persistent storage
     ///
-    /// Temporarily enables FULL synchronous mode, runs a transaction to force
-    /// a checkpoint, then restores NORMAL mode. This ensures durability while
-    /// maintaining high performance for normal operations.
+    /// Temporarily enables FULL synchronous mode, runs a checkpoint, then
+    /// restores NORMAL mode even when the checkpoint fails.
     ///
     pub async fn fsync(&self) -> Result<()> {
         self.check_background()?;
@@ -105,10 +104,7 @@ impl Vfs {
             .execute(move |conn| {
                 let _keepalive = &owned;
 
-                conn.prepare_cached(DURABLE_SYNCHRONOUS_SQL)?.execute([])?;
-                owned.pool.checkpoint(conn)?;
-                conn.prepare_cached(BASELINE_SYNCHRONOUS_SQL)?.execute([])?;
-                Ok(())
+                owned.pool.sync(conn)
             })
             .await
     }

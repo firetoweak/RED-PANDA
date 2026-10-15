@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from acp import PROTOCOL_VERSION, RequestError
 
 from redpanda.channels.acp import RedPandaAcpAgent
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 
 
 class _Sessions:

@@ -258,6 +258,7 @@ impl Vfs {
                     atime_nsec: ts_nsec as u32,
                     mtime_nsec: ts_nsec as u32,
                     ctime_nsec: ts_nsec as u32,
+                    hidden: false,
                     rdev: 0,
                 };
 

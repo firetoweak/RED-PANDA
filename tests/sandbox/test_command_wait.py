@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from redpanda.sandbox.command import wait_process
+from redpanda.execution.command import wait_process
 
 
 class _Process:

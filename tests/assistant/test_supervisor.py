@@ -223,7 +223,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.sandbox.files.children import ChildFiles
+        from redpanda.filesystem.children import ChildFiles
         from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
@@ -403,7 +403,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_startup_failure("client")
 
     async def asyncSetUp(self):
-        from redpanda.sandbox.registry import WorkspaceRegistry
+        from redpanda.filesystem.registry import WorkspaceRegistry
 
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name) / "project"
@@ -677,7 +677,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_parent_reclaims_all_children_and_later_input_can_continue(self):
         from redpanda.assistant.subagent.subagent import project_pending, project_returned
-        from redpanda.sandbox.files.children import child_root
+        from redpanda.filesystem.children import child_root
 
         await self.host.create(PARENT, self.workspace.workspace_id)
         await self.host.select("web", PARENT)
@@ -744,7 +744,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         from redpanda.assistant.subagent.subagent import project_pending, project_returned
         from redpanda.assistant.workspace_versions import WORKSPACE_VERSION_FACT
         from redpanda.runtime import DomainFactCommitted
-        from redpanda.sandbox.files.children import child_root
+        from redpanda.filesystem.children import child_root
 
         await self.host.create(PARENT, self.workspace.workspace_id)
         await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
@@ -913,7 +913,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
-        from redpanda.sandbox.files.children import child_root
+        from redpanda.filesystem.children import child_root
 
         started = set()
         route = self.host._route

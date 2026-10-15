@@ -54,6 +54,12 @@ futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 
+# Published bindings still bundle SQLite 3.53.2. Pin the upstream 3.53.4
+# update, which fixes local extended Windows paths entering UNC locking.
+[patch.crates-io]
+rusqlite = { git = "https://github.com/rusqlite/rusqlite", rev = "901f9946efdaaa289e6b1c5bd56dc67f4b651e51" }
+libsqlite3-sys = { git = "https://github.com/rusqlite/rusqlite", rev = "901f9946efdaaa289e6b1c5bd56dc67f4b651e51" }
+
 
 [profile.bench]
 debug = true

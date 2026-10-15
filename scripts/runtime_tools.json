@@ -1,0 +1,62 @@
+{
+  "windows-x86_64": {
+    "node": {
+      "version": "24.22.0",
+      "url": "https://nodejs.org/dist/v24.22.0/node-v24.22.0-win-x64.zip",
+      "sha256": "f9683a19877e12a9b167305c8db71040d812876359de21f0d2e97c3f321f80c3",
+      "root": "node-v24.22.0-win-x64",
+      "bin": ".",
+      "executable": "node.exe"
+    },
+    "rg": {
+      "version": "14.1.1",
+      "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",
+      "sha256": "d0f534024c42afd6cb4d38907c25cd2b249b79bbe6cc1dbee8e3e37c2b6e25a1",
+      "root": "ripgrep-14.1.1-x86_64-pc-windows-msvc",
+      "bin": ".",
+      "executable": "rg.exe"
+    },
+    "fd": {
+      "version": "10.2.0",
+      "url": "https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-x86_64-pc-windows-msvc.zip",
+      "sha256": "92ac9e6b0a0c6ecdab638ffe210dc786403fff4c66373604cf70df27be45e4fe",
+      "root": "fd-v10.2.0-x86_64-pc-windows-msvc",
+      "bin": ".",
+      "executable": "fd.exe"
+    },
+    "git": {
+      "version": "2.56.0.2",
+      "url": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip",
+      "sha256": "da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be",
+      "root": ".",
+      "bin": "cmd",
+      "executable": "git.exe"
+    }
+  },
+  "linux-x86_64": {
+    "node": {
+      "version": "24.22.0",
+      "url": "https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.xz",
+      "sha256": "cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008",
+      "root": "node-v24.22.0-linux-x64",
+      "bin": "bin",
+      "executable": "node"
+    },
+    "rg": {
+      "version": "14.1.1",
+      "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e",
+      "root": "ripgrep-14.1.1-x86_64-unknown-linux-musl",
+      "bin": ".",
+      "executable": "rg"
+    },
+    "fd": {
+      "version": "10.2.0",
+      "url": "https://github.com/sharkdp/fd/releases/download/v10.2.0/fd-v10.2.0-x86_64-unknown-linux-gnu.tar.gz",
+      "sha256": "5f9030bcb0e1d03818521ed2e3d74fdb046480a45a4418ccff4f070241b4ed25",
+      "root": "fd-v10.2.0-x86_64-unknown-linux-gnu",
+      "bin": ".",
+      "executable": "fd"
+    }
+  }
+}

@@ -20,7 +20,7 @@ from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.artifacts import FileArtifactGateway
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
 from tests.fixtures.compact_worker import CompactLlm, child_config_for, config_for, HANDOFF
 

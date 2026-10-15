@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
@@ -29,20 +29,15 @@ from redpanda.tools.builtin.file_read import (
 )
 
 
-def _binding(root: Path) -> EnvironmentBinding:
+def _binding(root: Path) -> FileAccess:
     view = WorkspaceViewSnapshot((
         RootBinding("project", WorkspaceScope.TASK, root),
     ))
-    return EnvironmentBinding(
-        environment_id="local-test",
+    return FileAccess(
+        environment_id='local-test',
         workspace_view=view,
-        permission_binding=PermissionBinding((
-            ("project", FilesystemPermission.READ_WRITE),
-        )),
+        permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
         cwd=root,
-        shell_name="powershell",
-        shell_path="pwsh.exe",
-        execution_attachment=ExecutionAttachment("local-test", object()),
     )
 
 

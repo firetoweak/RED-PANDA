@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.sandbox.files import WorkspaceFiles
-from redpanda.sandbox.files.changes import attribution
-from redpanda.sandbox.files.review import review_changes
-from redpanda.sandbox.files.file_view import native
-from redpanda.sandbox.files.file_view.publication import image, save_block
+from redpanda.filesystem import WorkspaceFiles
+from redpanda.filesystem.changes import attribution
+from redpanda.filesystem.review import review_changes
+from redpanda.filesystem.file_view import native
+from redpanda.filesystem.file_view.publication import image, save_block
 
 
 class Evidence:
@@ -31,6 +31,7 @@ class Evidence:
         if not complete:
             blocks = {"0": blocks["0"]}
         return image("file", len(data), self.identity, complete=complete, blocks=blocks,
+                     hidden=False if os.name == "nt" else None, readonly=False if os.name == "nt" else None,
                      mode=None if os.name == "nt" else stat.S_IMODE(self.path.stat().st_mode))
 
     def operation(self, before, after, *, published=True, restore=False):
@@ -207,8 +208,8 @@ def test_query_rejects_a_file_changing_during_the_read(tmp_path):
             changed[6] += 1
             return os.stat_result(changed)
         return info
-    from redpanda.sandbox.files.changes import ChangesReadConflict
-    with patch("redpanda.sandbox.files.changes.os.fstat", changing):
+    from redpanda.filesystem.changes import ChangesReadConflict
+    with patch("redpanda.filesystem.changes.os.fstat", changing):
         with pytest.raises(ChangesReadConflict, match="查询期间"):
             evidence.state()
 
@@ -279,7 +280,7 @@ def test_large_response_clearly_marks_omitted_content(tmp_path):
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"AAAAAA"), evidence.file(b"BAAAAA"))
     evidence.path.write_bytes(b"BAAAAA")
-    with patch("redpanda.sandbox.files.changes.MAX_CONTENT_CHARS", 5):
+    with patch("redpanda.filesystem.changes.MAX_CONTENT_CHARS", 5):
         result = attribution(evidence.root, evidence.store, evidence.root)
     edit = result["changes"][0]["edits"][0]
     assert len(edit["before"]) + len(edit["after"]) <= 5
@@ -303,7 +304,7 @@ def test_single_file_difference_can_be_read_completely_across_pages(tmp_path, ol
     evidence.operation(evidence.file(old.encode()), evidence.file(new.encode()))
     evidence.path.write_bytes(new.encode())
     before, after, offset = "", "", 0
-    with patch("redpanda.sandbox.files.changes.MAX_CONTENT_CHARS", 13):
+    with patch("redpanda.filesystem.changes.MAX_CONTENT_CHARS", 13):
         while True:
             result = attribution(evidence.root, evidence.store, evidence.path, text_offset=offset)
             file = result["changes"][0]
@@ -327,7 +328,7 @@ def test_directory_query_can_continue_past_the_file_limit(tmp_path):
     receipt = json.loads(receipt_path.read_text())
     receipt["changes"].append({**receipt["changes"][0], "path": "/other"})
     receipt_path.write_text(json.dumps(receipt))
-    with patch("redpanda.sandbox.files.changes.MAX_FILES", 1):
+    with patch("redpanda.filesystem.changes.MAX_FILES", 1):
         first = attribution(evidence.root, evidence.store, evidence.root)
         second = attribution(evidence.root, evidence.store, evidence.root, offset=first["next_offset"])
     assert first["next_offset"] == 1 and second["next_offset"] is None
@@ -408,7 +409,7 @@ def test_scoped_tool_deletion_does_not_claim_complete_evidence_without_original_
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
     evidence.path.unlink()
-    with patch("redpanda.sandbox.files.changes.MAX_CONTENT_CHARS", 200_000):
+    with patch("redpanda.filesystem.changes.MAX_CONTENT_CHARS", 200_000):
         result = attribution(evidence.root, evidence.store, evidence.path, operations=tuple(evidence.active))
     assert not result["content_complete"]
     assert not result["changes"][0]["content_complete"]

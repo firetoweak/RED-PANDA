@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from redpanda.cli.models import CliHealth, utc_now
-from redpanda.sandbox.command import CommandResult, EnvironmentCommandExecutor
+from redpanda.execution.command import CommandResult, CommandExecutor
 
 _VERSION_RE = re.compile(r"\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?")
 
@@ -37,7 +37,7 @@ def parse_version(text: str) -> str | None:
 class CliHealthChecker:
     def __init__(
         self,
-        executor: EnvironmentCommandExecutor,
+        executor: CommandExecutor,
         *,
         cwd: Path,
         timeout_seconds: int = 15,

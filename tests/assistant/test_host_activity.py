@@ -29,7 +29,7 @@ from redpanda.runtime import (
     UserMessageReceived,
 )
 from redpanda.runtime.events import DeliveryIdentity, EventDraft
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

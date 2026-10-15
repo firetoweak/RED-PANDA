@@ -20,7 +20,7 @@ from redpanda.runtime import (
     SqliteJournal,
     UserMessageReceived,
 )
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.filesystem.registry import WorkspaceRegistry
 
 
 async def _append_user_message(store, session_id: str, text: str) -> None:
@@ -156,7 +156,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(recent_workspace_id(()))
 
     async def test_deleting_the_workspace_hides_its_sessions(self):
-        """删除工作区只摘掉沙箱边界：Journal 和目录都不动，会话不再列出。"""
+        """删除工作区只移除登记：Journal 和目录都不动，会话不再列出。"""
         with TemporaryDirectory() as directory:
             root = Path(directory)
             task_root = root / "task"

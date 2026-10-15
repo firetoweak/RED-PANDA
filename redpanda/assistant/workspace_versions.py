@@ -6,8 +6,8 @@ from typing import Literal
 
 from redpanda.runtime import DomainFactCommitted, StepCommitted
 from redpanda.runtime.model import CommandPhase
+from redpanda.filesystem import FileSystemUnavailable, WorkspaceRestoreFailed, WorkspaceFiles, operation_id, validate_version
 from redpanda.runtime.projections import turn_notice_current
-from redpanda.sandbox.files import SandboxUnavailable, WorkspaceRestoreFailed, WorkspaceFiles, operation_id, validate_version
 
 
 WORKSPACE_VERSION_FACT = "assistant.workspace_version"
@@ -241,7 +241,7 @@ class WorkspaceVersionBoundary:
     async def _record(self, step_id: str | None, cause: str | None) -> None:
         try:
             version = await self.versions.record()
-        except SandboxUnavailable as exc:
+        except FileSystemUnavailable as exc:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, None, "当前无法记录工作区文件状态，请让用户检查应用安装。")
         else:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, version, None)
@@ -291,7 +291,7 @@ class WorkspaceVersionBoundary:
                 WorkspaceFileResult("preserve", "failed", failed_files=error.paths, error=str(error)),
             )
             return
-        except SandboxUnavailable:
+        except FileSystemUnavailable:
             error = "当前无法回退工作区文件，请让用户检查应用安装。"
             await self._record_rescue(delivery_id, target.step_id, current, None, error,
                                       WorkspaceFileResult("preserve", "failed", error=error))
@@ -339,7 +339,7 @@ class WorkspaceVersionBoundary:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error),
                     "failed_files": list(error.paths),
                     "hint": "本次回退没有修改文件。" + SEMANTIC_RESTORE_HINT}
-        except SandboxUnavailable as error:
+        except FileSystemUnavailable as error:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED",
                     "error": "当前无法回退工作区文件，请让用户检查应用安装。",
                     "hint": SEMANTIC_RESTORE_HINT}

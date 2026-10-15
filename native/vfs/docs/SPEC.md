@@ -1,12 +1,11 @@
 # RED PANDA VFS 文件存储格式
 
-**Version:** 0.12
+**Version:** 0.13
 
 ## Introduction
 
 This local format stores current filesystem state and overlay lineage.
-Only version 0.12 is accepted. File-operation history belongs to Sandbox's
-file-management layer; core provides current-state transactions and frozen artifacts.
+Only version 0.13 is accepted. File-operation history belongs to the independent Agent filesystem; core provides current-state transactions and frozen artifacts.
 
 All timestamps in this specification use Unix epoch format (seconds since 1970-01-01 00:00:00 UTC) with optional nanosecond precision via separate `_nsec` columns.
 
@@ -18,12 +17,12 @@ overlay inode maps are acceleration structures only; they MUST be reconstructibl
 from the database plus the configured read-only base path and MUST NOT become
 the only source of virtual filesystem state.
 
-Vfs sandboxing is built around two invariants:
+Vfs storage and copy-on-write views follow two invariants:
 
 1. A portable Vfs database contains all writable virtual filesystem state.
    Clean shutdown SHOULD checkpoint transient SQLite sidecars so backups and
    materialized copies can be represented as a single main database file.
-2. Copy-on-write sandbox writes MUST NOT modify the real filesystem. Overlay
+2. Copy-on-write view writes MUST NOT modify the real filesystem. Overlay
    backends MAY read from an explicitly scoped base directory, but file creates,
    writes, truncates, chmod/chown/utimens, links, renames, and deletes are
    represented in the Vfs delta database and overlay metadata.
@@ -96,7 +95,7 @@ both legs without leaking the mount.
 ### Overlay Base Reality
 
 Overlay mounts scope reads to the configured base directory and write only
-to the delta database (see the sandbox invariants above). Two consequences
+to the delta database (see the Vfs storage invariants above). Two consequences
 are contractual:
 
 1. Renaming a base-layer directory returns `EXDEV` rather than attempting a
@@ -133,7 +132,7 @@ CREATE TABLE fs_config (
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `schema_version` | On-disk schema version | `0.12` |
+| `schema_version` | On-disk schema version | `0.13` |
 | `filesystem_id` | Immutable UUID v4 creation namespace of this delta | Generated once at database creation |
 | `chunk_size` | Size of data chunks in bytes | `65536` |
 | `inline_threshold` | Maximum dense regular-file size stored inline in `fs_inode.data_inline` | `16384` |
@@ -154,6 +153,7 @@ Stores file and directory metadata.
 CREATE TABLE fs_inode (
   ino INTEGER PRIMARY KEY AUTOINCREMENT,
   mode INTEGER NOT NULL,
+  hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0, 1)),
   nlink INTEGER NOT NULL DEFAULT 0,
   uid INTEGER NOT NULL DEFAULT 0,
   gid INTEGER NOT NULL DEFAULT 0,
@@ -174,6 +174,7 @@ CREATE TABLE fs_inode (
 
 - `ino` - Inode number (unique identifier)
 - `mode` - File type and permissions (Unix mode bits)
+- `hidden` - Explicit Windows hidden flag, independent of the file name; preserved by copy-up, rename, hard links and frozen artifacts
 - `nlink` - Number of hard links pointing to this inode
 - `uid` - Owner user ID
 - `gid` - Owner group ID
@@ -314,7 +315,7 @@ CREATE TABLE fs_chunk (
 
 - Equal chunk bytes MUST share one row.
 - `refcount` counts live mappings only. Zero-refcount chunks may be reclaimed
-  independently of Sandbox operation history. Frozen artifacts own their bytes.
+  independently of Agent filesystem operation history. Frozen artifacts own their bytes.
 - Digest computation and insertion MUST occur in the same transaction as the
   corresponding `fs_data` mapping change.
 
@@ -509,7 +510,7 @@ When creating a new agent database, initialize the filesystem configuration and 
 
 ```sql
 -- Initialize filesystem configuration
-INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.12');
+INSERT INTO fs_config (key, value) VALUES ('schema_version', '0.13');
 INSERT INTO fs_config (key, value) VALUES ('chunk_size', '65536');
 INSERT INTO fs_config (key, value) VALUES ('inline_threshold', '16384');
 
@@ -525,7 +526,7 @@ Where `16877` = `0o040755` (directory with rwxr-xr-x permissions).
 ### Format Boundary
 
 `PRAGMA user_version = 12` identifies the local-only filesystem format. `MIN_SUPPORTED` is
-0.12. Initialization, writable open and read-only open MUST refuse any older
+0.13. Initialization, writable open and read-only open MUST refuse any older
 format before running schema DDL. The older application tables and remote-chunk
 layouts are outside this local filesystem contract; no migration path is provided.
 A current database with missing or incompatible identity columns is corrupt
@@ -570,7 +571,7 @@ Implementations MAY extend the filesystem schema with additional functionality:
 - Extended attributes table
 - File ACLs and advanced permissions
 - Quota tracking per user/group
-- Operation history (owned by the Sandbox file-management layer)
+- Operation history (owned by the Agent filesystem)
 - Content deduplication
 - Compression metadata
 - File checksums/hashes
@@ -579,7 +580,7 @@ Such extensions SHOULD use separate tables to maintain referential integrity.
 
 ## Overlay Filesystem
 
-The overlay filesystem provides copy-on-write semantics by layering a writable delta filesystem on top of a read-only base filesystem. Changes are written to the delta layer while the base layer remains unmodified. This enables sandboxed execution where modifications can be discarded or committed independently.
+The overlay filesystem provides copy-on-write semantics by layering a writable delta filesystem on top of a read-only base filesystem. Changes are written to the delta layer while the base layer remains unmodified. These views can be used inside a sandbox; modifications can be discarded or committed independently of execution isolation.
 
 ### Whiteouts
 
@@ -715,7 +716,7 @@ An overlay used as another base preserves its origin identity across copy-up.
 
 Partial-origin copy-up is selected by the application's typed
 `PartialOriginPolicy` (`off`, `on` or `auto`, with a size threshold). The
-core policy defaults to whole-file copy-up (`off`); the Sandbox application
+core policy defaults to whole-file copy-up (`off`); the native file-management application
 selects its own policy explicitly. In partial-origin mode,
 write-opening a regular base-layer file creates a delta inode with the
 original size and metadata, records the base path/fingerprint in
@@ -775,7 +776,7 @@ and valid origin identities; materialization must preserve unchanged bytes.
 ## File history ownership
 
 The core stores current file state, overlay lineage and immutable SQLite artifacts.
-Sandbox's file-management layer owns operation evidence, restore decisions and
+The Agent filesystem owns operation evidence, restore decisions and
 child-view exchange. Core mutations have no row journal or relational history
 snapshots. SQLite transactions, WAL and crash recovery remain required.
 
@@ -788,11 +789,15 @@ in the writable source. Collection is separate from operation-history retention.
 
 Older entries describe the upstream history, including features removed by this fork.
 
+### Version 0.13 (RED PANDA)
+
+Adds inode hidden metadata. WinFsp converts `HIDDEN` to the core flag; the Agent filesystem records, publishes and restores it. Other formats are rejected without migration.
+
 ### Version 0.12 (RED PANDA)
 
 Remove internal row journals, relational root snapshots, replay APIs and their
 configuration. Keep current-state SQLite transactions and immutable artifacts.
-File history is owned by the Sandbox file-management layer. Versions 0.11 and
+File history is owned by the Agent filesystem. Versions 0.11 and
 earlier are refused. Unused chunk collection is independent of history retention.
 
 ### Version 0.11 (RED PANDA)

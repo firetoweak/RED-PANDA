@@ -4,13 +4,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    environment_error,
-)
-from redpanda.sandbox.workspace import EnvironmentInputError
-from redpanda.sandbox.files import replace_text
-from redpanda.sandbox.api import file_error_message
+from redpanda.filesystem import FileAccess
+from redpanda.tools.results import environment_error
+from redpanda.filesystem.workspace import EnvironmentInputError
+from redpanda.filesystem import replace_text
+from redpanda.tools.results import file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -41,7 +39,7 @@ class ReplaceAllInput(BaseModel):
     new_block: str = Field(description="替换后的文本块")
 
 
-def create_file_write_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
+def create_file_write_specs(binding: FileAccess) -> list[ToolSpec]:
     resolver = binding.resolver
 
     async def replace(raw, *, all_matches):

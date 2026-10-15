@@ -45,13 +45,13 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.sandbox.files import ChildFiles
+from redpanda.filesystem import ChildFiles
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import SqliteJournal, replay, DomainFactCommitted
-from redpanda.sandbox.local.windows_job import WindowsJob
-from redpanda.sandbox.registry import WorkspaceRegistry
+from redpanda.execution.local.windows_job import WindowsJob
+from redpanda.filesystem.registry import WorkspaceRegistry
 
 
 @dataclass

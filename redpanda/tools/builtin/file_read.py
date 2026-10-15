@@ -10,18 +10,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    environment_error,
-)
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.tools.results import environment_error
+from redpanda.filesystem.workspace import (
     EnvironmentInputError,
     InvalidEnvironmentPath,
     ResolvedEnvironmentPath,
     WorkspacePathResolver,
 )
-from redpanda.sandbox.files import read_text
-from redpanda.sandbox.api import file_error_message
+from redpanda.filesystem import read_text
+from redpanda.tools.results import file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -268,7 +266,7 @@ async def _fd_entries(executable: str, search_root: Path, raw: GlobInput) -> dic
     return {"ok": True, "entries": entries}
 
 
-def create_file_read_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
+def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
     resolver = binding.resolver
 
     async def glob(raw: GlobInput) -> dict[str, Any]:

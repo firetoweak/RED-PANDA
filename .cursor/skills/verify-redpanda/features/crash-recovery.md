@@ -9,14 +9,14 @@
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`journal/sqlite.py` 的 `events_delivery_identity` 唯一索引）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`（它是 `ValueError` 的子类）。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：408/425/429/500/502/503/504 与 `httpx.TransportError` → `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次；流一旦开始（收到任何一行）就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `InvalidLLMResponse`（`模型响应不符合约定`）；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。读超时 60 秒、连接超时 10 秒。
 - **失败可见与再试**：已识别的模型请求失败只停该会话，当前失败原因记录在会话上（`session.last_error`），刷新后仍可查询；`runnable` 只表示仍有待处理输入，不代表模型请求正在执行。点 `重试`沿用原待处理输入继续，不新增用户消息、不重复已完成的工具。
-- **FUSE 挂载**：`native/sandbox/src/main.rs` 的 `clear_stale_mount` 在下次挂载前遇到 `ENOTCONN` 时执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`），**Linux 没有对应的崩溃测试**。
+- **FUSE 挂载**：`native/filesystem/src/main.rs` 的 `clear_stale_mount` 在下次挂载前遇到 `ENOTCONN` 时执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`），**Linux 没有对应的崩溃测试**。
 - **定时任务**：`redpanda/automation/recovery.py` 处理重启后 UNKNOWN 的定时命令。
 
 ## Sub-features
 
 - `kill-web`：`kill -9` Web 进程（连同 Worker）后同 home 重启。
 - `kill-worker`：只 `kill -9` 某会话的 Worker 子进程。
-- `kill-sandbox`：工具执行中杀掉 `redpanda-sandbox`/FUSE 进程。
+- `kill-sandbox`：工具执行中杀掉 `redpanda-agentfs`/FUSE 进程。
 - `network-loss`：模型请求期间断网。
 - `model-errors`：超时、429、5xx、流被截断、无效 key。
 - `pending-auth-survives`：待授权跨重启保留。
@@ -39,7 +39,7 @@
   - (d) 发 `继续` 或点 `重试` → 模型收到 `NO_RESULT_YET` 提示，应先检查 `out.txt` 再决定；若系统自动重跑了该命令（`out.txt` 出现两行），判失败。
   - 残留：`pgrep -af 'sleep 30'` 应为空或在 30 秒内结束；`mount | grep -i fuse` 无残留挂载，或下一次文件工具调用前被 `clear_stale_mount` 清掉（再次跑 `read_file` 成功即证）。
 - **kill -9 Worker**：只杀 Worker 子进程。(b) SSE 出现 `session_failed`，界面显示 `Session 进程失败：...`。(a) 再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。
-- **kill 沙箱/FUSE 进程**：`apply_patch` 或 `execute_command` 期间 `pkill -9 redpanda-sandbox`。(a) 该工具以失败或 UNKNOWN 结束，不得报告成功；工作区文件要么是旧内容要么是新内容，不得是半截。(c) 用户工作区目录本身仍可访问（`ls $SCRATCH_WORKSPACE` 不报 `Transport endpoint is not connected`）。(d) 立即再发一次文件操作 → 成功（残留挂载被清理）。若挂载点残留且后续工具一直失败，记为问题。
+- **kill 沙箱/FUSE 进程**：`apply_patch` 或 `execute_command` 期间 `pkill -9 redpanda-agentfs`。(a) 该工具以失败或 UNKNOWN 结束，不得报告成功；工作区文件要么是旧内容要么是新内容，不得是半截。(c) 用户工作区目录本身仍可访问（`ls $SCRATCH_WORKSPACE` 不报 `Transport endpoint is not connected`）。(d) 立即再发一次文件操作 → 成功（残留挂载被清理）。若挂载点残留且后续工具一直失败，记为问题。
 - **断网**：模型请求中 `iptables` 或关闭网卡阻断出站（或把 base URL 指向不监听的端口）。(b) 约 3.5 秒内（0.5+1+2 秒重试）出现 `模型服务暂时不可用：... transport failed`。(a) journal 有失败事实，没有半条助手消息。(d) 恢复网络后点 `重试` → 同一触发重跑，不重复用户消息（`GET` 里该用户消息只有一条）。
 - **429 / 5xx（流开始前）**：假服务前两次返回 429，第三次正常 → (a) 回合成功，journal 只有一条助手回复。四次都 429 → `模型服务暂时不可用：<provider> 429: ...`。
 - **流中断**：假服务先发几个 `data:` 块再断开、不发 `[DONE]` → (b) `模型响应不符合约定：model stream ended without the [DONE] marker` 或传输错误，**不重试**。(a) 已流出的预览文字不作为最终回复写入 journal（界面 `preview.aborted`）。

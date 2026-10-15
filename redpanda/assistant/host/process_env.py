@@ -9,6 +9,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
+
+
+def application_tool_paths() -> list[str]:
+    tools = Path(__file__).resolve().parents[3] / ".tools/runtime"
+    paths = [tools / "git/cmd", tools / ("node" if os.name == "nt" else "node/bin"),
+             tools / "rg", tools / "fd"]
+    return [str(path) for path in paths if path.is_dir()]
 
 
 def host_process_environment(
@@ -18,6 +26,7 @@ def host_process_environment(
     result = {name: value for name, value in source.items()}
     session = user_session_environment()
     if session is None:
+        result["PATH"] = _merge_path(os.pathsep.join(application_tool_paths()), result.get("PATH", ""))
         return result
     # Windows environment names are case-insensitive, unlike ordinary dict keys.
     result = {name.upper(): value for name, value in result.items()}
@@ -25,7 +34,8 @@ def host_process_environment(
     for name, value in session.items():
         if not result.get(name):
             result[name] = value
-    result["PATH"] = _merge_path(result.get("PATH", ""), session.get("PATH", ""))
+    result["PATH"] = _merge_path(os.pathsep.join(application_tool_paths()),
+                                 _merge_path(result.get("PATH", ""), session.get("PATH", "")))
     return result
 
 

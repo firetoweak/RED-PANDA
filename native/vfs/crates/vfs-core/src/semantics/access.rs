@@ -245,6 +245,7 @@ mod tests {
             atime_nsec: 0,
             mtime_nsec: 0,
             ctime_nsec: 0,
+            hidden: false,
             rdev: 0,
         }
     }

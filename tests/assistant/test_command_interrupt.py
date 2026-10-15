@@ -21,9 +21,10 @@ from redpanda.runtime import (
     StepContinuationCancelled,
     ToolBinding,
 )
-from redpanda.sandbox.api import EnvironmentBinding, ExecutionAttachment
-from redpanda.sandbox.command import CapturedOutput, CommandResult
-from redpanda.sandbox.workspace import (
+from redpanda.filesystem import FileAccess
+from redpanda.execution.api import CommandEnvironment
+from redpanda.execution.command import CapturedOutput, CommandResult
+from redpanda.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
@@ -42,21 +43,19 @@ from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import SettlingScheduler
 
 
-def _binding(root: Path, runner) -> EnvironmentBinding:
+def _binding(root: Path, runner) -> tuple[FileAccess, CommandEnvironment]:
     view = WorkspaceViewSnapshot((
         RootBinding("project", WorkspaceScope.TASK, root),
     ))
-    return EnvironmentBinding(
+    files = FileAccess(
         environment_id="local-test",
         workspace_view=view,
         permission_binding=PermissionBinding((
             ("project", FilesystemPermission.READ_WRITE),
         )),
         cwd=root,
-        shell_name="powershell",
-        shell_path="powershell",
-        execution_attachment=ExecutionAttachment("local-test", runner),
     )
+    return files, CommandEnvironment(runner, "powershell", "powershell")
 
 
 def _interrupted(stdout: str) -> CommandResult:
@@ -133,7 +132,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         root = Path(directory.name)
         interrupts = CommandInterrupts()
         spec = create_command_execution_spec(
-            _binding(root, Runner()), interrupts.current
+            *_binding(root, Runner()), interrupts.current
         )
 
         async def handler(context, arguments):
@@ -245,7 +244,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         root = Path(directory.name)
         interrupts = CommandInterrupts()
         spec = create_command_execution_spec(
-            _binding(root, Runner()), interrupts.current
+            *_binding(root, Runner()), interrupts.current
         )
 
         async def handler(context, arguments):

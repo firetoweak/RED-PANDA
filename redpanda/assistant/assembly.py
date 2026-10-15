@@ -33,7 +33,7 @@ from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, sess
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.review import ChildWorkspaceReview
-from redpanda.sandbox.files import ChildFiles, child_root, child_workspace, workspace_files
+from redpanda.filesystem import ChildFiles, child_root, child_workspace, workspace_files
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -50,8 +50,8 @@ from redpanda.automation.tool import (
     schedule_once_binding,
 )
 from redpanda.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool, subagent_review_tools
-from redpanda.sandbox.registry import WorkspaceRecord
-from redpanda.sandbox.files import SandboxUnavailable, operation_id
+from redpanda.filesystem.registry import WorkspaceRecord
+from redpanda.filesystem import FileSystemUnavailable, operation_id
 from redpanda.assistant.cli import CliToolAdapter
 from redpanda.assistant.mcp import McpToolsetAdapter
 from redpanda.assistant.management import (
@@ -125,7 +125,7 @@ async def build_assistant_assembly(
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
         command_environment=command_environment,
-        sandbox=versions,
+        filesystem=versions,
         session_operations=current_file_operations,
     )
     command_interrupts = builtin_tools.command_interrupts
@@ -300,8 +300,8 @@ async def build_assistant_assembly(
                     return await versions.read(lambda: _handler(context, arguments))
                 return await versions.execute(operation_id(context.session_id, context.command_id),
                                               lambda: _handler(context, arguments))
-            except SandboxUnavailable as error:
-                return {"ok": False, "code": "SANDBOX_UNAVAILABLE",
+            except FileSystemUnavailable as error:
+                return {"ok": False, "code": "FILESYSTEM_UNAVAILABLE",
                         "error": "当前无法执行工作区文件操作，请让用户检查应用安装后重试。"}
         bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,
                                      requires_authorization=binding.requires_authorization)

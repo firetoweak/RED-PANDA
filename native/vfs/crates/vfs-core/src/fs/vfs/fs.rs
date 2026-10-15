@@ -95,7 +95,7 @@ impl FileSystem for Vfs {
 
         // Get stats for the child inode
         let mut stmt = conn
-            .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec FROM fs_inode WHERE ino = ?")
+            .prepare_cached("SELECT ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev, atime_nsec, mtime_nsec, ctime_nsec, hidden FROM fs_inode WHERE ino = ?")
             ?;
         let mut rows = stmt.query((child_ino,))?;
 
@@ -265,7 +265,7 @@ impl FileSystem for Vfs {
             return Ok(None);
         }
 
-        let mut stmt = conn.prepare_cached("SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec
+        let mut stmt = conn.prepare_cached("SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
             FROM fs_dentry d
             JOIN fs_inode i ON d.ino = i.ino
             WHERE d.parent_ino = ?
@@ -338,7 +338,7 @@ impl FileSystem for Vfs {
         let fetch_limit = max_entries.saturating_add(1).min(i64::MAX as usize) as i64;
         let mut stmt = if start_after_name.is_some() {
             conn.prepare_cached(
-                "SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec
+                "SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
                 FROM fs_dentry d
                 JOIN fs_inode i ON d.ino = i.ino
                 WHERE d.parent_ino = ? AND d.name > ?
@@ -348,7 +348,7 @@ impl FileSystem for Vfs {
             ?
         } else {
             conn.prepare_cached(
-                "SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec
+                "SELECT d.id, d.name, i.ino, i.mode, i.nlink, i.uid, i.gid, i.size, i.atime, i.mtime, i.ctime, i.rdev, i.atime_nsec, i.mtime_nsec, i.ctime_nsec, i.hidden
                 FROM fs_dentry d
                 JOIN fs_inode i ON d.ino = i.ino
                 WHERE d.parent_ino = ?
@@ -434,6 +434,29 @@ impl FileSystem for Vfs {
                         Err(error)
                     }
                 }
+            })
+            .await
+    }
+
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> Result<()> {
+        self.check_background()?;
+        self.prepare_attr_change(ino).await?;
+        let owned = self.clone();
+        self.pool
+            .execute(move |conn| {
+                let _keepalive = &owned;
+                let txn = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+                let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+                let changed = txn.execute(
+                    "UPDATE fs_inode SET hidden = ?, ctime = ?, ctime_nsec = ? WHERE ino = ?",
+                    (hidden, now.as_secs() as i64, now.subsec_nanos(), ino),
+                )?;
+                if changed == 0 {
+                    return Err(FsError::NotFound.into());
+                }
+                txn.commit()?;
+                owned.invalidate_attr(ino);
+                Ok(())
             })
             .await
     }
@@ -754,6 +777,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     atime_nsec: now_nsec as u32,
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
+                    hidden: false,
                     rdev: 0,
                 })
         })();
@@ -950,6 +974,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     atime_nsec: now_nsec as u32,
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
+                    hidden: false,
                     rdev,
                 })
         })();
@@ -1069,6 +1094,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                     atime_nsec: now_nsec as u32,
                     mtime_nsec: now_nsec as u32,
                     ctime_nsec: now_nsec as u32,
+                    hidden: false,
                     rdev: 0,
                 })
         })();
@@ -1340,7 +1366,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                      SET nlink = nlink + 1, ctime = ?, ctime_nsec = ?
                      WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec",
+                               atime_nsec, mtime_nsec, ctime_nsec, hidden",
                     )?;
                     let mut rows = query_statement_0.query((now_secs, now_nsec, ino))?;
                     let row = rows.next()?.ok_or(FsError::NotFound)?;
@@ -1354,7 +1380,7 @@ let mut rows = query_statement_0.query((now_secs, now_secs, now_nsec, now_nsec, 
                      SET ctime = ?, mtime = ?, ctime_nsec = ?, mtime_nsec = ?
                      WHERE ino = ?
                      RETURNING ino, mode, nlink, uid, gid, size, atime, mtime, ctime, rdev,
-                               atime_nsec, mtime_nsec, ctime_nsec",
+                               atime_nsec, mtime_nsec, ctime_nsec, hidden",
                     )?;
                     let mut rows = query_statement_1.query((
                         now_secs,

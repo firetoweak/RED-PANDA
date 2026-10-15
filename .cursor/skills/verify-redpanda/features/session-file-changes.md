@@ -1,6 +1,6 @@
 # 会话文件变更审阅
 
-输入框上方显示当前会话仍保留的净变更；点击摘要打开右侧 `会话变更`，选择文件查看旧、新行号和文本差异。来源：`web/src/features/conversation/FileChangesPanel.tsx`、`Conversation.tsx`、`web/src/api/fileChanges.ts`、`redpandaApi.ts`、`redpanda/assistant/conversations.py`、`redpanda/sandbox/files/review.py`、`redpanda/channels/web/app.py`。
+输入框上方显示当前会话仍保留的净变更；点击摘要打开右侧 `会话变更`，选择文件查看旧、新行号和文本差异。来源：`web/src/features/conversation/FileChangesPanel.tsx`、`Conversation.tsx`、`web/src/api/fileChanges.ts`、`redpandaApi.ts`、`redpanda/assistant/conversations.py`、`redpanda/filesystem/review.py`、`redpanda/channels/web/app.py`。
 
 ## Sub-features
 

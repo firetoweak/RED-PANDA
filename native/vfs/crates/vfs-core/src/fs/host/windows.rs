@@ -105,15 +105,14 @@ fn stats(file: &NativeFile, ino: i64) -> Result<Stats> {
     let (ctime, ctime_nsec) = (fingerprint.ctime, fingerprint.ctime_nsec as u32);
     Ok(Stats {
         ino,
-        mode: if standard.Directory {
+        mode: (if standard.Directory {
             S_IFDIR | 0o755
         } else {
-            S_IFREG
-                | if basic.FileAttributes & FILE_ATTRIBUTE_READONLY != 0 {
-                    0o444
-                } else {
-                    0o644
-                }
+            S_IFREG | 0o644
+        }) & if basic.FileAttributes & FILE_ATTRIBUTE_READONLY != 0 {
+            !0o222
+        } else {
+            u32::MAX
         },
         nlink: standard.NumberOfLinks,
         uid: 0,
@@ -125,6 +124,7 @@ fn stats(file: &NativeFile, ino: i64) -> Result<Stats> {
         mtime_nsec,
         ctime,
         ctime_nsec,
+        hidden: basic.FileAttributes & FILE_ATTRIBUTE_HIDDEN != 0,
         rdev: 0,
     })
 }
@@ -448,6 +448,10 @@ impl FileSystem for HostFS {
             cache.identities.remove(&entry.node.id);
         }
     }
+    async fn set_hidden(&self, _: i64, _: bool) -> Result<()> {
+        Err(FsError::OperationNotPermitted.into())
+    }
+
     async fn chmod(&self, _: i64, _: u32) -> Result<()> {
         Err(FsError::OperationNotPermitted.into())
     }

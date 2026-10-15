@@ -11,10 +11,10 @@ use tokio_rusqlite::rusqlite::{types::Value, Connection};
 use tokio_rusqlite::rusqlite::{Transaction, TransactionBehavior};
 
 /// Current schema version.
-pub const CURRENT: SchemaVersion = SchemaVersion::V0_12;
+pub const CURRENT: SchemaVersion = SchemaVersion::V0_13;
 
 /// Only the current local filesystem format is accepted.
-pub const MIN_SUPPORTED: SchemaVersion = SchemaVersion::V0_12;
+pub const MIN_SUPPORTED: SchemaVersion = SchemaVersion::V0_13;
 
 /// Current persisted format marker.
 pub const VFS_SCHEMA_VERSION: &str = CURRENT.as_str();
@@ -47,8 +47,10 @@ pub enum SchemaVersion {
     V0_10,
     /// Filesystem-only local storage; KV, tool tracking and remote chunks removed.
     V0_11,
-    /// Current filesystem state; operation history belongs to Sandbox.
+    /// Current filesystem state; operation history belongs to the Agent filesystem.
     V0_12,
+    /// Persisted hidden metadata.
+    V0_13,
 }
 
 impl std::fmt::Display for SchemaVersion {
@@ -72,6 +74,7 @@ impl SchemaVersion {
             SchemaVersion::V0_10 => "0.10",
             SchemaVersion::V0_11 => "0.11",
             SchemaVersion::V0_12 => "0.12",
+            SchemaVersion::V0_13 => "0.13",
         }
     }
 
@@ -89,6 +92,7 @@ impl SchemaVersion {
             SchemaVersion::V0_10 => 10,
             SchemaVersion::V0_11 => 11,
             SchemaVersion::V0_12 => 12,
+            SchemaVersion::V0_13 => 13,
         }
     }
 
@@ -111,6 +115,7 @@ impl SchemaVersion {
             "0.10" => Some(SchemaVersion::V0_10),
             "0.11" => Some(SchemaVersion::V0_11),
             "0.12" => Some(SchemaVersion::V0_12),
+            "0.13" => Some(SchemaVersion::V0_13),
             _ => None,
         }
     }
@@ -128,6 +133,7 @@ impl SchemaVersion {
             10 => Some(SchemaVersion::V0_10),
             11 => Some(SchemaVersion::V0_11),
             12 => Some(SchemaVersion::V0_12),
+            13 => Some(SchemaVersion::V0_13),
             _ => None,
         }
     }
@@ -150,6 +156,7 @@ mod ddl {
         "CREATE TABLE IF NOT EXISTS fs_inode (
             ino INTEGER PRIMARY KEY AUTOINCREMENT,
             mode INTEGER NOT NULL,
+            hidden INTEGER NOT NULL DEFAULT 0 CHECK(hidden IN (0, 1)),
             nlink INTEGER NOT NULL DEFAULT 0,
             uid INTEGER NOT NULL DEFAULT 0,
             gid INTEGER NOT NULL DEFAULT 0,
@@ -240,6 +247,13 @@ struct ColumnSpec {
 }
 
 const CURRENT_COLUMN_SPECS: &[ColumnSpec] = &[
+    ColumnSpec {
+        table_name: "fs_inode",
+        column_name: "hidden",
+        type_name: "INTEGER",
+        not_null: true,
+        default_value: Some("0"),
+    },
     ColumnSpec {
         table_name: "fs_origin",
         column_name: "base_identity",

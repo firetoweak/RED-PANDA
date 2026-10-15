@@ -8,15 +8,16 @@ import time
 import unittest
 from . import test_restore as support
 import pytest
-from redpanda.sandbox.files.file_view.client import native_executable
+from redpanda.filesystem.file_view.client import native_executable
 
 pytestmark = pytest.mark.process
 EXE = native_executable()
 if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
-from redpanda.sandbox.files.file_view import Client, ServiceFailure
-from redpanda.sandbox.files.file_view import publication as pub
+from redpanda.filesystem.file_view import ServiceFailure
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import publication as pub
 
 
 class NamespaceRestoration(unittest.TestCase):
@@ -49,7 +50,7 @@ class NamespaceRestoration(unittest.TestCase):
             for published in (False, True):
                 with self.subTest(action=action, published=published):
                     base, store = self.fixture(f'namespace_{action}_{published}', 100)
-                    with Client(support.EXE, store, base) as client:
+                    with CommandClient(support.EXE, store, base) as client:
                         code = "from pathlib import Path;Path('new').write_bytes(b'new')" if action == 'create' else "from pathlib import Path;Path('file').unlink()"
                         self.change(client, 'edit', code)
                         if published: self.publish(client)
@@ -66,7 +67,7 @@ class NamespaceRestoration(unittest.TestCase):
         for policy, expected in (('original', b'AAA__U'), ('preserve', b'AHA__U')):
             with self.subTest(policy=policy):
                 base, store = self.fixture('namespace_rename_'+policy, 100)
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     self.change(client, 'edit', "from pathlib import Path;Path('file').rename('renamed')\nwith open('renamed','r+b') as f:f.write(b'XYZ')")
                     self.publish(client)
                     with (base/'renamed').open('r+b') as file: file.write(b'XHZ__U')
@@ -84,7 +85,7 @@ class NamespaceRestoration(unittest.TestCase):
     def test_rename_replacement_restores_both_objects(self):
         base, store = self.fixture('namespace_replacement', 100)
         (base/'target').write_bytes(b'TARGET')
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.change(client, 'edit', "import os;os.replace('file','target')")
             self.restore_accept(client, 'undo', ['edit'])
             self.assertEqual(self.view(client, 'probe')[0], {'file': b'A'*100, 'target': b'TARGET'})
@@ -98,7 +99,7 @@ class NamespaceRestoration(unittest.TestCase):
             with self.subTest(action=action):
                 base, store = self.fixture('namespace_directory_'+action, 100)
                 if action == 'remove': (base/'empty').mkdir()
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     code = "from pathlib import Path;Path('tree/child').mkdir(parents=True);Path('tree/child/new').write_bytes(b'new')" if action == 'create' else "from pathlib import Path;Path('empty').rmdir()"
                     self.change(client, 'edit', code)
                     self.publish(client)
@@ -117,7 +118,7 @@ class NamespaceRestoration(unittest.TestCase):
         for policy in ('original', 'preserve'):
             with self.subTest(policy=policy):
                 base, store = self.fixture('namespace_user_child_'+policy, 100)
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     self.change(client, 'edit', "from pathlib import Path;Path('tree/child').mkdir(parents=True);Path('tree/child/owned').write_bytes(b'owned')")
                     self.publish(client)
                     (base/'tree/child/user').write_bytes(b'H')
@@ -138,7 +139,7 @@ class NamespaceRestoration(unittest.TestCase):
         for policy in ('original', 'preserve'):
             with self.subTest(policy=policy):
                 base, store = self.fixture('namespace_created_human_'+policy, 100)
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     self.change(client, 'edit', "from pathlib import Path;Path('new').write_bytes(b'X')")
                     self.publish(client)
                     with (base/'new').open('r+b') as file: file.write(b'H')
@@ -151,7 +152,7 @@ class NamespaceRestoration(unittest.TestCase):
         for policy in ('original', 'preserve'):
             with self.subTest(policy=policy):
                 base, store = self.fixture('namespace_occupied_'+policy, 100)
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     self.change(client, 'edit', "from pathlib import Path;Path('file').rename('renamed')")
                     self.publish(client)
                     (base/'file').write_bytes(b'H')
@@ -166,7 +167,7 @@ class NamespaceRestoration(unittest.TestCase):
 
     def test_published_identity_mapping_never_adopts_user_replacement(self):
         base, store = self.fixture('namespace_native_replacement', 100)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.change(client, 'edit', "from pathlib import Path;Path('file').rename('renamed')")
             self.publish(client)
             (base/'replacement').write_bytes(b'A'*100)
@@ -178,7 +179,7 @@ class NamespaceRestoration(unittest.TestCase):
 
     def test_contiguous_create_edit_rename_delete_range_across_rebases(self):
         base, store = self.fixture('namespace_range', 100)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             actions = [('create', "from pathlib import Path;Path('new').write_bytes(b'A'*100)"),
                        ('edit', "with open('new','r+b') as f:f.write(b'X')"),
                        ('rename', "from pathlib import Path;Path('new').rename('renamed')"),
@@ -194,7 +195,7 @@ class NamespaceRestoration(unittest.TestCase):
         if os.name != 'nt':
             self.skipTest('大小写不敏感的名称拒绝只属于 Windows')
         base, store = self.fixture('namespace_case', 100)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             result = client.run('edit', [sys.executable, '-c', "from pathlib import Path;Path('file').rename('FILE')"])
             self.assertNotEqual(result['execution']['exit_code'], 0, result)
             self.assertEqual(result['files']['receipt']['changes'], [])
@@ -203,7 +204,7 @@ class NamespaceRestoration(unittest.TestCase):
 
     def test_same_bytes_replacement_remains_observable(self):
         base, store = self.fixture('namespace_same_bytes', 100)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             receipt = self.change(client, 'edit', "from pathlib import Path;Path('file').unlink();Path('file').write_bytes(b'A'*100)")
             self.assertEqual(len(receipt['changes']), 1, receipt)
             change = receipt['changes'][0]
@@ -215,7 +216,7 @@ class NamespaceRestoration(unittest.TestCase):
     def test_rename_cycle_conflicts_before_candidate_creation(self):
         base, store = self.fixture('namespace_cycle', 100)
         (base/'other').write_bytes(b'OTHER')
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.change(client, 'edit', "from pathlib import Path;Path('file').rename('temp');Path('other').rename('file');Path('temp').rename('other')")
             result = client.restore('undo', ['edit'], 'original')
             self.assertEqual((result['status'], result['reason']), ('conflict', 'unsupported_rename_cycle'))
@@ -228,7 +229,7 @@ class NamespaceRestoration(unittest.TestCase):
                 base, store = self.fixture('namespace_link_'+action, 100)
                 os.link(base/'file', base/'alias')
                 (base/'other').write_bytes(b'OTHER')
-                with Client(support.EXE, store, base) as client:
+                with CommandClient(support.EXE, store, base) as client:
                     code = "from pathlib import Path;Path('alias').unlink()" if action == 'unlink' else "from pathlib import Path;Path('alias').rename('renamed')" if action == 'rename' else "import os;os.replace('other','alias')"
                     if os.name == 'nt' and action == 'unlink':
                         # WinFsp commits delete during Cleanup, which has no error
@@ -242,14 +243,14 @@ class NamespaceRestoration(unittest.TestCase):
                         client.request('accept', command_id='edit')
                         self.assertEqual(self.view(client, 'probe')[0], {'file': b'A'*100, 'alias': b'A'*100, 'other': b'OTHER'})
                 if os.name == 'nt' and action == 'unlink':
-                    with Client(support.EXE, store, base) as client:
+                    with CommandClient(support.EXE, store, base) as client:
                         self.assertEqual(client.request('status', command_id='edit')['status'], 'unknown')
                         client.request('discard', command_id='edit')
                         self.assertEqual(self.view(client, 'probe')[0], {'file': b'A'*100, 'alias': b'A'*100, 'other': b'OTHER'})
 
     def test_interrupted_deleted_file_restoration_cannot_be_accepted(self):
         base, store = self.fixture('namespace_interrupted', 16*1024*1024)
-        client = Client(support.EXE, store, base)
+        client = CommandClient(support.EXE, store, base)
         try:
             self.change(client, 'edit', "from pathlib import Path;Path('file').unlink()")
             head = client.request('info')['commit']
@@ -271,7 +272,7 @@ class NamespaceRestoration(unittest.TestCase):
             self.assertFalse((store/'commands/undo/restore-complete.json').exists())
         finally:
             client.close()
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.assertEqual(client.request('info')['commit'], head)
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'unknown')
             self.assertEqual(client.request('recover', command_id='undo')['status'], 'incomplete_restore')
@@ -281,7 +282,7 @@ class NamespaceRestoration(unittest.TestCase):
 
     def test_sealed_structural_restore_survives_lost_reply(self):
         base, store = self.fixture('namespace_lost_reply', 100)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.change(client, 'edit', "from pathlib import Path;Path('file').unlink()")
             client.process.stdin.write(json.dumps({'op': 'restore', 'command_id': 'undo', 'targets': ['edit'], 'policy': 'original'})+'\n')
             client.process.stdin.flush()
@@ -290,7 +291,7 @@ class NamespaceRestoration(unittest.TestCase):
                 self.assertLess(time.monotonic(), deadline)
                 time.sleep(0.01)
             client.process.kill();client.process.wait(timeout=20)
-        with Client(support.EXE, store, base) as client:
+        with CommandClient(support.EXE, store, base) as client:
             self.assertEqual(client.restore('undo', ['edit'], 'original')['status'], 'sealed')
             client.request('accept', command_id='undo')
             head = client.request('info')['commit']

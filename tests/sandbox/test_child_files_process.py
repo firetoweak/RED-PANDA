@@ -6,9 +6,9 @@ from unittest.mock import patch
 import pytest
 
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.files import ChildFiles, child_root, child_workspace, workspace_files
-from redpanda.sandbox.files.operations import INITIAL, WorkspaceRestoreFailed, native_executable, operation_id
-from redpanda.sandbox.files.git import ReviewWorktrees
+from redpanda.filesystem import ChildFiles, child_root, child_workspace, workspace_files
+from redpanda.filesystem.operations import INITIAL, WorkspaceRestoreFailed, native_executable, operation_id
+from redpanda.filesystem.git import ReviewWorktrees
 from tests.fixtures.workspaces import workspace_record
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.sandbox.registry import (
+from redpanda.filesystem.registry import (
     REGISTRY_VERSION,
     WorkspaceNotFound,
     WorkspacePathTaken,
@@ -12,7 +12,7 @@ from redpanda.sandbox.registry import (
     WorkspaceRegistryError,
     workspace_view,
 )
-from redpanda.sandbox.workspace import WorkspaceScope
+from redpanda.filesystem.workspace import WorkspaceScope
 
 
 class WorkspaceRegistryTest(unittest.TestCase):

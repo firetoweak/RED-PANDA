@@ -11,13 +11,13 @@ import os
 from pathlib import Path
 
 from redpanda.cli.errors import CliInputError, CliSourceError
-from redpanda.sandbox.command import EnvironmentCommandExecutor
+from redpanda.execution.command import CommandExecutor
 
 
 class ManifestCliInstaller:
     def __init__(
         self,
-        executor: EnvironmentCommandExecutor,
+        executor: CommandExecutor,
         *,
         cwd: Path,
         timeout_seconds: int = 15,

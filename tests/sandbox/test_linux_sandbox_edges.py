@@ -1,4 +1,5 @@
 """Linux edges: symlinks, mode, publish races, stale mounts, escaped children."""
+import errno
 import os
 from pathlib import Path
 import signal
@@ -14,11 +15,11 @@ if sys.platform != "linux":
     pytest.skip("需要 Linux 与可用的 FUSE", allow_module_level=True)
 
 from redpanda.paths import RedPandaHome
-from redpanda.sandbox.files import clear_stale_mounts, workspace_files
-from redpanda.sandbox.files.file_view import Client
-from redpanda.sandbox.files.file_view import publication as pub
-from redpanda.sandbox.files.file_view.native_posix import identity, open_file
-from redpanda.sandbox.files.operations import (
+from redpanda.filesystem import clear_stale_mounts, workspace_files
+from tests.fixtures.file_view import CommandClient
+from redpanda.filesystem.file_view import publication as pub
+from redpanda.filesystem.file_view.native_posix import identity, open_file
+from redpanda.filesystem.operations import (
     INITIAL,
     WorkspaceFiles,
     native_executable,
@@ -27,7 +28,7 @@ from redpanda.sandbox.files.operations import (
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(
     sys.platform != "linux" or not native_executable().is_file(),
-    reason="需要 Linux 上已构建的 redpanda-sandbox 与可用的 FUSE",
+    reason="需要 Linux 上已构建的 redpanda-agentfs 与可用的 FUSE",
 )]
 
 
@@ -138,14 +139,16 @@ def test_fifo_rejection_leaves_the_service_usable(tmp_path):
     root = tmp_path / "base"
     root.mkdir()
     (root / "keep.txt").write_text("A", encoding="utf-8")
-    client = Client(native_executable(), tmp_path / "store", root)
+    client = CommandClient(native_executable(), tmp_path / "store", root)
     try:
         begin = client.begin("c1")
-        os.mkfifo(Path(begin["mount"]) / "pipe")
-        rejected = client.request("finish")
-        assert rejected["status"] == "rejected", rejected
-        assert "supported" in rejected["error"]
-        assert client.request("status", command_id="c1")["status"] == "rejected"
+        with pytest.raises(OSError) as caught:
+            os.mkfifo(Path(begin["mount"]) / "pipe")
+        assert caught.value.errno == errno.EOPNOTSUPP, caught.value
+        sealed = client.request("finish")
+        assert sealed["status"] == "sealed", sealed
+        assert not any(change["path"] == "/pipe" for change in sealed["receipt"]["changes"])
+        client.request("discard", command_id="c1")
         again = client.begin("c2")
         assert again["status"] == "active", again
         assert (Path(again["mount"]) / "keep.txt").read_text(encoding="utf-8") == "A"
@@ -162,7 +165,7 @@ def test_sigkill_mount_is_cleared_on_restart_and_the_view_resumes(tmp_path):
     root.mkdir()
     (root / "keep.txt").write_text("A", encoding="utf-8")
     view = workspace_files(home, SimpleNamespace(task_root=root))
-    client = Client(native_executable(), view.storage, root)
+    client = CommandClient(native_executable(), view.storage, root)
     begin = client.begin("c1")
     assert begin["status"] == "active"
     os.kill(client.process.pid, signal.SIGKILL)
@@ -173,7 +176,7 @@ def test_sigkill_mount_is_cleared_on_restart_and_the_view_resumes(tmp_path):
     clear_stale_mounts(home)
 
     assert begin["mount"] not in Path("/proc/self/mounts").read_text(encoding="utf-8")
-    nxt = Client(native_executable(), view.storage, root)
+    nxt = CommandClient(native_executable(), view.storage, root)
     try:
         assert nxt.request("status", command_id="c1")["status"] == "unknown"
         again = nxt.begin("c2")
@@ -189,7 +192,7 @@ def test_setsid_child_does_not_survive_the_command(tmp_path):
     root = tmp_path / "base"
     root.mkdir()
     store = tmp_path / "store"
-    client = Client(native_executable(), store, root)
+    client = CommandClient(native_executable(), store, root)
     try:
         code = (
             "import subprocess,sys,time;subprocess.Popen([sys.executable,'-c',"
@@ -203,5 +206,45 @@ def test_setsid_child_does_not_survive_the_command(tmp_path):
         assert not any(change["path"] == "/escaped" for change in changes)
         assert not (root / "escaped").exists()
         client.request("discard", command_id="c1")
+    finally:
+        client.close()
+
+
+def test_write_close_ignores_writeback_time_setattr(tmp_path):
+    """Write and close through agentFS succeed while FUSE writeback stays on.
+
+    Kernel writeback sends a timestamp SETATTR on close. Agent filesystem
+    mounts ignore that update, so close does not return EIO and a touch-only
+    file does not become history. Content changes still do.
+    """
+    root = tmp_path / "base"
+    root.mkdir()
+    (root / "keep.txt").write_text("A\n", encoding="utf-8")
+    (root / "clock.txt").write_text("still\n", encoding="utf-8")
+    environment = os.environ.copy()
+    environment["VFS_FUSE_WRITEBACK"] = "1"
+    environment["VFS_FUSE_WORKERS"] = "2"
+    client = CommandClient(
+        native_executable(),
+        tmp_path / "store",
+        root,
+        service_environment=environment,
+    )
+    try:
+        begin = client.begin("c1")
+        assert begin["status"] == "active", begin
+        mount = Path(begin["mount"])
+        (mount / "keep.txt").write_text("B\n", encoding="utf-8")
+        (mount / "new.txt").write_text("fresh\n", encoding="utf-8")
+        os.utime(mount / "clock.txt", (1_700_000_000, 1_700_000_000))
+        os.utime(mount / "keep.txt", None)
+        assert (mount / "keep.txt").read_text(encoding="utf-8") == "B\n"
+        assert (mount / "new.txt").read_text(encoding="utf-8") == "fresh\n"
+        assert (mount / "clock.txt").read_text(encoding="utf-8") == "still\n"
+        sealed = client.request("finish")
+        assert sealed["status"] == "sealed", sealed
+        changes = {change["path"] for change in sealed["receipt"]["changes"]}
+        assert "/clock.txt" not in changes
+        assert {"/keep.txt", "/new.txt"} <= changes
     finally:
         client.close()

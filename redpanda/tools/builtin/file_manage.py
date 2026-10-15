@@ -4,13 +4,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from redpanda.sandbox.api import (
-    EnvironmentBinding,
-    environment_error,
-)
-from redpanda.sandbox.workspace import EnvironmentInputError
-from redpanda.sandbox.files import write_text
-from redpanda.sandbox.api import file_error_message
+from redpanda.filesystem import FileAccess
+from redpanda.tools.results import environment_error
+from redpanda.filesystem.workspace import EnvironmentInputError
+from redpanda.filesystem import write_text
+from redpanda.tools.results import file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
@@ -28,7 +26,7 @@ class WriteFileInput(BaseModel):
     overwrite: bool = Field(default=False, description="文件已存在时是否整体覆盖；false 拒绝覆盖，true 完整覆盖")
 
 
-def create_file_manage_specs(binding: EnvironmentBinding) -> list[ToolSpec]:
+def create_file_manage_specs(binding: FileAccess) -> list[ToolSpec]:
     resolver = binding.resolver
 
     async def write_file(raw: WriteFileInput) -> dict[str, Any]:

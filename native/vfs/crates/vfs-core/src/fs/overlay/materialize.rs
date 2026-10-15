@@ -211,7 +211,7 @@ impl OverlayFS {
                     let mut query_statement_0 = conn.prepare_cached(
                         "UPDATE fs_inode
                  SET mode = ?, uid = ?, gid = ?, atime = ?, mtime = ?, ctime = ?,
-                     atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, rdev = ?
+                     atime_nsec = ?, mtime_nsec = ?, ctime_nsec = ?, rdev = ?, hidden = ?
                  WHERE ino = ?",
                     )?;
                     let changed = query_statement_0.execute((
@@ -225,6 +225,7 @@ impl OverlayFS {
                         stats.mtime_nsec as i64,
                         stats.ctime_nsec as i64,
                         stats.rdev as i64,
+                        stats.hidden,
                         ino,
                     ))?;
                     if changed == 0 {

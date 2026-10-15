@@ -54,7 +54,7 @@
 
 # 补充：人机混合修改的文件回滚
 
-同一文件既有助手修改又有人手修改时，回滚（人点 `会话和文件一起回滚`，或模型调用 `restore_workspace`）怎么处理。来源：`native/sandbox/src/restore.rs`（`choose`、`Summary`）、`native/sandbox/src/restore/namespace.rs`（`reverse`、`plan`）、`redpanda/sandbox/files/operations.py`（`restore`、冲突原因表）、`redpanda/assistant/workspace_versions.py`（`settle_fork`、`restore`）、`redpanda/tools/builtin/workspace_restore.py`、`redpanda/assistant/context/prompt.py`、`redpanda/assistant/context/projection.py`、`web/src/features/conversation/Conversation.tsx`、设计文档 `docs/架构/Sandbox/文件操作与回退.md`。
+同一文件既有助手修改又有人手修改时，回滚（人点 `会话和文件一起回滚`，或模型调用 `restore_workspace`）怎么处理。来源：`native/filesystem/src/restore.rs`（`choose`、`Summary`）、`native/filesystem/src/restore/namespace.rs`（`reverse`、`plan`）、`redpanda/filesystem/operations.py`（`restore`、冲突原因表）、`redpanda/assistant/workspace_versions.py`（`settle_fork`、`restore`）、`redpanda/tools/builtin/workspace_restore.py`、`redpanda/assistant/context/prompt.py`、`redpanda/assistant/context/projection.py`、`web/src/features/conversation/Conversation.tsx`、设计文档 `docs/架构/Sandbox/文件操作与回退.md`。
 
 源码事实（判据以此为准）：
 - **归因按字节位置，不按作者**：文档：「归因依据是操作前后结果。记录助手改变的位置及其前后内容，而非监视自然人身份。」

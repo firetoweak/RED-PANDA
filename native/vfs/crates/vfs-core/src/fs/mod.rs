@@ -118,6 +118,8 @@ pub enum TimeChange {
 pub struct Stats {
     pub ino: i64,
     pub mode: u32,
+    /// Explicit Windows hidden attribute, independent of the file name.
+    pub hidden: bool,
     pub nlink: u32,
     pub uid: u32,
     pub gid: u32,
@@ -354,6 +356,9 @@ pub trait FileSystem: Send + Sync {
 
     /// Change file mode/permissions by inode.
     async fn chmod(&self, ino: i64, mode: u32) -> Result<()>;
+
+    /// Set the persisted hidden attribute by inode.
+    async fn set_hidden(&self, ino: i64, hidden: bool) -> Result<()>;
 
     /// Change file ownership by inode.
     async fn chown(&self, ino: i64, uid: Option<u32>, gid: Option<u32>) -> Result<()>;

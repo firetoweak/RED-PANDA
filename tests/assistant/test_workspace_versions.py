@@ -13,7 +13,7 @@ from redpanda.assistant.workspace_versions import (
 from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.session_scheduler import SettlingScheduler
-from redpanda.sandbox.files.operations import SandboxUnavailable
+from redpanda.filesystem.operations import FileSystemUnavailable
 
 
 def test_record_waits_for_whole_batch_without_context_noise_or_extra_decision():
@@ -69,7 +69,7 @@ def test_record_failure_is_a_visible_fact_but_unknown_error_propagates():
         runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker(()), {})
         await runtime.create_session("s")
         versions = AsyncMock()
-        versions.record.side_effect = SandboxUnavailable("native program missing")
+        versions.record.side_effect = FileSystemUnavailable("native program missing")
         boundary = WorkspaceVersionBoundary(runtime, "s", "workspace-test", versions)
         await boundary.sync()
         facts = project_workspace_versions(await runtime.snapshot("s"))
@@ -85,7 +85,7 @@ def test_record_failure_is_a_visible_fact_but_unknown_error_propagates():
 
 
 async def restore_history(recorded):
-    from redpanda.sandbox.files.operations import WorkspaceRestore
+    from redpanda.filesystem.operations import WorkspaceRestore
     async def tool(*_):
         return {"ok": True, "code": "DONE"}
     model = ScriptedDecisionMaker((
@@ -133,7 +133,7 @@ def test_call_resolves_to_previous_step_not_its_own_snapshot(step_index, command
 def test_missing_previous_snapshot_does_not_fall_back(failed):
     async def scenario():
         records = ["a" * 64, "b" * 64, "c" * 64, "c" * 64]
-        records[failed] = SandboxUnavailable("snapshot failed")
+        records[failed] = FileSystemUnavailable("snapshot failed")
         runtime, boundary, versions, events, visible = await restore_history(records)
         target = visible.steps[failed].commands[0].command.command_id
         result = await boundary.restore("restore", target, events, visible)
@@ -166,7 +166,7 @@ def test_compact_window_cannot_reference_removed_calls():
 
 def test_partial_restore_retains_rescue_fact_without_exposing_version_addresses():
     async def scenario():
-        from redpanda.sandbox.files.operations import WorkspaceRestoreFailed
+        from redpanda.filesystem.operations import WorkspaceRestoreFailed
         from redpanda.assistant.workspace_versions import WORKSPACE_RESTORE_FACT
         runtime, boundary, versions, events, visible = await restore_history(["a" * 64] * 4)
         versions.restore.side_effect = WorkspaceRestoreFailed("f" * 64, OSError("disk full"))
@@ -221,7 +221,7 @@ def test_the_restart_boundary_is_the_steps_own_version_fact(step_index, expected
 def test_a_step_whose_version_was_never_taken_has_no_boundary_to_guess_at():
     async def scenario():
         _, _, _, events, visible = await restore_history(
-            ["a" * 64, SandboxUnavailable("snapshot failed"), "c" * 64, "c" * 64]
+            ["a" * 64, FileSystemUnavailable("snapshot failed"), "c" * 64, "c" * 64]
         )
         boundary = workspace_version_event(events, visible.steps[0].step.step_id)
         assert WorkspaceVersionFact.parse(boundary.payload.data).version is None
@@ -297,7 +297,7 @@ def test_undoing_restore_uses_its_saved_pre_restore_files():
 def test_fork_file_result_survives_reprojection_for_web_and_model(failure):
     from redpanda.assistant.conversations import project_conversation
     from redpanda.assistant.sessions import SessionView
-    from redpanda.sandbox.files.operations import WorkspaceRestore, WorkspaceRestoreFailed
+    from redpanda.filesystem.operations import WorkspaceRestore, WorkspaceRestoreFailed
     async def scenario():
         runtime, boundary, versions, _, _ = await restore_history(["a" * 64] * 4)
         paths = tuple(f"file-{index}.py" for index in range(105))
@@ -333,7 +333,7 @@ def test_fork_file_result_survives_reprojection_for_web_and_model(failure):
 
 
 def test_original_tool_result_reports_all_paths_and_semantic_action():
-    from redpanda.sandbox.files.operations import WorkspaceRestore
+    from redpanda.filesystem.operations import WorkspaceRestore
     async def scenario():
         _, boundary, versions, events, visible = await restore_history(["a" * 64] * 4)
         paths = tuple(f"file-{index}.py" for index in range(105))

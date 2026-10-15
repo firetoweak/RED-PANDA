@@ -3,7 +3,7 @@
 This fork owns general filesystem semantics in `vfs-core` and transport/lifecycle
 in `vfs-mount`. It does not own Command IDs, before/after evidence, publication,
 undo policies or receipts. Those belong to an application using this library.
-RED PANDA integration lives in the adjacent sandbox and Python adapter.
+RED PANDA integration lives in the native file-management service and Python adapter (currently under directories named sandbox).
 
 ## Core contracts
 
@@ -22,7 +22,7 @@ uses size/write/change time and persistent identity; an explicit application con
 validator may use hashes instead. This is chunk COW, not byte-range ownership.
 The application captures Command intervals separately.
 
-Schema 0.12 accepts only local filesystem storage and refuses other formats
+Schema 0.13 accepts only local filesystem storage and refuses other formats
 before DDL. It retains the persistent namespaces introduced in 0.10;
 old process-local or unnamespaced inode identities cannot be rebound reliably.
 Each fresh delta persists a UUID namespace; its own file identities include that
@@ -30,7 +30,7 @@ namespace and inode. Independent files in different layers remain distinct, whil
 hard links and copy-up retain their original identity. Frozen artifacts preserve
 the namespace; missing or malformed current namespaces are refused. Origins
 and frozen artifacts use this identity representation. Core has no row journal
-or relational-history reconstruction; Sandbox owns file-operation evidence.
+or relational-history reconstruction; the independent Agent filesystem owns file-operation evidence.
 Native identities identify physical files, not equivalent checkouts on another
 machine. Rebinding to another base is not implicit; even identical bytes do not
 authorize substituting a different physical origin.
@@ -82,9 +82,16 @@ The native test checks base, delta and nested Unicode file names, with and witho
 replacement, normalized handle paths, enumeration and spelling after reopening.
 It refuses directory rename and creation with delete-on-close.
 The read-only attribute maps to the core's write-mode bits and remains in the
-delta; all other attribute changes and timestamp updates are refused. Git for
-Windows requires explicit `core.hideDotFiles=false` for initialization because
-hidden attributes have no stored representation.
+delta; Agent filesystem evidence, publication and restoration record it separately
+from POSIX mode. This includes directories and initial/overwrite attributes.
+The hidden attribute has independent inode storage, is read from HostFS,
+and survives copy-up, rename and freezing. Default Git for Windows initialization
+is supported without changing Git configuration. Other attribute changes and
+timestamp updates remain refused. Agent filesystem evidence, host publication
+and restoration include both flags; metadata-only effects do not copy bytes.
+Unsupported creation/overwrite attributes refuse before file creation or truncation;
+the ordinary Windows archive creation hint remains accepted. Explicit archive changes
+are not supported. Publication preserves unrelated host attribute bits.
 It does not implement ACL/ADS/reparse operations, other metadata updates, hard-link
 creation or a full mmap coherence contract. It exposes a synthetic virtual volume
 capacity, not a disk quota or actual free-space measurement. Lookup references are

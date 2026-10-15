@@ -46,11 +46,15 @@ use vfs_core::{BoxedFile, DirEntry, FileSystem, FsError, Stats, TimeChange};
 /// If the error is a filesystem-specific FsError, returns the appropriate
 /// errno code (ENOENT, EEXIST, ENOTDIR, etc.). Database busy errors and
 /// connection pool timeouts return EAGAIN to signal the caller should retry.
-/// Otherwise falls back to EIO.
+/// `std::io::ErrorKind::Unsupported` without a raw code becomes `EOPNOTSUPP`
+/// (`ENOTSUP` on Linux). Anything else falls back to EIO.
 fn error_to_errno(e: &SdkError) -> i32 {
     let errno = match e {
         SdkError::Fs(fs_err) => fs_err.to_errno(),
-        SdkError::Io(io_err) => io_err.raw_os_error().unwrap_or(libc::EIO),
+        SdkError::Io(io_err) => io_err.raw_os_error().unwrap_or(match io_err.kind() {
+            std::io::ErrorKind::Unsupported => libc::EOPNOTSUPP,
+            _ => libc::EIO,
+        }),
         SdkError::Database(tokio_rusqlite::rusqlite::Error::SqliteFailure(code, _))
             if matches!(
                 code.code,
@@ -97,6 +101,23 @@ fn maximize_fd_limit() {
     }
 }
 
+/// How this mount treats atime/mtime SETATTR.
+///
+/// FUSE has no flag that separates kernel writeback timestamps from an
+/// explicit `utimensat`. [`TimeSetattr::Ignore`] answers both with success
+/// and does not call the filesystem, so nothing is recorded as a timestamp
+/// change. Agent filesystem mounts use that policy and keep writeback
+/// enabled. [`TimeSetattr::Apply`] forwards the request and is the default
+/// for other VFS mounts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TimeSetattr {
+    /// Forward atime/mtime changes to `FileSystem::utimens`.
+    #[default]
+    Apply,
+    /// Succeed without changing timestamps or calling the filesystem.
+    Ignore,
+}
+
 /// Options for mounting an agent filesystem via FUSE.
 #[derive(Debug, Clone)]
 pub struct FuseMountOptions {
@@ -115,6 +136,9 @@ pub struct FuseMountOptions {
     pub uid: Option<u32>,
     /// Group ID to report for all files (defaults to current group).
     pub gid: Option<u32>,
+    /// atime/mtime SETATTR policy. Agent filesystem mounts pass
+    /// [`TimeSetattr::Ignore`]; other mounts keep [`TimeSetattr::Apply`].
+    pub time_setattr: TimeSetattr,
 }
 
 #[cfg(debug_assertions)]
@@ -276,6 +300,8 @@ struct VfsFuse {
     pending_dirty_handles: AtomicUsize,
     /// Whether FUSE writeback mode is enabled for this mount.
     writeback_enabled: bool,
+    /// Mount policy for atime/mtime SETATTR. See [`TimeSetattr`].
+    time_setattr: TimeSetattr,
 }
 
 impl Filesystem for VfsFuse {
@@ -628,10 +654,16 @@ impl Filesystem for VfsFuse {
         }
     }
 
-    /// Sets file attributes, handling truncate and chmod operations.
+    /// Sets file attributes.
     ///
-    /// Currently `size` changes (truncate) and `mode` changes (chmod) are supported.
-    /// Other attribute changes (uid, gid, timestamps) are accepted but ignored.
+    /// Size (truncate), mode (chmod), and ownership (chown) are forwarded.
+    /// atime and mtime are forwarded when this mount's [`TimeSetattr`] is
+    /// [`TimeSetattr::Apply`]. Agent filesystem mounts use
+    /// [`TimeSetattr::Ignore`]: writeback-cache close and an explicit
+    /// `utimensat` are the same SETATTR, so both succeed here without a
+    /// filesystem call and without a history event. Writeback stays enabled.
+    /// ctime from SETATTR is not applied. Remaining unsupported results
+    /// become `EOPNOTSUPP`.
     fn setattr(
         &self,
         req: &Request,
@@ -655,12 +687,12 @@ impl Filesystem for VfsFuse {
             size
         );
         let audit = MutationAudit::new();
-        let mutated = mode.is_some()
-            || uid.is_some()
-            || gid.is_some()
-            || size.is_some()
-            || atime.is_some()
-            || mtime.is_some();
+        // Ignored time setattr is a successful no-op: it must not count as a
+        // mutation (no cache invalidation, no filesystem call).
+        let apply_time =
+            self.time_setattr == TimeSetattr::Apply && (atime.is_some() || mtime.is_some());
+        let mutated =
+            mode.is_some() || uid.is_some() || gid.is_some() || size.is_some() || apply_time;
 
         // Preserve FUSE request order, not SDK enqueue order: a data write
         // buffered in OpenFile::pending arrived BEFORE this SETATTR, so it
@@ -736,8 +768,10 @@ impl Filesystem for VfsFuse {
             self.invalidate_inode_cache_self(req, ino);
         }
 
-        // Handle atime/mtime changes (utimensat)
-        if atime.is_some() || mtime.is_some() {
+        // Handle atime/mtime changes (utimensat). Ignore answers success
+        // before the filesystem so writeback close cannot fail, and so an
+        // explicit touch is not recorded as a history event.
+        if apply_time {
             let new_atime = match atime {
                 Some(crate::transport::TimeOrNow::SpecificTime(t)) => {
                     let dur = t.duration_since(UNIX_EPOCH).unwrap_or_default();
@@ -2639,6 +2673,7 @@ impl VfsFuse {
         config: FuseConfig,
         report_uid: Option<u32>,
         report_gid: Option<u32>,
+        time_setattr: TimeSetattr,
     ) -> Self {
         let keepcache_delta_enabled = fs.delta_keep_cache_fast_path();
         let cache_config = config.kernel_cache();
@@ -2672,6 +2707,7 @@ impl VfsFuse {
             pending_dirty_handles: AtomicUsize::new(0),
             cache_dir_enabled,
             writeback_enabled,
+            time_setattr,
         }
     }
 
@@ -2904,7 +2940,14 @@ pub fn mount(
     let fuse_config = FuseConfig::from_env();
     let dispatch_mode = fuse_config.dispatch_mode;
     let uring_config = fuse_config.uring;
-    let fs = VfsFuse::new(fs, runtime, fuse_config, opts.uid, opts.gid);
+    let fs = VfsFuse::new(
+        fs,
+        runtime,
+        fuse_config,
+        opts.uid,
+        opts.gid,
+        opts.time_setattr,
+    );
     let mount_opts = build_mount_options(&opts)?;
     #[cfg(target_os = "linux")]
     let prepared_watcher = base_watcher::prepare(
@@ -2973,11 +3016,12 @@ fn build_mount_options(opts: &FuseMountOptions) -> anyhow::Result<Vec<MountOptio
 #[cfg(test)]
 mod tests {
     use super::{
-        build_cached_readdir_entries, build_mount_options, fuse_write_open, readdir_start,
-        FuseMountOptions,
+        build_cached_readdir_entries, build_mount_options, error_to_errno, fuse_write_open,
+        readdir_start, FuseMountOptions, TimeSetattr,
     };
     use smallvec::smallvec;
     use std::path::PathBuf;
+    use vfs_core::error::Error as SdkError;
     use vfs_core::fs::{DirEntry, Stats, S_IFDIR, S_IFLNK, S_IFREG};
     use vfs_core::semantics::access;
 
@@ -2995,6 +3039,7 @@ mod tests {
             atime_nsec: 4,
             mtime_nsec: 5,
             ctime_nsec: 6,
+            hidden: false,
             rdev: 0,
         }
     }
@@ -3008,6 +3053,17 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_io_maps_to_eopnotsupp() {
+        let unsupported = SdkError::Io(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "explicit timestamp changes are not supported",
+        ));
+        assert_eq!(error_to_errno(&unsupported), libc::EOPNOTSUPP);
+        let other = SdkError::Io(std::io::Error::other("boom"));
+        assert_eq!(error_to_errno(&other), libc::EIO);
+    }
+
+    #[test]
     fn fuse_mount_keeps_kernel_default_permissions_enabled() {
         let opts = FuseMountOptions {
             mountpoint: PathBuf::from("/tmp/vfs-test"),
@@ -3017,6 +3073,7 @@ mod tests {
             fsname: "vfs-test".to_string(),
             uid: None,
             gid: None,
+            time_setattr: TimeSetattr::Apply,
         };
 
         let options = build_mount_options(&opts).expect("mount options build");

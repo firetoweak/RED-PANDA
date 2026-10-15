@@ -40,6 +40,8 @@ impl std::fmt::Display for Backend {
     }
 }
 
+pub use vfs_fuse::TimeSetattr;
+
 /// Options for mounting a filesystem.
 ///
 /// Use `MountOpts::new()` to create default options, then customize as needed.
@@ -65,6 +67,10 @@ pub struct MountOpts {
     pub lazy_unmount: bool,
     /// Timeout for mount to become ready.
     pub timeout: Duration,
+    /// atime/mtime SETATTR policy. Defaults to [`TimeSetattr::Apply`].
+    /// Agent filesystem mounts set [`TimeSetattr::Ignore`] so writeback
+    /// close and explicit touch both succeed without a history event.
+    pub time_setattr: TimeSetattr,
 }
 
 impl MountOpts {
@@ -81,6 +87,7 @@ impl MountOpts {
             auto_unmount: false,
             lazy_unmount: false,
             timeout: DEFAULT_MOUNT_TIMEOUT,
+            time_setattr: TimeSetattr::Apply,
         }
     }
 }
