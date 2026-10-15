@@ -707,8 +707,8 @@ pub async fn apply(fs: &TrackingFS, cas: &Path, plan: &Plan) -> Result<()> {
             && entry.expected.identity == entry.desired.identity
             && entry.expected.size == entry.desired.size
             && entry.expected.blocks == entry.desired.blocks
-            && entry.expected.mode == entry.desired.mode
         {
+            // Metadata is restored below; unchanged content needs no open.
             continue;
         }
         let identity = entry
