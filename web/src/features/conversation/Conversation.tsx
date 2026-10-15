@@ -7,7 +7,6 @@ import {
   Group,
   Loader,
   Modal,
-  ScrollArea,
   Stack,
   Text,
   ThemeIcon,
@@ -21,7 +20,8 @@ import {
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { VirtuosoHandle } from "react-virtuoso";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -72,7 +72,7 @@ import {
   turnReply,
   type TimelineTurn,
 } from "./timelineTurns";
-import { useFollowOutput } from "./useFollowOutput";
+import { ConversationTimeline } from "./ConversationTimeline";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
 
@@ -93,13 +93,9 @@ export function Conversation() {
   const selected = useGetConversationQuery(sessionId, {
     skip: routeSessionId === undefined,
   });
-  const followOutput = useFollowOutput(
-    routeSessionId,
-    runtime?.activity === "running" ||
-      (runtime?.activePreview ?? null) !== null ||
-      (runtime?.activeThinking ?? null) !== null,
-    selected.currentData !== undefined,
-  );
+  const timelineRef = useRef<VirtuosoHandle>(null);
+  const wheelAreaRef = useRef<HTMLDivElement>(null);
+  const [following, setFollowing] = useState(true);
   const [selectSession] = useSelectSessionMutation();
   const [sendInput, sending] = useSendInputMutation();
   const [editAndFork, editing] = useEditAndForkMutation();
@@ -310,14 +306,13 @@ export function Conversation() {
       {items.length === 0 ? (
         <ConversationWelcome />
       ) : (
-        <ScrollArea
-          className="timeline-scroll"
-          offsetScrollbars
-          type="hover"
-          viewportRef={followOutput.viewportRef}
-        >
-          <Stack className="timeline" gap="lg" ref={followOutput.contentRef}>
-            {turns.map((turn) => {
+        <ConversationTimeline
+          turns={turns}
+          listRef={timelineRef}
+          wheelAreaRef={wheelAreaRef}
+          following={following}
+          onFollowingChange={setFollowing}
+          renderTurn={(turn) => {
               const thinking = replyThinking(turn);
               const latest = turn.key === lastTurnKey;
               const settled = turnIsSettled(turn, {
@@ -443,23 +438,25 @@ export function Conversation() {
                 {completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />}
               </Stack>
               );
-            })}
-          </Stack>
-        </ScrollArea>
+          }}
+        />
       )}
-      <Box className="composer-dock">
-        {items.length === 0 || (!running && followOutput.following) ? null : (
+      <Box className="composer-dock" ref={wheelAreaRef}>
+        {items.length === 0 || following ? null : (
           <Button
             className="jump-to-latest"
             leftSection={<IconArrowDown size={14} />}
-            onClick={followOutput.scrollToBottom}
+            onClick={() => {
+              setFollowing(true);
+              timelineRef.current?.scrollToIndex({ index: "LAST", align: "end" });
+            }}
             size="compact-sm"
             variant="default"
           >
             跳到最新
           </Button>
         )}
-        <Box ref={followOutput.wheelAreaRef}>
+        <Box>
           {activePlan === null ? null : (
             <Box className="composer-column" mb={8}>
               <WorkPlanPanel plan={activePlan}

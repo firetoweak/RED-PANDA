@@ -8,6 +8,7 @@
 - `draft-session`：`/workspaces/:workspaceId` 打开草稿会话，首条消息发出时才 `POST /api/sessions` 建会话（`web/src/features/sessions/bindDraft.ts`）。
 - `send-message`：在 `消息` 输入框（占位 `输入消息，Enter 发送，可拖入文件或粘贴图片`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`。
 - `reply-render`：回复以 Markdown 渲染（`MarkdownMessage.tsx`），可 `复制回复`；思考内容显示为 `思考中`（`ThinkingBlock.tsx`）。
+- `windowed-history`：长会话只渲染阅读位置附近的轮次，向上滚动查看早期记录，`跳到最新` 恢复跟随输出。
 - `spa-fallback`：任何未知路径都回 `index.html`（`app.py` 的 `/{path:path}`）。
 
 ## How to get to it (user POV)
@@ -24,6 +25,12 @@
   - (d) 错误路径：直接 `curl -X POST .../inputs` 带一个不存在或已断开的 `connection_id` → 不应是 500，应是 4xx 且有 `detail`（见 Gotchas 疑似问题）。打开 `/sessions/session-不存在` → 页面显示 `这个会话不存在。请从左侧新建或选择会话。`，`GET /api/sessions/session-不存在` 返回 404。
 - **回复**：(a) `GET /api/sessions/<id>` 里有用户消息与助手回复，回复正文含 `PING_OK`。(b) 界面出现助手气泡，`复制回复` 可点。(c) 会话数不因刷新页面而增加。(d) 模型 key 错误时，界面出现失败提示（`消息发送失败，请确认后端连接后重试。` 或回合失败卡片），journal 里有失败事实而不是空回复。
 - **SPA 回落**：`curl -i $REDPANDA_VERIFY_URL/whatever/deep` 返回 200 且是 `index.html`；`curl -i $REDPANDA_VERIFY_URL/api/不存在` 应返回 404 JSON，而不是 `index.html`（核对路由顺序）。
+- **长会话滚动**：准备隔离的多轮历史，打开会话后查看最近回复，再向上滚动到早期记录，最后点 `跳到最新`。
+  - (a) `GET /api/sessions/<id>` 仍含完整历史；页面只挂载阅读位置附近的轮次，浏览后挂载数量不会随累计读过的历史增长。
+  - (b) 早期记录能显示，离开底部后出现 `跳到最新`，点击后回到最后一轮。
+  - (c) 查看历史时新增回复和流式增长不改变阅读锚点；贴底时跟随内容增长；刷新后仍从最新记录打开。
+  - (d) 检查包含代码块、不同长度回复的历史，连续翻阅与跳转后不得出现空白窗口或丢失历史。
+  - 补充检查：在底部输入区左右空白处实际滚动鼠标，聊天均应翻动，滚动条延伸到聊天栏底部；输入多行长草稿后，输入框优先滚动自身文本，末条回复不被增高的输入区遮挡。
 
 ## Gotchas
 
@@ -34,3 +41,4 @@
 
 ## Live status
 - 部分（2026-10-12，修复后）：空消息 422、失效连接 409、模型失败可见与再试（隔离 API 通过）；页面观感待人工复跑
+- 长会话滚动通过（2026-10-15）：隔离实例使用 200 轮合成历史和本地模拟流式服务，验证窗口挂载、早期记录、阅读锚点、流式跟随、上滑解除跟随与跳到最新；不代表真实模型调用已验证。

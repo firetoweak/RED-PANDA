@@ -8,11 +8,18 @@ import type { ConversationView, WorkPlan } from "../src/api/contracts";
 import { redpandaApi } from "../src/api/redpandaApi";
 import { Conversation } from "../src/features/conversation/Conversation";
 import runtimeReducer from "../src/realtime/runtimeSlice";
+import type { ComponentProps } from "react";
+import type { ConversationTimeline } from "../src/features/conversation/ConversationTimeline";
 
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <span>{content}</span>,
 }));
 vi.mock("../src/features/conversation/Composer", () => ({ Composer: () => null }));
+vi.mock("../src/features/conversation/ConversationTimeline", () => ({
+  ConversationTimeline: ({ turns, renderTurn }: ComponentProps<typeof ConversationTimeline>) => (
+    <>{turns.map((turn) => <div key={turn.key}>{renderTurn(turn)}</div>)}</>
+  ),
+}));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
