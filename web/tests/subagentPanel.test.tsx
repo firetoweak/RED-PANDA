@@ -92,3 +92,37 @@ it("派出回执提供观察入口，使用已提交的 Command 身份", () => {
   fireEvent.click(screen.getByRole("button", { name: "查看过程" }));
   expect(onObserve).toHaveBeenCalledWith("delegate");
 });
+
+it("子任务输入默认折叠可展开，长任务不挤掉过程区", () => {
+  const store = configureStore({ reducer: { runtime: runtimeReducer } });
+  store.dispatch(connected("connection"));
+  query.data = {
+    session_id: "child", task: "第一行\n第二行\n第三行\n第四行\n第五行", activity: "running", result: null,
+    conversation: {
+      session_id: "child", workspace_id: "workspace", revision: 1, items: [{
+        kind: "step", step_id: "step", output_id: "old", text: "已提交过程", thinking: "历史思考",
+        tools: [{ command_id: "cmd", name: "read_file", status: "queued", error: null, arguments: { path: "a.py" } }],
+        occurred_at: "2026-10-03T00:00:00Z", rewindable: true,
+      }],
+      session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
+        pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
+        control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
+      compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
+      work_plan: null, work_plan_updates: [], workspace_version: null,
+    },
+  };
+  render(<Provider store={store}><MantineProvider>
+    <ContentPage title="子 Agent" onClose={() => {}}>
+      <SubagentPanel parentSessionId="parent" commandId="delegate" />
+    </ContentPage>
+  </MantineProvider></Provider>);
+  expect(screen.getByRole("button", { name: /1.*已提交过程/ })).toBeInTheDocument();
+  const expand = screen.getByRole("button", { name: "展开任务" });
+  expect(expand).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector(".subagent-task-scroll")).toBeNull();
+  fireEvent.click(expand);
+  expect(screen.getByRole("button", { name: "收起任务" })).toHaveAttribute("aria-expanded", "true");
+  expect(document.querySelector(".subagent-task-scroll")?.textContent).toContain("第五行");
+  fireEvent.click(screen.getByRole("button", { name: "收起任务" }));
+  expect(screen.getByRole("button", { name: "展开任务" })).toHaveAttribute("aria-expanded", "false");
+});

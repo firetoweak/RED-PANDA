@@ -1,5 +1,6 @@
 import { Alert, Badge, Button, Center, Group, Loader, Paper, ScrollArea, Stack, Text } from "@mantine/core";
-import { IconArrowDown } from "@tabler/icons-react";
+import { IconArrowDown, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
+import { useState } from "react";
 
 import { useObserveSubagentQuery } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
@@ -12,6 +13,7 @@ export function SubagentPanel({ parentSessionId, commandId }: {
   parentSessionId: string; commandId: string;
 }) {
   const query = useObserveSubagentQuery({ parentSessionId, commandId });
+  const [taskOpened, setTaskOpened] = useState(false);
   const observation = query.currentData;
   const runtime = useAppSelector((state) => observation === undefined ? undefined : state.runtime.sessions[observation.session_id]);
   const connected = useAppSelector((state) => state.runtime.connectionId !== null);
@@ -30,8 +32,22 @@ export function SubagentPanel({ parentSessionId, commandId }: {
 
   return <div className="subagent-page">
     <Stack className="subagent-panel-header" gap={8}>
-      <Group><Badge variant="light">{label}</Badge></Group>
-      {observation === undefined ? null : <Text className="pre-wrap" fz={12} c="dimmed">{observation.task}</Text>}
+      <Group justify="space-between" wrap="nowrap">
+        <Badge variant="light">{label}</Badge>
+        {observation === undefined ? null : <Button
+          aria-expanded={taskOpened}
+          color="gray"
+          onClick={() => setTaskOpened((value) => !value)}
+          rightSection={taskOpened ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+          size="compact-xs"
+          variant="subtle"
+        >{taskOpened ? "收起任务" : "展开任务"}</Button>}
+      </Group>
+      {observation === undefined ? null : taskOpened
+        ? <ScrollArea.Autosize className="subagent-task-scroll" mah="40vh" type="hover">
+          <Text className="pre-wrap" fz={12} c="dimmed">{observation.task}</Text>
+        </ScrollArea.Autosize>
+        : <Text className="pre-wrap" fz={12} c="dimmed" lineClamp={3}>{observation.task}</Text>}
     </Stack>
     {query.isError ? <Alert color="red" m="md">无法读取子任务过程</Alert>
       : observation === undefined ? <Center><Loader size="sm" /></Center>
