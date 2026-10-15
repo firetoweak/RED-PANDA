@@ -1,4 +1,4 @@
-"""Windows owned process lifetime through the same Host port used by tools."""
+"""Owned process lifetime through the same Host port used by tools."""
 import asyncio
 from functools import partial
 import json
@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 import shutil
+import shlex
 from http.client import HTTPConnection
 from unittest.mock import patch
 
@@ -19,10 +20,12 @@ from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.paths import RedPandaHome
 from tests.fixtures.session_worker import ProcessLlm, config_for
 
-pytestmark = [pytest.mark.process, pytest.mark.skipif(os.name != "nt", reason="Windows owned processes")]
+pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="Windows or Linux owned processes")]
 
 
-def ps(*args):
+def shell(*args):
+    if os.name != "nt":
+        return shlex.join(str(arg) for arg in args)
     return "& " + " ".join("'" + str(arg).replace("'", "''") + "'" for arg in args)
 
 
@@ -36,7 +39,7 @@ def test_owned_process_output_exit_and_session_isolation(tmp_path):
     async def scenario():
         manager = ProcessManager(tmp_path / "logs", os.environ)
         try:
-            entry = await manager.start("a", ps(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"), tmp_path)
+            entry = await manager.start("a", shell(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"), tmp_path)
             identity = entry["process_id"]
             async def ready():
                 result = await manager.read("a", identity, 0, 0)
@@ -50,7 +53,7 @@ def test_owned_process_output_exit_and_session_isolation(tmp_path):
             assert stopped["state"] == "stopped"
             assert (await manager.read("a", identity, 0, 0))["stdout"]["content"].strip() == "READY"
             assert await manager.stop("a", identity) == stopped
-            exited = await manager.start("a", ps(sys.executable, "-c", "import sys;sys.exit(23)") + "; exit $LASTEXITCODE", tmp_path)
+            exited = await manager.start("a", shell(sys.executable, "-c", "import sys;sys.exit(23)") + ("; exit $LASTEXITCODE" if os.name == "nt" else ""), tmp_path)
             async def finished():
                 return (await manager.read("a", exited["process_id"], 0, 0))["state"] == "exited"
             await until(finished)
@@ -69,12 +72,16 @@ def test_descendant_outlives_shell_until_owner_stops_job(tmp_path):
                 "\"import time;from pathlib import Path;Path('child-ready').touch();time.sleep(60)\"],"
                 "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
             )
-            entry = await manager.start("a", ps(sys.executable, "-c", code), tmp_path)
+            entry = await manager.start("a", shell(sys.executable, "-c", code), tmp_path)
             async def ready():
-                from redpanda.execution.process_win import wait_object
-                return (tmp_path / "child-ready").exists() and wait_object(
-                    manager._processes[entry["process_id"]].running.info.process, 0,
-                ) == 0
+                if os.name == "nt":
+                    from redpanda.execution.process_win import wait_object
+                    exited = wait_object(manager._processes[entry["process_id"]].running.info.process, 0) == 0
+                else:
+                    from redpanda.execution.process_posix import _stat_fields
+                    fields = _stat_fields(entry["pid"])
+                    exited = fields is not None and fields[0] == "Z"
+                return (tmp_path / "child-ready").exists() and exited
             await until(ready)
             assert (await manager.list("a"))[0]["state"] == "running"
             await manager.close()
@@ -88,7 +95,12 @@ def test_descendant_outlives_shell_until_owner_stops_job(tmp_path):
 
 def test_cancelled_start_reclaims_the_created_job(tmp_path):
     import threading
-    from redpanda.execution.process_win import Running
+    if os.name == "nt":
+        from redpanda.execution.process_win import Running
+        module = "redpanda.execution.process_win"
+    else:
+        from redpanda.execution.process_linux import Running
+        module = "redpanda.execution.process_linux"
     async def scenario():
         manager = ProcessManager(tmp_path / "logs", os.environ)
         spawned, release = threading.Event(), threading.Event()
@@ -100,8 +112,8 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
             assert release.wait(10)
             return running
         try:
-            with patch("redpanda.execution.process_win.Running", held_spawn):
-                pending = asyncio.create_task(manager.start("a", "Start-Sleep -Seconds 60", tmp_path))
+            with patch(module + ".Running", held_spawn):
+                pending = asyncio.create_task(manager.start("a", "Start-Sleep -Seconds 60" if os.name == "nt" else "sleep 60", tmp_path))
                 async def created():
                     return spawned.is_set()
                 try:
@@ -111,8 +123,12 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
                     release.set()
                 with pytest.raises(asyncio.CancelledError):
                     await pending
-            assert processes[0].job is None
-            assert processes[0].info.process is None
+            if os.name == "nt":
+                assert processes[0].job is None
+                assert processes[0].info.process is None
+            else:
+                assert processes[0]._closed
+                assert processes[0]._owner.returncode == 0
             assert await manager.list("a") == []
         finally:
             release.set()
@@ -134,7 +150,7 @@ def test_host_port_survives_worker_retirement_and_archive_stops_process(tmp_path
                 results = [message for message in messages if message["role"] == "tool"]
                 if not results:
                     response = LLMResponse(content="", calls=(ToolCall("start", "start_process", json.dumps({
-                        "command": ps(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"),
+                        "command": shell(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"),
                     })),))
                 else:
                     result = json.loads(results[-1]["content"])
@@ -178,11 +194,11 @@ def test_host_command_runs_without_file_service_or_task_hook(tmp_path):
             with patch.dict(os.environ, {"REDPANDA_FILESYSTEM_EXECUTABLE": str(tmp_path / "missing.exe")}), patch(
                 "redpanda.execution.local.windows_task.native_task_launcher", return_value=tmp_path / "missing-launcher.exe",
             ):
-                arguments = {"command": "[IO.File]::WriteAllText((Join-Path $PWD.Path 'value.txt'),'HOST')"}
+                arguments = {"command": shell(sys.executable, "-c", "from pathlib import Path;Path('value.txt').write_text('HOST')")}
                 result = await assembly.bindings["execute_command"].handler(context, {**arguments, "file_access": "host"})
                 assert result["data"]["exit_code"] == 0, result
                 assert (root / "value.txt").read_text() == "HOST"
-                arguments["command"] = arguments["command"].replace("'HOST'", "'MANAGED'")
+                arguments["command"] = shell(sys.executable, "-c", "from pathlib import Path;Path('value.txt').write_text('MANAGED')")
                 result = await assembly.bindings["execute_command"].handler(context, arguments)
                 assert result["code"] == "FILESYSTEM_UNAVAILABLE", result
                 assert (root / "value.txt").read_text() == "HOST"
@@ -199,7 +215,7 @@ def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launc
     from redpanda.runtime.dispatcher import AttemptContext
     node = shutil.which("node")
     assert node is not None, "Node.js required for development server verification"
-    npm = shutil.which("npm.cmd")
+    npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
     assert npm is not None, "npm required for development server verification"
     async def scenario():
         root = tmp_path / "project"; root.mkdir()
@@ -219,7 +235,7 @@ def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launc
             )
             async def tool(name, arguments, identity):
                 return await assembly.bindings[name].handler(AttemptContext("a", identity, identity, 1), arguments)
-            command = ps(node, "server.cjs") if launcher == "node" else ps(npm, "run", "dev")
+            command = shell(node, "server.cjs") if launcher == "node" else shell(npm, "run", "dev")
             result = await tool("start_process", {"command": command}, "start")
             assert result["code"] == "PROCESS_STARTED", result
             identity = result["data"]["process_id"]
@@ -248,7 +264,7 @@ def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launc
                 await until(predicate)
             await observes("BASE")
             result = await tool("execute_command", {
-                "command": "Start-Sleep -Seconds 10", "file_access": "host", "timeout_seconds": 1,
+                "command": "Start-Sleep -Seconds 10" if os.name == "nt" else "sleep 10", "file_access": "host", "timeout_seconds": 1,
             }, "foreground-timeout")
             assert result["code"] == "COMMAND_TIMEOUT", result
             await observes("BASE")

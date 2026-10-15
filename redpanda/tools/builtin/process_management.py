@@ -67,7 +67,7 @@ def create_process_specs(binding: FileAccess, processes: ProcessControl) -> list
                 "切换会话或暂停当前任务不会停止程序；明确停止、归档会话或关闭应用时终止其进程树。"
                 "程序意外退出不会自动重启；应用重新启动后不保留进程记录。"
                 "不支持交互输入、UAC、密码或硬件确认，不提供系统和网络隔离。"
-                "各次启动独立，不继承先前命令的环境激活。仅 Windows 提供此能力。"
+                "各次启动独立，不继承先前命令的环境激活。Windows 和 Linux 提供此能力。"
             ),
             parameters=PydanticParameters(StartProcessInput), handler=start, requires_authorization=True,
         ),

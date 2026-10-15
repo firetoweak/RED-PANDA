@@ -94,6 +94,15 @@ class BashCommandRunner:
         source = os.environ if self._environment is None else self._environment
         return source.get("PATH", os.defpath)
 
+    def prepare(self, command: str) -> tuple[list[str], dict[str, str]]:
+        executable = shutil.which(self.executable, path=self._lookup_path())
+        if executable is None:
+            raise ShellNotFoundError("bash", self.executable)
+        child_env = self.environment_policy.build(
+            os.environ if self._environment is None else self._environment
+        )
+        return [executable, "--noprofile", "--norc", "-c", command], child_env
+
     async def run(
         self,
         command: str,
@@ -102,21 +111,11 @@ class BashCommandRunner:
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
-        executable = shutil.which(self.executable, path=self._lookup_path())
-        if executable is None:
-            raise ShellNotFoundError("bash", self.executable)
-
-        child_env = self.environment_policy.build(
-            os.environ if self._environment is None else self._environment
-        )
+        argv, child_env = self.prepare(command)
         started = time.perf_counter()
         try:
             proc = await asyncio.create_subprocess_exec(
-                executable,
-                "--noprofile",
-                "--norc",
-                "-c",
-                command,
+                *argv,
                 cwd=cwd,
                 env=child_env,
                 stdin=asyncio.subprocess.DEVNULL,

@@ -34,18 +34,18 @@ def _enable_subreaper():
 
 
 def _child_pids():
-    me = os.getpid()
     found = []
-    for entry in os.scandir("/proc"):
-        if not entry.name.isdigit():
-            continue
-        fields = _stat_fields(int(entry.name))
-        if fields is not None and int(fields[1]) == me:
-            found.append(int(entry.name))
+    for thread in os.scandir("/proc/self/task"):
+        try:
+            children = Path(thread.path, "children").read_text(encoding="ascii")
+        except FileNotFoundError:
+            continue  # The thread exited while reading its children.
+        found.extend(int(pid) for pid in children.split())
     return found
 
 
 class Running:
+    """Own the caller's children; persistent tasks isolate this in process_linux."""
     def __init__(self, argv, cwd, environment, log_dir):
         self.logs = []
         self.process = None
@@ -177,15 +177,31 @@ class Running:
             "duration_ms": (time.monotonic() - start) * 1000,
         }
 
+    @property
+    def pid(self):
+        return self.process.pid
+
+    def poll(self):
+        self._reap_zombies()
+        if self._leader_running():
+            return None
+        # Once the leader is a zombie, every remaining descendant has a direct
+        # ancestor owned by this subreaper. Read the kernel's child list instead
+        # of a /proc-wide census that can miss a newly reparented descendant.
+        if any(pid != self.process.pid and pid not in self._protected for pid in _child_pids()):
+            return None
+        status = os.waitid(os.P_PID, self.process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        if status is None:
+            return None
+        # Keep the leader allocated until close has drained the entire tree.
+        return status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+
     def close(self):
         if self.process is not None and self.process.returncode is None:
             if self._leader_running():
                 self._signal_group()
-            try:
-                self._drain_descendants()
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
+            self._drain_descendants()
+            self.process.wait(timeout=10)
         for stream in self.logs:
             if not stream.closed:
                 stream.flush()

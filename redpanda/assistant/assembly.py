@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-import os
+import sys
 
 from redpanda.assistant.artifacts import FileArtifactGateway
 from redpanda.assistant.attachments import (
@@ -130,7 +130,7 @@ async def build_assistant_assembly(
         filesystem=versions,
         session_operations=current_file_operations,
         processes=(WorkerProcessPort(session_transport, session_id)
-                   if os.name == "nt" and task is None and session_transport is not None else None),
+                   if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
 

@@ -1,8 +1,9 @@
-"""Host-owned Windows processes; records outlive Session Workers, not the Host."""
+"""Host-owned processes; records outlive Session Workers, not the Host."""
 from __future__ import annotations
 
 import asyncio
 import codecs
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -51,7 +52,12 @@ class ProcessManager:
         self._retired_sessions: set[str] = set()
 
     async def start(self, session_id: str, command: str, cwd: Path) -> dict:
-        from .process_win import Running
+        if sys.platform == "win32":
+            from .process_win import Running
+        elif sys.platform == "linux":
+            from .process_linux import Running
+        else:
+            raise RuntimeError("Persistent processes require Windows or Linux")
         async with self._lock:
             if self._closed:
                 raise RuntimeError("Process owner is closed")
@@ -78,9 +84,14 @@ class ProcessManager:
     async def _refresh(self, entry: OwnedProcess) -> None:
         if entry.state != "running":
             return
-        code = entry.running.poll()
+        poll = asyncio.create_task(asyncio.to_thread(entry.running.poll))
+        try:
+            code = await asyncio.shield(poll)
+        except asyncio.CancelledError:
+            await poll
+            raise
         if code is not None:
-            # The entire Job is empty, including descendants of an exited Shell.
+            # The entire owned process tree is empty, including an exited Shell's descendants.
             cleanup = asyncio.create_task(asyncio.to_thread(entry.running.close))
             try:
                 await asyncio.shield(cleanup)

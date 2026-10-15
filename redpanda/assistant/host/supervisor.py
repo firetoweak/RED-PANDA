@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -139,7 +140,7 @@ class HostSupervisor:
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
         self.processes = (ProcessManager(home.state_root / "processes", self.command_environment)
-                          if os.name == "nt" else None)
+                          if sys.platform in {"win32", "linux"} else None)
         self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
         self._pause = SessionFlagStore(store.root, "paused.json")
         self._archived = SessionFlagStore(store.root, "archived.json")
@@ -178,7 +179,7 @@ class HostSupervisor:
         if operation in {"process_start", "process_read", "process_stop", "process_list"}:
             self.store.require(session_id)
             if self.processes is None:
-                raise RuntimeError("Persistent processes require Windows")
+                raise RuntimeError("Persistent processes require Windows or Linux")
             if operation == "process_start":
                 if self.closed or self._archived.get(session_id):
                     raise RuntimeError("Cannot start process for a closed owner or archived Session")
