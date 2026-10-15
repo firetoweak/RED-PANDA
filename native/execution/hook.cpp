@@ -413,6 +413,8 @@ BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID) {
   if (!ready || !go || !SetEvent(ready))
     return FALSE;
   DWORD result = WaitForSingleObject(go, 10000);
+  if (result != WAIT_OBJECT_0)
+    failed(Protocol, result == WAIT_TIMEOUT ? ERROR_TIMEOUT : GetLastError());
   CloseHandle(ready);
   CloseHandle(go);
   return result == WAIT_OBJECT_0;

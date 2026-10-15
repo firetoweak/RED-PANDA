@@ -24,6 +24,22 @@ static bool send(HANDLE pipe, DWORD kind, DWORD stage, DWORD error,
   return WriteFile(pipe, &value, sizeof(value), &written, nullptr) &&
          written == sizeof(value);
 }
+static bool stop_process(HANDLE process) {
+  DWORD error = ERROR_SUCCESS;
+  if (!TerminateProcess(process, 130)) {
+    error = GetLastError();
+    if (error != ERROR_ACCESS_DENIED)
+      return false;
+  }
+  // The process can finish between the readiness check and TerminateProcess.
+  // ERROR_ACCESS_DENIED is only accepted when its exit is confirmed.
+  DWORD result = WaitForSingleObject(process, 10000);
+  if (result == WAIT_OBJECT_0)
+    return true;
+  if (result == WAIT_TIMEOUT)
+    SetLastError(error ? error : ERROR_TIMEOUT);
+  return false;
+}
 static bool reap(HANDLE job) {
   if (!TerminateJobObject(job, 130))
     return false;
@@ -166,9 +182,7 @@ int wmain(int argc, wchar_t **argv) {
   if (pi.hProcess) {
     DWORD state = WaitForSingleObject(pi.hProcess, 0);
     if (state == WAIT_FAILED ||
-        (state == WAIT_TIMEOUT &&
-         (!TerminateProcess(pi.hProcess, 130) ||
-          WaitForSingleObject(pi.hProcess, 10000) != WAIT_OBJECT_0))) {
+        (state == WAIT_TIMEOUT && !stop_process(pi.hProcess))) {
       failure = GetLastError();
       if (!failure)
         failure = ERROR_TIMEOUT;
