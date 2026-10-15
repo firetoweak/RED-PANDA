@@ -107,11 +107,42 @@ class Running:
         self.close()
         return {'exit_code':code.value,'timed_out':timed_out,'interrupted':interrupted,'duration_ms':(time.monotonic()-start)*1000}
 
+    @property
+    def pid(self):
+        return self.info.pid
+
+    def poll(self):
+        accounting = Accounting()
+        checked(query_job(self.job,1,c.byref(accounting),c.sizeof(accounting),None))
+        if accounting.active:
+            return None
+        state = wait_object(self.info.process,0)
+        if state == 0x102:
+            return None
+        checked(state == 0)
+        code = w.DWORD()
+        checked(exit_code(self.info.process,c.byref(code)))
+        return code.value
+
     def close(self):
+        if self.job:
+            checked(terminate_job(self.job,130))
         if self.info.process and wait_object(self.info.process,0)==0x102:
-            checked(terminate_process(self.info.process,130))
+            if not terminate_process(self.info.process,130):
+                error = c.get_last_error()
+                if error != 5:
+                    raise c.WinError(error)
             checked(wait_object(self.info.process,10000)==0)
         if self.job:
+            deadline = time.monotonic()+10
+            while True:
+                accounting = Accounting()
+                checked(query_job(self.job,1,c.byref(accounting),c.sizeof(accounting),None))
+                if accounting.active == 0:
+                    break
+                if time.monotonic() > deadline:
+                    raise TimeoutError('Job did not drain')
+                time.sleep(.01)
             checked(close_handle(self.job))
             self.job = None
         for handle in [self.info.thread,self.info.process]:

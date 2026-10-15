@@ -7,6 +7,22 @@ from collections.abc import Mapping
 from redpanda.execution.api import CommandEnvironment
 
 
+def create_host_command_runner(environment: Mapping[str, str]):
+    if os.name == "nt":
+        from .powershell import CommandEnvironmentPolicy, PowerShellCommandRunner
+        return PowerShellCommandRunner(
+            environment=environment,
+            environment_policy=CommandEnvironmentPolicy(
+                forward_names=tuple(environment), refresh_path=False,
+            ),
+        )
+    from .bash import BashCommandEnvironmentPolicy, BashCommandRunner
+    return BashCommandRunner(
+        environment=environment,
+        environment_policy=BashCommandEnvironmentPolicy(forward_names=tuple(environment)),
+    )
+
+
 def create_local_command_environment(
     command_environment: Mapping[str, str] | None = None,
     *,
@@ -27,6 +43,7 @@ def create_local_command_environment(
                 forward_names=tuple(environment), refresh_path=False,
             ),
         )
+        host_runner = create_host_command_runner(environment)
         shell_name = "powershell"
     else:
         from redpanda.execution.local.bash import (
@@ -37,9 +54,11 @@ def create_local_command_environment(
             environment=environment,
             environment_policy=BashCommandEnvironmentPolicy(forward_names=tuple(environment)),
         )
+        host_runner = runner
         shell_name = "bash"
     return CommandEnvironment(
         runner,
         shell_name=shell_name,
         shell_path=runner.executable,
+        host_command_executor=host_runner,
     )

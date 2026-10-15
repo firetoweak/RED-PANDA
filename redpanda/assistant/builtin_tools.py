@@ -8,6 +8,7 @@ from redpanda.assistant.tool_results import runtime_tool_result
 from redpanda.runtime.model import AuthorizationPolicy
 from redpanda.filesystem import FileAccess
 from redpanda.execution.local.provider import create_local_command_environment
+from redpanda.execution.api import ProcessControl
 from redpanda.filesystem.registry import WorkspaceRecord, workspace_view
 from redpanda.filesystem.workspace import (
     FilesystemPermission,
@@ -19,6 +20,7 @@ from redpanda.filesystem.workspace import (
 from redpanda.tools.executor import ToolsExecutor
 from redpanda.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
 from redpanda.tools.builtin import (
+    create_process_specs,
     CommandInterrupts,
     READ_ONLY_WORKSPACE_TOOLS,
     create_workspace_tool_specs,
@@ -32,6 +34,12 @@ class BuiltinToolRunner:
     schemas: tuple[dict[str, object], ...]
     command_interrupts: CommandInterrupts
     _executor: ToolsExecutor
+
+    def uses_workspace_files(self, name: str, arguments: Mapping[str, object]) -> bool:
+        return not (
+            name == "execute_command" and arguments.get("file_access") == "host"
+            or name in {"start_process", "read_process", "stop_process", "list_processes"}
+        )
 
     def reads_published_workspace(self, name: str, arguments: Mapping[str, object]) -> bool:
         return name in READ_ONLY_WORKSPACE_TOOLS or (
@@ -74,6 +82,7 @@ async def build_builtin_tools(
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
     filesystem=None,
+    processes: ProcessControl | None = None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -106,6 +115,9 @@ async def build_builtin_tools(
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)
+    if processes is not None:
+        for spec in create_process_specs(binding, processes):
+            registry.register(spec)
     return BuiltinToolRunner(
         schemas=tuple(registry.get_tools()),
         command_interrupts=interrupts,

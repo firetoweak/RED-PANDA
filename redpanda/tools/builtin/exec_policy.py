@@ -48,6 +48,8 @@ _ASK_PREFIXES: tuple[str, ...] = (
 
 def command_requires_authorization(arguments: Mapping[str, object]) -> bool:
     """execute_command 的授权判定：True = ask（派发前等待用户确认）。"""
+    if arguments.get("file_access") == "host" and arguments.get("workspace_effect", "may_write") == "may_write":
+        return True
     command = arguments.get("command")
     if type(command) is not str:
         return False

@@ -565,7 +565,10 @@ export function Conversation() {
       >
         <Stack gap="md">
           <Text size="sm">
-            对话会截到这一步，并从这里换一条走法。工作区文件可以一起退回这一步，也可以保持现在的样子。
+            对话会截到这一步，并从这里换一条走法。文件可以一起回滚，也可以保持现状。
+          </Text>
+          <Text size="sm" c="dimmed">
+            文件回滚仅恢复工作区内已记录的受管修改。宿主命令、持续进程及工作区外操作产生的副作用不会撤销。
           </Text>
           <Group justify="flex-end" gap="xs">
             <Button

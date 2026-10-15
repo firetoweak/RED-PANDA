@@ -18,6 +18,7 @@ from redpanda.tools.builtin.get_changes import create_get_changes_specs
 from redpanda.tools.builtin.workspace_restore import create_workspace_restore_spec
 from redpanda.tools.builtin.subagent_workspace import create_subagent_workspace_specs
 from redpanda.tools.spec import ToolSpec
+from redpanda.tools.builtin.process_management import create_process_specs
 
 READ_ONLY_WORKSPACE_TOOLS = frozenset({"glob", "grep", "read_file", "get_changes"})
 

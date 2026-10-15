@@ -108,7 +108,7 @@ class ChildCompactLlm(CompactLlm):
                 on_content_delta=on_content_delta,
                 on_reasoning_delta=on_reasoning_delta,
             )
-        if "你是一个被委派的子 Agent" in messages[0]["content"]:
+        if any(tool["function"]["name"] == "report" for tool in tools or ()):
             has_tools = any(message["role"] == "tool" for message in messages)
             used = 10 if any("模型生成的交接材料" in str(m["content"]) for m in messages) else 60000
             while has_tools and (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():

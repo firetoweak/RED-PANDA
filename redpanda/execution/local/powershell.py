@@ -130,6 +130,20 @@ class PowerShellCommandRunner:
         source = os.environ if self._environment is None else self._environment
         return source.get("PATH", os.defpath)
 
+    def prepare(self, command: str) -> tuple[list[str], dict[str, str]]:
+        """共享前台和持续进程的 Shell 与启动环境，不附加生命周期控制。"""
+        executable = shutil.which(self.executable, path=self._lookup_path())
+        if executable is None:
+            raise ShellNotFoundError("powershell", self.executable)
+        child_env = self.environment_policy.build(
+            os.environ if self._environment is None else self._environment
+        )
+        utf8_command = (
+            "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"
+            "$OutputEncoding=[Console]::OutputEncoding;" + command
+        )
+        return [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", utf8_command], child_env
+
     async def run(
         self,
         command: str,
@@ -138,19 +152,7 @@ class PowerShellCommandRunner:
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
-        executable = shutil.which(self.executable, path=self._lookup_path())
-        if executable is None:
-            raise ShellNotFoundError("powershell", self.executable)
-
-        child_env = self.environment_policy.build(
-            os.environ if self._environment is None else self._environment
-        )
-        utf8_command = (
-            "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"
-            "$OutputEncoding=[Console]::OutputEncoding;"
-            + command
-        )
-        argv = [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", utf8_command]
+        argv, child_env = self.prepare(command)
         task = None
         if self.task_root is not None:
             from .windows_task import WindowsTask
@@ -160,7 +162,7 @@ class PowerShellCommandRunner:
         else:
             # Product CLI management has no task workspace; its Shell still waits
             # until the outer Job owns it before evaluating the command.
-            argv[-1] = "$null=[Console]::In.Read();" + utf8_command
+            argv[-1] = "$null=[Console]::In.Read();" + argv[-1]
             spawn = {}
         try:
             job = WindowsJob.create()

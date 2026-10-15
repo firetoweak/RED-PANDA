@@ -136,7 +136,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
                 permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
                 cwd=workspace_root,
             )
-            commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash")
+            commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash", MissingShellRunner())
             spec = create_command_execution_spec(binding, commands)
 
             result = await spec.handler(ExecuteCommandInput(
@@ -171,7 +171,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
                 permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
                 cwd=workspace_root,
             )
-            commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash")
+            commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash", BrokenRunner())
             spec = create_command_execution_spec(binding, commands)
 
             with self.assertRaisesRegex(RuntimeError, "internal executor bug"):
@@ -444,7 +444,7 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
             cwd=self.workspace_root,
         )
-        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL)
+        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL, runner)
         registry = ToolRegistry()
         registry.register(
             create_command_execution_spec(
@@ -495,7 +495,7 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             cwd=self.binding.cwd,
             filesystem=self.binding.filesystem,
         )
-        read_only_commands = CommandEnvironment(self.commands.command_executor, self.commands.shell_name, self.commands.shell_path)
+        read_only_commands = CommandEnvironment(self.commands.command_executor, self.commands.shell_name, self.commands.shell_path, self.commands.host_command_executor)
         registry = ToolRegistry()
         registry.register(create_command_execution_spec(read_only_binding, read_only_commands))
         executor = ToolsExecutor(registry)

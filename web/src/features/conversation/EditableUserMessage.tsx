@@ -232,7 +232,10 @@ export function EditableUserMessage({
         >
           <Stack gap="md">
             <Text size="sm">
-              对话会从这条消息重新开始。工作区文件可以一起退回这条消息之前，也可以保持现在的样子。
+              对话会从这条消息重新开始。文件可以一起回滚到这条消息之前，也可以保持现状。
+            </Text>
+            <Text size="sm" c="dimmed">
+              文件回滚仅恢复工作区内已记录的受管修改。宿主命令、持续进程及工作区外操作产生的副作用不会撤销。
             </Text>
             <Group justify="flex-end" gap="xs">
               <Button disabled={saving} onClick={() => void confirm(false)} variant="default">

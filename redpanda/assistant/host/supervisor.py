@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
 import os
+from pathlib import Path
 from datetime import datetime, timezone
 
 from redpanda.automation.once import (
@@ -51,6 +52,8 @@ from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import SqliteJournal, replay, DomainFactCommitted
 from redpanda.execution.local.windows_job import WindowsJob
+from redpanda.execution.processes import ProcessManager
+from redpanda.execution.command import CommandStartError, ShellNotFoundError
 from redpanda.filesystem.registry import WorkspaceRegistry
 
 
@@ -135,6 +138,8 @@ class HostSupervisor:
         self.closed = False
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
+        self.processes = (ProcessManager(home.state_root / "processes", self.command_environment)
+                          if os.name == "nt" else None)
         self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
         self._pause = SessionFlagStore(store.root, "paused.json")
         self._archived = SessionFlagStore(store.root, "archived.json")
@@ -170,6 +175,27 @@ class HostSupervisor:
                 self._pause.set(session_id, True)
 
     async def _route(self, operation, session_id, arguments, *, worker=None):
+        if operation in {"process_start", "process_read", "process_stop", "process_list"}:
+            self.store.require(session_id)
+            if self.processes is None:
+                raise RuntimeError("Persistent processes require Windows")
+            if operation == "process_start":
+                if self.closed or self._archived.get(session_id):
+                    raise RuntimeError("Cannot start process for a closed owner or archived Session")
+                try:
+                    process = await self.processes.start(session_id, arguments["command"], Path(arguments["cwd"]))
+                except ShellNotFoundError as exc:
+                    return {"ok": False, "code": "SHELL_NOT_FOUND", "shell": exc.shell_name,
+                            "executable": exc.executable}
+                except CommandStartError as exc:
+                    return {"ok": False, "code": "COMMAND_START_FAILED", "error": str(exc)}
+                return {"ok": True, "process": process}
+            if operation == "process_read":
+                return await self.processes.read(session_id, arguments["process_id"],
+                                                 arguments["stdout_offset"], arguments["stderr_offset"])
+            if operation == "process_stop":
+                return await self.processes.stop(session_id, arguments["process_id"])
+            return await self.processes.list(session_id)
         if operation == "model_settings":
             if self.models is not None:
                 return self.models.for_decision(session_id, apply=arguments["apply"])
@@ -751,6 +777,8 @@ class HostSupervisor:
             workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
             await ChildFiles(self.home, workspace).discard(session_id, [i.child_session_id for i in intents])
         self._archived.set(session_id, True)
+        if self.processes is not None:
+            await self.processes.stop_session(session_id)
 
     def set_title(self, session_id, title):
         self.store.require(session_id)
@@ -1162,6 +1190,8 @@ class HostSupervisor:
             if worker.process.is_alive():
                 worker.process.terminate()
         await asyncio.gather(*self.watchers, return_exceptions=True)
+        if self.processes is not None:
+            await self.processes.close()
         if self.job is not None:
             self.job.close()
             self.job = None

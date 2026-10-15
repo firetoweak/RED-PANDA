@@ -336,6 +336,12 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                             result = await assembly.bindings["execute_command"].handler(context, arguments)
                             self.assertEqual(result["code"], code)
                             self.assertEqual(routes.pop(), route)
+                    routes.clear()
+                    result = await assembly.bindings["execute_command"].handler(context, {
+                        "command": "", "file_access": "host",
+                    })
+                    self.assertEqual(result["code"], "EMPTY_COMMAND")
+                    self.assertEqual(routes, [])
                 finally:
                     await assembly.scheduler.close()
 

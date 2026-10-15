@@ -55,7 +55,7 @@ def _binding(root: Path, runner) -> tuple[FileAccess, CommandEnvironment]:
         )),
         cwd=root,
     )
-    return files, CommandEnvironment(runner, "powershell", "powershell")
+    return files, CommandEnvironment(runner, "powershell", "powershell", runner)
 
 
 def _interrupted(stdout: str) -> CommandResult:

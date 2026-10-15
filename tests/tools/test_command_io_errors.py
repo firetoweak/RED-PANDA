@@ -41,7 +41,7 @@ class CommandIoErrorsTest(unittest.IsolatedAsyncioTestCase):
         binding = SimpleNamespace(
             resolver=SimpleNamespace(resolve=lambda *args, **kwargs: resolved),
         )
-        outcome = await create_command_execution_spec(binding, CommandEnvironment(runner, "powershell", "powershell")).handler(ExecuteCommandInput(command="x"))
+        outcome = await create_command_execution_spec(binding, CommandEnvironment(runner, "powershell", "powershell", runner)).handler(ExecuteCommandInput(command="x"))
         self.assertEqual(outcome["code"], "COMMAND_IO_FAILED")
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["data"]["io_errors"], list(result.io_errors))

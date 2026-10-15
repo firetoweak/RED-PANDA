@@ -247,6 +247,7 @@ class WorkspacePathResolver:
         raw_path: str,
         *,
         access: str = "read",
+        project: bool = True,
     ) -> ResolvedEnvironmentPath:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise InvalidEnvironmentPath("path 不能为空")
@@ -267,7 +268,7 @@ class WorkspacePathResolver:
         return ResolvedEnvironmentPath(
             native_path=(
                 self.binding.filesystem.native_path(resolved)
-                if membership.scope is WorkspaceScope.TASK and self.binding.filesystem is not None
+                if project and membership.scope is WorkspaceScope.TASK and self.binding.filesystem is not None
                 else resolved
             ),
             location=EnvironmentLocation(

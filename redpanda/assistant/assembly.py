@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+import os
 
 from redpanda.assistant.artifacts import FileArtifactGateway
 from redpanda.assistant.attachments import (
@@ -19,6 +20,7 @@ from redpanda.assistant.delivery import (
     deliver_binding,
 )
 from redpanda.assistant.context.prompt import environment_prompt
+from redpanda.assistant.host.process_port import WorkerProcessPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
@@ -127,6 +129,8 @@ async def build_assistant_assembly(
         command_environment=command_environment,
         filesystem=versions,
         session_operations=current_file_operations,
+        processes=(WorkerProcessPort(session_transport, session_id)
+                   if os.name == "nt" and task is None and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
 
@@ -295,6 +299,8 @@ async def build_assistant_assembly(
         binding = bindings[name]
         async def projected(context, arguments, _handler=binding.handler,
                             _name=name):
+            if not builtin_tools.uses_workspace_files(_name, arguments):
+                return await _handler(context, arguments)
             try:
                 if builtin_tools.reads_published_workspace(_name, arguments):
                     return await versions.read(lambda: _handler(context, arguments))
