@@ -43,3 +43,11 @@ def test_package_requires_hook_and_license(tmp_path):
     (source/"redpanda-hook.dll").unlink()
     with pytest.raises(ValueError):
         runtime.package(tmp_path,tmp_path/"release")
+
+
+def test_execution_checksum_uses_lf_on_every_platform(tmp_path):
+    build(tmp_path)
+    archive=runtime.package(tmp_path,tmp_path/"release")
+    assert archive.with_suffix(".zip.sha256").read_bytes()==(
+        f"{runtime.delivery.digest(archive)}  {archive.name}\n".encode("ascii")
+    )

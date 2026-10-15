@@ -33,7 +33,7 @@ def package(root: Path, output: Path) -> Path:
         bundle.writestr("BUILD.json", json.dumps(record, indent=2))
         for name in sorted(record["files"]):
             bundle.write(source / name, name)
-    archive.with_suffix(".zip.sha256").write_text(f"{delivery.digest(archive)}  {archive.name}\n", encoding="ascii")
+    archive.with_suffix(".zip.sha256").write_text(f"{delivery.digest(archive)}  {archive.name}\n", encoding="ascii", newline="\n")
     return archive
 
 
