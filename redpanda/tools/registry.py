@@ -1,15 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import BaseModel
-
-from redpanda.tools.spec import (
-    EmptyInput,
-    ToolSpec,
-    pydantic_tool_spec,
-)
+from redpanda.tools.spec import ToolSpec
 
 
 class ToolRegistry:
@@ -45,21 +38,3 @@ class ToolRegistry:
 
 
 BUILTIN_TOOL_REGISTRY = ToolRegistry()
-
-
-def register_tool(description: str, input_model: type[BaseModel] = EmptyInput):
-    """装饰器：注册工具，自动生成 schema 和 handler 映射。"""
-
-    def decorator(
-        fn: Callable[[BaseModel], Awaitable[dict[str, Any]]],
-    ) -> Callable[[BaseModel], Awaitable[dict[str, Any]]]:
-        spec = pydantic_tool_spec(
-            name=fn.__name__,
-            description=description,
-            input_model=input_model,
-            handler=fn,
-        )
-        BUILTIN_TOOL_REGISTRY.register(spec)
-        return fn
-
-    return decorator
