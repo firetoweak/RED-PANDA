@@ -12,6 +12,7 @@
 - `session-review-entry`：输入框上方的会话净变更摘要与 `会话变更` 抽屉，独立验证见 [session-file-changes.md](./session-file-changes.md)。
 - `processes`：`start_process`（需授权）启动跨调用的持续程序，`read_process`/`list_processes`/`stop_process` 查看与停止（`process_management.py`，Linux/Windows）。判据：停止后端口不再监听，`list_processes` 显示已结束。
 - `file-side-effect`：改动真实落盘到 `$SCRATCH_WORKSPACE`。
+- `project-instructions`：工作区根目录有 `AGENTS.md` 时，每次决策重读并作为 `<project_instructions>` 块拼在系统提示末尾（超 16000 字符截断，缺失则无此块；`redpanda/assistant/context/prompt.py`）。判据：在 `AGENTS.md` 写一条约定（如回答末尾加固定词），模型下一轮遵守。
 
 `live_model_ready` 与 `sandbox.ready` 都为 true 才跑本条。
 

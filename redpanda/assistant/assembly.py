@@ -319,6 +319,7 @@ async def build_assistant_assembly(
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access, own_copy=task is not None,
         ),
+        project_root=workspace.task_root,
         surface=surface,
         skill_tools=skill_tools,
         cli_tools=cli_tools,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import replace
@@ -34,7 +35,7 @@ from redpanda.assistant.context.projection import (
     ModelContextSettings,
     externalize_tool_result,
 )
-from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
+from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, project_instructions_prompt
 from redpanda.assistant.toolsets import ToolSurface
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.subagent.subagent import SubAgentHost
@@ -225,6 +226,7 @@ class JournalBackedLlmDecisionMaker:
         control: AssistantControlPlane,
         management: ManagementSurface,
         environment: str,
+        project_root: Path | None = None,
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
         projector: ModelContextProjector | None = None,
         compact_threshold_tokens: int,
@@ -243,6 +245,7 @@ class JournalBackedLlmDecisionMaker:
         self._reasoning_effort = reasoning_effort
         self._system_prompt = system_prompt
         self._environment = environment
+        self._project_root = project_root
         self._projector = ModelContextProjector() if projector is None else projector
         self._surface = surface
         self._skill_tools = skill_tools
@@ -315,7 +318,13 @@ class JournalBackedLlmDecisionMaker:
             if override is not None:
                 # 子使用独立提示词；能力目录仍由自己的 Journal 提供。
                 prompt = override
-        return f"{prompt}\n\n{self._environment}"
+        prompt = f"{prompt}\n\n{self._environment}"
+        if self._project_root is not None:
+            # 每次决策重读：Compact、恢复和子 Agent 都拿到当前内容。
+            instructions = project_instructions_prompt(self._project_root)
+            if instructions:
+                prompt = f"{prompt}\n\n{instructions}"
+        return prompt
 
     def _decision_from_response(
         self,

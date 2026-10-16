@@ -11,6 +11,7 @@ from redpanda.assistant.artifacts import MemoryArtifactGateway
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
+    PROJECT_INSTRUCTIONS_LIMIT,
     DEFAULT_ASSISTANT_PROMPT,
     SUBAGENT_PROMPT,
 )
@@ -244,6 +245,25 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
         self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
 
+    def test_workspace_agents_md_reaches_prompt_as_separate_block(self):
+        decision = self._assembly.runtime.step_runner._decision_maker
+        state = SimpleNamespace(session_id="vocabulary")
+        agents = Path(self._workspace.task_root) / "AGENTS.md"
+        self.assertNotIn("<project_instructions>", decision.prompt_for(state))
+
+        agents.write_text("测试命令：pytest -q", encoding="utf-8")
+        try:
+            prompt = decision.prompt_for(state)
+            self.assertIn("<project_instructions>", prompt)
+            self.assertIn("测试命令：pytest -q", prompt)
+
+            agents.write_text("x" * (PROJECT_INSTRUCTIONS_LIMIT + 500), encoding="utf-8")
+            prompt = decision.prompt_for(state)
+            self.assertNotIn("x" * (PROJECT_INSTRUCTIONS_LIMIT + 1), prompt)
+            self.assertIn("已截断", prompt)
+        finally:
+            agents.unlink()
+
     def test_subagent_prompt_names_no_tool_it_cannot_call(self):
         """子 Session 的工具名单比主对话窄，prompt 不能许诺名单外的动作。"""
 
@@ -254,6 +274,57 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             "子 Agent prompt 提到了它调不到的工具: "
             f"{sorted(mentioned - CHILD_BUILTIN_TOOL_NAMES - {LOAD_TOOLSET})}",
         )
+
+
+class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_subagent_prompt_reads_agents_md_from_its_own_copy(self):
+        from datetime import datetime, timezone
+
+        from redpanda.filesystem.children import ChildFiles, child_root
+        from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "workspace").mkdir()
+            (root / "workspace" / "AGENTS.md").write_text("父工作区约定", encoding="utf-8")
+            workspace = workspace_record(root / "workspace")
+            home = RedPandaHome(root / ".redpanda")
+            child = "parent/sub-delegate-1"
+            await ChildFiles(home, workspace).create("parent", child)
+            copy = child_root(home, "parent", child)
+            self.assertEqual((copy / "AGENTS.md").read_text(encoding="utf-8"), "父工作区约定")
+
+            journal = MemoryJournal()
+            await journal.accept_delivery(EventDraft(
+                event_id="task", session_id=child,
+                payload=DomainFactCommitted("subagent.task", {
+                    "task": "read", "parent_session_id": "parent",
+                    "delegate_command_id": "delegate-1", "resolve_conflicts_of": None,
+                }, requests_decision=True),
+                occurred_at=datetime.now(timezone.utc),
+                delivery=DeliveryIdentity("subagent", "delegate-1:task"),
+            ))
+            with patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"):
+                assembly = await build_assistant_assembly(
+                    AssistantConfig(model_name="test-model", compact_threshold_tokens=200_000, llm=SilentLlm()),
+                    lambda _session_id, _output_id, _text: None,
+                    journal, session_id=child, workspace=workspace, home=home,
+                )
+            try:
+                decision = assembly.runtime.step_runner._decision_maker
+                state = SimpleNamespace(session_id=child)
+                prompt = decision.prompt_for(state)
+                self.assertTrue(prompt.startswith(SUBAGENT_PROMPT))
+                self.assertIn("<project_instructions>\n", prompt)
+                self.assertIn("父工作区约定", prompt)
+
+                # 子 Agent 读的是自己副本的根目录，不是父工作区。
+                (copy / "AGENTS.md").write_text("子副本约定", encoding="utf-8")
+                prompt = decision.prompt_for(state)
+                self.assertIn("子副本约定", prompt)
+                self.assertNotIn("父工作区约定", prompt)
+            finally:
+                await assembly.scheduler.close()
 
 
 if __name__ == "__main__":
