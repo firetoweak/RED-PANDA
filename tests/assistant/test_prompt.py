@@ -11,6 +11,7 @@ from redpanda.assistant.artifacts import MemoryArtifactGateway
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
+    PROJECT_INSTRUCTIONS_LIMIT,
     DEFAULT_ASSISTANT_PROMPT,
     SUBAGENT_PROMPT,
 )
@@ -243,6 +244,25 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         decision = self._assembly.runtime.step_runner._decision_maker
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
         self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
+
+    def test_workspace_agents_md_reaches_prompt_as_separate_block(self):
+        decision = self._assembly.runtime.step_runner._decision_maker
+        state = SimpleNamespace(session_id="vocabulary")
+        agents = Path(self._workspace.task_root) / "AGENTS.md"
+        self.assertNotIn("<project_instructions>", decision.prompt_for(state))
+
+        agents.write_text("测试命令：pytest -q", encoding="utf-8")
+        try:
+            prompt = decision.prompt_for(state)
+            self.assertIn("<project_instructions>", prompt)
+            self.assertIn("测试命令：pytest -q", prompt)
+
+            agents.write_text("x" * (PROJECT_INSTRUCTIONS_LIMIT + 500), encoding="utf-8")
+            prompt = decision.prompt_for(state)
+            self.assertNotIn("x" * (PROJECT_INSTRUCTIONS_LIMIT + 1), prompt)
+            self.assertIn("已截断", prompt)
+        finally:
+            agents.unlink()
 
     def test_subagent_prompt_names_no_tool_it_cannot_call(self):
         """子 Session 的工具名单比主对话窄，prompt 不能许诺名单外的动作。"""

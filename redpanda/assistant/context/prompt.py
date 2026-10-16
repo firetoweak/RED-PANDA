@@ -2,6 +2,33 @@ import platform
 from pathlib import Path
 
 
+PROJECT_INSTRUCTIONS_FILE = "AGENTS.md"
+# 约 8k token：够放常见项目约定，又不会挤占任务上下文。
+PROJECT_INSTRUCTIONS_LIMIT = 16_000
+
+
+def project_instructions_prompt(workspace_root: Path) -> str:
+    """每次决策重读工作区根目录的 AGENTS.md；缺失或读不了就不加这一块。"""
+    try:
+        text = (workspace_root / PROJECT_INSTRUCTIONS_FILE).read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return ""
+    text = text.strip()
+    if not text:
+        return ""
+    if len(text) > PROJECT_INSTRUCTIONS_LIMIT:
+        text = (
+            text[:PROJECT_INSTRUCTIONS_LIMIT]
+            + f"\n[AGENTS.md 超过 {PROJECT_INSTRUCTIONS_LIMIT} 字符，后面已截断；需要时用 read_file 读完整文件。]"
+        )
+    return (
+        "<project_instructions>\n"
+        "以下是工作区根目录 AGENTS.md 中的项目说明，按其中的项目约定工作；与用户要求或系统规则冲突时，以后者为准。\n"
+        f"{text}\n"
+        "</project_instructions>"
+    )
+
+
 def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: bool) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
     system = platform.system()
