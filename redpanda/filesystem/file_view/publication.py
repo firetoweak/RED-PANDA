@@ -155,8 +155,7 @@ def choose_metadata(source,destination,current,mode):
     result={}
     for name in ('mode','hidden','readonly'):
         if source[name]==destination[name]: result[name]=current[name]
-        elif mode=='publish' and current[name]!=source[name]: raise Conflict('user attributes overlap publication')
-        elif mode=='preserve' and current[name]!=source[name]: result[name]=current[name]
+        elif mode in ('publish','preserve') and current[name]!=source[name]: result[name]=current[name]
         else: result[name]=destination[name]
     return result
 
@@ -182,13 +181,11 @@ def choose(store,before,after,current,mode):
             a,b,data=blob(store,source,key),blob(store,destination,key),blob(store,current,key)
             if len(a)>len(b):
                 changed_tail=sum(x!=y for x,y in zip(a[len(b):],data[len(b):]))
-                if mode=='publish' and changed_tail: raise Conflict('user content overlaps removed range')
-                if mode=='preserve' and changed_tail: return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
+                if mode in ('publish','preserve') and changed_tail: return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
             result=bytearray(b)
             for i in range(min(len(a),len(b))):
                 if a[i]==b[i]: result[i]=data[i];continue
-                if mode=='publish' and data[i]!=a[i]: raise Conflict('user content overlaps publication')
-                if mode=='preserve' and data[i]!=a[i]: result[i]=data[i];preserved+=1
+                if mode in ('publish','preserve') and data[i]!=a[i]: result[i]=data[i];preserved+=1
                 else: restored+=1
             restored+=abs(len(a)-len(b))
             blocks[key]=save_block(store,bytes(result)) if result else None
@@ -196,7 +193,7 @@ def choose(store,before,after,current,mode):
     if source['kind']==destination['kind']==current['kind']=='directory':
         return {**destination,**choose_metadata(source,destination,current,mode)},{'changed_bytes':0,'preserved_bytes':0}
     if same(source,current): return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
-    if mode=='preserve': return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
+    if mode in ('publish','preserve'): return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
     if mode=='original' and current['kind']==source['kind'] and current['size']==source['size']: return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
     raise Conflict('structure or content differs')
 
@@ -246,13 +243,18 @@ def build_plan(client,changes,mode,expected_bindings):
         if current['kind'] in ('file','directory','symlink') and expected is not None and current['identity']!=expected: raise Conflict('file identity changed')
         if mode=='publish' and before['kind']=='file':
             identity=before['identity']
-            if identity is not None and not identity.startswith('vfs:') and current['kind']=='file' and current['identity']!=identity: raise Conflict('file identity changed')
+            if identity is not None and not identity.startswith('vfs:') and current['kind']=='file' and current['identity']!=identity:
+                # Host replaced the object after accept; keep host content.
+                desired,counts=dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
+                check_blobs(client.store,desired)
+                plan.append({'path':path,'expected':current,'desired':desired,'state':'prepared','counts':counts,'created_identity':None})
+                continue
         desired,counts=choose(client.store,before,after,current,mode)
         check_blobs(client.store,desired)
         if current['kind']=='directory' and desired['kind']!='directory' and any(target(client.base,path).iterdir()):
             children={c['path'] for c in changes if c['after' if mode=='publish' else 'before']['kind']=='missing'}
             if any('/'+str(p.relative_to(client.base)).replace('\\','/') not in children for p in target(client.base,path).iterdir()):
-                if mode=='preserve': desired=dict(current)
+                if mode in ('publish','preserve'): desired=dict(current)
                 else: raise Conflict('directory contains user children')
         if current['kind']!=desired['kind'] and current['kind']!='missing' and desired['kind']!='missing':
             missing=image(chunk_size=current['chunk_size'])
