@@ -53,6 +53,7 @@
 
 - **疑似问题：Linux 崩溃路径没有测试。** 只有 Windows 有崩溃契约测试，Linux FUSE 的崩溃后清理只靠 `clear_stale_mount`，必须 live 验。
 - **疑似问题：流开始的判定太早。** `stream.started` 在收到任何一行（包括空行/keep-alive）时就置真，之后的 5xx/断流不再重试；`Retry-After` 头没有被读取。
+- 工具 handler 的普通 `Exception` 不是会话崩溃路径：应表现为工具结果 `TOOL_HANDLER_ERROR`（见 tool-coding-round），不应变成 Worker `session_failed`。取消类 `BaseException` 除外。
 - 已知入口错误已分类：失效连接 409、空消息 422、授权目标不存在 404、重复授权/拒绝 409；内部契约违规与未知异常仍原样暴露，不做全局兜底。
 - `kill -9` Web 会连带 Worker 子进程失去父进程；用 `pgrep` 确认没有孤儿 Worker 继续写 journal。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。

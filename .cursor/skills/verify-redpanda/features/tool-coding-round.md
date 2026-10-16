@@ -37,6 +37,7 @@
   - (b) 不出现 `等待授权`；回复含 `CODING_ROUND_DONE`。
   - (c) 工作区里除 `note.txt` 外没有新增/修改文件（对比运行前 `find $SCRATCH_WORKSPACE -type f -newer` 的结果）；`$REDPANDA_HOME` 不出现在工作区内。
   - (d) 错误路径①：让模型 `read_file` 读 `../outside.txt`（工作区外）→ 非完全访问工作区应返回工具错误，文件内容不得出现在回复里。错误路径②：`apply_patch` 打一个上下文不匹配的补丁 → 工具报错，`note.txt` 不变。错误路径③：停止 sandbox 依赖（例如 `redpanda-agentfs` 二进制缺失）→ 时间线显示工具失败，不得「假装改好」。
+- **错误路径（工具结果，不打崩会话）**：`glob` 的 pattern 为 `""` / `"."` / 仅空白时返回工具结果 `ok:false`、`code:EMPTY_PATTERN`，会话与 Worker 继续存活。handler 抛出的普通 `Exception`（如未预期 `ValueError`）由 `ToolsExecutor._execute_spec` 转为工具结果 `ok:false`、`code:TOOL_HANDLER_ERROR`（`data.exception_type` 为异常类名），**不**升级为调度器/Worker failure；`asyncio.CancelledError` / `KeyboardInterrupt` / `SystemExit` 等 `BaseException` 仍上抛。
 - **搜索/写入**：让模型 `glob` 找 `*.txt`、`grep` 找 `edited`、`write_file` 新建 `new.txt` 写 `hi`、`replace_all` 把 `hi` 换成 `yo`、最后 `get_changes`。(a) `new.txt` 为 `yo`；`get_changes` 结果包含 `note.txt` 与 `new.txt`，不列助手从未涉及的文件；已恢复原值的已触碰文件可以以 `unchanged` 出现。按 `next_offset`、`next_text_offset` 续读，不能把截断页当作完整成果。
 - **查询范围**：同一工作区会话 A 新建 `a.txt`，独立新建会话 B 并让模型先调用不带 scope 的 `get_changes`，应返回 `scope=session` 且不包含 `a.txt`；再明确请求 `scope=workspace`，应返回 `scope=workspace` 并能核对 A 的修改。B 新建 `b.txt` 后，其默认查询只检查 B 涉及的文件。若 B 修改 A 已修改的同一文件，A 的默认查询需把 B 后来的内容标为 `external` 或 `mixed`，不能据此宣称都是 A 的成果；scope 取非法值应参数校验失败。分支通过真实入口继承 A 后，默认范围包含继承的修改。续读必须保持 scope 不变。
 - **证据**：三个工具名可见时快照+截图；会话 JSON 与 `note.txt` 副本存到 `$EVIDENCE_DIR/tool-coding-round/`。
@@ -55,3 +56,4 @@
 
 ## Live status
 - 通过（2026-10-12，main@1a4790a）
+- PR #22（2026-10-16）：`EMPTY_PATTERN` 与 `TOOL_HANDLER_ERROR` 路径经 ToolsExecutor 直测 + Web live（glob `.`）通过；会话未崩。
