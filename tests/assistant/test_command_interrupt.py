@@ -69,6 +69,18 @@ def _interrupted(stdout: str) -> CommandResult:
     )
 
 
+# CI runner 偶尔很慢，1 秒等不到命令启动；这里只是等待上限，不影响正常耗时。
+STARTUP_TIMEOUT = 10
+
+
+async def _stop(advancing, scheduler):
+    """失败时先停掉推进任务和调度器，再让临时目录被清理。"""
+    if not advancing.done():
+        advancing.cancel()
+    await asyncio.gather(advancing, return_exceptions=True)
+    await scheduler.close()
+
+
 class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_turn_lets_started_file_write_finish_without_continuing(self):
         started = asyncio.Event()
@@ -97,14 +109,14 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         try:
             await runtime.receive_user_message("session", "write", delivery_id="delivery")
             await scheduler.wake("session")
-            await asyncio.wait_for(started.wait(), timeout=1)
+            await asyncio.wait_for(started.wait(), timeout=STARTUP_TIMEOUT)
 
             await scheduler.cancel_turn("session")
             self.assertFalse(path.exists())
             self.assertFalse(scheduler.idle)
 
             finish_write.set()
-            await asyncio.wait_for(scheduler.join(), timeout=1)
+            await asyncio.wait_for(scheduler.join(), timeout=STARTUP_TIMEOUT)
             self.assertEqual(path.read_text(encoding="utf-8"), "complete")
             state = await runtime.state("session")
             self.assertEqual(state.commands[0].outcome.value, {"ok": True})
@@ -170,7 +182,8 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         scheduler.command_interrupts = interrupts
         await runtime.receive_user_message("session", "run", delivery_id="delivery")
         advancing = asyncio.create_task(runtime.advance("session"))
-        await asyncio.wait_for(started.wait(), timeout=1)
+        self.addAsyncCleanup(_stop, advancing, scheduler)
+        await asyncio.wait_for(started.wait(), timeout=STARTUP_TIMEOUT)
 
         await scheduler.cancel_turn("session")
         await advancing
@@ -281,7 +294,8 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         scheduler.command_interrupts = interrupts
         await runtime.receive_user_message("session", "run", delivery_id="delivery")
         advancing = asyncio.create_task(runtime.advance("session"))
-        await asyncio.wait_for(started.wait(), timeout=1)
+        self.addAsyncCleanup(_stop, advancing, scheduler)
+        await asyncio.wait_for(started.wait(), timeout=STARTUP_TIMEOUT)
 
         with self.assertRaisesRegex(RuntimeError, "kill failed"):
             await scheduler.cancel_turn("session")
