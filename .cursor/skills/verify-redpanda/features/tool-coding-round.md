@@ -5,6 +5,7 @@
 ## Sub-features
 
 - `coding-tools`：一条消息内跑 `read_file` → `apply_patch` → `execute_command`。
+- `command-exit-codes`：`execute_command` 退出码 0 → `code=COMMAND_COMPLETED`；非 0 → `code=COMMAND_EXIT_NONZERO`（`ok=true`，时间线仍为「完成」而非工具失败），`hint` 含「退出码非零」/「不要当作成功」，`data.exit_code` 为实际退出码。
 - `search-tools`：`glob`、`grep` 在工作区内查找。
 - `write-tools`：`write_file`（新建/覆盖）、`replace_all`（全量替换）。
 - `get-changes`：`get_changes` 默认 `scope=session`，核对当前会话（含分支继承）涉及的文件及当前变化，区分当前会话、会话外、混合与未知来源；显式 `scope=workspace` 才核对工作区所有会话的助手修改。
@@ -36,6 +37,10 @@
 - **判据**：
   - (a) `note.txt` 内容为 `edited`；`GET /api/sessions/<id>` 的 `items` 里有依次调用这三个工具的步骤，每步状态 `完成`。
   - (b) 不出现 `等待授权`；回复含 `CODING_ROUND_DONE`。
+  - **命令退出码**（同会话或后续轮，自动放行开启）：
+    1. `execute_command` 跑 `bash -c 'echo boom >&2; exit 2'`（`workspace_effect=read_only`）→ journal/`outcome.value` 中 `ok=true`、`code=COMMAND_EXIT_NONZERO`、`data.exit_code=2`、`hint` 含「退出码非零」或「不要当作成功」；时间线该步状态为「完成」/succeeded，不是工具失败。
+    2. 再跑 `printf 'ok\n'`（或 `true`）→ `code=COMMAND_COMPLETED`、`data.exit_code=0`（仍为完成）。
+    Windows 上可用 `Write-Error "failed"` 作非零对照（本条 Linux 验证不覆盖）。
   - (c) 工作区里除 `note.txt` 外没有新增/修改文件（对比运行前 `find $SCRATCH_WORKSPACE -type f -newer` 的结果）；`$REDPANDA_HOME` 不出现在工作区内。
   - (d) 错误路径①：让模型 `read_file` 读 `../outside.txt`（工作区外）→ 非完全访问工作区应返回工具错误，文件内容不得出现在回复里。错误路径②：`apply_patch` 打一个上下文不匹配的补丁 → 工具报错，`note.txt` 不变。错误路径③：停止 sandbox 依赖（例如 `redpanda-agentfs` 二进制缺失）→ 时间线显示工具失败，不得「假装改好」。
 - **搜索/写入**：让模型 `glob` 找 `*.txt`、`grep` 找 `edited`、`write_file` 新建 `new.txt` 写 `hi`、`replace_all` 把 `hi` 换成 `yo`、最后 `get_changes`。(a) `new.txt` 为 `yo`；`get_changes` 结果包含 `note.txt` 与 `new.txt`，不列助手从未涉及的文件；已恢复原值的已触碰文件可以以 `unchanged` 出现。按 `next_offset`、`next_text_offset` 续读，不能把截断页当作完整成果。
@@ -45,6 +50,7 @@
 
 ## Gotchas
 
+- 非零退出不是工具失败：`ok` 仍为 true，`code` 为 `COMMAND_EXIT_NONZERO`（不是 `COMMAND_COMPLETED`）；模型应读 hint/stderr，不要把非零当作成功。
 - 开关按会话保存，新会话默认关闭。
 - 未配置供应商时 `发送` 是禁用的，不要直接 POST 输入。
 - macOS 没有文件视图；缺 `redpanda-agentfs` 或 `fusermount3` 时工具会在时间线里失败，Doctor 应已跳过。
@@ -55,5 +61,6 @@
 - 删除后的文件同样要检查修改前证据是否完整；当前文件不存在不能作为 `content_complete=true` 的依据，原文缺失时必须显示限制说明。
 
 ## Live status
+- 2026-10-16（pr25-verify merge @e701ef5，Web+DeepSeek）：coding-tools 通过；`bash -c 'exit 2'` → `COMMAND_EXIT_NONZERO` ok=true exit_code=2；`printf ok` → `COMMAND_COMPLETED` exit_code=0
 - 2026-10-16（main@e191eab，仅 API，界面未验证）：`read_file`→`apply_patch`→`execute_command` 落盘；`start_process`/`read_process`/`list_processes`/`stop_process` 全部成功，停止后端口释放
 - 通过（2026-10-12，main@1a4790a）
