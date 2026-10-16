@@ -276,5 +276,56 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_subagent_prompt_reads_agents_md_from_its_own_copy(self):
+        from datetime import datetime, timezone
+
+        from redpanda.filesystem.children import ChildFiles, child_root
+        from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "workspace").mkdir()
+            (root / "workspace" / "AGENTS.md").write_text("父工作区约定", encoding="utf-8")
+            workspace = workspace_record(root / "workspace")
+            home = RedPandaHome(root / ".redpanda")
+            child = "parent/sub-delegate-1"
+            await ChildFiles(home, workspace).create("parent", child)
+            copy = child_root(home, "parent", child)
+            self.assertEqual((copy / "AGENTS.md").read_text(encoding="utf-8"), "父工作区约定")
+
+            journal = MemoryJournal()
+            await journal.accept_delivery(EventDraft(
+                event_id="task", session_id=child,
+                payload=DomainFactCommitted("subagent.task", {
+                    "task": "read", "parent_session_id": "parent",
+                    "delegate_command_id": "delegate-1", "resolve_conflicts_of": None,
+                }, requests_decision=True),
+                occurred_at=datetime.now(timezone.utc),
+                delivery=DeliveryIdentity("subagent", "delegate-1:task"),
+            ))
+            with patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"):
+                assembly = await build_assistant_assembly(
+                    AssistantConfig(model_name="test-model", compact_threshold_tokens=200_000, llm=SilentLlm()),
+                    lambda _session_id, _output_id, _text: None,
+                    journal, session_id=child, workspace=workspace, home=home,
+                )
+            try:
+                decision = assembly.runtime.step_runner._decision_maker
+                state = SimpleNamespace(session_id=child)
+                prompt = decision.prompt_for(state)
+                self.assertTrue(prompt.startswith(SUBAGENT_PROMPT))
+                self.assertIn("<project_instructions>\n", prompt)
+                self.assertIn("父工作区约定", prompt)
+
+                # 子 Agent 读的是自己副本的根目录，不是父工作区。
+                (copy / "AGENTS.md").write_text("子副本约定", encoding="utf-8")
+                prompt = decision.prompt_for(state)
+                self.assertIn("子副本约定", prompt)
+                self.assertNotIn("父工作区约定", prompt)
+            finally:
+                await assembly.scheduler.close()
+
+
 if __name__ == "__main__":
     unittest.main()
