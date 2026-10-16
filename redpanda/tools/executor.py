@@ -128,7 +128,21 @@ class ToolsExecutor:
                 }
             )
 
-        result = await spec.handler(data)
+        try:
+            result = await spec.handler(data)
+        except Exception as exc:
+            # 模型传错参数或 handler 未预期异常：作为工具错误回给模型，
+            # 不升级成调度器 failure。CancelledError / KeyboardInterrupt /
+            # SystemExit 属 BaseException，不会被这里接住。
+            return normalize_tool_result(
+                {
+                    "ok": False,
+                    "code": "TOOL_HANDLER_ERROR",
+                    "data": {"exception_type": type(exc).__name__},
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "hint": "根据错误信息修正工具参数后重试，或换一种做法。",
+                }
+            )
         if isinstance(result, (ControlApprovalProposal, ControlPreparationFailure)):
             return result
         return normalize_tool_result(result)

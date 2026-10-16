@@ -99,6 +99,16 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn(str(raw.timeout_seconds), result["error"])
                 self.assertEqual(proc.returncode, -15)
 
+    async def test_glob_rejects_empty_or_dot_pattern_without_raising(self):
+        with tempfile.TemporaryDirectory() as directory:
+            glob = _handlers(Path(directory))["glob"].handler
+            for pattern in ("", ".", "   "):
+                with self.subTest(pattern=repr(pattern)):
+                    result = await glob(GlobInput(pattern=pattern))
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["code"], "EMPTY_PATTERN")
+                    self.assertNotIn("matches", result)
+
     async def test_glob_missing_dependency_is_an_explicit_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("redpanda.tools.builtin.file_read.shutil.which", return_value=None):
