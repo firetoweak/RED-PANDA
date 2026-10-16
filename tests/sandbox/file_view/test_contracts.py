@@ -94,13 +94,60 @@ class Contracts(unittest.TestCase):
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ__U_AAA')
 
-    def test_overlapping_user_bytes_block_publication(self):
+    def test_publish_preserves_host_edit_on_same_path(self):
         _,base,store=self.fixture('overlap')
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             (base/'a.txt').write_bytes(b'HHH____AAA')
-            self.assertEqual(pub.publish(client)['status'],'conflict')
+            result=pub.publish(client)
+            self.assertEqual(result['state'],'complete',result)
+            self.assertTrue(result['finalized'],result)
             self.assertEqual((base/'a.txt').read_bytes(),b'HHH____AAA')
+            # Workspace is not stuck: a later candidate can begin.
+            begin=client.begin('c2')
+            self.assertEqual(begin['status'],'active',begin)
+            client.request('finish');client.request('discard',command_id='c2')
+
+    def test_publish_leaves_untouched_host_file(self):
+        _,base,store=self.fixture('untouched_host')
+        (base/'host.txt').write_bytes(b'HOST')
+        with self.client(store,base) as client:
+            self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
+            (base/'host.txt').write_bytes(b'HOST-EDIT')
+            self.assertEqual(pub.publish(client)['state'],'complete')
+            self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
+            self.assertEqual((base/'host.txt').read_bytes(),b'HOST-EDIT')
+
+    def test_publish_leaves_host_created_file(self):
+        _,base,store=self.fixture('host_created')
+        with self.client(store,base) as client:
+            self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
+            (base/'external.txt').write_bytes(b'EXTERNAL')
+            self.assertEqual(pub.publish(client)['state'],'complete')
+            self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
+            self.assertEqual((base/'external.txt').read_bytes(),b'EXTERNAL')
+
+    def test_publish_preserves_when_both_create_same_path(self):
+        _,base,store=self.fixture('both_create')
+        with self.client(store,base) as client:
+            self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'AGENT')")
+            (base/'new').write_bytes(b'HOST')
+            result=pub.publish(client)
+            self.assertEqual(result['state'],'complete',result)
+            self.assertEqual((base/'new').read_bytes(),b'HOST')
+            begin=client.begin('c2')
+            self.assertEqual(begin['status'],'active',begin)
+            client.request('finish');client.request('discard',command_id='c2')
+
+    def test_publish_preserve_then_restore_keeps_host_edit(self):
+        _,base,store=self.fixture('preserve_restore')
+        with self.client(store,base) as client:
+            self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
+            (base/'a.txt').write_bytes(b'XHZ__U_AAA')
+            self.assertEqual(pub.publish(client)['state'],'complete')
+            self.assertEqual((base/'a.txt').read_bytes(),b'XHZ__U_AAA')
+            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual((base/'a.txt').read_bytes(),b'AHA__U_AAA')
 
     def test_type_replacement_resumes_between_remove_and_create_phases(self):
         for phase in ('remove','create'):
