@@ -83,6 +83,51 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             registry.register(spec)
 
+    async def test_handler_unexpected_exception_becomes_tool_error(self):
+        async def handler(_value):
+            raise ValueError("empty pattern")
+
+        registry = ToolRegistry()
+        registry.register(
+            pydantic_tool_spec(
+                name="boom",
+                description="raises inside handler",
+                input_model=EmptyInput,
+                handler=handler,
+            )
+        )
+        executor = ToolsExecutor(registry)
+
+        via_json = await executor.execute("boom", "{}")
+        via_parsed = await executor.execute_parsed("boom", {})
+
+        for result in (via_json, via_parsed):
+            with self.subTest(path=result):
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["code"], "TOOL_HANDLER_ERROR")
+                self.assertEqual(result["data"]["exception_type"], "ValueError")
+                self.assertIn("ValueError: empty pattern", result["error"])
+
+    async def test_handler_cancelled_error_still_propagates(self):
+        async def handler(_value):
+            raise asyncio.CancelledError()
+
+        registry = ToolRegistry()
+        registry.register(
+            pydantic_tool_spec(
+                name="cancel_me",
+                description="cancelled handler",
+                input_model=EmptyInput,
+                handler=handler,
+            )
+        )
+        executor = ToolsExecutor(registry)
+
+        with self.assertRaises(asyncio.CancelledError):
+            await executor.execute("cancel_me", "{}")
+        with self.assertRaises(asyncio.CancelledError):
+            await executor.execute_parsed("cancel_me", {})
+
 
 class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
     async def test_only_forwards_baseline_and_explicit_names(self):

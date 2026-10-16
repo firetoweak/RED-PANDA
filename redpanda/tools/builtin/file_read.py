@@ -289,10 +289,11 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
         except OSError as exc:
             return _filesystem_failure("GLOB_FAILED", raw.path, exc)
 
-        if not pattern.strip():
+        # pathlib 把 "" 和 "." 都当成空 parts，match 会抛 ValueError("empty pattern")
+        if not pattern.strip() or not PurePosixPath(pattern).parts:
             return {
                 "ok": False,
-                "error": "pattern 不能为空",
+                "error": "pattern 不能为空（不要传空字符串或单独的 .）",
                 "code": "EMPTY_PATTERN",
                 **resolved_search.result_fields(),
             }
