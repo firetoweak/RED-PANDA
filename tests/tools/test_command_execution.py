@@ -16,7 +16,9 @@ from pydantic import ValidationError
 
 from redpanda.filesystem import FileAccess
 from redpanda.execution.api import CommandEnvironment
-from redpanda.execution.command import CaptureLimit, ShellNotFoundError
+from redpanda.execution.command import (
+    CaptureLimit, CapturedOutput, CommandResult, ShellNotFoundError,
+)
 from redpanda.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
@@ -199,6 +201,37 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "SHELL_NOT_FOUND")
         self.assertEqual(result["shell"], "bash")
         self.assertEqual(result["executable"], "/bin/bash")
+
+    async def test_exit_code_selects_result_code(self):
+        class ExitRunner:
+            def __init__(self, exit_code):
+                self.exit_code = exit_code
+
+            async def run(self, command, cwd, timeout_seconds, **kwargs):
+                empty = CapturedOutput("", 0, False, 0)
+                return CommandResult(self.exit_code, empty, empty, 1, False)
+
+        for exit_code, code in ((0, "COMMAND_COMPLETED"), (2, "COMMAND_EXIT_NONZERO")):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                workspace_root = Path(directory)
+                binding = FileAccess(
+                    environment_id='exit-test',
+                    workspace_view=WorkspaceViewSnapshot((
+                        RootBinding("project", WorkspaceScope.TASK, workspace_root),
+                    )),
+                    permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
+                    cwd=workspace_root,
+                )
+                runner = ExitRunner(exit_code)
+                spec = create_command_execution_spec(
+                    binding, CommandEnvironment(runner, "bash", "/bin/bash", runner),
+                )
+                result = await spec.handler(ExecuteCommandInput(
+                    command="x", workspace_effect="read_only",
+                ))
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["code"], code)
+                self.assertEqual(result["data"]["exit_code"], exit_code)
 
     async def test_unknown_executor_error_passes_through(self):
         class BrokenRunner:
@@ -507,13 +540,13 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             json.dumps(payload, ensure_ascii=False),
         )
 
-    async def test_nonzero_exit_is_a_completed_command(self):
+    async def test_nonzero_exit_reports_exit_nonzero(self):
         result = await self.execute({
             "command": 'Write-Error "failed"',
         })
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["code"], "COMMAND_COMPLETED")
+        self.assertEqual(result["code"], "COMMAND_EXIT_NONZERO")
         self.assertEqual(result["data"]["exit_code"], 1)
         self.assertIn("failed", result["data"]["stderr"]["content"])
 
