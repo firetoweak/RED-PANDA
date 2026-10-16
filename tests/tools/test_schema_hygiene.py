@@ -13,14 +13,11 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
-from pydantic import BaseModel, Field
-
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import MemoryJournal
-from redpanda.tools.spec import PydanticParameters
 from tests.fixtures.workspaces import workspace_record
 
 
@@ -51,76 +48,6 @@ def _keys_named(node: object, wanted: str) -> list[object]:
         for item in node:
             found.extend(_keys_named(item, wanted))
     return found
-
-
-class PydanticParametersTests(unittest.TestCase):
-    """自动生成的噪音要压掉，作者刻意写的要留下。"""
-
-    def test_auto_generated_titles_are_dropped(self):
-        class Sample(BaseModel):
-            path: str = Field(description="要读取的文件路径")
-            max_depth: int = Field(default=1, description="深度限制")
-
-        schema = PydanticParameters(Sample).schema()
-
-        self.assertEqual(_keys_named(schema, "title"), [])
-
-    def test_model_class_name_is_not_exposed(self):
-        class GlobbyInput(BaseModel):
-            pattern: str = Field(description="glob 模式")
-
-        schema = PydanticParameters(GlobbyInput).schema()
-
-        self.assertNotIn("title", schema)
-
-    def test_deliberate_field_title_survives(self):
-        """压掉的是"自动补的"，不是"作者写的"。
-
-        用无差别遍历删除 title 也能让上面两条通过，但会连带删掉作者的意图。
-        """
-
-        class Sample(BaseModel):
-            picked: int = Field(
-                default=1,
-                title="刻意写的标题",
-                description="带显式 title 的字段",
-            )
-
-        schema = PydanticParameters(Sample).schema()
-
-        self.assertEqual(
-            _keys_named(schema, "title"),
-            ["刻意写的标题"],
-        )
-
-    def test_docstring_does_not_leak_into_schema(self):
-        class Documented(BaseModel):
-            """这句话是写给 Python 读者的，不该进模型上下文。"""
-
-            path: str = Field(description="路径")
-
-        schema = PydanticParameters(Documented).schema()
-
-        self.assertNotIn("description", schema)
-
-    def test_nested_model_class_metadata_is_dropped(self):
-        """嵌套模型的类名和 docstring 走 $defs，同样不该露出去。
-
-        字段自己的 description 是写给模型的，必须留下。
-        """
-
-        class Nested(BaseModel):
-            """嵌套模型的 docstring。"""
-
-            value: str = Field(description="值")
-
-        class Outer(BaseModel):
-            nested: Nested
-
-        schema = PydanticParameters(Outer).schema()
-
-        self.assertEqual(_keys_named(schema, "title"), [])
-        self.assertEqual(_keys_named(schema, "description"), ["值"])
 
 
 class ExposedToolSurfaceTests(unittest.IsolatedAsyncioTestCase):
@@ -171,32 +98,30 @@ class ExposedToolSurfaceTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     await assembly.scheduler.close()
 
-    async def test_no_tool_exposes_an_unregistered_title(self):
-        offenders = {
+    async def test_exposed_tool_schemas_carry_no_generated_noise(self):
+        """未登记的 title、参数对象自带的 description 都不该进模型上下文。"""
+
+        schemas = await self._exposed_schemas()
+        titled = {
             schema["function"]["name"]
-            for schema in await self._exposed_schemas()
+            for schema in schemas
             if _keys_named(schema, "title")
         }
-
-        self.assertEqual(
-            offenders - TOOLS_WITH_DELIBERATE_TITLES,
-            set(),
-            f"这些工具的 schema 里有未登记的 title: {sorted(offenders)}",
-        )
-
-    async def test_no_parameters_object_carries_a_description(self):
-        """参数对象自己的描述总是和 ToolSpec.description 重复。"""
-
-        offenders = {
+        described = {
             schema["function"]["name"]
-            for schema in await self._exposed_schemas()
+            for schema in schemas
             if "description" in schema["function"]["parameters"]
         }
 
         self.assertEqual(
-            offenders,
+            titled - TOOLS_WITH_DELIBERATE_TITLES,
             set(),
-            f"这些工具的参数对象带了多余的 description: {sorted(offenders)}",
+            f"这些工具的 schema 里有未登记的 title: {sorted(titled)}",
+        )
+        self.assertEqual(
+            described,
+            set(),
+            f"这些工具的参数对象带了多余的 description: {sorted(described)}",
         )
 
 

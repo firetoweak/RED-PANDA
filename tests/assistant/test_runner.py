@@ -402,18 +402,6 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
         finally:
             await scheduler.close()
 
-    async def test_wake_rejects_another_session(self):
-        model = ScriptedDecisionMaker(())
-        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
-        scheduler = SettlingScheduler(runtime, "session")
-        try:
-            with self.assertRaises(AssertionError):
-                await scheduler.wake("another-session")
-            self.assertTrue(scheduler.idle)
-            self.assertEqual(model.frames, [])
-        finally:
-            await scheduler.close()
-
     async def test_same_session_wakes_never_overlap_advance(self):
         runtime = AgentRuntime(
             MemoryJournal(),

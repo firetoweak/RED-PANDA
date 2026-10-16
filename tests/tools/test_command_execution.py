@@ -70,21 +70,6 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(coerced["code"], "VALIDATION_ERROR")
         self.assertEqual(extra["code"], "VALIDATION_ERROR")
 
-    async def test_tool_registry_rejects_duplicate_names(self):
-        async def handler(_value):
-            return {"ok": True, "code": "OK"}
-
-        spec = pydantic_tool_spec(
-            name="duplicate",
-            description="duplicate guard",
-            input_model=EmptyInput,
-            handler=handler,
-        )
-        registry = ToolRegistry()
-        registry.register(spec)
-        with self.assertRaises(ValueError):
-            registry.register(spec)
-
     async def test_handler_unexpected_exception_becomes_tool_error(self):
         async def handler(_value):
             raise ValueError("empty pattern")

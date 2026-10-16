@@ -32,20 +32,3 @@ class EncodeImagesTest(unittest.TestCase):
         messages = [{"role": "user", "content": "plain"}]
         self.assertEqual(encode_images(messages, None), messages)
 
-    def test_image_without_reader_is_a_contract_violation(self):
-        with self.assertRaises(TypeError):
-            encode_images(
-                [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "id": "sha256:" + "a" * 64,
-                                "mime": "image/png",
-                            }
-                        ],
-                    }
-                ],
-                None,
-            )

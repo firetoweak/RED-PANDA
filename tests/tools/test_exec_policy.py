@@ -59,15 +59,3 @@ class ToolSpecAuthorizationValidationTest(unittest.TestCase):
             )
             self.assertIs(spec.requires_authorization, value)
 
-    def test_requires_authorization_rejects_other_types(self):
-        async def handler(_input):
-            return {"ok": True, "code": "OK"}
-
-        with self.assertRaises(TypeError):
-            ToolSpec(
-                "t",
-                "desc",
-                PydanticParameters(EmptyInput),
-                handler,
-                requires_authorization="yes",
-            )

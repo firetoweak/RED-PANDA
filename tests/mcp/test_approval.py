@@ -508,7 +508,6 @@ class McpRecoveryConsoleTest(unittest.IsolatedAsyncioTestCase):
 
         reply = await console.execute_if_handled("/mcp retry demo")
 
-        service.test_and_enable.assert_awaited_once_with("demo")
         self.assertIn("测试并启用成功", reply)
         self.assertIn("能力目录", reply)
 

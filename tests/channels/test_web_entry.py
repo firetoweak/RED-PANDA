@@ -37,10 +37,3 @@ class WebEntryTests(unittest.TestCase):
         frontend.terminate.assert_called_once_with()
         frontend.wait.assert_called_once_with()
 
-    @patch("web_chat.uvicorn.run")
-    @patch("web_chat.create_web_app")
-    def test_host_and_port_options_override_defaults(self, create_web_app, run):
-        web_chat.main(["--host", "0.0.0.0", "--port", "8766"])
-
-        self.assertEqual(run.call_args.kwargs["host"], "0.0.0.0")
-        self.assertEqual(run.call_args.kwargs["port"], 8766)

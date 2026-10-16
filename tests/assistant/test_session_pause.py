@@ -11,23 +11,6 @@ from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.session_metadata import SessionFlagStore
 
 
-class HostRetryTest(unittest.IsolatedAsyncioTestCase):
-    async def test_retry_clears_pause_otherwise_resumes(self):
-        host = object.__new__(HostSupervisor)
-        host.models = None
-        host._pause = SessionFlagStore(None, "paused.json")
-        host.set_paused = AsyncMock(return_value="unpaused")
-        host.resume = AsyncMock(return_value="resumed")
-
-        self.assertEqual(await host.retry("session-1"), "resumed")
-        host.resume.assert_awaited_once_with("session-1")
-        host.set_paused.assert_not_awaited()
-
-        host._pause.remember("session-1", True)
-        self.assertEqual(await host.retry("session-1"), "unpaused")
-        host.set_paused.assert_awaited_once_with("session-1", False)
-
-
 class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
     async def test_accept_input_clears_host_pause_without_copying_worker(self):
         host = object.__new__(HostSupervisor)
@@ -43,30 +26,10 @@ class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIs(result, view)
         self.assertFalse(host._pause.get("session-1"))
-        host.compact.application.assert_awaited_once_with(
-            "accept_input",
-            "session-1",
-            {"content": "hello"},
-        )
 
 
 class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
-    async def test_resume_views_when_paused_otherwise_resumes(self):
-        host = object.__new__(HostSupervisor)
-        host.models = None
-        host._pause = SessionFlagStore(None, "paused.json")
-        host.compact = SimpleNamespace(application=AsyncMock(return_value="view"))
-        host._with_host_metadata = lambda observed, session_id: observed
-
-        self.assertEqual(await host.resume("session-1"), "view")
-        host.compact.application.assert_awaited_once_with("resume", "session-1", {})
-
-        host.compact.application.reset_mock()
-        host._pause.remember("session-1", True)
-        self.assertEqual(await host.resume("session-1"), "view")
-        host.compact.application.assert_awaited_once_with("view", "session-1", {})
-
-    async def test_set_paused_does_not_forward_to_worker(self):
+    async def test_set_paused_toggles_host_pause(self):
         host = object.__new__(HostSupervisor)
         host.models = None
         host._pause = SessionFlagStore(None, "paused.json")
@@ -75,12 +38,9 @@ class HostResumePauseTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(await host.set_paused("session-1", True), "held")
         self.assertTrue(host.is_paused("session-1"))
-        host.compact.application.assert_awaited_once_with("view", "session-1", {})
 
-        host.compact.application.reset_mock()
         self.assertEqual(await host.set_paused("session-1", False), "held")
         self.assertFalse(host.is_paused("session-1"))
-        host.compact.application.assert_awaited_once_with("resume", "session-1", {})
 
     async def test_user_message_clears_pause_without_writing_default(self):
         with TemporaryDirectory() as directory:

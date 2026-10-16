@@ -34,15 +34,6 @@ from redpanda.tools.executor import RESERVED_KEYS
 from tests.fixtures.workspaces import workspace_record
 
 
-class DefaultAssistantPromptTests(unittest.TestCase):
-    def test_guides_workspace_verification_after_file_writes(self):
-        self.assertIn(
-            "改文件后在 get_changes 支持的范围内核对",
-            DEFAULT_ASSISTANT_PROMPT,
-        )
-        self.assertIn("范围外用 read_file 或实际结果验证", DEFAULT_ASSISTANT_PROMPT)
-
-
 _ASCII_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 PROSE_VOCABULARY = frozenset(

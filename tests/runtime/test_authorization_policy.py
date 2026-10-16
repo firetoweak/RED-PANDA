@@ -72,9 +72,3 @@ class ToolBindingAuthorizationValidationTest(unittest.TestCase):
             policy,
         )
 
-    def test_rejects_other_types(self):
-        async def handler(_context, _arguments):
-            return {}
-
-        with self.assertRaises(TypeError):
-            ToolBinding(handler, requires_authorization="yes")

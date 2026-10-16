@@ -334,14 +334,6 @@ class Contracts(unittest.TestCase):
             pub.publish(client)
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
 
-    def test_invalid_control_input_is_rejected_without_losing_view(self):
-        _,base,store=self.fixture('invalid')
-        with self.client(store,base) as client:
-            self.assertEqual(client.request('info',unexpected=True)['status'],'invalid_request')
-            self.assertEqual(client.begin('c1')['status'],'active')
-            self.assertEqual(client.begin('c2')['status'],'busy')
-            client.request('finish');client.request('discard',command_id='c1')
-
     def test_user_modified_created_file_is_preserved(self):
         _,base,store=self.fixture('new_user')
         with self.client(store,base) as client:

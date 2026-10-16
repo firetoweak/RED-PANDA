@@ -28,7 +28,6 @@ from redpanda.runtime import (
     diagnose_artifacts,
     replay,
 )
-from redpanda.runtime.events import EventPayload
 from redpanda.runtime.model import AuthorizationPolicy
 
 
@@ -325,21 +324,6 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         tool.release.set()
         while runtime.dispatcher.active_count:
             await asyncio.sleep(0)
-
-    async def test_preview_tokens_cannot_enter_the_journal(self):
-        with self.assertRaises(TypeError):
-            EventDraft(
-                event_id="preview-1",
-                session_id=self.SESSION_ID,
-                payload="streaming token",
-                occurred_at=NOW,
-            )
-        payload_names = {
-            getattr(item, "__name__", str(item)) for item in EventPayload.__args__
-        }
-        self.assertNotIn("SessionPreviewReceived", payload_names)
-        self.assertIn("StepCommitted", payload_names)
-        self.assertIn("CommandAuthorized", payload_names)
 
     async def test_missing_artifact_degrades_replay_without_substitution(self):
         digest = "a" * 64

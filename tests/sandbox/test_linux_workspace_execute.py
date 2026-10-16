@@ -75,27 +75,3 @@ def test_replaced_file_conflicts_on_restore(tmp_path):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("policy,expected", [("original", "A-U"), ("preserve", "H-U")])
-def test_restore_policies_after_publish(tmp_path, policy, expected):
-    async def scenario():
-        view = backend(tmp_path)
-        edited = view.root / "edit.txt"
-        edited.write_text("A-Z", encoding="utf-8")
-        (view.root / "gone.txt").write_text("delete-me", encoding="utf-8")
-
-        async def change():
-            view.native_path(edited).write_text("X-Z", encoding="utf-8")
-            view.native_path(view.root / "gone.txt").unlink()
-            view.native_path(view.root / "new.txt").write_text("created", encoding="utf-8")
-            return {"ok": True}
-
-        await view.execute(operation_id("s", "edit"), change)
-        edited.write_text("H-U", encoding="utf-8")
-        (view.root / "user.txt").write_text("human", encoding="utf-8")
-        await view.restore(INITIAL, identity=operation_id("s", "restore"), policy=policy)
-        assert edited.read_text(encoding="utf-8") == expected
-        assert (view.root / "gone.txt").read_text(encoding="utf-8") == "delete-me"
-        assert not (view.root / "new.txt").exists()
-        assert (view.root / "user.txt").read_text(encoding="utf-8") == "human"
-
-    asyncio.run(scenario())

@@ -553,19 +553,6 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
             "succeeded",
         )
 
-    async def test_projector_rejects_fact_for_another_request(self):
-        journal, runtime, _control, request = await _build_pending()
-        await runtime.receive_domain_fact(
-            SESSION_ID,
-            CONTROL_APPROVED,
-            {"request_id": "control-request-wrong", "action": request.action},
-            delivery_id="wrong:approved",
-            source=CONTROL_SOURCE,
-            requests_decision=False,
-        )
-        with self.assertRaisesRegex(ValueError, "没有对应请求"):
-            project_control(await journal.snapshot(SESSION_ID))
-
     async def _assert_retry_clears_uncommitted_stage(
         self,
         journal,

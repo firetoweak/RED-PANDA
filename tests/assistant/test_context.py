@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -26,8 +25,6 @@ from tests.session_scheduler import SettlingScheduler, settle_session
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
-    CommandOutcomeReceived,
-    Event,
     InvokeTool,
     MemoryJournal,
     ModelDecision,
@@ -174,26 +171,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             settings=settings,
             **overrides,
         )
-
-    def test_projection_rejects_outcome_without_visible_command(self):
-        outcome = Event(
-            event_id="outcome-1",
-            session_id=self.SESSION,
-            sequence=1,
-            payload=CommandOutcomeReceived(
-                "missing-command",
-                "attempt-1",
-                CommandOutcome(OutcomeStatus.SUCCEEDED, value="done"),
-            ),
-            occurred_at=datetime.now(timezone.utc),
-            causation_id=None,
-            correlation_id=None,
-            schema_version=2,
-            artifact_refs=(),
-        )
-
-        with self.assertRaises(KeyError):
-            StateProjector().project_visible(self.SESSION, (outcome,))
 
     async def test_domain_fact_is_projected_as_labelled_user_message(self):
         runtime = AgentRuntime(

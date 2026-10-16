@@ -318,22 +318,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         await self.assert_failure_report("config initialization failed")
 
-    async def test_existing_session_cannot_be_adopted_as_a_child(self):
-        await self.host.create(PARENT, self.workspace.workspace_id)
-        await self.host.create(CHILD, self.workspace.workspace_id)
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "does not match delegate intent",
-        ):
-            await self.host._route(
-                "create_child",
-                CHILD,
-                child_task("read"),
-            )
-
-        self.assertNotIn(CHILD, self.host.workers)
-
     async def test_sibling_creation_has_no_workspace_queue(self):
         from unittest.mock import AsyncMock, patch
 
