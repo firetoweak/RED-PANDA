@@ -9,6 +9,7 @@
 - `write-tools`：`write_file`（新建/覆盖）、`replace_all`（全量替换）。
 - `get-changes`：`get_changes` 默认 `scope=session`，核对当前会话（含分支继承）涉及的文件及当前变化，区分当前会话、会话外、混合与未知来源；显式 `scope=workspace` 才核对工作区所有会话的助手修改。
 - `session-review-entry`：输入框上方的会话净变更摘要与 `会话变更` 抽屉，独立验证见 [session-file-changes.md](./session-file-changes.md)。
+- `processes`：`start_process`（需授权）启动跨调用的持续程序，`read_process`/`list_processes`/`stop_process` 查看与停止（`process_management.py`，Linux/Windows）。判据：停止后端口不再监听，`list_processes` 显示已结束。
 - `file-side-effect`：改动真实落盘到 `$SCRATCH_WORKSPACE`。
 
 `live_model_ready` 与 `sandbox.ready` 都为 true 才跑本条。
@@ -54,4 +55,5 @@
 - 删除后的文件同样要检查修改前证据是否完整；当前文件不存在不能作为 `content_complete=true` 的依据，原文缺失时必须显示限制说明。
 
 ## Live status
+- 2026-10-16（main@e191eab，仅 API，界面未验证）：`read_file`→`apply_patch`→`execute_command` 落盘；`start_process`/`read_process`/`list_processes`/`stop_process` 全部成功，停止后端口释放
 - 通过（2026-10-12，main@1a4790a）

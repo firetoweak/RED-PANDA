@@ -30,14 +30,14 @@ printf 'verify\n' > "$SCRATCH_WORKSPACE/note.txt"
 
 `REDPANDA_HOME` and `SCRATCH_WORKSPACE` are siblings. The personal directory must not sit inside the workspace directory.
 
-Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. `sh scripts/setup.sh` needs `rg` and `fd` or `fdfind`, downloads the project Python 3.13 into `redpanda-env`, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone.
+Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. `sh scripts/setup.sh` (Linux x64 only; network required) downloads the project Python into `redpanda-env`, then runs `scripts/setup.py`: it installs the released native file service (`agentfs_runtime.py install --with-runtime`), puts pinned Node/rg/fd under `.tools/runtime/`, installs Python deps, runs `npm ci` and `npm run build` in `web/`, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone. `setup.py --check` rejects Node outside 22.x (≥22.13) or 24.x. If only the web bundle is stale, rebuilding it alone is enough:
 
 ```sh
 sh scripts/setup.sh
 ( cd web && npm ci && npm run build )
 ```
 
-File-tool and rewind proofs also need the native sandbox. Linux needs `fusermount3` and a writable `/dev/fuse`. macOS has no file view; do not build or drive file rewind there.
+File-tool and rewind proofs also need the native sandbox binary at `redpanda/filesystem/bin/redpanda-agentfs` (setup installs a released one). Linux needs `fusermount3` and a writable `/dev/fuse`. macOS has no file view; do not build or drive file rewind there. Building from source needs `rustup` (`build_agentfs.py` exits with `缺少 rustup` otherwise):
 
 ```sh
 ./redpanda-env/bin/python scripts/build_agentfs.py
@@ -75,7 +75,7 @@ Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 m
 
 `live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
-`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing, or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
+`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing (or `REDPANDA_FILESYSTEM_EXECUTABLE` on the server process points nowhere), or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
 
 Add `--require-model` or `--require-sandbox` only when the feature you are about to drive cannot be skipped.
 

@@ -1,6 +1,6 @@
 # 工具授权
 
-写文件、执行命令等工具默认要用户批准；可按会话打开自动放行；某些控制请求要用户确认。来源：`ExecutionProcess.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/tools/builtin/exec_policy.py`。
+写文件类工具（`write_file`、`apply_patch`、`replace_all`、文件管理）、`start_process`、`merge_subagent` 默认要用户批准；`execute_command` 只有命中 `exec_policy.py` 的危险前缀（`rm `、`git push -f `、`git reset --hard ` 等）或 `file_access=host` 且可能写入时才需批准，普通命令（如 `touch`）直接执行；可按会话打开自动放行；某些控制请求要用户确认。来源：`ExecutionProcess.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/tools/builtin/exec_policy.py`。
 
 ## Sub-features
 
@@ -22,10 +22,11 @@
 
 ## Gotchas
 
-- 只读命令（被 `exec_policy` 判为只读）不需要授权，也不进入文件回滚范围。
+- `exec_policy` 是前缀清单软边界，不是只读判定：未命中清单的命令（含写文件的命令）不需授权。验证拒绝路径请用 `write_file` 或 `rm -f`。
 - 自动放行只覆盖「写文件等工具」；MCP/Skill/CLI 的 `propose_*` 安装类请求仍需确认，见 extensions。
 - 授权入口的已知错误有明确状态码：失效连接 409、授权目标不存在 404、重复授权/拒绝 409；未知内部异常仍原样暴露，不做全局兜底。
 
 ## Live status
+- 2026-10-16（main@e191eab，仅 API，界面未验证）：`write_file` 待授权 → 拒绝 200、文件未建、重复拒绝 409、无目标 404；批准后落盘；`rm -f` 进入待授权；`touch` 不需授权
 - 部分（2026-10-12，修复后）：重复授权/无目标返回 500 已修（目标不存在 404、重复授权/拒绝 409；自动化 + 隔离 API 通过）
 - 未验（待真实 UI）：正常批准/拒绝的界面流程需重跑确认

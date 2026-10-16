@@ -208,7 +208,7 @@ def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
         executable = Path(configured)
     else:
         name = "redpanda-agentfs.exe" if os.name == "nt" else "redpanda-agentfs"
-        executable = repo / "redpanda" / "sandbox" / "bin" / name
+        executable = repo / "redpanda" / "filesystem" / "bin" / name
     sandbox = {
         "platform": system,
         "executable": str(executable),

@@ -1,6 +1,6 @@
 # 计划、耗时与上下文用量
 
-模型用 `update_plan` 维护计划；每轮显示耗时；输入框显示上下文用量，超过阈值自动 compact。来源：`redpanda/assistant/work_plan.py`、`WorkPlanPanel.tsx`、`workPlanPlacement.ts`、`TurnTiming.tsx`、`Composer.tsx`（`上下文用量`）、`redpanda/assistant/compact/core.py`（`model_usage`、`find_history`）。
+模型用 `update_plan` 维护计划；每轮显示耗时；输入框显示上下文用量，超过阈值自动 compact。来源：`redpanda/assistant/work_plan.py`、`WorkPlanPanel.tsx`、`workPlanPlacement.ts`、`TurnTiming.tsx`、`Composer.tsx`（`上下文用量`）、`redpanda/assistant/compact/core.py`（`find_history`；`model_usage` 是写进 journal 的用量元数据键，不是模型工具）。
 
 ## Sub-features
 
