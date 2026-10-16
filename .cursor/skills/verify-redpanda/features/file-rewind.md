@@ -25,6 +25,7 @@
   - (b) `POST .../restarts` 返回 201；对话框关闭，之后的转录文字消失。
   - (c) 所选步骤之前的消息（原始编码请求）保留；工作区外写入、安装的依赖、网络调用不会被撤销（不作为失败）。
   - 错误路径②：文件未能完全恢复时 → 界面必须同时给出会话回退结果与文件处理结果：以醒目警示列出涉及文件与实际变更、保留、删除、未能处理的文件和原因，不能只显示「回滚完成」；模型侧收到同一结果与「读取当前内容、按用户目标修改」的引导。
+- 注意：`POST .../restarts` 返回 201 的是**新会话**（`child_session_id`，body 里的 `session_id` 与原会话不同），截短后的转录在新会话里读；原会话保持原样。`workspace_file_result` 在响应体里（`policy`/`effect`/`changed_files`/`preserved_files`/`failed_files`/`error`）。
 - **只回滚会话**：(a) 会话截短，`note.txt` 保持 `edited`。(c) 工作区所有文件不变。
 - **证据**：截短后的转录截图（带侧栏）、会话 JSON、恢复后的 `note.txt` 存到 `$EVIDENCE_DIR/file-rewind/`。
 
@@ -42,5 +43,6 @@
 - 人手动（Web）回滚用 `preserve`：不覆盖人的改动，只回滚 agent 的部分。人机都改过的文件，界面须提示「此文件 agent 改过、人也改过，只回滚了 agent 的部分」；当前「文件部分回退，部分后续值已保留」未写清，记为剩余缺口。
 
 ## Live status
+- 2026-10-16（main@e191eab，仅 API，界面未验证）：回滚 `read_file` 步 → 201 新会话 2 条、`effect: restored`、文件回到 `base`、用户文件不变；人机都改同一文件 → `effect: failed`+`error`（设计内可失败并提示）
 - 通过（r2）：主路径 `AFTER_AGENT`→`before`，`restarts` 201（普通回滚 201 是正常结果）；失败与部分回退按新条件以界面提示为准
 - **剩余缺口**：人机混合时的提示措辞（见上）

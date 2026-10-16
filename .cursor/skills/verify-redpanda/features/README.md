@@ -53,7 +53,7 @@
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 部分（2026-10-12，修复后；错误码与失败再试已修，UI 待复跑） |
-| workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突 | 部分（2026-10-12，修复后；选择器 503 已修，UI 待复跑） |
+| workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件上传、`本机文件`、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
@@ -102,7 +102,7 @@
 | `POST /api/sessions` | web-session-chat、session-sidebar |
 | `POST /api/sessions/{id}/select` | session-sidebar |
 | `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | session-sidebar |
-| `GET/POST /api/workspaces`、`POST /api/workspaces/select-directory` | workspace-management |
+| `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
@@ -121,7 +121,8 @@
 | `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
 | `read_image` | `redpanda/assistant/attachments.py` | rewind-edge-cases、composer-attachments |
 | `update_plan` | `redpanda/assistant/work_plan.py` | work-plan |
-| `model_usage` `find_history` | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
+| `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
+| `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `skill_help` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
@@ -139,7 +140,8 @@
 | `scripts/agentfs_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
 | `scripts/agentfs_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
 | `scripts/install_winfsp.ps1` | setup-and-sandbox-install（仅 Windows，未 live） |
-| `scripts/dev.sh`、`scripts/dev.ps1` | setup-and-sandbox-install |
+| `scripts/start.sh`、`scripts/start.ps1`（→ `scripts/launch.py` → `web_chat.py`） | setup-and-sandbox-install |
+| `scripts/dev.sh`、`scripts/dev.ps1`（→ `scripts.launch --dev`） | setup-and-sandbox-install |
 
 ### 非入口类场景（故障与边界）
 
@@ -149,10 +151,10 @@
 | 未完成命令 `CommandPhase.UNKNOWN` / `NO_RESULT_YET` | `runtime/state.py`、`assistant/context/projection.py`、`assistant/conversations.py` | crash-recovery |
 | 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
-| 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`sandbox/files/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
+| 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`filesystem/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
 | 残留 FUSE 挂载清理 | `native/filesystem/src/main.rs` `clear_stale_mount` | crash-recovery |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
-| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/filesystem/src/restore.rs`、`restore/namespace.rs`、`sandbox/files/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
+| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/filesystem/src/restore.rs`、`restore/namespace.rs`、`filesystem/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
 | 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
 
 ### 有意不覆盖
@@ -167,6 +169,10 @@
 证据根目录：`/workspace/verify-run-20261012`（下文路径相对于它），完整报告见该目录 `REPORT.md`。
 
 该轮次对应源码基线 `main@1a4790a`。其后的 2026-10-12 修复轮次见 `docs/讨论/2026-10-12-验证问题修复.md`：隔离 API 复跑记录在仓库 `.tools/verification/fixapi-20261012/`（16 项检查，覆盖 A 附件入口边界、D 已知入口错误、E 模型失败可见与再试）；真实 UI 流程未在该环境复跑，本表中相关条目标注「UI 待复跑」。
+
+## 2026-10-16 维护轮次
+
+源码基线 `main@e191eab`，隔离实例 + DeepSeek 真模型 + Linux 沙箱，经 HTTP/SSE/磁盘驱动（本轮无浏览器，所有条目「界面未验证」）。修正：doctor 沙箱路径、工作区重命名/移除、持续进程工具、`execute_command` 授权范围、回滚产生新会话、`model_usage` 非工具、安装脚本参数与前置。表中旧状态未逐条改写。
 
 ## 已确认的设计边界（不当问题报）
 
