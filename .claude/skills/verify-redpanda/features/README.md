@@ -73,8 +73,7 @@
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏会话列表 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
-| console-chat | [console-chat.md](./console-chat.md) | 终端入口 `console_chat.py`、`/new`、`/resume` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
-| acp-channel | [acp-channel.md](./acp-channel.md) | `acp_chat.py` ACP 入口 | 跳过（2026-10-12，main@1a4790a；需 ACP 客户端） |
+| console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
 | rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，修复后；四类问题对应修复已落地，UI 待复跑） |
@@ -134,8 +133,7 @@
 | 入口 | 条目 |
 |---|---|
 | `web_chat.py [--dev] [--host] [--port] [--workspace]` | web-session-chat（`--workspace` 见 workspace-management Gotchas） |
-| `console_chat.py [--workspace]`，会内 `/new` `/resume <id>` `/mcp ...` `/skill ...` | console-chat、extensions |
-| `acp_chat.py [--workspace]` | acp-channel |
+| `console_chat.py [--home] [--workspace]`，会内 `/new` `/mcp ...` `/skill ...` | console-chat、extensions |
 | `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-sandbox-install |
 | `python -m redpanda.initialize --configure / --if-needed` | setup-and-sandbox-install |
 | `scripts/build_agentfs.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
@@ -198,7 +196,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 
 | 结果 | 功能 |
 |---|---|
-| 通过 | web-session-chat、tool-authorization、session-file-changes、agent-workspace-restore、file-rewind、rewind-edge-cases（人机混合同长）、edit-and-branch、run-control、subagents、subagents-parallel（并行派发）、scheduling、model-settings、session-sidebar、realtime-events、acp-channel（脚本 harness）、work-plan、work-plan-and-usage、setup-and-sandbox-install（Windows） |
+| 通过 | web-session-chat、tool-authorization、session-file-changes、agent-workspace-restore、file-rewind、rewind-edge-cases（人机混合同长）、edit-and-branch、run-control、subagents、subagents-parallel（并行派发）、scheduling、model-settings、session-sidebar、realtime-events、work-plan、work-plan-and-usage、setup-and-sandbox-install（Windows） |
 | 失败（产品缺口） | tool-coding-round（Windows 退出码折叠为 1）、crash-recovery（Worker 崩溃后会话永久卡死） |
 | 走不到 | workspace-management（重命名/移除）、layout-appearance（外观菜单）、composer-attachments、extensions、console-chat——中途浏览器面板隐藏后 `requestAnimationFrame`/`ResizeObserver` 不触发（实测 0 次），弹窗、菜单与虚拟时间线无法渲染；console-chat 需要交互终端 |
 

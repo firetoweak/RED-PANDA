@@ -11,9 +11,9 @@ from redpanda.assistant.host.process_env import install_host_environment
 def start_worker(process, extra_handles=()) -> None:
     """Start ``process`` without inheriting Channel stdin/stdout/stderr.
 
-    A Worker must be able to boot when the Host has no console, as with ACP
-    stdio. Its own stdin/stdout/stderr are attached to the platform null
-    device so Channel framing stays on the Host. The child inherits the product
+    A Worker must be able to boot when the Host has no console. Its own
+    stdin/stdout/stderr are attached to the platform null device so Channel
+    output stays on the Host. The child inherits the product
     environment; its workspace command environment is passed separately.
     """
     install_host_environment()

@@ -1,12 +1,12 @@
 # 扩展能力：MCP、Skill、CLI
 
-助手可按需加载和管理外部能力；安装、更新、删除等都以 `propose_*` 形式请用户确认。终端入口另有 `/mcp`、`/skill` 命令（没有 `/cli` 命令）。来源：`redpanda/mcp/`（`approval.py`、`console.py`、`application.py`）、`redpanda/skills/`（`approval.py`、`console.py`）、`redpanda/cli/`（`approval.py`、`management_tools.py`、`models.py`、`runtime.py`）、`redpanda/assistant/management.py`、`redpanda/assistant/toolsets.py`、`redpanda/assistant/sessions.py`（终端/ACP 的 yes/no 回答）、`web/src/features/conversation/PendingActions.tsx`（输入框上方待处理条）。
+助手可按需加载和管理外部能力；安装、更新、删除等都以 `propose_*` 形式请用户确认。终端入口另有 `/mcp`、`/skill` 命令（没有 `/cli` 命令）。来源：`redpanda/mcp/`（`approval.py`、`console.py`、`application.py`）、`redpanda/skills/`（`approval.py`、`console.py`）、`redpanda/cli/`（`approval.py`、`management_tools.py`、`models.py`、`runtime.py`）、`redpanda/assistant/management.py`、`redpanda/assistant/toolsets.py`、`redpanda/assistant/sessions.py`（终端的 yes/no 回答）、`web/src/features/conversation/PendingActions.tsx`（输入框上方待处理条）。
 
 ## Sub-features
 
 - `load`：`load_management_tools`、`load_toolset`、`load_skill`、`read_skill_resource`、`load_cli`。
 - `inspect`：`list_mcp_servers`、`test_mcp_server`、`list_installed_skills`、`test_installed_skill`、`list_installed_clis`、`inspect_cli`、`test_cli`。
-- `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 在输入框上方的待处理条（区域 `待处理`）列出该请求，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端与 ACP 里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
+- `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 在输入框上方的待处理条（区域 `待处理`）列出该请求，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
 - `mcp-stdio-guard`：`propose_mcp_install` / `propose_mcp_update` 的 stdio `command` 文件名（不区分大小写）为 `bash`、`cmd`、`cmd.exe`、`powershell`、`powershell.exe`、`pwsh`、`sh`、`zsh` 时直接校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，不进入确认。
 - `skill-source`：来源 `local` / `url` / `github`；`local` 的 locator 必须是本机绝对目录，否则 `local locator 必须是本机绝对目录`；`requested_ref` 只用于 `github`，其他来源传了即 `requested_ref 仅适用于 github 来源`。
 - `cli-register`：`propose_cli_install` 只登记本机已安装的程序（`name`、`description`、`locator`），`name` 须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，不合规返回 `code: CLI_INVALID`；已登记返回 `CLI_ALREADY_INSTALLED`；找不到程序返回 `CLI_SOURCE_ERROR`。登记后立即可用，没有启用/停用开关。
