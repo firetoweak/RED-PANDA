@@ -24,7 +24,7 @@ RED PANDA 是面向开发者的 coding agent，围绕代码工作区完成项目
 | [源码快速开始](../README.md#快速开始) | 运行环境、文件服务运行包与日常启动 |
 | [运行指南](运行指南.md) | 准备参数、模型配置、其他入口与数据位置 |
 | [原生文件服务运行说明](../native/filesystem/README.md) | 运行包、Windows 驱动与 Linux FUSE 运行要求 |
-| [开发指南](开发指南.md) | 自备开发环境、源码修改与测试 |
+| [开发指南](开发指南.md) | 自备开发环境、源码修改、测试与 CI 流程 |
 | [自举开发](自举开发.md) | 用 RED PANDA 开发 RED PANDA：双 worktree、数据根与端口隔离 |
 | [原生文件服务开发与构建](../native/filesystem/BUILD.md) | 可选的原生编译工具、源码构建与二进制分发 |
 
