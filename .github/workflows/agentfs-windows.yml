@@ -213,7 +213,7 @@ jobs:
     name: agentFS build and verify (windows-x86_64)
     needs: [build, native, process, gate]
     if: ${{ always() }}
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Require successful Windows build and verification
         env:
@@ -222,7 +222,7 @@ jobs:
           PROCESS_RESULT: ${{ needs.process.result }}
           GATE_RESULT: ${{ needs.gate.result }}
         run: |
-          if ($env:BUILD_RESULT -ne 'success') { throw 'Windows build did not succeed' }
-          if ($env:NATIVE_RESULT -ne 'success') { throw 'Windows native contracts did not succeed' }
-          if ($env:PROCESS_RESULT -ne 'success') { throw 'Windows process contracts did not succeed' }
-          if ($env:GATE_RESULT -ne 'success') { throw 'Windows gate and installation contracts did not succeed' }
+          test "$BUILD_RESULT" = success
+          test "$NATIVE_RESULT" = success
+          test "$PROCESS_RESULT" = success
+          test "$GATE_RESULT" = success

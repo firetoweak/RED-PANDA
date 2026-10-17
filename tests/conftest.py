@@ -56,8 +56,10 @@ def pytest_collection_modifyitems(config, items):
         selected, deselected = [], []
         for item in items:
             relative = item.path.relative_to(root).as_posix()
-            item_group = next((name for name, paths in PROCESS_GROUP_PATHS.items()
-                               if any(relative.startswith(path) for path in paths)), "integration")
+            # The most specific path wins, so a file can be carved out of a directory group.
+            item_group = max(((len(path), name) for name, paths in PROCESS_GROUP_PATHS.items()
+                              for path in paths if relative.startswith(path)),
+                             default=(0, "integration"))[1]
             if item.get_closest_marker("process") and item_group == group:
                 selected.append(item)
             else:
