@@ -288,6 +288,7 @@ class CommandPhase(str, Enum):
 
 class AttemptPhase(str, Enum):
     UNKNOWN = "unknown"
+    ORPHANED = "orphaned"
     TERMINAL = "terminal"
 
 

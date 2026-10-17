@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -153,10 +154,30 @@ class PauseUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                     ),
                 )
 
+                # 上一个进程死在命令执行中：Attempt 已开始，没有结果。
+                await host.create("session-crashed", workspace.workspace_id)
+
+                async def unfinished(_context, _arguments):
+                    await asyncio.Event().wait()
+
+                crashed = AgentRuntime(
+                    SqliteJournal(store.require("session-crashed")),
+                    ScriptedDecisionMaker((
+                        lambda _: ModelDecision(command_requests=(InvokeTool("run"),)),
+                    )),
+                    {"run": ToolBinding(unfinished)},
+                )
+                await crashed.receive_user_message(
+                    "session-crashed", "跑命令", delivery_id="d2"
+                )
+                await crashed.advance("session-crashed")
+                await crashed.dispatcher.close()
+
                 await host.pause_unfinished_sessions()
 
                 self.assertFalse(host.is_paused("session-waiting"))
                 self.assertTrue(host.is_paused("session-open"))
+                self.assertTrue(host.is_paused("session-crashed"))
                 self.assertFalse(host.is_paused(child))
                 view = await host.select("web", "session-open")
                 self.assertTrue(view.paused)

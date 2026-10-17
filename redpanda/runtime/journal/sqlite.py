@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypeVar
 
@@ -23,6 +23,7 @@ from redpanda.runtime.codec import (
     encode_state,
 )
 from redpanda.runtime.events import (
+    AttemptOrphaned,
     CommandAuthorized,
     CommandOutcomeReceived,
     CommandRejected,
@@ -236,7 +237,10 @@ class SqliteJournal:
         return self._path
 
     async def prepare_recovery(self, session_id: str) -> None:
-        """新 Worker 独占接管时释放旧 Step claim；保留全部执行事实。"""
+        """新 Worker 独占接管：释放旧 Step claim，记下旧 Worker 留下的未完成 Attempt。
+
+        保留全部执行事实，不伪造 Outcome；这些 Attempt 仍是 unknown。
+        """
 
         def recover(connection: sqlite3.Connection) -> None:
             identities = connection.execute(
@@ -248,6 +252,30 @@ class SqliteJournal:
                 "UPDATE step_claims SET expires_at = 0 WHERE session_id = ?",
                 (session_id,),
             )
+            started: dict[str, Event] = {}
+            for event in (
+                *self._load_prefix_sync(),
+                *self._events_tx(connection, session_id),
+            ):
+                payload = event.payload
+                if isinstance(payload, DispatchAttemptStarted):
+                    started[payload.attempt_id] = event
+                elif isinstance(payload, (CommandOutcomeReceived, AttemptOrphaned)):
+                    started.pop(payload.attempt_id, None)
+            occurred_at = datetime.now(timezone.utc)
+            for attempt_id, event in started.items():
+                self._append_tx(
+                    connection,
+                    EventDraft(
+                        event_id=f"attempt-orphaned:{attempt_id}",
+                        session_id=session_id,
+                        payload=AttemptOrphaned(
+                            event.payload.command_id, attempt_id
+                        ),
+                        occurred_at=occurred_at,
+                        causation_id=event.event_id,
+                    ),
+                )
 
         await self._write(recover)
 
@@ -1912,6 +1940,7 @@ class SqliteJournal:
                 DecisionCancelled,
                 StepContinuationCancelled,
                 DispatchAttemptStarted,
+                AttemptOrphaned,
                 UserMessageReceived,
             ),
         ):

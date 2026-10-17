@@ -5,6 +5,7 @@ from redpanda.runtime.json_values import thaw_value
 from hashlib import sha256
 
 from redpanda.runtime.events import (
+    AttemptOrphaned,
     CommandAuthorized,
     CommandOutcomeReceived,
     CommandRejected,
@@ -37,7 +38,7 @@ from redpanda.runtime.model import (
 EVENT_SCHEMA_VERSION = 5
 DELIVERY_FINGERPRINT_VERSION = 3
 STATE_CODEC_VERSION = 6
-STATE_PROJECTION_VERSION = "canonical-state-v6"
+STATE_PROJECTION_VERSION = "canonical-state-v7"
 
 _USER_MESSAGE = "user.message.received"
 _STEP_COMMITTED = "step.committed"
@@ -45,6 +46,7 @@ _COMMAND_AUTHORIZED = "command.authorized"
 _COMMAND_REJECTED = "command.rejected"
 _ATTEMPT_STARTED = "command.attempt.started"
 _OUTCOME_RECEIVED = "command.outcome.received"
+_ATTEMPT_ORPHANED = "command.attempt.orphaned"
 _DECISION_CANCELLED = "decision.cancelled"
 _STEP_CONTINUATION_CANCELLED = "step.continuation.cancelled"
 _DOMAIN_FACT_COMMITTED = "domain.fact.committed"
@@ -207,6 +209,9 @@ def encode_payload(payload: EventPayload) -> tuple[str, str]:
             "attempt_id": payload.attempt_id,
             "outcome": _outcome_to_data(payload.outcome),
         }
+    elif isinstance(payload, AttemptOrphaned):
+        kind = _ATTEMPT_ORPHANED
+        data = {"command_id": payload.command_id, "attempt_id": payload.attempt_id}
     elif isinstance(payload, DecisionCancelled):
         kind = _DECISION_CANCELLED
         data = {"trigger_event_id": payload.trigger_event_id}
@@ -252,6 +257,8 @@ def decode_payload(
             attempt_id=data["attempt_id"],
             outcome=_outcome_from_data(data["outcome"]),
         )
+    if kind == _ATTEMPT_ORPHANED:
+        return AttemptOrphaned(data["command_id"], data["attempt_id"])
     if kind == _DECISION_CANCELLED:
         return DecisionCancelled(data["trigger_event_id"])
     if kind == _STEP_CONTINUATION_CANCELLED:
