@@ -59,7 +59,7 @@ class CliInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
         result = await self.propose.handler(CliInstallProposalInput(
             name="rg",
             description="Fast text search",
-            locator="rg",
+            locator="redpanda-missing-cli",
         ))
         self.assertIsInstance(result, ControlPreparationFailure)
         self.assertFalse(result.result["ok"])

@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from redpanda.cli.application import CliApplicationService
 from redpanda.cli.errors import (
@@ -92,7 +93,9 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_command_name_not_on_path_is_source_error(self):
         with self.assertRaises(CliSourceError):
-            await self.service.prepare_install("rg", "Fast text search", "rg")
+            await self.service.prepare_install(
+                "rg", "Fast text search", "redpanda-missing-cli"
+            )
 
     async def test_install_frozen_rejects_vanished_candidate_path(self):
         candidate = await self.service.prepare_install(
@@ -129,35 +132,42 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
             await self.service.refresh("rg", expected_revision=record.revision)
 
     async def test_repair_resolves_path_again(self):
-        where_needle = (
-            "where.exe rg" if os.name == "nt" else "command -v rg"
-        )
-        self.executor.route(
-            where_needle,
-            make_result(stdout=str(self.executable) + "\n"),
-        )
-        candidate = await self.service.prepare_install(
-            "rg",
-            "Fast text search",
-            "rg",
-        )
+        def place_rg(dirname: str) -> Path:
+            target = Path(self.temporary.name) / dirname / (
+                "rg.exe" if os.name == "nt" else "rg"
+            )
+            target.parent.mkdir()
+            target.write_text("", encoding="utf-8")
+            target.chmod(0o755)
+            return target
+
+        first = place_rg("path1")
+        with patch(
+            "redpanda.cli.installer.latest_persistent_path",
+            return_value=str(first.parent),
+        ):
+            candidate = await self.service.prepare_install(
+                "rg",
+                "Fast text search",
+                "rg",
+            )
         record = await self.service.install_frozen(
             candidate.name,
             candidate.description,
             candidate.source,
             candidate.resolved_path,
         )
-        moved = Path(self.temporary.name) / "bin2" / "rg.exe"
-        moved.parent.mkdir()
-        moved.write_text("", encoding="utf-8")
-        self.executor.route(where_needle, make_result(stdout=str(moved) + "\n"))
+        moved = place_rg("path2")
+        with patch(
+            "redpanda.cli.installer.latest_persistent_path",
+            return_value=str(moved.parent),
+        ):
+            repaired = await self.service.repair(
+                "rg",
+                expected_revision=record.revision,
+            )
 
-        repaired = await self.service.repair(
-            "rg",
-            expected_revision=record.revision,
-        )
-
-        self.assertEqual(repaired.resolved_path, str(moved))
+        self.assertTrue(os.path.samefile(repaired.resolved_path, moved))
         self.assertEqual(repaired.revision, 2)
 
     async def test_uninstall_removes_registration_only(self):
