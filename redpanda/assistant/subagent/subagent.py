@@ -502,8 +502,6 @@ def project_failed_delegations(events: Sequence[Event]) -> frozenset[str]:
             continue
         if value["code"] != "DELEGATED":
             raise ValueError("delegate success outcome code 无效")
-        if value["data"]["child_session_id"] != intent.child_session_id:
-            raise ValueError("delegate outcome child_session_id 与 Command 不一致")
     return frozenset(failed)
 
 

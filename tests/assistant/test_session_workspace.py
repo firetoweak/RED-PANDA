@@ -34,6 +34,13 @@ async def _append_user_message(store, session_id: str, text: str) -> None:
     )
 
 
+async def _create_unbound(store, session_id: str, text: str) -> None:
+    path = store.path(session_id)
+    path.parent.mkdir()
+    await SqliteJournal(path).create_session(session_id)
+    await _append_user_message(store, session_id, text)
+
+
 class _IdleSessions:
     def __init__(self, workspaces: WorkspaceRegistry) -> None:
         self.workspaces = workspaces
@@ -105,7 +112,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(resolved, record)
 
-    async def test_listing_shows_bound_sessions(self):
+    async def test_listing_hides_sessions_without_a_workspace(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             task_root = root / "task"
@@ -115,6 +122,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             store = SessionStore(root / "sessions")
             await store.create("bound", workspace_id=record.workspace_id)
             await _append_user_message(store, "bound", "有归属")
+            await _create_unbound(store, "legacy", "无归属")
 
             listed = await AssistantQueries(
                 store, _IdleSessions(registry)

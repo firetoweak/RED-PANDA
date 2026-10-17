@@ -356,6 +356,13 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(activity[0], (self.PARENT, True))
             self.assertEqual(activity[-1], (self.PARENT, False))
+
+            unknown = await host._reclaim_command(
+                _attempt_context(self.PARENT),
+                {"child_session_id": "not-a-child"},
+            )
+            self.assertIs(unknown["ok"], False)
+            self.assertEqual(unknown["code"], "UNKNOWN_CHILD")
         finally:
             await scheduler.close()
 
