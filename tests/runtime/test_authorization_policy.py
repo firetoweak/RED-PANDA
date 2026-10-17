@@ -3,11 +3,8 @@ import unittest
 
 from redpanda.runtime import InvokeTool, ModelDecision
 from redpanda.runtime.dispatcher import ToolBinding
-from tests.runtime.test_boundary_slice import (
-    RecordingTool,
-    ScriptedDecisionMaker,
-    runtime_for,
-)
+from tests.assistant.test_runner import ScriptedDecisionMaker
+from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
 
 
 class AuthorizationPolicySliceTest(unittest.IsolatedAsyncioTestCase):

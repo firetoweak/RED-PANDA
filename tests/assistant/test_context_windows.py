@@ -36,6 +36,21 @@ def _png(color: str) -> bytes:
     return buffer.getvalue()
 
 
+async def _handoff_session(runtime, session_id, bundle, inherited):
+    """建一个绑定工作区、并以 source=b 的冻结 bundle 为 TASK 的 handoff 会话。"""
+
+    await runtime.create_session(session_id)
+    await runtime.receive_domain_fact(
+        session_id, SESSION_WORKSPACE_FACT, {"workspace_id": "workspace"},
+        source="workspace", delivery_id="binding",
+    )
+    await runtime.receive_domain_fact(
+        session_id, TASK,
+        {"source": "b", "bundle": bundle, "inherited": inherited, "upto": 1, "window": None},
+        source="compact", delivery_id="task",
+    )
+
+
 class WindowTest(unittest.IsolatedAsyncioTestCase):
     async def test_history_query_locates_literal_text_within_sequence_range(self):
         runtime = AgentRuntime(MemoryJournal(), None, {})
@@ -291,31 +306,17 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
     async def test_frozen_bundle_keeps_user_image_blocks(self):
         with TemporaryDirectory() as directory:
             attachments = AttachmentGateway(Path(directory))
-            store = attachments.for_session("b")
-            buffer = BytesIO()
-            Image.new("RGB", (8, 8), "red").save(buffer, format="PNG")
-            ref = store.save_image(buffer.getvalue(), "image/png")
-            projector = ModelContextProjector(
-                gateway=MemoryArtifactGateway(),
-                attachments=attachments,
-            )
+            ref = attachments.for_session("b").save_image(_png("red"), "image/png")
+            projector = ModelContextProjector(gateway=MemoryArtifactGateway(), attachments=attachments)
             runtime = AgentRuntime(MemoryJournal(), None, {})
             await runtime.create_session("b")
             await runtime.receive_user_message(
-                "b",
-                "[Image #1] look",
-                delivery_id="u",
-                artifact_refs=(ref.attachment_id,),
+                "b", "[Image #1] look", delivery_id="u", artifact_refs=(ref.attachment_id,),
             )
             events = await runtime.snapshot("b")
             context = CompactContext("b", events, projector, None)
             bundle = frozen_bundle(projector, events, "b", context)
-            user = next(
-                message
-                for messages in bundle["raw"].values()
-                for message in messages
-                if message["role"] == "user"
-            )
+            user = next(m for ms in bundle["raw"].values() for m in ms if m["role"] == "user")
             self.assertTrue(user["content"][0]["text"].startswith("[Image #1] look"))
             self.assertEqual(user["content"][1]["id"], ref.attachment_id)
             self.assertEqual(user["content"][1]["type"], "image")
@@ -328,126 +329,38 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             source_ref = source_store.save_image(_png("red"), "image/png")
             own_ref = own_store.save_image(_png("blue"), "image/png")
             gateway = MemoryArtifactGateway()
-            inherited = save_document(
-                gateway,
-                "b",
-                {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "look"},
-                                {
-                                    "type": "file",
-                                    "id": source_ref.attachment_id,
-                                    "mime": "image/png",
-                                },
-                            ],
-                        }
-                    ],
-                    "tools": [],
-                },
-            )
-            bundle = save_document(
-                gateway,
-                "b",
-                {"records": [], "raw": {}, "artifacts": []},
-            )
-            projector = ModelContextProjector(
-                gateway=gateway,
-                attachments=attachments,
-            )
+            inherited = save_document(gateway, "b", {
+                "messages": [{"role": "user", "content": [
+                    {"type": "text", "text": "look"},
+                    {"type": "file", "id": source_ref.attachment_id, "mime": "image/png"},
+                ]}],
+                "tools": [],
+            })
+            bundle = save_document(gateway, "b", {"records": [], "raw": {}, "artifacts": []})
+            projector = ModelContextProjector(gateway=gateway, attachments=attachments)
             runtime = AgentRuntime(MemoryJournal(), None, {})
-            await runtime.create_session("h")
-            await runtime.receive_domain_fact(
-                "h",
-                SESSION_WORKSPACE_FACT,
-                {"workspace_id": "workspace"},
-                source="workspace",
-                delivery_id="binding",
-            )
-            await runtime.receive_domain_fact(
-                "h",
-                TASK,
-                {
-                    "source": "b",
-                    "bundle": bundle,
-                    "inherited": inherited,
-                    "upto": 1,
-                    "window": None,
-                },
-                source="compact",
-                delivery_id="task",
-            )
-            context = CompactContext(
-                "h", await runtime.snapshot("h"), projector, None
-            )
-            self.assertEqual(
-                context.read_attachment(source_ref.attachment_id),
-                source_store.read(source_ref.attachment_id),
-            )
+            await _handoff_session(runtime, "h", bundle, inherited)
+            context = CompactContext("h", await runtime.snapshot("h"), projector, None)
+            self.assertEqual(context.read_attachment(source_ref.attachment_id), source_store.read(source_ref.attachment_id))
             self.assertFalse(own_store.path(source_ref.attachment_id).is_file())
-            self.assertEqual(
-                context.read_attachment(own_ref.attachment_id),
-                own_store.read(own_ref.attachment_id),
-            )
+            self.assertEqual(context.read_attachment(own_ref.attachment_id), own_store.read(own_ref.attachment_id))
 
     async def test_read_is_limited_to_frozen_source_even_when_business_log_grows(self):
         gateway = MemoryArtifactGateway()
         projector = ModelContextProjector(gateway=gateway)
         runtime = AgentRuntime(MemoryJournal(), None, {})
-        await runtime.create_session("h")
-        await runtime.receive_domain_fact(
-            "h",
-            SESSION_WORKSPACE_FACT,
-            {"workspace_id": "workspace"},
-            source="workspace",
-            delivery_id="binding",
-        )
-        bundle = save_document(
-            gateway,
-            "b",
-            {
-                "records": [],
-                "raw": {"1": [{"role": "user", "content": "before P"}]},
-                "artifacts": [],
-            },
-        )
-        request = save_document(
-            gateway,
-            "b",
-            {
-                "messages": [{"role": "system", "content": "fixed"}],
-                "tools": [],
-            },
-        )
-        await runtime.receive_domain_fact(
-            "h",
-            TASK,
-            {
-                "source": "b",
-                "bundle": bundle,
-                "inherited": request,
-                "upto": 1,
-                "window": None,
-            },
-            source="compact",
-            delivery_id="task",
-        )
+        bundle = save_document(gateway, "b", {
+            "records": [], "raw": {"1": [{"role": "user", "content": "before P"}]}, "artifacts": [],
+        })
+        request = save_document(gateway, "b", {"messages": [{"role": "system", "content": "fixed"}], "tools": []})
+        await _handoff_session(runtime, "h", bundle, request)
         context = CompactContext("h", await runtime.snapshot("h"), projector, None)
         context.runtime = runtime
         await runtime.create_session("b")
         await runtime.receive_user_message("b", "before P", delivery_id="before")
         await runtime.receive_user_message("b", "after P", delivery_id="after")
         later_artifact = gateway.for_session("b").save("after P artifact")
-        request_read = await context.read_content(
-            None,
-            {
-                "reference": request,
-                "offset": 0,
-                "limit": 1000,
-            },
-        )
+        request_read = await context.read_content(None, {"reference": request, "offset": 0, "limit": 1000})
         self.assertIn("fixed", request_read["data"]["fragments"][0]["content"])
 
         view = await context.find_history(None, {})
@@ -481,20 +394,13 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         boundary = CompactBoundary(runtime, None, context, None, None, None)
         initial = await runtime.snapshot("b")
         for index in range(2):
-            material = save_document(
-                gateway,
-                "b",
-                {"messages": [{"role": "user", "content": f"handoff {index}"}]},
-            )
+            material = save_document(gateway, "b", {"messages": [{"role": "user", "content": f"handoff {index}"}]})
             args = {
                 "handoff": {"artifact": material, "request": material},
                 "window": {
-                    "id": str(index),
-                    "parent": None if index == 0 else str(index - 1),
-                    "upto": 1,
-                    "cutover": len(await runtime.snapshot("b")),
-                    "context": material,
-                    "bundle": material,
+                    "id": str(index), "parent": None if index == 0 else str(index - 1),
+                    "upto": 1, "cutover": len(await runtime.snapshot("b")),
+                    "context": material, "bundle": material,
                 },
             }
             await boundary.publish(args)
@@ -508,14 +414,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored.window["id"], "1")
         self.assertEqual(restored.prefix[0]["content"], "handoff 1")
         restored.runtime = runtime
-        evidence = await restored.read_content(
-            None,
-            {
-                "reference": material,
-                "offset": 0,
-                "limit": 1000,
-            },
-        )
+        evidence = await restored.read_content(None, {"reference": material, "offset": 0, "limit": 1000})
         self.assertIn("handoff 1", evidence["data"]["fragments"][0]["content"])
 
         def restored_visible(events):

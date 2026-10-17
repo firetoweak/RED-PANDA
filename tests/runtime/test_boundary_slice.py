@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import unittest
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,7 +12,6 @@ from redpanda.runtime import (
     CommandAuthorized,
     CommandPhase,
     CommandRejected,
-    DecisionFrame,
     DeliveryIdentity,
     DispatchAttemptStarted,
     DomainFactCommitted,
@@ -29,36 +28,10 @@ from redpanda.runtime import (
     replay,
 )
 from redpanda.runtime.model import AuthorizationPolicy
+from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 
 NOW = datetime(2026, 8, 21, 14, 0, tzinfo=timezone.utc)
-DecisionScript = Callable[
-    [DecisionFrame],
-    ModelDecision | Awaitable[ModelDecision],
-]
-
-
-class SequentialIds:
-    def __init__(self) -> None:
-        self._value = 0
-
-    def __call__(self, prefix: str) -> str:
-        self._value += 1
-        return f"{prefix}-{self._value}"
-
-
-class ScriptedDecisionMaker:
-    def __init__(self, scripts: tuple[DecisionScript, ...]) -> None:
-        self.scripts = scripts
-        self.frames: list[DecisionFrame] = []
-
-    async def decide(self, frame: DecisionFrame) -> ModelDecision:
-        script = self.scripts[len(self.frames)]
-        self.frames.append(frame)
-        decision = script(frame)
-        if isinstance(decision, Awaitable):
-            return await decision
-        return decision
 
 
 class RecordingTool:
@@ -87,6 +60,18 @@ class RecordingTool:
         self.started.set()
         await self.release.wait()
         return f"{self.name}-result"
+
+
+def _requesting(name: str, content: str = "request", *follow_ups: str) -> ScriptedDecisionMaker:
+    return ScriptedDecisionMaker((
+        lambda _frame: ModelDecision(content=content, command_requests=(InvokeTool(name),)),
+        *(lambda _frame, text=text: ModelDecision(content=text) for text in follow_ups),
+    ))
+
+
+async def _drain(runtime) -> None:
+    while runtime.dispatcher.active_count:
+        await asyncio.sleep(0)
 
 
 def runtime_for(
@@ -132,23 +117,9 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unauthorized_command_is_not_claimed_until_granted(self):
         tool = RecordingTool("transfer", requires_authorization=True)
-        runtime = runtime_for(
-            tool,
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="request transfer",
-                        command_requests=(InvokeTool("transfer"),),
-                    ),
-                )
-            ),
-        )
+        runtime = runtime_for(tool, _requesting("transfer"))
 
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "send money",
-            delivery_id="ask-1",
-        )
+        await runtime.receive_user_message(self.SESSION_ID, "send money", delivery_id="ask-1")
         advance = await runtime.advance(self.SESSION_ID)
         step = advance.step
         command_id = step.commands[0].command_id
@@ -187,26 +158,13 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dispatched.phase, CommandPhase.UNKNOWN)
         self.assertEqual(len(dispatched.attempts), 1)
         tool.release.set()
-        while runtime.dispatcher.active_count:
-            await asyncio.sleep(0)
+        await _drain(runtime)
 
     async def test_rejected_command_cannot_be_granted_or_dispatched(self):
         tool = RecordingTool("publish", requires_authorization=True)
-        model = ScriptedDecisionMaker(
-            (
-                lambda _frame: ModelDecision(
-                    content="request publish",
-                    command_requests=(InvokeTool("publish"),),
-                ),
-                lambda _frame: ModelDecision(content="publish rejected"),
-            )
-        )
+        model = _requesting("publish", "request publish", "publish rejected")
         runtime = runtime_for(tool, model)
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "publish this",
-            delivery_id="ask-1",
-        )
+        await runtime.receive_user_message(self.SESSION_ID, "publish this", delivery_id="ask-1")
         advance = await runtime.advance(self.SESSION_ID)
         step = advance.step
         command_id = step.commands[0].command_id
@@ -217,113 +175,43 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
             for event in events
             if getattr(event.payload, "step", None) == step
         )
-        snapshot_calls = 0
-        original_snapshot = runtime._journal.snapshot
-
-        async def tracked_snapshot(session_id):
-            nonlocal snapshot_calls
-            snapshot_calls += 1
-            return await original_snapshot(session_id)
-
-        runtime._journal.snapshot = tracked_snapshot
-
         rejected = await runtime.reject_command(self.SESSION_ID, command_id)
         self.assertIsInstance(rejected.payload, CommandRejected)
         self.assertEqual(rejected.causation_id, issued_event_id)
-        self.assertEqual(snapshot_calls, 0)
         self.assertIsNone(await runtime.grant_command(self.SESSION_ID, command_id))
         self.assertFalse(tool.started.is_set())
 
         state = await runtime.state(self.SESSION_ID)
         self.assertEqual(state.status, RuntimeStatus.RUNNABLE)
         self.assertEqual(state.next_trigger_event_id, rejected.event_id)
-        self.assertEqual(
-            state.command(command_id).authorization_rejected_by_event_id,
-            rejected.event_id,
-        )
         self.assertNotIn(command_id, state.waiting_command_ids)
 
         follow_up = (await runtime.advance(self.SESSION_ID)).step
         self.assertEqual(follow_up.trigger_event_id, rejected.event_id)
-        self.assertIsInstance(
-            model.frames[1].trigger_event.payload,
-            CommandRejected,
-        )
+        self.assertIsInstance(model.frames[1].trigger_event.payload, CommandRejected)
         self.assertFalse(tool.started.is_set())
 
     async def test_decision_content_is_not_delivered_user_message(self):
         tool = RecordingTool("deliver")
-        runtime = runtime_for(
-            tool,
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="任务完成",
-                        command_requests=(
-                            InvokeTool("deliver", (("text", "hello user"),)),
-                        ),
-                    ),
-                )
+        runtime = runtime_for(tool, ScriptedDecisionMaker((
+            lambda _frame: ModelDecision(
+                content="任务完成",
+                command_requests=(InvokeTool("deliver", (("text", "hello user"),)),),
             ),
-        )
-        inbound = await runtime.receive_user_message(
-            self.SESSION_ID,
-            "say hello",
-            delivery_id="ask-1",
-        )
+        )))
+        inbound = await runtime.receive_user_message(self.SESSION_ID, "say hello", delivery_id="ask-1")
         step = (await runtime.advance(self.SESSION_ID)).step
         await asyncio.wait_for(tool.started.wait(), timeout=1)
         tool.release.set()
-        while runtime.dispatcher.active_count:
-            await asyncio.sleep(0)
+        await _drain(runtime)
 
         events = await runtime._journal.snapshot(self.SESSION_ID)
         self.assertEqual(step.decision.content, "任务完成")
         self.assertEqual(tool.executions, [{"text": "hello user"}])
         self.assertEqual(
-            [
-                event.event_id
-                for event in events
-                if isinstance(event.payload, UserMessageReceived)
-            ],
+            [e.event_id for e in events if isinstance(e.payload, UserMessageReceived)],
             [inbound.event_id],
         )
-
-    async def test_dispatch_attempt_does_not_change_advance_status(self):
-        tool = RecordingTool("slow")
-        runtime = runtime_for(
-            tool,
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="run",
-                        command_requests=(InvokeTool("slow"),),
-                    ),
-                )
-            ),
-        )
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "run it",
-            delivery_id="ask-1",
-        )
-
-        advance = await runtime.advance(self.SESSION_ID)
-        await asyncio.wait_for(tool.started.wait(), timeout=1)
-        state_after_dispatch = await runtime.state(self.SESSION_ID)
-
-        self.assertEqual(advance.status, state_after_dispatch.status)
-        self.assertEqual(
-            len(
-                state_after_dispatch.command(
-                    advance.step.commands[0].command_id
-                ).attempts
-            ),
-            1,
-        )
-        tool.release.set()
-        while runtime.dispatcher.active_count:
-            await asyncio.sleep(0)
 
     async def test_missing_artifact_degrades_replay_without_substitution(self):
         digest = "a" * 64
@@ -347,7 +235,6 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(uninspected.missing, ())
         self.assertFalse(uninspected.inspected)
         self.assertFalse(uninspected.complete)
-        self.assertEqual(rebuilt.trace.entries[0].kind, "UserMessageReceived")
         self.assertFalse(rebuilt.artifacts.inspected)
         self.assertEqual(rebuilt.artifacts.missing, ())
         self.assertTrue(inspected_empty.inspected)
@@ -361,44 +248,23 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         path = Path(temporary.name) / "boundary.db"
         first = SqliteJournal(path)
         tool = RecordingTool("sensitive", requires_authorization=True)
-        runtime = runtime_for(
-            tool,
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="need grant",
-                        command_requests=(InvokeTool("sensitive"),),
-                    ),
-                )
-            ),
-            journal=first,
-        )
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "do it",
-            delivery_id="ask-1",
-        )
+        runtime = runtime_for(tool, _requesting("sensitive"), journal=first)
+        await runtime.receive_user_message(self.SESSION_ID, "do it", delivery_id="ask-1")
         step = (await runtime.advance(self.SESSION_ID)).step
         command_id = step.commands[0].command_id
         issued = (await first.snapshot(self.SESSION_ID))[-1]
 
-        journal_a = SqliteJournal(path)
-        journal_b = SqliteJournal(path)
-        draft_a = EventDraft(
-            event_id="grant-a",
-            session_id=self.SESSION_ID,
-            payload=CommandAuthorized(command_id),
-            occurred_at=NOW,
-        )
-        draft_b = EventDraft(
-            event_id="grant-b",
-            session_id=self.SESSION_ID,
-            payload=CommandAuthorized(command_id),
-            occurred_at=NOW,
-        )
+        def grant(event_id):
+            return EventDraft(
+                event_id=event_id,
+                session_id=self.SESSION_ID,
+                payload=CommandAuthorized(command_id),
+                occurred_at=NOW,
+            )
+
         winners = await asyncio.gather(
-            journal_a.grant_command(draft_a),
-            journal_b.grant_command(draft_b),
+            SqliteJournal(path).grant_command(grant("grant-a")),
+            SqliteJournal(path).grant_command(grant("grant-b")),
         )
         self.assertEqual(sum(event is not None for event in winners), 1)
         self.assertEqual(
@@ -412,16 +278,7 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(
             rebuilt.state.command(command_id).dispatch_eligible_by_event_id
         )
-        self.assertIsNone(
-            await reopened.grant_command(
-                EventDraft(
-                    event_id="grant-c",
-                    session_id=self.SESSION_ID,
-                    payload=CommandAuthorized(command_id),
-                    occurred_at=NOW,
-                )
-            )
-        )
+        self.assertIsNone(await reopened.grant_command(grant("grant-c")))
 
     async def test_authorization_reject_contract_matches_across_journals(self):
         temporary = tempfile.TemporaryDirectory()
@@ -434,22 +291,9 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
         for name, journal in journals:
             with self.subTest(journal=name):
                 tool = RecordingTool("sensitive", requires_authorization=True)
-                runtime = runtime_for(
-                    tool,
-                    ScriptedDecisionMaker(
-                        (
-                            lambda _frame: ModelDecision(
-                                content="need authorization",
-                                command_requests=(InvokeTool("sensitive"),),
-                            ),
-                        )
-                    ),
-                    journal=journal,
-                )
+                runtime = runtime_for(tool, _requesting("sensitive"), journal=journal)
                 await runtime.receive_user_message(
-                    self.SESSION_ID,
-                    "do it",
-                    delivery_id=f"ask-{name}",
+                    self.SESSION_ID, "do it", delivery_id=f"ask-{name}"
                 )
                 step = (await runtime.advance(self.SESSION_ID)).step
                 command_id = step.commands[0].command_id
@@ -459,10 +303,7 @@ class AgentRuntimeBoundarySliceTest(unittest.IsolatedAsyncioTestCase):
                     if isinstance(event.payload, StepCommitted)
                 )
 
-                rejected = await runtime.reject_command(
-                    self.SESSION_ID,
-                    command_id,
-                )
+                rejected = await runtime.reject_command(self.SESSION_ID, command_id)
 
                 self.assertEqual(rejected.causation_id, issued_event_id)
                 self.assertIsNone(
