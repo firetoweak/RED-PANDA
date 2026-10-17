@@ -16,7 +16,7 @@ class ChildWorkspaceReview:
             return await self._review(command_id, tool_call_id, paths, merge=merge, offset=offset)
         except OSError:
             return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
-                    "error": "无法读取或合入子任务文件；请检查磁盘空间、文件占用和访问权限后重试。"}
+                    "error": "无法读取或合入子任务文件；可稍后重试一次；仍失败请告诉用户检查磁盘空间、文件占用和权限。"}
 
     async def _review(self, command_id, tool_call_id, paths, *, merge, offset):
         events = await self.runtime.snapshot(self.session_id)
@@ -35,7 +35,7 @@ class ChildWorkspaceReview:
                     result = await self.files.merge(self.session_id, intent.child_session_id, self.filesystem)
                 except OSError:
                     return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
-                            "error": "无法合入子任务文件；请检查磁盘空间、文件占用和访问权限后重试。"}
+                            "error": "无法合入子任务文件；可稍后重试一次；仍失败请告诉用户检查磁盘空间、文件占用和权限。"}
                 if result.conflicts:
                     return {"ok": False, "code": "MERGE_CONFLICT", "data": {"conflicts": list(result.conflicts)},
                             "error": "合入冲突，用户的文件没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。"}

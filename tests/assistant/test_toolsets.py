@@ -50,7 +50,7 @@ class FakeEchoProvider:
         self.load_calls += 1
         if toolset_id != "demo" or revision != self.revision:
             raise ToolsetLoadError(
-                "TOOLSET_REVISION_UNAVAILABLE",
+                "TOOLSET_CHANGED",
                 f"Toolset {toolset_id} revision is unavailable",
                 data={"expected_revision": revision, "available_revision": self.revision},
             )
@@ -175,8 +175,6 @@ class ToolsetProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
         surface = ToolSurface(providers=(FakeEchoProvider(),))
         surface.apply_catalog(SESSION_ID, surface.registry_descriptors())
         self.assertEqual(_schema_names(surface.schemas(SESSION_ID)), {LOAD_TOOLSET})
-        self.assertIn("demo", surface.catalog_instruction(SESSION_ID))
-        self.assertNotIn("demo_ping", surface.catalog_instruction(SESSION_ID))
 
     async def test_unknown_toolset_is_a_model_correctable_error(self):
         surface, _runtime = _attached()
@@ -193,7 +191,7 @@ class ToolsetProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
 
         result = await surface.load(SESSION_ID, "demo")
 
-        self.assertEqual(result["code"], "TOOLSET_REVISION_UNAVAILABLE")
+        self.assertEqual(result["code"], "TOOLSET_CHANGED")
         self.assertEqual(result["data"]["expected_revision"], 1)
         self.assertEqual(result["data"]["available_revision"], 2)
 

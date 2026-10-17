@@ -218,6 +218,7 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
         enabled = SimpleNamespace(
             id="demo",
             revision=2,
+            toolset_id="mcp:demo",
         )
         self.service.test_and_enable.return_value = SimpleNamespace(
             succeeded=True,
@@ -233,7 +234,6 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
             "demo",
             expected_revision=1,
         )
-        self.assertEqual(result.data["revision"], 2)
 
     async def test_failed_test_keeps_server_disabled(self):
         self.service.upsert_server.return_value = SimpleNamespace(
@@ -291,7 +291,7 @@ class McpRecoveryApprovalTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_handler_tests_and_enables_expected_revision(self):
         runtime = McpServerRuntimeState(status=RuntimeAvailability.AVAILABLE)
-        enabled = SimpleNamespace(id="demo", revision=5)
+        enabled = SimpleNamespace(id="demo", revision=5, toolset_id="mcp:demo")
         service = SimpleNamespace(
             test_and_enable=AsyncMock(return_value=SimpleNamespace(
                 succeeded=True,

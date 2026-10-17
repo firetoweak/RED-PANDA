@@ -14,10 +14,7 @@ MAX_READ_CHARS = 32_000
 SEARCH_FRAGMENT_CHARS = 1_200
 SEARCH_CONTEXT_CHARS = 160
 CONTENT_HINT = (
-    "本次工具返回的原文可用 read_content(reference=返回的引用) 读取；"
-    "query 按区分大小写的字面关键词定位并返回附近原文，省略 query 按字符范围读取。"
-    "可用片段的 offset 向前扩读，next_offset 继续读取或查找。"
-    "若原工具提示检索或读取范围不完整，范围外的内容仍需重新检索或读取。"
+    "完整结果用 read_content 读取 data.reference；原结果本身不完整的部分，仍需用原工具补查。"
 )
 
 READ_CONTENT_SCHEMA = {

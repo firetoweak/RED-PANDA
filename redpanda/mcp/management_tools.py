@@ -27,7 +27,6 @@ def create_mcp_management_specs(
                 "description": record.description,
                 "transport": record.transport.value,
                 "enabled": record.enabled,
-                "revision": record.revision,
                 "last_status": record.last_status.value,
                 "last_checked_at": (
                     record.last_checked_at.isoformat()
@@ -67,7 +66,6 @@ def create_mcp_management_specs(
             "data": {
                 "server_id": record.id,
                 "enabled": record.enabled,
-                "revision": record.revision,
                 "runtime": runtime.to_dict(),
             },
             "error": None if available else runtime.last_error_summary,

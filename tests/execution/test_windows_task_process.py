@@ -83,11 +83,11 @@ def test_read_only_task_can_read_but_cannot_modify_host(tmp_path):
         view, tools = await tools_at(root, tmp_path / "store")
         result = await view.read(lambda: tools.execute("execute_command", {
             "workspace_effect": "read_only",
-            "command": "Get-Content value; try {[IO.File]::WriteAllText('value','BAD');exit 9} catch [UnauthorizedAccessException] {Write-Output DENIED}",
+            "command": "Get-Content value; try {[IO.File]::WriteAllText('value','BAD');exit 9} catch [UnauthorizedAccessException] {Write-Output DENIED}; (Get-Location).ProviderPath",
         }))
         assert result["data"]["exit_code"] == 0, result
         assert "DENIED" in result["data"]["stdout"]["content"]
-        assert result["data"]["command_cwd"] == str(root)
+        assert result["data"]["stdout"]["content"].splitlines()[-1] == str(root)
         assert (root / "value").read_text() == "BASE"
         assert not (view.storage / "commands").exists()
     asyncio.run(scenario())
@@ -121,7 +121,7 @@ def test_writable_task_child_reads_own_changes_and_rejects_host_write(tmp_path):
         identity = operation_id("test", "write")
         result = await view.execute(identity, lambda: tools.execute("execute_command", {"command": ps(sys.executable, "-B", script, root)}))
         assert result["data"]["exit_code"] == 0, result
-        assert result["data"]["command_cwd"] != str(root)
+        assert json.loads(result["data"]["stdout"]["content"])["cwd"] != str(root)
         assert (root / "value").read_text() == "VIEW"
         assert (root / "child").read_text() == "CHILD"
         sealed = json.loads((view.storage / "commands" / identity / "sealed.json").read_text())

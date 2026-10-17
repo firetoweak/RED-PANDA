@@ -62,7 +62,7 @@ def build_parameters(tool_name: str, input_schema: Mapping[str, Any]) -> JsonSch
         raise ToolsetLoadError(
             "MCP_INVALID_TOOL_SCHEMA",
             f"工具 {tool_name} 的 inputSchema 非法: {exc}",
-            hint="请修复 MCP Server 的工具 Schema 后重试 load_toolset。",
+            hint="这是该 Server 的问题，重试无效；告诉用户该 Toolset 当前不可用。",
             data={"tool_name": tool_name},
         ) from exc
 
@@ -82,7 +82,7 @@ def build_output_validator(
         raise ToolsetLoadError(
             "MCP_INVALID_TOOL_SCHEMA",
             f"工具 {tool_name} 的 outputSchema 非法: {exc}",
-            hint="请修复 MCP Server 的工具 Schema 后重试 load_toolset。",
+            hint="这是该 Server 的问题，重试无效；告诉用户该 Toolset 当前不可用。",
             data={"tool_name": tool_name},
         ) from exc
 
@@ -115,10 +115,7 @@ def adapt_call_result(
                 }
             },
             "error": _text_from_content(content) or "MCP tool reported an error",
-            "hint": (
-                "按服务端返回检查错误原因；报错不保证操作没有部分执行。"
-                "涉及创建、发送或修改时，先核对实际状态，再决定是否修正参数重试。"
-            ),
+            "hint": "按 error 判断原因；涉及创建、发送或修改时，先核对实际状态再重试。",
         }
 
     if output_validator is not None:
@@ -134,7 +131,7 @@ def adapt_call_result(
                     }
                 },
                 "error": "工具声明了 outputSchema，但未返回 structuredContent",
-                "hint": "请检查 MCP Server 返回值；结果格式错误不证明操作未执行，重试前先核对实际状态。",
+                "hint": "返回格式不符合该工具的声明，data.mcp.content 里可能仍有可用信息；重试前先核对实际状态。",
             }
         try:
             output_validator.validate(result.structured_content)
@@ -153,7 +150,7 @@ def adapt_call_result(
                     f"structuredContent 不符合 outputSchema: {exc}",
                     secret_values=secret_values,
                 ),
-                "hint": "请检查 MCP Server 返回值或 outputSchema；结果格式错误不证明操作未执行，重试前先核对实际状态。",
+                "hint": "返回格式不符合该工具的声明，data.mcp.content 里可能仍有可用信息；重试前先核对实际状态。",
             }
 
     return {
@@ -218,10 +215,9 @@ def adapt_transport_error(
             else f"{detail}；执行结果未知，可能已部分执行。"
         ),
         "hint": (
-            "本次工具未执行；检查服务是否可用、连接配置是否正确，恢复后可重试。"
+            "服务恢复后可重试；持续失败就告诉用户该服务当前不可用。"
             if not_started
-            else "无法确认服务端操作是否完成或仍在执行。继续前先查询相关对象、文件或操作状态；"
-            "不要直接重复创建、发送或修改。连接恢复不证明上次操作未执行。"
+            else "先查询相关对象或操作状态，确认上次调用是否生效，再决定是否重试。"
         ),
     }
 

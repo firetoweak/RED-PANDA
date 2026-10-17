@@ -251,8 +251,7 @@ READ_IMAGE_SCHEMA: dict[str, object] = {
         "name": "read_image",
         "description": (
             "重新查看本对话中用户或工具曾提供的图片。"
-            "只能使用事实里真实出现过的附件 id；"
-            "压缩后的文字引用不代表当前仍看得到图片。"
+            "只能用本对话中出现过的图片 id；摘要提到图片不代表你现在看得到它。"
         ),
         "parameters": {
             "type": "object",
@@ -300,7 +299,7 @@ def read_image_binding(journal, store: AttachmentStore) -> dict[str, ToolBinding
         return {
             "ok": False,
             "code": "IMAGE_NOT_IN_SESSION",
-            "error": "图片不属于当前 Session",
+            "error": "本对话中没有这张图片。",
         }
 
     return {"read_image": ToolBinding(handler)}

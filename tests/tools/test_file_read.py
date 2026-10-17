@@ -229,10 +229,14 @@ class FileSearchIgnoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(".github/README.md", paths)
         self.assertNotIn("ignored/secret.py", paths)
         self.assertFalse(any(".git" in path for path in paths))
-        self.assertIn("隐藏文件/目录", result["hint"])
-        self.assertIn("gitignore", result["hint"])
-        self.assertIn("include_hidden=true", result["hint"])
-        self.assertIn("include_ignored=true", result["hint"])
+        self.assertIsNone(result["hint"])
+
+        empty = await self.glob(GlobInput(pattern="secret.py", max_results=100))
+        self.assertEqual(empty["matches"], [])
+        self.assertIn("隐藏文件/目录", empty["hint"])
+        self.assertIn("gitignore", empty["hint"])
+        self.assertIn("include_hidden=true", empty["hint"])
+        self.assertIn("include_ignored=true", empty["hint"])
 
     @needs_fd
     async def test_glob_include_hidden_finds_dot_files_but_not_git(self):

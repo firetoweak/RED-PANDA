@@ -132,9 +132,7 @@ class McpApplicationService:
                 )
             if current.revision != expected_revision:
                 raise McpRecoveryPreconditionError(
-                    f"MCP Server `{server_id}` 配置已变化："
-                    f"expected revision {expected_revision}, "
-                    f"current revision {current.revision}"
+                    f"MCP Server `{server_id}` 在提交后已被修改"
                 )
             return await self._upsert_server_locked(
                 server_id=server_id,
@@ -245,9 +243,7 @@ class McpApplicationService:
                 and current.revision != expected_revision
             ):
                 raise McpRecoveryPreconditionError(
-                    f"MCP Server `{server_id}` 配置已变化："
-                    f"expected revision {expected_revision}, "
-                    f"current revision {current.revision}"
+                    f"MCP Server `{server_id}` 在提交后已被修改"
                 )
             record = await self.registry.remove(server_id)
             self.secret_store.delete_namespace(server_id)
@@ -280,9 +276,7 @@ class McpApplicationService:
                 and record.revision != expected_revision
             ):
                 raise McpRecoveryPreconditionError(
-                    f"MCP Server `{server_id}` 配置已变化："
-                    f"expected revision {expected_revision}, "
-                    f"current revision {record.revision}"
+                    f"MCP Server `{server_id}` 在提交后已被修改"
                 )
             runtime = await self._test_record(record)
             tested_record = await self._persist_test_result(server_id, runtime)

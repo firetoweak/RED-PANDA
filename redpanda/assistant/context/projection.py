@@ -20,6 +20,7 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.control import (
     CONTROL_PROPOSED, CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
 )
+from redpanda.assistant.subagent.subagent import TASK_FACT
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from redpanda.assistant.workspace_versions import (
     WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
@@ -123,17 +124,14 @@ def _tool_result_json(payload: Mapping[str, object]) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-def _rejection_text(command_id: str, tool_name: str) -> str:
+def _rejection_text(tool_name: str) -> str:
     """把拒绝投影成工具协议消息，明确是「用户拒绝」而非「工具失败」。"""
     return _tool_result_json(
         {
             "ok": False,
             "code": "COMMAND_REJECTED",
             "data": None,
-            "error": (
-                f"用户拒绝执行该工具调用（command_id={command_id}，"
-                f"工具={tool_name}）。"
-            ),
+            "error": f"用户拒绝执行该工具调用（工具={tool_name}）。",
             "hint": "请勿原样重试；如需继续，请改用其他方式或先向用户解释。",
         }
     )
@@ -150,13 +148,8 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
         # 起过 attempt 却没有结果。Journal 分不出「还在跑」和「已中断」，
         # 那是进程事实，不在事件里，所以这里只说到它知道的为止。
         code = "NO_RESULT_YET"
-        error = f"该调用已开始执行，但未取得最终结果，原因未知，可能已部分执行（工具={tool_name}）。"
-        hint = (
-            "无法确认该调用是否仍在执行，也无法确认是否因进程异常、连接中断或其他原因停止。"
-            "不要把缺少结果当作未执行或执行失败。续跑前请先检查相关文件、外部状态"
-            "及仍在运行的操作，确认哪些操作已完成，再决定是否等待、补做或重试，"
-            "避免重复产生副作用。"
-        )
+        error = f"该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具={tool_name}）。"
+        hint = "先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。"
     elif state.dispatch_eligible_by_event_id is None:
         code = "AWAITING_AUTHORIZATION"
         error = f"该调用正在等待用户授权（工具={tool_name}）。"
@@ -220,8 +213,8 @@ def _user_content(
     if files:
         text += (
             "\n用户已发送的文件材料：\n" + json.dumps(files, ensure_ascii=False)
-            + "\n以上路径可用 read_file 或 execute_command 读取，自行选择解析方法。"
-            "需要修改文件时先复制到当前工作区，再编辑和验证工作副本；原件与材料目录不作为输出目录。"
+            + "\n以上路径可用 read_file 或 execute_command 读取。"
+            "以上文件只读；要修改先复制到工作区再改。"
         )
     if not images:
         return text
@@ -251,7 +244,7 @@ def _translate_visible_events(
         system_prompt += (
             f"\n当前会话的文件材料目录：{attachments.files.materials}。"
             "材料只读，需要修改时先复制到当前工作区。"
-            "如果历史交接中的材料路径属于其他会话，使用当前材料目录和相同的附件子路径。"
+            "历史中的材料路径不存在时，在当前材料目录下按相同子路径查找。"
         )
     visible = set(state.visible_event_ids)
     # 记录失败可能在触发本次 Decision 的 Outcome 之后提交；不重加 Compact 已移出的事实。
@@ -309,7 +302,15 @@ def _translate_visible_events(
                     continue
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
-            if payload.fact_type == CONTROL_PROPOSED:
+            if payload.fact_type == "assistant.catalog":
+                shown_data = catalog_for_model(shown_data)
+            elif payload.fact_type == WORKSPACE_VERSION_FACT:
+                shown_data = {"error": shown_data["error"]}
+            elif payload.fact_type == TASK_FACT:
+                shown_data = {
+                    key: shown_data[key] for key in ("task", "resolve_conflicts_of")
+                }
+            elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]
                     for key in ("request_id", "action", "summary", "risk")
@@ -319,10 +320,7 @@ def _translate_visible_events(
                 shown_data = {
                     key: shown_data[key] for key in ("request_id", "action")
                 }
-                shown_data["status"] = (
-                    "操作已开始；若后续没有最终结果，执行结果未知，可能已部分执行。"
-                    "继续前先检查实际状态，不直接重试；仅凭开始记录无法确定中断原因。"
-                )
+                shown_data["status"] = "操作已开始；之后没有结果时视为结果未知，先检查实际状态，不直接重试。"
             elif payload.fact_type in {CONTROL_SUCCEEDED, CONTROL_FAILED}:
                 shown_data = {
                     key: shown_data[key]
@@ -413,7 +411,7 @@ def _project_step(step: StepState) -> list[_Projected]:
     for state, effect in shown:
         command_id = state.command.command_id
         if state.authorization_rejected_by_event_id is not None:
-            content = _rejection_text(command_id, effect.name)
+            content = _rejection_text(effect.name)
         elif state.outcome is not None:
             content = outcome_text(state.outcome)
         else:
@@ -550,7 +548,7 @@ def _stub_content(
     elif outcome["ok"]:
         error = None
     else:
-        error = "完整错误信息见外置结果。"
+        error = "完整错误用 read_content 读取 data.reference。"
     stub: dict[str, object] = {
         "ok": outcome["ok"],
         "code": outcome["code"],
@@ -602,6 +600,18 @@ def externalize_tool_result(
         preview_chars=settings.preview_chars,
     )
     return externalized
+
+
+def catalog_for_model(data: Mapping[str, object]) -> dict[str, object]:
+    """revision 只用于目录一致性校验，模型拿它做不了任何事。"""
+    return {
+        key: [
+            {name: field for name, field in item.items() if name != "revision"}
+            for item in value
+        ] if isinstance(value, list) else value
+        for key, value in data.items()
+        if key != "revision"
+    }
 
 
 class ModelContextProjector:
@@ -670,6 +680,12 @@ class ModelContextProjector:
             *(item.message for item in items[1:]),
         ]
         plan_text = render_work_plan(events)
+        shown = next(
+            (item.message["content"] for item in reversed(items) if item.kind == "work_plan"),
+            None,
+        )
+        if plan_text == shown:
+            plan_text = None
         if plan_text is not None:
             messages.append({"role": "user", "content": plan_text})
         return PreparedModelContext(

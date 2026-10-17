@@ -15,10 +15,8 @@ SCHEDULE_ONCE_SCHEMA: dict[str, object] = {
     "function": {
         "name": SCHEDULE_ONCE,
         "description": (
-            "安排一次稍后的自主检查。调用立即返回已安排，不会在当前工具调用里等待。"
-            "到时会有带计划时间和实际触发时间的外部事实唤醒当前 Session；"
-            "你再根据当时事实判断是否检查、回答或重新安排。"
-            "返回的 schedule_id 可用于 cancel_schedule 撤销尚未触发的检查。"
+            "安排一次稍后的提醒，调用立即返回。到时你会收到带计划时间、实际时间和 purpose 的提醒，"
+            "再判断是否检查、回答或重新安排；用返回的 schedule_id 可在触发前取消。"
         ),
         "parameters": {
             "type": "object",
@@ -47,15 +45,16 @@ CANCEL_SCHEDULE_SCHEMA: dict[str, object] = {
     "function": {
         "name": CANCEL_SCHEDULE,
         "description": (
-            "取消当前对话中尚未开始触发的定时检查。"
-            "目标变化、提前完成或不再需要检查时，用 schedule_once 返回的 schedule_id 撤销。"
-            "重复取消已取消的检查仍返回成功；已开始触发的返回 ALREADY_FIRED，"
-            "其时间事实仍可能送达，不能撤回。"
+            "取消尚未触发的提醒；重复取消仍返回成功；已触发的返回 ALREADY_FIRED，提醒仍会到达。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "schedule_id": {"type": "string", "minLength": 1},
+                "schedule_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "schedule_once 返回的 schedule_id。",
+                },
             },
             "required": ["schedule_id"],
             "additionalProperties": False,
@@ -101,7 +100,7 @@ async def cancel_schedule(
         return {
             "ok": False,
             "code": "INVALID_ARGUMENT",
-            "error": "cancel_schedule requires a non-empty schedule_id",
+            "error": "cancel_schedule 需要非空的 schedule_id",
         }
     code = await transport(
         CANCEL_SCHEDULE,
@@ -140,11 +139,11 @@ async def register_schedule(
 
 def _schedule_arguments(arguments: Mapping[str, object]) -> tuple[int, str]:
     if set(arguments) != {"delay_seconds", "purpose"}:
-        raise ValueError("schedule_once arguments must be delay_seconds and purpose")
+        raise ValueError("schedule_once 只接受 delay_seconds 和 purpose 两个参数")
     delay_seconds = arguments["delay_seconds"]
     purpose = arguments["purpose"]
     if type(delay_seconds) is not int or not 1 <= delay_seconds <= MAX_DELAY_SECONDS:
-        raise ValueError("delay_seconds must be between 1 and 31536000")
+        raise ValueError(f"delay_seconds 必须在 1 到 {MAX_DELAY_SECONDS} 之间")
     if type(purpose) is not str or not purpose.strip():
-        raise ValueError("purpose must be a non-empty string")
+        raise ValueError("purpose 必须是非空字符串")
     return delay_seconds, purpose

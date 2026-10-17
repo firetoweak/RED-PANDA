@@ -185,7 +185,7 @@ async def build_assistant_assembly(
             ),
             ManagementDomain(
                 "skill",
-                "Skill 的帮助、查询、检查、安装、更新、启停与卸载",
+                "Skill 的查询、检查、安装、更新、启停与卸载",
                 skills.management_specs,
                 skills.control_operations,
                 tuple(

@@ -97,7 +97,7 @@ class McpToolsetProvider:
             raise ToolsetLoadError(
                 "MCP_TRANSPORT_ERROR",
                 summary,
-                hint="检查 Server 是否可用后重试 load_toolset。",
+                hint="不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。",
                 data={"server_id": server_id},
             ) from exc
 
@@ -198,13 +198,9 @@ class McpToolsetProvider:
                 return {
                     "ok": False,
                     "code": "MCP_SERVER_CHANGED",
-                    "data": {
-                        "server_id": record_id,
-                        "loaded_revision": expected_revision,
-                        "current_revision": record.revision,
-                    },
-                    "error": "MCP Server 配置已变化，当前 Toolset 快照已过期",
-                    "hint": "请在下一次决策中重新加载该 Toolset。",
+                    "data": {"server_id": record_id},
+                    "error": "该 MCP Server 配置已更新，之前加载的工具已失效",
+                    "hint": "重新 load_toolset 后再调用。",
                 }
             try:
                 result = await self._client_manager.call_tool(

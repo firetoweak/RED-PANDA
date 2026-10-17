@@ -454,7 +454,6 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
             view.native_path(code).write_text("print('after')\n")
             found = await tools.execute("glob", {"pattern": "*.py"})
             assert found["ok"] and [item["path"] for item in found["data"]["matches"]] == ["main.py"], found
-            assert found["data"]["matches"][0]["location"]["path"] == code.as_uri()
             search = await tools.execute("grep", {"query": "after", "path": "."})
             assert search["ok"] and search["data"]["hits"], search
             return {"ok": True}
@@ -464,7 +463,7 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
             assert changes["ok"], changes
             state = changes["data"]["changes"][0]
             assert state["edits"][0]["after"] == code.read_bytes().decode("utf-8")
-            assert state["location"]["path"] == code.as_uri()
+            assert state["path"] == "main.py"
             assert state["origin"] == "agent"
         await view.read(verify)
     asyncio.run(scenario())

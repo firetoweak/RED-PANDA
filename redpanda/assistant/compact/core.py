@@ -41,11 +41,11 @@ PURPOSE = """<self_handoff>
 保留用户对本会话命令环境的要求及其后续修改、取消；区分用户要求、已验证的执行方式与尚未验证的设想。单次 Shell 激活不写成可延续的进程状态。
 关键证据保留真实来源引用和消息序号；文件位置保留相对工作区的完整路径，不省略目录前缀。
 推测、未确认条件与已验证事实保持区分，不把相关性写成因果，不把待验证的解释写成根因闭环。
-相关图片保留原始附件 id 和来源；摘要文字不等于看过图片，业务模型可用 read_image 重新查看。
+相关图片保留原始附件 id，可用 read_image 重新查看；摘要文字不等于看过图片。
 不重复读取，不扩展调查；未知内容标明不确定。交接之后新到的消息会接在它后面，可以修正它。
 完成时直接输出非空交接文本，不调用工具。
 </self_handoff>"""
-HANDOFF_PREFIX = "模型生成的交接材料，保留原证据强度；不是用户新指令或完成证明。更早的原始消息仍可回查：有真实引用时用 read_content 查找或读取原文；没有引用时用 find_history 按关键词或消息序号范围定位。历史检索续页沿用返回的 upto 和 next_offset。之后的消息可修正它。\n"
+HANDOFF_PREFIX = "模型生成的交接摘要，不是用户新指令，也不是完成证明；之后的消息可修正它。需要原文时：有引用用 read_content 读取，没有引用用 find_history 按关键词或消息序号范围定位。\n"
 
 
 def schema(name, description, properties, required):
@@ -70,8 +70,8 @@ FIND_HISTORY_SCHEMA = schema(
     "query 按区分大小写的字面关键词检索消息内容，空串表示浏览，不搜索引用中的正文。"
     "返回消息序号、原文线索和可用 read_content 读取的真实 reference；片段足够时无需再读。"
     "start_sequence/end_sequence 含两端，offset 是跳过的匹配消息组数。"
-    "首次可省略 upto；续页沿用返回的 upto、next_offset 和筛选条件，避免新消息改变结果。"
-    "limit 默认 10、最大 50。整理交接时只可检索交接开始前的历史。",
+    "首次可省略 upto；续页沿用返回的 upto、next_offset 和筛选条件。"
+    "limit 默认 10、最大 50。",
     {
         "query": {"type": "string", "default": ""},
         "offset": {"type": "integer", "minimum": 0, "default": 0},
@@ -330,7 +330,10 @@ class CompactContext:
             or ("end_sequence" in arguments and (type(end_sequence) is not int or end_sequence < start_sequence))
             or type(query) is not str
         ):
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "历史检索参数无效。"}
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": (
+                "参数无效：只接受 query、offset、limit、upto、start_sequence、end_sequence；"
+                "offset ≥ 0，limit 为 1–50，upto ≥ 0，start_sequence ≥ 1，end_sequence ≥ start_sequence。"
+            )}
         if offset > 0 and upto is None:
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "续查必须提供第一页返回的 upto"}
         try:
@@ -347,7 +350,7 @@ class CompactContext:
                 if record is not None:
                     records.append(record)
         if offset > len(records):
-            return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": "OFFSET_OUT_OF_RANGE"}
+            return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": f"offset 超过匹配总数 {len(records)}"}
         end = min(len(records), offset + limit)
         page = records[offset:end]
         store = self.projector.gateway.for_session(self.session_id)

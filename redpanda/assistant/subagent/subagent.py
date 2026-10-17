@@ -245,12 +245,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
     if project_parent(events) is None or _return_event(events) is not None:
         return
     state = StateProjector().project(session_id, events).state
-    unfinished = [
-        command.command.command_id
-        for command in state.commands
-        if command.phase is CommandPhase.UNKNOWN
-    ]
-    if not unfinished:
+    if not any(command.phase is CommandPhase.UNKNOWN for command in state.commands):
         return
     await persist_return(
         journal,
@@ -259,11 +254,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
             session_id,
             reported=False,
             summary=None,
-            failure=(
-                "子 Agent 执行被中断：以下工具调用已经开始但没有返回结果，"
-                "不知道是否生效，也没有自动重试。需要的话重新 delegate。"
-                " 子 Agent 内部的调用 id（仅供排查）: " + ", ".join(unfinished)
-            ),
+            failure="子 Agent 被中断，未完成任务，也没有交回结论。需要时重新 delegate。",
         ),
     )
 
@@ -303,18 +294,12 @@ DELEGATE_SCHEMA: dict[str, object] = {
     "function": {
         "name": DELEGATE,
         "description": (
-            "把一件可独立完成的任务委派给子 Agent。"
-            "子 Agent 有自己的上下文，过程不会占用当前对话；"
-            "它可在自己的文件副本里修改文件，不能执行命令。"
-            "成果交回后用 compare_subagent 验收，merge_subagent 经授权合入用户工作区。"
-            "本次调用只返回“已创建”，结论稍后作为一条事实送回。"
-            "多件互不依赖的任务可以在同一次决策里各发一次 delegate，"
-            "子 Agent 之间并行推进；并行的子 Agent 改同一批文件，合入时会冲突。"
-            "结论一条条回来，不是一次性交齐。"
-            "不再需要某个还在工作的子 Agent 时，用 reclaim 收回它，不要空等。"
-            "回来的也可能是失败：failure 非空表示该子 Agent 没能跑完，"
-            "字段里是失败原因，由你判断重派、换做法还是如实告诉用户。"
-            "cancelled=true 表示你已经收回，不是子 Agent 失败。"
+            "把可独立完成的任务交给子 Agent。它在自己的文件副本里工作，可以改文件，不能执行命令。"
+            "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
+            "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
+            "验收用 compare_subagent，经授权用 merge_subagent 合入。"
+            "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
+            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
         ),
         "parameters": {
             "type": "object",
@@ -329,7 +314,10 @@ DELEGATE_SCHEMA: dict[str, object] = {
                 },
                 "resolve_conflicts_of": {
                     "type": ["string", "null"],
-                    "description": "可选：合入冲突的原 delegate 调用 id，新子从带冲突标记的工作树开工。",
+                    "description": (
+                        "可选：合入冲突的那次 delegate 调用 id；"
+                        "新的子 Agent 在带冲突标记的文件上工作，在 task 里说明取舍原则。"
+                    ),
                 },
             },
             "required": ["task"],
@@ -372,11 +360,7 @@ REPORT_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": REPORT,
-        "description": (
-            "把结论交回父 Agent。这是唯一会被父 Agent 看到的通道。"
-            "summary 要能独立读懂：结论、依据、以及没能确定的部分。"
-            "改过文件时说明改了哪些、为什么改，不贴 diff。"
-        ),
+        "description": "把最终结论交回父 Agent 并结束任务。",
         "parameters": {
             "type": "object",
             "properties": {

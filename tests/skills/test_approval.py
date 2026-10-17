@@ -42,7 +42,6 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             data = result["data"]
             self.assertEqual(set(data), {
                 "skill_id", "changed", "source", "resolved_ref", "diff",
-                "semantic_summary", "summary_error",
             })
             self.assertEqual(data["skill_id"], "demo")
             self.assertIs(data["changed"], False)

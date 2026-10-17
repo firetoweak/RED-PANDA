@@ -101,7 +101,7 @@ def test_unobserved_content_is_not_classified_as_external(tmp_path):
     state = evidence.state()
     assert state["origin"] == "agent"
     assert not state["content_complete"]
-    assert any("未观察" in limitation for limitation in state["limitations"])
+    assert any("没有修改前的原值" in limitation for limitation in state["limitations"])
 
 
 def test_external_append_is_shown_with_agent_results(tmp_path):

@@ -308,7 +308,7 @@ class ManagementSurface:
             "type": "function",
             "function": {
                 "name": LOAD_MANAGEMENT_TOOLS,
-                "description": "按需加载一类管理诊断与控制工具。具体工具从下一次决策开始可用。",
+                "description": "按需加载一类管理诊断与控制工具。",
                 "parameters": {
                     "type": "object",
                     "properties": {

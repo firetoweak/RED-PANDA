@@ -86,7 +86,7 @@ def create_skill_install_proposal_spec(
                     "locator": input_data.locator,
                 },
                 "error": str(exc),
-                "hint": "检查已安装目录；更新 Skill 应走独立更新流程。",
+                "hint": "该 Skill 已安装；要同步来源用 propose_skill_update。",
             }
         except SkillSourceError as exc:
             return ControlPreparationFailure({
@@ -97,7 +97,7 @@ def create_skill_install_proposal_spec(
                     "locator": input_data.locator,
                 },
                 "error": str(exc),
-                "hint": "按来源格式和具体错误修正输入；不确定用法可查询 skill_help。",
+                "hint": "按来源格式和具体错误修正输入。",
             })
         except SkillInputError as exc:
             return _preparation_failure(exc)
@@ -182,7 +182,6 @@ class SkillInstallApprovalHandler:
             ),
             data={
                 "skill_id": record.name,
-                "revision": record.revision,
                 "enabled": record.enabled,
             },
         )
@@ -204,7 +203,7 @@ def create_skill_set_enabled_proposal_spec(service: SkillApplicationService) -> 
             return {
                 "ok": True,
                 "code": "SKILL_STATE_UNCHANGED",
-                "data": record.to_dict(),
+                "data": {"skill_id": record.name, "enabled": record.enabled},
             }
         if input_data.enabled:
             try:
@@ -281,7 +280,6 @@ class SkillSetEnabledApprovalHandler:
             True, f"Skill `{record.name}` 已{state}，目录变化从下一次决策生效。",
             {
                 "skill_id": record.name,
-                "revision": record.revision,
                 "enabled": record.enabled,
             },
         )
@@ -402,8 +400,6 @@ def create_skill_update_proposal_spec(
                     "source": candidate.source.to_dict(),
                     "resolved_ref": candidate.new_resolved_ref,
                     "diff": candidate.diff.to_dict(),
-                    "semantic_summary": report.semantic_summary,
-                    "summary_error": report.summary_error,
                 },
                 "error": None,
                 "hint": None,
@@ -420,8 +416,7 @@ def create_skill_update_proposal_spec(
                 f"语义概括：{report.semantic_summary or report.summary_error}"
             ),
             risk=(
-                "批准后用本次检查到的版本替换已安装 Skill，启用状态保持不变；"
-                "若检查之后该 Skill 又有变化，更新会失败，需要重新检查。"
+                "批准后用本次检查到的版本替换已安装的 Skill，启用状态不变。"
             ),
         )
 
@@ -429,6 +424,7 @@ def create_skill_update_proposal_spec(
         name=PROPOSE_SKILL_UPDATE,
         description=(
             "为健康的已安装 Skill 检查来源更新，有变化时提交更新审批。"
+            "已安装的 Skill 是独立副本，来源改动后要用本工具同步。"
             "省略来源时使用登记来源；保持启用状态。包损坏时不能更新，可卸载后重新安装。"
             "本工具必须单独调用。"
         ),
@@ -461,6 +457,6 @@ class SkillUpdateApprovalHandler:
             )
         return ControlApprovalExecution(
             True,
-            f"Skill `{record.name}` 已更新 (revision={record.revision})。",
-            {"skill_id": record.name, "revision": record.revision},
+            f"Skill `{record.name}` 已更新。",
+            {"skill_id": record.name},
         )

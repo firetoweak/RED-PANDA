@@ -20,5 +20,5 @@ def file_error_message(exc: OSError) -> str:
     if exc.errno == errno.ENOSPC:
         return "磁盘空间不足，请释放空间后重试。"
     if exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
-        return "此文件操作不受支持，请改用工具支持的文件操作。"
+        return "该文件操作不受支持。"
     return "文件操作未完成，请检查文件占用、访问权限和磁盘状态后重试。"

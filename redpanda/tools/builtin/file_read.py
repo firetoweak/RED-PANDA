@@ -30,23 +30,23 @@ GLOB_DESCRIPTION = """
 用途：按名称模式查找文件或目录。
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
 默认范围：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .fdignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接。
-失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
+关键限制：pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接。
+失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
 """.strip()
 
 GREP_DESCRIPTION = """
 用途：用正则搜索文本，返回每个匹配行的位置和内容。
 何时使用：不知道内容出现在哪个文件、修改前需要定位原文时使用；找文件名用 glob，阅读匹配位置的完整上下文用 read_file。
 默认范围：使用 rg 默认过滤：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .rgignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的文件或目录会搜索该路径，对目录而言进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
+关键限制：query 始终按正则解释，字面匹配需转义正则元字符；一条 hit 表示一行匹配。
 失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path/query；content_truncated=true 时用 read_file 查看该行；RG_TIMEOUT/RG_NOT_FOUND/RG_FAILED 时不能假定没有匹配。
 """.strip()
 
 READ_FILE_DESCRIPTION = """
 用途：读取已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：相对 path 从工作区开始，绝对 path 按本机路径规则，允许访问的范围以当前环境说明为准；offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换；文件体积不是拒绝条件。
-失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
+关键限制：offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换。
+失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 时只返回该行开头 preview，这一行无法用 read_file 读全。
 """.strip()
 
 
@@ -61,7 +61,7 @@ GREP_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 class GlobInput(BaseModel):
     pattern: str = Field(description="glob 模式；不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的路径，例如 *.py、tools/*.py")
-    path: str = Field(default=".", description="搜索起点；相对路径从工作区开始")
+    path: str = Field(default=".", description="搜索起点")
     kind: Literal["file", "dir", "any"] = Field(default="any", description="结果类型：file 仅文件、dir 仅目录、any 两者都要")
     max_depth: int | None = Field(default=None, ge=1, description="相对搜索起点的深度限制；默认不限制，1 表示只看当前层")
     include_hidden: bool = Field(
@@ -78,14 +78,14 @@ class GlobInput(BaseModel):
 
 
 class ReadFileInput(BaseModel):
-    path: str = Field(description="要读取的文件路径；相对路径从工作区开始")
+    path: str = Field(description="要读取的文件路径")
     offset: int = Field(default=1, ge=1, description="读取起始行号，从 1 开始")
     limit: int = Field(default=200, ge=1, le=2000, description="最多读取行数，范围 1 到 2000")
 
 
 class GrepInput(BaseModel):
     query: str = Field(description="正则表达式；字面匹配需转义正则元字符")
-    path: str = Field(default=".", description="搜索路径；相对路径从工作区开始")
+    path: str = Field(default=".", description="搜索路径")
     include_hidden: bool = Field(
         default=False,
         description="为 true 时搜索隐藏文件/目录（名称以 . 开头）；默认跳过。.git 仍会跳过，除非 path 已在 .git 内",
@@ -112,21 +112,18 @@ def _require_existing(
             "ok": False,
             "code": "NOT_FOUND",
             "error": f"路径不存在: {path}",
-            **resolved.result_fields(),
         }
     if expect == "file" and not native.is_file():
         return None, {
             "ok": False,
             "code": "NOT_A_FILE",
             "error": f"不是文件: {path}",
-            **resolved.result_fields(),
         }
     if expect == "dir" and not native.is_dir():
         return None, {
             "ok": False,
             "code": "NOT_A_DIR",
             "error": f"不是目录: {path}",
-            **resolved.result_fields(),
         }
     return resolved, None
 
@@ -295,7 +292,6 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
                 "ok": False,
                 "error": "pattern 不能为空（不要传空字符串或单独的 .）",
                 "code": "EMPTY_PATTERN",
-                **resolved_search.result_fields(),
             }
         executable = shutil.which("fd") or shutil.which("fdfind")
         if executable is None:
@@ -307,7 +303,6 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
             return {
                 **listed,
                 "path": raw.path,
-                **resolved_search.result_fields(),
             }
 
         def select():
@@ -326,7 +321,6 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
             except EnvironmentInputError:
                 continue
             matches.append({
-                **resolved_candidate.result_fields(),
                 "path": resolved_candidate.workspace_membership.display_path,
                 "kind": candidate_kind,
             })
@@ -335,11 +329,10 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
             "code": "GLOB_COMPLETED",
             "pattern": raw.pattern,
             "path": raw.path,
-            **resolved_search.result_fields(),
             "matches": matches,
             "truncated": truncated,
             "next_offset": raw.offset + len(page) if truncated else None,
-            "hint": _rg_scope_hint(
+            "hint": None if matches else _rg_scope_hint(
                 search_root,
                 include_hidden=raw.include_hidden,
                 include_ignored=raw.include_ignored,
@@ -491,7 +484,6 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
                         hit_path = resolver.resolve_native(path_data["text"])
                         hits.append({
                             "file": hit_path.workspace_membership.display_path,
-                            **hit_path.result_fields(),
                             "line": line_number,
                             "content": content,
                             "content_truncated": len(content) < len(full_content),
@@ -525,7 +517,6 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
                 "ok": False,
                 "code": "RG_TIMEOUT",
                 "error": f"rg 搜索超过 {raw.timeout_seconds} 秒",
-                **resolved_path.result_fields(),
             }
         if protocol_error is not None:
             return {
@@ -533,21 +524,18 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
                 "code": "RG_FAILED",
                 "error": protocol_error,
                 "hint": "搜索结果无法解析，不能据此断定没有匹配；缩小 path 后重试，或改用 glob/read_file。",
-                **resolved_path.result_fields(),
             }
         if not truncated and return_code == 2:
             return {
                 "ok": False,
                 "code": "RG_FAILED",
                 "error": stderr or "rg 执行失败",
-                **resolved_path.result_fields(),
             }
 
         return {
             "ok": True,
             "code": "GREP_COMPLETED",
             "path": resolved_path.workspace_membership.display_path,
-            **resolved_path.result_fields(),
             "query": raw.query,
             "hits": hits,
             "truncated": truncated,
@@ -569,7 +557,7 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
             result = {"ok": False, "code": "NOT_A_TEXT_FILE"}
         except OSError as exc:
             result = _filesystem_failure("FILE_READ_FAILED", relative_path, exc)
-        return {**result, "path": relative_path, **resolved_path.result_fields()}
+        return {**result, "path": relative_path}
 
     return [
         ToolSpec(

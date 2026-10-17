@@ -45,7 +45,6 @@ class CliRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["code"], "CLI_LOADED")
         self.assertEqual(result["data"]["cli_id"], "rg")
-        self.assertEqual(result["data"]["revision"], 1)
         self.assertEqual(result["data"]["version"], "1.0.0")
         self.assertEqual(result["data"]["resolved_path"], "/usr/bin/rg")
         self.assertEqual(result["data"]["source"]["kind"], "manifest")
@@ -70,7 +69,6 @@ class CliRuntimeTest(unittest.IsolatedAsyncioTestCase):
         new_specs = {spec.name: spec for spec in self.catalog.tool_specs()}
         loaded = await new_specs[LOAD_CLI].handler(LoadCliInput(cli_id="rg"))
         self.assertEqual(loaded["code"], "CLI_LOADED")
-        self.assertEqual(loaded["data"]["revision"], 2)
 
     async def test_catalog_over_budget_fails_loudly(self):
         catalog = CliToolCatalog(self.registry, max_catalog_chars=4)

@@ -194,7 +194,7 @@ def test_failed_time_travel_exposes_observable_failure_without_file_version_coor
         visible = runtime.projector.project_visible("s", events)
         messages = json.dumps(project_chat_messages(events, visible), ensure_ascii=False)
         assert "文件已被替换" in messages
-        assert "calc.py" in messages and "普通文件工具" in messages
+        assert "calc.py" in messages and "文件工具" in messages
         assert "before_version" not in messages and "f" * 64 not in messages
     asyncio.run(scenario())
 
@@ -254,7 +254,7 @@ def test_fork_reports_unchanged_or_kept_files_without_repeating_restoration():
         messages = project_chat_messages(
             all_events, runtime.projector.project_visible("s", all_events)
         )
-        assert "保留对话之外" in json.dumps(messages, ensure_ascii=False)
+        assert "当前对话看不到的修改" in json.dumps(messages, ensure_ascii=False)
 
         await boundary.settle_fork(True, "edit-3-workspace")
         # 留在磁盘上的状态已经成为本分支起点，重试不再改文件。
@@ -314,7 +314,7 @@ def test_fork_file_result_survives_reprojection_for_web_and_model(failure):
         result = view.workspace_file_result
         assert result == project_workspace_file_result(events)
         messages = json.dumps(project_chat_messages(events, state), ensure_ascii=False)
-        assert "普通文件工具" in messages and "现有写入授权" in messages
+        assert "文件工具" in messages
         assert "before_version" not in messages and "d" * 64 not in messages
         if failure:
             assert result.effect == "failed" and result.failed_files == ("calc.py",)
@@ -342,6 +342,6 @@ def test_original_tool_result_reports_all_paths_and_semantic_action():
         result = await boundary.restore("undo", target, events, visible, policy="original")
         assert result["data"]["changed_files"] == paths
         assert result["data"]["deleted_files"] == ("file-104.py",)
-        assert "覆盖" in result["hint"] and "删除" in result["hint"] and "普通文件工具" in result["hint"]
+        assert "覆盖" in result["hint"] and "删除" in result["hint"] and "文件工具" in result["hint"]
         assert "before_version" not in json.dumps(result)
     asyncio.run(scenario())

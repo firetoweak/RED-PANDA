@@ -120,7 +120,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         ]
         last = json.dumps(requests[-1], ensure_ascii=False)
         self.assertIn("TAIL_KEEP", last)
-        self.assertIn("模型生成的交接材料", last)
+        self.assertIn("模型生成的交接摘要", last)
         self.assertNotIn(" history" * 100, last)
         after = await SqliteJournal(self.store.require("chat")).snapshot("chat")
         self.assertEqual(after[: len(events)], events)
