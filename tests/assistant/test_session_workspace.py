@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from redpanda.assistant.conversations import AssistantQueries, recent_workspace_id
+from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.workspaces import (
     SESSION_WORKSPACE_FACT,
@@ -32,6 +32,13 @@ async def _append_user_message(store, session_id: str, text: str) -> None:
             delivery=DeliveryIdentity("web", f"delivery-{text}"),
         )
     )
+
+
+async def _create_unbound(store, session_id: str, text: str) -> None:
+    path = store.path(session_id)
+    path.parent.mkdir()
+    await SqliteJournal(path).create_session(session_id)
+    await _append_user_message(store, session_id, text)
 
 
 class _IdleSessions:
@@ -105,7 +112,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(resolved, record)
 
-    async def test_listing_shows_bound_sessions(self):
+    async def test_listing_hides_sessions_without_a_workspace(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             task_root = root / "task"
@@ -115,6 +122,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             store = SessionStore(root / "sessions")
             await store.create("bound", workspace_id=record.workspace_id)
             await _append_user_message(store, "bound", "有归属")
+            await _create_unbound(store, "legacy", "无归属")
 
             listed = await AssistantQueries(
                 store, _IdleSessions(registry)
@@ -125,8 +133,6 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
                 ["bound"],
             )
             self.assertEqual(listed[0].workspace_id, record.workspace_id)
-            self.assertEqual(recent_workspace_id(listed), record.workspace_id)
-            self.assertIsNone(recent_workspace_id(()))
 
     async def test_deleting_the_workspace_hides_its_sessions(self):
         """删除工作区只移除登记：Journal 和目录都不动，会话不再列出。"""

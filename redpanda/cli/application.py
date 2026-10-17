@@ -10,9 +10,8 @@ from redpanda.cli.errors import (
     CliNotFoundError,
 )
 from redpanda.cli.health import CliHealthChecker, CliProbe
-from redpanda.cli.installer import ManifestCliInstaller
+from redpanda.cli.installer import resolve_cli_path
 from redpanda.cli.models import (
-    CliHealth,
     CliRecord,
     CliSourceRef,
     validate_cli_description,
@@ -60,7 +59,6 @@ class CliApplicationService:
         self.clis_root = clis_root
         self.registry = CliRegistry(clis_root) if registry is None else registry
         self.health_checker = CliHealthChecker(command_executor, cwd=clis_root)
-        self.installer = ManifestCliInstaller(command_executor, cwd=clis_root)
         self.tool_catalog = CliToolCatalog(
             self.registry,
             max_catalog_chars=max_catalog_chars,
@@ -97,7 +95,7 @@ class CliApplicationService:
         async with self._management_lock:
             if await self.registry.get(name) is not None:
                 raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
-        resolved_path = await self.installer.resolve_path(locator)
+        resolved_path = resolve_cli_path(locator)
         probed = await self.health_checker.probe(resolved_path)
         return CliInstallCandidate(
             name=name,
@@ -161,9 +159,7 @@ class CliApplicationService:
         """manifest 域 repair：重新解析 resolved_path 并重跑体检。"""
         async with self._management_lock:
             record = await self._require_at_revision(cli_id, expected_revision)
-            resolved_path = await self.installer.resolve_path(
-                record.source.locator
-            )
+            resolved_path = resolve_cli_path(record.source.locator)
             probed = await self.health_checker.probe(resolved_path)
             return await self.registry.replace(CliRecord(
                 name=record.name,

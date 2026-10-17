@@ -78,10 +78,10 @@ def check_blobs(store,value):
 
 def transaction_record(value):
     fields(value,('version','kind','commands','commit','steps','state','finalized'))
-    if type(value['version']) is not int or value['version']!=3 or value['kind'] not in ('publish','undo') or value['state'] not in ('prepared','conflict','complete') or type(value['finalized']) is not bool: raise ValueError('invalid transaction')
+    if type(value['version']) is not int or value['version']!=3 or value['kind']!='publish' or value['state'] not in ('prepared','conflict','complete') or type(value['finalized']) is not bool: raise ValueError('invalid transaction')
     if type(value['commands']) is not list or not value['commands'] or type(value['steps']) is not list: raise ValueError('invalid transaction members')
     for command in value['commands']: command_id(command)
-    if len(set(value['commands']))!=len(value['commands']) or (value['kind']=='undo' and len(value['commands'])!=1): raise ValueError('invalid transaction commands')
+    if len(set(value['commands']))!=len(value['commands']): raise ValueError('invalid transaction commands')
     if type(value['commit']) is not str or str(uuid.UUID(value['commit']))!=value['commit']: raise ValueError('invalid transaction commit')
     if value['finalized'] and value['state']!='complete': raise ValueError('invalid finalized transaction')
     for step in value['steps']:
@@ -151,11 +151,10 @@ def same(a,b):
 def attributes(value):
     return {name:value[name] for name in ('hidden','readonly')}
 
-def choose_metadata(source,destination,current,mode):
+def choose_metadata(source,destination,current):
     result={}
     for name in ('mode','hidden','readonly'):
-        if source[name]==destination[name]: result[name]=current[name]
-        elif mode in ('publish','preserve') and current[name]!=source[name]: result[name]=current[name]
+        if source[name]==destination[name] or current[name]!=source[name]: result[name]=current[name]
         else: result[name]=destination[name]
     return result
 
@@ -168,34 +167,31 @@ def known_metadata(current,expected,desired):
     if expected['mode'] is not None and current['mode'] not in (expected['mode'],desired['mode'],expected['mode']|0o200): return False
     return True
 
-def choose(store,before,after,current,mode):
-    for value in (before,after,current): valid_image(value)
-    source,destination=(after,before) if mode in ('original','preserve') else (before,after)
+def choose(store,source,destination,current):
+    for value in (source,destination,current): valid_image(value)
     if (source['kind']==destination['kind']==current['kind']=='file'
         and not same(source,destination) and source['size']==destination['size']
         and source['blocks']==destination['blocks']):
-        return {**current,**choose_metadata(source,destination,current,mode)},{'changed_bytes':0,'preserved_bytes':0}
+        return {**current,**choose_metadata(source,destination,current)},{'changed_bytes':0,'preserved_bytes':0}
     if source['kind']==destination['kind']==current['kind']=='file' and current['size']==source['size']:
         blocks={};restored=preserved=0
         for key in sorted(source['blocks'].keys()|destination['blocks'].keys(),key=int):
             a,b,data=blob(store,source,key),blob(store,destination,key),blob(store,current,key)
             if len(a)>len(b):
                 changed_tail=sum(x!=y for x,y in zip(a[len(b):],data[len(b):]))
-                if mode in ('publish','preserve') and changed_tail: return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
+                if changed_tail: return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
             result=bytearray(b)
             for i in range(min(len(a),len(b))):
                 if a[i]==b[i]: result[i]=data[i];continue
-                if mode in ('publish','preserve') and data[i]!=a[i]: result[i]=data[i];preserved+=1
+                if data[i]!=a[i]: result[i]=data[i];preserved+=1
                 else: restored+=1
             restored+=abs(len(a)-len(b))
             blocks[key]=save_block(store,bytes(result)) if result else None
-        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks,**choose_metadata(source,destination,current,mode)),{'changed_bytes':restored,'preserved_bytes':preserved}
+        return image('file',destination['size'],chunk_size=destination['chunk_size'],complete=destination['complete'],blocks=blocks,**choose_metadata(source,destination,current)),{'changed_bytes':restored,'preserved_bytes':preserved}
     if source['kind']==destination['kind']==current['kind']=='directory':
-        return {**destination,**choose_metadata(source,destination,current,mode)},{'changed_bytes':0,'preserved_bytes':0}
+        return {**destination,**choose_metadata(source,destination,current)},{'changed_bytes':0,'preserved_bytes':0}
     if same(source,current): return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
-    if mode in ('publish','preserve'): return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
-    if mode=='original' and current['kind']==source['kind'] and current['size']==source['size']: return dict(destination),{'changed_bytes':destination['size'],'preserved_bytes':0}
-    raise Conflict('structure or content differs')
+    return dict(current),{'changed_bytes':0,'preserved_bytes':current['size']}
 
 def unfinished(store):
     folder=Path(store)/'host'
@@ -233,15 +229,12 @@ def pending_receipts(client):
         receipts.append(receipt)
     return info,receipts
 
-def build_plan(client,changes,mode,expected_bindings):
+def build_plan(client,changes):
     plan=[]
     for change in changes:
         path=change['path'];before,after=change['before'],change['after']
-        source,destination=(before,after) if mode=='publish' else (after,before)
-        current,_=actual(client.base,path,coverage(source,destination),client.store)
-        expected=expected_bindings.get(path)
-        if current['kind'] in ('file','directory','symlink') and expected is not None and current['identity']!=expected: raise Conflict('file identity changed')
-        if mode=='publish' and before['kind']=='file':
+        current,_=actual(client.base,path,coverage(before,after),client.store)
+        if before['kind']=='file':
             identity=before['identity']
             if identity is not None and not identity.startswith('vfs:') and current['kind']=='file' and current['identity']!=identity:
                 # Host replaced the object after accept; keep host content.
@@ -249,13 +242,12 @@ def build_plan(client,changes,mode,expected_bindings):
                 check_blobs(client.store,desired)
                 plan.append({'path':path,'expected':current,'desired':desired,'state':'prepared','counts':counts,'created_identity':None})
                 continue
-        desired,counts=choose(client.store,before,after,current,mode)
+        desired,counts=choose(client.store,before,after,current)
         check_blobs(client.store,desired)
         if current['kind']=='directory' and desired['kind']!='directory' and any(target(client.base,path).iterdir()):
-            children={c['path'] for c in changes if c['after' if mode=='publish' else 'before']['kind']=='missing'}
+            children={c['path'] for c in changes if c['after']['kind']=='missing'}
             if any('/'+str(p.relative_to(client.base)).replace('\\','/') not in children for p in target(client.base,path).iterdir()):
-                if mode in ('publish','preserve'): desired=dict(current)
-                else: raise Conflict('directory contains user children')
+                desired=dict(current)
         if current['kind']!=desired['kind'] and current['kind']!='missing' and desired['kind']!='missing':
             missing=image(chunk_size=current['chunk_size'])
             plan.append({'path':path,'expected':current,'desired':missing,'state':'prepared','counts':{'changed_bytes':0,'preserved_bytes':0},'created_identity':None})
@@ -386,13 +378,8 @@ def execute(client,path):
         return {'status':'conflict','reason':str(error),'transaction':str(path),'completed':[s['path'] for s in transaction['steps'] if s['state']=='done']}
     transaction['state']='complete';atomic(path,transaction)
     index=read_index(client.store)
-    if transaction['kind']=='publish':
-        for command in transaction['commands']:
-            if command not in index['active']: index['active'].append(command)
-    else:
-        command=transaction['commands'][0]
-        if index['active'] and index['active'][-1]==command: index['active'].pop()
-        elif command in index['active']: raise ValueError('undo ordering changed')
+    for command in transaction['commands']:
+        if command not in index['active']: index['active'].append(command)
     for step in transaction['steps']:
         value,_=actual(client.base,step['path'])
         if value['kind'] in ('file','directory','symlink'): index['bindings'][step['path']]=value['identity']
@@ -409,13 +396,13 @@ def execute(client,path):
     transaction['finalized']=True;atomic(path,transaction)
     return transaction
 
-def prepare(client,changes,commands,commit,mode):
+def prepare(client,changes,commands,commit):
     if unfinished(client.store): raise Conflict('unfinished transaction requires reconciliation')
-    client.request('pause');index=read_index(client.store)
-    try: steps=build_plan(client,changes,mode,index['bindings'] if mode!='publish' else {})
+    client.request('pause')
+    try: steps=build_plan(client,changes)
     except Conflict as error: return {'status':'conflict','reason':str(error),'completed':[]}
     folder=client.store/'host';folder.mkdir(exist_ok=True);path=folder/(uuid.uuid4().hex+'.json')
-    transaction={'version':3,'kind':'publish' if mode=='publish' else 'undo','commands':commands,'commit':commit,'steps':steps,'state':'prepared','finalized':False}
+    transaction={'version':3,'kind':'publish','commands':commands,'commit':commit,'steps':steps,'state':'prepared','finalized':False}
     atomic(path,transaction);return execute(client,path)
 
 def combine(first,next_change):
@@ -438,13 +425,4 @@ def publish(client):
     for receipt in receipts:
         for change in receipt['changes']:
             path=change['path'];combined[path]=combine(combined[path],change) if path in combined else change
-    return prepare(client,list(combined.values()),[r['command_id'] for r in receipts],info['commit'],'publish')
-
-def undo(client,command_id,policy):
-    if policy not in ('original','preserve'): raise ValueError('explicit undo policy required')
-    info,pending=pending_receipts(client)
-    if pending: raise Conflict('publish or discard pending view before undo')
-    index=read_index(client.store)
-    if not index['active'] or index['active'][-1]!=command_id: return {'status':'later_command_active' if command_id in index['active'] else 'not_active','written_bytes':0}
-    receipt=client.request('status',command_id=command_id)['receipt']
-    return prepare(client,receipt['changes'],[command_id],info['commit'],policy)
+    return prepare(client,list(combined.values()),[r['command_id'] for r in receipts],info['commit'])

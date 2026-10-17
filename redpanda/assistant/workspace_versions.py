@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -223,7 +222,7 @@ class WorkspaceVersionBoundary:
     async def _record(self, step_id: str | None, cause: str | None) -> None:
         try:
             version = await self.versions.record()
-        except FileSystemUnavailable as exc:
+        except FileSystemUnavailable:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, None, "这一步之后的文件状态没有记录，无法用 restore_workspace 回退到此前；请告诉用户检查应用安装。")
         else:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, version, None)
@@ -321,7 +320,7 @@ class WorkspaceVersionBoundary:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED", "error": str(error),
                     "failed_files": list(error.paths),
                     "hint": "本次回退没有修改文件。" + SEMANTIC_RESTORE_HINT}
-        except FileSystemUnavailable as error:
+        except FileSystemUnavailable:
             return {"ok": False, "code": "WORKSPACE_RESTORE_FAILED",
                     "error": "当前无法回退工作区文件，请让用户检查应用安装。",
                     "hint": SEMANTIC_RESTORE_HINT}

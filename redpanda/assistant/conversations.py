@@ -303,11 +303,6 @@ class AssistantQueries:
         return found
 
 
-def recent_workspace_id(summaries: tuple[SessionSummary, ...]) -> str | None:
-    """最近一次聊天的工作区；列表已按 updated_at 降序，取第一条即可。"""
-    return summaries[0].workspace_id if summaries else None
-
-
 def project_session_summary(
     session_id: str,
     events: tuple[Event, ...],

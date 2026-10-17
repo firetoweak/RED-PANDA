@@ -13,7 +13,6 @@ import httpx
 
 from redpanda.skills.models import (
     SkillBundle,
-    SkillPackageLimits,
     SkillSourceRef,
 )
 from redpanda.skills.errors import SkillInputError

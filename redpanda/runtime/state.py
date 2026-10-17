@@ -26,7 +26,6 @@ from redpanda.runtime.model import (
     CommandState,
     DecisionState,
     RuntimeStatus,
-    Step,
     StepState,
 )
 

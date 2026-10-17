@@ -65,7 +65,7 @@ def test_hidden_metadata_roundtrips_without_content_evidence(tmp_path):
         assert not is_hidden(base / "directory")
         report = attribution(base, store, base)
         assert any("隐藏属性" in prop["description"] for item in report["changes"] for prop in item["properties"])
-        assert pub.undo(client, "attributes", "original")["state"] == "complete"
+        assert client.restore_published(["attributes"], "original")["state"] == "complete"
         assert not is_hidden(base / "file")
         assert is_hidden(base / "directory")
     for name, identity in identities.items():
@@ -129,7 +129,7 @@ def test_attribute_only_publication_preserves_readonly_and_archive_bits(tmp_path
             client.request("accept", command_id="hide")
             assert pub.publish(client)["state"] == "complete"
             assert path.stat().st_file_attributes == before | stat.FILE_ATTRIBUTE_HIDDEN
-            assert pub.undo(client, "hide", "original")["state"] == "complete"
+            assert client.restore_published(["hide"], "original")["state"] == "complete"
             assert path.stat().st_file_attributes == before
     finally:
         path.chmod(stat.S_IWRITE)
@@ -146,7 +146,7 @@ def test_content_publication_and_undo_preserve_unrelated_host_hidden_attribute(t
         set_hidden(base / "file", True)
         assert pub.publish(client)["state"] == "complete"
         assert is_hidden(base / "file")
-        assert pub.undo(client, "content", "original")["state"] == "complete"
+        assert client.restore_published(["content"], "original")["state"] == "complete"
         assert is_hidden(base / "file")
         assert (base / "file").read_bytes() == b"unobserved content" * 10000
 
@@ -166,9 +166,8 @@ def test_creation_can_request_hidden_without_deriving_it_from_name(tmp_path):
     assert is_hidden(base / "born")
 
 
-@pytest.mark.parametrize("route", ["host", "view"])
 @pytest.mark.parametrize("policy", ["original", "preserve"])
-def test_attribute_restore_keeps_later_unobserved_content(tmp_path, route, policy):
+def test_attribute_restore_keeps_later_unobserved_content(tmp_path, policy):
     base, store = fixture(tmp_path)
     with CommandClient(native_executable(), store, base) as client:
         mount = Path(client.begin("hide")["mount"])
@@ -178,13 +177,10 @@ def test_attribute_restore_keeps_later_unobserved_content(tmp_path, route, polic
         assert pub.publish(client)["state"] == "complete"
         with (base / "file").open("ab") as file:
             file.write(b"USER APPEND")
-        if route == "host":
-            assert pub.undo(client, "hide", policy)["state"] == "complete"
-        else:
-            result = client.restore("undo", ["hide"], policy)
-            assert result["status"] == "sealed", result
-            client.request("accept", command_id="undo")
-            assert pub.publish(client)["state"] == "complete"
+        result = client.restore("undo", ["hide"], policy)
+        assert result["status"] == "sealed", result
+        client.request("accept", command_id="undo")
+        assert pub.publish(client)["state"] == "complete"
     assert not is_hidden(base / "file")
     assert (base / "file").read_bytes() == b"unobserved content" * 10000 + b"USER APPEND"
 

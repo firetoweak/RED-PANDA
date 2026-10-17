@@ -175,17 +175,6 @@ class WorkspaceRegistry:
             return None
         return max(matches, key=lambda record: len(record.task_root.parts))
 
-    def latest_created(self) -> WorkspaceRecord | None:
-        if not self._workspaces:
-            return None
-        return max(
-            self._workspaces,
-            key=lambda record: (
-                datetime.fromisoformat(record.created_at),
-                record.workspace_id,
-            ),
-        )
-
     def create(
         self,
         *,

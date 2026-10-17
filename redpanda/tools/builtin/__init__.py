@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from redpanda.filesystem import FileAccess
 from redpanda.execution.api import CommandEnvironment
-from redpanda.tools.builtin.command_execution import (
-    COMMAND_INTERRUPTED,
-    create_command_execution_spec,
-)
+from redpanda.tools.builtin.command_execution import create_command_execution_spec
 from redpanda.tools.builtin.command_interrupts import (
     CommandInterrupts,
     LiveCommand,
@@ -19,6 +16,17 @@ from redpanda.tools.builtin.workspace_restore import create_workspace_restore_sp
 from redpanda.tools.builtin.subagent_workspace import create_subagent_workspace_specs
 from redpanda.tools.spec import ToolSpec
 from redpanda.tools.builtin.process_management import create_process_specs
+
+__all__ = [
+    "CommandInterrupts",
+    "LiveCommand",
+    "READ_ONLY_WORKSPACE_TOOLS",
+    "create_process_specs",
+    "create_subagent_workspace_specs",
+    "create_workspace_restore_spec",
+    "create_workspace_tool_specs",
+    "run_interruptible",
+]
 
 READ_ONLY_WORKSPACE_TOOLS = frozenset({"glob", "grep", "read_file", "get_changes"})
 

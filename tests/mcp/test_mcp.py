@@ -8,7 +8,6 @@ import socket
 from contextlib import AsyncExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +19,9 @@ from mcp.types import (
     ListResourcesResult,
     ListResourceTemplatesResult,
     ListToolsResult,
+    Prompt,
+    Resource,
+    ResourceTemplate,
     TextContent,
     Tool,
 )
@@ -655,6 +657,15 @@ class McpAdapterTest(unittest.TestCase):
         self.assertFalse(adapted["ok"])
         self.assertEqual(adapted["code"], "MCP_INVALID_TOOL_RESULT")
 
+    def test_tool_error_does_not_need_to_match_output_schema(self):
+        validator = build_output_validator(
+            "demo",
+            {"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
+        )
+        result = CallToolResult(content=[TextContent(type="text", text="business error")], isError=True)
+        adapted = adapt_call_result(result, output_validator=validator)
+        self.assertEqual(adapted["code"], "MCP_TOOL_ERROR")
+
     def test_adapt_call_result_redacts_secrets_recursively(self):
         secret = "credential-that-must-not-leak"
         result = CallToolResult(
@@ -906,6 +917,50 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
             await self.service.toolset_provider.tool_specs("mcp:bad")
         self.assertEqual(ctx.exception.code, "MCP_INVALID_TOOL_SCHEMA")
 
+    async def test_invalid_output_schema_fails_whole_toolset(self):
+        self.sessions["bad_output"] = FakeMcpSession(
+            tools=[_tool("broken", output_schema={"type": "invalid"})]
+        )
+        await self.service.upsert_server(
+            server_id="bad_output",
+            display_name="Bad Output",
+            transport="stdio",
+            transport_config={"command": "python"},
+            enabled=True,
+        )
+        with self.assertRaises(ToolsetLoadError) as ctx:
+            await self.service.toolset_provider.tool_specs("mcp:bad_output")
+        self.assertEqual(ctx.exception.code, "MCP_INVALID_TOOL_SCHEMA")
+
+    async def test_content_service_uses_v2_resource_and_prompt_fields(self):
+        session = FakeMcpSession()
+        session.list_resources = AsyncMock(return_value=ListResourcesResult(
+            resources=[Resource(name="guide", uri="file:///guide.md", mimeType="text/markdown")],
+            nextCursor="resource-next",
+        ))
+        session.list_resource_templates = AsyncMock(return_value=ListResourceTemplatesResult(
+            resourceTemplates=[ResourceTemplate(name="user", uriTemplate="user://{id}", mimeType="application/json")],
+        ))
+        session.list_prompts = AsyncMock(return_value=ListPromptsResult(
+            prompts=[Prompt(name="review", description="review code")],
+        ))
+        self.sessions["content"] = session
+        await self.service.upsert_server(
+            server_id="content",
+            display_name="Content",
+            transport="stdio",
+            transport_config={"command": "python"},
+            enabled=True,
+        )
+
+        resources = await self.service.content.list_resources("content")
+        templates = await self.service.content.list_resource_templates("content")
+        prompts = await self.service.content.list_prompts("content")
+        self.assertEqual(resources["next_cursor"], "resource-next")
+        self.assertEqual(resources["resources"][0]["mimeType"], "text/markdown")
+        self.assertEqual(templates["resource_templates"][0]["uriTemplate"], "user://{id}")
+        self.assertEqual(prompts["prompts"][0]["name"], "review")
+
     async def test_connection_is_closed_when_post_connect_metadata_fails(self):
         closed = False
 
@@ -1129,6 +1184,52 @@ class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     manager.runtime_state("real_stdio").negotiated_version,
                     "2026-07-28",
+                )
+            finally:
+                await manager.aclose()
+
+    async def _stdio_server(self, directory, server_id, fixture, **config):
+        workspace = RedPandaHome(Path(directory) / ".redpanda")
+        workspace.initialize()
+        secrets = McpSecretStore.from_home(workspace)
+        manager = McpClientManager(secrets, runtime_root=_runtime_root(workspace))
+        service = McpApplicationService(McpRegistry.from_home(workspace), secrets, manager)
+        await service.upsert_server(
+            server_id=server_id,
+            display_name=server_id,
+            transport="stdio",
+            transport_config={
+                "command": sys.executable,
+                "args": [str(Path(__file__).parents[1] / "fixtures" / fixture)],
+                **config,
+            },
+            enabled=True,
+        )
+        return service, manager
+
+    async def test_client_negotiates_with_legacy_server(self):
+        with TemporaryDirectory() as directory:
+            service, manager = await self._stdio_server(directory, "legacy_stdio", "mcp_legacy_stdio_server.py")
+            try:
+                self.assertEqual(await service.toolset_provider.tool_specs("mcp:legacy_stdio"), ())
+                self.assertEqual(manager.runtime_state("legacy_stdio").negotiated_version, "2025-11-25")
+            finally:
+                await manager.aclose()
+
+    async def test_stdio_preserves_explicit_working_directory(self):
+        with TemporaryDirectory() as directory:
+            explicit_cwd = Path(directory) / "explicit-mcp-cwd"
+            explicit_cwd.mkdir()
+            service, manager = await self._stdio_server(
+                directory, "explicit_stdio", "mcp_stdio_server.py", cwd=str(explicit_cwd),
+            )
+            try:
+                specs = await service.toolset_provider.tool_specs("mcp:explicit_stdio")
+                cwd_spec = next(spec for spec in specs if spec.name.endswith("read_working_directory"))
+                result = await cwd_spec.handler({})
+                self.assertEqual(
+                    Path(result["data"]["mcp"]["structured_content"]["cwd"]).resolve(),
+                    explicit_cwd.resolve(),
                 )
             finally:
                 await manager.aclose()

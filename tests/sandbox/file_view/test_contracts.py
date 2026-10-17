@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import shutil
 import sys
-import statistics
 import threading
 import time
 import unittest
@@ -17,9 +16,8 @@ if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.filesystem.file_view import ServiceFailure
-from tests.fixtures.file_view import CommandClient
+from tests.fixtures.file_view import CommandClient, Running
 from redpanda.filesystem.file_view import publication as pub
-from redpanda.execution.process import Running
 
 
 class Contracts(unittest.TestCase):
@@ -55,7 +53,7 @@ class Contracts(unittest.TestCase):
             self.assertFalse((base/'delete.txt').exists())
             self.assertEqual((base/'dir/new.txt').read_bytes(),b'new')
             self.assertEqual((base/'renamed.txt').read_bytes(),b'rename.txt')
-            self.assertEqual(pub.undo(client,'c1','original')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'original')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
             self.assertTrue((base/'delete.txt').exists());self.assertTrue((base/'rename.txt').exists())
             self.assertFalse((base/'dir').exists())
@@ -66,7 +64,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             self.assertEqual(pub.publish(client)['state'],'complete')
             (base/'a.txt').write_bytes(b'XHZ__U_AAA')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AHA__U_AAA')
 
     def test_original_overwrites_only_command_changed_bytes(self):
@@ -74,7 +72,7 @@ class Contracts(unittest.TestCase):
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client);(base/'a.txt').write_bytes(b'HHH__U_AAA')
-            pub.undo(client,'c1','original')
+            client.restore_published(['c1'],'original')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA__U_AAA')
 
     def test_user_aba_result_allows_restore(self):
@@ -83,7 +81,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client)
             (base/'a.txt').write_bytes(b'HHH____AAA');(base/'a.txt').write_bytes(b'XYZ____AAA')
-            pub.undo(client,'c1','preserve')
+            client.restore_published(['c1'],'preserve')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
 
     def test_publication_preserves_unrelated_user_bytes(self):
@@ -94,50 +92,37 @@ class Contracts(unittest.TestCase):
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ__U_AAA')
 
-    def test_publish_preserves_host_edit_on_same_path(self):
-        _,base,store=self.fixture('overlap')
-        with self.client(store,base) as client:
-            self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
-            (base/'a.txt').write_bytes(b'HHH____AAA')
-            result=pub.publish(client)
-            self.assertEqual(result['state'],'complete',result)
-            self.assertTrue(result['finalized'],result)
-            self.assertEqual((base/'a.txt').read_bytes(),b'HHH____AAA')
-            # Workspace is not stuck: a later candidate can begin.
-            begin=client.begin('c2')
-            self.assertEqual(begin['status'],'active',begin)
-            client.request('finish');client.request('discard',command_id='c2')
+    def test_publish_keeps_host_value_on_conflicting_path_and_does_not_stick(self):
+        cases=(
+            ('overlap','a.txt',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')",b'HHH____AAA'),
+            ('both_create','new',"from pathlib import Path;Path('new').write_bytes(b'AGENT')",b'HOST'),
+        )
+        for name,path,code,host in cases:
+            with self.subTest(case=name):
+                _,base,store=self.fixture(name)
+                with self.client(store,base) as client:
+                    self.change(client,'c1',code)
+                    (base/path).write_bytes(host)
+                    result=pub.publish(client)
+                    self.assertEqual(result['state'],'complete',result)
+                    self.assertTrue(result['finalized'],result)
+                    self.assertEqual((base/path).read_bytes(),host)
+                    # Workspace is not stuck: a later candidate can begin.
+                    begin=client.begin('c2')
+                    self.assertEqual(begin['status'],'active',begin)
+                    client.request('finish');client.request('discard',command_id='c2')
 
-    def test_publish_leaves_untouched_host_file(self):
+    def test_publish_leaves_unrelated_host_files(self):
         _,base,store=self.fixture('untouched_host')
         (base/'host.txt').write_bytes(b'HOST')
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             (base/'host.txt').write_bytes(b'HOST-EDIT')
-            self.assertEqual(pub.publish(client)['state'],'complete')
-            self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
-            self.assertEqual((base/'host.txt').read_bytes(),b'HOST-EDIT')
-
-    def test_publish_leaves_host_created_file(self):
-        _,base,store=self.fixture('host_created')
-        with self.client(store,base) as client:
-            self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             (base/'external.txt').write_bytes(b'EXTERNAL')
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
+            self.assertEqual((base/'host.txt').read_bytes(),b'HOST-EDIT')
             self.assertEqual((base/'external.txt').read_bytes(),b'EXTERNAL')
-
-    def test_publish_preserves_when_both_create_same_path(self):
-        _,base,store=self.fixture('both_create')
-        with self.client(store,base) as client:
-            self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'AGENT')")
-            (base/'new').write_bytes(b'HOST')
-            result=pub.publish(client)
-            self.assertEqual(result['state'],'complete',result)
-            self.assertEqual((base/'new').read_bytes(),b'HOST')
-            begin=client.begin('c2')
-            self.assertEqual(begin['status'],'active',begin)
-            client.request('finish');client.request('discard',command_id='c2')
 
     def test_publish_preserve_then_restore_keeps_host_edit(self):
         _,base,store=self.fixture('preserve_restore')
@@ -146,7 +131,7 @@ class Contracts(unittest.TestCase):
             (base/'a.txt').write_bytes(b'XHZ__U_AAA')
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'XHZ__U_AAA')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AHA__U_AAA')
 
     def test_type_replacement_resumes_between_remove_and_create_phases(self):
@@ -167,19 +152,8 @@ class Contracts(unittest.TestCase):
                     self.assertTrue(pub.execute(client,transaction)['finalized'])
                     self.assertEqual((base/'a.txt/new').read_bytes(),b'new')
                     self.assertTrue(pub.execute(client,transaction)['finalized'])
-                    self.assertTrue(pub.undo(client,'edit','original')['finalized'])
+                    self.assertTrue(client.restore_published(['edit'],'original')['finalized'])
                     self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
-
-    def test_batch_and_reverse_undo(self):
-        _,base,store=self.fixture('batch')
-        with self.client(store,base) as client:
-            for name,value in [('c1','XXX'),('c2','YYY')]:
-                self.change(client,name,f"from pathlib import Path;Path('a.txt').write_bytes(b'{value}____AAA')")
-            self.assertEqual(pub.publish(client)['state'],'complete')
-            self.assertEqual((base/'a.txt').read_bytes(),b'YYY____AAA')
-            self.assertEqual(pub.undo(client,'c1','original')['status'],'later_command_active')
-            pub.undo(client,'c2','preserve');self.assertEqual((base/'a.txt').read_bytes(),b'XXX____AAA')
-            pub.undo(client,'c1','preserve');self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
 
     def test_equal_bytes_replacement_conflicts(self):
         _,base,store=self.fixture('identity')
@@ -187,7 +161,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client)
             (base/'other').write_bytes(b'XYZ____AAA');os.replace(base/'other',base/'a.txt')
-            self.assertEqual(pub.undo(client,'c1','original')['status'],'conflict')
+            self.assertEqual(client.restore_published(['c1'],'original')['status'],'conflict')
 
     def test_pinned_reuse_and_cold_corruption_refusal(self):
         _,base,store=self.fixture('cache')
@@ -270,26 +244,21 @@ class Contracts(unittest.TestCase):
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
 
     def test_chain_growth_and_writeback_rebase(self):
-        root,base,store=self.fixture('chain');metrics=[]
+        _,base,store=self.fixture('chain')
         with self.client(store,base) as client:
             for i in range(32):
                 begin=client.begin(f'c{i}');self.assertEqual(begin['parent_hashed_bytes'],0)
                 (Path(begin['mount'])/'a.txt').write_bytes(f'{i:03d}____AAA'.encode())
                 client.request('finish');client.request('accept',command_id=f'c{i}')
-                start=time.monotonic();client.request('inspect',path='/a.txt')
-                metrics.append({'depth':i+1,'begin_ms':begin['begin_ms'],'inspect_ms':(time.monotonic()-start)*1000})
-        start=time.monotonic()
+                client.request('inspect',path='/a.txt')
         with self.client(store,base) as client:
-            cold={'milliseconds':(time.monotonic()-start)*1000,**client.ready}
             self.assertEqual(client.request('info')['depth'],32)
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual(client.request('info')['depth'],0)
             self.assertEqual((base/'a.txt').read_bytes(),b'031____AAA')
-            pruned=client.request('prune')
-            self.assertEqual(pruned['removed_artifacts'],32)
-            self.assertEqual(pub.undo(client,'c31','preserve')['state'],'complete')
+            self.assertEqual(client.request('prune')['removed_artifacts'],32)
+            self.assertEqual(client.restore_published(['c31'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'030____AAA')
-        (root/'metrics.json').write_text(json.dumps({'warm':metrics,'cold':cold,'after_writeback_depth':0,'prune':pruned},indent=2),encoding='utf-8')
 
     def test_service_environment_does_not_replace_command_environment(self):
         _,base,store=self.fixture('environment')
@@ -334,21 +303,16 @@ class Contracts(unittest.TestCase):
             pub.publish(client)
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
 
-    def test_user_modified_created_file_is_preserved(self):
-        _,base,store=self.fixture('new_user')
-        with self.client(store,base) as client:
-            self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'X')")
-            pub.publish(client);(base/'new').write_bytes(b'H')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
-            self.assertEqual((base/'new').read_bytes(),b'H')
-
-    def test_original_can_remove_command_created_user_modified_file(self):
-        _,base,store=self.fixture('new_original')
-        with self.client(store,base) as client:
-            self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'X')")
-            pub.publish(client);(base/'new').write_bytes(b'H')
-            self.assertEqual(pub.undo(client,'c1','original')['state'],'complete')
-            self.assertFalse((base/'new').exists())
+    def test_restore_of_created_file_after_user_edit_follows_policy(self):
+        for policy,expected in (('preserve',b'H'),('original',None)):
+            with self.subTest(policy=policy):
+                _,base,store=self.fixture('new_'+policy)
+                with self.client(store,base) as client:
+                    self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'X')")
+                    pub.publish(client);(base/'new').write_bytes(b'H')
+                    self.assertEqual(client.restore_published(['c1'],policy)['state'],'complete')
+                    new=base/'new'
+                    self.assertEqual(new.read_bytes() if new.exists() else None,expected)
 
     def test_hard_link_publication_and_undo_preserve_alias(self):
         _,base,store=self.fixture('hardlink')
@@ -358,7 +322,7 @@ class Contracts(unittest.TestCase):
             pub.publish(client)
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
             self.assertTrue(os.path.samefile(base/'a.txt',base/'alias.txt'))
-            pub.undo(client,'c1','preserve')
+            client.restore_published(['c1'],'preserve')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
             self.assertTrue(os.path.samefile(base/'a.txt',base/'alias.txt'))
 
@@ -402,28 +366,21 @@ class Contracts(unittest.TestCase):
             self.assertEqual((base/'a.txt').read_bytes(),b'HHH____AAA')
 
     def test_parent_size_affects_cold_validation_but_not_warm_candidate(self):
-        results=[]
+        hashed=[]
         for label,size in [('small',524288),('large',8388608)]:
-            root,base,store=self.fixture('cost_'+label)
-            warm=[]
+            _,base,store=self.fixture('cost_'+label)
             with self.client(store,base) as client:
                 self.change(client,'seed',f"import random;from pathlib import Path;Path('payload').write_bytes(random.Random(7).randbytes({size}))")
                 baseline_host=client.request('info')['host']
                 for i in range(5):
                     begin=client.begin(f'empty{i}');self.assertEqual(begin['parent_hashed_bytes'],0)
-                    warm.append(begin['begin_ms']);client.request('finish');client.request('discard',command_id=f'empty{i}')
+                    client.request('finish');client.request('discard',command_id=f'empty{i}')
                 host=client.request('info')['host']
                 self.assertEqual(host['directory_enumerations'],baseline_host['directory_enumerations'])
                 self.assertEqual(host['data_read_bytes'],baseline_host['data_read_bytes'])
-            cold=[]
-            for _ in range(5):
-                start=time.monotonic()
-                with self.client(store,base) as client:
-                    cold.append((time.monotonic()-start)*1000)
-                    hashed=client.ready['cold_hashed_bytes']
-            data={'payload_bytes':size,'warm_ms':warm,'cold_ms':cold,'warm_median_ms':statistics.median(warm),'cold_median_ms':statistics.median(cold),'cold_hashed_bytes':hashed,'host_baseline':baseline_host,'host_after_empty_candidates':host}
-            (root/'metrics.json').write_text(json.dumps(data,indent=2),encoding='utf-8');results.append(data)
-        self.assertGreater(results[1]['cold_hashed_bytes'],results[0]['cold_hashed_bytes'])
+            with self.client(store,base) as client:
+                hashed.append(client.ready['cold_hashed_bytes'])
+        self.assertGreater(hashed[1],hashed[0])
 
     def test_persistent_states_are_not_downgraded_to_normal_results(self):
         _,base,store=self.fixture('corrupt_state')

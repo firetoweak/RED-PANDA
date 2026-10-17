@@ -137,7 +137,7 @@ pub fn bindings(store: &Path) -> Result<BTreeMap<String, String>> {
             let transaction: Transaction = storage::read_json(&path)?;
             ensure!(
                 transaction.version == 3
-                    && matches!(transaction.kind.as_str(), "publish" | "undo")
+                    && transaction.kind == "publish"
                     && matches!(
                         transaction.state.as_str(),
                         "prepared" | "conflict" | "complete"

@@ -486,8 +486,6 @@ def project_failed_delegations(events: Sequence[Event]) -> frozenset[str]:
             continue
         if value["code"] != "DELEGATED":
             raise ValueError("delegate success outcome code 无效")
-        if value["data"]["child_session_id"] != intent.child_session_id:
-            raise ValueError("delegate outcome child_session_id 与 Command 不一致")
     return frozenset(failed)
 
 
@@ -657,9 +655,6 @@ class SubAgentHost:
 
     def has_returned(self, session_id: str) -> bool:
         return session_id in self._returned
-
-    def parent_of(self, session_id: str) -> str | None:
-        return self._parents.get(session_id)
 
     def _publish_activity(self, parent_session_id: str) -> None:
         """异步刷新显示；不进入委派与回收的执行闭环。"""
