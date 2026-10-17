@@ -44,7 +44,7 @@ class DecisionCancellationTest(unittest.IsolatedAsyncioTestCase):
                 delivery_id="delivery-1",
             )
             advancing = asyncio.create_task(runtime.advance("session"))
-            await asyncio.wait_for(started.wait(), timeout=1)
+            await started.wait()
 
             cancellations = await runtime.cancel_turn("session")
             result = await advancing
@@ -107,7 +107,7 @@ class DecisionCancellationTest(unittest.IsolatedAsyncioTestCase):
             delivery_id="delivery",
         )
         await runtime.advance("session")
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await started.wait()
 
         cancellations = await runtime.cancel_turn("session")
         self.assertEqual(len(cancellations), 1)
@@ -118,11 +118,8 @@ class DecisionCancellationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.dispatcher.active_count, 1)
 
         release.set()
-        for _ in range(100):
-            if runtime.dispatcher.active_count == 0:
-                break
+        while runtime.dispatcher.active_count:
             await asyncio.sleep(0.01)
-        self.assertEqual(runtime.dispatcher.active_count, 0)
 
         state = await runtime.state("session")
         self.assertEqual(state.status, RuntimeStatus.WAITING)

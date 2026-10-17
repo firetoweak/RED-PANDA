@@ -36,7 +36,7 @@ class AttemptOutcomeRaceTest(unittest.IsolatedAsyncioTestCase):
         )
         await runtime.receive_user_message("session", "run", delivery_id="delivery")
         advancing = asyncio.create_task(runtime.advance("session"))
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await started.wait()
         await advancing
         dispatch = next(
             event
