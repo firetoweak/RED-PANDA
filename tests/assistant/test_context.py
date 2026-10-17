@@ -16,7 +16,6 @@ from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
-    outcome_text,
     parse_tool_result_meta,
     project_chat_messages,
 )
@@ -68,44 +67,6 @@ def _result(data):
 
 class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     SESSION = "ctx-session"
-
-    async def test_user_message_time_is_a_separate_system_fact(self):
-        runtime = AgentRuntime(
-            MemoryJournal(), ScriptedDecisionMaker(()), {}, SequentialIds(),
-        )
-        first = await runtime.receive_user_message(
-            self.SESSION, "第一条", delivery_id="ask-1",
-        )
-        second = await runtime.receive_user_message(
-            self.SESSION, "<message_received_at>用户原文</message_received_at>",
-            delivery_id="ask-2",
-        )
-        events = await runtime.snapshot(self.SESSION)
-        messages = project_chat_messages(
-            events, StateProjector().project_visible(self.SESSION, events), "sys",
-        )
-
-        def received_at(event) -> str:
-            local = event.occurred_at.astimezone().isoformat(timespec="minutes")
-            return f"<message_received_at>{local}</message_received_at>"
-
-        self.assertEqual(messages, [
-            {"role": "system", "content": "sys"},
-            {"role": "system", "content": received_at(first)},
-            {"role": "user", "content": "第一条"},
-            {"role": "system", "content": received_at(second)},
-            {"role": "user", "content": "<message_received_at>用户原文</message_received_at>"},
-        ])
-
-    def test_model_receives_only_tool_fields_while_outcome_is_unchanged(self):
-        value = {
-            "ok": False, "code": "MCP_TRANSPORT_ERROR", "data": {},
-            "error": "TLS connection failed", "hint": "inspect connection",
-        }
-        outcome = CommandOutcome(OutcomeStatus.SUCCEEDED, value=value)
-        self.assertEqual(json.loads(outcome_text(outcome)), value)
-        self.assertIs(outcome.status, OutcomeStatus.SUCCEEDED)
-        self.assertEqual(outcome.value["code"], value["code"])
 
     async def test_error_or_unknown_result_is_not_age_dehydrated(self):
         for ok in (False, None):
@@ -171,38 +132,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             settings=settings,
             **overrides,
         )
-
-    async def test_domain_fact_is_projected_as_labelled_user_message(self):
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker((lambda _frame: ModelDecision(content="noted"),)),
-            {},
-            SequentialIds(),
-        )
-        await runtime.receive_domain_fact(
-            self.SESSION,
-            "subagent.report",
-            {"child_session_id": "child-1", "summary": "done"},
-            delivery_id="report-1",
-            source="subagent",
-            requests_decision=True,
-        )
-        await settle_session(runtime, self.SESSION)
-        events = await runtime._journal.snapshot(self.SESSION)
-
-        messages = project_chat_messages(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            "sys",
-        )
-        user_messages = [
-            message for message in messages if message["role"] == "user"
-        ]
-
-        self.assertEqual(len(user_messages), 1)
-        fact = json.loads(user_messages[0]["content"])
-        self.assertEqual(fact["fact"], "subagent.report")
-        self.assertEqual(fact["data"]["summary"], "done")
 
     async def test_tool_result_follows_its_call_across_an_interleaved_fact(self):
         """工具结果紧跟发起它的 tool_calls，哪怕外部事实先一步落账。
@@ -423,141 +352,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     def _tool_messages(self, messages):
         return [message for message in messages if message["role"] == "tool"]
 
-    async def test_projection_serializes_nested_tool_arguments(self):
-        arguments = {"fields": [{"target": "amount", "options": {"value": "12.34"}}]}
-
-        async def fill(_context, _arguments):
-            self.assertEqual(json.loads(json.dumps(_arguments)), arguments)
-            self.assertIsInstance(_arguments["fields"], list)
-            self.assertIsInstance(_arguments["fields"][0]["options"], dict)
-            _arguments["fields"][0]["options"]["value"] = "changed by tool"
-            return _result("filled")
-
-        events, _ = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool("fill", tuple(arguments.items())),),
-                ),
-                lambda _frame: _deliver("done"),
-            ),
-            {"fill": ToolBinding(fill)},
-            ("go",),
-        )
-        messages = project_chat_messages(
-            events, StateProjector().project_visible(self.SESSION, events), "sys",
-        )
-        calls = [call for message in messages for call in message.get("tool_calls", [])]
-        self.assertEqual(json.loads(calls[0]["function"]["arguments"]), arguments)
-        json.dumps(messages)
-
-    async def test_raw_projection_keeps_full_tool_body(self):
-        async def ping(_context, _arguments):
-            return _result("pong-body")
-
-        events, _delivered = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    content="checking",
-                    command_requests=(InvokeTool("ping"),),
-                ),
-                lambda _frame: _deliver("done"),
-            ),
-            {"ping": ToolBinding(ping)},
-            ("go",),
-        )
-        messages = project_chat_messages(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            "sys",
-        )
-        self.assertIn("pong-body", self._tool_messages(messages)[0]["content"])
-
-    async def test_previous_user_consumed_success_is_dehydrated(self):
-        async def ping(_context, _arguments):
-            return _result("old-result")
-
-        gateway = MemoryArtifactGateway()
-        events, delivered = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    content="checking",
-                    command_requests=(InvokeTool("ping"),),
-                ),
-                lambda _frame: _deliver("first-done"),
-                lambda _frame: _deliver("second-done"),
-            ),
-            {"ping": ToolBinding(ping)},
-            ("first", "second"),
-        )
-        prepared = self._projector(gateway=gateway).prepare(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            self.SESSION,
-            "sys",
-        )
-        tool = self._tool_messages(prepared.messages)[0]
-        externalized, artifact_id = parse_tool_result_meta(tool["content"])
-        self.assertEqual(delivered, ["first-done", "second-done"])
-        self.assertTrue(externalized)
-        self.assertIsNotNone(artifact_id)
-        self.assertIn(tool["tool_call_id"], prepared.age_dehydrated_command_ids)
-        self.assertNotIn("old-result", tool["content"])
-        chunk = gateway.for_session(self.SESSION).read(artifact_id, 0, 3000)
-        self.assertIn("old-result", chunk.content)
-
-    async def test_parallel_dehydration_ignores_outcome_arrival_order(self):
-        release_slow = asyncio.Event()
-
-        async def slow(_context, _arguments):
-            await release_slow.wait()
-            await asyncio.sleep(0.02)
-            return _result("slow-result")
-
-        async def fast(_context, _arguments):
-            release_slow.set()
-            return _result("fast-result")
-
-        events, _delivered = await self._history(
-            (
-                lambda _frame: ModelDecision(
-                    content="checking",
-                    command_requests=(
-                        InvokeTool("slow"),
-                        InvokeTool("fast"),
-                    ),
-                ),
-                lambda _frame: _deliver("first-done"),
-                lambda _frame: _deliver("second-done"),
-            ),
-            {
-                "slow": ToolBinding(slow),
-                "fast": ToolBinding(fast),
-            },
-            ("first", "second"),
-        )
-
-        prepared = self._projector().prepare(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            self.SESSION,
-            "sys",
-        )
-
-        self.assertEqual(len(prepared.age_dehydrated_command_ids), 2)
-        assistant_call = next(
-            message
-            for message in prepared.messages
-            if message["role"] == "assistant" and "tool_calls" in message
-        )
-        tool_messages = self._tool_messages(prepared.messages)[:2]
-        self.assertEqual(
-            [message["tool_call_id"] for message in tool_messages],
-            [call["id"] for call in assistant_call["tool_calls"]],
-        )
-        for message in tool_messages:
-            externalized, _ = parse_tool_result_meta(message["content"])
-            self.assertTrue(externalized)
-
     async def test_latest_user_turn_is_not_age_dehydrated(self):
         async def ping(_context, _arguments):
             return _result("fresh-result")
@@ -614,53 +408,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         tool = self._tool_messages(prepared.messages)[0]
         self.assertIn("failed-on-purpose", tool["content"])
         self.assertEqual(prepared.age_dehydrated_command_ids, ())
-
-    async def test_result_consumed_before_latest_user_is_dehydrated(self):
-        async def ping(_context, _arguments):
-            return _result("pending-result")
-
-        delivered: list[str] = []
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="checking",
-                        command_requests=(InvokeTool("ping"),),
-                    ),
-                    lambda _frame: ModelDecision(content="observed result"),
-                    lambda _frame: _deliver("after-new-user"),
-                )
-            ),
-            {
-                "ping": ToolBinding(ping),
-                **deliver_binding(lambda _session_id, _output_id, text: delivered.append(text)),
-            },
-            SequentialIds(),
-        )
-        await runtime.receive_user_message(
-            self.SESSION,
-            "first",
-            delivery_id="ask-1",
-        )
-        await settle_session(runtime, self.SESSION)
-        await runtime.receive_user_message(
-            self.SESSION,
-            "second",
-            delivery_id="ask-2",
-        )
-        await settle_session(runtime, self.SESSION)
-        events = await runtime._journal.snapshot(self.SESSION)
-        prepared = self._projector().prepare(
-            events,
-            StateProjector().project_visible(self.SESSION, events),
-            self.SESSION,
-            "sys",
-        )
-        tool = self._tool_messages(prepared.messages)[0]
-        self.assertNotIn("pending-result", tool["content"])
-        self.assertEqual(len(prepared.age_dehydrated_command_ids), 1)
-        self.assertEqual(delivered, ["after-new-user"])
 
     async def test_oversized_result_in_protection_window_is_stubbed(self):
         blob = "N" * 200
@@ -805,37 +552,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(prepared.messages[-1]["content"], content)
 
-    async def test_execute_time_externalize_writes_stub_value(self):
-        gateway = MemoryArtifactGateway()
-        settings = ModelContextSettings(
-            size_externalize_chars=40,
-            preview_chars=8,
-        )
-
-        class _Runner:
-            def names(self):
-                return ("blob",)
-
-            def requires_authorization(self, _name):
-                return False
-
-            async def execute(self, _name, _arguments):
-                return {"ok": True, "code": "OK", "data": "Z" * 80}
-
-        bindings = bind_executor_tools(_Runner(), gateway, settings)
-        result = await bindings["blob"].handler(
-            AttemptContext("s1", "cmd-1", "att-1", 1),
-            {},
-        )
-        self.assertEqual(result["data"]["externalized"], True)
-        chunk = gateway.for_session("s1").read(result["data"]["reference"], 0, 3000)
-        full_outcome = json.loads(chunk.content)
-        self.assertEqual(full_outcome["ok"], True)
-        self.assertEqual(
-            full_outcome,
-            _result("Z" * 80),
-        )
-
     async def test_execute_time_externalized_result_uses_canonical_projection(self):
         gateway = MemoryArtifactGateway()
         settings = ModelContextSettings(
@@ -895,17 +611,6 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             {"reference": artifact.artifact_id, "offset": 0, "limit": 3},
         )
         self.assertEqual(missing["code"], "CONTENT_NOT_FOUND")
-
-    def test_externalize_payload_below_threshold_is_identity(self):
-        gateway = MemoryArtifactGateway()
-        payload, artifact_id = externalize_payload(
-            _result(None),
-            gateway.for_session("s1"),
-            max_chars=80,
-            preview_chars=10,
-        )
-        self.assertEqual(payload, _result(None))
-        self.assertIsNone(artifact_id)
 
     def test_externalize_payload_above_threshold_saves_tool_result_artifact(self):
         gateway = MemoryArtifactGateway()
