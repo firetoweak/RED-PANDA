@@ -128,17 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - group: compact
-            workers: 2
-          - group: supervisor
-            workers: 4
-          - group: filesystem
-            workers: 4
-          - group: execution
-            workers: 2
-          - group: integration
-            workers: 2
+        group: [compact, supervisor, filesystem, execution, integration]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-process
@@ -146,7 +136,7 @@ jobs:
           artifact: agentFS-windows-ci-inputs
           node: ${{ matrix.group == 'execution' }}
       - name: Verify process contracts
-        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers ${{ matrix.workers }}
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers 4
       - name: Upload process test report
         uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
