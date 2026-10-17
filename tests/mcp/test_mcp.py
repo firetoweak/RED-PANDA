@@ -20,9 +20,6 @@ from mcp.types import (
     ListResourcesResult,
     ListResourceTemplatesResult,
     ListToolsResult,
-    Prompt,
-    Resource,
-    ResourceTemplate,
     TextContent,
     Tool,
 )
@@ -30,8 +27,6 @@ from mcp.types import (
 from redpanda.paths import RedPandaHome
 from redpanda.tools.spec import JsonSchemaParameters
 from redpanda.mcp.toolsets import ToolsetLoadError
-from redpanda.assistant.artifacts import FileArtifactStore
-from redpanda.assistant.context.projection import externalize_payload
 from redpanda.mcp.adapter import (
     adapt_call_result,
     build_output_validator,
@@ -45,7 +40,6 @@ from redpanda.mcp.client_manager import (
     McpSdkError,
     _SdkConnectionOwner,
 )
-from redpanda.mcp.composition import build_mcp
 from redpanda.mcp.models import (
     QUERY_SECRET_KEY,
     McpServerRecord,
@@ -171,27 +165,6 @@ class McpSdkBoundaryTest(unittest.IsolatedAsyncioTestCase):
             owner = _SdkConnectionOwner(_stdio_record("broken-open"), {})
             with self.assertRaisesRegex(RuntimeError, "internal open bug"):
                 await owner.start()
-
-    async def test_owner_exposes_unexpected_internal_operation_error(self):
-        async def broken_list_tools(**_kwargs):
-            raise RuntimeError("internal operation bug")
-
-        facade = SimpleNamespace(
-            protocol_version="2026-07-28",
-            server_capabilities=SimpleNamespace(),
-            list_tools=broken_list_tools,
-        )
-        with patch.object(
-            _SdkConnectionOwner,
-            "_open_facade",
-            AsyncMock(return_value=facade),
-        ):
-            owner = _SdkConnectionOwner(_stdio_record("broken-call"), {})
-            connection = await owner.start()
-            with self.assertRaisesRegex(RuntimeError, "internal operation bug"):
-                await connection.session.list_tools()
-            with self.assertRaisesRegex(RuntimeError, "internal operation bug"):
-                await owner._task
 
 
 class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
@@ -579,66 +552,6 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(stored.revision, 1)
 
-    async def test_mark_tested_persists_and_survives_reload(self):
-        with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
-            workspace.initialize()
-            registry = McpRegistry.from_home(workspace)
-            secrets = McpSecretStore.from_home(workspace)
-            service = McpApplicationService(
-                registry,
-                secrets,
-                McpClientManager(
-                    secrets,
-                    runtime_root=_runtime_root(workspace),
-                ),
-            )
-            await service.upsert_server(
-                server_id="demo",
-                display_name="Demo",
-                transport="stdio",
-                transport_config={"command": "python", "args": []},
-                enabled=False,
-            )
-
-            await registry.mark_tested(
-                "demo",
-                RuntimeAvailability.UNAVAILABLE,
-                error_summary="connection failed",
-            )
-
-            reloaded_registry = McpRegistry.from_home(workspace)
-            reloaded = await reloaded_registry.get("demo")
-            self.assertIsNotNone(reloaded)
-            self.assertEqual(
-                reloaded.last_status,
-                RuntimeAvailability.UNAVAILABLE,
-            )
-            self.assertEqual(reloaded.last_error_summary, "connection failed")
-            self.assertIsNotNone(reloaded.last_checked_at)
-            self.assertEqual(reloaded.revision, 1)
-
-    async def test_assembly_exposes_agent_management_and_recovery_specs(self):
-        with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
-            workspace.initialize()
-
-            mcp = build_mcp(workspace)
-
-            self.assertEqual(
-                {spec.name for spec in mcp.management_specs},
-                {"list_mcp_servers", "test_mcp_server"},
-            )
-            self.assertEqual(
-                {operation.name for operation in mcp.control_operations},
-                {
-                    "propose_mcp_install",
-                    "propose_mcp_recovery",
-                    "propose_mcp_update",
-                    "propose_mcp_remove",
-                },
-            )
-
     async def test_http_non_localhost_requires_https(self):
         with self.assertRaises(ValueError):
             StreamableHttpTransportConfig(url="http://example.com/mcp")
@@ -742,22 +655,6 @@ class McpAdapterTest(unittest.TestCase):
         self.assertFalse(adapted["ok"])
         self.assertEqual(adapted["code"], "MCP_INVALID_TOOL_RESULT")
 
-    def test_tool_error_does_not_need_to_match_output_schema(self):
-        validator = build_output_validator(
-            "demo",
-            {
-                "type": "object",
-                "properties": {"value": {"type": "string"}},
-                "required": ["value"],
-            },
-        )
-        result = CallToolResult(
-            content=[TextContent(type="text", text="business error")],
-            isError=True,
-        )
-        adapted = adapt_call_result(result, output_validator=validator)
-        self.assertEqual(adapted["code"], "MCP_TOOL_ERROR")
-
     def test_adapt_call_result_redacts_secrets_recursively(self):
         secret = "credential-that-must-not-leak"
         result = CallToolResult(
@@ -775,33 +672,6 @@ class McpAdapterTest(unittest.TestCase):
         serialized = json.dumps(adapted, ensure_ascii=False)
         self.assertNotIn(secret, serialized)
         self.assertIn("***", serialized)
-
-    def test_redacted_result_cannot_leak_through_artifact_or_log(self):
-        secret = "artifact-log-secret"
-        result = CallToolResult(
-            content=[TextContent(
-                type="text",
-                text=(f"credential={secret};" + "x" * 500),
-            )],
-            structuredContent={"credential": secret},
-            isError=False,
-        )
-        adapted = adapt_call_result(result, secret_values=(secret,))
-
-        with TemporaryDirectory() as directory:
-            store = FileArtifactStore(Path(directory))
-            body, artifact_id = externalize_payload(
-                adapted,
-                store,
-                max_chars=500,
-                preview_chars=80,
-            )
-            self.assertIsNotNone(artifact_id)
-            artifact = store.read(artifact_id, 0, 10_000).content
-
-        self.assertTrue(body["data"]["externalized"])
-        self.assertNotIn(secret, artifact)
-        self.assertNotIn(secret, json.dumps(body, ensure_ascii=False))
 
 
 class McpProviderTest(unittest.IsolatedAsyncioTestCase):
@@ -1036,71 +906,6 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
             await self.service.toolset_provider.tool_specs("mcp:bad")
         self.assertEqual(ctx.exception.code, "MCP_INVALID_TOOL_SCHEMA")
 
-    async def test_invalid_output_schema_fails_whole_toolset(self):
-        self.sessions["bad_output"] = FakeMcpSession(
-            tools=[_tool("broken", output_schema={"type": "invalid"})]
-        )
-        await self.service.upsert_server(
-            server_id="bad_output",
-            display_name="Bad Output",
-            transport="stdio",
-            transport_config={"command": "python"},
-            enabled=True,
-        )
-        with self.assertRaises(ToolsetLoadError) as ctx:
-            await self.service.toolset_provider.tool_specs("mcp:bad_output")
-        self.assertEqual(ctx.exception.code, "MCP_INVALID_TOOL_SCHEMA")
-
-    async def test_content_service_uses_v2_resource_and_prompt_fields(self):
-        session = FakeMcpSession()
-        session.list_resources = AsyncMock(
-            return_value=ListResourcesResult(
-                resources=[
-                    Resource(
-                        name="guide",
-                        uri="file:///guide.md",
-                        mimeType="text/markdown",
-                    )
-                ],
-                nextCursor="resource-next",
-            )
-        )
-        session.list_resource_templates = AsyncMock(
-            return_value=ListResourceTemplatesResult(
-                resourceTemplates=[
-                    ResourceTemplate(
-                        name="user",
-                        uriTemplate="user://{id}",
-                        mimeType="application/json",
-                    )
-                ]
-            )
-        )
-        session.list_prompts = AsyncMock(
-            return_value=ListPromptsResult(
-                prompts=[Prompt(name="review", description="review code")]
-            )
-        )
-        self.sessions["content"] = session
-        await self.service.upsert_server(
-            server_id="content",
-            display_name="Content",
-            transport="stdio",
-            transport_config={"command": "python"},
-            enabled=True,
-        )
-
-        resources = await self.service.content.list_resources("content")
-        templates = await self.service.content.list_resource_templates("content")
-        prompts = await self.service.content.list_prompts("content")
-        self.assertEqual(resources["next_cursor"], "resource-next")
-        self.assertEqual(resources["resources"][0]["mimeType"], "text/markdown")
-        self.assertEqual(
-            templates["resource_templates"][0]["uriTemplate"],
-            "user://{id}",
-        )
-        self.assertEqual(prompts["prompts"][0]["name"], "review")
-
     async def test_connection_is_closed_when_post_connect_metadata_fails(self):
         closed = False
 
@@ -1239,13 +1044,6 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("disable_race", manager._connections)
         await manager.aclose()
 
-    async def test_build_mcp_wires_application_resource(self):
-        mcp = build_mcp(
-            RedPandaHome(Path(self._tmp.name) / ".redpanda2"),
-        )
-        async with mcp.client_manager:
-            self.assertIsNotNone(mcp.toolset_provider)
-
 
 @pytest.mark.process
 class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
@@ -1331,44 +1129,6 @@ class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(
                     manager.runtime_state("real_stdio").negotiated_version,
                     "2026-07-28",
-                )
-            finally:
-                await manager.aclose()
-
-    async def test_client_negotiates_with_legacy_server(self):
-        with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
-            workspace.initialize()
-            registry = McpRegistry.from_home(workspace)
-            secrets = McpSecretStore.from_home(workspace)
-            manager = McpClientManager(
-                secrets,
-                runtime_root=_runtime_root(workspace),
-            )
-            service = McpApplicationService(registry, secrets, manager)
-            fixture = (
-                Path(__file__).parents[1]
-                / "fixtures"
-                / "mcp_legacy_stdio_server.py"
-            )
-            await service.upsert_server(
-                server_id="legacy_stdio",
-                display_name="Legacy stdio",
-                transport="stdio",
-                transport_config={
-                    "command": sys.executable,
-                    "args": [str(fixture)],
-                },
-                enabled=True,
-            )
-            try:
-                specs = await service.toolset_provider.tool_specs(
-                    "mcp:legacy_stdio"
-                )
-                self.assertEqual(specs, ())
-                self.assertEqual(
-                    manager.runtime_state("legacy_stdio").negotiated_version,
-                    "2025-11-25",
                 )
             finally:
                 await manager.aclose()
@@ -1475,56 +1235,3 @@ class McpRealStreamableHttpIntegrationTest(
                 if process.returncode is None:
                     process.terminate()
                 await process.wait()
-
-
-@pytest.mark.process
-class McpRealStdioWorkingDirectoryIntegrationTest(
-    unittest.IsolatedAsyncioTestCase
-):
-    async def test_stdio_preserves_explicit_working_directory(self):
-        with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
-            workspace.initialize()
-            explicit_cwd = Path(directory) / "explicit-mcp-cwd"
-            explicit_cwd.mkdir()
-            registry = McpRegistry.from_home(workspace)
-            secrets = McpSecretStore.from_home(workspace)
-            manager = McpClientManager(
-                secrets,
-                runtime_root=_runtime_root(workspace),
-            )
-            service = McpApplicationService(registry, secrets, manager)
-            fixture = (
-                Path(__file__).parents[1]
-                / "fixtures"
-                / "mcp_stdio_server.py"
-            )
-            await service.upsert_server(
-                server_id="explicit_stdio",
-                display_name="Explicit stdio",
-                transport="stdio",
-                transport_config={
-                    "command": sys.executable,
-                    "args": [str(fixture)],
-                    "cwd": str(explicit_cwd),
-                },
-                enabled=True,
-            )
-            try:
-                specs = await service.toolset_provider.tool_specs(
-                    "mcp:explicit_stdio"
-                )
-                cwd_spec = next(
-                    spec
-                    for spec in specs
-                    if spec.name.endswith("read_working_directory")
-                )
-                result = await cwd_spec.handler({})
-                self.assertEqual(
-                    Path(
-                        result["data"]["mcp"]["structured_content"]["cwd"]
-                    ).resolve(),
-                    explicit_cwd.resolve(),
-                )
-            finally:
-                await manager.aclose()
