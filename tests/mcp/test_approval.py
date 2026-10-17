@@ -88,7 +88,7 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(record.transport_config.args, ("-y", "@playwright/mcp@latest"))
 
-    async def test_summary_redacts_user_supplied_secrets(self):
+    async def test_secrets_pass_through_payload_but_not_summary(self):
         spec = self._spec()
         cases = (
             ({
@@ -118,6 +118,10 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
                 }))
 
                 self.assertIsInstance(result, ControlApprovalProposal)
+                config = result.payload["transport_config"]
+                for key in ("url", "headers", "bearer", "env"):
+                    if key in fields:
+                        self.assertEqual(config[key], fields[key])
                 self.assertNotIn("secret-value", result.summary)
                 self.assertNotIn("token-value", result.summary)
                 self.assertIn(marker, result.summary)
