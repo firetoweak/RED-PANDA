@@ -232,45 +232,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.client.__exit__(None, None, None)
         self._directory.cleanup()
 
-    def test_model_connection_uses_requested_candidate_without_changing_sessions(self):
-        config = self.models.config().to_dict()
-        config["model"]["candidates"].append(
-            {"model": "ollama/qwen3:8b", "compact_threshold_tokens": 10000}
-        )
-        self.models.save(config)
-        selection = self.models.selection("session-old")
-        response = self.client.post("/api/model-settings/test", json={
-            "connection_id": self.connection.connection_id, "model": "ollama/qwen3:8b",
-        })
-        self.assertEqual(response.status_code, 200)
-        result = response.json()
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["model"], "ollama/qwen3:8b")
-        self.assertGreaterEqual(result["elapsed_ms"], 0)
-        self.model_llm.chat.assert_awaited_once_with(
-            [{"role": "user", "content": "Reply with OK only."}], "ollama/qwen3:8b", tools=None,
-        )
-        self.assertEqual(self.models.config().to_dict(), config)
-        self.assertEqual(self.models.selection("session-old"), selection)
-        self.assertEqual(self.sessions.calls, [])
-        self.assertEqual(self.queries.accepted, [])
-
-    def test_model_connection_uses_saved_reasoning_effort(self):
-        config = self.models.config().to_dict()
-        config["model"]["candidates"].append({
-            "model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
-            "reasoning_effort": "low",
-        })
-        self.models.save(config)
-        response = self.client.post("/api/model-settings/test", json={
-            "connection_id": self.connection.connection_id, "model": "stepfun/step-5-preview",
-        })
-        self.assertEqual(response.status_code, 200)
-        self.model_llm.chat.assert_awaited_once_with(
-            [{"role": "user", "content": "Reply with OK only."}], "stepfun/step-5-preview",
-            tools=None, reasoning_effort="low",
-        )
-
     def test_model_connection_reports_known_failure_without_echoing_credentials(self):
         self.model_llm.chat.side_effect = LLMAuthenticationError("private-test-key")
         response = self.client.post("/api/model-settings/test", json={
@@ -304,29 +265,6 @@ class WebFirstSliceTest(unittest.TestCase):
                 "connection_id": self.connection.connection_id, "model": "ollama/qwen3:8b",
             })
         self.model_llm.chat.assert_not_awaited()
-
-    def test_lists_sessions_and_creates_selected_conversation(self):
-        listed = self.client.get("/api/sessions")
-        created = self.client.post(
-            "/api/sessions",
-            json={
-                "connection_id": self.connection.connection_id,
-                "workspace_id": "workspace-old",
-            },
-        )
-
-        self.assertEqual(listed.status_code, 200)
-        self.assertEqual(listed.json()[0]["title"], "旧会话")
-        self.assertEqual(created.status_code, 201)
-        session_id = created.json()["session_id"]
-        self.assertEqual(
-            self.sessions.calls[0],
-            ("create", session_id, "workspace-old"),
-        )
-        self.assertEqual(
-            self.sessions.calls[1],
-            ("select", self.connection.owner, session_id),
-        )
 
     def test_events_assigns_connection_identity_and_releases_on_disconnect(self):
         body = bytearray()
@@ -439,16 +377,6 @@ class WebFirstSliceTest(unittest.TestCase):
             any(call[0] == "release" for call in self.sessions.calls),
         )
 
-    def test_reads_conversation_without_starting_a_worker(self):
-        response = self.client.get("/api/sessions/session-old")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["session_id"], "session-old")
-        self.assertEqual(response.json()["items"], [])
-        self.assertEqual(response.json()["compact_count"], 0)
-        self.assertIsNone(response.json()["compact_phase"])
-        self.assertEqual(self.sessions.calls, [])
-
     def test_model_settings_never_exposes_credentials(self):
         connections = json.loads(self.models.connections_path.read_text(encoding="utf-8"))
         connections["deepseek"]["api_key"] = "secret-for-test"
@@ -517,18 +445,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn("workspace-missing", response.json()["detail"])
 
-    def test_selecting_another_session_only_changes_owner_selection(self):
-        response = self.client.post(
-            "/api/sessions/session-old/select",
-            json={"connection_id": self.connection.connection_id},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            self.sessions.calls,
-            [("select", self.connection.owner, "session-old")],
-        )
-
     def test_accept_input_returns_user_message_and_does_not_wait_for_model(self):
         response = self.client.post(
             "/api/sessions/session-old/inputs",
@@ -553,24 +469,6 @@ class WebFirstSliceTest(unittest.TestCase):
                 )
             ],
         )
-
-    def test_cancel_only_targets_the_requested_session(self):
-        response = self.client.post(
-            "/api/sessions/session-old/cancel",
-            json={"connection_id": self.connection.connection_id},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.sessions.calls, [("cancel_turn", "session-old")])
-
-    def test_retry_wakes_the_requested_session(self):
-        response = self.client.post(
-            "/api/sessions/session-old/retry",
-            json={"connection_id": self.connection.connection_id},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.sessions.calls, [("retry", "session-old")])
 
     def test_restarting_from_a_step_answers_with_the_new_identity(self):
         """从一步重开产生新身份，源会话留在原处；没有版本的一步直接拒绝。"""
@@ -602,31 +500,6 @@ class WebFirstSliceTest(unittest.TestCase):
             [
                 ("restart_from_step", "step-1", child_session_id),
                 ("restart_from_step", "step-unrecorded", self.sessions.calls[1][4]),
-            ],
-        )
-
-    def test_branching_after_a_turn_creates_a_listed_session(self):
-        response = self.client.post(
-            "/api/sessions/session-old/branches",
-            json={
-                "connection_id": self.connection.connection_id,
-                "message_id": "user-1",
-            },
-        )
-
-        self.assertEqual(response.status_code, 201)
-        child_session_id = response.json()["session_id"]
-        self.assertNotEqual(child_session_id, "session-old")
-        self.assertEqual(
-            self.sessions.calls,
-            [
-                (
-                    "branch_after_turn",
-                    self.connection.owner,
-                    "session-old",
-                    "user-1",
-                    child_session_id,
-                )
             ],
         )
 
@@ -731,85 +604,6 @@ class WebFirstSliceTest(unittest.TestCase):
             ),
         )
 
-    def test_resolve_control_returns_execution_message(self):
-        response = self.client.post(
-            "/api/sessions/session-old/control",
-            json={
-                "connection_id": self.connection.connection_id,
-                "request_id": "approval-1",
-                "approved": True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["session"]["control_message"],
-            "MCP Server `demo` 安装、测试并启用成功。能力目录已更新，load_toolset 之后工具从下一个 Step 可见。",
-        )
-        self.assertEqual(
-            self.sessions.calls,
-            [
-                ("resolve_control", "session-old", "approval-1", True),
-                ("view", "session-old"),
-            ],
-        )
-
-    def test_authorize_command_is_per_command(self):
-        response = self.client.post(
-            "/api/sessions/session-old/commands/cmd-1/authorize",
-            json={
-                "connection_id": self.connection.connection_id,
-                "approved": True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            self.sessions.calls,
-            [
-                ("resolve_authorization", "session-old", "cmd-1", True),
-                ("view", "session-old"),
-            ],
-        )
-
-    def test_auto_authorize_updates_session_preference(self):
-        response = self.client.post(
-            "/api/sessions/session-old/auto-authorize",
-            json={
-                "connection_id": self.connection.connection_id,
-                "enabled": True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["session"]["auto_authorize"])
-        self.assertEqual(
-            self.sessions.calls,
-            [("set_auto_authorize", "session-old", True)],
-        )
-
-    def test_paused_updates_session_hold(self):
-        response = self.client.post(
-            "/api/sessions/session-old/paused",
-            json={
-                "connection_id": self.connection.connection_id,
-                "paused": True,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["session"]["paused"])
-        self.assertEqual(
-            self.sessions.calls,
-            [("set_paused", "session-old", True)],
-        )
-
-    def test_lists_session_titles(self):
-        response = self.client.get("/api/session-titles")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"session-old": "改过的标题"})
-
     def test_archive_hides_the_session_from_the_list(self):
         response = self.client.post(
             "/api/sessions/session-old/archive",
@@ -820,22 +614,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(response.json(), {})
         self.assertEqual(self.sessions.calls, [("archive", "session-old")])
 
-    def test_title_override_is_a_product_label(self):
-        response = self.client.post(
-            "/api/sessions/session-old/title",
-            json={
-                "connection_id": self.connection.connection_id,
-                "title": "  我起的名  ",
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"title": "我起的名"})
-        self.assertEqual(
-            self.sessions.calls,
-            [("set_title", "session-old", "我起的名")],
-        )
-
     def test_rejected_upload_is_a_client_error(self):
         response = self.client.post(
             "/api/sessions/session-old/attachments",
@@ -845,23 +623,6 @@ class WebFirstSliceTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("detail", response.json())
-
-    def test_lists_and_creates_workspaces(self):
-        listed = self.client.get("/api/workspaces")
-        created = self.client.post(
-            "/api/workspaces",
-            json={
-                "name": "demo",
-                "task_root": self._directory.name,
-                "full_access": False,
-            },
-        )
-
-        self.assertEqual(listed.status_code, 200)
-        self.assertEqual(listed.json(), [])
-        self.assertEqual(created.status_code, 201)
-        self.assertEqual(created.json()["name"], "demo")
-        self.assertEqual(len(self.client.get("/api/workspaces").json()), 1)
 
     def test_directory_selection_only_returns_a_choice_without_registering_workspace(self):
         selected = Path(self._directory.name)

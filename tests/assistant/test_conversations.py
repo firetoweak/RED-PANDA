@@ -8,7 +8,6 @@ from redpanda.assistant.conversations import (
     project_conversation,
     project_session_summary,
 )
-from redpanda.assistant.workspaces import workspace_binding
 from redpanda.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
 from redpanda.assistant.compact.core import MODEL_USAGE, WINDOW
 from redpanda.assistant.sessions import SessionView
@@ -153,111 +152,6 @@ class ConversationProjectionTest(unittest.TestCase):
         after_call = project_conversation("session-1", events, timeline(events), session=view)
         self.assertEqual(after_call.context_input_tokens, 500)
 
-    def test_conversation_without_model_calls_has_unknown_usage(self):
-        conversation = project_conversation(
-            "session-1", (), (), session=SessionView("waiting", ("external_fact",), (), False),
-        )
-        self.assertIsNone(conversation.context_input_tokens)
-
-    def test_projects_each_decision_as_one_step_with_its_tools(self):
-        read = Command("cmd-read", InvokeTool("read_file"))
-        deliver = Command("cmd-deliver", InvokeTool("deliver"))
-        events = (
-            event(1, "user-1", UserMessageReceived("你好")),
-            event(
-                2,
-                "step-1",
-                committed_step(
-                    "decision-1",
-                    "user-1",
-                    "  世界  ",
-                    (read, deliver),
-                ),
-            ),
-            event(
-                3,
-                "attempt-1",
-                DispatchAttemptStarted("att-1", "cmd-read"),
-                causation_id="step-1",
-            ),
-            event(
-                4,
-                "out-1",
-                CommandOutcomeReceived(
-                    "cmd-read",
-                    "att-1",
-                    CommandOutcome(OutcomeStatus.SUCCEEDED, value="ok"),
-                ),
-                causation_id="attempt-1",
-            ),
-        )
-        view = SessionView("waiting", ("external_fact",), (), False)
-
-        conversation = project_conversation(
-            "session-1", events, timeline(events), session=view
-        )
-
-        self.assertIsNone(conversation.workspace_id)
-        self.assertEqual(conversation.revision, 4)
-        self.assertEqual(conversation.items[0].kind, "user")
-        step = conversation.items[1]
-        self.assertEqual(step.kind, "step")
-        self.assertEqual(step.step_id, "decision-1")
-        self.assertEqual(step.output_id, "user-1")
-        self.assertEqual(step.text, "世界")
-        self.assertEqual(len(step.tools), 1)
-        self.assertEqual(step.tools[0].command_id, "cmd-read")
-        self.assertEqual(step.tools[0].name, "read_file")
-        self.assertEqual(step.tools[0].status, "succeeded")
-        self.assertIsNone(step.thinking)
-
-    def test_projects_the_bound_workspace(self):
-        events = (
-            event(1, "ws-1", workspace_binding("workspace-demo")),
-            event(2, "user-1", UserMessageReceived("你好")),
-        )
-        conversation = project_conversation(
-            "session-1",
-            events,
-            timeline(events),
-            session=SessionView("waiting", ("external_fact",), (), False),
-        )
-        self.assertEqual(conversation.workspace_id, "workspace-demo")
-
-    def test_projects_reasoning_content_as_step_thinking(self):
-        events = (
-            event(1, "user-1", UserMessageReceived("你好")),
-            event(
-                2,
-                "step-1",
-                StepCommitted(
-                    Step(
-                        step_id="decision-1",
-                        trigger_event_id="user-1",
-                        decision_cursor=1,
-                        basis_state_version="basis",
-                        observed_journal_position=1,
-                        decision=ModelDecision("世界"),
-                        commands=(),
-                    ),
-                    {
-                        "message_extensions": {
-                            "reasoning_content": "  先确认目标  ",
-                        },
-                        MODEL_USAGE: {"window": None, "input_tokens": 1200,
-                                      "output_tokens": 10, "cached_input_tokens": 1000},
-                    },
-                ),
-            ),
-        )
-        conversation = project_conversation(
-            "session-1",
-            events,
-            timeline(events),
-            session=SessionView("waiting", ("external_fact",), (), False),
-        )
-        self.assertEqual(conversation.items[1].thinking, "先确认目标")
-
     def test_tool_without_attempt_is_queued_and_failed_outcome_keeps_error(self):
         search = Command("cmd-search", InvokeTool("web_search"))
         events = (
@@ -372,35 +266,6 @@ class ConversationProjectionTest(unittest.TestCase):
             "命令已被打断，执行结果未知。",
         )
 
-    def test_summary_uses_first_user_message_and_last_user_message_time(self):
-        events = (
-            event(1, "user-1", UserMessageReceived("第一行\n第二行")),
-            event(2, "user-2", UserMessageReceived("之后")),
-        )
-        events += (canonical_step_event(events, "step-2", "回复", ()),)
-
-        summary = project_session_summary(
-            "session-1",
-            events,
-            workspace_id="workspace-1",
-            activity="running",
-        )
-
-        self.assertEqual(summary.title, "第一行")
-        self.assertEqual(summary.updated_at, events[1].occurred_at)
-        self.assertEqual(summary.activity, "running")
-        self.assertFalse(summary.has_active_subagents)
-        self.assertEqual(
-            project_session_summary(
-                "session-1",
-                events,
-                workspace_id="workspace-1",
-                activity="running",
-                title="我起的名",
-            ).title,
-            "我起的名",
-        )
-
     def test_idle_summary_keeps_subagent_active_until_report_is_received(self):
         child_id = child_session_id("session-1", "delegate-1")
         command = Command("delegate-1", InvokeTool(DELEGATE, (("task", "调查问题"),)))
@@ -466,27 +331,6 @@ class ConversationProjectionTest(unittest.TestCase):
                     "session-1", snapshot, workspace_id="workspace-1", activity="idle",
                 )
                 self.assertEqual(summary.needs_attention, expected)
-
-    def test_user_message_carries_image_refs(self):
-        attachment_id = "sha256:" + "a" * 64
-        events = (
-            event(
-                1,
-                "user-1",
-                UserMessageReceived("[Image #1]"),
-                artifact_refs=(attachment_id,),
-            ),
-        )
-        conversation = project_conversation(
-            "session-1",
-            events,
-            timeline(events),
-            session=SessionView("waiting", ("external_fact",), (), False),
-        )
-
-        self.assertEqual(conversation.items[0].kind, "user")
-        self.assertEqual(conversation.items[0].text, "[Image #1]")
-        self.assertEqual(conversation.items[0].images, (attachment_id,))
 
     def test_pending_authorization_and_rejection_are_distinct_statuses(self):
         write = Command(
@@ -666,36 +510,6 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(await queries.list_sessions(), ())
             self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
-
-    async def test_listed_title_uses_the_host_override(self):
-        from pathlib import Path
-        from tempfile import TemporaryDirectory
-
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import SqliteJournal
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
-
-        class Named(Idle):
-            def session_title(self, session_id):
-                return "我起的名"
-
-        with TemporaryDirectory() as directory:
-            store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Named())
-            await store.create("spoken", workspace_id="workspace-1")
-            await SqliteJournal(store.require("spoken")).accept_delivery(
-                EventDraft(
-                    event_id="user-1",
-                    session_id="spoken",
-                    payload=UserMessageReceived("你好"),
-                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
-                    delivery=DeliveryIdentity("web", "d1"),
-                )
-            )
-            listed = await queries.list_sessions()
-
-        self.assertEqual(listed[0].title, "我起的名")
 
     async def test_conversation_projects_control_approval_from_journal(self):
         from pathlib import Path

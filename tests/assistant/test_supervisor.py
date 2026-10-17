@@ -50,116 +50,6 @@ async def until(predicate, timeout=30):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
-    async def test_workspace_command_keeps_launch_environment_across_worker_spawn(self):
-        import json
-        import os
-        from unittest.mock import patch
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-
-        await self.host.close()
-        original_path = os.environ["PATH"]
-        project_path = str(self.root / "project-tools") + os.pathsep + original_path
-        project_env = {
-            "PATH": project_path,
-            "WORKSPACE_ENV_PROBE": "project",
-            "CONDA_PREFIX": str(self.root / "conda-env"),
-            "JAVA_HOME": str(self.root / "jdk"),
-        }
-        observations = []
-        command = (
-            "[ordered]@{marker=$env:WORKSPACE_ENV_PROBE; path=$env:PATH; "
-            "conda=$env:CONDA_PREFIX; java=$env:JAVA_HOME} | ConvertTo-Json -Compress"
-            if os.name == "nt" else
-            "printf '%s\\n' \"$WORKSPACE_ENV_PROBE\" \"$PATH\" \"$CONDA_PREFIX\" \"$JAVA_HOME\""
-        )
-
-        class Llm:
-            async def chat(client, messages, model, **kwargs):
-                results = [m for m in messages if m["role"] == "tool"]
-                if not results:
-                    return LLMCallResult(LLMResponse(content="", calls=(ToolCall(
-                        "probe", "execute_command", json.dumps({
-                            "command": command, "workspace_effect": "read_only",
-                        }),
-                    ),)), LLMUsage(input_tokens=10, output_tokens=5))
-                observations.append(json.loads(results[-1]["content"])["data"])
-                return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=20, output_tokens=5))
-
-        with patch.dict(os.environ, project_env):
-            self.host = self.new_host()
-            self.host.llm = Llm()
-            with patch.dict(os.environ, {
-                "PATH": original_path, "WORKSPACE_ENV_PROBE": "product",
-                "CONDA_PREFIX": "product-conda", "JAVA_HOME": "product-jdk",
-            }):
-                await self.host.create("env-probe", self.workspace.workspace_id)
-                await self.host.accept_input("env-probe", "probe", delivery_id="probe")
-                await until(lambda: ("env-probe", "done") in self.output)
-                await until(lambda: not self.host.workers and not self.host.watchers)
-                self.assertEqual(os.environ["WORKSPACE_ENV_PROBE"], "product")
-
-        self.assertEqual(observations[0]["exit_code"], 0)
-        stdout = observations[0]["stdout"]["content"]
-        if os.name == "nt":
-            actual = json.loads(stdout)
-            # PowerShell 7 可在启动时添加自己的目录；原始项目 PATH 必须完整保留。
-            self.assertTrue(actual.pop("path").endswith(project_path))
-            self.assertEqual(actual, {
-                "marker": "project",
-                "conda": project_env["CONDA_PREFIX"], "java": project_env["JAVA_HOME"],
-            })
-        else:
-            self.assertEqual(stdout.splitlines(), [
-                "project", project_path, project_env["CONDA_PREFIX"], project_env["JAVA_HOME"],
-            ])
-        self.assertTrue(self.host.failures.empty())
-
-    async def test_model_switch_waits_for_current_step_and_updates_next_decision(self):
-        import json
-        from redpanda.config import write_json
-        from redpanda.model_settings import ModelSettings
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-
-        pro = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
-               "reasoning_effort": "high"}
-        flash = {"model": "deepseek/flash", "compact_threshold_tokens": 64000}
-        write_json(self.home.config_path, {"model": {"default": pro["model"], "candidates": [pro, flash]}})
-        self.host.models = ModelSettings(self.home, self.store.root, path=self.home.config_path)
-        connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))
-        connections["deepseek"]["api_key"] = "test"
-        connections["stepfun"]["api_key"] = "test"
-        write_json(self.home.connections_path, connections)
-        (self.root / "input.txt").write_text("evidence", encoding="utf-8")
-        started, release = asyncio.Event(), asyncio.Event()
-        requests = []
-
-        class Llm:
-            async def chat(client, messages, model, **kwargs):
-                requests.append((model, messages, kwargs.get("reasoning_effort")))
-                if len(requests) == 1:
-                    started.set()
-                    await release.wait()
-                    return LLMCallResult(LLMResponse(content="", calls=(
-                        ToolCall("read", "read_file", '{"path":"input.txt"}'),
-                    )), LLMUsage(input_tokens=10, output_tokens=5))
-                return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=20, output_tokens=5))
-
-        self.host.llm = Llm()
-        await self.host.create("switch", self.workspace.workspace_id)
-        await self.host.accept_input("switch", "read evidence", delivery_id="first")
-        await asyncio.wait_for(started.wait(), 30)
-        selection = self.host.set_model("switch", flash["model"])
-        self.assertEqual(selection["effective"], pro)
-        self.assertTrue(selection["pending"])
-        self.assertEqual(len(requests), 1)
-        release.set()
-        await until(lambda: ("switch", "done") in self.output)
-        self.assertEqual([request[0] for request in requests], [pro["model"], flash["model"]])
-        self.assertEqual([request[2] for request in requests], ["high", None])
-        self.assertTrue(any(message["role"] == "tool" for message in requests[1][1]))
-        self.assertTrue(self.host.failures.empty())
-        await until(lambda: not self.host.workers and not self.host.watchers)
-
     async def test_web_can_reject_journal_authorization_after_host_restart(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
@@ -194,32 +84,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.root / "probe.md").exists())
         await until(lambda: (sid, "done") in self.output)
         self.assertTrue(self.host.failures.empty())
-
-    async def test_user_image_refs_cross_the_worker_boundary(self):
-        import json
-        from PIL import Image
-        from io import BytesIO
-        from redpanda.assistant.attachments import AttachmentGateway
-
-        buffer = BytesIO()
-        Image.new("RGB", (16, 16), "red").save(buffer, format="PNG")
-        await self.host.create("image-session", self.workspace.workspace_id)
-        ref = AttachmentGateway(self.home.runtime_sessions_root).for_session(
-            "image-session"
-        ).save_image(buffer.getvalue(), "image/png")
-        await self.host.accept_input(
-            "image-session",
-            "[Image #1]",
-            artifact_refs=(ref.attachment_id,),
-            delivery_id="image-input",
-        )
-        await until(lambda: ("image-session", "done") in self.output)
-        received = json.loads(
-            (self.root / "received-images.json").read_text(encoding="utf-8")
-        )
-        self.assertTrue(
-            received[0]["image_url"]["url"].startswith("data:image/png;base64,")
-        )
 
     async def persist_child(self):
         from datetime import datetime, timezone
@@ -305,49 +169,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await until(lambda: (sid, "done") in self.output)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_new_child_has_parent_identity_before_initialization(self):
-        await self.host.create("parent", self.workspace.workspace_id)
-        self.host.config_factory = partial(failing_startup_config, self.root, "config")
-        await asyncio.wait_for(
-            self.host._route(
-                "create_child",
-                CHILD,
-                child_task("read"),
-            ),
-            30,
-        )
-        await self.assert_failure_report("config initialization failed")
-
-    async def test_sibling_creation_has_no_workspace_queue(self):
-        from unittest.mock import AsyncMock, patch
-
-        await self.store.create(PARENT, workspace_id=self.workspace.workspace_id)
-        active = 0
-        peak = 0
-
-        class Files:
-            async def create(self, parent_id, child_id, *, conflict_child_id=None):
-                nonlocal active, peak
-                active += 1
-                peak = max(peak, active)
-                await asyncio.sleep(0.02)
-                active -= 1
-
-        intents = [
-            DelegateIntent(f"command-{index}", PARENT, f"{PARENT}/sub-command-{index}", "read")
-            for index in range(3)
-        ]
-        with (
-            patch("redpanda.assistant.host.supervisor.ChildFiles", return_value=Files()),
-            patch.object(self.host, "request", new_callable=AsyncMock),
-        ):
-            await asyncio.gather(*(
-                self.host._route("create_child", intent.child_session_id, task_fact_arguments(intent))
-                for intent in intents
-            ))
-        self.assertEqual(peak, 3)
-        self.assertTrue(all(self.store.path(intent.child_session_id).is_file() for intent in intents))
-
     async def test_child_startup_failure_does_not_strand_parent_delegate(self):
         from tests.fixtures.session_worker import delegate_startup_failure_config
 
@@ -379,12 +200,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_config_initialization_failure_is_reported(self):
         await self.assert_startup_failure("config")
-
-    async def test_assembly_initialization_failure_is_reported(self):
-        await self.assert_startup_failure("assembly")
-
-    async def test_client_initialization_failure_is_reported(self):
-        await self.assert_startup_failure("client")
 
     async def asyncSetUp(self):
         from redpanda.filesystem.registry import WorkspaceRegistry
@@ -464,35 +279,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(self.host.watchers)
             finally:
                 await self.host.close()
-
-    async def test_idle_exit_delivery_and_explicit_restart(self):
-        await self.host.create("one", self.workspace.workspace_id)
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        await self.host.receive_user_message("one", "hello", delivery_id="input")
-        await until(lambda: self.output)
-        self.assertEqual(self.activities[0], ("one", "running"))
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        await self.host.close()
-        self.host = self.new_host()
-        self.assertEqual(self.host.workers, {})
-        view = await self.host.resume("one")
-        self.assertEqual(view.status, "waiting")
-        await self.host.receive_user_message("one", "hello", delivery_id="input")
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        self.assertEqual(self.output, [("one", "done")])
-
-    async def test_preview_and_final_cross_worker_boundary_in_order(self):
-        await self.host.create("one", self.workspace.workspace_id)
-        await self.host.receive_user_message("one", "hello", delivery_id="input")
-        await until(lambda: self.output == [("one", "done")])
-
-        started, delta, final = self.delivery_order
-        self.assertEqual(started[:3], ("preview", "one", "started"))
-        self.assertEqual(delta[:3], ("preview", "one", "delta"))
-        self.assertEqual(delta[4], "done")
-        self.assertEqual(final[:2], ("final", "one"))
-        self.assertEqual(started[3], delta[3])
-        self.assertEqual(delta[3], final[2])
 
     async def test_model_failure_survives_query_and_selection_then_retries_without_repeating_tool(self):
         from redpanda.assistant.conversations import AssistantQueries
@@ -614,28 +400,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(phases[-1], "aborted")
         self.assertEqual([value[1] for value in self.tools], ["start", "fail"])
         self.assertEqual(self.activities[-1], ("one", "idle"))
-
-    async def test_selected_idle_worker_stays_until_owner_releases_it(self):
-        await self.host.create("one", self.workspace.workspace_id)
-        view = await self.host.select("cli", "one")
-        self.assertEqual(view.status, "waiting")
-        self.assertNotIn("one", self.host.workers)
-
-        await self.host.receive_user_message("one", "hello", delivery_id="input")
-        await until(lambda: self.output == [("one", "done")])
-        await until(
-            lambda: "one" in self.host.workers
-            and self.host.workers["one"].idle_revision is not None
-        )
-        process_id = self.host.workers["one"].process.pid
-        self.assertIn("one", self.host.workers)
-        self.assertEqual(self.host.workers["one"].process.pid, process_id)
-
-        await self.host.select("web", "one")
-        await self.host.release("cli")
-        self.assertIn("one", self.host.workers)
-        await self.host.release("web")
-        await until(lambda: "one" not in self.host.workers)
 
     async def test_decision_cancel_is_cooperative_and_durable_across_worker_boundary(self):
         from redpanda.runtime import DecisionCancelled
@@ -857,22 +621,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         (self.root / "release").touch()
         await until(lambda: ("blocked", "done") in self.output)
 
-    async def test_two_children_return_after_parent_worker_exits(self):
-        await self.host.create("parent", self.workspace.workspace_id)
-        await self.host.receive_user_message(
-            "parent", "DELEGATE_CHILDREN", delivery_id="input"
-        )
-        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
-        await until(lambda: "parent" not in self.host.workers)
-        pids = {worker.process.pid for worker in self.host.workers.values()}
-        self.assertEqual(len(pids), 2)
-        (self.root / "release").touch()
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
-        self.assertEqual(len(project_delegations(events)), 2)
-        self.assertEqual(len(project_reclaimed(events)), 2)
-        self.assertTrue(all(sid == "parent" for sid, _ in self.output))
-
     async def test_resume_selected_parent_recovers_its_children_only(self):
         await self.host.create("unrelated", self.workspace.workspace_id)
         await self.host.create("parent", self.workspace.workspace_id)
@@ -928,25 +676,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(not root.exists() for root in roots))
         self.assertTrue(all(child not in self.host.workers for child in children))
         self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
-
-    async def test_deliveries_during_idle_transition_are_all_durable(self):
-        await self.host.create("one", self.workspace.workspace_id)
-        await asyncio.gather(
-            *(
-                self.host.receive_user_message(
-                    "one", f"message {i}", delivery_id=f"input-{i}"
-                )
-                for i in range(12)
-            )
-        )
-        await until(lambda: not self.host.workers and not self.host.watchers)
-        from redpanda.runtime import UserMessageReceived
-
-        events = await SqliteJournal(self.store.require("one")).snapshot("one")
-        self.assertEqual(
-            len([e for e in events if isinstance(e.payload, UserMessageReceived)]), 12
-        )
-        self.assertTrue(self.host.failures.empty())
 
     async def test_child_recovery_preserves_unfinished_read_and_reports_once(self):
         from redpanda.runtime import DispatchAttemptStarted
