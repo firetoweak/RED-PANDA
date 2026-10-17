@@ -179,7 +179,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         for _ in range(2):
             failure = await asyncio.wait_for(self.host.wait_failure(), 30)
-            self.assertIn("/sub-", failure.session_id, failure.failure.render())
+            self.assertIn("/sub-", failure.session_id)
             self.assertIn("child initialization failed", failure.failure.message)
         await until(lambda: not self.host.workers and not self.host.watchers)
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
