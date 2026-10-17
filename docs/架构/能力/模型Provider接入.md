@@ -10,7 +10,7 @@ Worker 通过 Host LLM port 调用，不能直接连接 Provider。
 
 ## thinllm 与 RED PANDA 的分界
 
-Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `redpanda` 平行的独立包 `thinllm` 中。`thinllm` 不 import `redpanda`，由 `tests/architecture/` 守住；它只回答「给定 `provider/model` 与一份连接设置，怎样发出一次流式调用」。
+Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `redpanda` 平行的独立包 `thinllm` 中。`thinllm` 不 import `redpanda`；它只回答「给定 `provider/model` 与一份连接设置，怎样发出一次流式调用」。
 
 RED PANDA 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件编码、个人连接设置加载以及面向用户的失败文案。拆分是为了让 Provider 层的膨胀有明确的边界，不是为了单独发布；`thinllm` 不做成通用网关。
 

@@ -2,18 +2,18 @@
 
 Channel 把外部通信协议映射到 Assistant 的 Session 操作。它不实现模型决策或 Session 推进循环，也不决定本机用哪套环境变量去找程序、跑命令。
 
-TUI 的具体行为见[入口与授权](入口与授权.md)；进程驻留和进程身份见[多活跃会话](../运行/多活跃会话.md)；四个 Channel 的平级关系见 [Channel 协议改造](Channel协议改造.md)。
+入口只有两个，地位不同：
 
-## 四种 identity
+- **Web 是唯一的常驻 Host 入口。** 将来的长期 Agent 与 Agent 之间的消息只挂在 Web 所在的 Host 上。
+- **TUI 是即开即用的单会话入口。** 它使用自己的数据根，与 Web 的数据没有关联，关闭即结束，不承载长期 Agent。
 
-| identity | 用途 |
-|---|---|
-| Access | 谁可以使用入口 |
-| Conversation | 稳定对话 identity，直接对应业务 Session |
-| Delivery | 幂等接纳一条外部消息 |
-| Reply route | 把输出送回正确会话 |
+不保留平级多入口；接入新的外部客户端时，从 Web Host 出发重新设计。
 
-**凭证不是 Conversation identity。** IM 类入口由 Bot 账号与对话共同选择稳定 Conversation，token 只用于访问；进程重启恢复同一 Session，更换 Bot 不复用旧 Session。
+TUI 的具体行为见[入口与授权](入口与授权.md)；进程驻留、进程身份与「一个数据根只有一个 Host」见[多活跃会话](../运行/多活跃会话.md)。
+
+## identity
+
+Conversation identity 是稳定的对话身份，直接对应业务 Session；Delivery identity 用于幂等接纳一条外部消息。
 
 每个 Channel 实例还提供稳定 owner identity，通过 `select` / `release` 声明用户当前使用的 Session。这是 Host 的瞬时驻留事实，不写入 Journal，Host 重启后由 Channel 重新选择。**owner 只控制驻留与回复路由，不是 Command 授权身份**；一个 Session 同时存在多个 owner 时也不改变其授权策略。
 
@@ -23,7 +23,7 @@ TUI 的具体行为见[入口与授权](入口与授权.md)；进程驻留和进
 
 Channel 把原始文本交给一次 `accept_input()` 请求，Assistant 在同一个 Worker 内按固定优先级处理：control confirmation、Command authorization、terminal、普通用户消息。
 
-**这个顺序在 Worker 内一次决定，是为了消除 `view → action` 竞态**——Channel 不先查状态再决定发什么。所有入口共用同一行为。
+**这个顺序在 Worker 内一次决定，是为了消除 `view → action` 竞态**——Channel 不先查状态再决定发什么。
 
 所有普通文本，无论 Session 当时正在模型决策、执行 Command 还是等待输入，都单次接纳为 `UserMessageReceived`：
 
@@ -61,4 +61,4 @@ Step 原子提交后，Assistant 正文通过产品拥有的 `deliver` Command �
 
 Channel 关闭时释放 owner。Runtime 的 `WAITING` 不决定 Worker 是否退出——Host 在 Worker 静止后根据 owner 选择决定是否继续驻留。
 
-一次回答结束后 Session 回到 `WAITING(external_fact)`，后续文本进入同一 Session。compact 可以在两次决策之间切换 ContextWindow，Session、用户入口和 Reply route 不变。Session 没有绝对终态。
+一次回答结束后 Session 回到 `WAITING(external_fact)`，后续文本进入同一 Session。compact 可以在两次决策之间切换 ContextWindow，Session 与用户入口不变。Session 没有绝对终态。

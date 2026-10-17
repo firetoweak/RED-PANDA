@@ -5,7 +5,7 @@ description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace,
 
 # Verify RED PANDA
 
-Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat, tool calls, and file rewind also need a configured model and, for file tools, the native sandbox. This skill does not cover the terminal (`console_chat.py`) or ACP (`acp_chat.py`) entry points.
+Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat, tool calls, and file rewind also need a configured model and, for file tools, the native sandbox. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
 
 UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开会话列表`.
 
