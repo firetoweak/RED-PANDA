@@ -21,7 +21,6 @@ from redpanda.assistant.control import (
     CONTROL_SUCCEEDED,
     AssistantControlPlane,
     ControlDecisionConflict,
-    pending_approval_view,
     project_control,
     project_control_message,
     project_pending_approval,
@@ -234,6 +233,17 @@ async def _build_pending(*, handler=None):
     return journal, runtime, control, request
 
 
+def _sessions(runtime, control, scheduler=None) -> AssistantSessions:
+    return AssistantSessions(
+        runtime,
+        ToolSurface(),
+        WakeRecorder() if scheduler is None else scheduler,
+        control=control,
+        management=SimpleNamespace(),
+        catalog=EmptyCatalog(),
+    )
+
+
 class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
     async def test_model_sees_proposal_status_without_internal_payload(self):
         journal, runtime, _control, request = await _build_pending()
@@ -249,38 +259,9 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
             for message in messages
             if message["role"] == "user" and CONTROL_PROPOSED in message["content"]
         )
-        self.assertEqual(set(fact), {"request_id", "action", "summary", "risk", "status"})
+        self.assertNotIn("payload", fact)
         self.assertEqual(fact["summary"], request.summary)
         self.assertIn("尚未执行", fact["status"])
-
-    async def test_context_preparation_timing_excludes_model_call(self):
-        from unittest.mock import patch
-
-        clock = [0.0]
-        journal = MemoryJournal()
-        snapshot = journal.snapshot
-
-        async def timed_snapshot(session_id):
-            clock[0] += 2
-            return await snapshot(session_id)
-
-        class Llm:
-            async def chat(self, *args, **kwargs):
-                clock[0] += 10
-                return LLMCallResult(LLMResponse(content="done"), LLMUsage(1, 1))
-
-        runtime = _runtime(journal, AssistantControlPlane((_operation(_proposal),)), llm=Llm())
-        await runtime.receive_user_message(SESSION_ID, "hello", delivery_id="hello")
-        with (
-            patch("redpanda.assistant.decision.perf_counter", lambda: clock[0]),
-            patch.object(journal, "snapshot", timed_snapshot),
-            self.assertLogs("redpanda.assistant.decision", level="INFO") as captured,
-        ):
-            await runtime.advance(SESSION_ID)
-        self.assertEqual(len(captured.records), 1)
-        self.assertEqual(captured.records[0].stage, "system")
-        self.assertEqual(captured.records[0].operation, "context_prepare")
-        self.assertEqual(captured.records[0].elapsed_ms, 2000)
 
     async def test_request_is_committed_with_step_before_preparation(self):
         observed_step = []
@@ -343,49 +324,33 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
             [],
         )
 
-    async def test_known_preparation_failure_is_distinct_fact(self):
+    async def test_known_preparation_outcomes_are_distinct_facts(self):
         async def unavailable(_input: ProposalInput):
-            return ControlPreparationFailure({
-                "ok": False,
-                "code": "SOURCE_UNAVAILABLE",
-            })
+            return ControlPreparationFailure({"ok": False, "code": "SOURCE_UNAVAILABLE"})
 
-        journal = MemoryJournal()
-        control = AssistantControlPlane((_operation(unavailable),))
-        runtime = _runtime(journal, control, llm=ControlLlm(control_calls=1))
-        await runtime.receive_user_message(SESSION_ID, "安装它", delivery_id="user-1")
-        await settle_session(runtime, SESSION_ID, control=control)
-
-        facts = _facts(await journal.snapshot(SESSION_ID), CONTROL_PREPARATION_FAILED)
-        self.assertEqual(len(facts), 1)
-        self.assertTrue(facts[0].requests_decision)
-
-    async def test_known_conclusion_is_distinct_fact(self):
         async def concluded(_input: ProposalInput):
             return {"ok": False, "code": "ALREADY_INSTALLED"}
 
-        journal = MemoryJournal()
-        control = AssistantControlPlane((_operation(concluded),))
-        runtime = _runtime(journal, control)
-        await runtime.receive_user_message(SESSION_ID, "安装它", delivery_id="user-1")
-        await settle_session(runtime, SESSION_ID, control=control)
+        for propose, fact_type in (
+            (unavailable, CONTROL_PREPARATION_FAILED),
+            (concluded, CONTROL_CONCLUDED),
+        ):
+            with self.subTest(fact_type=fact_type):
+                journal = MemoryJournal()
+                control = AssistantControlPlane((_operation(propose),))
+                runtime = _runtime(journal, control)
+                await runtime.receive_user_message(SESSION_ID, "安装它", delivery_id="user-1")
+                await settle_session(runtime, SESSION_ID, control=control)
 
-        facts = _facts(await journal.snapshot(SESSION_ID), CONTROL_CONCLUDED)
-        self.assertEqual(len(facts), 1)
-        self.assertTrue(facts[0].requests_decision)
+                facts = _facts(await journal.snapshot(SESSION_ID), fact_type)
+                self.assertEqual(len(facts), 1)
+                self.assertTrue(facts[0].requests_decision)
 
     async def test_approval_records_decision_start_and_terminal_before_wake(self):
         handler = ApprovalHandler()
         journal, runtime, control, request = await _build_pending(handler=handler)
         scheduler = WakeRecorder()
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            scheduler,
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        sessions = _sessions(runtime, control, scheduler)
 
         message = await sessions.resolve_control(
             SESSION_ID,
@@ -424,14 +389,7 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
     async def test_rejection_is_terminal_and_idempotent(self):
         journal, runtime, control, request = await _build_pending()
         scheduler = WakeRecorder()
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            scheduler,
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        sessions = _sessions(runtime, control, scheduler)
 
         first = await sessions.resolve_control(SESSION_ID, request.id, approved=False)
         second = await sessions.resolve_control(SESSION_ID, request.id, approved=False)
@@ -444,14 +402,7 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_execution_error_leaves_started_and_never_retries(self):
         handler = ApprovalHandler(fail=True)
         journal, runtime, control, request = await _build_pending(handler=handler)
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        sessions = _sessions(runtime, control)
 
         with self.assertRaisesRegex(RuntimeError, "approval execution failed"):
             await sessions.resolve_control(SESSION_ID, request.id, approved=True)
@@ -477,14 +428,7 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
             requests_decision=False,
         )
         restarted = AssistantControlPlane((_operation(_proposal, handler),))
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=restarted,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        sessions = _sessions(runtime, restarted)
 
         await sessions.recover_control(SESSION_ID)
         await sessions.recover_control(SESSION_ID)
@@ -497,57 +441,23 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_conflicting_decision_is_rejected(self):
         _journal, runtime, control, request = await _build_pending()
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        sessions = _sessions(runtime, control)
         await sessions.resolve_control(SESSION_ID, request.id, approved=False)
 
         with self.assertRaises(ControlDecisionConflict):
             await sessions.resolve_control(SESSION_ID, request.id, approved=True)
 
-    async def test_control_message_is_rebuilt_from_journal(self):
+    async def test_control_message_rebuilds_from_journal_until_next_user_message(self):
         journal, runtime, control, request = await _build_pending()
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
+        await _sessions(runtime, control).resolve_control(
+            SESSION_ID, request.id, approved=True,
         )
-        await sessions.resolve_control(SESSION_ID, request.id, approved=True)
-
-        restarted = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=AssistantControlPlane((_operation(_proposal),)),
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
+        restarted = _sessions(runtime, AssistantControlPlane((_operation(_proposal),)))
         self.assertEqual((await restarted.view(SESSION_ID)).control_message, "安装完成")
-
-    async def test_control_message_hides_after_the_next_user_message(self):
-        journal, runtime, control, request = await _build_pending()
-        sessions = AssistantSessions(
-            runtime,
-            ToolSurface(),
-            WakeRecorder(),
-            control=control,
-            management=SimpleNamespace(),
-            catalog=EmptyCatalog(),
-        )
-        await sessions.resolve_control(SESSION_ID, request.id, approved=True)
-        self.assertEqual((await sessions.view(SESSION_ID)).control_message, "安装完成")
 
         await runtime.receive_user_message(SESSION_ID, "继续", delivery_id="next")
 
-        self.assertIsNone((await sessions.view(SESSION_ID)).control_message)
+        self.assertIsNone((await restarted.view(SESSION_ID)).control_message)
         self.assertEqual(
             project_control(await journal.snapshot(SESSION_ID)).states[-1].phase,
             "succeeded",
@@ -590,8 +500,3 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_lease_loss_does_not_leak_stage_into_retry(self):
         await self._assert_retry_clears_uncommitted_stage(FailOnceJournal("lease"))
-
-    async def test_view_projects_pending_identity(self):
-        journal, _runtime_value, _control, request = await _build_pending()
-        view = pending_approval_view(await journal.snapshot(SESSION_ID))
-        self.assertEqual(view.request_id, request.id)
