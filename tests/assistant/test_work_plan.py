@@ -132,6 +132,17 @@ def test_request_prefix_and_historical_plan_text_survive_replace_and_clear():
     assert len([tool for item in view.items if item.kind == "step" for tool in item.tools]) == 3
 
 
+def test_unchanged_plan_is_not_appended_again():
+    projector = ModelContextProjector()
+    events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
+    first = projector.prepare(events, StateProjector().project_visible("s", events), "s", "sys")
+    events += update(5, PLAN, snapshot=first.work_plan_context)
+    second = projector.prepare(events, StateProjector().project_visible("s", events), "s", "sys")
+    assert second.work_plan_context is None
+    assert second.messages[:len(first.messages)] == first.messages
+    assert [m["content"] for m in second.messages].count(first.work_plan_context) == 1
+
+
 def test_compact_reading_window_keeps_plan_from_full_journal_not_summary():
     events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
     state = StateProjector().project_visible("s", events, ())

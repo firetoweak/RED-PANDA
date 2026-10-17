@@ -150,13 +150,8 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
         # 起过 attempt 却没有结果。Journal 分不出「还在跑」和「已中断」，
         # 那是进程事实，不在事件里，所以这里只说到它知道的为止。
         code = "NO_RESULT_YET"
-        error = f"该调用已开始执行，但未取得最终结果，原因未知，可能已部分执行（工具={tool_name}）。"
-        hint = (
-            "无法确认该调用是否仍在执行，也无法确认是否因进程异常、连接中断或其他原因停止。"
-            "不要把缺少结果当作未执行或执行失败。续跑前请先检查相关文件、外部状态"
-            "及仍在运行的操作，确认哪些操作已完成，再决定是否等待、补做或重试，"
-            "避免重复产生副作用。"
-        )
+        error = f"该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具={tool_name}）。"
+        hint = "先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。"
     elif state.dispatch_eligible_by_event_id is None:
         code = "AWAITING_AUTHORIZATION"
         error = f"该调用正在等待用户授权（工具={tool_name}）。"
@@ -309,7 +304,9 @@ def _translate_visible_events(
                     continue
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
-            if payload.fact_type == CONTROL_PROPOSED:
+            if payload.fact_type == "assistant.catalog":
+                shown_data = catalog_for_model(shown_data)
+            elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]
                     for key in ("request_id", "action", "summary", "risk")
@@ -319,10 +316,7 @@ def _translate_visible_events(
                 shown_data = {
                     key: shown_data[key] for key in ("request_id", "action")
                 }
-                shown_data["status"] = (
-                    "操作已开始；若后续没有最终结果，执行结果未知，可能已部分执行。"
-                    "继续前先检查实际状态，不直接重试；仅凭开始记录无法确定中断原因。"
-                )
+                shown_data["status"] = "操作已开始；之后没有结果时视为结果未知，先检查实际状态，不直接重试。"
             elif payload.fact_type in {CONTROL_SUCCEEDED, CONTROL_FAILED}:
                 shown_data = {
                     key: shown_data[key]
@@ -550,7 +544,7 @@ def _stub_content(
     elif outcome["ok"]:
         error = None
     else:
-        error = "完整错误信息见外置结果。"
+        error = "完整错误用 read_content 读取 data.reference。"
     stub: dict[str, object] = {
         "ok": outcome["ok"],
         "code": outcome["code"],
@@ -602,6 +596,18 @@ def externalize_tool_result(
         preview_chars=settings.preview_chars,
     )
     return externalized
+
+
+def catalog_for_model(data: Mapping[str, object]) -> dict[str, object]:
+    """revision 只用于目录一致性校验，模型拿它做不了任何事。"""
+    return {
+        key: [
+            {name: field for name, field in item.items() if name != "revision"}
+            for item in value
+        ] if isinstance(value, list) else value
+        for key, value in data.items()
+        if key != "revision"
+    }
 
 
 class ModelContextProjector:
@@ -670,6 +676,12 @@ class ModelContextProjector:
             *(item.message for item in items[1:]),
         ]
         plan_text = render_work_plan(events)
+        shown = next(
+            (item.message["content"] for item in reversed(items) if item.kind == "work_plan"),
+            None,
+        )
+        if plan_text == shown:
+            plan_text = None
         if plan_text is not None:
             messages.append({"role": "user", "content": plan_text})
         return PreparedModelContext(

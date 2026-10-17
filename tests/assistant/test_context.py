@@ -281,7 +281,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(self._tool_messages(messages)[0]["content"])
         self.assertEqual(payload["code"], "NO_RESULT_YET")
         self.assertIn("原因未知", payload["error"])
-        self.assertIn("无法确认该调用是否仍在执行", payload["hint"])
+        self.assertIn("可能仍在执行", payload["error"])
         self.assertNotIn("用户停止", payload["error"])
 
         gate.set()
@@ -327,7 +327,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(unknown["ok"])
             self.assertEqual(unknown["code"], "NO_RESULT_YET")
             self.assertIn("原因未知", unknown["error"])
-            self.assertIn("可能已部分执行", unknown["error"])
+            self.assertIn("已部分执行", unknown["error"])
             self.assertIn("先检查相关文件", unknown["hint"])
             self.assertNotIn("用户停止", unknown["error"])
 

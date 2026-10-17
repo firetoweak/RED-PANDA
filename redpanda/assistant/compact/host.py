@@ -6,6 +6,7 @@ import asyncio
 import json
 from inspect import isawaitable
 from redpanda.assistant.artifacts import FileArtifactGateway
+from redpanda.assistant.context.projection import catalog_for_model
 from redpanda.assistant.compact.core import (
     TASK,
     HANDOFF_PREFIX,
@@ -202,7 +203,7 @@ class CompactHost:
                     "role": "user",
                     "content": "<capability_catalog>\n"
                     + json.dumps(
-                        {"fact": "assistant.catalog", "data": snapshot["catalog"]},
+                        {"fact": "assistant.catalog", "data": catalog_for_model(snapshot["catalog"])},
                         ensure_ascii=False,
                     )
                     + "\n</capability_catalog>",

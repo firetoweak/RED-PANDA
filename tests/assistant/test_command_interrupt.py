@@ -211,7 +211,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"output_is_result": false', projected)
             self.assertIn("用户停止", projected)
             self.assertIn("可能已部分执行", projected)
-            self.assertIn("先检查相关文件或外部状态", projected)
+            self.assertIn("先检查相关文件和外部状态", projected)
             self.assertNotIn("COMMAND_TIMEOUT", projected)
         events = await runtime.snapshot("session")
         self.assertEqual(

@@ -27,17 +27,15 @@ _LOGGER = logging.getLogger(__name__)
 EXECUTE_COMMAND_DESCRIPTION = """
 用途：使用 {shell_name} 在本机执行 CLI 命令。
 何时使用：用于依赖安装、构建、测试、格式化、静态检查、Git、包管理器和运行脚本；常规文件发现、搜索、读取和修改应使用专用文件工具。
-关键限制：相对 cwd 从工作区开始，绝对 cwd 按本机路径规则；command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。{write_constraint}
+关键限制：command 使用 {shell_name} 语义；Shell 路径为 {shell_path}；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。{write_constraint}
 影响声明：只读查询使用 read_only；可能修改工作区文件、生成缓存或无法确定时使用 may_write。read_only 查询可并行，必须能独立完成，不要用它等待其他修改完成或触发修改、回退。要验证某次修改，等修改调用返回后再查询。
 文件访问：默认 managed，工作区内修改按受管范围记录并支持文件回退；host 可能写入时需授权。两种方式的 cwd 均须在会话允许范围内；命令本身不提供文件访问隔离，host 不代表提权。managed 执行失败不得自动改为 host 重试。workspace_effect 是副作用声明，不是选择文件访问方式，也不是操作系统权限控制。
 文件限制：managed 的 may_write 命令在任务目录内不支持改变所有者、显式设置时间戳、目录重命名、创建硬链接或特殊文件；存在多个硬链接的文件不能删除或重命名。
-能力边界：不提供进程、系统或网络隔离；需要隔离保证时停止执行并说明缺少的能力。
 人工交互：不支持命令中途的 UAC、sudo 密码或硬件确认。不要启动需要这类确认的命令；遇到要求时停止这条执行路径，说明需由用户在工具外完成的步骤，待用户告知完成后再检查条件。工具调用获批不代表取得系统提权或完成身份验证。
 执行环境：各次调用独立，前一次命令中的环境激活、变量修改和目录切换不会自动带入本次调用。需要指定环境时，在 command 中明确调用对应的解释器、环境管理器，或先准备环境再执行；准备失败时不要继续执行后续项目命令。
 CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
 结果：退出码为 0 时 code 为 COMMAND_COMPLETED；非 0 时为 COMMAND_EXIT_NONZERO，表示命令已运行但不能当作成功。
-失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；超时或失败时不能假定命令成功，也不要无条件重试可能产生副作用的命令；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
-被用户停止时 code 为 COMMAND_INTERRUPTED，ok 为空，命令已被终止，可能已部分执行；已捕获的 stdout/stderr 只是证据（output_is_result 为 false），不代表完整结果。续跑前先检查相关文件或外部状态，确认哪些操作已完成，再决定是否补做或重试；已发生的副作用不会自动撤销。
+失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
 """.strip()
 
 
@@ -48,7 +46,7 @@ class ExecuteCommandInput(BaseModel):
     )
     cwd: str | None = Field(
         default=None,
-        description="命令启动目录；省略时为工作区，相对路径也从工作区开始",
+        description="命令启动目录；省略时为工作区",
     )
     command: str = Field(description="要交给 Shell 执行的完整命令字符串")
     workspace_effect: Literal["read_only", "may_write"] = Field(
@@ -116,20 +114,12 @@ def create_command_execution_spec(
                 "ok": False,
                 "code": "CWD_NOT_FOUND",
                 "error": f"工作目录不存在: {raw.cwd}",
-                "execution_location": resolved_cwd.location.to_dict(),
-                "workspace_membership": (
-                    resolved_cwd.workspace_membership.to_dict()
-                ),
             }
         if not cwd.is_dir():
             return {
                 "ok": False,
                 "code": "CWD_NOT_A_DIRECTORY",
                 "error": f"工作目录不是目录: {raw.cwd}",
-                "execution_location": resolved_cwd.location.to_dict(),
-                "workspace_membership": (
-                    resolved_cwd.workspace_membership.to_dict()
-                ),
             }
 
         try:
@@ -150,10 +140,6 @@ def create_command_execution_spec(
                 "error": str(exc),
                 "shell": exc.shell_name,
                 "executable": exc.executable,
-                "execution_location": resolved_cwd.location.to_dict(),
-                "workspace_membership": (
-                    resolved_cwd.workspace_membership.to_dict()
-                ),
             }
         except CommandStartError as exc:
             _LOGGER.warning("Command did not start: %s", exc)
@@ -161,10 +147,6 @@ def create_command_execution_spec(
                 "ok": False,
                 "code": "COMMAND_START_FAILED",
                 "error": "命令未能启动，请确认本机命令执行组件已安装，并检查 Shell、启动目录、访问权限和可用资源。",
-                "execution_location": resolved_cwd.location.to_dict(),
-                "workspace_membership": (
-                    resolved_cwd.workspace_membership.to_dict()
-                ),
             }
         except CommandConstraintError as exc:
             _LOGGER.warning("Workspace command constraint failed: %s", exc)
@@ -177,8 +159,6 @@ def create_command_execution_spec(
                     "命令无法继续满足本机执行限制，已停止，可能已部分执行。"
                 ),
                 "data": {
-                    "execution_location": resolved_cwd.location.to_dict(),
-                    "workspace_membership": resolved_cwd.workspace_membership.to_dict(),
                     "cwd": resolved_cwd.workspace_membership.display_path,
                     "command_cwd": str(cwd),
                     "workspace_effect": raw.workspace_effect,
@@ -189,10 +169,6 @@ def create_command_execution_spec(
             }
 
         data = {
-            "execution_location": resolved_cwd.location.to_dict(),
-            "workspace_membership": (
-                resolved_cwd.workspace_membership.to_dict()
-            ),
             "cwd": resolved_cwd.workspace_membership.display_path,
             "command_cwd": str(cwd),
             "workspace_effect": raw.workspace_effect,
@@ -204,13 +180,8 @@ def create_command_execution_spec(
                 "ok": None,
                 "code": COMMAND_INTERRUPTED,
                 "data": {**data, "output_is_result": False},
-                "error": "命令因用户停止而被中断，执行结果未知，可能已部分执行。",
-                "hint": (
-                    "命令进程已被终止。已捕获的 stdout/stderr 只是中断前的输出证据，"
-                    "不代表完整结果或当前文件、外部状态。已发生的副作用不会自动撤销。"
-                    "续跑前请先检查相关文件或外部状态，确认哪些操作已完成，"
-                    "再决定是否补做或重试，避免重复产生副作用。"
-                ),
+                "error": "命令被用户停止，可能已部分执行。",
+                "hint": "已捕获的输出不完整；续跑前先检查相关文件和外部状态，避免重复副作用。",
             }
         if result.timed_out:
             return {
@@ -218,11 +189,7 @@ def create_command_execution_spec(
                 "code": "COMMAND_TIMEOUT",
                 "data": {**data, "output_is_result": False},
                 "error": f"命令执行超过 {raw.timeout_seconds} 秒，已因超时终止，可能已部分执行。",
-                "hint": (
-                    "已捕获的 stdout/stderr 只是超时前的输出证据，不代表完整结果。"
-                    "已发生的副作用不会自动撤销。续跑前请先检查相关文件或外部状态，"
-                    "确认已完成的操作，再决定是否调整超时、补做或重试。"
-                ),
+                "hint": "已捕获的输出不完整；续跑前先检查现场。需要更长时间可调大 timeout_seconds。",
             }
         if result.io_errors:
             return {

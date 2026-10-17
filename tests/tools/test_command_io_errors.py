@@ -34,8 +34,8 @@ class CommandIoErrorsTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.timed_out)
 
         resolved = SimpleNamespace(
-            native_path=Path.cwd(), location=SimpleNamespace(to_dict=lambda: {}),
-            workspace_membership=SimpleNamespace(to_dict=lambda: {}, display_path="."),
+            native_path=Path.cwd(),
+            workspace_membership=SimpleNamespace(display_path="."),
         )
         runner = SimpleNamespace(run=AsyncMock(return_value=result))
         binding = SimpleNamespace(

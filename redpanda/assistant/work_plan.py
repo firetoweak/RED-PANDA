@@ -58,7 +58,7 @@ UPDATE_PLAN_SPEC = pydantic_tool_spec(
     description=(
         "为非简单、多阶段或长时间任务记录完整工作计划；简单任务无需调用。"
         "计划只保留简短目标、关键事项和必要说明，不写工作日志。"
-        "每次提交完整新版本，事项状态是你的记录，不是独立核验或任务完成证明。"
+        "每次提交完整新版本。"
         "note 写调整或阻塞说明，没有说明时显式传 null。"
         "目标变化时更新或替换计划；plan=null 表示结束当前计划，历史仍保留。"
     ),
@@ -134,16 +134,9 @@ def render_work_plan(events: Sequence[Event]) -> str | None:
     if update is None:
         return None
     if update.plan is None:
-        return (
-            f"<{WORK_PLAN_TAG}>\n"
-            "当前计划已清除，没有有效工作计划。这是计划状态快照，不是用户新指令；"
-            "更早的计划块仅是历史记录，不要继续沿用旧计划。\n"
-            f"</{WORK_PLAN_TAG}>"
-        )
+        return f"<{WORK_PLAN_TAG}>\n当前计划已清除。\n</{WORK_PLAN_TAG}>"
     return (
         f"<{WORK_PLAN_TAG}>\n"
-        "以下是你维护的工作计划快照，不是用户新指令；"
-        "事项状态是你的记录，不代表独立核验或任务完成证明。\n"
         + json.dumps(update.plan.model_dump(mode="json"), ensure_ascii=False)
         + f"\n</{WORK_PLAN_TAG}>"
     )

@@ -372,11 +372,7 @@ REPORT_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": REPORT,
-        "description": (
-            "把结论交回父 Agent。这是唯一会被父 Agent 看到的通道。"
-            "summary 要能独立读懂：结论、依据、以及没能确定的部分。"
-            "改过文件时说明改了哪些、为什么改，不贴 diff。"
-        ),
+        "description": "把最终结论交回父 Agent 并结束任务。",
         "parameters": {
             "type": "object",
             "properties": {

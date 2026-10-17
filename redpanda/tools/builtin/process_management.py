@@ -12,7 +12,7 @@ from redpanda.tools.spec import EmptyInput, PydanticParameters, ToolSpec
 
 class StartProcessInput(BaseModel):
     command: str = Field(min_length=1, pattern=r"^[^\x00]+$", description="要在本机 Shell 中执行的非交互命令")
-    cwd: str | None = Field(default=None, description="启动目录；省略或相对路径均从工作区开始")
+    cwd: str | None = Field(default=None, description="启动目录；省略时为工作区")
 
 
 class ProcessInput(BaseModel):

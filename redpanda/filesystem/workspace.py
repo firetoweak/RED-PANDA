@@ -205,12 +205,6 @@ class ResolvedEnvironmentPath:
     location: EnvironmentLocation
     workspace_membership: WorkspaceMembership
 
-    def result_fields(self) -> dict[str, object]:
-        return {
-            "location": self.location.to_dict(),
-            "workspace_membership": self.workspace_membership.to_dict(),
-        }
-
 
 @dataclass(frozen=True)
 class FileAccess:

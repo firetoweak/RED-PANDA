@@ -44,12 +44,11 @@ class GetChangesToolTest(unittest.IsolatedAsyncioTestCase):
     async def query(self, path=".", *, binding=None, scope="session"):
         return await create_get_changes_specs(binding or self.binding, self.session_operations)[0].handler(GetChangesInput(path=path, scope=scope))
 
-    async def test_delegates_to_file_management_and_exposes_logical_locations(self):
+    async def test_delegates_to_file_management(self):
         result = await self.query("file.txt")
         self.filesystem.changes.assert_awaited_once_with(self.root / "file.txt", operations=("a" * 64,), offset=0, text_offset=0)
         self.session_operations.assert_awaited_once_with()
         item = result["changes"][0]
-        self.assertEqual(item["location"]["path"], (self.root / "file.txt").as_uri())
         self.assertEqual(item["edits"][0]["after"], "new")
         self.assertNotIn("repository_location", result)
 

@@ -13,10 +13,8 @@ LIST_INSTALLED_SKILLS = "list_installed_skills"
 TEST_INSTALLED_SKILL = "test_installed_skill"
 SKILL_HELP = "skill_help"
 SKILL_MANAGEMENT_GUIDE = (
-    "Skill 安装时会复制一份完整的包；来源只用于获取和更新，改动来源不会影响已安装的包。"
-    "已安装列表不是可安装白名单。安装默认启用，一次审批；启用后出现在能力目录，不代表正文已加载。"
-    "正文用 load_skill，包内文本用 read_skill_resource；二者始终可直接调用，不必先 load_management_tools。"
-    "已知用法可直接操作，不必先调用 skill_help。只读操作查询事实，变更操作提交审批。"
+    "已安装的 Skill 是独立副本，改动来源后需用 propose_skill_update 同步；"
+    "可从任意来源安装，不限于已安装列表。"
 )
 
 
@@ -96,7 +94,7 @@ def create_skill_help_spec(operations: Mapping[str, ToolSpec]) -> ToolSpec:
         if operation is None:
             return {
                 "ok": True, "code": "SKILL_HELP",
-                "data": {"guide": SKILL_MANAGEMENT_GUIDE, "operations": [
+                "data": {"operations": [
                     {"operation": key, "tool": item.name, "description": item.description,
                      "requires_approval": item.control_boundary}
                     for key, item in all_operations.items()
@@ -105,13 +103,13 @@ def create_skill_help_spec(operations: Mapping[str, ToolSpec]) -> ToolSpec:
         selected = all_operations[operation]
         return {
             "ok": True, "code": "SKILL_HELP",
-            "data": {"operation": operation, "guide": SKILL_MANAGEMENT_GUIDE,
+            "data": {"operation": operation,
                      "requires_approval": selected.control_boundary,
                      "tool": selected.to_openai_tool()["function"]},
         }
 
     spec = ToolSpec(
-        SKILL_HELP, SKILL_MANAGEMENT_GUIDE + " 本工具查询管理地图或某项操作的完整用法，不触发安装或审批。",
+        SKILL_HELP, SKILL_MANAGEMENT_GUIDE + "本工具返回管理操作清单或某项操作的完整参数，不触发安装或审批。",
         parameters, help_skill,
     )
     return spec
