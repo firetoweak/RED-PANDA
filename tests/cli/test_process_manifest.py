@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from redpanda.cli.composition import build_cli
+from redpanda.cli.installer import resolve_cli_path
 from redpanda.cli.runtime import LOAD_CLI, LoadCliInput
 from redpanda.paths import RedPandaHome
 
@@ -60,8 +61,8 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded["code"], "CLI_LOADED")
         self.assertEqual(loaded["data"]["version"], record.version)
 
-    @unittest.skipUnless(os.name == "nt", "where.exe 解析分支")
-    async def test_where_resolution_uses_fresh_path(self):
+    @unittest.skipUnless(os.name == "nt", "持久化 PATH 仅存在于 Windows")
+    async def test_command_name_resolution_uses_fresh_path(self):
         """PATH 目录新增后，无需重启即可解析到其中的命令。"""
         bin_dir = Path(self.temporary.name) / "freshbin"
         bin_dir.mkdir()
@@ -95,10 +96,8 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
                     value_type,
                     (original + ";" if original else "") + str(bin_dir),
                 )
-                resolved = await self.assembly.service.installer.resolve_path(
-                    "redpanda-fake-cli"
-                )
-                # where.exe may return 8.3 short paths (RUNNER~1); compare by identity.
+                resolved = resolve_cli_path("redpanda-fake-cli")
+                # PATHEXT casing and 8.3 short paths (RUNNER~1) may differ; compare by identity.
                 self.assertTrue(
                     os.path.samefile(resolved, shim),
                     f"{resolved!r} is not the same file as {shim!r}",
