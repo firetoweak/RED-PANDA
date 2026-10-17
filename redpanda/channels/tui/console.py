@@ -16,9 +16,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.compact.store import ConversationStatus
 from redpanda.assistant.host.ipc import WorkerFailed
-from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.sessions import SessionView
-from redpanda.assistant.toolsets import ToolsetLoadError
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.model_settings import ModelConfigurationError
 from redpanda.channels.tui.images import ConsoleMessage, ImagePaste
@@ -237,7 +235,10 @@ def _print_runtime_status(view: SessionView) -> None:
         )
 
 
-async def run_runtime_console(workspace_path: Path | None = None) -> None:
+async def run_runtime_console(
+    workspace_path: Path | None = None,
+    command_environment: dict[str, str] | None = None,
+) -> None:
     context_meter = _ContextMeter()
     stream_output = _StreamingConsoleOutput(lambda: session.app.invalidate())
     session: PromptSession[str] = _BottomAnchoredPromptSession(
@@ -257,6 +258,8 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
             )
         ),
         session_failed_sink=lambda _session_id, message: stream_output.note(message),
+        command_environment=command_environment,
+        fresh_sessions=True,
     ) as app:
         image_paste = ImagePaste(AttachmentGateway(app.sessions_root))
         # 只追加粘贴绑定。PromptSession 自己会把它和回车提交绑在一起；
@@ -287,7 +290,7 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
         print(f"RED PANDA 已启动。model={sessions.models.selected(session_id)}")
         print(f"工作区：{access}")
         print(f"当前对话：{session_id}")
-        print("/new 新对话    /resume <id> 恢复")
+        print("/new 新对话（关闭后不保留会话）")
         print("/mcp  /skill  管理外部能力")
         print("直接输入任务。运行中再输入会打断当前任务。")
         print("Ctrl+C 或 Ctrl+D 退出。")
@@ -340,30 +343,6 @@ async def run_runtime_console(workspace_path: Path | None = None) -> None:
                             subagent_active=view.has_active_subagents,
                         )
                         print(f"\n新 Session 已创建：{session_id}")
-                        continue
-                    if user_message == "/resume" or user_message.startswith("/resume "):
-                        parts = user_message.split(maxsplit=1)
-                        if len(parts) != 2 or not parts[1].strip():
-                            print("\n用法：/resume <session_id>")
-                            continue
-                        target_session_id = parts[1].strip()
-                        try:
-                            view = await sessions.select(owner, target_session_id)
-                        except SessionNotFoundError:
-                            print(f"\nSession 不存在：{target_session_id}")
-                            continue
-                        except ToolsetLoadError as exc:
-                            print(f"\nSession 恢复失败：{exc.code}: {exc.message}")
-                            continue
-                        session_id = target_session_id
-                        image_paste.bind(session_id)
-                        context_meter.select(
-                            sessions.conversation_status(session_id),
-                            selected_threshold(),
-                            subagent_active=view.has_active_subagents,
-                        )
-                        print(f"\n已恢复 Session：{session_id}")
-                        _print_runtime_status(view)
                         continue
                     try:
                         mcp_reply = await mcp_console.execute_if_handled(user_message)

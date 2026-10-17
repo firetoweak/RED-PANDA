@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from functools import partial
 from pathlib import Path
 from thinllm import ChatCompletionsClient
 
+from redpanda.assistant.host.data_root import hold_data_root
 from redpanda.assistant.host.process_env import install_host_environment
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -65,65 +67,75 @@ async def bootstrap_assistant(
     session_activity_sink=None,
     session_failed_sink=None,
     schedule_changed_sink=None,
+    command_environment: dict[str, str] | None = None,
+    fresh_sessions: bool = False,
 ) -> AsyncIterator[BootstrappedAssistant]:
+    """``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。"""
     install_timing_logging()
-    command_environment = dict(os.environ)
+    if command_environment is None:
+        command_environment = dict(os.environ)
     install_host_environment()
-    config = load_app_config() if app_config is None else app_config
     home = RedPandaHome.default()
-    home.initialize()
-    clear_stale_mounts(home)
-    store = SessionStore(home.runtime_sessions_root)
-    if app_config is not None and not config_path().exists():
-        write_json(config_path(), app_config.to_dict())
-    models = ModelSettings(home, store.root)
-    if app_config is not None:
-        models.save(app_config.to_dict())
-    llm = ModelConnections(home.connections_path, client_factory=ChatCompletionsClient)
-    workspaces = WorkspaceRegistry.load(home.workspaces_path)
-    # 只有调用方明确给出路径才登记。TUI / ACP 传入启动目录或 --workspace；
-    # Web 缺省不从进程 cwd 偷建工作区。
-    workspace = (
-        None if workspace_path is None else workspaces.register_path(workspace_path)
-    )
-    host = HostSupervisor(
-        store,
-        partial(worker_config, config),
-        home,
-        sink,
-        workspaces=workspaces,
-        llm=llm,
-        command_environment=command_environment,
-        models=models,
-        context_usage_sink=context_usage_sink,
-        subagent_activity_sink=subagent_activity_sink,
-        conversation_status_sink=conversation_status_sink,
-        tool_progress_sink=tool_progress_sink,
-        authorization_required_sink=authorization_required_sink,
-        preview_sink=preview_sink,
-        thinking_sink=thinking_sink,
-        subagent_output_sink=subagent_output_sink,
-        session_activity_sink=session_activity_sink,
-        session_failed_sink=session_failed_sink,
-        schedule_changed_sink=schedule_changed_sink,
-    )
-    mcp = build_mcp(home)
-    skills = build_skills(
-        home, diff_summarizer=LlmSkillDiffSummarizer(llm, lambda: models.config().default_model or "")
-    )
-    await host.pause_unfinished_sessions()
-    async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
-        host.start_automation(tasks)
-        try:
-            yield BootstrappedAssistant(
-                config,
-                host,
-                store.root,
-                mcp.service,
-                skills.service,
-                AssistantQueries(store, host),
-                workspaces,
-                workspace,
-            )
-        finally:
-            await host.close()
+    # 先独占数据根，再碰任何 Journal、挂载、定时或持续进程。
+    with hold_data_root(home):
+        clear_stale_mounts(home)
+        if fresh_sessions:
+            for root in (home.runtime_sessions_root, home.state_root):
+                if root.exists():
+                    shutil.rmtree(root)
+        config = load_app_config() if app_config is None else app_config
+        home.initialize()
+        store = SessionStore(home.runtime_sessions_root)
+        if app_config is not None and not config_path().exists():
+            write_json(config_path(), app_config.to_dict())
+        models = ModelSettings(home, store.root)
+        if app_config is not None:
+            models.save(app_config.to_dict())
+        llm = ModelConnections(home.connections_path, client_factory=ChatCompletionsClient)
+        workspaces = WorkspaceRegistry.load(home.workspaces_path)
+        # 只有调用方明确给出路径才登记。TUI 传入启动目录或 --workspace；
+        # Web 缺省不从进程 cwd 偷建工作区。
+        workspace = (
+            None if workspace_path is None else workspaces.register_path(workspace_path)
+        )
+        host = HostSupervisor(
+            store,
+            partial(worker_config, config),
+            home,
+            sink,
+            workspaces=workspaces,
+            llm=llm,
+            command_environment=command_environment,
+            models=models,
+            context_usage_sink=context_usage_sink,
+            subagent_activity_sink=subagent_activity_sink,
+            conversation_status_sink=conversation_status_sink,
+            tool_progress_sink=tool_progress_sink,
+            authorization_required_sink=authorization_required_sink,
+            preview_sink=preview_sink,
+            thinking_sink=thinking_sink,
+            subagent_output_sink=subagent_output_sink,
+            session_activity_sink=session_activity_sink,
+            session_failed_sink=session_failed_sink,
+            schedule_changed_sink=schedule_changed_sink,
+        )
+        mcp = build_mcp(home)
+        skills = build_skills(
+            home, diff_summarizer=LlmSkillDiffSummarizer(llm, lambda: models.config().default_model or "")
+        )
+        await host.pause_unfinished_sessions()
+        async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
+            host.start_automation(tasks)
+            try:
+                yield BootstrappedAssistant(
+                    config,
+                    host,
+                    store.root,
+                    mcp.service,
+                    skills.service,
+                    AssistantQueries(store, host),
+                    workspaces,
+                    workspace,
+                )
+            finally:
+                await host.close()

@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
+
+from redpanda.config import CONFIG_PATH_ENV
+from redpanda.paths import HOME_PATH_ENV
 
 
 async def async_main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(encoding="utf-8")
-    from redpanda.channels.tui.console import run_runtime_console
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--workspace",
@@ -17,8 +19,27 @@ async def async_main(argv: list[str] | None = None) -> None:
         default=None,
         help="工作区路径；缺省使用启动目录",
     )
+    parser.add_argument(
+        "--home",
+        type=Path,
+        default=Path.home() / ".redpanda-tui",
+        help="TUI 自己的数据目录，与 Web 的数据互不相干",
+    )
     args = parser.parse_args(argv)
-    await run_runtime_console(workspace_path=args.workspace)
+    # 工作区命令沿用启动环境，不看到 TUI 改写的数据目录。
+    command_environment = dict(os.environ)
+    os.environ[HOME_PATH_ENV] = str(args.home)
+    os.environ.pop(CONFIG_PATH_ENV, None)
+
+    from redpanda.channels.tui.console import run_runtime_console
+    from redpanda.initialize import configure, initialize, needs_configuration
+
+    home = initialize()
+    if needs_configuration(home):
+        configure(home)
+    await run_runtime_console(
+        workspace_path=args.workspace, command_environment=command_environment
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
