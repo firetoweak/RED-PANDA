@@ -407,7 +407,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.host.config_factory = partial(cancellable_config, self.root)
         self.host.llm = CancellableProcessLlm(self.root)
         await self.host.create("one", self.workspace.workspace_id)
-        await self.host.select("acp", "one")
+        await self.host.select("web", "one")
         await self.host.accept_input(
             "one",
             "CANCEL_PROCESS",

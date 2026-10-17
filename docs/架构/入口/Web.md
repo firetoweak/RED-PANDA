@@ -1,6 +1,6 @@
 # Web
 
-Web 是与 TUI、ACP、Satori 平级的原生 Channel。浏览器只经 Web 后端使用 Assistant 应用操作与查询，不直接读 Journal，也不承担 Session 恢复。
+Web 是唯一的常驻 Host 入口，以后的长期 Agent、Agent 间消息与定时、事件触发都挂在它上面，见 [Channel 接入契约](Channel接入契约.md)。浏览器只经 Web 后端使用 Assistant 应用操作与查询，不直接读 Journal，也不承担 Session 恢复。
 
 状态归类与所有权按[运行语义规约](../运行语义规约.md)，入口通用约束见 [Channel 接入契约](Channel接入契约.md)。本文只记 Web 特有的边界决策。
 
