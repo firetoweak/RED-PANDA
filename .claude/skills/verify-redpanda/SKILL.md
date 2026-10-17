@@ -65,7 +65,7 @@ Set-Content -Path "$env:RUN_DIR\web.pid" -Value $proc.Id
 Run this before the first click, after any surprising failure, and before claiming the instance is still the one you started.
 
 ```sh
-./redpanda-env/bin/python .cursor/skills/verify-redpanda/doctor.py \
+./redpanda-env/bin/python .claude/skills/verify-redpanda/doctor.py \
   --url "$REDPANDA_VERIFY_URL" \
   --home "$REDPANDA_HOME" \
   --pid-file "$RUN_DIR/web.pid"
