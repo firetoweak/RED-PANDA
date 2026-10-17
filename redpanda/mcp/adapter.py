@@ -3,22 +3,16 @@ from __future__ import annotations
 import hashlib
 import re
 from copy import deepcopy
-from typing import Any, Mapping
-
-from mcp.types import (
-    AudioContent,
-    CallToolResult,
-    EmbeddedResource,
-    ImageContent,
-    ResourceLink,
-    TextContent,
-)
+from typing import TYPE_CHECKING, Any, Mapping
 
 from redpanda.tools.spec import JsonSchemaParameters, ToolSpec
 from redpanda.mcp.toolsets import ToolsetLoadError
 from jsonschema.exceptions import SchemaError, ValidationError
 from jsonschema.validators import validator_for
 from redpanda.mcp.models import sanitize_error_summary
+
+if TYPE_CHECKING:
+    from mcp.types import CallToolResult
 
 
 _SAFE_NAME = re.compile(r"[^a-zA-Z0-9_-]+")
@@ -233,6 +227,14 @@ def input_required_unsupported() -> dict[str, Any]:
 
 
 def _serialize_content_block(block: Any) -> dict[str, Any]:
+    from mcp.types import (
+        AudioContent,
+        EmbeddedResource,
+        ImageContent,
+        ResourceLink,
+        TextContent,
+    )
+
     if isinstance(block, TextContent):
         return {"type": "text", "text": block.text}
     if isinstance(block, ImageContent):
