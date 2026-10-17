@@ -7,27 +7,19 @@ import pytest
 
 from redpanda.execution.command import BoundedTextCapture, CaptureLimit, CommandResult
 from redpanda.execution.local import windows_task
+from tests.fixtures.windows_gate import build
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(os.name != "nt", reason="Windows gate")]
 
 
 @pytest.fixture(scope="module")
-def gate_runtime(tmp_path_factory):
-    source_root = Path(__file__).resolve().parents[2]
+def gate_runtime(tmp_path_factory, pytestconfig):
+    if launcher := pytestconfig.getoption("--gate-runtime"):
+        launcher = launcher.resolve()
+        assert launcher.is_file() and launcher.with_name("redpanda-hook.dll").is_file()
+        return launcher
     runtime_root = Path(windows_task.__file__).resolve().parents[3]
-    compiler = runtime_root / ".tools/llvm-mingw-20261006-ucrt-x86_64/bin/x86_64-w64-mingw32-clang++.exe"
-    library = runtime_root / ".tools/execution/detours.a"
-    assert compiler.is_file() and library.is_file(), "Build Windows execution components before process verification"
-    source = source_root / "native/execution"
-    runtime = tmp_path_factory.mktemp("gate-runtime")
-    common = [str(compiler), "-std=c++17", "-O2", "-static", "-DDETOUR_DEBUG=0", "-D_WIN32_WINNT=0x0A00",
-              "-I", str(source), "-I", str(source / "vendor/detours/src")]
-    subprocess.run([*common, "-shared", str(source_root / "tests/fixtures/windows_gate_hook.cpp"), str(source / "hook.def"),
-                    str(library), "-o", str(runtime / "redpanda-hook.dll")], check=True, capture_output=True)
-    launcher = runtime / "redpanda-command.exe"
-    subprocess.run([*common, "-municode", str(source_root / "tests/fixtures/windows_gate_launcher.cpp"),
-                    str(library), "-o", str(launcher)], check=True, capture_output=True)
-    return launcher
+    return build(runtime_root, tmp_path_factory.mktemp("gate-runtime"))
 
 
 @pytest.mark.parametrize("case", ["short-delay", "withhold", "late-go", "fault-exit-race", "access-denied-live", "job-child"])

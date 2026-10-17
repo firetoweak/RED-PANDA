@@ -24,29 +24,19 @@ jobs:
   build:
     name: agentFS build (windows-x86_64)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements.lock
-      - name: Prepare Windows build and runtime dependencies
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: ./.github/actions/setup-native-windows
+        with:
+          cache-key: build
+      - name: Prepare command line tools for process verification
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $channel = python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])'
-          rustup toolchain install "$channel-x86_64-pc-windows-gnullvm" --profile minimal
-          if ($LASTEXITCODE -ne 0) { throw 'Rust installation failed' }
-          New-Item -ItemType Directory -Force .tools | Out-Null
-          Invoke-WebRequest 'https://github.com/mstorsjo/llvm-mingw/releases/download/20261006/llvm-mingw-20261006-ucrt-x86_64.zip' -OutFile .tools/llvm.zip
-          Expand-Archive .tools/llvm.zip -DestinationPath .tools
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_winfsp.ps1 -Developer
-          if ($LASTEXITCODE -ne 0) { throw 'WinFsp installation failed' }
-
           $tools = Join-Path $PWD '.tools\bin'
           New-Item -ItemType Directory -Force $tools | Out-Null
 
@@ -72,34 +62,10 @@ jobs:
         run: python scripts/build_agentfs.py --llvm-dir .tools/llvm-mingw-20261006-ucrt-x86_64/bin
       - name: Package agentFS runtime
         run: python -m scripts.agentfs_runtime package --platform windows-x86_64
-      - name: Verify agentFS native contracts
-        shell: pwsh
-        run: |
-          @'
-          import os, subprocess
-          from scripts.build_agentfs import ROOT, prepare_environment
-          prepared = prepare_environment(ROOT / '.tools/llvm-mingw-20261006-ucrt-x86_64/bin')
-          environment = prepared.variables
-          environment['CARGO_TARGET_DIR'] = str(ROOT / '.tools/agentfs/target')
-          environment['PATH'] = str(ROOT / 'redpanda/filesystem/bin') + os.pathsep + environment['PATH']
-          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
-              '--manifest-path', str(ROOT / 'native/filesystem/Cargo.toml'),
-              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'tracking_contracts'],
-              env=environment, check=True)
-          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
-              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
-              '--target', 'x86_64-pc-windows-gnullvm', '--lib', '--tests'],
-              env=environment, check=True)
-          '@ | python -
       - name: Package Windows task execution runtime
         run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/agentFS'))"
-      - name: Prepare verification environment
-        run: python -m venv redpanda-env
-      - name: Verify Windows gate process contracts with build toolchains
-        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group gate
-      - name: Verify installation contracts
-        shell: bash
-        run: redpanda-env/Scripts/python.exe -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
+      - name: Compile gate fault-injection runtime
+        run: python tests/fixtures/windows_gate.py
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         with:
@@ -117,17 +83,42 @@ jobs:
             redpanda/execution/bin/
             dist/agentFS/
             .tools/bin/
+            .tools/test-fixtures/windows-gate/
           include-hidden-files: true
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
-      - name: Upload gate test report
-        uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
+
+  native:
+    name: Windows native contracts
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          name: windows-process-gate
-          path: .tools/test-results/*.xml
-          retention-days: 14
+          python-version-file: .python-version
+      - uses: ./.github/actions/setup-native-windows
+        with:
+          cache-key: contracts
+      - name: Verify agentFS native contracts
+        shell: pwsh
+        run: |
+          @'
+          import subprocess
+          from scripts.build_agentfs import ROOT, prepare_environment
+          prepared = prepare_environment(ROOT / '.tools/llvm-mingw-20261006-ucrt-x86_64/bin')
+          environment = prepared.variables
+          environment['CARGO_TARGET_DIR'] = str(ROOT / '.tools/agentfs/target')
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/filesystem/Cargo.toml'),
+              '--target', 'x86_64-pc-windows-gnullvm', '--test', 'tracking_contracts'],
+              env=environment, check=True)
+          subprocess.run([prepared.rustup, 'run', prepared.toolchain, 'cargo', 'test', '--locked',
+              '--manifest-path', str(ROOT / 'native/vfs/Cargo.toml'), '-p', 'vfs-core',
+              '--target', 'x86_64-pc-windows-gnullvm', '--lib', '--tests'],
+              env=environment, check=True)
+          '@ | python -
 
   process:
     name: Windows process (${{ matrix.group }})
@@ -137,36 +128,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [compact, supervisor, filesystem, other]
+        group: [compact, supervisor, filesystem, execution, integration]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/setup-process
         with:
-          python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements.lock
-      - uses: actions/setup-node@v7
-        if: matrix.group == 'other'
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - uses: actions/download-artifact@v7
-        with:
-          name: agentFS-windows-ci-inputs
-          path: .
-      - name: Prepare Windows runtime dependencies
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_winfsp.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'WinFsp installation failed' }
-          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $PWD '.tools\bin')
-      - name: Prepare verification environment
-        run: python -m venv redpanda-env
+          artifact: agentFS-windows-ci-inputs
+          node: ${{ matrix.group == 'execution' }}
       - name: Verify process contracts
-        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }}
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers 4
       - name: Upload process test report
         uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
@@ -175,17 +145,53 @@ jobs:
           path: .tools/test-results/*.xml
           retention-days: 14
 
+  gate:
+    name: Windows gate and installation contracts
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/download-artifact@v7
+        with:
+          name: agentFS-windows-ci-inputs
+          path: .
+      - name: Install test dependencies
+        run: python -m pip install --require-hashes -r requirements.lock
+      - name: Verify gate and installation contracts without build toolchains
+        run: >-
+          python -m pytest --all tests/execution/test_windows_gate_process.py
+          tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
+          --gate-runtime .tools/test-fixtures/windows-gate/redpanda-command.exe
+          --durations=20 --junitxml=.tools/test-results/gate-installation.xml
+      - name: Upload gate and installation report
+        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: windows-gate-installation
+          path: .tools/test-results/*.xml
+          retention-days: 14
+
   verify:
-    # Preserve the existing required check; every process group must pass.
+    # Preserve the required check; all Windows branches must pass.
     name: agentFS build and verify (windows-x86_64)
-    needs: [build, process]
+    needs: [build, native, process, gate]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require successful build and all process groups
+      - name: Require successful Windows build and verification
         env:
           BUILD_RESULT: ${{ needs.build.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
           PROCESS_RESULT: ${{ needs.process.result }}
+          GATE_RESULT: ${{ needs.gate.result }}
         run: |
           test "$BUILD_RESULT" = success
+          test "$NATIVE_RESULT" = success
           test "$PROCESS_RESULT" = success
+          test "$GATE_RESULT" = success

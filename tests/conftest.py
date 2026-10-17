@@ -7,6 +7,7 @@ import pytest
 
 
 PROCESS_GROUP_PATHS = {
+    "gate": ("execution/test_windows_gate_process.py",),
     "compact": ("assistant/test_compact.py",),
     "supervisor": ("assistant/test_supervisor.py",),
     "filesystem": (
@@ -15,7 +16,15 @@ PROCESS_GROUP_PATHS = {
         "sandbox/test_windows_hidden_process.py",
         "sandbox/test_windows_readonly_process.py",
     ),
-    "gate": ("execution/test_windows_gate_process.py",),
+    "execution": (
+        "execution/",
+        "tools/test_command_execution.py",
+        "tools/test_host_execution.py",
+        "tools/test_exec_policy.py",
+        "tools/test_command_io_errors.py",
+        "sandbox/test_bash.py",
+        "sandbox/test_command_wait.py",
+    ),
 }
 
 
@@ -33,9 +42,11 @@ def pytest_addoption(parser):
     )
     parser.addoption(
         "--process-group",
-        choices=(*PROCESS_GROUP_PATHS, "other"),
-        help="只运行指定 process 测试组；other 包含其余所有 process 用例",
+        choices=(*PROCESS_GROUP_PATHS, "integration"),
+        help="只运行指定 process 测试组；integration 包含其余所有 process 用例",
     )
+    parser.addoption("--gate-runtime", type=Path,
+                     help="Windows gate 测试使用的已编译 launcher 路径；省略时现场编译")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -45,8 +56,10 @@ def pytest_collection_modifyitems(config, items):
         selected, deselected = [], []
         for item in items:
             relative = item.path.relative_to(root).as_posix()
-            item_group = next((name for name, paths in PROCESS_GROUP_PATHS.items()
-                               if any(relative.startswith(path) for path in paths)), "other")
+            # The most specific path wins, so a file can be carved out of a directory group.
+            item_group = max(((len(path), name) for name, paths in PROCESS_GROUP_PATHS.items()
+                              for path in paths if relative.startswith(path)),
+                             default=(0, "integration"))[1]
             if item.get_closest_marker("process") and item_group == group:
                 selected.append(item)
             else:

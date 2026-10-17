@@ -22,36 +22,27 @@ env:
 
 jobs:
   build:
-    name: agentFS build and verify (linux-x86_64)
+    name: agentFS build (linux-x86_64)
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements.lock
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-native-linux
         with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - name: Prepare Linux build and runtime dependencies
+          cache-key: build
+      - name: Prepare command line tools for process verification
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y build-essential fuse3
-          sudo modprobe fuse
-
-          tools="$HOME/.local/bin"
+          tools="$GITHUB_WORKSPACE/.tools/bin"
           mkdir -p "$tools"
 
           curl -fsSL "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd-v${FD_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
             | tar -xz -C /tmp
           install -m 755 "/tmp/fd-v${FD_VERSION}-x86_64-unknown-linux-gnu/fd" "$tools/fd"
-          ln -sf fd "$tools/fdfind"
 
           curl -fsSL "https://github.com/BurntSushi/ripgrep/releases/download/${RG_VERSION}/ripgrep-${RG_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
             | tar -xz -C /tmp
@@ -61,11 +52,44 @@ jobs:
           "$tools/fd" --version
           "$tools/rg" --version
 
-          channel=$(python -c 'import tomllib; print(tomllib.load(open("native/filesystem/rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
-          rustup toolchain install "$channel" --profile minimal
       - name: Build agentFS for Linux
         id: build
         run: python scripts/build_agentfs.py
+      - name: Package agentFS runtime
+        run: python -m scripts.agentfs_runtime package --platform linux-x86_64
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        with:
+          name: agentFS-linux-x86_64
+          path: dist/agentFS/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Share built runtime and tools with process verification
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentFS-linux-ci-inputs
+          path: |
+            redpanda/filesystem/bin/
+            dist/agentFS/
+            .tools/bin/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  native:
+    name: Linux native contracts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+      - uses: ./.github/actions/setup-native-linux
+        with:
+          cache-key: contracts
       - name: Verify tracked filesystem mutation boundaries
         working-directory: native/filesystem
         env:
@@ -76,19 +100,50 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/.tools/agentfs/target
         run: cargo test --locked -p vfs-core --lib --tests
-      - name: Package agentFS runtime
-        run: python -m scripts.agentfs_runtime package --platform linux-x86_64
-      - name: Prepare verification environment
-        run: python -m venv redpanda-env
-      - name: Verify agentFS and execution process contracts
-        run: redpanda-env/bin/python scripts/ci.py process
-      - name: Verify installation contracts
-        run: redpanda-env/bin/python -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+
+  process:
+    name: Linux process (${{ matrix.group }})
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [compact, supervisor, filesystem, execution, integration]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-process
         with:
-          name: agentFS-linux-x86_64
-          path: dist/agentFS/*
-          if-no-files-found: error
-          compression-level: 0
+          artifact: agentFS-linux-ci-inputs
+          node: ${{ matrix.group == 'execution' }}
+      - name: Verify process contracts
+        run: redpanda-env/bin/python scripts/ci.py process --process-group ${{ matrix.group }} --workers 2
+      - name: Verify installation contracts
+        if: matrix.group == 'integration'
+        run: >-
+          redpanda-env/bin/python -m pytest tests/scripts/test_agentfs_runtime.py
+          tests/scripts/test_install_winfsp.py --junitxml=.tools/test-results/installation.xml
+      - name: Upload process test report
+        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: linux-process-${{ matrix.group }}
+          path: .tools/test-results/*.xml
           retention-days: 14
+
+  verify:
+    # Preserve the required check; all Linux branches must pass.
+    name: agentFS build and verify (linux-x86_64)
+    needs: [build, native, process]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful Linux build and verification
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          PROCESS_RESULT: ${{ needs.process.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$NATIVE_RESULT" = success
+          test "$PROCESS_RESULT" = success
