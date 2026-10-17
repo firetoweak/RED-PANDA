@@ -101,36 +101,13 @@ def project_management_activations(
         ):
             continue
         value = payload.outcome.value
-        if not isinstance(value, Mapping):
-            raise ValueError("load_management_tools outcome 必须是 object")
-        if "ok" not in value or type(value["ok"]) is not bool:
-            raise ValueError("load_management_tools outcome ok 无效")
         if value["ok"] is False:
             continue
-        if set(value) != {"ok", "code", "data"}:
-            raise ValueError("load_management_tools outcome 字段不匹配")
-        data = value["data"]
-        if (
-            value["ok"] is not True
-            or value["code"] != "MANAGEMENT_TOOLS_LOADED"
-            or not isinstance(data, Mapping)
-        ):
-            raise ValueError("load_management_tools outcome 不符合成功契约")
-        if set(data) != {"domain", "tools"}:
-            raise ValueError("load_management_tools outcome data 字段不匹配")
-        domain = data["domain"]
-        tools = data["tools"]
+        if value["code"] != "MANAGEMENT_TOOLS_LOADED":
+            raise ValueError("load_management_tools outcome code 无效")
+        domain = value["data"]["domain"]
         if type(domain) is not str or not domain:
             raise ValueError("load_management_tools domain 无效")
-        if not isinstance(tools, tuple) or any(
-            not isinstance(tool, Mapping)
-            or set(tool) != {"name", "kind", "description"}
-            or type(tool["name"]) is not str
-            or type(tool["description"]) is not str
-            or tool["kind"] not in {"diagnostic", "control", "resident"}
-            for tool in tools
-        ):
-            raise ValueError("load_management_tools tools 无效")
         activations.append(ManagementActivation(domain, payload.command_id))
     return tuple(activations)
 

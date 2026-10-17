@@ -120,14 +120,6 @@ def _snapshot_from_fact(fact: DomainFactCommitted) -> CapabilityCatalogSnapshot:
 
 
 def _snapshot_from_payload(payload: object) -> CapabilityCatalogSnapshot:
-    if not isinstance(payload, Mapping) or set(payload) != {
-        "revision",
-        "toolsets",
-        "skills",
-        "clis",
-        "management",
-    }:
-        raise ValueError("capability catalog fields do not match")
     revision = payload["revision"]
     management = payload["management"]
     if type(revision) is not str or not revision.startswith("sha256:"):
@@ -155,7 +147,7 @@ def _snapshot_from_payload(payload: object) -> CapabilityCatalogSnapshot:
 
 
 def _toolsets(value: object) -> tuple[ToolsetDescriptor, ...]:
-    items = _mapping_items(value, {"id", "description", "revision"}, "toolset")
+    items = _mapping_items(value, "toolset")
     result = tuple(
         ToolsetDescriptor(item["id"], item["description"], item["revision"])
         for item in items
@@ -165,7 +157,7 @@ def _toolsets(value: object) -> tuple[ToolsetDescriptor, ...]:
 
 
 def _skills(value: object) -> tuple[CatalogSkill, ...]:
-    items = _mapping_items(value, {"id", "description", "revision"}, "skill")
+    items = _mapping_items(value, "skill")
     result: list[CatalogSkill] = []
     for item in items:
         _require_description_and_revision(item, "skill")
@@ -175,11 +167,7 @@ def _skills(value: object) -> tuple[CatalogSkill, ...]:
 
 
 def _clis(value: object) -> tuple[CatalogCli, ...]:
-    items = _mapping_items(
-        value,
-        {"id", "description", "version", "revision"},
-        "cli",
-    )
+    items = _mapping_items(value, "cli")
     result: list[CatalogCli] = []
     for item in items:
         _require_description_and_revision(item, "cli")
@@ -200,17 +188,11 @@ def _clis(value: object) -> tuple[CatalogCli, ...]:
 
 def _mapping_items(
     value: object,
-    keys: set[str],
     kind: str,
 ) -> tuple[Mapping[str, object], ...]:
     if type(value) is not list:
         raise ValueError(f"capability catalog {kind}s must be a list")
-    items: list[Mapping[str, object]] = []
-    for item in value:
-        if not isinstance(item, Mapping) or set(item) != keys:
-            raise ValueError(f"catalog {kind} fields do not match")
-        items.append(item)
-    return tuple(items)
+    return tuple(value)
 
 
 def _require_description_and_revision(

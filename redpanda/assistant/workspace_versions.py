@@ -48,10 +48,6 @@ class WorkspaceFileResult:
 
     @classmethod
     def parse(cls, data):
-        if not isinstance(data, Mapping) or set(data) != {
-            "policy", "effect", "changed_files", "preserved_files", "deleted_files", "failed_files", "error"
-        }:
-            raise ValueError("workspace file result fields invalid")
         if data["policy"] not in ("preserve", "original", "keep"):
             raise ValueError("workspace file result policy invalid")
         if data["effect"] not in ("restored", "partially_restored", "preserved", "unchanged", "kept", "failed"):
@@ -110,8 +106,6 @@ def project_workspace_file_result(events):
 
 
 def workspace_rescue_result(data):
-    if not isinstance(data, Mapping) or set(data) != {"step_id", "before_version", "version", "error", "result"}:
-        raise ValueError("workspace branch baseline fields invalid")
     if data["step_id"] is not None and (type(data["step_id"]) is not str or not data["step_id"]):
         raise ValueError("workspace branch step_id invalid")
     validate_version(data["before_version"])
@@ -135,10 +129,6 @@ class WorkspaceVersionFact:
 
     @classmethod
     def parse(cls, data) -> WorkspaceVersionFact:
-        if not isinstance(data, Mapping) or set(data) != {
-            "workspace_id", "step_id", "version", "error"
-        }:
-            raise ValueError("workspace version fact fields invalid")
         if type(data["workspace_id"]) is not str or not data["workspace_id"]:
             raise ValueError("workspace version workspace_id invalid")
         for key in ("step_id", "version", "error"):
@@ -189,10 +179,6 @@ def project_workspace_restores(events):
         if not isinstance(payload, DomainFactCommitted) or payload.fact_type != WORKSPACE_RESTORE_FACT:
             continue
         data = payload.data
-        if not isinstance(data, Mapping) or set(data) != {
-            "command_id", "tool_call_id", "before_version", "version", "error"
-        }:
-            raise ValueError("workspace restore fact fields invalid")
         for key in ("command_id", "tool_call_id", "before_version"):
             if type(data[key]) is not str or not data[key]:
                 raise ValueError(f"workspace restore {key} invalid")

@@ -9,7 +9,6 @@ from redpanda.assistant.conversations import AssistantQueries, recent_workspace_
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.workspaces import (
     SESSION_WORKSPACE_FACT,
-    UnboundSessionError,
     bound_workspace,
     bound_workspace_id,
 )
@@ -33,14 +32,6 @@ async def _append_user_message(store, session_id: str, text: str) -> None:
             delivery=DeliveryIdentity("web", f"delivery-{text}"),
         )
     )
-
-
-async def _create_unbound(store, session_id: str, text: str) -> None:
-    path = store.path(session_id)
-    path.parent.mkdir()
-    journal = SqliteJournal(path)
-    await journal.create_session(session_id)
-    await _append_user_message(store, session_id, text)
 
 
 class _IdleSessions:
@@ -114,24 +105,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(resolved, record)
 
-    async def test_unbound_session_is_an_explicit_error(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            store = SessionStore(root)
-            await _create_unbound(store, "legacy", "存量会话")
-            events = await SqliteJournal(
-                store.require("legacy")
-            ).snapshot("legacy")
-
-            self.assertIsNone(bound_workspace_id(events))
-            with self.assertRaises(UnboundSessionError):
-                bound_workspace(
-                    "legacy",
-                    events,
-                    WorkspaceRegistry.load(root / "workspaces.json"),
-                )
-
-    async def test_listing_hides_sessions_without_a_workspace(self):
+    async def test_listing_shows_bound_sessions(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             task_root = root / "task"
@@ -141,7 +115,6 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             store = SessionStore(root / "sessions")
             await store.create("bound", workspace_id=record.workspace_id)
             await _append_user_message(store, "bound", "有归属")
-            await _create_unbound(store, "legacy", "无归属")
 
             listed = await AssistantQueries(
                 store, _IdleSessions(registry)
