@@ -8,6 +8,7 @@ from pathlib import Path
 
 from redpanda.assistant.context.projection import ModelContextProjector, outcome_text
 from redpanda.assistant.control import AssistantControlPlane
+from redpanda.assistant.decision import with_command_interrupts
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.runtime import (
     AgentRuntime,
@@ -242,6 +243,56 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored_results, [
             json.loads(outcome_text(command.outcome)) for command in state.commands
         ])
+
+    async def test_cancel_turn_reaches_a_command_still_queued_behind_another(self):
+        # Managed commands serialize on the file operation; the second one waits outside it.
+        started = asyncio.Event()
+        serialized = asyncio.Lock()
+
+        class Runner:
+            async def run(self, command, cwd, timeout_seconds, *, interrupt=None):
+                started.set()
+                await interrupt.wait()
+                return _interrupted(command)
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        interrupts = CommandInterrupts()
+        spec = create_command_execution_spec(*_binding(root, Runner()), interrupts.current)
+
+        async def queued(_context, arguments):
+            async with serialized:
+                return await spec.handler(ExecuteCommandInput.model_validate(arguments))
+
+        runtime = AgentRuntime(
+            SqliteJournal(root / "journal.sqlite"),
+            ScriptedDecisionMaker((
+                lambda _frame: ModelDecision(command_requests=(
+                    InvokeTool("execute_command", (("command", "one"),)),
+                    InvokeTool("execute_command", (("command", "two"),)),
+                )),
+            )),
+            {"execute_command": with_command_interrupts(ToolBinding(queued), interrupts)},
+            SequentialIds(),
+        )
+        scheduler = SessionScheduler(runtime, "session", control=AssistantControlPlane(()))
+        scheduler.command_interrupts = interrupts
+        await runtime.receive_user_message("session", "run", delivery_id="delivery")
+        advancing = asyncio.create_task(runtime.advance("session"))
+        self.addAsyncCleanup(_stop, advancing, scheduler)
+        await asyncio.wait_for(started.wait(), timeout=STARTUP_TIMEOUT)
+
+        await asyncio.wait_for(scheduler.cancel_turn("session"), timeout=STARTUP_TIMEOUT)
+        await advancing
+
+        state = await runtime.state("session")
+        # A queued command that missed the stop would still be running here: no outcome yet.
+        self.assertEqual(
+            [None if command.outcome is None else command.outcome.value["code"]
+             for command in state.commands],
+            ["COMMAND_INTERRUPTED", "COMMAND_INTERRUPTED"],
+        )
 
     async def test_kill_failure_is_exposed_and_does_not_record_an_outcome(self):
         started = asyncio.Event()
