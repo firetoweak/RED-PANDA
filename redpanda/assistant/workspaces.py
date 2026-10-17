@@ -13,7 +13,7 @@ SESSION_WORKSPACE_FACT = "session.workspace"
 
 
 class UnboundSessionError(ValueError):
-    """会话 Journal 缺少工作区绑定事实（契约违规，应暴露）。"""
+    """会话没有工作区归属：存量会话按归档处理，不参与运行与展示。"""
 
     code = "unbound_session"
 
