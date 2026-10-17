@@ -192,6 +192,18 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 - extensions：`/mcp help` 列出 `/mcp reload`，实际没有该子命令。另记一项待定：终端 `/mcp upsert` 不经过模型路径上的 Shell 解释器拦截，是否应拦截由产品决定。
 - composer-attachments：隐藏的文件 `input` 没有任何入口触发。
 
+## 2026-10-18 Windows live 轮次
+
+同日在 Windows 上按 `../SKILL.md` 隔离启动实跑（`setup.ps1` 全流程、Doctor `--require-model --require-sandbox` 通过、模型 `deepseek/deepseek-flash`、agentFS 0.5.1），用桌面 app 内置浏览器面板驱动，证据（`note.txt`、`state.json`、`page*.jpg`）留在本机证据目录。上表「live 验证状态」列以本节为准。
+
+| 结果 | 功能 |
+|---|---|
+| 通过 | web-session-chat、tool-authorization、session-file-changes、agent-workspace-restore、file-rewind、rewind-edge-cases（人机混合同长）、edit-and-branch、run-control、subagents、subagents-parallel（并行派发）、scheduling、model-settings、session-sidebar、realtime-events、acp-channel（脚本 harness）、work-plan、work-plan-and-usage、setup-and-sandbox-install（Windows） |
+| 失败（产品缺口） | tool-coding-round（Windows 退出码折叠为 1）、crash-recovery（Worker 崩溃后会话永久卡死） |
+| 走不到 | workspace-management（重命名/移除）、layout-appearance（外观菜单）、composer-attachments、extensions、console-chat——中途浏览器面板隐藏后 `requestAnimationFrame`/`ResizeObserver` 不触发（实测 0 次），弹窗、菜单与虚拟时间线无法渲染；console-chat 需要交互终端 |
+
+本轮 live 新发现的产品缺口（已写入对应文件 `Gotchas`）：Windows 命令退出码折叠为 1；Worker 崩溃后会话永久卡死；自动放行批准后 `等待授权` 弹窗不关闭（已随待处理条消除）；回滚后第一条消息改写 409 且显示内部英文错误；文件属性行显示 Python `None`；会话页高频轮询 `/model` 与 `/model-settings`。地图漂移已按实测修正：停止命令后不出现 `继续`（run-control）、SSE keep-alive 实际为 `: ping`（realtime-events）。
+
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。

@@ -79,3 +79,4 @@
 - 2026-10-16（main@e191eab，仅 API，界面未验证）：`read_file`→`apply_patch`→`execute_command` 落盘；`start_process`/`read_process`/`list_processes`/`stop_process` 全部成功，停止后端口释放
 - 通过（2026-10-12，main@1a4790a）
 - PR #22（2026-10-16）：`EMPTY_PATTERN` 与 `TOOL_HANDLER_ERROR` 路径经 ToolsExecutor 直测 + Web live（glob `.`）通过；会话未崩。
+- 已知产品缺口（2026-10-18 Windows live）：Windows 上 `execute_command` 的非零退出码一律记为 `exit_code=1`（`cmd /c exit 2` 等三种写法均为 1，journal 原始值确认）。原因是 PowerShell `-Command` 包装不传递原生 `$LASTEXITCODE`；`code=COMMAND_EXIT_NONZERO` 本身正确。修复前在 Windows 上不要用具体退出码作判据。

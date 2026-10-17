@@ -276,6 +276,13 @@ class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.stderr.content, "err")
         self.assertFalse(result.timed_out)
 
+    async def test_preserves_native_program_exit_code(self):
+        runner = PowerShellCommandRunner()
+
+        result = await runner.run("cmd /c exit 2", Path.cwd(), 10)
+
+        self.assertEqual(result.exit_code, 2)
+
     async def test_decodes_utf8_output(self):
         runner = PowerShellCommandRunner()
         expected = "".join(chr(code) for code in (0x4E2D, 0x6587))

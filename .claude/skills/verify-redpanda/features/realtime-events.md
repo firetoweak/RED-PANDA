@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `connect`：首个事件 `connected` 带 `connection_id`；紧接着服务端补发一份当前运行态快照（运行中会话的 `session_activity`=`running`、运行中工具的 `tool_progress`=`running`、进行中的 `preview.started`/`preview.delta` 与 `thinking.started`/`thinking.delta`）；空闲时每 15 秒一条 `keep-alive` 注释。
+- `connect`：首个事件 `connected` 带 `connection_id`；紧接着服务端补发一份当前运行态快照（运行中会话的 `session_activity`=`running`、运行中工具的 `tool_progress`=`running`、进行中的 `preview.started`/`preview.delta` 与 `thinking.started`/`thinking.delta`）；空闲时每 15 秒一条 keep-alive 注释（线上内容为 `: ping`）。
 - `stream`：`preview.started/delta/aborted`、`thinking.started/delta/finished/aborted`、`output_final`、`tool_progress`、`authorization_required`、`session_activity`、`conversation_status`、`context_usage`、`schedule_changed`、`session_failed`。
 - `reconnect`：断线期间侧栏底部显示 `正在连接…`，输入框禁用且占位文字为 `正在连接…`；恢复后侧栏显示 `已连接`。
 - `multi-tab`：多个标签页同时连接，都能看到同一会话的更新。
@@ -17,7 +17,7 @@
 
 ## Driving it with the browser
 
-- **连接**：`curl -N $REDPANDA_VERIFY_URL/api/events`。(b) 首事件为 `event: connected`，含 `connection_id`；空闲时约每 15 秒出现一行 `: keep-alive`。(a) 有会话正在运行时新连上的 curl 在 `connected` 之后立刻收到该会话的 `session_activity`（`running`）及进行中的 `preview.*`/`tool_progress` 快照。(c) 快照只描述当下，不重放历史的 `output_final`。(d) 见下方失效连接。
+- **连接**：`curl -N $REDPANDA_VERIFY_URL/api/events`。(b) 首事件为 `event: connected`，含 `connection_id`；空闲时约每 15 秒出现一行 SSE 注释 `: ping`（2026-10-18 Windows 实测 15.0 s）。(a) 有会话正在运行时新连上的 curl 在 `connected` 之后立刻收到该会话的 `session_activity`（`running`）及进行中的 `preview.*`/`tool_progress` 快照。(c) 快照只描述当下，不重放历史的 `output_final`。(d) 见下方失效连接。
 - **流式**：发一条消息，(b) 依次出现 `preview.*`/`thinking.*`、`output_final`；(a) `output_final` 文本与 `GET /api/sessions/<id>` 最终回复一致（无丢字、重复）。(c) 回合进行中刷新页面：新连接的快照接上进行中的预览，最终文本仍与 `GET` 一致。
 - **多标签页**：A 页发消息，B 页同会话无刷新出现同样回复；侧栏状态同步。
   - (d) 写接口传断开前的旧 `connection_id` → 409，`detail` 为 `Web 连接已失效，请重新连接页面。`，不应 500。JSON 写接口传空 `connection_id` 会先被请求模型（`min_length=1`）拦下返回 422；另一条 409 文案 `Web 连接无效，请重新连接页面。` 只在未经该校验的入口出现（如 `POST .../attachments` 的 multipart 表单字段 `connection_id` 为空），可用它探测。
@@ -30,3 +30,4 @@
 - 代理或浏览器扩展可能缓冲 SSE；用 `curl -N` 做基准。
 - 外部编辑器直接修改文件不会产生这些 SSE 通知，首版用 `刷新文件变更` 更新；不把未监听外部编辑当成事件丢失。
 - 历史 live 状态：部分（2026-10-12，修复后）：流式通过；失效 connection_id 返回 409（隔离 API 通过）；断线重连未测。2026-10-18 按源码补充快照、keep-alive 间隔、断开释放与 409 文案，未重新 live 验证。
+- 2026-10-18 Windows live：SSE 首事件 `connected`（0.0 s），空闲 15.0 s 后注释 `: ping`；陈旧 `connection_id` 调写接口 409 `Web 连接已失效，请重新连接页面。`。
