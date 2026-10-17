@@ -10,4 +10,5 @@ agent-client-protocol==0.12.1
 fastapi>=0.135.0,<1
 uvicorn>=0.46.0,<1
 pytest>=9.0,<10
+pytest-xdist>=3.8,<4
 tiktoken>=0.11.0,<1

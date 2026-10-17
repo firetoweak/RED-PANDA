@@ -205,18 +205,30 @@ class BashCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancellation_terminates_child_process_group(self):
         runner = BashCommandRunner()
+        spawned = asyncio.Event()
+        create_process = asyncio.create_subprocess_exec
+
+        async def spawn(*args, **kwargs):
+            process = await create_process(*args, **kwargs)
+            spawned.set()
+            return process
+
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            task = asyncio.create_task(runner.run(
-                "(sleep 1; printf leaked > child.txt) & wait",
-                root,
-                10,
-            ))
-            await asyncio.sleep(0.1)
-            task.cancel()
+            with patch("redpanda.execution.local.bash.asyncio.create_subprocess_exec", new=spawn):
+                task = asyncio.create_task(runner.run(
+                    "(sleep 1; printf leaked > child.txt) & printf started > started; wait",
+                    root,
+                    10,
+                ))
+                async with asyncio.timeout(10):
+                    await spawned.wait()
+                    while not (root / "started").exists():
+                        await asyncio.sleep(0.01)
+                task.cancel()
 
-            with self.assertRaises(asyncio.CancelledError):
-                await task
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
             await asyncio.sleep(1.1)
 
             self.assertFalse((root / "child.txt").exists())

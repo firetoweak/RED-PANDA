@@ -35,10 +35,21 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Run default verification
         run: python scripts/ci.py python
+      - name: Upload Python test report
+        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: python-${{ matrix.os }}
+          path: .tools/test-results/*.xml
+          retention-days: 14
 
-  web:
-    name: Web
+  web-check:
+    name: Web (${{ matrix.target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [web-test, web-build]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -50,4 +61,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Run web verification
-        run: python scripts/ci.py web
+        run: python scripts/ci.py ${{ matrix.target }}
+
+  web:
+    name: Web
+    needs: web-check
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful web tests and build
+        env:
+          WEB_RESULT: ${{ needs.web-check.result }}
+        run: test "$WEB_RESULT" = success
