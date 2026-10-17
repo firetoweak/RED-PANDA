@@ -110,6 +110,8 @@ Use the browser automation in the session (Playwright or Chrome DevTools). The v
 - `browser snapshot --aria --path <file>`
 - `browser screenshot --path <file>`
 
+The conversation timeline is a virtual list (react-virtuoso) and dialogs and menus are Mantine transitions; all of them need `requestAnimationFrame` and `ResizeObserver`. In a browser pane that is hidden (for example the desktop app's built-in Browser pane while it is not on screen) those callbacks do not fire: the timeline renders no turns and `新建工作区`, `外观`, `等待确认` never open. Check with a tiny probe before trusting an empty page; if the pane cannot be kept visible, record those entries as `unreachable` with that prerequisite, not as product failures.
+
 `curl` is only the read-only confirmation written next to an action. Posting to `/api/workspaces`, `/api/sessions`, or `/api/sessions/.../inputs` does not prove the page.
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
