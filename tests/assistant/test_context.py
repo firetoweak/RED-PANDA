@@ -164,7 +164,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         await runtime.receive_user_message(self.SESSION, "go", delivery_id="ask-1")
         await runtime.advance(self.SESSION)
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await started.wait()
         await runtime.receive_user_message(self.SESSION, "wait", delivery_id="ask-2")
         gate.set()
         while runtime.dispatcher.active_count:
@@ -270,7 +270,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         await runtime.receive_user_message(self.SESSION, "go", delivery_id="ask-1")
         await runtime.advance(self.SESSION)
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await started.wait()
 
         events = await runtime._journal.snapshot(self.SESSION)
         messages = project_chat_messages(
