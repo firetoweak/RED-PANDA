@@ -136,7 +136,7 @@ jobs:
           artifact: agentFS-windows-ci-inputs
           node: ${{ matrix.group == 'execution' }}
       - name: Verify process contracts
-        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers 4
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers 2
       - name: Upload process test report
         uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
