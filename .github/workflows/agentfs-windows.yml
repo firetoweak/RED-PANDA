@@ -134,38 +134,17 @@ jobs:
           - group: supervisor
             workers: 4
           - group: filesystem
-            workers: 2
+            workers: 4
           - group: execution
             workers: 2
           - group: integration
             workers: 2
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/setup-process
         with:
-          python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements.lock
-      - uses: actions/setup-node@v7
-        if: matrix.group == 'execution'
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - uses: actions/download-artifact@v7
-        with:
-          name: agentFS-windows-ci-inputs
-          path: .
-      - name: Prepare Windows runtime dependencies
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_winfsp.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'WinFsp installation failed' }
-          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $PWD '.tools\bin')
-      - name: Prepare verification environment
-        run: python -m venv redpanda-env
+          artifact: agentFS-windows-ci-inputs
+          node: ${{ matrix.group == 'execution' }}
       - name: Verify process contracts
         run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }} --workers ${{ matrix.workers }}
       - name: Upload process test report

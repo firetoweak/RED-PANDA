@@ -122,32 +122,10 @@ jobs:
             workers: 2
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/setup-process
         with:
-          python-version-file: .python-version
-          cache: pip
-          cache-dependency-path: requirements.lock
-      - uses: actions/setup-node@v7
-        if: matrix.group == 'execution'
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - uses: actions/download-artifact@v7
-        with:
-          name: agentFS-linux-ci-inputs
-          path: .
-      - name: Prepare Linux runtime dependencies and executable permissions
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y fuse3
-          sudo modprobe fuse
-          chmod +x redpanda/filesystem/bin/redpanda-agentfs .tools/bin/fd .tools/bin/rg
-          echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
-      - name: Prepare verification environment
-        run: python -m venv redpanda-env
+          artifact: agentFS-linux-ci-inputs
+          node: ${{ matrix.group == 'execution' }}
       - name: Verify process contracts
         run: redpanda-env/bin/python scripts/ci.py process --process-group ${{ matrix.group }} --workers ${{ matrix.workers }}
       - name: Verify installation contracts
