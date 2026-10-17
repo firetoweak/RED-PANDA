@@ -138,11 +138,14 @@ class PowerShellCommandRunner:
         child_env = self.environment_policy.build(
             os.environ if self._environment is None else self._environment
         )
-        utf8_command = (
+        # -Command 只以 0/1 报告最后一条语句；失败时改传原生程序的退出码，
+        # 纯 PowerShell 失败没有 $LASTEXITCODE（或残留 0）时保持 1。换行隔开命令尾部注释。
+        script = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false);"
             "$OutputEncoding=[Console]::OutputEncoding;" + command
+            + "\nif (-not $?) { exit $(if ($LASTEXITCODE) { $LASTEXITCODE } else { 1 }) }"
         )
-        return [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", utf8_command], child_env
+        return [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], child_env
 
     async def run(
         self,
