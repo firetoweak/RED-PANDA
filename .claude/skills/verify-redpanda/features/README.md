@@ -58,7 +58,7 @@
 | workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
-| tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
+| tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |

@@ -1,12 +1,12 @@
 # 扩展能力：MCP、Skill、CLI
 
-助手可按需加载和管理外部能力；安装、更新、删除等都以 `propose_*` 形式请用户确认。终端入口另有 `/mcp`、`/skill` 命令（没有 `/cli` 命令）。来源：`redpanda/mcp/`（`approval.py`、`console.py`、`application.py`）、`redpanda/skills/`（`approval.py`、`console.py`）、`redpanda/cli/`（`approval.py`、`management_tools.py`、`models.py`、`runtime.py`）、`redpanda/assistant/management.py`、`redpanda/assistant/toolsets.py`、`redpanda/assistant/sessions.py`（终端/ACP 的 yes/no 回答）、`web/src/features/conversation/Conversation.tsx`（`等待确认` 弹窗）。
+助手可按需加载和管理外部能力；安装、更新、删除等都以 `propose_*` 形式请用户确认。终端入口另有 `/mcp`、`/skill` 命令（没有 `/cli` 命令）。来源：`redpanda/mcp/`（`approval.py`、`console.py`、`application.py`）、`redpanda/skills/`（`approval.py`、`console.py`）、`redpanda/cli/`（`approval.py`、`management_tools.py`、`models.py`、`runtime.py`）、`redpanda/assistant/management.py`、`redpanda/assistant/toolsets.py`、`redpanda/assistant/sessions.py`（终端/ACP 的 yes/no 回答）、`web/src/features/conversation/PendingActions.tsx`（输入框上方待处理条）。
 
 ## Sub-features
 
 - `load`：`load_management_tools`、`load_toolset`、`load_skill`、`read_skill_resource`、`load_cli`。
 - `inspect`：`list_mcp_servers`、`test_mcp_server`、`list_installed_skills`、`test_installed_skill`、`list_installed_clis`、`inspect_cli`、`test_cli`。
-- `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 弹出标题 `等待确认` 的弹窗，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端与 ACP 里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
+- `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 在输入框上方的待处理条（区域 `待处理`）列出该请求，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端与 ACP 里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
 - `mcp-stdio-guard`：`propose_mcp_install` / `propose_mcp_update` 的 stdio `command` 文件名（不区分大小写）为 `bash`、`cmd`、`cmd.exe`、`powershell`、`powershell.exe`、`pwsh`、`sh`、`zsh` 时直接校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，不进入确认。
 - `skill-source`：来源 `local` / `url` / `github`；`local` 的 locator 必须是本机绝对目录，否则 `local locator 必须是本机绝对目录`；`requested_ref` 只用于 `github`，其他来源传了即 `requested_ref 仅适用于 github 来源`。
 - `cli-register`：`propose_cli_install` 只登记本机已安装的程序（`name`、`description`、`locator`），`name` 须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，不合规返回 `code: CLI_INVALID`；已登记返回 `CLI_ALREADY_INSTALLED`；找不到程序返回 `CLI_SOURCE_ERROR`。登记后立即可用，没有启用/停用开关。
@@ -26,20 +26,20 @@
   - (b) 模型调用的是 `list_mcp_servers` / `list_installed_skills` / `list_installed_clis`；终端 `/mcp list` 在空 home 打印 `尚未注册任何 MCP Server。`。
   - (c) 列出不写文件。
   - (d) `/mcp list --foo` → `/mcp list 只接受可选参数 --runtime`。
-- **安装 Skill（取消后确认）**：准备一个最小 `SKILL.md` 目录，让助手按绝对路径安装 → 出现 `等待确认` 弹窗 → 点 `取消`。
+- **安装 Skill（取消后确认）**：准备一个最小 `SKILL.md` 目录，让助手按绝对路径安装 → 待处理条出现 `准备安装 Skill …` 一项 → 点 `取消`。
   - (a) `skills/` 不变。
   - (b) 再次请求后点 `确认` → `skills/` 出现该 skill，`list_installed_skills` 含它；`test_installed_skill` 通过。
   - (c) 取消那次不留下半成品目录。
   - (d) 给相对路径 → 工具校验失败 `local locator 必须是本机绝对目录`，不弹确认；`local` 来源附带 ref → `requested_ref 仅适用于 github 来源`。
 - **登记 CLI**：让助手登记本机的 `git`。
   - (a) 确认后 `clis/` 出现登记，`list_installed_clis` 含它，`inspect_cli` 返回解析路径与体检。
-  - (b) 确认弹窗摘要含 `准备登记 CLI`、`解析路径：`、`体检：`。
+  - (b) 待处理条中该项摘要含 `准备登记 CLI`、`解析路径：`、`体检：`。
   - (c) 不下载任何软件，只登记已有程序；`取消` 后 `clis/` 不变。
   - (d) 名称用 `Git_Tool` → `CLI_INVALID`，提示里有 `^[a-z0-9][a-z0-9-]{0,63}$`；不弹确认。
 - **MCP upsert 校验**（终端）：
   - (d) `/mcp upsert {}` → `/mcp upsert 缺少字段: id, transport`；多余字段 → `/mcp upsert 包含未知字段: ...`；非法 JSON → `/mcp upsert 需要合法 JSON`；`/mcp upsert` 不带参数 → 打印带示例的用法。以上 `mcp/` 都不变。
 - **MCP 命令解释器拦截**（对话）：
-  - (d) 让助手安装 stdio `command` 为 `bash`/`sh`/`pwsh`/`cmd.exe` 等的 MCP → 工具校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，不出现 `等待确认`，`mcp/` 不变。
+  - (d) 让助手安装 stdio `command` 为 `bash`/`sh`/`pwsh`/`cmd.exe` 等的 MCP → 工具校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，待处理条不出现该请求，`mcp/` 不变。
 - **未知子命令**：(d) `/skill foo` → `未知 /skill 子命令: foo`；`/skill set_enabled x maybe` → `/skill set_enabled <id> <true|false>`；`/mcp foo` → `未知 /mcp 子命令: foo`。
 - **密钥**：安装带密钥的 MCP 后，(c) 回复、journal、`GET /api/sessions/<id>` 里不出现明文密钥（`redpanda/mcp/secrets.py`）。
 

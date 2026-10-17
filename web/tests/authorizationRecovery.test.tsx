@@ -95,7 +95,6 @@ it("submits a recovered pending command with the new connection without an autho
   await waitFor(() => expect(store.getState().runtime.ownerSessionId).toBe("session"));
   act(() => { store.dispatch(disconnected()); store.dispatch(connected("new-connection")); });
   await waitFor(() => expect(store.getState().runtime.ownerSessionId).toBe("session"));
-  expect(store.getState().runtime.sessions.session.authorizations).toEqual({});
   fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
   await waitFor(() => expect(submissions).toEqual([{ connection_id: "new-connection", approved: false }]));
   await waitFor(() => expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull());

@@ -42,7 +42,7 @@
 
 - **判据**：
   - (a) `note.txt` 内容为 `edited`；`GET /api/sessions/<id>` 的 `items` 里有依次调用这三个工具的步骤，每个工具 `status` 为 `succeeded`。界面上成功步骤的标题行不显示状态徽标，展开后工具徽标为 `完成`（带勾）。
-  - (b) 不出现 `等待授权`；回复含 `CODING_ROUND_DONE`。
+  - (b) 不出现待处理条（区域 `待处理`）；回复含 `CODING_ROUND_DONE`。
   - **命令退出码**（同会话或后续轮，自动放行开启）：
     1. `execute_command` 跑 `bash -c 'echo boom >&2; exit 2'`（`workspace_effect=read_only`）→ journal/`outcome.value` 中 `ok=true`、`code=COMMAND_EXIT_NONZERO`、`data.exit_code=2`、`hint` 含「退出码非零」或「不要当作成功」；该工具 `status` 为 `succeeded`（「完成」），不是工具失败。
     2. 再跑 `printf 'ok\n'`（或 `true`）→ `code=COMMAND_COMPLETED`、`data.exit_code=0`。
@@ -52,10 +52,10 @@
 - **错误路径（工具结果，不打崩会话）**：`glob` 的 pattern 为 `""` / `"."` / 仅空白时返回工具结果 `ok:false`、`code:EMPTY_PATTERN`，会话与 Worker 继续存活。参数不合 schema → `VALIDATION_ERROR`。handler 抛出的普通 `Exception`（如未预期 `ValueError`）由 `ToolsExecutor._execute_spec` 转为工具结果 `ok:false`、`code:TOOL_HANDLER_ERROR`（`data.exception_type` 为异常类名），**不**升级为调度器/Worker failure；`asyncio.CancelledError` / `KeyboardInterrupt` / `SystemExit` 等 `BaseException` 仍上抛。
 - **搜索/写入**：让模型 `glob` 找 `*.txt`、`grep` 找 `edited`、`write_file` 新建 `new.txt` 写 `hi`、`replace_all` 把 `hi` 换成 `yo`、最后 `get_changes`。(a) `new.txt` 为 `yo`；`get_changes` 结果包含 `note.txt` 与 `new.txt`，不列助手从未涉及的文件；已恢复原值的已触碰文件可以以 `unchanged` 出现。按 `next_offset`、`next_text_offset` 续读，不能把截断页当作完整成果。(d) 实例 PATH 里没有 `fd`/`fdfind` 时 `glob` → `GLOB_NOT_FOUND`，记录为环境问题而非功能通过。
 - **查询范围**：同一工作区会话 A 新建 `a.txt`，独立新建会话 B 并让模型先调用不带 scope 的 `get_changes`，应返回 `scope=session` 且不包含 `a.txt`；再明确请求 `scope=workspace`，应返回 `scope=workspace` 并能核对 A 的修改。B 新建 `b.txt` 后，其默认查询只检查 B 涉及的文件。若 B 修改 A 已修改的同一文件，A 的默认查询需把 B 后来的内容标为 `external` 或 `mixed`，不能据此宣称都是 A 的成果；scope 取非法值 → `VALIDATION_ERROR`。分支通过真实入口继承 A 后，默认范围包含继承的修改。续读必须保持 scope 不变。
-- **宿主文件访问**：在**关闭**自动放行的会话里让模型 `execute_command` 以 `file_access=host`、`workspace_effect=may_write` 写一个文件 → (b) 出现 `等待授权`（自动放行开启时所有待授权调用都会被自动批准，看不到这一步）；(a) 批准后文件写到磁盘，但这次写入不在可回退范围内，file-rewind 不会撤销它。(c) `file_access=host` + `read_only` 的普通命令不要求授权。
-- **持续进程**：让模型 `start_process` 起 `python -m http.server <端口>`，`read_process`、`list_processes`，再 `stop_process`。(a) 各步 `code` 依次为 `PROCESS_STARTED`、`PROCESS_READ`、`PROCESSES_LISTED`、`PROCESS_STOPPED`。(b) 自动放行关闭时，四个工具中只有 `start_process` 出现 `等待授权`。(c) 停止后端口不再监听。(d) 对不存在的 `process_id` 调 `read_process` → `PROCESS_NOT_FOUND`。
+- **宿主文件访问**：在**关闭**自动放行的会话里让模型 `execute_command` 以 `file_access=host`、`workspace_effect=may_write` 写一个文件 → (b) 待处理条出现该调用（自动放行开启时所有待授权调用都会被自动批准，看不到这一步）；(a) 批准后文件写到磁盘，但这次写入不在可回退范围内，file-rewind 不会撤销它。(c) `file_access=host` + `read_only` 的普通命令不要求授权。
+- **持续进程**：让模型 `start_process` 起 `python -m http.server <端口>`，`read_process`、`list_processes`，再 `stop_process`。(a) 各步 `code` 依次为 `PROCESS_STARTED`、`PROCESS_READ`、`PROCESSES_LISTED`、`PROCESS_STOPPED`。(b) 自动放行关闭时，四个工具中只有 `start_process` 进入待处理条（`待授权`）。(c) 停止后端口不再监听。(d) 对不存在的 `process_id` 调 `read_process` → `PROCESS_NOT_FOUND`。
 - **证据**：三个工具名可见时快照+截图；会话 JSON 与 `note.txt` 副本存到 `$EVIDENCE_DIR/tool-coding-round/`。
-- **关开关的反向路径**：新开会话，开关保持关闭，发 `请 read_file 读取 note.txt，然后停止。`，对话框 `等待授权` 点 `允许`（详见 tool-authorization）。
+- **关开关的反向路径**：新开会话，开关保持关闭，发 `请用 apply_patch 把 note.txt 改成 edited，然后停止。`，在待处理条点 `允许 apply_patch`（详见 tool-authorization）；`read_file` 是只读工具，不会进入待处理。
 
 ## Gotchas
 

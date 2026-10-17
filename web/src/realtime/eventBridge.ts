@@ -224,14 +224,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("authorization_required", (event) => {
     const payload = authorizationRequiredEventSchema.parse(JSON.parse(event.data));
-    dispatch(
-      authorizationRequired({
-        sessionId: payload.session_id,
-        commandId: payload.command_id,
-        name: payload.name,
-        arguments: payload.arguments,
-      }),
-    );
+    dispatch(authorizationRequired({ sessionId: payload.session_id }));
     dispatch(
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
