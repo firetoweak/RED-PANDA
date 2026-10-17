@@ -60,7 +60,7 @@ def test_child_review_reads_files_beyond_windows_normal_path_limit(tmp_path):
         root = tmp_path / "parent"
         root.mkdir()
         parent = ReviewWorktrees(root, tmp_path / "versions")
-        relative = Path("d" * 80) / ("e" * 80) / "file"
+        relative = Path("d" * 100) / ("e" * 100) / ("f" * 100) / "file"
         source = parent.root / relative
         source.parent.mkdir(parents=True)
         source.write_text("base")
