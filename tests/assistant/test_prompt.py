@@ -254,6 +254,26 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         finally:
             agents.unlink()
 
+    def test_claude_md_is_read_only_without_agents_md(self):
+        decision = self._assembly.runtime.step_runner._decision_maker
+        state = SimpleNamespace(session_id="vocabulary")
+        root = Path(self._workspace.task_root)
+        claude = root / "CLAUDE.md"
+        agents = root / "AGENTS.md"
+        claude.write_text("CLAUDE 约定", encoding="utf-8")
+        try:
+            prompt = decision.prompt_for(state)
+            self.assertIn("CLAUDE.md 中的项目说明", prompt)
+            self.assertIn("CLAUDE 约定", prompt)
+
+            agents.write_text("AGENTS 约定", encoding="utf-8")
+            prompt = decision.prompt_for(state)
+            self.assertIn("AGENTS 约定", prompt)
+            self.assertNotIn("CLAUDE 约定", prompt)
+        finally:
+            claude.unlink()
+            agents.unlink(missing_ok=True)
+
     def test_subagent_prompt_names_no_tool_it_cannot_call(self):
         """子 Session 的工具名单比主对话窄，prompt 不能许诺名单外的动作。"""
 

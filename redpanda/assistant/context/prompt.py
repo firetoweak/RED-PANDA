@@ -2,16 +2,21 @@ import platform
 from pathlib import Path
 
 
-PROJECT_INSTRUCTIONS_FILE = "AGENTS.md"
+# AGENTS.md 优先；没有时读 CLAUDE.md，两份都在只读前者。
+PROJECT_INSTRUCTIONS_FILES = ("AGENTS.md", "CLAUDE.md")
 # 约 8k token：够放常见项目约定，又不会挤占任务上下文。
 PROJECT_INSTRUCTIONS_LIMIT = 16_000
 
 
 def project_instructions_prompt(workspace_root: Path) -> str:
-    """每次决策重读工作区根目录的 AGENTS.md；缺失或读不了就不加这一块。"""
-    try:
-        text = (workspace_root / PROJECT_INSTRUCTIONS_FILE).read_text(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
+    """每次决策重读工作区根目录的项目说明文件；都缺失或读不了就不加这一块。"""
+    for name in PROJECT_INSTRUCTIONS_FILES:
+        try:
+            text = (workspace_root / name).read_text(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+        break
+    else:
         return ""
     text = text.strip()
     if not text:
@@ -19,11 +24,11 @@ def project_instructions_prompt(workspace_root: Path) -> str:
     if len(text) > PROJECT_INSTRUCTIONS_LIMIT:
         text = (
             text[:PROJECT_INSTRUCTIONS_LIMIT]
-            + f"\n[AGENTS.md 超过 {PROJECT_INSTRUCTIONS_LIMIT} 字符，后面已截断；需要时用 read_file 读完整文件。]"
+            + f"\n[{name} 超过 {PROJECT_INSTRUCTIONS_LIMIT} 字符，后面已截断；需要时用 read_file 读完整文件。]"
         )
     return (
         "<project_instructions>\n"
-        "以下是工作区根目录 AGENTS.md 中的项目说明，按其中的项目约定工作；与用户要求或系统规则冲突时，以后者为准。\n"
+        f"以下是工作区根目录 {name} 中的项目说明，按其中的项目约定工作；与用户要求或系统规则冲突时，以后者为准。\n"
         f"{text}\n"
         "</project_instructions>"
     )
@@ -109,10 +114,14 @@ DEFAULT_ASSISTANT_PROMPT = """
 - 只等待会影响当前结论的委派；不能把尚未收到的报告当作已有证据。
 
 表达：
+- 用户关心任务结果，不关心过程。回复先说结果：做成了什么、没做成什么、需要用户决定什么；再按需补充关键原因。
+- 篇幅跟随信息量。简单问题几句话回答；不复述用户已知的内容，不重复同一结论。
+- 优先用短段落；列表只用于确实并列的几项，不把论述拆成大段罗列。
+- 用户能自己打开文件和查看改动。说明改了哪里、为什么改，不贴整段代码；只在用户要求，或几行代码就能说清关键点时引用代码。
 - 判断改变、遇到阻塞或需要用户决定时，简短说明原因和下一步；不预告每组工具调用。
 - 只输出面向用户的结论与行动，不展示隐藏推理，不逐项播报显而易见的小操作。
-- 用户看不到工具结果。所以最终结论必须自包含，不能出现"如上所述"，也不能直接抛 content_complete=false 这种工具内部的字段名。
-- 任务宣布"已完成"时，必须附验证依据。
+- 用户看不到工具结果原文。用到的事实要在回复里说清，不能出现"如上所述"，也不能直接抛 content_complete=false 这种工具内部的字段名；但不需要整段转述工具输出。
+- 任务宣布"已完成"时，必须附验证依据，写成结论加来源（哪条命令或哪项检查通过），不贴完整输出。
 - 以用户提问的语言回答用户的问题，默认用中文回答。
 """.strip() + "\n\n" + CODING_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
 
