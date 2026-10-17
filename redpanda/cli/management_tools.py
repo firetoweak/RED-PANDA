@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from redpanda.cli.application import CliApplicationService
 from redpanda.cli.errors import CliInputError, CliNotFoundError
+from redpanda.cli.models import CliRecord
 from redpanda.tools.spec import EmptyInput, PydanticParameters, ToolSpec
 
 
@@ -25,7 +26,7 @@ def create_cli_management_specs(
             "ok": True,
             "code": "CLIS_LISTED",
             "data": {
-                "clis": [record.to_dict() for record in records],
+                "clis": [_record_view(record) for record in records],
             },
         }
 
@@ -37,7 +38,7 @@ def create_cli_management_specs(
         return {
             "ok": True,
             "code": "CLI_INSPECTED",
-            "data": {"record": record.to_dict()},
+            "data": {"record": _record_view(record)},
         }
 
     async def test_cli(input_data: CliIdInput):
@@ -52,7 +53,6 @@ def create_cli_management_specs(
             "code": "CLI_TEST_PASSED",
             "data": {
                 "cli_id": result.record.name,
-                "revision": result.record.revision,
                 "version": result.probed.version,
                 "health": result.probed.health.to_dict(),
             },
@@ -79,6 +79,10 @@ def create_cli_management_specs(
             test_cli,
         ),
     )
+
+
+def _record_view(record: CliRecord) -> dict:
+    return {key: value for key, value in record.to_dict().items() if key != "revision"}
 
 
 def _not_found(cli_id: str, *, detail: str | None = None) -> dict:

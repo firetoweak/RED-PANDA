@@ -25,24 +25,18 @@ _LOGGER = logging.getLogger(__name__)
 
 
 EXECUTE_COMMAND_DESCRIPTION = """
-用途：使用 {shell_name} 在本机执行 CLI 命令。
-何时使用：用于依赖安装、构建、测试、格式化、静态检查、Git、包管理器和运行脚本；常规文件发现、搜索、读取和修改应使用专用文件工具。
-关键限制：command 使用 {shell_name} 语义；workspace_effect 必须按预期副作用声明；仅支持有超时的前台非交互命令。{write_constraint}
-影响声明：只读查询使用 read_only；可能修改工作区文件、生成缓存或无法确定时使用 may_write。
-文件访问：默认 managed，工作区内修改可用 get_changes 核对并可回退；host 可能写入时需授权。两种方式的 cwd 均须在会话允许范围内；命令本身不提供文件访问隔离，host 不代表提权。managed 执行失败不得自动改为 host 重试。workspace_effect 是副作用声明，不是选择文件访问方式，也不是操作系统权限控制。
-文件限制：managed 的 may_write 命令在工作区内不支持改变所有者、显式设置时间戳、目录重命名、创建硬链接或特殊文件；存在多个硬链接的文件不能删除或重命名。
-人工交互：不支持命令中途的 UAC、sudo 密码或硬件确认。不要启动需要这类确认的命令；遇到要求时停止这条执行路径，说明需由用户在工具外完成的步骤，待用户告知完成后再检查条件。
-执行环境：各次调用独立，前一次命令中的环境激活、变量修改和目录切换不会自动带入本次调用。需要指定环境时，在 command 中明确调用对应的解释器、环境管理器，或先准备环境再执行；准备失败时不要继续执行后续项目命令。
-CLI 发现：对陌生 CLI 或遇到 unknown option 时，先执行当前层级的 `<cli> --help`（如 `<cli> <子命令> --help`）逐层现查，不要继续猜 flag。
-结果：退出码为 0 时 code 为 COMMAND_COMPLETED；非 0 时为 COMMAND_EXIT_NONZERO，表示命令已运行但不能当作成功。
-失败/截断后：检查 exit_code、stdout、stderr、timed_out、io_errors 和各流的 truncated；io_errors 非空表示管道失败，采集结果可能不完整；命令产生的文件变化需通过文件工具或 Git diff 重新验证。
+用途：用 {shell_name} 执行一次有超时的前台非交互命令，用于安装、构建、测试、格式化、静态检查、Git 和运行脚本；文件查找、读取和修改用专用文件工具。
+参数：workspace_effect 按预期副作用声明。file_access 默认 managed；host 直接写本机文件，需授权且不可回退；managed 失败时不要改用 host 重试。{write_constraint}
+限制：managed 的 may_write 命令在工作区内不支持改变所有者、设置时间戳、目录重命名、创建硬链接或特殊文件，有多个硬链接的文件不能删除或重命名。不支持中途的 UAC、sudo 密码或硬件确认；遇到时停止，告诉用户需要在工具外完成的步骤。
+执行环境：每次调用独立，不继承上次的环境激活、变量或目录；需要特定环境就在 command 里显式调用解释器或环境管理器。陌生 CLI 或遇到 unknown option 时逐层查 `--help`，不要猜 flag。
+结果：退出码 0 为 COMMAND_COMPLETED，非 0 为 COMMAND_EXIT_NONZERO（已运行但不算成功）。检查 stdout、stderr 的 truncated 和 io_errors（非空表示输出可能不完整）；命令产生的文件变化用文件工具或 git diff 核对。
 """.strip()
 
 
 class ExecuteCommandInput(BaseModel):
     file_access: Literal["managed", "host"] = Field(
         default="managed",
-        description="managed：工作区内文件修改可记录和回退；host：直接访问本机文件，修改不提供文件回退保证。不会因 managed 执行失败而自动改用 host。",
+        description="managed：工作区内修改可用 get_changes 核对、可回退；host：直接访问本机文件，不可回退。",
     )
     cwd: str | None = Field(
         default=None,

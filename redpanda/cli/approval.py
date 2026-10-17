@@ -154,7 +154,6 @@ class CliInstallApprovalHandler:
             f"CLI `{record.name}` 已登记。目录将从下一次决策生效。",
             data={
                 "cli_id": record.name,
-                "revision": record.revision,
                 "version": record.version,
             },
         )
@@ -181,7 +180,6 @@ def create_cli_uninstall_proposal_spec(
             },
             summary=(
                 f"准备移除 CLI `{record.name}` 的登记\n"
-                f"Revision：{record.revision}\n"
                 f"解析路径：{record.resolved_path}"
             ),
             risk=(
@@ -219,7 +217,6 @@ def create_cli_update_proposal_spec(
             },
             summary=(
                 f"准备刷新 CLI `{record.name}` 的版本与体检信息（不安装新版本）\n"
-                f"Revision：{record.revision}\n"
                 f"当前版本：{record.version or '未知'}\n"
                 "将按登记路径重跑体检，更新 version 与 health。"
             ),
@@ -260,7 +257,6 @@ def create_cli_repair_proposal_spec(
             },
             summary=(
                 f"准备修复 CLI `{record.name}`\n"
-                f"Revision：{record.revision}\n"
                 f"登记路径：{record.resolved_path}\n"
                 "将按登记来源重新解析 resolved_path 并重跑体检。"
             ),
@@ -310,8 +306,8 @@ class _CliRevisionApprovalHandler:
             )
         return ControlApprovalExecution(
             True,
-            f"CLI `{record.name}` 已{verb} (revision={record.revision})。",
-            {"cli_id": record.name, "revision": record.revision},
+            f"CLI `{record.name}` 已{verb}。",
+            {"cli_id": record.name},
         )
 
 

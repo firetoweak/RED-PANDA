@@ -182,7 +182,6 @@ class SkillInstallApprovalHandler:
             ),
             data={
                 "skill_id": record.name,
-                "revision": record.revision,
                 "enabled": record.enabled,
             },
         )
@@ -204,7 +203,7 @@ def create_skill_set_enabled_proposal_spec(service: SkillApplicationService) -> 
             return {
                 "ok": True,
                 "code": "SKILL_STATE_UNCHANGED",
-                "data": record.to_dict(),
+                "data": {"skill_id": record.name, "enabled": record.enabled},
             }
         if input_data.enabled:
             try:
@@ -281,7 +280,6 @@ class SkillSetEnabledApprovalHandler:
             True, f"Skill `{record.name}` 已{state}，目录变化从下一次决策生效。",
             {
                 "skill_id": record.name,
-                "revision": record.revision,
                 "enabled": record.enabled,
             },
         )
@@ -459,6 +457,6 @@ class SkillUpdateApprovalHandler:
             )
         return ControlApprovalExecution(
             True,
-            f"Skill `{record.name}` 已更新 (revision={record.revision})。",
-            {"skill_id": record.name, "revision": record.revision},
+            f"Skill `{record.name}` 已更新。",
+            {"skill_id": record.name},
         )

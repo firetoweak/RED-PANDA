@@ -116,7 +116,6 @@ class SkillToolCatalog:
                 "code": "SKILL_LOADED",
                 "data": {
                     "skill_id": current.name,
-                    "revision": current.revision,
                     "skill_dir": str(package_directory),
                     "content": bundle.main_instructions,
                 },
@@ -154,6 +153,7 @@ class SkillToolCatalog:
                     "读取一个适合当前任务的可复用详细指令包，按 ID 返回完整指令。"
                     "必须单独调用，不能与依赖其结果的工具同批执行。\n"
                     "当前技能目录由上下文消息提供。"
+                    "结果中的 skill_dir 是 Skill 包所在目录的绝对路径，供命令中引用包内脚本。"
                 ),
                 parameters=PydanticParameters(LoadSkillInput),
                 handler=load_skill,
@@ -184,7 +184,7 @@ class SkillToolCatalog:
             raise SkillRuntimeError(
                 "SKILL_CATALOG_STALE",
                 f"Skill {skill_id} 已被修改或停用",
-                hint="在下一次决策中按最新 Skill 目录重新选择。",
+                hint="按上下文中的当前技能目录重新选择。",
                 data={"skill_id": skill_id},
             )
         return current
@@ -252,7 +252,6 @@ class SkillToolCatalog:
             "code": "SKILL_RESOURCE_READ",
             "data": {
                 "skill_id": record.name,
-                "revision": record.revision,
                 "relative_path": normalized,
                 "content": content[offset:end],
                 "offset": offset,

@@ -30,7 +30,10 @@ def create_skill_management_specs(service: SkillApplicationService) -> tuple[Too
             records = (record,)
         return {
             "ok": True, "code": "SKILLS_LISTED",
-            "data": {"skills": [record.to_dict() for record in records]},
+            "data": {"skills": [
+                {key: value for key, value in record.to_dict().items() if key not in {"revision", "content_hash"}}
+                for record in records
+            ]},
         }
 
     async def test_skill(input_data: SkillIdInput):
@@ -45,10 +48,7 @@ def create_skill_management_specs(service: SkillApplicationService) -> tuple[Too
             "ok": True, "code": "SKILL_PACKAGE_VALID",
             "data": {
                 "skill_id": result.record.name,
-                "revision": result.record.revision,
-                "content_hash": result.record.content_hash,
                 "enabled": result.record.enabled,
-                "checks": ["identity", "frontmatter", "paths", "size_limits", "registry_metadata", "content_hash"],
                 "files": [{"path": path, "bytes": size} for path, size in result.files],
                 "main_instruction_chars": result.main_instruction_chars,
             },

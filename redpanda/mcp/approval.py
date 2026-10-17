@@ -180,7 +180,6 @@ def create_mcp_install_proposal_spec(
                 "data": {
                     "server_id": existing.id,
                     "enabled": existing.enabled,
-                    "revision": existing.revision,
                 },
                 "error": f"MCP Server 已注册: {existing.id}",
                 "hint": "用 test_mcp_server 诊断；需要改配置用 propose_mcp_update。",
@@ -259,7 +258,6 @@ class McpInstallApprovalHandler:
                 data={
                     "server_id": record.id,
                     "enabled": False,
-                    "revision": record.revision,
                     "runtime": runtime.to_dict(),
                 },
             )
@@ -273,7 +271,6 @@ class McpInstallApprovalHandler:
             data={
                 "server_id": enabled.id,
                 "enabled": True,
-                "revision": enabled.revision,
                 "runtime": runtime.to_dict(),
             },
         )
@@ -302,7 +299,6 @@ def create_mcp_update_proposal_spec(
             },
             summary=(
                 f"准备更新 MCP Server `{existing.id}`\n"
-                f"当前 Revision：{existing.revision}\n"
                 f"{input_data.approval_summary()}"
             ),
             risk=(
@@ -376,7 +372,6 @@ class McpUpdateApprovalHandler:
             ),
             {
                 "server_id": record.id,
-                "revision": activation.record.revision,
                 "enabled": activation.record.enabled,
                 "runtime": activation.runtime.to_dict(),
             },
@@ -412,8 +407,7 @@ def create_mcp_recovery_proposal_spec(
             },
             summary=(
                 f"准备恢复 MCP Server `{record.id}`（{record.display_name}）\n"
-                f"登记状态：{'enabled' if record.enabled else 'disabled'}\n"
-                f"Revision：{record.revision}"
+                f"登记状态：{'enabled' if record.enabled else 'disabled'}"
             ),
             risk=(
                 "批准后会按已登记的配置启动该外部 MCP Server 进行测试；"
@@ -476,7 +470,6 @@ class McpRecoveryApprovalHandler:
                 data={
                     "server_id": server_id,
                     "enabled": False,
-                    "revision": activation.record.revision,
                     "runtime": runtime.to_dict(),
                 },
             )
@@ -489,7 +482,6 @@ class McpRecoveryApprovalHandler:
             data={
                 "server_id": server_id,
                 "enabled": True,
-                "revision": activation.record.revision,
                 "runtime": runtime.to_dict(),
             },
         )
@@ -524,8 +516,7 @@ def create_mcp_remove_proposal_spec(
             },
             summary=(
                 f"准备删除 MCP Server `{record.id}`（{record.display_name}）\n"
-                f"登记状态：{'enabled' if record.enabled else 'disabled'}\n"
-                f"Revision：{record.revision}"
+                f"登记状态：{'enabled' if record.enabled else 'disabled'}"
             ),
             risk=(
                 "批准后将移除该 MCP Server 的登记与本地 Secret；"
@@ -581,10 +572,7 @@ class McpRemoveApprovalHandler:
             message=(
                 f"MCP Server `{record.id}` 已删除，其工具不再可用。"
             ),
-            data={
-                "server_id": record.id,
-                "revision": record.revision,
-            },
+            data={"server_id": record.id},
         )
 
 

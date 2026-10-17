@@ -48,7 +48,6 @@ class SkillRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["code"], "SKILL_LOADED")
         self.assertEqual(result["data"]["skill_id"], "demo")
-        self.assertEqual(result["data"]["revision"], self.record.revision)
         self.assertEqual(
             result["data"]["content"],
             "\nFollow the demo workflow.\n",

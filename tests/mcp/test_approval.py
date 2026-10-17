@@ -234,7 +234,6 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
             "demo",
             expected_revision=1,
         )
-        self.assertEqual(result.data["revision"], 2)
 
     async def test_failed_test_keeps_server_disabled(self):
         self.service.upsert_server.return_value = SimpleNamespace(

@@ -8,32 +8,24 @@ from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 RESTORE_WORKSPACE = "restore_workspace"
 RESTORE_DESCRIPTION = (
-    "撤回指定 tool_call_id 所在整批及其后助手操作造成的工作区文件变化。"
-    "引用当前上下文中的调用 id；同批任意调用指向同一个回退点。"
-    "回退可以撤销：再次调用本工具并引用这次 restore_workspace 的调用 id。"
-    "policy=preserve 保留用户后来改变的值；original 允许恢复助手改变位置的原值。"
-    "两种策略都保留助手未改变的位置；.gitignore 不影响回退范围。"
-    "范围包含同一工作区其间其他会话的助手修改。"
-    "成功结果说明实际改动的文件或目录，以及保留后续值的位置；同一路径可能同时出现。"
-    "unchanged 表示本次没有改变文件，preserved 表示因保留后续值而未改变文件，不能据此宣称已完全撤销。"
-    "机械回退不理解用户意图；混合修改、保留后续值或失败时，请读取当前内容、核对修改证据，"
-    "按用户目标使用普通文件工具处理，并遵守现有写入授权；不要自动升级策略或反复重试。"
-    "不撤销工作区文件以外的副作用和聊天历史。必须单独调用。"
+    "撤回 tool_call_id 所在整批及之后的助手文件修改，包括同一工作区其他会话在此期间的助手修改；"
+    "同批任意调用 id 指向同一回退点，.gitignore 不影响范围。不撤销工作区外的副作用和聊天记录。"
+    "回退本身也能用它的调用 id 再撤回。"
+    "结果列出实际改动和保留了后续值的位置；unchanged 或 preserved 表示没有完全撤回。"
+    "遇到混合修改、保留或失败时，读取当前内容后按用户目标用文件工具处理，不要换 policy 反复重试。"
+    "必须单独调用。"
 )
 ISOLATED_RESTORE_DESCRIPTION = (
-    "把你的工作区恢复到指定 tool_call_id 所在整批工具调用之前的文件状态。"
-    "引用当前上下文中的调用 id；同批任意调用指向同一个回退点。"
-    "回退可以撤销：再次调用本工具并引用这次 restore_workspace 的调用 id。"
-    "policy=preserve 保留后来改变的值，original 恢复助手改变位置的原值；.gitignore 不影响回退范围。"
-    "成功结果说明实际改动的文件和保留后续值的文件；没有实际改动不能宣称已完全撤销。"
-    "机械回退不理解任务意图；请核对当前内容和修改证据，必要时使用普通文件工具处理，不要反复重试失败的回退。"
-    "不影响用户的文件，不撤销聊天历史。必须单独调用。"
+    "把你的工作区恢复到 tool_call_id 所在整批调用之前的文件状态；"
+    "同批任意调用 id 指向同一回退点，.gitignore 不影响范围。回退本身也能用它的调用 id 再撤回。"
+    "结果列出实际改动和保留了后续值的文件；没有实际改动时不能宣称已撤回。"
+    "失败时核对当前内容，必要时用文件工具处理，不要反复重试。不撤销聊天记录。必须单独调用。"
 )
 
 
 class RestoreWorkspaceInput(BaseModel):
     tool_call_id: str = Field(min_length=1, description="要撤销的工具调用 id；恢复到其所在那一批调用之前")
-    policy: Literal["original", "preserve"] = Field(default="preserve", description="preserve 保留用户后续值；original 允许覆盖助手改变位置的后续值")
+    policy: Literal["original", "preserve"] = Field(default="preserve", description="preserve（默认）：位置后来被改过就保留后来的值；original：这些位置也恢复为原值。两种都不动助手没改过的位置")
 
 
 def create_workspace_restore_spec(

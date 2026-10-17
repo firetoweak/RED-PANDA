@@ -294,18 +294,12 @@ DELEGATE_SCHEMA: dict[str, object] = {
     "function": {
         "name": DELEGATE,
         "description": (
-            "把一件可独立完成的任务委派给子 Agent。"
-            "子 Agent 有自己的上下文，过程不会占用当前对话；"
-            "它可在自己的文件副本里修改文件，不能执行命令。"
-            "成果交回后用 compare_subagent 验收，merge_subagent 经授权合入用户工作区。"
-            "本次调用只返回“已创建”，结论稍后作为一条事实送回。"
-            "多件互不依赖的任务可以在同一次决策里各发一次 delegate，"
-            "子 Agent 之间并行推进；并行的子 Agent 改同一批文件，合入时会冲突。"
-            "结论一条条回来，不是一次性交齐。"
-            "不再需要某个还在工作的子 Agent 时，用 reclaim 收回它，不要空等。"
-            "回来的也可能是失败：failure 非空表示该子 Agent 没能跑完，"
-            "字段里是失败原因，由你判断重派、换做法还是如实告诉用户。"
-            "cancelled=true 表示你已经收回，不是子 Agent 失败。"
+            "把可独立完成的任务交给子 Agent。它在自己的文件副本里工作，可以改文件，不能执行命令。"
+            "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
+            "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
+            "验收用 compare_subagent，经授权用 merge_subagent 合入。"
+            "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
+            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
         ),
         "parameters": {
             "type": "object",

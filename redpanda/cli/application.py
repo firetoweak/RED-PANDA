@@ -200,7 +200,6 @@ class CliApplicationService:
             raise CliNotFoundError(f"CLI 未登记: {cli_id}")
         if record.revision != expected_revision:
             raise CliInputError(
-                f"CLI `{cli_id}` 登记已变化：expected revision "
-                f"{expected_revision}, current revision {record.revision}"
+                f"CLI `{cli_id}` 在提交后已被修改"
             )
         return record

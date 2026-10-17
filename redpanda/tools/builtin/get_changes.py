@@ -13,18 +13,16 @@ from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
 GET_CHANGES_DESCRIPTION = """
-用途：修改文件或执行命令后核对实际效果，发现漏改、误改，并在最终汇报前确认当前仍保留的成果。
-范围选择：scope 默认 session，只核对当前会话涉及的文件；分支会话包含继承对话中的修改。只有需要核对整个工作区的助手修改时才用 workspace，其中包含所有会话，不能全部作为当前会话的成果。两种范围都不负责发现助手从未涉及的文件变化。
-返回内容：返回修改前后文本（edits）和文件属性变化（properties）。session 范围中，origin=agent 表示当前会话仍保留的修改，external 表示当前会话之外的变化；workspace 范围中，agent 表示该工作区所有会话的助手修改，external 表示这些助手修改之外的变化。mixed 表示两者混合，unknown 表示无法判断，unchanged 表示可比较部分已回到原值。每段文本有独立的 origin，同一段为 mixed 时不能把整段算作助手成果。byte_offset 是 after 在当前文件中的起始字节位置，从 0 开始。
-关键限制：原值是所选范围首次修改相关位置之前的值；被覆盖、撤销或恢复原值的内容不算现存成果。普通目录也可用，不依赖 Git。
-续读：保持 scope 不变。next_offset 非空时用 offset 继续列文件；文件的 next_text_offset 非空时，把 path 指定为该文件并用 text_offset 继续读差异，直接使用返回的续读位置。每段的 text_offset 表明片段从该段哪个字符开始，truncated=true 的片段不能当作完整替换。文件再次修改后从头查询。
-失败/截断后：content_complete=false 时只对已展示且来源明确的部分作结论；read_file 可以核对当前内容，不能补出未知原值。查询失败不能宣称已经验证或没有改动。功能正确与否仍需另外测试。
+用途：核对文件的实际修改（修改前后文本 edits、属性 properties），发现漏改、误改，并在汇报前确认成果仍在。只覆盖文件工具和 managed 命令改过的文件，不依赖 Git。
+origin：agent=所选范围内助手仍保留的修改，external=范围之外的变化，mixed=两者混合（不能整段算作自己的成果），unknown=无法判断，unchanged=已回到原值。原值是该范围首次修改前的值。byte_offset 是 after 在当前文件中的起始字节位置。
+续读：保持 scope 不变；next_offset 非空时用 offset 继续列文件；某文件 next_text_offset 非空时，path 指向该文件并用 text_offset 继续。truncated=true 的片段不完整。文件再次修改后从头查询。
+content_complete=false 时只对已展示且来源明确的部分下结论；read_file 只能看当前内容，补不出原值。
 """.strip()
 
 
 class GetChangesInput(BaseModel):
     path: str = Field(default=".", description="要检查的文件或目录")
-    scope: Literal["session", "workspace"] = Field(default="session", description="session 核对当前会话（默认，含分支继承的修改）；workspace 核对工作区所有会话的助手修改")
+    scope: Literal["session", "workspace"] = Field(default="session", description="session（默认）：当前会话的修改，含分出会话时继承的修改；workspace：该工作区所有会话的助手修改，不能都算作当前会话成果")
     offset: int = Field(default=0, ge=0, description="文件列表续读位置；首次为 0，续查使用 next_offset")
     text_offset: int = Field(default=0, ge=0, description="单文件差异的续读位置；使用该文件返回的 next_text_offset")
 

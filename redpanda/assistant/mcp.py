@@ -50,7 +50,7 @@ class McpToolsetAdapter:
             current = {item.id: item for item in self.descriptors()}.get(toolset_id)
             if current is None or current.revision != revision:
                 raise ToolsetLoadError(
-                    "TOOLSET_REVISION_UNAVAILABLE",
+                    "TOOLSET_CHANGED",
                     f"Toolset {toolset_id} 已更新。",
                     hint="重新 load_toolset。",
                     data={"toolset_id": toolset_id},

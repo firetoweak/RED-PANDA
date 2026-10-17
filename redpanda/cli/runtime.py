@@ -90,7 +90,6 @@ class CliToolCatalog:
                 "code": "CLI_LOADED",
                 "data": {
                     "cli_id": current.name,
-                    "revision": current.revision,
                     "description": current.description,
                     "source": current.source.to_dict(),
                     "version": current.version,
@@ -131,15 +130,9 @@ class CliToolCatalog:
         if current is None or current.revision != revision:
             raise CliRuntimeError(
                 "CLI_CATALOG_STALE",
-                f"CLI {cli_id} 在当前能力目录生成后已变化",
-                hint="在下一次决策中按最新 CLI 目录重新选择。",
-                data={
-                    "cli_id": cli_id,
-                    "expected_revision": revision,
-                    "current_revision": (
-                        current.revision if current is not None else None
-                    ),
-                },
+                f"CLI {cli_id} 已被修改或删除",
+                hint="按上下文中的当前 CLI 目录重新选择。",
+                data={"cli_id": cli_id},
             )
         return current
 
