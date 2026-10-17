@@ -89,32 +89,20 @@ def task_fact_arguments(intent: DelegateIntent) -> dict[str, object]:
     }
 
 
-def task_from_arguments(
+def _task_from_parts(
     child_id: str,
-    arguments: Mapping[str, object],
+    data: Mapping[str, object],
+    *,
+    delivery_id: str,
+    source: str,
+    requests_decision: object,
 ) -> SubAgentTask:
-    if set(arguments) != {
-        "fact_type",
-        "data",
-        "delivery_id",
-        "source",
-        "requests_decision",
-    }:
-        raise ValueError("subagent task fact envelope 字段不匹配")
-    if arguments["fact_type"] != TASK_FACT:
-        raise ValueError("subagent task fact_type 无效")
-    if arguments["source"] != FACT_SOURCE:
+    """Parse self-written task identity; contract breaks raise, no field-set walls."""
+
+    if source != FACT_SOURCE:
         raise ValueError("subagent task source 无效")
-    if arguments["requests_decision"] is not True:
+    if requests_decision is not True:
         raise ValueError("subagent task 必须请求首次决策")
-    data = arguments["data"]
-    if not isinstance(data, Mapping) or set(data) != {
-        "task",
-        "parent_session_id",
-        "delegate_command_id",
-        "resolve_conflicts_of",
-    }:
-        raise ValueError("subagent 任务事实 data 字段不匹配")
     task = data["task"]
     parent_session_id = data["parent_session_id"]
     command_id = data["delegate_command_id"]
@@ -126,12 +114,27 @@ def task_from_arguments(
         raise ValueError("subagent 任务事实 delegate_command_id 无效")
     if child_id != child_session_id(parent_session_id, command_id):
         raise ValueError("subagent task 的 child identity 与 delegate Command 不一致")
-    if arguments["delivery_id"] != f"{command_id}:task":
+    if delivery_id != f"{command_id}:task":
         raise ValueError("subagent task delivery identity 无效")
     resolve = data["resolve_conflicts_of"]
     if resolve is not None and (type(resolve) is not str or not resolve):
         raise ValueError("resolve_conflicts_of 必须是非空 string|null")
     return SubAgentTask(child_id, parent_session_id, command_id, task, resolve)
+
+
+def task_from_arguments(
+    child_id: str,
+    arguments: Mapping[str, object],
+) -> SubAgentTask:
+    if arguments["fact_type"] != TASK_FACT:
+        raise ValueError("subagent task fact_type 无效")
+    return _task_from_parts(
+        child_id,
+        arguments["data"],
+        delivery_id=arguments["delivery_id"],
+        source=arguments["source"],
+        requests_decision=arguments["requests_decision"],
+    )
 
 
 def return_data(
@@ -393,22 +396,20 @@ def _frozen_delegate_child(command_id: str, value: object) -> tuple[str, str] | 
 
     子 id 必须仍是 `{parent}/sub-{command_id}`。父身份可以不是正在读
     这条线的 Session：分支重放会把事件收成当前身份，Outcome 不会跟着改。
+    自产 Outcome：不是 DELEGATED 成功则跳过；形状不对则暴露。
     """
 
     if not isinstance(value, Mapping) or value.get("ok") is not True:
         return None
-    if set(value) != {"ok", "code", "data"} or value.get("code") != "DELEGATED":
+    if value.get("code") != "DELEGATED":
         return None
-    data = value.get("data")
-    if not isinstance(data, Mapping) or set(data) != {"child_session_id"}:
-        return None
-    child_id = data.get("child_session_id")
+    child_id = value["data"]["child_session_id"]
     suffix = f"/sub-{command_id}"
     if type(child_id) is not str or not child_id.endswith(suffix):
-        return None
+        raise ValueError("delegate outcome child_session_id 无效")
     parent = child_id[: -len(suffix)]
     if not parent:
-        return None
+        raise ValueError("delegate outcome child_session_id 无效")
     return parent, child_id
 
 
@@ -493,29 +494,21 @@ def project_failed_delegations(events: Sequence[Event]) -> frozenset[str]:
         if not isinstance(value, Mapping) or type(value.get("ok")) is not bool:
             raise ValueError("delegate outcome 必须是带 ok 的 object")
         if value["ok"] is False:
-            if (
-                set(value) != {"ok", "code", "data", "error"}
-                or type(value["code"]) is not str
-                or not value["code"]
-                or not isinstance(value["data"], Mapping)
-                or type(value["error"]) is not str
-                or not value["error"]
-            ):
-                raise ValueError("delegate failure outcome 字段不匹配")
+            if type(value["code"]) is not str or not value["code"]:
+                raise ValueError("delegate failure outcome code 无效")
+            if type(value["error"]) is not str or not value["error"]:
+                raise ValueError("delegate failure outcome error 无效")
             failed.add(intent.child_session_id)
             continue
-        if set(value) != {"ok", "code", "data"} or value["code"] != "DELEGATED":
-            raise ValueError("delegate success outcome 字段不匹配")
-        data = value.get("data")
-        if not isinstance(data, Mapping) or set(data) != {"child_session_id"}:
-            raise ValueError("delegate outcome data 无效")
-        if data["child_session_id"] != intent.child_session_id:
+        if value["code"] != "DELEGATED":
+            raise ValueError("delegate success outcome code 无效")
+        if value["data"]["child_session_id"] != intent.child_session_id:
             raise ValueError("delegate outcome child_session_id 与 Command 不一致")
     return frozenset(failed)
 
 
 def project_task(events: Sequence[Event]) -> SubAgentTask | None:
-    """从子 Journal 读取并严格校验唯一的委派身份。"""
+    """从子 Journal 读取唯一的委派身份（与 task_from_arguments 共用解析）。"""
 
     tasks = [
         event
@@ -528,45 +521,15 @@ def project_task(events: Sequence[Event]) -> SubAgentTask | None:
     if len(tasks) != 1:
         raise ValueError("subagent Journal 必须只有一条 task 事实")
     event = tasks[0]
-    payload = event.payload
-    if payload.requests_decision is not True:
-        raise ValueError("subagent task 必须请求首次决策")
-    data = payload.data
-    if not isinstance(data, Mapping) or set(data) != {
-        "task",
-        "parent_session_id",
-        "delegate_command_id",
-        "resolve_conflicts_of",
-    }:
-        raise ValueError("subagent 任务事实 data 字段不匹配")
-    task = data["task"]
-    parent_session_id = data["parent_session_id"]
-    command_id = data["delegate_command_id"]
-    if type(task) is not str or not task:
-        raise ValueError("subagent 任务事实 task 无效")
-    if type(parent_session_id) is not str or not parent_session_id:
-        raise ValueError("subagent 任务事实 parent_session_id 无效")
-    if type(command_id) is not str or not command_id:
-        raise ValueError("subagent 任务事实 delegate_command_id 无效")
-    expected_child = child_session_id(parent_session_id, command_id)
-    if event.session_id != expected_child:
-        raise ValueError("subagent task 的 child identity 与 delegate Command 不一致")
     delivery = event.delivery
-    if (
-        delivery is None
-        or delivery.source != FACT_SOURCE
-        or delivery.delivery_id != f"{command_id}:task"
-    ):
+    if delivery is None:
         raise ValueError("subagent task delivery identity 无效")
-    resolve = data["resolve_conflicts_of"]
-    if resolve is not None and (type(resolve) is not str or not resolve):
-        raise ValueError("resolve_conflicts_of 必须是非空 string|null")
-    return SubAgentTask(
+    return _task_from_parts(
         event.session_id,
-        parent_session_id,
-        command_id,
-        task,
-        resolve,
+        event.payload.data,
+        delivery_id=delivery.delivery_id,
+        source=delivery.source,
+        requests_decision=event.payload.requests_decision,
     )
 
 

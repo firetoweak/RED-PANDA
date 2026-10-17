@@ -119,12 +119,6 @@ def _history_record(sequence, messages, query):
 
 
 def compact_seed(events):
-    if any(
-        isinstance(e.payload, DomainFactCommitted)
-        and e.payload.fact_type == "compact.continued"
-        for e in events
-    ):
-        raise ValueError("unsupported legacy compact continuation")
     seeds = [
         e.payload
         for e in events
@@ -140,16 +134,8 @@ def compact_seed(events):
         or events[1].payload is not seeds[0]
     ):
         raise ValueError("compact task must follow the unique workspace binding")
-    data = thaw_value(seeds[0].data)
-    if set(data) != {
-        "source",
-        "inherited",
-        "bundle",
-        "upto",
-        "window",
-    }:
-        raise ValueError("invalid compact task")
-    return TASK, data
+    # 自产 seed：缺键由后续访问 KeyError 冒泡，不校验精确字段集合。
+    return TASK, thaw_value(seeds[0].data)
 
 
 def attachment_ids_in_messages(messages):

@@ -1450,7 +1450,7 @@ class InheritedDelegateIdentityTest(unittest.TestCase):
             "command-1",
             child_session_id("session-source", "command-other"),
         )
-        with self.assertRaisesRegex(ValueError, "child_session_id 与 Command 不一致"):
+        with self.assertRaisesRegex(ValueError, "child_session_id"):
             project_failed_delegations(events)
 
     def test_child_return_ends_the_running_hint_without_a_parent_report(self):

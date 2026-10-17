@@ -217,23 +217,11 @@ def project_toolset_activations(
         ):
             continue
         value = payload.outcome.value
-        if not isinstance(value, Mapping):
-            raise ValueError("load_toolset outcome 必须是 object")
-        if "ok" not in value or type(value["ok"]) is not bool:
-            raise ValueError("load_toolset outcome ok 无效")
         if value["ok"] is False:
             continue
-        if set(value) != {"ok", "code", "data"}:
-            raise ValueError("load_toolset outcome 字段不匹配")
+        if value["code"] != "TOOLSET_LOADED":
+            raise ValueError("load_toolset outcome code 无效")
         data = value["data"]
-        if (
-            value["ok"] is not True
-            or value["code"] != "TOOLSET_LOADED"
-            or not isinstance(data, Mapping)
-        ):
-            raise ValueError("load_toolset outcome 内容不符合成功契约")
-        if set(data) != {"toolset_id", "revision", "tools"}:
-            raise ValueError("load_toolset outcome data 字段不匹配")
         toolset_id = data["toolset_id"]
         revision = data["revision"]
         if (
@@ -243,23 +231,8 @@ def project_toolset_activations(
             or revision < 1
         ):
             raise ValueError("load_toolset outcome identity 无效")
-        tools = data["tools"]
-        if not isinstance(tools, tuple):
-            raise ValueError("load_toolset outcome tools 无效")
         snapshots: list[LoadedToolSnapshot] = []
-        for tool in tools:
-            if (
-                not isinstance(tool, Mapping)
-                or set(tool)
-                != {
-                    "name",
-                    "description",
-                    "parameters",
-                    "requires_authorization",
-                    "provider_data",
-                }
-            ):
-                raise ValueError("load_toolset outcome tools 无效")
+        for tool in data["tools"]:
             snapshots.append(
                 LoadedToolSnapshot(
                     name=tool["name"],
