@@ -18,7 +18,6 @@ import {
   IconCopy,
   IconArrowFork,
   IconSparkles,
-  IconX,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
@@ -41,7 +40,6 @@ import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { redPandaMark } from "../../app/brand";
 import { ConversationWelcome } from "../../app/ConversationWelcome";
 import {
-  authorizationResolved,
   controlNotice,
   lockDraft,
   viewing,
@@ -55,6 +53,7 @@ import { ContentPage } from "./ContentPage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatMessageTime } from "./messageTime";
+import { PendingActions } from "./PendingActions";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
@@ -270,16 +269,12 @@ export function Conversation() {
     if (connectionId === null) {
       return;
     }
-    try {
-      await authorizeCommand({
-        connectionId,
-        sessionId,
-        commandId,
-        approved,
-      }).unwrap();
-    } finally {
-      dispatch(authorizationResolved({ sessionId, commandId }));
-    }
+    await authorizeCommand({
+      connectionId,
+      sessionId,
+      commandId,
+      approved,
+    }).unwrap();
   }
 
   async function decideControl(approved: boolean) {
@@ -296,9 +291,6 @@ export function Conversation() {
     }
     await setAutoAuthorize({ connectionId, sessionId, enabled }).unwrap();
   }
-
-  const pendingAuthorizations = Object.values(runtime?.authorizations ?? {});
-  const activeAuthorization = pendingAuthorizations[0];
 
   return (
     <Box className="conversation-layout">
@@ -457,6 +449,16 @@ export function Conversation() {
           </Button>
         )}
         <Box>
+          <Box className="composer-column">
+            <PendingActions
+              authorizations={conversation.session.pending_authorization_commands}
+              control={conversation.session.control_approval}
+              authorizationDisabled={connectionId === null || authorizing.isLoading}
+              controlDisabled={connectionId === null || resolvingControl.isLoading}
+              onAuthorize={(commandId, approved) => void authorize(commandId, approved)}
+              onControl={(approved) => void decideControl(approved)}
+            />
+          </Box>
           {activePlan === null ? null : (
             <Box className="composer-column" mb={8}>
               <WorkPlanPanel plan={activePlan}
@@ -586,91 +588,6 @@ export function Conversation() {
             </Button>
           </Group>
         </Stack>
-      </Modal>
-      <Modal
-        centered
-        closeOnClickOutside={false}
-        closeOnEscape={false}
-        onClose={() => {}}
-        opened={conversation.session.control_approval !== null}
-        title="等待确认"
-        withCloseButton={false}
-      >
-        {conversation.session.control_approval === null ? null : (
-          <Stack gap="md">
-            <Text className="pre-wrap" fz={13}>
-              {conversation.session.control_approval?.summary}
-            </Text>
-            <Text c="dimmed" className="pre-wrap" fz={12}>
-              风险：{conversation.session.control_approval?.risk}
-            </Text>
-            <Group justify="flex-end" gap="xs">
-              <Button
-                color="gray"
-                disabled={resolvingControl.isLoading}
-                leftSection={<IconX size={14} />}
-                onClick={() => void decideControl(false)}
-              >
-                取消
-              </Button>
-              <Button
-                color="ember"
-                disabled={resolvingControl.isLoading}
-                leftSection={<IconCheck size={14} />}
-                loading={resolvingControl.isLoading}
-                onClick={() => void decideControl(true)}
-              >
-                确认
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
-      <Modal
-        centered
-        closeOnClickOutside={false}
-        onClose={() => {
-          if (activeAuthorization !== undefined) {
-            dispatch(
-              authorizationResolved({
-                sessionId,
-                commandId: activeAuthorization.commandId,
-              }),
-            );
-          }
-        }}
-        opened={activeAuthorization !== undefined}
-        title="等待授权"
-      >
-        {activeAuthorization === undefined ? null : (
-          <Stack gap="md">
-            <Text ff="monospace" fw={600}>
-              {activeAuthorization.name}
-            </Text>
-            <Text c="dimmed" className="pre-wrap" ff="monospace" fz={12}>
-              {JSON.stringify(activeAuthorization.arguments, null, 2)}
-            </Text>
-            <Group justify="flex-end" gap="xs">
-              <Button
-                color="gray"
-                disabled={connectionId === null || authorizing.isLoading}
-                leftSection={<IconX size={14} />}
-                onClick={() => authorize(activeAuthorization.commandId, false)}
-              >
-                拒绝
-              </Button>
-              <Button
-                color="ember"
-                disabled={connectionId === null || authorizing.isLoading}
-                leftSection={<IconCheck size={14} />}
-                loading={authorizing.isLoading}
-                onClick={() => authorize(activeAuthorization.commandId, true)}
-              >
-                允许
-              </Button>
-            </Group>
-          </Stack>
-        )}
       </Modal>
     </Box>
     {openPage === null ? null : (

@@ -15,13 +15,6 @@ export type LiveTool = {
 
 export type ToolProgressStatus = "running" | "settled";
 
-export type PendingAuthorization = {
-  sessionId: string;
-  commandId: string;
-  name: string;
-  arguments: Record<string, unknown>;
-};
-
 export type SessionRuntime = {
   activity: SessionActivity | null;
   lastError: string | null;
@@ -31,7 +24,6 @@ export type SessionRuntime = {
   committed: Record<string, string>;
   committedThinking: Record<string, string>;
   tools: Record<string, LiveTool>;
-  authorizations: Record<string, PendingAuthorization>;
   controlNotice: string | null;
   conversationStatus: {
     compactCount: number;
@@ -69,7 +61,6 @@ function runtimeOf(state: RuntimeState, sessionId: string): SessionRuntime {
     committed: {},
     committedThinking: {},
     tools: {},
-    authorizations: {},
     controlNotice: null,
     conversationStatus: null,
   };
@@ -131,7 +122,6 @@ const runtimeSlice = createSlice({
       session.committed = {};
       session.committedThinking = {};
       session.tools = {};
-      session.authorizations = {};
       session.controlNotice = null;
       session.conversationStatus = null;
     },
@@ -263,28 +253,11 @@ const runtimeSlice = createSlice({
         status: "running",
       };
     },
-    authorizationRequired(
-      state,
-      action: PayloadAction<PendingAuthorization>,
-    ) {
-      const { sessionId, commandId, name, arguments: args } = action.payload;
-      const session = runtimeOf(state, sessionId);
-      session.authorizations[commandId] = {
-        sessionId,
-        commandId,
-        name,
-        arguments: args,
-      };
+    authorizationRequired(state, action: PayloadAction<{ sessionId: string }>) {
+      const { sessionId } = action.payload;
       if (state.viewingSessionId !== sessionId) {
-        session.unread += 1;
+        runtimeOf(state, sessionId).unread += 1;
       }
-    },
-    authorizationResolved(
-      state,
-      action: PayloadAction<{ sessionId: string; commandId: string }>,
-    ) {
-      const session = runtimeOf(state, action.payload.sessionId);
-      delete session.authorizations[action.payload.commandId];
     },
     conversationStatus(
       state,
@@ -323,7 +296,6 @@ export const {
   outputFinal,
   toolProgress,
   authorizationRequired,
-  authorizationResolved,
   conversationStatus,
 } = runtimeSlice.actions;
 export default runtimeSlice.reducer;

@@ -58,7 +58,7 @@
 | workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
-| tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
+| tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
@@ -202,7 +202,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 | 失败（产品缺口） | tool-coding-round（Windows 退出码折叠为 1）、crash-recovery（Worker 崩溃后会话永久卡死） |
 | 走不到 | workspace-management（重命名/移除）、layout-appearance（外观菜单）、composer-attachments、extensions、console-chat——中途浏览器面板隐藏后 `requestAnimationFrame`/`ResizeObserver` 不触发（实测 0 次），弹窗、菜单与虚拟时间线无法渲染；console-chat 需要交互终端 |
 
-本轮 live 新发现的产品缺口（已写入对应文件 `Gotchas`）：Windows 命令退出码折叠为 1；Worker 崩溃后会话永久卡死；自动放行批准后 `等待授权` 弹窗不关闭；回滚后第一条消息改写 409 且显示内部英文错误；文件属性行显示 Python `None`；会话页高频轮询 `/model` 与 `/model-settings`。地图漂移已按实测修正：停止命令后不出现 `继续`（run-control）、SSE keep-alive 实际为 `: ping`（realtime-events）。
+本轮 live 新发现的产品缺口（已写入对应文件 `Gotchas`）：Windows 命令退出码折叠为 1；Worker 崩溃后会话永久卡死；自动放行批准后 `等待授权` 弹窗不关闭（已随待处理条消除）；回滚后第一条消息改写 409 且显示内部英文错误；文件属性行显示 Python `None`；会话页高频轮询 `/model` 与 `/model-settings`。地图漂移已按实测修正：停止命令后不出现 `继续`（run-control）、SSE keep-alive 实际为 `: ping`（realtime-events）。
 
 ## 已确认的设计边界（不当问题报）
 
