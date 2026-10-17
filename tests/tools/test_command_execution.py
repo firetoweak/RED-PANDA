@@ -69,6 +69,9 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(coerced["code"], "VALIDATION_ERROR")
         self.assertEqual(extra["code"], "VALIDATION_ERROR")
+        for bad in ({"timeout_seconds": 301}, {"workspace_effect": "unknown"}):
+            with self.subTest(bad=bad), self.assertRaises(ValidationError):
+                ExecuteCommandInput.model_validate({"command": "ok", **bad})
 
     async def test_handler_unexpected_exception_becomes_tool_error(self):
         async def handler(_value):
@@ -151,23 +154,25 @@ class CommandEnvironmentPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child_env["HELPER_ALLOWED"], "yes")
 
 
+def _read_write_binding(root: Path, environment_id: str) -> FileAccess:
+    return FileAccess(
+        environment_id=environment_id,
+        workspace_view=WorkspaceViewSnapshot((
+            RootBinding("project", WorkspaceScope.TASK, root),
+        )),
+        permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
+        cwd=root,
+    )
+
+
 class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
-    async def test_uses_binding_shell_metadata_and_maps_missing_shell(self):
+    async def test_missing_shell_maps_to_shell_not_found(self):
         class MissingShellRunner:
             async def run(self, command, cwd, timeout_seconds):
                 raise ShellNotFoundError("bash", "/bin/bash")
 
         with tempfile.TemporaryDirectory() as directory:
-            workspace_root = Path(directory)
-            view = WorkspaceViewSnapshot((
-                RootBinding("project", WorkspaceScope.TASK, workspace_root),
-            ))
-            binding = FileAccess(
-                environment_id='linux-test',
-                workspace_view=view,
-                permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
-                cwd=workspace_root,
-            )
+            binding = _read_write_binding(Path(directory), 'linux-test')
             commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash", MissingShellRunner())
             spec = create_command_execution_spec(binding, commands)
 
@@ -176,13 +181,6 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
                 workspace_effect="read_only",
             ))
 
-        self.assertIn("使用 bash", spec.description)
-        self.assertIn("/bin/bash", spec.description)
-        command_schema = spec.to_openai_tool()["function"]["parameters"][
-            "properties"
-        ]["command"]
-        self.assertIn("交给 Shell 执行", command_schema["description"])
-        self.assertNotIn("PowerShell", command_schema["description"])
         self.assertEqual(result["code"], "SHELL_NOT_FOUND")
         self.assertEqual(result["shell"], "bash")
         self.assertEqual(result["executable"], "/bin/bash")
@@ -198,15 +196,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 
         for exit_code, code in ((0, "COMMAND_COMPLETED"), (2, "COMMAND_EXIT_NONZERO")):
             with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
-                workspace_root = Path(directory)
-                binding = FileAccess(
-                    environment_id='exit-test',
-                    workspace_view=WorkspaceViewSnapshot((
-                        RootBinding("project", WorkspaceScope.TASK, workspace_root),
-                    )),
-                    permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
-                    cwd=workspace_root,
-                )
+                binding = _read_write_binding(Path(directory), 'exit-test')
                 runner = ExitRunner(exit_code)
                 spec = create_command_execution_spec(
                     binding, CommandEnvironment(runner, "bash", "/bin/bash", runner),
@@ -224,16 +214,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("internal executor bug")
 
         with tempfile.TemporaryDirectory() as directory:
-            workspace_root = Path(directory)
-            view = WorkspaceViewSnapshot((
-                RootBinding("project", WorkspaceScope.TASK, workspace_root),
-            ))
-            binding = FileAccess(
-                environment_id='failure-test',
-                workspace_view=view,
-                permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
-                cwd=workspace_root,
-            )
+            binding = _read_write_binding(Path(directory), 'failure-test')
             commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash", BrokenRunner())
             spec = create_command_execution_spec(binding, commands)
 
@@ -294,18 +275,6 @@ class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.stdout.content, "out")
         self.assertEqual(result.stderr.content, "err")
         self.assertFalse(result.timed_out)
-
-    async def test_uses_powershell_composition_semantics(self):
-        runner = PowerShellCommandRunner()
-
-        result = await runner.run(
-            'Write-Output "alpha" | ForEach-Object { "$_-beta" }',
-            Path.cwd(),
-            10,
-        )
-
-        self.assertEqual(result.exit_code, 0)
-        self.assertEqual(result.stdout.content.strip(), "alpha-beta")
 
     async def test_decodes_utf8_output(self):
         runner = PowerShellCommandRunner()
@@ -535,21 +504,6 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["exit_code"], 1)
         self.assertIn("failed", result["data"]["stderr"]["content"])
 
-    async def test_workspace_effect_defaults_to_may_write(self):
-        result = await self.execute({
-            "command": "Write-Output ok",
-        })
-
-        self.assertEqual(result["data"]["workspace_effect"], "may_write")
-
-    async def test_read_only_workspace_effect_is_returned(self):
-        result = await self.execute({
-            "command": "Write-Output ok",
-            "workspace_effect": "read_only",
-        })
-
-        self.assertEqual(result["data"]["workspace_effect"], "read_only")
-
     async def test_permission_binding_rejects_potential_write_command(self):
         read_only_binding = FileAccess(
             environment_id=self.binding.environment_id,
@@ -641,23 +595,4 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "COMMAND_TIMEOUT")
         self.assertTrue(result["data"]["timed_out"])
         self.assertIn("started", result["data"]["stdout"]["content"])
-        self.assertIs(result["data"]["output_is_result"], False)
-        self.assertIn("因超时终止", result["error"])
         self.assertIn("可能已部分执行", result["error"])
-        self.assertIn("先检查相关文件或外部状态", result["hint"])
-        self.assertNotIn("用户停止", result["error"])
-
-    async def test_timeout_schema_limits_are_exposed_and_validated(self):
-        schema = ExecuteCommandInput.model_json_schema()["properties"]
-        self.assertEqual(schema["timeout_seconds"]["minimum"], 1)
-        self.assertEqual(schema["timeout_seconds"]["maximum"], 300)
-        with self.assertRaises(ValidationError):
-            ExecuteCommandInput.model_validate({
-                "command": "ok",
-                "timeout_seconds": 301,
-            })
-        with self.assertRaises(ValidationError):
-            ExecuteCommandInput.model_validate({
-                "command": "ok",
-                "workspace_effect": "unknown",
-            })

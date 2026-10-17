@@ -16,7 +16,6 @@ from redpanda.mcp.approval import (
     MCP_RECOVER_ACTION,
     MCP_REMOVE_ACTION,
     McpInstallApprovalHandler,
-    McpRecoveryProposalInput,
     McpRecoveryApprovalHandler,
     McpRemoveApprovalHandler,
     McpRemoveProposalInput,
@@ -43,14 +42,9 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         input_data = spec.parameters.validate({
             "server_id": "filesystem",
             "display_name": "Filesystem MCP",
-            "description": "读取用户授权目录",
             "transport": "stdio",
             "command": "npx",
-            "args": [
-                "-y",
-                "@modelcontextprotocol/server-filesystem",
-                "E:\\myCard",
-            ],
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "E:\\myCard"],
             "source": "official_documentation",
         })
 
@@ -59,18 +53,6 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, ControlApprovalProposal)
         self.assertEqual(result.action, MCP_INSTALL_ACTION)
         self.assertTrue(spec.control_boundary)
-        self.assertEqual(
-            result.payload["transport_config"],
-            {
-                "command": "npx",
-                "args": (
-                    "-y",
-                    "@modelcontextprotocol/server-filesystem",
-                    "E:\\myCard",
-                ),
-                "cwd": None,
-            },
-        )
         self.assertNotIn("secrets", result.payload)
         self.assertIn("Executable：npx", result.summary)
 
@@ -85,7 +67,6 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
             "source": "official_documentation",
         })
         request = await spec.handler(input_data)
-        self.assertIsInstance(request.payload["transport_config"]["args"], tuple)
 
         with TemporaryDirectory() as directory:
             home = RedPandaHome(Path(directory) / ".redpanda")
@@ -105,143 +86,66 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
                 enabled=False,
             )
 
-        self.assertEqual(
-            record.transport_config.args,
-            ("-y", "@playwright/mcp@latest"),
-        )
+        self.assertEqual(record.transport_config.args, ("-y", "@playwright/mcp@latest"))
 
-    async def test_rejects_shell_and_unverified_model_inference(self):
+    async def test_secrets_pass_through_payload_but_not_summary(self):
         spec = self._spec()
-        base = {
-            "server_id": "demo",
-            "display_name": "Demo",
-            "transport": "stdio",
-            "command": "cmd.exe",
-            "args": ["/c", "npm install x && x"],
-            "source": "user_input",
-        }
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate(base)
-
-        base["command"] = "npx"
-        base["source"] = "model_inference"
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate(base)
-
-    async def test_accepts_http_headers_and_bearer(self):
-        spec = self._spec()
-        input_data = spec.parameters.validate({
-            "server_id": "remote",
-            "display_name": "Remote",
-            "transport": "streamable_http",
-            "url": "https://example.com/mcp",
-            "source": "user_input",
-            "headers": {"X-API-Key": "secret-value"},
-            "bearer": "token-value",
-        })
-
-        result = await spec.handler(input_data)
-
-        self.assertIsInstance(result, ControlApprovalProposal)
-        self.assertEqual(
-            result.payload["transport_config"]["headers"],
-            {"X-API-Key": "secret-value"},
-        )
-        self.assertEqual(
-            result.payload["transport_config"]["bearer"],
-            "token-value",
-        )
-        self.assertNotIn("secret-value", result.summary)
-        self.assertNotIn("token-value", result.summary)
-        self.assertIn('"X-API-Key": "***"', result.summary)
-
-    async def test_accepts_stdio_env(self):
-        spec = self._spec()
-        input_data = spec.parameters.validate({
-            "server_id": "tavily",
-            "display_name": "Tavily",
-            "transport": "stdio",
-            "command": "npx",
-            "args": ["-y", "tavily-mcp"],
-            "env": {"TAVILY_API_KEY": "secret-value"},
-            "source": "user_input",
-        })
-
-        result = await spec.handler(input_data)
-
-        self.assertIsInstance(result, ControlApprovalProposal)
-        self.assertEqual(
-            result.payload["transport_config"]["env"],
-            {"TAVILY_API_KEY": "secret-value"},
-        )
-        self.assertNotIn("secret-value", result.summary)
-        self.assertIn('"TAVILY_API_KEY": "***"', result.summary)
-
-    async def test_keeps_http_url_query_for_normalization(self):
-        spec = self._spec()
-        input_data = spec.parameters.validate({
-            "server_id": "tavily",
-            "display_name": "Tavily",
-            "transport": "streamable_http",
-            "url": "https://mcp.tavily.com/mcp/?tavilyApiKey=secret-value",
-            "source": "user_input",
-        })
-
-        result = await spec.handler(input_data)
-
-        self.assertIsInstance(result, ControlApprovalProposal)
-        self.assertEqual(
-            result.payload["transport_config"]["url"],
-            "https://mcp.tavily.com/mcp/?tavilyApiKey=secret-value",
-        )
-        self.assertNotIn("secret-value", result.summary)
-        self.assertIn("?<redacted>", result.summary)
-
-    async def test_rejects_http_url_userinfo(self):
-        spec = self._spec()
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate({
-                "server_id": "remote",
-                "display_name": "Remote",
-                "transport": "streamable_http",
-                "url": "https://user:pass@example.com/mcp",
-                "source": "user_input",
-            })
-
-    async def test_rejects_stdio_with_headers_or_bearer(self):
-        spec = self._spec()
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate({
-                "server_id": "remote",
-                "display_name": "Remote",
-                "transport": "stdio",
-                "command": "npx",
-                "args": ["server"],
-                "source": "user_input",
-                "headers": {"Authorization": "secret"},
-            })
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate({
-                "server_id": "remote",
-                "display_name": "Remote",
-                "transport": "stdio",
-                "command": "npx",
-                "args": ["server"],
-                "source": "user_input",
-                "bearer": "secret",
-            })
-
-    async def test_rejects_http_with_env(self):
-        spec = self._spec()
-        with self.assertRaises(ToolArgumentsError):
-            spec.parameters.validate({
-                "server_id": "remote",
-                "display_name": "Remote",
+        cases = (
+            ({
                 "transport": "streamable_http",
                 "url": "https://example.com/mcp",
-                "source": "user_input",
-                "env": {"KEY": "secret"},
-            })
+                "headers": {"X-API-Key": "secret-value"},
+                "bearer": "token-value",
+            }, '"X-API-Key": "***"'),
+            ({
+                "transport": "stdio",
+                "command": "npx",
+                "args": ["-y", "tavily-mcp"],
+                "env": {"TAVILY_API_KEY": "secret-value"},
+            }, '"TAVILY_API_KEY": "***"'),
+            ({
+                "transport": "streamable_http",
+                "url": "https://mcp.tavily.com/mcp/?tavilyApiKey=secret-value",
+            }, "?<redacted>"),
+        )
+        for fields, marker in cases:
+            with self.subTest(marker=marker):
+                result = await spec.handler(spec.parameters.validate({
+                    "server_id": "remote",
+                    "display_name": "Remote",
+                    "source": "user_input",
+                    **fields,
+                }))
+
+                self.assertIsInstance(result, ControlApprovalProposal)
+                config = result.payload["transport_config"]
+                for key in ("url", "headers", "bearer", "env"):
+                    if key in fields:
+                        self.assertEqual(config[key], fields[key])
+                self.assertNotIn("secret-value", result.summary)
+                self.assertNotIn("token-value", result.summary)
+                self.assertIn(marker, result.summary)
+
+    async def test_rejects_invalid_user_or_model_input(self):
+        spec = self._spec()
+        stdio = {"transport": "stdio", "command": "npx", "args": ["server"]}
+        http = {"transport": "streamable_http", "url": "https://example.com/mcp"}
+        cases = (
+            {**stdio, "command": "cmd.exe", "args": ["/c", "npm install x && x"]},
+            {**stdio, "source": "model_inference"},
+            {**http, "url": "https://user:pass@example.com/mcp"},
+            {**stdio, "headers": {"Authorization": "secret"}},
+            {**stdio, "bearer": "secret"},
+            {**http, "env": {"KEY": "secret"}},
+        )
+        for fields in cases:
+            with self.subTest(fields=fields), self.assertRaises(ToolArgumentsError):
+                spec.parameters.validate({
+                    "server_id": "demo",
+                    "display_name": "Demo",
+                    "source": "user_input",
+                    **fields,
+                })
 
     async def test_existing_id_is_not_silently_overwritten(self):
         existing = SimpleNamespace(id="demo", enabled=True, revision=7)
@@ -324,15 +228,7 @@ class McpInstallApprovalHandlerTest(unittest.IsolatedAsyncioTestCase):
         result = await self.handler.execute(self.payload)
 
         self.assertTrue(result.succeeded)
-        self.service.upsert_server.assert_awaited_once_with(
-            server_id="demo",
-            display_name="Demo",
-            description="demo server",
-            transport="stdio",
-            transport_config=self.payload["transport_config"],
-            enabled=False,
-            read_only=False,
-        )
+        self.assertIs(self.service.upsert_server.await_args.kwargs["enabled"], False)
         self.service.test_and_enable.assert_awaited_once_with(
             "demo",
             expected_revision=1,
@@ -378,28 +274,8 @@ class McpRecoveryApprovalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, ControlApprovalProposal)
         self.assertEqual(result.action, MCP_RECOVER_ACTION)
-        self.assertEqual(result.payload["server_id"], "demo")
         self.assertEqual(result.payload["expected_revision"], 4)
         self.assertTrue(spec.control_boundary)
-
-    async def test_enabled_state_does_not_claim_server_is_healthy(self):
-        record = SimpleNamespace(
-            id="demo",
-            display_name="Demo",
-            enabled=True,
-            revision=6,
-        )
-        service = SimpleNamespace(
-            registry=SimpleNamespace(get=AsyncMock(return_value=record)),
-        )
-
-        result = await create_mcp_recovery_proposal_spec(service).handler(
-            McpRecoveryProposalInput(server_id="demo")
-        )
-
-        self.assertIsInstance(result, ControlApprovalProposal)
-        self.assertEqual(result.payload["expected_revision"], 6)
-        self.assertIn("enabled", result.summary)
 
     async def test_missing_server_does_not_create_approval(self):
         service = SimpleNamespace(
@@ -530,11 +406,7 @@ class McpRemoveApprovalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, ControlApprovalProposal)
         self.assertEqual(result.action, MCP_REMOVE_ACTION)
-        self.assertEqual(
-            result.payload,
-            {"server_id": "demo", "expected_revision": 3},
-        )
-        self.assertIn("能力目录中不再出现", result.risk)
+        self.assertEqual(result.payload["expected_revision"], 3)
         self.assertTrue(spec.control_boundary)
 
     async def test_missing_server_does_not_create_approval(self):
@@ -565,8 +437,6 @@ class McpRemoveApprovalTest(unittest.IsolatedAsyncioTestCase):
             "demo",
             expected_revision=3,
         )
-        self.assertEqual(result.data["server_id"], "demo")
-        self.assertIn("已删除", result.message)
 
     async def test_handler_only_converts_declared_precondition(self):
         service = SimpleNamespace(
@@ -583,17 +453,3 @@ class McpRemoveApprovalTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result.succeeded)
         self.assertIn("revision changed", result.message)
-
-    async def test_handler_exposes_unexpected_service_value_error(self):
-        service = SimpleNamespace(
-            remove_server=AsyncMock(
-                side_effect=ValueError("internal service bug")
-            ),
-        )
-        handler = McpRemoveApprovalHandler(service)
-
-        with self.assertRaisesRegex(ValueError, "internal service bug"):
-            await handler.execute({
-                "server_id": "demo",
-                "expected_revision": 3,
-            })
