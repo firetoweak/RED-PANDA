@@ -1,7 +1,10 @@
 """Native file contracts compose file operations with independent task execution."""
 import os
 from redpanda.filesystem.file_view import Client
-from redpanda.execution.process import Running
+if os.name == "nt":
+    from redpanda.execution.process_win import Running
+else:
+    from redpanda.execution.process_posix import Running
 
 
 class CommandClient(Client):

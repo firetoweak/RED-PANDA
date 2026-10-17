@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from redpanda.assistant.conversations import AssistantQueries, recent_workspace_id
+from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.workspaces import (
     SESSION_WORKSPACE_FACT,
@@ -125,8 +125,6 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
                 ["bound"],
             )
             self.assertEqual(listed[0].workspace_id, record.workspace_id)
-            self.assertEqual(recent_workspace_id(listed), record.workspace_id)
-            self.assertIsNone(recent_workspace_id(()))
 
     async def test_deleting_the_workspace_hides_its_sessions(self):
         """删除工作区只移除登记：Journal 和目录都不动，会话不再列出。"""

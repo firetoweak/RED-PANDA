@@ -306,7 +306,7 @@ async def build_assistant_assembly(
                     return await versions.read(lambda: _handler(context, arguments))
                 return await versions.execute(operation_id(context.session_id, context.command_id),
                                               lambda: _handler(context, arguments))
-            except FileSystemUnavailable as error:
+            except FileSystemUnavailable:
                 return {"ok": False, "code": "FILESYSTEM_UNAVAILABLE",
                         "error": "当前无法执行工作区文件操作，请让用户检查应用安装后重试。"}
         bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,

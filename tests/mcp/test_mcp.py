@@ -8,7 +8,6 @@ import socket
 from contextlib import AsyncExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 

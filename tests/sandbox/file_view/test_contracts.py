@@ -17,9 +17,8 @@ if not EXE.is_file():
     pytest.skip("需要已构建的原生 sandbox", allow_module_level=True)
 
 from redpanda.filesystem.file_view import ServiceFailure
-from tests.fixtures.file_view import CommandClient
+from tests.fixtures.file_view import CommandClient, Running
 from redpanda.filesystem.file_view import publication as pub
-from redpanda.execution.process import Running
 
 
 class Contracts(unittest.TestCase):

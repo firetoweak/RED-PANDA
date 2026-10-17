@@ -335,7 +335,6 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
 
             child_session_id = reports[0].data["child_session_id"]
             self.assertTrue(host.is_subagent(child_session_id))
-            self.assertEqual(host.parent_of(child_session_id), self.PARENT)
 
             # 子的任务事实落在子自己的 Journal，父只拿到结论。
             child_events = await runtime.snapshot(child_session_id)

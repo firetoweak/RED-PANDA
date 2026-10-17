@@ -1,7 +1,6 @@
 """Every accepted read-only attribute effect has publication and restoration evidence."""
 import os
 from pathlib import Path
-import stat
 
 import pytest
 
