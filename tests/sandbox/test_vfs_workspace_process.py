@@ -24,6 +24,22 @@ def backend(tmp_path):
     return WorkspaceFiles(root, tmp_path / "store")
 
 
+async def agent_write(view, name, path, data: bytes):
+    """以 agent 命令身份经原生视图写入一个文件。"""
+    async def edit():
+        view.native_path(path).write_bytes(data)
+        return {"ok": True}
+    return await view.execute(operation_id("s", name), edit)
+
+
+async def builtin_tools(view, operations=()):
+    from redpanda.assistant.builtin_tools import build_builtin_tools
+    from tests.fixtures.workspaces import workspace_record
+    return await build_builtin_tools(
+        workspace_record(view.root), filesystem=view, session_operations=AsyncMock(return_value=operations),
+    )
+
+
 def test_record_does_not_enumerate_workspace(tmp_path):
     async def scenario():
         view = backend(tmp_path)
@@ -78,10 +94,7 @@ def test_restore_reports_actual_effect_and_preserved_values(tmp_path, before, ag
         file = view.root / "file"
         if before is not None:
             file.write_bytes(before)
-        async def edit():
-            view.native_path(file).write_bytes(agent)
-            return {"ok": True}
-        await view.execute(operation_id("s", "edit"), edit)
+        await agent_write(view, "edit", file, agent)
         file.write_bytes(current)
         identity = operation_id("s", "restore")
         result = await view.restore(INITIAL, identity=identity, policy=policy)
@@ -100,10 +113,7 @@ def test_restore_length_conflict_reports_file_and_leaves_user_content(tmp_path, 
         view = backend(tmp_path)
         file = view.root / "file"
         file.write_bytes(b"AAAA")
-        async def edit():
-            view.native_path(file).write_bytes(b"BBBB")
-            return {"ok": True}
-        await view.execute(operation_id("s", "edit"), edit)
+        await agent_write(view, "edit", file, b"BBBB")
         file.write_bytes(b"BBBBB")
         with pytest.raises(WorkspaceRestoreFailed, match="长度已变化") as captured:
             await view.restore(INITIAL, identity=operation_id("s", "restore"), policy=policy)
@@ -114,14 +124,12 @@ def test_restore_length_conflict_reports_file_and_leaves_user_content(tmp_path, 
 
 def test_local_tool_edit_captures_only_changed_blocks_and_preserves_newlines(tmp_path):
     import json
-    from redpanda.assistant.builtin_tools import build_builtin_tools
-    from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
         file = view.root / "file"
         source = b"TARGET\n" + b"A" * (4 * 65536) + b"TARGET\r\n"
         file.write_bytes(source)
-        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view, session_operations=AsyncMock(return_value=()))
+        tools = await builtin_tools(view)
         identity = operation_id("s", "replace")
         result = await view.execute(identity, lambda: tools.execute("replace_all", {
             "path": "file", "old_block": "TARGET", "new_block": "CHANGE",
@@ -135,11 +143,9 @@ def test_local_tool_edit_captures_only_changed_blocks_and_preserves_newlines(tmp
 
 
 def test_write_failure_exposes_only_logical_file_information(tmp_path):
-    from redpanda.assistant.builtin_tools import build_builtin_tools
-    from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
-        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view, session_operations=AsyncMock(return_value=()))
+        tools = await builtin_tools(view)
         original = Path.open
         def denied(path, *args, **kwargs):
             if path.name == "blocked.txt":
@@ -162,10 +168,7 @@ def test_current_changes_distinguish_agent_and_external_without_a_restore(tmp_pa
         view = backend(tmp_path)
         path = view.root / "file"
         path.write_bytes(b"AAAAAA")
-        async def edit():
-            view.native_path(path).write_bytes(b"BAAAAA")
-            return {"ok": True}
-        await view.execute(operation_id("s", "edit"), edit)
+        await agent_write(view, "edit", path, b"BAAAAA")
         path.write_bytes(b"BAHAAA")
         head = (view.storage / "HEAD").read_bytes()
         cas = {p.name: p.read_bytes() for p in (view.storage / "cas").iterdir()}
@@ -186,20 +189,14 @@ def test_agent_creation_and_recreation_are_not_reported_as_external_replacements
     async def scenario():
         view = backend(tmp_path)
         path = view.root / "file"
-        async def create():
-            view.native_path(path).write_bytes(b"AAAAAA")
-            return {"ok": True}
-        await view.execute(operation_id("s", "create"), create)
+        await agent_write(view, "create", path, b"AAAAAA")
         async def recreate():
             native = view.native_path(path)
             native.unlink()
             native.write_bytes(b"BAAAAA")
             return {"ok": True}
         await view.execute(operation_id("s", "recreate"), recreate)
-        async def edit():
-            view.native_path(path).write_bytes(b"BAAAAB")
-            return {"ok": True}
-        await view.execute(operation_id("s", "edit"), edit)
+        await agent_write(view, "edit", path, b"BAAAAB")
         state = (await view.changes(path))["changes"][0]
         assert state["origin"] == "agent"
         assert not any(p["origin"] == "external" for p in state["properties"])
@@ -430,10 +427,7 @@ def test_noop_restore_retry_cannot_undo_later_commands(tmp_path):
         view = backend(tmp_path)
         identity = operation_id("s", "noop")
         expected = await view.restore(INITIAL, identity=identity)
-        async def later():
-            view.native_path(view.root / "later").write_text("new")
-            return {"ok": True}
-        await view.execute(operation_id("s", "later"), later)
+        await agent_write(view, "later", view.root / "later", b"new")
         assert await view.restore(INITIAL, identity=identity) == expected
         assert (view.root / "later").read_text() == "new"
         with pytest.raises(ValueError, match="identity was reused"):
@@ -443,8 +437,6 @@ def test_noop_restore_retry_cannot_undo_later_commands(tmp_path):
 
 @pytest.mark.parametrize("deep_store", [False, True])
 def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep_store):
-    from redpanda.assistant.builtin_tools import build_builtin_tools
-    from tests.fixtures.workspaces import workspace_record
     async def scenario():
         view = backend(tmp_path)
         if deep_store:
@@ -457,8 +449,7 @@ def test_discovery_paths_and_change_results_use_logical_locations(tmp_path, deep
             subprocess.run(["git", "-C", str(view.root), *args], capture_output=True, check=True)
         git("init"); git("add", ".")
         git("-c", "user.name=Test", "-c", "user.email=test@local", "commit", "-m", "baseline")
-        tools = await build_builtin_tools(workspace_record(view.root), filesystem=view,
-                                          session_operations=AsyncMock(return_value=(operation_id("s", "discovery"),)))
+        tools = await builtin_tools(view, (operation_id("s", "discovery"),))
         async def inspect():
             view.native_path(code).write_text("print('after')\n")
             found = await tools.execute("glob", {"pattern": "*.py"})
