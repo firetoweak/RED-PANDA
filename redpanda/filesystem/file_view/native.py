@@ -9,12 +9,22 @@ if os.name == "nt":
         directory_identity,
         attributes,
         identity,
-        identity_handle,
         open_file,
         remove_open,
         set_attributes,
         set_path_attributes,
     )
+
+    __all__ = [
+        "attributes",
+        "directory_identity",
+        "directory_metadata",
+        "identity",
+        "open_file",
+        "remove_open",
+        "set_attributes",
+        "set_path_attributes",
+    ]
 else:
     from .native_posix import (
         directory_identity,
@@ -30,9 +40,12 @@ else:
     def directory_metadata(path):
         return directory_identity(path), {"hidden": None, "readonly": None}
 
-__all__ = [
-    "directory_identity",
-    "identity",
-    "open_file",
-    "remove_open",
-]
+    __all__ = [
+        "attributes",
+        "directory_identity",
+        "directory_metadata",
+        "identity",
+        "open_file",
+        "remove_open",
+        "set_path_mode",
+    ]

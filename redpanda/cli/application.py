@@ -12,7 +12,6 @@ from redpanda.cli.errors import (
 from redpanda.cli.health import CliHealthChecker, CliProbe
 from redpanda.cli.installer import resolve_cli_path
 from redpanda.cli.models import (
-    CliHealth,
     CliRecord,
     CliSourceRef,
     validate_cli_description,

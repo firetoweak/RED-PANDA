@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from redpanda.paths import RedPandaHome
-from redpanda.filesystem import ChildFiles, child_root, child_workspace, workspace_files
+from redpanda.filesystem import ChildFiles, child_workspace, workspace_files
 from redpanda.filesystem.operations import INITIAL, WorkspaceRestoreFailed, native_executable, operation_id
 from redpanda.filesystem.git import ReviewWorktrees
 from tests.fixtures.workspaces import workspace_record

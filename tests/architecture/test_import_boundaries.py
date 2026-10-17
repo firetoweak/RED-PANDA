@@ -274,7 +274,6 @@ class LayerImportBoundaryTest(unittest.TestCase):
                     _imported_modules(path),
                     {
                         "redpanda.execution.local",
-                        "redpanda.execution.process",
                         "redpanda.execution.process_win",
                         "redpanda.execution.process_posix",
                     },

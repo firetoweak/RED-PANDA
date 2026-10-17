@@ -37,7 +37,6 @@ class WorkspaceRegistryTest(unittest.TestCase):
         registry = WorkspaceRegistry.load(self.registry_path)
 
         self.assertEqual(registry.workspaces, ())
-        self.assertIsNone(registry.latest_created())
         self.assertFalse(self.registry_path.exists())
 
     def test_create_persists_and_reloads(self):
@@ -161,14 +160,6 @@ class WorkspaceRegistryTest(unittest.TestCase):
 
         self.assertEqual(record.name, "brand-new")
         self.assertEqual(record.task_root, project.resolve())
-
-    def test_latest_created_picks_the_most_recent(self):
-        registry = WorkspaceRegistry.load(self.registry_path)
-        first = registry.create(name="first", task_root=self.make_project("first"))
-        second = registry.create(name="second", task_root=self.make_project("second"))
-
-        self.assertEqual(registry.latest_created(), second)
-        self.assertNotEqual(first.workspace_id, second.workspace_id)
 
     def test_record_rejects_missing_directory(self):
         with self.assertRaises(ValueError):

@@ -100,6 +100,8 @@ def main(argv: list[str] | None = None) -> None:
         run([npm, "ci"], cwd=ROOT / "web")
     for target in targets:
         if target == "python":
+            run([sys.executable, "-m", "ruff", "check", "--select", "F",
+                 "redpanda", "thinllm", "scripts", "tests", "acp_chat.py", "console_chat.py", "web_chat.py"])
             run([sys.executable, "-m", "pytest", "--durations=20",
                  "--junitxml=.tools/test-results/python.xml"])
         elif target == "process":

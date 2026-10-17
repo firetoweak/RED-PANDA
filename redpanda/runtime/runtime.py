@@ -23,8 +23,6 @@ from redpanda.runtime.journal.api import Journal, LeaseLostError, StepClaimReque
 from redpanda.runtime.model import CanonicalState, CommandPhase, RuntimeStatus, Step
 from redpanda.runtime.projections import (
     ReplayView,
-    TraceView,
-    project_trace,
     replay,
 )
 from redpanda.runtime.state import StateProjector
@@ -418,10 +416,6 @@ class AgentRuntime:
 
     async def status(self, session_id: str) -> RuntimeStatus:
         return (await self.state(session_id)).status
-
-    async def trace(self, session_id: str) -> TraceView:
-        events = await self._journal.snapshot(session_id)
-        return project_trace(session_id, events)
 
     async def replay(self, session_id: str) -> ReplayView:
         events = await self._journal.snapshot(session_id)
