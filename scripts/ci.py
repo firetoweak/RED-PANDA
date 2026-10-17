@@ -63,8 +63,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("targets", nargs="*", choices=("python", "web", "process"))
     parser.add_argument("--clean", action="store_true",
                         help="在独立虚拟环境与干净 HEAD 中验证 python/web；不携带本机产物")
+    parser.add_argument("--process-group", choices=("compact", "supervisor", "filesystem", "other", "gate"),
+                        help="只验证指定 process 测试组；不指定时验证全部 process 用例")
     args = parser.parse_args(argv)
     targets = args.targets or ["python", "web"]
+    if args.process_group and "process" not in targets:
+        parser.error("--process-group 需要 process 验证目标")
     expected_python = (ROOT / ".python-version").read_text().strip()
     if f"{sys.version_info.major}.{sys.version_info.minor}" != expected_python:
         parser.error(f"请使用 Python {expected_python}")
@@ -77,7 +81,8 @@ def main(argv: list[str] | None = None) -> None:
     environment = verification_environment()
     os.environ.clear()
     os.environ.update(environment)
-    if "web" in targets or "process" in targets:
+    needs_web = "web" in targets or ("process" in targets and args.process_group in (None, "other"))
+    if needs_web:
         node_version = subprocess.check_output(["node", "--version"], text=True).strip()
         if node_version.split(".")[0] != "v24":
             parser.error("CI 验证请使用 Node.js 24")
@@ -85,14 +90,18 @@ def main(argv: list[str] | None = None) -> None:
         run([sys.executable, "-m", "pip", "install", "--require-hashes", "-r", "requirements.lock"])
     if "process" in targets:
         require_process_inputs()
-    if "web" in targets or "process" in targets:
+    if needs_web:
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
         run([npm, "ci"], cwd=ROOT / "web")
     for target in targets:
         if target == "python":
             run([sys.executable, "-m", "pytest"])
         elif target == "process":
-            run([sys.executable, "-m", "pytest", "-m", "process", "-x"])
+            command = [sys.executable, "-m", "pytest", "-m", "process", "-x", "--durations=20",
+                       f"--junitxml=.tools/test-results/process-{args.process_group or 'all'}.xml"]
+            if args.process_group:
+                command.extend(["--process-group", args.process_group])
+            run(command)
         else:
             run([npm, "test"], cwd=ROOT / "web")
             run([npm, "run", "build"], cwd=ROOT / "web")

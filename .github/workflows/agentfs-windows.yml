@@ -22,7 +22,7 @@ env:
 
 jobs:
   build:
-    name: agentFS build and verify (windows-x86_64)
+    name: agentFS build (windows-x86_64)
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -32,11 +32,6 @@ jobs:
           python-version-file: .python-version
           cache: pip
           cache-dependency-path: requirements.lock
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: Prepare Windows build and runtime dependencies
         env:
           GH_TOKEN: ${{ github.token }}
@@ -100,8 +95,8 @@ jobs:
         run: python -c "from pathlib import Path; from scripts.execution_runtime import package; package(Path.cwd(), Path('dist/agentFS'))"
       - name: Prepare verification environment
         run: python -m venv redpanda-env
-      - name: Verify agentFS and execution process contracts
-        run: redpanda-env/Scripts/python.exe scripts/ci.py process
+      - name: Verify Windows gate process contracts with build toolchains
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group gate
       - name: Verify installation contracts
         shell: bash
         run: redpanda-env/Scripts/python.exe -m pytest tests/scripts/test_agentfs_runtime.py tests/scripts/test_install_winfsp.py
@@ -113,3 +108,84 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+      - name: Share built runtimes and tools with process verification
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentFS-windows-ci-inputs
+          path: |
+            redpanda/filesystem/bin/
+            redpanda/execution/bin/
+            dist/agentFS/
+            .tools/bin/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Upload gate test report
+        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: windows-process-gate
+          path: .tools/test-results/*.xml
+          retention-days: 14
+
+  process:
+    name: Windows process (${{ matrix.group }})
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [compact, supervisor, filesystem, other]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/setup-node@v7
+        if: matrix.group == 'other'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@v7
+        with:
+          name: agentFS-windows-ci-inputs
+          path: .
+      - name: Prepare Windows runtime dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_winfsp.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'WinFsp installation failed' }
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $PWD '.tools\bin')
+      - name: Prepare verification environment
+        run: python -m venv redpanda-env
+      - name: Verify process contracts
+        run: redpanda-env/Scripts/python.exe scripts/ci.py process --process-group ${{ matrix.group }}
+      - name: Upload process test report
+        uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: windows-process-${{ matrix.group }}
+          path: .tools/test-results/*.xml
+          retention-days: 14
+
+  verify:
+    # Preserve the existing required check; every process group must pass.
+    name: agentFS build and verify (windows-x86_64)
+    needs: [build, process]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful build and all process groups
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          PROCESS_RESULT: ${{ needs.process.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$PROCESS_RESULT" = success

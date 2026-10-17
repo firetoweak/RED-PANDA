@@ -1,8 +1,22 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+
+
+PROCESS_GROUP_PATHS = {
+    "compact": ("assistant/test_compact.py",),
+    "supervisor": ("assistant/test_supervisor.py",),
+    "filesystem": (
+        "sandbox/file_view/",
+        "sandbox/test_vfs_workspace_process.py",
+        "sandbox/test_windows_hidden_process.py",
+        "sandbox/test_windows_readonly_process.py",
+    ),
+    "gate": ("execution/test_windows_gate_process.py",),
+}
 
 
 collect_ignore = []
@@ -17,9 +31,29 @@ def pytest_addoption(parser):
         default=False,
         help="也包括 process 层（真实进程、shell、MCP 传输）",
     )
+    parser.addoption(
+        "--process-group",
+        choices=(*PROCESS_GROUP_PATHS, "other"),
+        help="只运行指定 process 测试组；other 包含其余所有 process 用例",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
+    group = config.getoption("--process-group")
+    if group:
+        root = Path(__file__).parent
+        selected, deselected = [], []
+        for item in items:
+            relative = item.path.relative_to(root).as_posix()
+            item_group = next((name for name, paths in PROCESS_GROUP_PATHS.items()
+                               if any(relative.startswith(path) for path in paths)), "other")
+            if item.get_closest_marker("process") and item_group == group:
+                selected.append(item)
+            else:
+                deselected.append(item)
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = selected
+        return
     if config.getoption("--all"):
         return
     if (config.option.markexpr or "").strip():
@@ -38,7 +72,9 @@ def _isolate_redpanda_home(monkeypatch):
 
 
 def pytest_report_header(config):
-    if config.getoption("--all"):
+    if group := config.getoption("--process-group"):
+        layer = f"process / {group}"
+    elif config.getoption("--all"):
         layer = "all（default + process）"
     elif config.option.markexpr == "process":
         layer = "process"
