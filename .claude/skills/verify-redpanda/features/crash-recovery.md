@@ -76,3 +76,4 @@
 - Windows 上 Worker 在 Web 进程的 kill-on-close Job 里，随 Web 一起退出；仍用上面的进程查询确认没有残留。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
 - 历史 live 状态：部分（2026-10-12，修复后）：模型失败可见与再试经隔离 API 注入认证失败验证（`.tools/verification/fixapi-20261012/`），kill -9 后工具不重复执行通过；真实 UI、真实供应商 429、Linux FUSE 残留清理未验。2026-10-18 按源码改写，未重新 live 验证。
+- 已知产品缺口（2026-10-18 Windows live）：命令运行中只杀会话 Worker 后，`last_error`、`unknown` 与新文案、无孤儿进程、文件未写出都符合；但会话随后永久卡死——`再试` 返回 200 而 `should_wake=false` 无动作，新消息只记 `user.message.received` 不产生回合，重启 Web 后也不自动 paused、不出现 `继续`。journal 末尾是没有 outcome 的 `command.attempt.started`。
