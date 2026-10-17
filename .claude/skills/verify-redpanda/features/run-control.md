@@ -47,4 +47,4 @@
 - 提示只写 runtime 真知道的：被用户停止、可能已部分执行、续跑前先检查现场。不要求给出退出码、耗时等细节。
 - 中断后计划仍显示 `in_progress` 不算问题（见 work-plan）。
 - 需要 `live_model_ready`；`sleep` 时长保持短。
-- 历史 live 状态：部分（r2 2026-10-12，main@ee3e38d）：`cancel` 能中断 `sleep` 且 `late.txt` 不生成；当时界面只有「暂停」。本文件 2026-10-18 按源码改写，未重新 live 验证。
+- 历史 live 状态：部分（r2 2026-10-12，main@ee3e38d）：`cancel` 能中断 `sleep` 且 `late.txt` 不生成；当时界面只有「暂停」。2026-10-18 Windows live（deepseek-flash）：停止长命令（`COMMAND_INTERRUPTED`、`late.txt` 未生成、`paused=true`）、运行中发送的排队行与 `退回编辑栏` 通过；停止后不出现 `继续`（见上「停止后的下一步」）；失败后 `再试` 未驱动。
