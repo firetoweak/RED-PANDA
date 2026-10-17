@@ -5,7 +5,7 @@
 //! filesystem is mounted, the session loop receives, dispatches and replies to kernel requests
 //! for filesystem operations under its mount point.
 
-use libc::{EAGAIN, EINTR, ENODEV, ENOENT};
+use libc::{EAGAIN, ECONNABORTED, EINTR, ENODEV, ENOENT};
 use nix::unistd::geteuid;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -459,7 +459,10 @@ impl<FS: Filesystem> Session<FS> {
                         | EINTR // Interrupted system call, retry
                         | EAGAIN // Explicitly instructed to try again
                     ) => continue,
-                    Some(ENODEV) => break,
+                    // The connection is gone. A read that already dequeued a request when
+                    // the connection was aborted (our own unmount writes fusectl abort)
+                    // reports ECONNABORTED instead of ENODEV.
+                    Some(ENODEV | ECONNABORTED) => break,
                     // Unhandled error.
                     _ => return Err(err),
                 },
