@@ -1,13 +1,14 @@
 # 定时唤醒
 
-助手可用 `schedule_once` 安排一次性稍后继续，用 `cancel_schedule` 取消；时间线显示等待状态。来源：`redpanda/automation/tool.py`、`once.py`、`recovery.py`、`ScheduledWait.tsx`，存储 `$REDPANDA_HOME/state/automation.sqlite`。
+助手可用 `schedule_once` 安排一次性稍后提醒，用 `cancel_schedule` 取消；等待期间输入框上方显示倒计时一行。来源：`redpanda/automation/tool.py`（工具参数与结果）、`redpanda/automation/once.py`（`OneShotSchedules` 存储、`OneShotClock.run` 触发循环、事实 `automation.time_reached`）、`redpanda/automation/recovery.py`（只补全重启前 UNKNOWN 的 `schedule_once`/`cancel_schedule` 调用）、`redpanda/assistant/host/supervisor.py`（`_deliver_scheduled`、`schedule_changed`）、`redpanda/assistant/conversations.py`（`waiting_until`）、`ScheduledWait.tsx`。存储 `$REDPANDA_HOME/state/automation.sqlite`。
 
 ## Sub-features
 
-- `schedule`：安排 N 秒后继续，会话显示等待卡片。
-- `fire`：到点后自动开启新一轮。
-- `cancel`：`cancel_schedule` 取消。
-- `recovery`：服务重启后未到期的定时仍然生效（`recovery.py`）。
+- `schedule`：`schedule_once`，参数 `delay_seconds`（整数 1..31536000）与 `purpose`（必填非空字符串），只接受这两个参数；成功结果 `code=SCHEDULED`，`data` 含 `schedule_id`、`due_at`、`purpose`。
+- `wait-indicator`：会话 `waiting_until` 非空时，输入框上方一行时钟图标 + 等宽英文 `Waiting up to MMm SSs`，到点后 `Scheduled time reached…`；不是时间线卡片。
+- `fire`：到点后向会话投递事实 `automation.time_reached`（含 `schedule_id`、`purpose`、计划时间），开启新一轮。
+- `cancel`：`cancel_schedule`，结果码 `CANCELLED`/`ALREADY_FIRED`/`NOT_FOUND`（只有 `CANCELLED` 时 `ok=true`）。
+- `persist-across-restart`：未投递的定时存在 sqlite 里，重启后触发循环从 `next_pending` 接着等。
 
 ## How to get to it (user POV)
 
@@ -15,13 +16,18 @@
 
 ## Driving it with the browser
 
-- **安排与触发**：(a) `automation.sqlite` 中出现一条记录（`sqlite3 ... .tables` 后查询）；约 60 秒后会话多出一轮含 `WOKE_UP`，记录变为已完成或被删除。(b) 等待期间显示 `ScheduledWait` 卡片，侧栏状态合理（非永久 `运行中`）。(c) 无用户输入也会触发，但不得重复触发两次。
-- **取消**：安排后发 `请取消刚才的定时`。(a) 到点后没有新一轮。
-- **重启恢复**：安排 120 秒，30 秒后杀掉并用同一 `REDPANDA_HOME` 重启服务。(a) 到点后仍触发一次。(d) 若重启后丢失或触发两次 → 记为问题。
+- **安排与触发**：
+  - (a) `sqlite3 $REDPANDA_HOME/state/automation.sqlite 'select schedule_id,due_at,fired_at,delivered_at from schedules'` 出现一行，`fired_at`、`delivered_at` 为空；`GET /api/sessions/<id>` 的 `waiting_until` 等于该行 `due_at`。到点后该行**不删除**：先写 `fired_at`，投递后写 `delivered_at`；`waiting_until` 变回 null。
+  - (b) 工具结果 `code=SCHEDULED`；SSE 收到 `schedule_changed`（安排时与投递后各一次）；输入框上方 `Waiting up to 00m 5xs` 倒计时；约 60 秒后会话多一轮，回复含 `WOKE_UP`，该轮的触发是 `automation.time_reached`。
+  - (c) 无用户输入也会触发，但只触发一次（`delivered_at` 写入后不再投递）；侧栏不永久停在运行状态。
+  - (d) 让模型调用 `schedule_once` 不带 `purpose`（或 `delay_seconds=0`）→ `ok=false`、`code=INVALID_ARGUMENT`，`automation.sqlite` 不新增行。
+- **取消**：安排后发 `请取消刚才的定时`。(a) `schedule_cancellations` 表出现一行 `code=CANCELLED`；`schedules` 行仍在、`fired_at` 为空；`waiting_until` 变回 null。(b) 工具结果 `code=CANCELLED`、`ok=true`；倒计时消失；SSE `schedule_changed`。(c) 到点后没有新一轮。(d) 对已触发的定时取消 → `ALREADY_FIRED`；对不存在的 id 取消 → `NOT_FOUND`，两者 `ok=false`。
+- **重启后仍触发**：安排 120 秒，30 秒后杀掉服务（命令见 crash-recovery）并用同一 `REDPANDA_HOME` 重启。(a) 重启后 `schedules` 行仍在、`delivered_at` 为空，`waiting_until` 不变；到点后写入 `fired_at` 与 `delivered_at`。(b) 页面重新显示倒计时；到点后会话多一轮。(c) 只触发一次。(d) 重启后丢失或触发两次 → 记为问题。
 
 ## Gotchas
 
 - 时间较长，放在一轮验证的最后做。
-
-## Live status
-- 通过（2026-10-12，main@1a4790a）：重启后持久性未测
+- 倒计时文字是英文（`Waiting up to ...`），照原样匹配，不要找中文。
+- 重启后的持久靠 sqlite + `OneShotClock.run` 的 `next_pending`，不是 `recovery.py`；`recovery.py` 只处理重启前「已开始但没结果」的 `schedule_once`/`cancel_schedule` 调用。
+- 重启时 Web 会把仍会自己往下走的顶层会话置为 paused（见 crash-recovery）；定时投递的是外部事实，验证时记录到点后是否直接开新一轮，还是需要点 `继续`。
+- 历史 live 状态：通过（2026-10-12，main@1a4790a），重启后持久性未测。2026-10-18 按源码改写，未重新 live 验证。

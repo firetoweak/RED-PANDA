@@ -22,6 +22,8 @@
 | 工作区登记 | `$REDPANDA_HOME/workspaces.json` |
 | 会话运行数据（journal、附件、文件版本） | `$REDPANDA_HOME/runtime_sessions/` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
+| 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
+| 回滚/改写后的会话取代关系（被取代的会话不再列出） | `$REDPANDA_HOME/runtime_sessions/lineage.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 子 Agent 工作副本 / 文件交换 | `$REDPANDA_HOME/state/subagent_worktrees/`、`state/file_exchanges/` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
@@ -55,14 +57,14 @@
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 部分（2026-10-12，修复后；错误码与失败再试已修，UI 待复跑） |
 | workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
-| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件上传、`本机文件`、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
+| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | `等待授权`、批准/拒绝、`自动放行写文件等工具`、确认请求 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
-| session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → `会话变更` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
+| session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
 | edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 通过（2026-10-12，main@1a4790a；改写后模型回复偏题，待查） |
-| run-control | [run-control.md](./run-control.md) | `停止`/`继续`、`重试`、`退回编辑栏` | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
-| subagents | [subagents.md](./subagents.md) | `delegate`、`子 Agent` 面板、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
+| run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
+| subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
@@ -124,7 +126,7 @@
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
 | `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
-| `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `skill_help` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
+| `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
 
 ### 命令行与脚本
@@ -134,7 +136,7 @@
 | `web_chat.py [--dev] [--host] [--port] [--workspace]` | web-session-chat（`--workspace` 见 workspace-management Gotchas） |
 | `console_chat.py [--workspace]`，会内 `/new` `/resume <id>` `/mcp ...` `/skill ...` | console-chat、extensions |
 | `acp_chat.py [--workspace]` | acp-channel |
-| `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--no-configure] [--check]` | setup-and-sandbox-install |
+| `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-sandbox-install |
 | `python -m redpanda.initialize --configure / --if-needed` | setup-and-sandbox-install |
 | `scripts/build_agentfs.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
 | `scripts/agentfs_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
@@ -173,6 +175,22 @@
 ## 2026-10-16 维护轮次
 
 源码基线 `main@e191eab`，隔离实例 + DeepSeek 真模型 + Linux 沙箱，经 HTTP/SSE/磁盘驱动（本轮无浏览器，所有条目「界面未验证」）。修正：doctor 沙箱路径、工作区重命名/移除、持续进程工具、`execute_command` 授权范围、回滚产生新会话、`model_usage` 非工具、安装脚本参数与前置。表中旧状态未逐条改写。
+
+## 2026-10-18 源码核对轮次
+
+源码基线 `main@b7a21c3`。25 个功能文件逐个对照源码核对并改写，**没有驱动 Web 页面**：表中「live 验证状态」沿用旧记录，各文件 `Gotchas` 里的历史验证条目注明「2026-10-18 按源码改写，未 live 复跑」。主要漂移来自统一内容页（`文件改动`、`子 Agent`）、停止与再试语义、模型可见文案压缩、回滚结果提示上线和 `skill_help` 删除。各文件原有的额外 H2（`Live status` 等）已并入 `Gotchas`。
+
+Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor → Cleanup：`doctor.py` 在 Windows 上不再用 `os.kill(pid, 0)`（该调用在 Windows 等于发送 Ctrl+C），改为查询进程状态并核对命令行，并检查 Windows 命令执行组件；Windows 启动片段改为可直接运行的 PowerShell。Linux 上的 Doctor 路径未改动、未在本轮复跑。
+
+源码核对发现、待 live 确认或修复的产品缺口（记录在对应文件 `Gotchas`，判据保持正确预期）：
+
+- web-session-chat：静态兜底路由不排除 `api/`，未知 `GET /api/...` 返回 200 + `index.html`；同一路由允许 `..` 跳出 `web/dist` 读取任意文件（安全问题，另行修复）。
+- tool-authorization：`/control` 决定冲突与无待确认请求没有异常处理器，返回 500 而非 409。
+- crash-recovery：同一 `delivery_id` 改文本重放可能使 Worker 失败（500 + `session_failed`），待 live 确认。
+- file-rewind：从某步重开失败时前端没有错误提示。
+- workspace-management：空名称创建工作区可能 500（界面已拦）。
+- extensions：`/mcp help` 列出 `/mcp reload`，实际没有该子命令。另记一项待定：终端 `/mcp upsert` 不经过模型路径上的 Shell 解释器拦截，是否应拦截由产品决定。
+- composer-attachments：隐藏的文件 `input` 没有任何入口触发。
 
 ## 已确认的设计边界（不当问题报）
 
