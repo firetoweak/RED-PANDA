@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -88,6 +89,12 @@ def read_pid(path: Path, report: dict) -> int | None:
     if pid <= 0:
         report["blockers"].append(f"pid file is not a live pid: {path}")
         return None
+    if os.name == "nt":
+        # os.kill(pid, 0) on Windows sends CTRL_C_EVENT, so query the process instead.
+        if not windows_process_alive(pid):
+            report["blockers"].append(f"pid {pid} is not running")
+            return None
+        return pid
     try:
         os.kill(pid, 0)
     except OSError as error:
@@ -96,7 +103,43 @@ def read_pid(path: Path, report: dict) -> int | None:
     return pid
 
 
+def windows_process_alive(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = wintypes.DWORD()
+        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def windows_command_line(pid: int) -> str | None:
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 def inspect_process(pid: int, home: Path, report: dict) -> None:
+    if os.name == "nt":
+        cmdline = windows_command_line(pid)
+        report["pid_cmdline_has_web_chat"] = cmdline is not None and "web_chat.py" in cmdline
+        if not report["pid_cmdline_has_web_chat"]:
+            report["blockers"].append(f"pid {pid} is not web_chat.py")
+        # Windows exposes no other process's environment; home is checked through the API below.
+        report["home_matches_process"] = None
+        report["warnings"].append("Windows: process REDPANDA_HOME is not readable; home is checked via connections_path")
+        return
     proc = Path("/proc") / str(pid)
     if not proc.is_dir():
         report["pid_cmdline_has_web_chat"] = None
@@ -231,8 +274,14 @@ def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
         else:
             sandbox["reason"] = "linux file view needs a writable /dev/fuse and fusermount3"
     elif os.name == "nt":
-        sandbox["ready"] = True
-        sandbox["reason"] = "sandbox binary is present; WinFsp still has to be installed on the machine"
+        execution = repo / "redpanda" / "execution" / "bin"
+        missing = [name for name in ("redpanda-command.exe", "redpanda-hook.dll") if not (execution / name).is_file()]
+        sandbox["execution_components_missing"] = missing
+        if missing:
+            sandbox["reason"] = f"Windows command execution needs {', '.join(missing)} under {execution}; run scripts/setup.ps1"
+        else:
+            sandbox["ready"] = True
+            sandbox["reason"] = "sandbox binary and execution components are present; WinFsp still has to be installed on the machine"
     else:
         sandbox["reason"] = f"file view is not implemented for {system}"
     report["sandbox"] = sandbox

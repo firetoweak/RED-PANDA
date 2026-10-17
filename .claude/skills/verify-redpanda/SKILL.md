@@ -52,13 +52,27 @@ tmux new-session -d -s "$SESSION" -c "$PWD" \
 
 Ready means `doctor.py` exits 0. The log line `Uvicorn running on http://127.0.0.1:$PORT` is the same moment, not a substitute for Doctor. If the log stops before that line, read `web.log` and do not drive the port.
 
-Windows, from the repository root in PowerShell, uses the same variables. Build with `.\redpanda-env\Scripts\python.exe scripts/build_agentfs.py` after WinFsp is installed, then:
+### Windows
+
+From the repository root in PowerShell. Install once with `.\scripts\setup.ps1`: it installs the released native file service, the Windows command-execution components under `redpanda\execution\bin\`, WinFsp, the pinned tools, Python deps, and builds `web\dist`. Building the native binary from source is only needed for native changes and also needs rustup, LLVM MinGW (`--llvm-dir`) and the WinFsp Developer SDK (`--winfsp-dir`); see `native/filesystem/BUILD.md`.
+
+Set the run variables as process environment, so the server started below inherits them:
 
 ```powershell
-$env:REDPANDA_HOME = $env:REDPANDA_HOME
-$proc = Start-Process -FilePath .\redpanda-env\Scripts\python.exe -ArgumentList @('web_chat.py','--host','127.0.0.1','--port',$env:PORT) -PassThru -NoNewWindow -RedirectStandardOutput "$env:RUN_DIR\web.log" -RedirectStandardError "$env:RUN_DIR\web.err"
+$RunId = Get-Date -Format yyyyMMddHHmmss
+$env:RUN_DIR = "$env:TEMP\redpanda-verify-$RunId"
+$env:REDPANDA_HOME = "$env:RUN_DIR\home"
+$env:SCRATCH_WORKSPACE = "$env:RUN_DIR\workspace"
+$env:EVIDENCE_DIR = "$env:TEMP\redpanda-verify-evidence\$RunId"
+$env:PORT = "8876"
+$env:REDPANDA_VERIFY_URL = "http://127.0.0.1:$env:PORT"
+New-Item -ItemType Directory -Force $env:REDPANDA_HOME, $env:SCRATCH_WORKSPACE, $env:EVIDENCE_DIR | Out-Null
+Set-Content -Path "$env:SCRATCH_WORKSPACE\note.txt" -Value verify
+$proc = Start-Process -FilePath .\redpanda-env\Scripts\python.exe -ArgumentList @('web_chat.py','--host','127.0.0.1','--port',$env:PORT) -PassThru -WindowStyle Hidden -RedirectStandardOutput "$env:RUN_DIR\web.log" -RedirectStandardError "$env:RUN_DIR\web.err"
 Set-Content -Path "$env:RUN_DIR\web.pid" -Value $proc.Id
 ```
+
+`-WindowStyle Hidden` gives the server its own console. Do not use `-NoNewWindow`: a server that shares your console receives your Ctrl+C.
 
 ## Doctor
 
@@ -71,11 +85,15 @@ Run this before the first click, after any surprising failure, and before claimi
   --pid-file "$RUN_DIR/web.pid"
 ```
 
-Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME`, `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready` and `sandbox.ready`.
+```powershell
+.\redpanda-env\Scripts\python.exe .claude\skills\verify-redpanda\doctor.py --url $env:REDPANDA_VERIFY_URL --home $env:REDPANDA_HOME --pid-file "$env:RUN_DIR\web.pid"
+```
+
+Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME` (on Windows the process environment is not readable: the command line is checked, and the home is checked only through `connections_path`), `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready` and `sandbox.ready`.
 
 `live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
-`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing (or `REDPANDA_FILESYSTEM_EXECUTABLE` on the server process points nowhere), or on Linux without `/dev/fuse` and `fusermount3`. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
+`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing (or `REDPANDA_FILESYSTEM_EXECUTABLE` on the server process points nowhere), on Linux without `/dev/fuse` and `fusermount3`, or on Windows without `redpanda\execution\bin\redpanda-command.exe` and `redpanda-hook.dll`. Doctor does not read the binary's version: compare `package.version` in `redpanda/filesystem/bin/BUILD.json` with `native/filesystem/release.json` when the release matters. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
 
 Add `--require-model` or `--require-sandbox` only when the feature you are about to drive cannot be skipped.
 
@@ -130,7 +148,16 @@ rm -rf "$RUN_DIR"
 test -d "$EVIDENCE_DIR"
 ```
 
-On Windows, `Stop-Process -Id <pid from web.pid>` and remove `$RUN_DIR` only. Do not stop every `python` or `web_chat.py`. After cleanup, the screenshot and `state.json` must still be in `$EVIDENCE_DIR`.
+On Windows, stop only the recorded pid. Session workers sit in a kill-on-close job of that process, so they exit with it. Do not stop every `python` or `web_chat.py`.
+
+```powershell
+Stop-Process -Id (Get-Content "$env:RUN_DIR\web.pid") -Force
+Wait-Process -Id (Get-Content "$env:RUN_DIR\web.pid") -Timeout 10 -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force $env:RUN_DIR
+Test-Path $env:EVIDENCE_DIR
+```
+
+After cleanup, the screenshot and `state.json` must still be in `$EVIDENCE_DIR`.
 
 ## Helpers
 

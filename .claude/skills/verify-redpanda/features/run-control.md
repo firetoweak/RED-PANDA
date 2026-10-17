@@ -1,36 +1,49 @@
-# 运行控制：停止、继续、重试
+# 运行控制：停止、继续、再试、排队消息
 
-控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、停下后 `继续`、`重试`/`退回编辑栏`）、`Conversation.tsx`（`停止` 接 `cancelTurn` → `POST .../cancel`，失败提示 `停止失败，请确认后端连接后重试。`）、`ExecutionProcess.tsx`（中断的调用显示 `中断`）、`command_execution.py`（`COMMAND_INTERRUPTED`）、`context/projection.py`（结果未知的提示）。用户侧没有「暂停」概念（20bf829 起）。
+控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、停下后 `继续`、运行中发送的排队行 `立即发送`/`退回编辑栏`）、`Conversation.tsx`（`停止` 接 `cancelTurn` → `POST .../cancel`；模型失败横幅 `执行已停止` 带 `查看详情`/`再试`；请求失败横幅 `操作失败`）、`ErrorNotice.tsx`、`ExecutionProcess.tsx`（结果不确定的调用显示 `中断`）、`redpanda/tools/builtin/command_execution.py`（`COMMAND_INTERRUPTED`）、`redpanda/assistant/host/supervisor.py`（`cancel_turn`/`retry`/`accept_input`）。用户侧没有「暂停」按钮。
 
 ## Sub-features
 
-- `stop`：运行中点 `停止` 结束当前回合（`POST .../cancel`）。
-- `continue`：停下后同一位置出现 `继续`（`shouldWake && !running`，走 `POST .../retry`）。
-- `retry`：失败后 `重试`（`POST .../retry`）。
-- `back-to-composer`：发送失败的消息 `退回编辑栏`，文字回到输入框。
-- `interrupt-by-typing`：运行中再发一条消息会打断当前任务。
+- `stop`：运行中点 `停止`（aria-label `停止`）→ `POST /api/sessions/{id}/cancel`；会话被标为 paused，正在跑的 `execute_command` 被中断（Linux 杀进程组，Windows 终止 Job）。
+- `continue`：`继续`（aria-label `继续`）只在 `should_wake && lastError == null && !running` 时出现，走 `POST /api/sessions/{id}/retry`（paused 时先解除 paused 再推进）。
+- `retry-after-failure`：模型请求失败后输入框上方出现红色横幅 `执行已停止。<失败原因首行>`，按钮 `查看详情`、`再试`；`再试` 同样走 `POST .../retry`。
+- `queue-while-running`：运行中再发消息**不打断**当前回合：消息变成输入框上方一行排队预览，带 `立即发送` 与 `退回编辑栏`（垃圾桶图标），当前回合结束（running 由真变假）时自动发出。
 
 ## How to get to it (user POV)
 
-- 让模型执行长命令：`请用 execute_command 执行 sleep 60 && echo LATE > late.txt`（自动放行开启），运行中看输入框按钮。
+- 打开 `自动放行写文件等工具`，发 `请用 execute_command 执行 sleep 60 && echo LATE > late.txt`，运行中看输入框右侧按钮。
+- 模型失败：把 `connections.json` 中当前供应商的 key 临时改错后发一条消息。
 
 ## Driving it with the browser
 
-- **停止长命令**：运行中点 `停止`。(a) `late.txt` 不出现；`ps` 中没有该会话遗留的 `sleep` 进程（进程组被杀）。(b) `cancel` 2xx，该调用显示 `中断`，工具结果 `code=COMMAND_INTERRUPTED`、`ok=null`，`error` 说明因用户停止中断、结果未知、可能已部分执行，`hint` 提示续跑前先检查现场。(c) 其他文件不变。(d) 对空闲会话调 `cancel` → 幂等或 4xx，不改历史；后端断开时点停止 → 显示停止失败提示。
-- **停止时正在写文件**：`write_file` / `apply_patch` 这类一次性写入会写完再停，(a) 文件是完整的新内容，不出现半截；之后的工具不再执行。
-- **继续**：停下后点 `继续`。(a) 被中断的那条调用不会自动重跑（`late.txt` 不因继续而自动出现，除非模型检查后主动决定重做）。(b) 模型能看到「结果未知、先检查现场」的提示，并先读文件/查产物再决定。(d) 模型直接盲目重复有副作用的操作 → 记为模型行为观察，不算 runtime 问题。
-- **重试**：把模型 key 临时改错制造失败 → `重试` 前恢复 key → (a) 新回合成功，已完成的写操作不重复执行。
-- **打断**：运行中再发 `改为回复 INTERRUPTED_OK` → 原命令被打断、无 `late.txt`，回复含 `INTERRUPTED_OK`。
-
-## 成功条件说明
-
-- 提示只写 runtime 真知道的：执行被中断（用户停止/进程异常退出）、结果未知、可能已部分执行、继续前先检查现场。不要求 runtime 给出退出码、耗时等现场细节；原因未知时写「原因未知」，不猜。
-- 中断后计划仍显示 `in_progress` 不算问题（见 work-plan）。
+- **停止长命令**：运行中点 `停止`。
+  - (a) `late.txt` 不出现；进程表里没有该命令遗留的 `sleep 60`（Linux `pgrep -af 'sleep 60'`；Windows 在本实例 web pid 的后代进程里查，见 crash-recovery 的进程查询）；`GET /api/sessions/<id>` 中 `session.paused` 为 true。
+  - (b) `cancel` 返回 200；该调用徽标 `中断`；工具结果 `ok=null`、`code=COMMAND_INTERRUPTED`、`error` 为「命令被用户停止，可能已部分执行。」、`hint` 为「已捕获的输出不完整；续跑前先检查相关文件和外部状态，避免重复副作用。」，`data.output_is_result=false`。
+  - (c) 工作区其他文件不变；被停之后不再发起新的工具调用。
+  - (d) 对空闲会话调 `cancel` → 200，只把会话置为 paused，历史不变；后端断开时点 `停止` → 横幅 `操作失败。停止失败，请确认后端连接后重试。`。
+- **停止时正在写文件**：`write_file`/`apply_patch` 是一次性写入，(a) 停止后文件是完整新内容或完整旧内容，不出现半截；(c) 之后的工具不再执行。
+- **继续**：停下后点 `继续`。
+  - (a) 被中断的调用不会自动重跑：`late.txt` 不因继续而自动出现，除非模型检查后主动重做（journal 里会出现一条新的 `execute_command` 调用）。
+  - (b) `retry` 返回 200，`session.paused` 变回 false，模型的下一步能读到上面的 `COMMAND_INTERRUPTED` 结果。
+  - (c) 历史消息条数不变，不新增用户消息。
+  - (d) 有 `last_error` 时不显示 `继续`（只显示横幅 `再试`）；模型盲目重复有副作用的操作 → 记为模型行为观察，不算 runtime 问题。
+- **失败后再试**：把 key 改错制造失败 → 恢复 key → 点 `再试`。
+  - (a) 新回合成功；`GET` 中该用户消息只有一条，已完成的工具不重复执行。
+  - (b) 失败时横幅文字以 `执行已停止。运行失败：` 开头；`查看详情` 打开错误详情页（标题 `执行已停止 · 错误详情`，有 `复制完整错误`）。
+  - (c) 再试前 `session.last_error` 保持不变，刷新页面后横幅仍在。
+  - (d) 后端断开时点 `再试` → 横幅 `操作失败。再试失败，请确认后端连接后重试。`。
+- **运行中发送（排队）**：运行中输入 `改为回复 QUEUED_OK` 并回车。
+  - (a) 输入框清空，上方出现排队行显示该文字；此时 `GET` 里还没有这条用户消息，`sleep` 仍在跑。
+  - (b) 当前回合结束后自动 `POST .../inputs`，回复含 `QUEUED_OK`；点 `立即发送` 则立刻发出（同样不调用 `cancel`）。
+  - (c) 原命令不被打断：60 秒后 `late.txt` 出现。
+  - (d) 点 `退回编辑栏` → 排队行消失，文字（与附件）回到输入框，不发送。
 
 ## Gotchas
 
-- 进程级中断在 Windows 与 Linux 实现不同（`command_interrupts.py`），两边都要单独验。
+- 进程级中断两平台实现不同：Linux 在 `redpanda/execution/process_posix.py`（`os.killpg(..., SIGKILL)`），Windows 在 `redpanda/execution/local/windows_job.py`（`TerminateJobObject`），两边都要单独验。
+- `POST /api/sessions/{id}/paused` 仍存在（`redpandaApi.ts` 里有 `setPaused`），但前端没有任何调用方；不要用它代替 `停止`/`继续` 的用户操作。
+- 输入框里的 `重试` 只属于附件上传失败的重试，与回合控制无关。
+- 提示只写 runtime 真知道的：被用户停止、可能已部分执行、续跑前先检查现场。不要求给出退出码、耗时等细节。
+- 中断后计划仍显示 `in_progress` 不算问题（见 work-plan）。
 - 需要 `live_model_ready`；`sleep` 时长保持短。
-
-## Live status
-- 部分（r2 2026-10-12，main@ee3e38d）：`cancel` 能中断 `sleep` 且 `late.txt` 不生成；当时界面只有「暂停」，暂停后命令仍跑完——已由 20bf829 改为 `停止`，待真实 UI 复跑
+- 历史 live 状态：部分（r2 2026-10-12，main@ee3e38d）：`cancel` 能中断 `sleep` 且 `late.txt` 不生成；当时界面只有「暂停」。本文件 2026-10-18 按源码改写，未重新 live 验证。
