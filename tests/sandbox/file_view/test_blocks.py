@@ -72,7 +72,7 @@ class Blocks(unittest.TestCase):
                 io=IOCount();tracemalloc.start()
                 with patch.object(pub.native,'open_file',io.open):
                     self.assertTrue(pub.publish(client)['finalized'])
-                    self.assertTrue(pub.undo(client,'c1','preserve')['finalized'])
+                    self.assertTrue(client.restore_published(['c1'],'preserve')['finalized'])
                 _,peak=tracemalloc.get_traced_memory();tracemalloc.stop()
                 self.assertLessEqual(io.max_read,CHUNK);self.assertEqual(io.write_bytes,4*CHUNK)
                 self.assertLess(peak,4*1024*1024)
@@ -85,17 +85,17 @@ class Blocks(unittest.TestCase):
         self.assertEqual(metrics[0]['command_host_read_bytes'],metrics[1]['command_host_read_bytes'])
         self.assertEqual(metrics[0]['publication_undo_host_read_bytes'],metrics[1]['publication_undo_host_read_bytes'])
 
-    def test_sparse_command_pairs_fold_and_undo_in_reverse(self):
+    def test_sparse_command_pairs_fold_and_restore_in_reverse(self):
         _,base,store=self.fixture('blocks_batch',4*CHUNK)
         with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',"with open('large','r+b') as f: f.seek(10);f.write(b'XXX');f.seek(10);f.write(b'YYY')")
             self.change(client,'c2',f"with open('large','r+b') as f: f.seek({2*CHUNK+10});f.write(b'ZZZ')")
             self.assertTrue(pub.publish(client)['finalized'])
-            self.assertTrue(pub.undo(client,'c2','preserve')['finalized'])
+            self.assertTrue(client.restore_published(['c2'],'preserve')['finalized'])
             with (base/'large').open('rb') as file:
                 file.seek(10);self.assertEqual(file.read(3),b'YYY')
                 file.seek(2*CHUNK+10);self.assertEqual(file.read(3),b'AAA')
-            self.assertTrue(pub.undo(client,'c1','original')['finalized'])
+            self.assertTrue(client.restore_published(['c1','c2','restore-c2'],'original')['finalized'])
             with (base/'large').open('rb') as file:
                 file.seek(10);self.assertEqual(file.read(3),b'AAA')
 
@@ -108,7 +108,7 @@ class Blocks(unittest.TestCase):
             with (base/'large').open('r+b') as file:
                 file.seek(size-200);file.write(b'H')
             self.assertTrue(pub.publish(client)['finalized']);self.assertEqual((base/'large').stat().st_size,size-100)
-            self.assertTrue(pub.undo(client,'c1','original')['finalized']);self.assertEqual((base/'large').stat().st_size,size)
+            self.assertTrue(client.restore_published(['c1'],'original')['finalized']);self.assertEqual((base/'large').stat().st_size,size)
             with (base/'large').open('rb') as file:
                 file.seek(size-200);self.assertEqual(file.read(1),b'H')
                 file.seek(size-100);self.assertEqual(file.read(100),b'A'*100)
@@ -121,7 +121,7 @@ class Blocks(unittest.TestCase):
             io=IOCount();tracemalloc.start()
             with patch.object(pub.native,'open_file',io.open):
                 self.assertTrue(pub.publish(client)['finalized']);self.assertFalse((base/'large').exists())
-                self.assertTrue(pub.undo(client,'c1','original')['finalized'])
+                self.assertTrue(client.restore_published(['c1'],'original')['finalized'])
             _,peak=tracemalloc.get_traced_memory();tracemalloc.stop()
             self.assertLess(peak,4*1024*1024);self.assertLessEqual(io.max_read,CHUNK)
             self.assertEqual((base/'large').stat().st_size,size)
@@ -142,7 +142,7 @@ class Blocks(unittest.TestCase):
                 self.assertTrue(pub.publish(client)['finalized'])
                 with (base/'large').open('r+b') as file:
                     file.seek(size+10);file.write(b'H')
-                self.assertTrue(pub.undo(client,'c1',policy)['finalized'])
+                self.assertTrue(client.restore_published(['c1'],policy)['finalized'])
                 self.assertEqual((base/'large').stat().st_size,size if policy=='original' else size+4000)
                 if policy=='preserve':
                     with (base/'large').open('rb') as file:
@@ -182,7 +182,7 @@ class Blocks(unittest.TestCase):
         with CommandClient(EXE,store,base) as client:
             self.change(client,'c1',"with open('large','r+b') as f: f.seek(10);f.write(b'X')\nwith open('alias','r+b') as f: f.seek(20);f.write(b'Y')")
             self.assertTrue(pub.publish(client)['finalized'])
-            self.assertTrue(pub.undo(client,'c1','original')['finalized'])
+            self.assertTrue(client.restore_published(['c1'],'original')['finalized'])
             self.assertTrue(os.path.samefile(base/'large',base/'alias'))
             with (base/'large').open('rb') as file:
                 file.seek(10);self.assertEqual(file.read(11),b'A'*11)

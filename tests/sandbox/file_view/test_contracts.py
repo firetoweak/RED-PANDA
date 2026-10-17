@@ -54,7 +54,7 @@ class Contracts(unittest.TestCase):
             self.assertFalse((base/'delete.txt').exists())
             self.assertEqual((base/'dir/new.txt').read_bytes(),b'new')
             self.assertEqual((base/'renamed.txt').read_bytes(),b'rename.txt')
-            self.assertEqual(pub.undo(client,'c1','original')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'original')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
             self.assertTrue((base/'delete.txt').exists());self.assertTrue((base/'rename.txt').exists())
             self.assertFalse((base/'dir').exists())
@@ -65,7 +65,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             self.assertEqual(pub.publish(client)['state'],'complete')
             (base/'a.txt').write_bytes(b'XHZ__U_AAA')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AHA__U_AAA')
 
     def test_original_overwrites_only_command_changed_bytes(self):
@@ -73,7 +73,7 @@ class Contracts(unittest.TestCase):
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client);(base/'a.txt').write_bytes(b'HHH__U_AAA')
-            pub.undo(client,'c1','original')
+            client.restore_published(['c1'],'original')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA__U_AAA')
 
     def test_user_aba_result_allows_restore(self):
@@ -82,7 +82,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client)
             (base/'a.txt').write_bytes(b'HHH____AAA');(base/'a.txt').write_bytes(b'XYZ____AAA')
-            pub.undo(client,'c1','preserve')
+            client.restore_published(['c1'],'preserve')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
 
     def test_publication_preserves_unrelated_user_bytes(self):
@@ -145,7 +145,7 @@ class Contracts(unittest.TestCase):
             (base/'a.txt').write_bytes(b'XHZ__U_AAA')
             self.assertEqual(pub.publish(client)['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'XHZ__U_AAA')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'AHA__U_AAA')
 
     def test_type_replacement_resumes_between_remove_and_create_phases(self):
@@ -166,19 +166,8 @@ class Contracts(unittest.TestCase):
                     self.assertTrue(pub.execute(client,transaction)['finalized'])
                     self.assertEqual((base/'a.txt/new').read_bytes(),b'new')
                     self.assertTrue(pub.execute(client,transaction)['finalized'])
-                    self.assertTrue(pub.undo(client,'edit','original')['finalized'])
+                    self.assertTrue(client.restore_published(['edit'],'original')['finalized'])
                     self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
-
-    def test_batch_and_reverse_undo(self):
-        _,base,store=self.fixture('batch')
-        with self.client(store,base) as client:
-            for name,value in [('c1','XXX'),('c2','YYY')]:
-                self.change(client,name,f"from pathlib import Path;Path('a.txt').write_bytes(b'{value}____AAA')")
-            self.assertEqual(pub.publish(client)['state'],'complete')
-            self.assertEqual((base/'a.txt').read_bytes(),b'YYY____AAA')
-            self.assertEqual(pub.undo(client,'c1','original')['status'],'later_command_active')
-            pub.undo(client,'c2','preserve');self.assertEqual((base/'a.txt').read_bytes(),b'XXX____AAA')
-            pub.undo(client,'c1','preserve');self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
 
     def test_equal_bytes_replacement_conflicts(self):
         _,base,store=self.fixture('identity')
@@ -186,7 +175,7 @@ class Contracts(unittest.TestCase):
             self.change(client,'c1',"from pathlib import Path;Path('a.txt').write_bytes(b'XYZ____AAA')")
             pub.publish(client)
             (base/'other').write_bytes(b'XYZ____AAA');os.replace(base/'other',base/'a.txt')
-            self.assertEqual(pub.undo(client,'c1','original')['status'],'conflict')
+            self.assertEqual(client.restore_published(['c1'],'original')['status'],'conflict')
 
     def test_pinned_reuse_and_cold_corruption_refusal(self):
         _,base,store=self.fixture('cache')
@@ -286,7 +275,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual((base/'a.txt').read_bytes(),b'031____AAA')
             pruned=client.request('prune')
             self.assertEqual(pruned['removed_artifacts'],32)
-            self.assertEqual(pub.undo(client,'c31','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c31'],'preserve')['state'],'complete')
             self.assertEqual((base/'a.txt').read_bytes(),b'030____AAA')
         (root/'metrics.json').write_text(json.dumps({'warm':metrics,'cold':cold,'after_writeback_depth':0,'prune':pruned},indent=2),encoding='utf-8')
 
@@ -338,7 +327,7 @@ class Contracts(unittest.TestCase):
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'X')")
             pub.publish(client);(base/'new').write_bytes(b'H')
-            self.assertEqual(pub.undo(client,'c1','preserve')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'preserve')['state'],'complete')
             self.assertEqual((base/'new').read_bytes(),b'H')
 
     def test_original_can_remove_command_created_user_modified_file(self):
@@ -346,7 +335,7 @@ class Contracts(unittest.TestCase):
         with self.client(store,base) as client:
             self.change(client,'c1',"from pathlib import Path;Path('new').write_bytes(b'X')")
             pub.publish(client);(base/'new').write_bytes(b'H')
-            self.assertEqual(pub.undo(client,'c1','original')['state'],'complete')
+            self.assertEqual(client.restore_published(['c1'],'original')['state'],'complete')
             self.assertFalse((base/'new').exists())
 
     def test_hard_link_publication_and_undo_preserve_alias(self):
@@ -357,7 +346,7 @@ class Contracts(unittest.TestCase):
             pub.publish(client)
             self.assertEqual((base/'a.txt').read_bytes(),b'XYZ____AAA')
             self.assertTrue(os.path.samefile(base/'a.txt',base/'alias.txt'))
-            pub.undo(client,'c1','preserve')
+            client.restore_published(['c1'],'preserve')
             self.assertEqual((base/'a.txt').read_bytes(),b'AAA____AAA')
             self.assertTrue(os.path.samefile(base/'a.txt',base/'alias.txt'))
 

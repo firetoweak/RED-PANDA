@@ -14,8 +14,7 @@ pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform != 'linux', r
 
 @pytest.mark.parametrize('name', ['file','directory'])
 @pytest.mark.parametrize('mode', [0o700,0])
-@pytest.mark.parametrize('route', ['host','view'])
-def test_permission_only_changes_restore_without_reading_or_rewriting_content(tmp_path,name,mode,route):
+def test_permission_only_changes_restore_without_reading_or_rewriting_content(tmp_path,name,mode):
     base=tmp_path/'project';base.mkdir();(base/'file').write_bytes(b'unobserved')
     (base/'directory').mkdir();path=base/name;before=stat.S_IMODE(path.stat().st_mode)
     identity=native.directory_identity(path)
@@ -28,10 +27,8 @@ def test_permission_only_changes_restore_without_reading_or_rewriting_content(tm
             client.request('accept',command_id='mode')
             assert pub.publish(client)['state']=='complete'
             assert stat.S_IMODE(path.stat().st_mode)==mode
-            if route=='host': assert pub.undo(client,'mode','original')['state']=='complete'
-            else:
-                result=client.restore('undo',['mode'],'original');assert result['status']=='sealed',result
-                client.request('accept',command_id='undo');assert pub.publish(client)['state']=='complete'
+            result=client.restore('undo',['mode'],'original');assert result['status']=='sealed',result
+            client.request('accept',command_id='undo');assert pub.publish(client)['state']=='complete'
             assert stat.S_IMODE(path.stat().st_mode)==before
             assert native.directory_identity(path)==identity
     finally:

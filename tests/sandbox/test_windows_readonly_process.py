@@ -42,7 +42,7 @@ def test_readonly_is_attribute_only_evidence_and_host_undo(tmp_path, name):
         client.request("finish"); client.request("discard", command_id="probe")
         report = attribution(base, store, base)
         assert any("只读属性" in p["description"] for f in report["changes"] for p in f["properties"])
-        assert pub.undo(client, "readonly", "original")["state"] == "complete"
+        assert client.restore_published(["readonly"], "original")["state"] == "complete"
         assert flags(path) & 3 == 2
     assert native.directory_identity(path) == identity
 
@@ -65,9 +65,8 @@ def test_child_creation_preserves_inherited_readonly_directory(tmp_path):
         set_flag(path, 1, False)
 
 
-@pytest.mark.parametrize("route", ["host", "view"])
 @pytest.mark.parametrize("policy", ["original", "preserve"])
-def test_readonly_restore_keeps_later_content_and_can_itself_be_undone(tmp_path, route, policy):
+def test_readonly_restore_keeps_later_content_and_can_itself_be_undone(tmp_path, policy):
     base, store = fixture(tmp_path); path = base / "file"
     try:
         with CommandClient(native_executable(), store, base) as client:
@@ -78,18 +77,15 @@ def test_readonly_restore_keeps_later_content_and_can_itself_be_undone(tmp_path,
             set_flag(path, 1, False)
             with path.open("ab") as file: file.write(b" USER APPEND")
             set_flag(path, 1, True)
-            if route == "host":
-                assert pub.undo(client, "readonly", policy)["state"] == "complete"
-            else:
-                result = client.restore("undo", ["readonly"], policy)
-                assert result["status"] == "sealed", result
-                client.request("accept", command_id="undo")
-                assert pub.publish(client)["state"] == "complete"
-                result = client.restore("redo", ["undo"], "original")
-                assert result["status"] == "sealed", result
-                client.request("accept", command_id="redo")
-                assert pub.publish(client)["state"] == "complete"
-            assert bool(flags(path) & 1) == (route == "view")
+            result = client.restore("undo", ["readonly"], policy)
+            assert result["status"] == "sealed", result
+            client.request("accept", command_id="undo")
+            assert pub.publish(client)["state"] == "complete"
+            result = client.restore("redo", ["undo"], "original")
+            assert result["status"] == "sealed", result
+            client.request("accept", command_id="redo")
+            assert pub.publish(client)["state"] == "complete"
+            assert flags(path) & 1
             assert path.read_bytes() == b"original content USER APPEND"
     finally:
         if path.exists(): set_flag(path, 1, False)
@@ -109,7 +105,7 @@ def test_content_changes_to_an_existing_readonly_file_roundtrip(tmp_path):
             client.request("finish"); client.request("accept", command_id="content")
             assert pub.publish(client)["state"] == "complete"
             assert path.read_bytes() == b"edited" and flags(path) & 3 == 3
-            assert pub.undo(client, "content", "original")["state"] == "complete"
+            assert client.restore_published(["content"], "original")["state"] == "complete"
             assert path.read_bytes() == b"original content" and flags(path) & 3 == 3
             assert native.directory_identity(path) == identity
     finally:
@@ -126,7 +122,7 @@ def test_readonly_file_deletion_and_restoration(tmp_path):
             client.request("finish"); client.request("accept", command_id="delete")
             assert pub.publish(client)["state"] == "complete"
             assert not path.exists()
-            assert pub.undo(client, "delete", "original")["state"] == "complete"
+            assert client.restore_published(["delete"], "original")["state"] == "complete"
             assert path.read_bytes() == b"original content" and flags(path) & 1
     finally:
         if path.exists(): set_flag(path, 1, False)

@@ -21,3 +21,12 @@ class CommandClient(Client):
         atomic(self.store/'commands'/command_id/'execution.json',result)
         # A nonzero exit remains evidence; accepting partial effects is an explicit choice.
         return {'execution':result,'files':self.request('finish')}
+
+    def restore_published(self, targets, policy):
+        """Restore through the product path: native restore, accept, then publish."""
+        from redpanda.filesystem.file_view.publication import publish
+        identity = 'restore-' + '-'.join(targets)
+        result = self.restore(identity, list(targets), policy)
+        if result['status'] != 'sealed': return result
+        self.request('accept', command_id=identity)
+        return publish(self)
