@@ -49,6 +49,12 @@ class Evidence:
             "version": 3, "active": self.active, "bindings": {"/file": self.identity},
         }), encoding="utf-8")
 
+    def replace_externally(self, data):
+        """用户在宿主侧用新文件对象替换（rename 覆盖），内容可以与原来相同。"""
+        replacement = self.root / "replacement"
+        replacement.write_bytes(data)
+        os.replace(replacement, self.path)
+
     def state(self):
         return attribution(self.root, self.store, self.path)["changes"][0]
 
@@ -122,9 +128,7 @@ def test_metadata_only_evidence_does_not_claim_unobserved_file_bytes(tmp_path):
 def test_replaced_file_reports_identity_change_even_with_identical_content(tmp_path):
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"AAAAAA"), evidence.file(b"BAAAAA"))
-    replacement = evidence.root / "replacement"
-    replacement.write_bytes(b"BAAAAA")
-    os.replace(replacement, evidence.path)
+    evidence.replace_externally(b"BAAAAA")
     state = evidence.state()
     assert {"origin": "external", "description": "文件对象被替换"} in state["properties"]
     assert state["origin"] == "mixed"
@@ -133,9 +137,7 @@ def test_replaced_file_reports_identity_change_even_with_identical_content(tmp_p
 def test_later_agent_edit_does_not_erase_an_external_file_replacement(tmp_path):
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"AAAAAA"), evidence.file(b"BAAAAA"))
-    replacement = evidence.root / "replacement"
-    replacement.write_bytes(b"BAAAAA")
-    os.replace(replacement, evidence.path)
+    evidence.replace_externally(b"BAAAAA")
     with evidence.path.open("rb") as file:
         evidence.identity = native.identity(file)
     evidence.operation(evidence.file(b"BAAAAA"), evidence.file(b"BAAAAB"))
@@ -396,19 +398,13 @@ def test_scoped_review_does_not_count_sparse_or_binary_fragments_as_lines(tmp_pa
     assert file["binary"] and file["added"] is None
 
 
-def test_scoped_review_does_not_claim_exact_deletion_without_complete_original(tmp_path):
+def test_scoped_deletion_does_not_claim_exact_or_complete_evidence_without_original(tmp_path):
     evidence = Evidence(tmp_path)
     evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
     evidence.path.unlink()
     file = review_changes(evidence.root, evidence.store, evidence.active)["files"][0]
     assert file["status"] == "deleted"
     assert file["partial"] and file["removed"] is None
-
-
-def test_scoped_tool_deletion_does_not_claim_complete_evidence_without_original_bytes(tmp_path):
-    evidence = Evidence(tmp_path)
-    evidence.operation(evidence.file(b"a\n" * 65536, complete=False), image())
-    evidence.path.unlink()
     with patch("redpanda.filesystem.changes.MAX_CONTENT_CHARS", 200_000):
         result = attribution(evidence.root, evidence.store, evidence.path, operations=tuple(evidence.active))
     assert not result["content_complete"]
