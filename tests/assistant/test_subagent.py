@@ -74,9 +74,6 @@ class _NoToolsets:
     def toolset_schemas(self, _session_id, _state):
         return []
 
-    def catalog_instruction(self, _session_id, _state):
-        return "没有 Toolset"
-
 
 class _NoManagement:
     def schemas(self, _session_id, _state):

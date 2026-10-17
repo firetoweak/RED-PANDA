@@ -62,7 +62,7 @@ def build_parameters(tool_name: str, input_schema: Mapping[str, Any]) -> JsonSch
         raise ToolsetLoadError(
             "MCP_INVALID_TOOL_SCHEMA",
             f"工具 {tool_name} 的 inputSchema 非法: {exc}",
-            hint="请修复 MCP Server 的工具 Schema 后重试 load_toolset。",
+            hint="这是该 Server 的问题，重试无效；告诉用户该 Toolset 当前不可用。",
             data={"tool_name": tool_name},
         ) from exc
 
@@ -82,7 +82,7 @@ def build_output_validator(
         raise ToolsetLoadError(
             "MCP_INVALID_TOOL_SCHEMA",
             f"工具 {tool_name} 的 outputSchema 非法: {exc}",
-            hint="请修复 MCP Server 的工具 Schema 后重试 load_toolset。",
+            hint="这是该 Server 的问题，重试无效；告诉用户该 Toolset 当前不可用。",
             data={"tool_name": tool_name},
         ) from exc
 

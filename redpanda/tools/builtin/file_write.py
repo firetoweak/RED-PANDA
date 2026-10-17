@@ -16,7 +16,7 @@ APPLY_PATCH_DESCRIPTION = """
 用途：对单个文本文件执行一次精确且唯一的局部替换。
 何时使用：已通过 read_file 或 grep 取得真实原文、只需修改一个明确位置时使用；新建或整体覆盖用 write_file，所有相同文本都要替换时用 replace_all。
 关键限制：old_block 必须来自最新文件原文并且唯一匹配；保留替换范围之外的原文和换行。
-失败/截断后：OLD_BLOCK_NOT_FOUND 后重新 read_file；OLD_BLOCK_NOT_UNIQUE 后扩大上下文；FUZZY_MATCH_ONLY 时使用返回的 original_block 明确重试；本工具结果不截断。
+失败/截断后：OLD_BLOCK_NOT_FOUND 后重新 read_file；OLD_BLOCK_NOT_UNIQUE 后扩大上下文；FUZZY_MATCH_ONLY 时使用返回的 original_block 明确重试；FUZZY_MATCH_NOT_UNIQUE 时 read_file 后扩大上下文；本工具结果不截断。
 """.strip()
 
 REPLACE_ALL_DESCRIPTION = """
@@ -60,7 +60,6 @@ def create_file_write_specs(binding: FileAccess) -> list[ToolSpec]:
             candidate["path"] = path
         if result["code"] == "FUZZY_MATCH_ONLY":
             result["candidate"] = result.pop("candidates")[0]
-            result["hint"] = "old_block 未精确匹配；请使用返回的 original_block 重试。"
         return {**result, "path": path}
 
     async def apply_patch(raw: ApplyPatchInput):

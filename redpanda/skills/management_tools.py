@@ -16,7 +16,7 @@ class SkillIdInput(BaseModel):
 
 
 class SkillListInput(BaseModel):
-    skill_id: str | None = Field(default=None, description="省略列出全部；提供名称时精确查询该技能，包含 disabled 项。")
+    skill_id: str | None = Field(default=None, description="省略时列出全部（含停用项）；提供时只返回该 Skill。")
 
 
 def create_skill_management_specs(service: SkillApplicationService) -> tuple[ToolSpec, ...]:
@@ -57,8 +57,8 @@ def create_skill_management_specs(service: SkillApplicationService) -> tuple[Too
     return (
         ToolSpec(
             LIST_INSTALLED_SKILLS,
-            "查询已安装 Skill 的来源、hash、revision 与启用状态，可按名称查询。"
-            "只读登记，不校验磁盘包；需要检查实际安装时调用 test_installed_skill。",
+            "列出已安装 Skill 的来源、版本和启用状态（含停用项），可按名称查询。"
+            "不检查包是否完好，需要时用 test_installed_skill。",
             PydanticParameters(SkillListInput), list_skills,
         ),
         ToolSpec(

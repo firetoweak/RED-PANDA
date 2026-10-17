@@ -77,7 +77,7 @@ class CliToolAdapter:
                     "ok": False,
                     "code": "CLI_NOT_AVAILABLE",
                     "error": "当前没有已登记的 CLI",
-                    "hint": "使用 /cli list 查看已登记 CLI。",
+                    "hint": "先 load_management_tools 加载 cli，再用 list_installed_clis 查看已登记 CLI。",
                 }
             try:
                 payload = spec.parameters.validate(dict(arguments))

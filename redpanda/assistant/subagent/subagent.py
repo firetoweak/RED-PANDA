@@ -245,12 +245,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
     if project_parent(events) is None or _return_event(events) is not None:
         return
     state = StateProjector().project(session_id, events).state
-    unfinished = [
-        command.command.command_id
-        for command in state.commands
-        if command.phase is CommandPhase.UNKNOWN
-    ]
-    if not unfinished:
+    if not any(command.phase is CommandPhase.UNKNOWN for command in state.commands):
         return
     await persist_return(
         journal,
@@ -259,11 +254,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
             session_id,
             reported=False,
             summary=None,
-            failure=(
-                "子 Agent 执行被中断：以下工具调用已经开始但没有返回结果，"
-                "不知道是否生效，也没有自动重试。需要的话重新 delegate。"
-                " 子 Agent 内部的调用 id（仅供排查）: " + ", ".join(unfinished)
-            ),
+            failure="子 Agent 被中断，未完成任务，也没有交回结论。需要时重新 delegate。",
         ),
     )
 
@@ -329,7 +320,10 @@ DELEGATE_SCHEMA: dict[str, object] = {
                 },
                 "resolve_conflicts_of": {
                     "type": ["string", "null"],
-                    "description": "可选：合入冲突的原 delegate 调用 id，新子从带冲突标记的工作树开工。",
+                    "description": (
+                        "可选：合入冲突的那次 delegate 调用 id；"
+                        "新的子 Agent 在带冲突标记的文件上工作，在 task 里说明取舍原则。"
+                    ),
                 },
             },
             "required": ["task"],

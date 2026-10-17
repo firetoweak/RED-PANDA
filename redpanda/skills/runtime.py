@@ -43,8 +43,8 @@ class LoadSkillInput(BaseModel):
 class ReadSkillResourceInput(BaseModel):
     skill_id: str
     relative_path: str
-    offset: int = Field(default=0, ge=0)
-    limit: int = Field(default=20_000, ge=1, le=50_000)
+    offset: int = Field(default=0, ge=0, description="起始字符位置；续读时填上一次结果的 next_offset。")
+    limit: int = Field(default=20_000, ge=1, le=50_000, description="本次最多读取的字符数。")
 
 
 class SkillToolCatalog:
@@ -183,15 +183,9 @@ class SkillToolCatalog:
         ):
             raise SkillRuntimeError(
                 "SKILL_CATALOG_STALE",
-                f"Skill {skill_id} 在当前能力目录生成后已变化",
+                f"Skill {skill_id} 已被修改或停用",
                 hint="在下一次决策中按最新 Skill 目录重新选择。",
-                data={
-                    "skill_id": skill_id,
-                    "expected_revision": revision,
-                    "current_revision": (
-                        current.revision if current is not None else None
-                    ),
-                },
+                data={"skill_id": skill_id},
             )
         return current
 
@@ -244,7 +238,7 @@ class SkillToolCatalog:
             raise SkillRuntimeError(
                 "SKILL_RESOURCE_NOT_TEXT",
                 f"Skill 资源不是 UTF-8 文本: {relative_path}",
-                hint="二进制 assets 不通过 read_skill_resource 读取。",
+                hint="该资源不是文本，无法读取。",
             ) from exc
         if offset > len(content):
             raise SkillRuntimeError(

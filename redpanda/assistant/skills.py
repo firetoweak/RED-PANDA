@@ -78,7 +78,7 @@ class SkillToolAdapter:
                     "ok": False,
                     "code": "SKILL_NOT_AVAILABLE",
                     "error": "当前没有已启用的 Skill",
-                    "hint": "加载 skill 管理域，通过 list_installed_skills 查询或 propose_skill_set_enabled 启用。",
+                    "hint": "先 load_management_tools 加载 skill，再用 list_installed_skills 查询或 propose_skill_set_enabled 启用。",
                 }
             try:
                 payload = spec.parameters.validate(dict(arguments))

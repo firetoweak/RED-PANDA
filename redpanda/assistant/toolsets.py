@@ -29,7 +29,7 @@ LOAD_TOOLSET = "load_toolset"
 
 LOAD_TOOLSET_DESCRIPTION = (
     "为当前 Session 加载一个 Toolset，并返回本次发现的工具名称与描述。"
-    "其中的工具从下一次决策开始可用。未加载前不能调用其中的工具。"
+    "其中的工具从下一次决策开始可用。"
 )
 
 LOAD_TOOLSET_SCHEMA: dict[str, object] = {
@@ -317,23 +317,6 @@ class ToolSurface:
             schemas.extend(tool.schema() for tool in loaded.tools)
         return schemas
 
-    def catalog_instruction(
-        self,
-        session_id: str,
-        decision_state: DecisionState | None = None,
-    ) -> str:
-        descriptors = self._catalogs.get(session_id, ())
-        if not descriptors:
-            return "当前没有可加载的外部 Toolset。"
-        lines = [
-            "可按需加载以下 Toolset。需要其中能力时，调用 load_toolset；"
-            "加载后的工具从下一次决策开始可用。"
-            "只能调用本次决策可用工具中的精确名称：",
-        ]
-        for descriptor in descriptors:
-            lines.append(f"- {descriptor.id}: {descriptor.description}")
-        return "\n".join(lines)
-
     async def load(
         self,
         session_id: str,
@@ -379,7 +362,7 @@ class ToolSurface:
                 "code": "TOOL_NAME_CONFLICT",
                 "data": {"toolset_id": toolset_id, "names": conflict},
                 "error": "Toolset 工具名与已有工具冲突",
-                "hint": "请更换 Server ID 或工具名后重试。",
+                "hint": "告诉用户该 Toolset 的工具名与已有工具冲突（见 data.names），需要在 MCP 配置中调整。",
             }
         self._bind_loaded(
             session_id,

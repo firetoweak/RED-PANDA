@@ -121,7 +121,7 @@ class SkillApplicationService:
         entries.append((name, description))
         catalog = "\n".join(f"- {key}: {value}" for key, value in entries)
         if len(catalog) > self.max_catalog_chars:
-            raise SkillPreconditionError("SKILL_CATALOG_LIMIT: 启用后完整 Skill 目录超出预算")
+            raise SkillPreconditionError("SKILL_CATALOG_LIMIT: 启用后所有 Skill 描述的总长度超过上限；先停用不需要的 Skill 再试。")
 
     async def _install_bundle(self, bundle: SkillBundle) -> SkillRecord:
         await self._check_catalog_budget(bundle.name, bundle.description)
@@ -221,6 +221,8 @@ class SkillApplicationService:
                 installed,
                 candidate_bundle,
             )
+            if not candidate.diff.changed:
+                return SkillUpdateReport(candidate)
             if self.diff_summarizer is None:
                 return SkillUpdateReport(
                     candidate,
@@ -241,10 +243,7 @@ class SkillApplicationService:
             ) as exc:
                 return SkillUpdateReport(
                     candidate,
-                    summary_error=(
-                        "Skill 更新概括生成失败: "
-                        f"{type(exc).__name__}: {exc}"
-                    ),
+                    summary_error=f"Skill 更新概括生成失败: {exc}",
                 )
             return SkillUpdateReport(candidate, semantic_summary=summary)
 

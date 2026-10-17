@@ -140,7 +140,7 @@ class ToolsExecutor:
                     "code": "TOOL_HANDLER_ERROR",
                     "data": {"exception_type": type(exc).__name__},
                     "error": f"{type(exc).__name__}: {exc}",
-                    "hint": "根据错误信息修正工具参数后重试，或换一种做法。",
+                    "hint": "工具内部出错；不要原样重试，换一种做法或告诉用户。",
                 }
             )
         if isinstance(result, (ControlApprovalProposal, ControlPreparationFailure)):

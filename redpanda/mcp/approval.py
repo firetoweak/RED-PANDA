@@ -21,6 +21,10 @@ PROPOSE_MCP_INSTALL = "propose_mcp_install"
 PROPOSE_MCP_RECOVERY = "propose_mcp_recovery"
 PROPOSE_MCP_UPDATE = "propose_mcp_update"
 PROPOSE_MCP_REMOVE = "propose_mcp_remove"
+_TEST_FAILED_NEXT_STEP = (
+    "按 data.runtime.last_error_summary 判断：配置有误用 propose_mcp_update，"
+    "仅连接问题用 propose_mcp_recovery。"
+)
 
 _SHELL_EXECUTABLES = {
     "bash",
@@ -40,17 +44,19 @@ class McpInstallProposalInput(BaseModel):
     server_id: str
     display_name: str
     description: str = ""
-    read_only: bool = Field(default=False, description="声明此安装配置只提供只读能力；由配置者保证 transport 的限制。")
+    read_only: bool = Field(default=False, description="仅当该 Server 的工具都不修改任何状态时设为 true；为 true 时子 Agent 也可使用它。")
     transport: Literal["stdio", "streamable_http"]
     command: str | None = None
     args: list[str] = Field(default_factory=list)
-    cwd: str | None = None
+    cwd: str | None = Field(default=None, description="仅 stdio：Server 进程的工作目录；省略时使用该 Server 自己的默认目录。")
     env: dict[str, str] = Field(default_factory=dict)
     url: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     bearer: str | None = None
-    timeout_seconds: float = 30.0
-    source: Literal["user_input", "official_documentation", "registry"]
+    timeout_seconds: float = Field(default=30.0, description="仅 streamable_http：单次请求的超时秒数。")
+    source: Literal["user_input", "official_documentation", "registry"] = Field(
+        description="配置信息的来源：user_input 为用户直接提供，official_documentation 为官方文档，registry 为 MCP 注册表。"
+    )
 
     @model_validator(mode="after")
     def validate_transport(self) -> "McpInstallProposalInput":
@@ -177,7 +183,7 @@ def create_mcp_install_proposal_spec(
                     "revision": existing.revision,
                 },
                 "error": f"MCP Server 已注册: {existing.id}",
-                "hint": "先诊断现有登记；安装不会隐式覆盖配置。",
+                "hint": "用 test_mcp_server 诊断；需要改配置用 propose_mcp_update。",
             }
         return ControlApprovalProposal(
             action=MCP_INSTALL_ACTION,
@@ -197,7 +203,6 @@ def create_mcp_install_proposal_spec(
             "streamable_http：填 url，鉴权信息填 headers 或 bearer，"
             "也可把密钥直接写在 url 的 query 里。"
             "禁止用 user:pass@host 的形式在 url 里带凭据。"
-            "启用成功后能力目录更新，load_toolset 之后工具从下一次决策可见。"
             "本工具必须单独调用。"
         ),
         parameters=PydanticParameters(McpInstallProposalInput),
@@ -249,6 +254,7 @@ class McpInstallApprovalHandler:
                 message=(
                     f"MCP Server `{record.id}` 已注册但连接测试失败，"
                     "配置保持 disabled。"
+                    f"{_TEST_FAILED_NEXT_STEP}"
                 ),
                 data={
                     "server_id": record.id,
@@ -261,8 +267,8 @@ class McpInstallApprovalHandler:
         return ControlApprovalExecution(
             succeeded=True,
             message=(
-                f"MCP Server `{enabled.id}` 安装、测试并启用成功。"
-                "能力目录已更新，load_toolset 之后工具从下一次决策可见。"
+                f"MCP Server `{enabled.id}` 已安装并启用；"
+                f"需要时 load_toolset 加载 `{enabled.toolset_id}`。"
             ),
             data={
                 "server_id": enabled.id,
@@ -309,7 +315,7 @@ def create_mcp_update_proposal_spec(
         name=PROPOSE_MCP_UPDATE,
         description=(
             "在诊断证明已登记 MCP Server 的配置需要变化时，"
-            "提交新配置的更新审批；若提交后该 Server 的登记又有变化，批准时会失败，需要重新提交。"
+            "提交新配置的更新审批。"
             "不得用于单纯重连；本工具必须单独调用。"
         ),
         parameters=PydanticParameters(McpInstallProposalInput),
@@ -352,7 +358,7 @@ class McpUpdateApprovalHandler:
         except McpRecoveryPreconditionError as exc:
             return ControlApprovalExecution(
                 False,
-                f"MCP 更新条件已变化，未执行：{exc}",
+                f"未执行：{exc}；用 list_mcp_servers 核对后重新提交。",
             )
         activation = await self._service.test_and_enable(
             record.id,
@@ -363,7 +369,10 @@ class McpUpdateApprovalHandler:
             (
                 f"MCP Server `{record.id}` 已更新并启用。"
                 if activation.succeeded
-                else f"MCP Server `{record.id}` 已更新，但连接测试失败，保持 disabled。"
+                else (
+                    f"MCP Server `{record.id}` 已更新，但连接测试失败，保持 disabled。"
+                    f"{_TEST_FAILED_NEXT_STEP}"
+                )
             ),
             {
                 "server_id": record.id,
@@ -393,7 +402,7 @@ def create_mcp_recovery_proposal_spec(
                 "code": "MCP_SERVER_NOT_FOUND",
                 "data": {"server_id": input_data.server_id},
                 "error": f"未注册 MCP Server `{input_data.server_id}`",
-                "hint": "先调用 list_mcp_servers 核对状态；确需新增时提交安装方案。",
+                "hint": "先调用 list_mcp_servers 核对状态；确需新增时用 propose_mcp_install。",
             }
         return ControlApprovalProposal(
             action=MCP_RECOVER_ACTION,
@@ -415,10 +424,8 @@ def create_mcp_recovery_proposal_spec(
     return ToolSpec(
         name=PROPOSE_MCP_RECOVERY,
         description=(
-            "按已注册 MCP Server 的当前配置提交重测与重连审批，"
-            "不根据 enabled 推断健康。"
-            "应先用 list_mcp_servers / test_mcp_server 获取事实；"
-            "不得把 TOOLSET_NOT_FOUND 直接解释为未安装。"
+            "用已登记配置重新连接测试 MCP Server，成功后启用；"
+            "配置本身有误时改用 propose_mcp_update。"
             "本工具必须单独调用。"
         ),
         parameters=PydanticParameters(McpRecoveryProposalInput),
@@ -454,7 +461,7 @@ class McpRecoveryApprovalHandler:
         except McpRecoveryPreconditionError as exc:
             return ControlApprovalExecution(
                 succeeded=False,
-                message=f"MCP Server `{server_id}` 恢复条件已变化，未执行：{exc}",
+                message=f"未执行：{exc}；用 list_mcp_servers 核对后重新提交。",
                 data={"server_id": server_id, "enabled": False},
             )
         runtime = activation.runtime
@@ -464,6 +471,7 @@ class McpRecoveryApprovalHandler:
                 message=(
                     f"MCP Server `{server_id}` 连接测试失败，"
                     "配置保持 disabled。"
+                    f"{_TEST_FAILED_NEXT_STEP}"
                 ),
                 data={
                     "server_id": server_id,
@@ -475,8 +483,8 @@ class McpRecoveryApprovalHandler:
         return ControlApprovalExecution(
             succeeded=True,
             message=(
-                f"MCP Server `{server_id}` 测试并启用成功。"
-                "能力目录已更新，load_toolset 之后工具从下一次决策可见。"
+                f"MCP Server `{server_id}` 已恢复并启用；"
+                f"需要时 load_toolset 加载 `{activation.record.toolset_id}`。"
             ),
             data={
                 "server_id": server_id,
@@ -565,15 +573,13 @@ class McpRemoveApprovalHandler:
         except McpRecoveryPreconditionError as exc:
             return ControlApprovalExecution(
                 succeeded=False,
-                message=f"MCP Server `{server_id}` 删除条件已变化，未执行：{exc}",
+                message=f"未执行：{exc}；用 list_mcp_servers 核对后重新提交。",
                 data={"server_id": server_id},
             )
         return ControlApprovalExecution(
             succeeded=True,
             message=(
-                f"MCP Server `{record.id}` 已删除。"
-                "登记与本地 Secret 已清除，能力目录已更新，"
-                "load_toolset 之后工具从下一次决策不再可见。"
+                f"MCP Server `{record.id}` 已删除，其工具不再可用。"
             ),
             data={
                 "server_id": record.id,

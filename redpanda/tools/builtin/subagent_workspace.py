@@ -6,7 +6,7 @@ from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 
 class SubagentChangesInput(BaseModel):
-    tool_call_id: str = Field(min_length=1, description="当前会话已提交的 delegate 调用 id")
+    tool_call_id: str = Field(min_length=1, description="已交回 report 的 delegate 调用 id")
     paths: list[str] = Field(default_factory=list, description="为空只列文件；指定相对路径时返回这些文件的 diff")
     offset: int = Field(default=0, ge=0, description="diff 的字符续读位置；首次为 0，续查使用 next_offset，并保持 paths 不变")
 

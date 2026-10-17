@@ -501,8 +501,12 @@ class SkillUpdateReport:
     def __post_init__(self) -> None:
         if type(self.candidate) is not SkillUpdateCandidate:
             raise TypeError("Skill update report candidate 类型无效")
-        if self.semantic_summary is None and self.summary_error is None:
-            raise ValueError("Skill update report 必须包含概括或明确错误")
+        if (
+            self.candidate.diff.changed
+            and self.semantic_summary is None
+            and self.summary_error is None
+        ):
+            raise ValueError("有变化的 Skill update report 必须包含概括或明确错误")
         if self.semantic_summary is not None and not self.semantic_summary.strip():
             raise ValueError("semantic_summary 不能为空")
         if self.summary_error is not None and not self.summary_error.strip():

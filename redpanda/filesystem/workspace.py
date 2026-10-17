@@ -28,7 +28,7 @@ class EnvironmentPermissionDenied(EnvironmentInputError):
     code = "ENVIRONMENT_PERMISSION_DENIED"
 
     def __init__(self, path: str, access: str) -> None:
-        super().__init__(f"没有对该 path 的 {access} 权限: {path}")
+        super().__init__(f"path 不在可{'写入' if access == 'write' else '访问'}范围内: {path}")
 
 
 class UnknownWorkspaceRoot(EnvironmentInputError):
@@ -165,14 +165,14 @@ class PermissionBinding:
             for root in view.roots
         ))
 
-    def access_for(self, root_id: str) -> FilesystemPermission:
+    def access_for(self, root_id: str, path: str) -> FilesystemPermission:
         try:
             return next(
                 access for candidate, access in self.filesystem
                 if candidate == root_id
             )
         except StopIteration:
-            raise EnvironmentPermissionDenied(root_id, "access") from None
+            raise EnvironmentPermissionDenied(path, "read") from None
 
 
 @dataclass(frozen=True)
@@ -255,7 +255,7 @@ class WorkspacePathResolver:
         )
         membership = self.binding.workspace_view.membership(resolved)
         permission = self.binding.permission_binding.access_for(
-            membership.root_id
+            membership.root_id, raw_path
         )
         if access == "write" and permission is not FilesystemPermission.READ_WRITE:
             raise EnvironmentPermissionDenied(raw_path, access)

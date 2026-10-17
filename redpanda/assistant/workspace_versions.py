@@ -29,11 +29,7 @@ async def session_file_operations(journal, events) -> tuple[str, ...]:
     )
 
 
-SEMANTIC_RESTORE_HINT = (
-    "机械回退不保证符合用户意图。请读取相关文件的当前内容，核对已有修改证据；"
-    "若仍需调整，按用户目标使用普通文件工具修改，并遵守现有写入授权。"
-    "不要自动升级回退策略或反复重试同一次失败。"
-)
+SEMANTIC_RESTORE_HINT = "按用户目标核对当前文件，必要时用文件工具修正；不要反复重试。"
 
 
 @dataclass(frozen=True)
@@ -76,14 +72,14 @@ def restored_file_result(restored, policy):
 def workspace_file_result_note(result):
     note = {
         "failed": "会话已回退，文件未能恢复；本次文件回退没有修改文件。",
-        "partially_restored": "文件已部分回退，同时保留了后续值；当前文件可能与保留的对话记录不同。",
-        "preserved": "文件回退保留了后续值，本次没有修改文件；当前文件可能与保留的对话记录不同。",
+        "partially_restored": "文件已部分回退，同时保留了后续值；当前文件可能与对话中看到的内容不同。",
+        "preserved": "文件回退保留了后续值，本次没有修改文件；当前文件可能与对话中看到的内容不同。",
         "restored": "已执行文件回退，请核对实际修改和删除的文件。",
         "unchanged": "本次文件处理没有改变文件。",
-        "kept": "工作区文件保持现状，没有退回这条分支的历史位置；存在保留对话之外的文件变化。",
+        "kept": "对话已从较早位置重新开始，但工作区文件没有退回；文件里可能有当前对话看不到的修改，先读取再继续。",
     }[result.effect]
     if result.policy == "original":
-        note += "原值策略允许覆盖助手改变位置的后续值，或删除助手创建后又被修改的文件。"
+        note += "policy=original 可能覆盖或删除用户后来的修改，请核对。"
     return note + SEMANTIC_RESTORE_HINT
 
 
@@ -228,7 +224,7 @@ class WorkspaceVersionBoundary:
         try:
             version = await self.versions.record()
         except FileSystemUnavailable as exc:
-            fact = WorkspaceVersionFact(self.workspace_id, step_id, None, "当前无法记录工作区文件状态，请让用户检查应用安装。")
+            fact = WorkspaceVersionFact(self.workspace_id, step_id, None, "这一步之后的文件状态没有记录，无法用 restore_workspace 回退到此前；请告诉用户检查应用安装。")
         else:
             fact = WorkspaceVersionFact(self.workspace_id, step_id, version, None)
         await self.runtime.receive_domain_fact(

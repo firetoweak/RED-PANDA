@@ -344,10 +344,8 @@ def _file_state(root, store, path, changes, identities, budget, text_offset=0, *
         else:
             description = f"{names[name]}：{value.baseline} → {value.current}"
         properties.append({"origin": _origin([value.owner]), "description": description})
-    if unobserved_bytes:
-        limitations.append("文件有未观察的内容，结果仅覆盖有原值可比较的部分。")
-    if not original_complete(metadata, blocks, chunk_size):
-        limitations.append("文件有未观察的修改前内容，不能把已展示片段当成完整修改。")
+    if unobserved_bytes or not original_complete(metadata, blocks, chunk_size):
+        limitations.append("部分内容没有修改前的原值，只展示了可比较的部分，不能当作完整修改。")
     if appended:
         limitations.append("外部追加内容尚未展示，请读取当前文件核对。")
     if truncated:

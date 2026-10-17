@@ -31,7 +31,7 @@ GLOB_DESCRIPTION = """
 何时使用：不知道目标文件位置、需要按扩展名或目录层级定位时使用；搜索文件内容用 grep，读取已知文件用 read_file。
 默认范围：跳过隐藏文件/目录（名称以 . 开头，含 .git）以及 gitignore / .ignore / .fdignore 匹配项。需要搜索隐藏文件时设 include_hidden=true，需要搜索 gitignore 匹配项时设 include_ignored=true，两者可同时设置；把 path 直接指到被跳过的目录会进入该目录，进入后上述过滤规则依然生效。无论 include_hidden 还是 include_ignored 为 true 都不进入 .git，除非 path 已在 .git 内。
 关键限制：pattern 不含 / 时递归匹配文件名，含 / 时匹配相对搜索起点的完整路径，** 匹配零层或任意多层目录；包含空目录，只查找普通文件和目录，不跟随符号链接。
-失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；hint 会说明本次跳过了哪些过滤；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
+失败/截断后：truncated=true 时用返回的 next_offset 作为下次调用的 offset 继续，或缩小 path、pattern、kind、max_depth；GLOB_TIMEOUT/GLOB_NOT_FOUND/GLOB_FAILED 时不能假定没有匹配。
 """.strip()
 
 GREP_DESCRIPTION = """
@@ -45,8 +45,8 @@ GREP_DESCRIPTION = """
 READ_FILE_DESCRIPTION = """
 用途：读取已知文本文件的行范围，返回内容、行号和分页状态。
 何时使用：已经知道文件路径、需要查看 grep 命中的完整上下文或在修改前取得真实 old_block 时使用；不知道路径先用 glob/grep，不要用它读取二进制文件。
-关键限制：offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换；文件体积不是拒绝条件。
-失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 返回有界 preview 但不声称读取成功。
+关键限制：offset 从 1 开始；单次最多 2000 行和 8000 字符。返回原始文本及换行，可直接用于精确替换。
+失败/截断后：truncated=true 时使用 next_offset 继续；LINE_TOO_LONG 时只返回该行开头 preview，这一行无法用 read_file 读全。
 """.strip()
 
 
@@ -332,7 +332,7 @@ def create_file_read_specs(binding: FileAccess) -> list[ToolSpec]:
             "matches": matches,
             "truncated": truncated,
             "next_offset": raw.offset + len(page) if truncated else None,
-            "hint": _rg_scope_hint(
+            "hint": None if matches else _rg_scope_hint(
                 search_root,
                 include_hidden=raw.include_hidden,
                 include_ignored=raw.include_ignored,

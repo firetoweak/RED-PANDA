@@ -86,7 +86,7 @@ def create_skill_install_proposal_spec(
                     "locator": input_data.locator,
                 },
                 "error": str(exc),
-                "hint": "检查已安装目录；更新 Skill 应走独立更新流程。",
+                "hint": "该 Skill 已安装；要同步来源用 propose_skill_update。",
             }
         except SkillSourceError as exc:
             return ControlPreparationFailure({
@@ -402,8 +402,6 @@ def create_skill_update_proposal_spec(
                     "source": candidate.source.to_dict(),
                     "resolved_ref": candidate.new_resolved_ref,
                     "diff": candidate.diff.to_dict(),
-                    "semantic_summary": report.semantic_summary,
-                    "summary_error": report.summary_error,
                 },
                 "error": None,
                 "hint": None,
@@ -420,8 +418,7 @@ def create_skill_update_proposal_spec(
                 f"语义概括：{report.semantic_summary or report.summary_error}"
             ),
             risk=(
-                "批准后用本次检查到的版本替换已安装 Skill，启用状态保持不变；"
-                "若检查之后该 Skill 又有变化，更新会失败，需要重新检查。"
+                "批准后用本次检查到的版本替换已安装的 Skill，启用状态不变。"
             ),
         )
 

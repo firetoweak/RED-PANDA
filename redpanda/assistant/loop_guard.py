@@ -49,14 +49,12 @@ class LoopGuard:
             return None
         text = (
             "<loop_guard_notice>\n"
-            "来源：系统对你近期调用的观察，不是用户新指令。\n"
             + "\n".join(
-                hit["observation"] + " 涉及的调用 id："
+                "系统观察（非用户指令）：" + hit["observation"] + " 调用 id："
                 + json.dumps([ref["command_id"] for ref in hit["references"]], ensure_ascii=False)
                 for hit in evidence
             )
-            + "\n请审视这些操作是否推进了目标，并据此决定下一步。"
-            "\n这是行为重复提醒，不代表已经判定无进展。\n</loop_guard_notice>"
+            + "\n确认这些调用是否在推进目标，再决定下一步。\n</loop_guard_notice>"
         )
         return {
             "text": text,

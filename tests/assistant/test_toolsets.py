@@ -250,8 +250,6 @@ class ToolsetProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
         _apply_current_catalog(surface, self.SESSION_ID)
         names = _schema_names(surface.schemas(self.SESSION_ID))
         self.assertEqual(names, {LOAD_TOOLSET})
-        self.assertIn("demo", surface.catalog_instruction(self.SESSION_ID))
-        self.assertNotIn("demo_ping", surface.catalog_instruction(self.SESSION_ID))
 
     async def test_unknown_toolset_is_a_model_correctable_error(self):
         surface = ToolSurface(providers=(FakeEchoProvider(),))
