@@ -7,9 +7,10 @@ from pathlib import Path, PurePosixPath
 
 from anyio import CancelScope
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from redpanda.assistant.attachments import (
@@ -649,17 +650,24 @@ def create_web_app(
         )
 
     if static_dir is not None:
-        assets = static_dir
-        app.mount("/assets", StaticFiles(directory=assets / "assets"), name="assets")
-
-        @app.get("/{path:path}")
-        async def frontend(path: str):
-            candidate = assets / path
-            if path and candidate.is_file():
-                return FileResponse(candidate)
-            return FileResponse(assets / "index.html")
+        app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+        app.mount("/", _FrontendFiles(directory=static_dir), name="frontend")
 
     return app
+
+
+class _FrontendFiles(StaticFiles):
+    """前端构建产物；未知页面路径交给前端路由，未知 API 路径保持 404。"""
+
+    async def get_response(self, path: str, scope) -> Response:
+        if Path(path).parts[:1] == ("api",):
+            raise StarletteHTTPException(status_code=404)
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+        return await super().get_response("index.html", scope)
 
 
 def _channel(request: Request) -> WebChannel:

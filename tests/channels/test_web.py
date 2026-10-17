@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from urllib.parse import unquote
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -55,7 +56,49 @@ def test_static_resources_are_explicit(tmp_path):
             else:
                 assert client.get("/conversation").text == "frontend"
                 assert client.get("/assets/app.js").text == "script"
+                missing_api = client.get("/api/missing")
+                assert missing_api.status_code == 404
+                assert missing_api.json() == {"detail": "Not Found"}
         assert "/api/files/select" not in {route.path for route in app.routes}
+
+
+def test_frontend_files_stay_inside_static_dir(tmp_path):
+    assets = tmp_path / "dist"
+    (assets / "assets").mkdir(parents=True)
+    (assets / "index.html").write_text("frontend", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("secret", encoding="utf-8")
+    app = create_web_app(channel=SimpleNamespace(), static_dir=assets)
+
+    async def get(target: str) -> bytes:
+        # 按 uvicorn 的做法从原始请求目标得到 scope，不经过 HTTP 客户端的路径规范化。
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": unquote(target),
+            "raw_path": target.encode("ascii"),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [(b"host", b"127.0.0.1")],
+            "client": ("127.0.0.1", 1),
+            "server": ("127.0.0.1", 80),
+        }
+        body = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.body":
+                body.append(message.get("body", b""))
+
+        await app(scope, receive, send)
+        return b"".join(body)
+
+    for target in ("/../secret.txt", "/..%2fsecret.txt", "/%2e%2e/secret.txt", "/..%5csecret.txt"):
+        assert asyncio.run(get(target)) == b"frontend", target
 
 
 class _Sessions:
