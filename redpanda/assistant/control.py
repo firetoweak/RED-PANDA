@@ -160,16 +160,6 @@ class _StagedCall:
     intent: ControlIntent
 
 
-def _require_object(
-    value: object,
-    fields: set[str],
-    label: str,
-) -> dict[str, object]:
-    if type(value) is not dict or set(value) != fields:
-        raise ValueError(f"{label} 字段无效")
-    return value
-
-
 def _require_str(value: object, label: str) -> str:
     if type(value) is not str or not value:
         raise ValueError(f"{label} 必须是非空字符串")
@@ -177,11 +167,9 @@ def _require_str(value: object, label: str) -> str:
 
 
 def _intent_from_data(value: object) -> ControlIntent:
-    data = _require_object(
-        value,
-        {"request_id", "tool", "action", "arguments"},
-        "控制请求",
-    )
+    data = value
+    if type(data) is not dict:
+        raise TypeError("控制请求必须是 object")
     arguments = data["arguments"]
     if type(arguments) is not dict:
         raise ValueError("控制请求 arguments 必须是 object")
@@ -194,11 +182,9 @@ def _intent_from_data(value: object) -> ControlIntent:
 
 
 def _request_from_fact(value: object) -> ControlApprovalRequest:
-    data = _require_object(
-        value,
-        {"request_id", "action", "payload", "summary", "risk"},
-        "控制提案事实",
-    )
+    data = value
+    if type(data) is not dict:
+        raise TypeError("控制提案事实必须是 object")
     payload = data["payload"]
     if type(payload) is not dict:
         raise ValueError("控制提案事实 payload 必须是 object")
@@ -270,7 +256,6 @@ def _apply_fact(state: ControlState, payload: DomainFactCommitted) -> ControlSta
         raise ValueError("控制事实 identity 与已提交请求不匹配")
 
     if phase in {"concluded", "preparation_failed"}:
-        _require_object(data, {"request_id", "tool", "action", "result"}, fact_type)
         if _require_str(data["tool"], "控制 tool") != state.intent.tool:
             raise ValueError("控制事实 tool 与已提交请求不匹配")
         result = data["result"]
@@ -279,15 +264,9 @@ def _apply_fact(state: ControlState, payload: DomainFactCommitted) -> ControlSta
         return replace(state, phase=phase, data=result)
 
     if phase == "approved":
-        _require_object(data, {"request_id", "action"}, fact_type)
         return replace(state, phase=phase)
 
     if phase == "rejected":
-        _require_object(
-            data,
-            {"request_id", "action", "message", "data"},
-            fact_type,
-        )
         result_data = data["data"]
         if type(result_data) is not dict:
             raise ValueError(f"{fact_type} data.data 必须是 object")
@@ -302,18 +281,8 @@ def _apply_fact(state: ControlState, payload: DomainFactCommitted) -> ControlSta
     if execution_id != execution_id_for(request_id):
         raise ValueError("控制 execution_id 不是由 request_id 确定性派生")
     if phase == "execution_started":
-        _require_object(
-            data,
-            {"request_id", "action", "execution_id"},
-            fact_type,
-        )
         return replace(state, phase=phase, execution_id=execution_id)
 
-    _require_object(
-        data,
-        {"request_id", "action", "execution_id", "message", "data"},
-        fact_type,
-    )
     result_data = data["data"]
     if type(result_data) is not dict:
         raise ValueError(f"{fact_type} data.data 必须是 object")

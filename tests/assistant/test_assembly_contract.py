@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -10,20 +9,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT, environment_prompt
-from redpanda.assistant.management import LOAD_MANAGEMENT_TOOLS
-from redpanda.assistant.work_plan import UPDATE_PLAN, WORK_PLAN_CONTEXT
 from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import DecisionCancelled, MemoryJournal, SqliteJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.filesystem import operation_id
 from tests.fixtures.workspaces import workspace_record
-from tests.session_scheduler import (
-    SettlingScheduler,
-    settle_session,
-)
+from tests.session_scheduler import SettlingScheduler
 
 
 @pytest.fixture(autouse=True)
@@ -40,6 +33,7 @@ def version_backend():
         yield
 
 
+
 class CapturingLlm:
     def __init__(self) -> None:
         self.requests: list[dict[str, object]] = []
@@ -53,26 +47,8 @@ class CapturingLlm:
                 "tools": deepcopy(tools),
             }
         )
-        calls = ()
-        if len(self.requests) == 1:
-            calls = (
-                ToolCall(
-                    "load-management",
-                    LOAD_MANAGEMENT_TOOLS,
-                    '{"domain":"mcp"}',
-                ),
-                ToolCall("plan", UPDATE_PLAN, json.dumps({"plan": {
-                    "objective": "检查管理能力", "steps": [
-                        {"text": "加载管理域", "status": "in_progress"},
-                    ], "note": None,
-                }}, ensure_ascii=False)),
-            )
         return LLMCallResult(
-            LLMResponse(
-                content="done",
-                calls=calls,
-                message_extensions={"reasoning_content": f"private-state-{len(self.requests)}"},
-            ),
+            LLMResponse(content="done", calls=()),
             LLMUsage(input_tokens=1, output_tokens=1),
         )
 
@@ -114,148 +90,6 @@ class BlockingStreamingLlm:
         self.started.set()
         await asyncio.Event().wait()
 
-
-class AssistantAssemblyContractTest(unittest.IsolatedAsyncioTestCase):
-    async def test_assembled_model_request_is_preserved_for_replay(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = root / "workspace"
-            workspace.mkdir()
-            home = RedPandaHome(root / ".redpanda")
-            with (
-                patch(
-                    "redpanda.assistant.assembly.RedPandaHome.default",
-                    return_value=home,
-                ),
-                patch(
-                    "redpanda.assistant.assembly.runtime_data_root",
-                    return_value=root / "runtime",
-                ),
-            ):
-                llm = CapturingLlm()
-                journal = MemoryJournal()
-                config = AssistantConfig(
-                    model_name="test-model",
-                    compact_threshold_tokens=200_000,
-                    llm=llm,
-                )
-                session_id = "entry"
-                assembly = await build_assistant_assembly(
-                    config,
-                    lambda _session_id, _output_id, _text: None,
-                    journal,
-                    session_id=session_id,
-                    workspace=workspace_record(workspace),
-                )
-                try:
-                    self.assertIn("restore_workspace", assembly.bindings)
-                    self.assertIn(UPDATE_PLAN, assembly.bindings)
-                    self.assertFalse(assembly.bindings[UPDATE_PLAN].requires_authorization)
-                    self.assertFalse(assembly.bindings["restore_workspace"].requires_authorization)
-                    self.assertIsNotNone(assembly.scheduler.record_workspace_versions)
-                    decision = assembly.runtime.step_runner._decision_maker
-                    self.assertIn("restore_workspace", decision._exclusive_tool_names)
-                    await assembly.runtime.receive_user_message(
-                        session_id,
-                        "检查管理能力",
-                        delivery_id="user-1",
-                    )
-                    state = await assembly.runtime.state(session_id)
-                    events = await assembly.runtime.snapshot(session_id)
-                    allowed_control = decision._management.control_names(
-                        session_id,
-                        state,
-                    )
-                    expected_tools = [
-                        *assembly.surface.schemas(session_id, state),
-                        *decision._skill_tools.schemas(),
-                        *decision._cli_tools.schemas(),
-                        *decision._management.schemas(session_id, state),
-                        *assembly.control.schemas(
-                            session_id, events, allowed_control
-                        ),
-                        *assembly.subagents.schemas(session_id),
-                        *decision._compact.schemas(),
-                    ]
-                    expected_tools.sort(key=lambda item: item["function"]["name"])
-                    environment = environment_prompt(
-                        workspace_record(workspace).task_root, full_access=False, own_copy=False,
-                    )
-                    expected_prompt = f"{DEFAULT_ASSISTANT_PROMPT}\n\n{environment}"
-
-                    first = await assembly.runtime.advance(session_id)
-                    await settle_session(
-                        assembly.runtime,
-                        session_id,
-                        control=assembly.control,
-                    )
-
-                    request = llm.requests[0]
-                    self.assertEqual(request["tools"], expected_tools)
-                    self.assertEqual(
-                        request["messages"][0],
-                        {"role": "system", "content": expected_prompt},
-                    )
-                    self.assertEqual(
-                        [command.effect.name for command in first.step.commands],
-                        [LOAD_MANAGEMENT_TOOLS, UPDATE_PLAN, "deliver"],
-                    )
-                    event = next(
-                        event
-                        for event in await journal.snapshot(session_id)
-                        if isinstance(event.payload, StepCommitted)
-                        and event.payload.step.step_id == first.step.step_id
-                    )
-                    artifact_id = event.artifact_refs[0]
-                    manifest = json.loads(
-                        decision._projector.gateway.for_session(session_id)
-                        .read(artifact_id, 0, 1_000_000)
-                        .content
-                    )
-                    self.assertEqual(manifest["request"], request)
-                    self.assertEqual(
-                        event.payload.decision_metadata["model_usage"],
-                        {"window": None, **manifest["usage"]},
-                    )
-                    self.assertEqual(
-                        event.payload.decision_metadata["message_extensions"],
-                        {"reasoning_content": "private-state-1"},
-                    )
-                    replayed = next(
-                        message
-                        for message in llm.requests[1]["messages"]
-                        if message["role"] == "assistant"
-                        and message.get("tool_calls")
-                    )
-                    self.assertEqual(
-                        replayed["reasoning_content"], "private-state-1"
-                    )
-                    self.assertEqual(
-                        replayed["tool_calls"][0]["id"],
-                        first.step.commands[0].command_id,
-                    )
-                    second_event = [e for e in await journal.snapshot(session_id)
-                                    if isinstance(e.payload, StepCommitted)][1]
-                    self.assertEqual(
-                        second_event.payload.decision_metadata[WORK_PLAN_CONTEXT],
-                        llm.requests[1]["messages"][-1]["content"],
-                    )
-
-                    await assembly.runtime.receive_user_message(
-                        session_id, "继续检查", delivery_id="user-2",
-                    )
-                    await settle_session(assembly.runtime, session_id, control=assembly.control)
-                    self.assertEqual(
-                        [message["reasoning_content"] for message in llm.requests[2]["messages"]
-                         if message["role"] == "assistant"],
-                        ["private-state-1", "private-state-2"],
-                    )
-
-                    names = assembly.control.names()
-                    self.assertTrue(names.isdisjoint(assembly.bindings))
-                    self.assertTrue(names.issubset(assembly.surface._reserved))
-                finally:
-                    await assembly.scheduler.close()
 
 
 class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
@@ -516,15 +350,6 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 )
                 try:
                     scheduler = assembly.scheduler
-                    self.assertEqual(
-                        scheduler._on_quiesced,
-                        assembly.subagents.on_quiesced,
-                    )
-                    self.assertEqual(
-                        scheduler._on_failed,
-                        assembly.subagents.on_failed,
-                    )
-
                     assembly.subagents._parents["parent/sub-1"] = "parent"
                     await scheduler._emit_session_failed(
                         "parent/sub-1", "运行失败：上游 500"

@@ -60,16 +60,6 @@ def _json_dumps(value: object) -> str:
     )
 
 
-def _require_object(
-    value: object,
-    keys: set[str],
-    label: str,
-) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != keys:
-        raise ValueError(f"invalid {label} fields")
-    return value
-
-
 def _effect_to_data(effect: InvokeTool) -> dict[str, object]:
     return {
         "type": "invoke_tool",
@@ -81,7 +71,6 @@ def _effect_to_data(effect: InvokeTool) -> dict[str, object]:
 def _effect_from_data(data: dict[str, object]) -> InvokeTool:
     kind = data["type"]
     if kind == "invoke_tool":
-        _require_object(data, {"type", "name", "arguments"}, "invoke effect")
         return InvokeTool(
             name=data["name"],
             arguments=tuple((item[0], item[1]) for item in data["arguments"]),
@@ -99,11 +88,6 @@ def _outcome_to_data(outcome: CommandOutcome) -> dict[str, object]:
 
 
 def _outcome_from_data(data: dict[str, object]) -> CommandOutcome:
-    _require_object(
-        data,
-        {"status", "value", "error_type", "error_message"},
-        "command outcome",
-    )
     return CommandOutcome(
         status=OutcomeStatus(data["status"]),
         value=data["value"],
@@ -122,16 +106,6 @@ def _command_to_data(command: Command) -> dict[str, object]:
 
 
 def _command_from_data(data: dict[str, object]) -> Command:
-    _require_object(
-        data,
-        {
-            "command_id",
-            "effect",
-            "requires_authorization",
-            "decision_on_outcome",
-        },
-        "command",
-    )
     return Command(
         command_id=data["command_id"],
         effect=_effect_from_data(data["effect"]),
@@ -150,14 +124,6 @@ def _decision_to_data(decision: ModelDecision) -> dict[str, object]:
 
 
 def _decision_from_data(data: dict[str, object]) -> ModelDecision:
-    _require_object(
-        data,
-        {
-            "content",
-            "command_requests",
-        },
-        "model decision",
-    )
     return ModelDecision(
         content=data["content"],
         command_requests=tuple(
@@ -179,19 +145,6 @@ def _step_to_data(step: Step) -> dict[str, object]:
 
 
 def _step_from_data(data: dict[str, object]) -> Step:
-    _require_object(
-        data,
-        {
-            "step_id",
-            "trigger_event_id",
-            "decision_cursor",
-            "basis_state_version",
-            "observed_journal_position",
-            "decision",
-            "commands",
-        },
-        "step",
-    )
     return Step(
         step_id=data["step_id"],
         trigger_event_id=data["trigger_event_id"],
@@ -214,11 +167,6 @@ def _step_state_to_data(state: StepState) -> dict[str, object]:
 
 
 def _step_state_from_data(data: dict[str, object]) -> StepState:
-    _require_object(
-        data,
-        {"step", "committed_event_id", "sequence", "decision_metadata", "commands"},
-        "step state",
-    )
     return StepState(
         step=_step_from_data(data["step"]),
         committed_event_id=data["committed_event_id"],
@@ -289,53 +237,26 @@ def decode_payload(
         raise ValueError(f"invalid event payload: {kind}")
     data: dict[str, object] = raw
     if kind == _USER_MESSAGE:
-        _require_object(data, {"content"}, kind)
         return UserMessageReceived(data["content"])
     if kind == _STEP_COMMITTED:
-        _require_object(data, {"step", "decision_metadata"}, kind)
         return StepCommitted(_step_from_data(data["step"]), data["decision_metadata"])
     if kind == _COMMAND_AUTHORIZED:
-        _require_object(data, {"command_id"}, kind)
         return CommandAuthorized(data["command_id"])
     if kind == _COMMAND_REJECTED:
-        _require_object(data, {"command_id"}, kind)
         return CommandRejected(data["command_id"])
     if kind == _ATTEMPT_STARTED:
-        _require_object(
-            data,
-            {
-                "attempt_id",
-                "command_id",
-                "attempt_number",
-                "claim_token",
-                "worker_id",
-            },
-            kind,
-        )
         return DispatchAttemptStarted(**data)
     if kind == _OUTCOME_RECEIVED:
-        _require_object(
-            data,
-            {"command_id", "attempt_id", "outcome"},
-            kind,
-        )
         return CommandOutcomeReceived(
             command_id=data["command_id"],
             attempt_id=data["attempt_id"],
             outcome=_outcome_from_data(data["outcome"]),
         )
     if kind == _DECISION_CANCELLED:
-        _require_object(data, {"trigger_event_id"}, kind)
         return DecisionCancelled(data["trigger_event_id"])
     if kind == _STEP_CONTINUATION_CANCELLED:
-        _require_object(data, {"step_event_id"}, kind)
         return StepContinuationCancelled(data["step_event_id"])
     if kind == _DOMAIN_FACT_COMMITTED:
-        _require_object(
-            data,
-            {"fact_type", "data", "requests_decision"},
-            kind,
-        )
         return DomainFactCommitted(
             fact_type=data["fact_type"],
             data=data["data"],
@@ -372,17 +293,6 @@ def _attempt_to_data(attempt: AttemptState) -> dict[str, object]:
 
 
 def _attempt_from_data(data: dict[str, object]) -> AttemptState:
-    _require_object(
-        data,
-        {
-            "attempt_id",
-            "attempt_number",
-            "started_event_id",
-            "phase",
-            "outcome",
-        },
-        "attempt state",
-    )
     return AttemptState(
         attempt_id=data["attempt_id"],
         attempt_number=data["attempt_number"],
@@ -412,20 +322,6 @@ def _command_state_to_data(state: CommandState) -> dict[str, object]:
 
 
 def _command_state_from_data(data: dict[str, object]) -> CommandState:
-    _require_object(
-        data,
-        {
-            "command",
-            "phase",
-            "issued_by_event_id",
-            "attempts",
-            "outcome",
-            "canonical_outcome_event_id",
-            "dispatch_eligible_by_event_id",
-            "authorization_rejected_by_event_id",
-        },
-        "command state",
-    )
     return CommandState(
         command=_command_from_data(data["command"]),
         phase=CommandPhase(data["phase"]),
@@ -463,30 +359,16 @@ def encode_state(state: CanonicalState) -> str:
 
 
 def decode_state(state_json: str) -> CanonicalState:
-    envelope = _require_object(
-        json.loads(state_json),
-        {"codec_version", "projection_version", "state"},
-        "state checkpoint",
-    )
+    envelope = json.loads(state_json)
+    if type(envelope) is not dict:
+        raise TypeError("state checkpoint must be object")
     if envelope["codec_version"] != STATE_CODEC_VERSION:
         raise ValueError("unsupported state codec version")
     if envelope["projection_version"] != STATE_PROJECTION_VERSION:
         raise ValueError("unsupported state projection version")
-    data = _require_object(
-        envelope["state"],
-        {
-            "session_id",
-            "journal_position",
-            "decision_cursor",
-            "status",
-            "commands",
-            "steps",
-            "next_trigger_event_id",
-            "waiting_command_ids",
-            "waiting_for",
-        },
-        "canonical state",
-    )
+    data = envelope["state"]
+    if type(data) is not dict:
+        raise TypeError("canonical state must be object")
     return CanonicalState(
         session_id=data["session_id"],
         journal_position=data["journal_position"],
