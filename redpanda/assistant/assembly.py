@@ -29,6 +29,7 @@ from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.decision import (
     JournalBackedLlmDecisionMaker,
     bind_executor_tools,
+    with_command_interrupts,
 )
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, session_file_operations
@@ -275,7 +276,6 @@ async def build_assistant_assembly(
             builtin_tools,
             gateway,
             settings,
-            command_interrupts,
         ),
         restore_schema["function"]["name"]: restore_binding,
         **review_bindings,
@@ -311,6 +311,8 @@ async def build_assistant_assembly(
                         "error": "当前无法执行工作区文件操作，请让用户检查应用安装后重试。"}
         bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,
                                      requires_authorization=binding.requires_authorization)
+    # Outside the serialized file operation: a stop must also reach commands still queued for it.
+    bindings["execute_command"] = with_command_interrupts(bindings["execute_command"], command_interrupts)
     bindings = _with_tool_progress(bindings, tool_progress_sink)
     decision = JournalBackedLlmDecisionMaker(
         journal,

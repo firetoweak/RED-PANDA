@@ -169,15 +169,40 @@ def bind_executor_tools(
     runner: ToolRunner,
     gateway: ArtifactGateway,
     settings: ModelContextSettings,
-    command_interrupts: CommandInterrupts | None = None,
 ) -> dict[str, ToolBinding]:
     bindings: dict[str, ToolBinding] = {}
     for name in runner.names():
         bindings[name] = ToolBinding(
-            _executor_handler(runner, name, gateway, settings, command_interrupts),
+            _executor_handler(runner, name, gateway, settings),
             requires_authorization=runner.requires_authorization(name),
         )
     return bindings
+
+
+def with_command_interrupts(
+    binding: ToolBinding,
+    command_interrupts: CommandInterrupts,
+) -> ToolBinding:
+    """Register an execute_command attempt as interruptible before it waits for anything.
+
+    Wrap outside any queueing (such as the serialized file operation), so a stop that
+    arrives while the command still waits reaches it once it starts.
+    """
+
+    async def handler(context: AttemptContext, arguments: Mapping[str, object]) -> object:
+        return await run_interruptible(
+            command_interrupts,
+            session_id=context.session_id,
+            command_id=context.command_id,
+            attempt_id=context.attempt_id,
+            execute=lambda: binding.handler(context, arguments),
+        )
+
+    return ToolBinding(
+        handler,
+        decision_on_outcome=binding.decision_on_outcome,
+        requires_authorization=binding.requires_authorization,
+    )
 
 
 def _executor_handler(
@@ -185,30 +210,18 @@ def _executor_handler(
     name: str,
     gateway: ArtifactGateway,
     settings: ModelContextSettings,
-    command_interrupts: CommandInterrupts | None,
 ):
     async def handler(
         context: AttemptContext,
         arguments: Mapping[str, object],
     ) -> object:
-        async def execute() -> object:
-            result = await runner.execute(name, arguments)
-            return externalize_tool_result(
-                result,
-                context.session_id,
-                gateway,
-                settings,
-            )
-
-        if command_interrupts is not None and name == "execute_command":
-            return await run_interruptible(
-                command_interrupts,
-                session_id=context.session_id,
-                command_id=context.command_id,
-                attempt_id=context.attempt_id,
-                execute=execute,
-            )
-        return await execute()
+        result = await runner.execute(name, arguments)
+        return externalize_tool_result(
+            result,
+            context.session_id,
+            gateway,
+            settings,
+        )
 
     return handler
 
