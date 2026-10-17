@@ -15,8 +15,8 @@ from redpanda.skills.approval import (
     create_skill_uninstall_proposal_spec,
     create_skill_update_proposal_spec,
 )
-from redpanda.skills.management_tools import create_skill_management_specs, create_skill_help_spec
-from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE, SkillToolCatalog
+from redpanda.skills.management_tools import create_skill_management_specs
+from redpanda.skills.runtime import SkillToolCatalog
 from redpanda.tools.control import ControlOperation
 from redpanda.tools.spec import ToolSpec
 
@@ -59,19 +59,8 @@ def build_skills(
             SkillUninstallApprovalHandler(service),
         ),
     }
-    listing, testing = create_skill_management_specs(service)
-    # Schema source for the map. Execution stays on the resident tools, which
-    # rebuild these specs against the Session catalog.
-    read_specs = {item.name: item for item in service.tool_catalog.tool_specs()}
-    operations = {
-        "load": read_specs[LOAD_SKILL],
-        "read_resource": read_specs[READ_SKILL_RESOURCE],
-        "list": listing,
-        "test": testing,
-        **{name: item.proposal_spec for name, item in controls.items()},
-    }
     return SkillAssembly(
         service=service,
-        management_specs=(create_skill_help_spec(operations), listing, testing),
+        management_specs=create_skill_management_specs(service),
         control_operations=tuple(controls.values()),
     )

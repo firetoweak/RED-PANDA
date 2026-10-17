@@ -97,7 +97,7 @@ def create_skill_install_proposal_spec(
                     "locator": input_data.locator,
                 },
                 "error": str(exc),
-                "hint": "按来源格式和具体错误修正输入；不确定用法可查询 skill_help。",
+                "hint": "按来源格式和具体错误修正输入。",
             })
         except SkillInputError as exc:
             return _preparation_failure(exc)
@@ -429,6 +429,7 @@ def create_skill_update_proposal_spec(
         name=PROPOSE_SKILL_UPDATE,
         description=(
             "为健康的已安装 Skill 检查来源更新，有变化时提交更新审批。"
+            "已安装的 Skill 是独立副本，来源改动后要用本工具同步。"
             "省略来源时使用登记来源；保持启用状态。包损坏时不能更新，可卸载后重新安装。"
             "本工具必须单独调用。"
         ),

@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from pydantic import BaseModel, Field
 
-from redpanda.tools.spec import JsonSchemaParameters, PydanticParameters, ToolSpec
+from redpanda.tools.spec import PydanticParameters, ToolSpec
 from redpanda.skills.application import SkillApplicationService
 from redpanda.skills.errors import SkillInputError, SkillNotFoundError
 
 
 LIST_INSTALLED_SKILLS = "list_installed_skills"
 TEST_INSTALLED_SKILL = "test_installed_skill"
-SKILL_HELP = "skill_help"
-SKILL_MANAGEMENT_GUIDE = (
-    "已安装的 Skill 是独立副本，改动来源后需用 propose_skill_update 同步；"
-    "可从任意来源安装，不限于已安装列表。"
-)
 
 
 class SkillIdInput(BaseModel):
@@ -75,44 +68,6 @@ def create_skill_management_specs(service: SkillApplicationService) -> tuple[Too
             PydanticParameters(SkillIdInput), test_skill,
         ),
     )
-
-
-def create_skill_help_spec(operations: Mapping[str, ToolSpec]) -> ToolSpec:
-    # One operation table owns both navigation names and the real callable schemas.
-    parameters = JsonSchemaParameters({
-        "type": "object",
-        "properties": {"operation": {
-            "type": "string", "enum": ["help", *operations],
-            "description": "省略返回管理地图；指定操作返回其真实参数契约和示例。",
-        }},
-        "additionalProperties": False,
-    })
-
-    async def help_skill(input_data: dict):
-        operation = input_data.get("operation")
-        all_operations = {"help": spec, **operations}
-        if operation is None:
-            return {
-                "ok": True, "code": "SKILL_HELP",
-                "data": {"operations": [
-                    {"operation": key, "tool": item.name, "description": item.description,
-                     "requires_approval": item.control_boundary}
-                    for key, item in all_operations.items()
-                ]},
-            }
-        selected = all_operations[operation]
-        return {
-            "ok": True, "code": "SKILL_HELP",
-            "data": {"operation": operation,
-                     "requires_approval": selected.control_boundary,
-                     "tool": selected.to_openai_tool()["function"]},
-        }
-
-    spec = ToolSpec(
-        SKILL_HELP, SKILL_MANAGEMENT_GUIDE + "本工具返回管理操作清单或某项操作的完整参数，不触发安装或审批。",
-        parameters, help_skill,
-    )
-    return spec
 
 
 def _not_found(skill_id: str) -> dict:
