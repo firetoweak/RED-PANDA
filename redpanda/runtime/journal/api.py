@@ -8,6 +8,7 @@ from typing import Protocol
 
 from redpanda.runtime.codec import EVENT_SCHEMA_VERSION, delivery_fingerprint
 from redpanda.runtime.events import (
+    AttemptOrphaned,
     CommandAuthorized,
     CommandOutcomeReceived,
     CommandRejected,
@@ -910,6 +911,7 @@ class MemoryJournal:
                 DecisionCancelled,
                 StepContinuationCancelled,
                 DispatchAttemptStarted,
+                AttemptOrphaned,
                 UserMessageReceived,
             ),
         ):

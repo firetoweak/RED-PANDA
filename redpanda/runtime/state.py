@@ -7,6 +7,7 @@ from hashlib import sha256
 
 from redpanda.runtime.codec import EVENT_SCHEMA_VERSION
 from redpanda.runtime.events import (
+    AttemptOrphaned,
     CommandAuthorized,
     CommandRejected,
     CommandOutcomeReceived,
@@ -116,6 +117,8 @@ class _StateBuilder:
             self._apply_dispatch_started(event, payload)
         elif isinstance(payload, CommandOutcomeReceived):
             self._apply_outcome(event, payload)
+        elif isinstance(payload, AttemptOrphaned):
+            self._apply_orphaned(event, payload)
         elif isinstance(payload, (DecisionCancelled, StepContinuationCancelled)):
             pass
         elif isinstance(payload, DomainFactCommitted):
@@ -228,6 +231,25 @@ class _StateBuilder:
                 state,
                 attempts=attempts,
             )
+
+    def _apply_orphaned(
+        self,
+        event: Event,
+        payload: AttemptOrphaned,
+    ) -> None:
+        state = self.commands[payload.command_id]
+        attempt = self._attempt(state, payload.attempt_id)
+        if event.causation_id != attempt.started_event_id:
+            raise ValueError(f"orphaned causation mismatch: {payload.attempt_id}")
+        if attempt.phase is not AttemptPhase.UNKNOWN:
+            raise ValueError(f"attempt is not in flight: {payload.attempt_id}")
+        self.commands[payload.command_id] = replace(
+            state,
+            attempts=self._replace_attempt(
+                state,
+                replace(attempt, phase=AttemptPhase.ORPHANED),
+            ),
+        )
 
     @staticmethod
     def _attempt(state: CommandState, attempt_id: str) -> AttemptState:
@@ -373,6 +395,7 @@ class StateProjector:
             if not self._requires_decision(
                 event,
                 decision,
+                operational,
                 events,
                 issuing_observed,
                 continuation_cancellations,
@@ -437,7 +460,7 @@ class StateProjector:
         waiting_command_ids = tuple(
             state.command.command_id
             for state in command_states
-            if state.phase is not CommandPhase.TERMINAL
+            if not _settled(state)
             and state.authorization_rejected_by_event_id is None
         )
         waiting_for = (
@@ -603,6 +626,7 @@ class StateProjector:
     def _requires_decision(
         event: Event,
         state: _StateBuilder,
+        operational: _StateBuilder,
         events: tuple[Event, ...],
         issuing_observed: dict[str, int],
         continuation_cancellations: dict[str, Event],
@@ -613,24 +637,29 @@ class StateProjector:
         if isinstance(payload, CommandRejected):
             return True
         if isinstance(payload, CommandOutcomeReceived):
-            command_state = state.commands[payload.command_id]
-            if not (
-                event.event_id in state.canonical_outcome_event_ids
-                and command_state.command.decision_on_outcome
-                and command_state.issued_by_event_id
-                not in continuation_cancellations
-                and _parallel_decision_group_closed(state, command_state)
+            if event.event_id not in state.canonical_outcome_event_ids:
+                return False
+        elif isinstance(payload, AttemptOrphaned):
+            # 恢复协议随后补交了确定结果时，由那条 Outcome 续步。
+            if (
+                operational.commands[payload.command_id].phase
+                is CommandPhase.TERMINAL
             ):
                 return False
-            observed = issuing_observed[command_state.issued_by_event_id]
-            if any(
-                _is_external_decision_fact(item.payload)
-                and item.sequence > observed
-                for item in events
-            ):
-                return False
-            return True
-        return False
+        else:
+            return False
+        command_state = state.commands[payload.command_id]
+        if not (
+            command_state.command.decision_on_outcome
+            and command_state.issued_by_event_id not in continuation_cancellations
+            and _parallel_decision_group_closed(state, command_state)
+        ):
+            return False
+        observed = issuing_observed[command_state.issued_by_event_id]
+        return not any(
+            _is_external_decision_fact(item.payload) and item.sequence > observed
+            for item in events
+        )
 
     @staticmethod
     def _blocked_by_in_flight(
@@ -657,7 +686,7 @@ class StateProjector:
                 continue
             if not command_state.attempts:
                 continue
-            if command_state.phase is CommandPhase.TERMINAL:
+            if _settled(command_state):
                 continue
             return True
         return False
@@ -700,7 +729,9 @@ def _is_waited_follow_up(
     """
 
     payload = event.payload
-    if isinstance(payload, (DispatchAttemptStarted, CommandOutcomeReceived)):
+    if isinstance(
+        payload, (DispatchAttemptStarted, CommandOutcomeReceived, AttemptOrphaned)
+    ):
         return payload.command_id in decision.commands
     return False
 
@@ -712,7 +743,7 @@ def _waited_batch_complete(
     for command_id, frozen in decision.commands.items():
         if not operational.commands[command_id].attempts:
             continue
-        if frozen.phase is not CommandPhase.TERMINAL:
+        if not _settled(frozen):
             return False
     return True
 
@@ -733,6 +764,17 @@ def _parallel_decision_group_closed(
             continue
         if not sibling.command.decision_on_outcome:
             continue
-        if sibling.phase is not CommandPhase.TERMINAL:
+        if not _settled(sibling):
             return False
     return True
+
+
+def _settled(state: CommandState) -> bool:
+    """不会再有执行者为它带回结果：已终局，或开始它的 Worker 已被接管。"""
+
+    if state.phase is CommandPhase.TERMINAL:
+        return True
+    return (
+        state.phase is CommandPhase.UNKNOWN
+        and state.attempts[-1].phase is AttemptPhase.ORPHANED
+    )

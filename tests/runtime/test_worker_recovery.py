@@ -7,11 +7,13 @@ import unittest
 
 from redpanda.runtime import (
     AgentRuntime,
+    AttemptOrphaned,
     CommandPhase,
     DispatchAttemptStarted,
     InvokeTool,
     MemoryJournal,
     ModelDecision,
+    RuntimeStatus,
     SqliteJournal,
     ToolBinding,
 )
@@ -106,14 +108,49 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
                 "child", "new input", delivery_id="second"
             )
             await runtime.dispatcher.close()
+            self.assertIsNone(runtime.projector.project(
+                "child", await journal.snapshot("child")
+            ).next_decision)
             before = await journal.snapshot("child")
             await journal.prepare_recovery("child")
-            self.assertEqual(await journal.snapshot("child"), before)
+            recovered = await journal.snapshot("child")
+            self.assertEqual(recovered[: len(before)], before)
+            (orphaned,) = recovered[len(before):]
+            self.assertIsInstance(orphaned.payload, AttemptOrphaned)
             state = await runtime.state("child")
             self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
             self.assertEqual(state.commands[1].phase, CommandPhase.TERMINAL)
+            frame = runtime.projector.project("child", recovered).next_decision
+            self.assertEqual(frame.trigger_event.delivery.delivery_id, "second")
+            self.assertEqual(frame.state.commands[0].phase, CommandPhase.UNKNOWN)
             await journal.prepare_recovery("child")
-            self.assertEqual(await journal.snapshot("child"), before)
+            self.assertEqual(await journal.snapshot("child"), recovered)
+
+    async def test_takeover_lets_unfinished_attempt_wake_its_decision(self):
+        async def unfinished(context, arguments):
+            await asyncio.Event().wait()
+
+        with tempfile.TemporaryDirectory() as directory:
+            journal = SqliteJournal(Path(directory) / "journal.sqlite")
+            runtime = AgentRuntime(
+                journal,
+                ScriptedDecisionMaker(
+                    (lambda _: ModelDecision(command_requests=(InvokeTool("run"),)),)
+                ),
+                {"run": ToolBinding(unfinished)},
+            )
+            await runtime.create_session("session")
+            await runtime.receive_user_message("session", "go", delivery_id="first")
+            await runtime.advance("session")
+            await runtime.dispatcher.close()
+            self.assertEqual(
+                (await runtime.state("session")).status, RuntimeStatus.WAITING
+            )
+            await journal.prepare_recovery("session")
+            state = await runtime.state("session")
+            self.assertEqual(state.status, RuntimeStatus.RUNNABLE)
+            self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
+            self.assertEqual(state.waiting_command_ids, ())
 
     async def test_expiration_does_not_revoke_owner_but_takeover_does(self):
         with tempfile.TemporaryDirectory() as directory:

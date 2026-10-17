@@ -160,8 +160,11 @@ class HostSupervisor:
         """进程刚起来时，还会自己往下走的顶层会话先停住。
 
         选中一条 RUNNABLE 会话会把它的 Worker 拉起来接着跑，子会话也跟着恢复。
-        暂停留在 Host 元数据里，不改 Journal。等人点继续再醒。等外部事实的会话
-        本来就不会自己动，子会话只由父恢复时带起来，这里都不改。
+        暂停留在 Host 元数据里。等人点继续再醒。等外部事实的会话本来就不会
+        自己动，子会话只由父恢复时带起来，这里都不改。
+
+        此刻没有任何 Worker，上一个进程留下的未完成 Attempt 先按接管记下，
+        否则判断看到的是一条永远等不到结果的命令。
         """
 
         for path in self.store.journals():
@@ -169,6 +172,7 @@ class HostSupervisor:
             session_id = await journal.session_identity()
             if self.is_paused(session_id):
                 continue
+            await journal.prepare_recovery(session_id)
             events = await journal.snapshot(session_id)
             if project_parent(events) is not None:
                 continue

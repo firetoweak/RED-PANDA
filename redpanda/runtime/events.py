@@ -175,6 +175,21 @@ class CommandOutcomeReceived:
 
 
 @dataclass(frozen=True, slots=True)
+class AttemptOrphaned:
+    """开始这个 Attempt 的 Worker 已被接管，它不会再带回结果。
+
+    不是 Outcome：结果仍然未知，窄恢复协议之后仍可补交确定结果。
+    """
+
+    command_id: str
+    attempt_id: str
+
+    def __post_init__(self) -> None:
+        _require_str(self.command_id, "command id")
+        _require_str(self.attempt_id, "attempt id")
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionCancelled:
     trigger_event_id: str
 
@@ -210,6 +225,7 @@ EventPayload: TypeAlias = (
     | CommandRejected
     | DispatchAttemptStarted
     | CommandOutcomeReceived
+    | AttemptOrphaned
     | DecisionCancelled
     | StepContinuationCancelled
     | DomainFactCommitted
@@ -222,6 +238,7 @@ _EVENT_PAYLOAD_TYPES = (
     CommandRejected,
     DispatchAttemptStarted,
     CommandOutcomeReceived,
+    AttemptOrphaned,
     DecisionCancelled,
     StepContinuationCancelled,
     DomainFactCommitted,

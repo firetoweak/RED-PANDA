@@ -6,6 +6,7 @@ from redpanda.runtime.dispatcher import (
     ToolTerminal,
 )
 from redpanda.runtime.events import (
+    AttemptOrphaned,
     CommandAuthorized,
     CommandOutcomeReceived,
     CommandRejected,
@@ -68,6 +69,7 @@ __all__ = [
     "AttemptTerminalConflict",
     "ArtifactResolution",
     "AttemptContext",
+    "AttemptOrphaned",
     "AttemptPhase",
     "AttemptState",
     "CanonicalState",
