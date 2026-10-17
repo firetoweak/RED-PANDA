@@ -1,6 +1,6 @@
 # Web
 
-Web 是唯一的常驻 Host 入口，以后的长期 Agent、Agent 间消息与定时、事件触发都挂在它上面，见 [Channel 接入契约](Channel接入契约.md)。浏览器只经 Web 后端使用 Assistant 应用操作与查询，不直接读 Journal，也不承担 Session 恢复。
+Web 是唯一的常驻 Host 入口，以后的长期 Agent 与 Agent 间消息都挂在它上面，见 [Channel 接入契约](Channel接入契约.md)。浏览器只经 Web 后端使用 Assistant 应用操作与查询，不直接读 Journal，也不承担 Session 恢复。
 
 状态归类与所有权按[运行语义规约](../运行语义规约.md)，入口通用约束见 [Channel 接入契约](Channel接入契约.md)。本文只记 Web 特有的边界决策。
 
@@ -36,7 +36,7 @@ Host 是对外 activity 的唯一所有者。Worker 正常静止、已识别失�
 
 ## 入口错误语义
 
-入口只把语义明确的已知错误换算成状态码：输入不合法 422，连接已失效 409，授权目标不存在 404，授权已处理或当前不可授权 409，本机选择窗口不可用 503。响应带具体原因，Web 原样展示，不把原因吞成通用文案。
+入口只把语义明确的已知错误换算成 4xx/503 状态码。响应带具体原因，Web 原样展示，不把原因吞成通用文案。
 
 不把未知异常或内部契约违规收编成普通 4xx：它们继续原样暴露，浏览器看到的是失败，不是被修饰过的成功。
 
@@ -67,7 +67,7 @@ Host 是对外 activity 的唯一所有者。Worker 正常静止、已识别失�
 
 三者都不是 `cancel_turn`。Agent 自然停在等用户输入时两个按钮都不出现。
 
-`auto_authorize` 与 `paused` 是 Host 持有的 Session 级产品元数据，不进 Journal。Web 只是当前的设置入口，owner 换到别的 Channel 或暂时无人选择时这条 Session 的策略不变，语义见 [Command 授权](Command授权.md)。
+`auto_authorize` 与 `paused` 是 Host 持有的 Session 级产品元数据，不进 Journal。页面切换或无人选择时这条 Session 的策略不变，语义见 [Command 授权](Command授权.md)。
 
 归档与标题也是同一类 Host 元数据。归档只是不再出现在侧栏列表，会话仍可读，不是删除，也不是改写顶掉。标题缺省仍是首条用户消息的第一行；人改过的覆盖它。
 

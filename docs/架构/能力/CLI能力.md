@@ -19,7 +19,7 @@ cwd 不在共享之列：执行命令的 cwd 由模型每次按当前 Environmen
 
 调用路径始终是 `Agent → Shell → CLI`。Shell 是元工具，CLI 是 Shell 空间中的可发现能力；**不把每个 CLI 重新包装成一组 Function Tool**。
 
-设计依据来自三处外部实践：HubSpot agent-cli 在生产验证了"安装即注册 + `--help` 逐层发现 + 单独 Skill 做方法引导"的组合；AI-Friendly CLI 8 原则指出 agent 会幻觉输入、按 token 付费、读不了交互 prompt；"CLI Is the New API"主张接入后要把 CLI 输出当 API 契约维护。传统 CLI 的 `--help` 质量参差，这正是体检存在的原因。
+外部依据：[HubSpot agent-cli](https://github.com/HubSpot/agent-cli)（安装即注册、`--help` 逐层发现、单独 Skill 做方法引导）、[AI-Friendly CLI](https://mcpmarket.com/tools/skills/ai-friendly-cli-designer)（agent 会幻觉输入、按 token 付费、读不了交互 prompt）与"CLI Is the New API"（把 CLI 输出当 API 契约维护）；传统 CLI 的 `--help` 质量参差，所以接入时要体检。
 
 ## 四个动作
 
@@ -52,14 +52,6 @@ CLI 管理使用产品环境，其命令在执行前刷新本机持久化安装�
 
 两种用途复用底层 Shell 执行实现，环境来源独立。产品管理的刷新只覆盖安装路径，其他新增环境变量仍需重新启动产品。
 
-## 执行器：同一 ProcessRunner + 执行 profile
-
-不拆两套执行器实现。底层同一个 ProcessRunner，按用途分 profile：normal（普通超时、非交互，agent 日常命令）与 install（长超时、显式非交互参数，包管理器安装）。
-
-install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI Application，不经过 会话的任务文件访问绑定——包管理器安装与 workspace 无关。CLI 复用独立的命令执行能力，不接管文件系统历史或沙箱生命周期。
-
-需要管理员提权的包明确失败并提示手动安装：UAC 弹窗会使子进程进入另一安全上下文，输出采集断裂，不做。
-
 ## 体检
 
 接入时检查 agent-friendly 约定：`--help` 在管道下秒级退出且退出码为 0、`--version` 正常执行、stdout / stderr 可捕获、是否提及 JSON 输出。
@@ -70,7 +62,7 @@ install profile 的 ProcessRunner 是**进程级单例**，装配时注入 CLI A
 
 Shell 是元工具，不代表 Shell 内所有行为默认授权：`write_file` 要确认而 `execute_command("Remove-Item ...")` 放行，审批即被旁路；`gh repo delete` 同理。
 
-因此在 `execute_command` 上挂 ExecPolicy，按命令文本的前缀规则判定 verdict，第一版只有 `allow`（默认）与 `ask`（内置危险前缀清单）两档，后者复用 [Command 授权](../入口/Command授权.md)流程。
+因此在 `execute_command` 上挂 ExecPolicy，判定 verdict。verdict 只有 `allow`（默认）与 `ask` 两档；ask 来自内置危险前缀清单，以及可能写入的宿主执行（见[执行环境](执行环境.md)），复用 [Command 授权](../入口/Command授权.md)流程。
 
 两层边界必须分清：
 
@@ -79,7 +71,7 @@ ExecPolicy / 授权 = 防止误操作的软边界（可被变量、alias、脚�
 sandbox / 凭据隔离 / 网络隔离 = 真正的硬安全边界
 ```
 
-ExecPolicy 不解析 shell AST，不试图理解所有 CLI 的真实副作用；规则匹配是纯字符串判定，入口无关。它不属于 CLI 包——它是 `execute_command` 的授权判定，判定函数随工具 Binding 注入，Runtime 只消费 verdict。
+ExecPolicy 不解析 shell AST，不试图理解所有 CLI 的真实副作用；前缀规则是纯字符串判定，入口无关。它不属于 CLI 包——它是 `execute_command` 的授权判定，判定函数随工具 Binding 注入，Runtime 只消费 verdict。
 
 ## 输出卫生
 
@@ -106,16 +98,16 @@ Assistant 边界只投影"目录 + `load_cli`"两个普通工具，不拥有执�
 
 ### repair 语义
 
-manifest 域重新解析路径并重跑体检。包管理器域按登记的版本固定重装（与 update 的"移动"区分）；版本为空则拒绝 repair，提示走卸载 + 安装。
+manifest 域重新解析路径并重跑体检。
 
 ### 安装源
 
-第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，RED PANDA 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 作为第二切片，带着 install profile 与候选冻结一起来。
+第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，RED PANDA 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 切片届时与 install profile（长超时、非交互、复用同一命令执行实现、不做 UAC 提权）和候选冻结一起设计。
 
 ## 不做
 
 - 不预生成子命令 schema（不 MCP 化）
-- 不新建 subprocess 执行器（同一 ProcessRunner + profile）
+- 不新建 subprocess 执行器（复用命令执行能力，不接管文件系统历史或沙箱生命周期）
 - 不为 CLI + MCP + Skill 做统一 Plugin 基类
 - 不做 enabled/disabled 状态（安装即注册，卸载即移除）
 - `load_cli` 不 fork 进程
@@ -128,4 +120,3 @@ manifest 域重新解析路径并重跑体检。包管理器域按登记的版�
 - registry 多进程并发写无文件锁：两个 Worker 同时确认安装可能后写覆盖先写；Control Approval 交互串行使概率极低。
 - health 会陈旧：用户绕开系统手动卸载/升级后登记不失效，靠 `test_cli` 重测发现。
 - 产品管理只刷新安装路径，安装器新设的其他环境变量需重启产品。
-- install 是分钟级长操作，其执行期间该 Session 的控制面交互语义在实现时明确。
