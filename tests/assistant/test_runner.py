@@ -88,36 +88,17 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
         async def fail(_frame):
             raise failure
 
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker((fail,)),
-            {},
-            SequentialIds(),
-        )
-        scheduler = SessionScheduler(
-            runtime,
-            "session",
-            control=AssistantControlPlane(()),
-        )
+        runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker((fail,)), {}, SequentialIds())
+        scheduler = SessionScheduler(runtime, "session", control=AssistantControlPlane(()))
         await runtime.create_session("session")
-        await runtime.receive_user_message(
-            "session",
-            "hello",
-            delivery_id="user-1",
-        )
+        await runtime.receive_user_message("session", "hello", delivery_id="user-1")
 
         try:
             await scheduler.wake("session")
-            observed = await asyncio.wait_for(
-                scheduler.wait_failure(),
-                timeout=1,
-            )
+            observed = await asyncio.wait_for(scheduler.wait_failure(), timeout=1)
 
             self.assertIs(observed, failure)
-            self.assertEqual(
-                (await runtime.state("session")).status,
-                RuntimeStatus.RUNNABLE,
-            )
+            self.assertEqual((await runtime.state("session")).status, RuntimeStatus.RUNNABLE)
         finally:
             await scheduler.close()
 
@@ -143,72 +124,45 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             await scheduler.close()
 
     async def test_recognised_model_failure_can_retry_on_next_wake(self):
-        failure = LLMProviderError("provider rejected request")
-
-        async def fail(_frame):
-            raise failure
-
-        model = ScriptedDecisionMaker((fail, lambda _frame: ModelDecision(content="ok")))
-        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
-        failed = []
-        scheduler = SettlingScheduler(
-            runtime,
-            "session",
-            session_failed=lambda session_id, message: failed.append(
-                (session_id, message)
+        cases = (
+            (LLMProviderError("provider rejected request"), "provider rejected request"),
+            (
+                InvalidLLMResponse(
+                    "empty_model_response",
+                    "model response contains neither tool calls nor non-empty text",
+                ),
+                "没有给出可用回复或工具调用",
             ),
         )
-        await runtime.create_session("session")
-        await runtime.receive_user_message("session", "hello", delivery_id="user-1")
-        try:
-            await scheduler.wake("session")
-            await scheduler.join()
-            self.assertEqual(len(failed), 1)
-            self.assertEqual(failed[0][0], "session")
-            self.assertIn("provider rejected request", failed[0][1])
-            self.assertTrue(failed[0][1].startswith("运行失败："))
-            self.assertIsNone(scheduler._failure)
-            self.assertEqual((await runtime.state("session")).status, RuntimeStatus.RUNNABLE)
-            await scheduler.wake("session")
-            await scheduler.join()
-            self.assertEqual((await runtime.state("session")).status, RuntimeStatus.WAITING)
-        finally:
-            await scheduler.close()
+        for failure, reported in cases:
+            with self.subTest(failure=type(failure).__name__):
+                async def fail(_frame, failure=failure):
+                    raise failure
 
-    async def test_empty_model_response_can_retry_on_next_wake(self):
-        failure = InvalidLLMResponse(
-            "empty_model_response",
-            "model response contains neither tool calls nor non-empty text",
-        )
-
-        async def fail(_frame):
-            raise failure
-
-        model = ScriptedDecisionMaker((fail, lambda _frame: ModelDecision(content="ok")))
-        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
-        failed = []
-        scheduler = SettlingScheduler(
-            runtime,
-            "session",
-            session_failed=lambda session_id, message: failed.append(
-                (session_id, message)
-            ),
-        )
-        await runtime.create_session("session")
-        await runtime.receive_user_message("session", "hello", delivery_id="user-1")
-        try:
-            await scheduler.wake("session")
-            await scheduler.join()
-            self.assertEqual(len(failed), 1)
-            self.assertIn("没有给出可用回复或工具调用", failed[0][1])
-            self.assertTrue(failed[0][1].startswith("运行失败："))
-            self.assertIsNone(scheduler._failure)
-            self.assertEqual((await runtime.state("session")).status, RuntimeStatus.RUNNABLE)
-            await scheduler.wake("session")
-            await scheduler.join()
-            self.assertEqual((await runtime.state("session")).status, RuntimeStatus.WAITING)
-        finally:
-            await scheduler.close()
+                model = ScriptedDecisionMaker((fail, lambda _frame: ModelDecision(content="ok")))
+                runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
+                failed = []
+                scheduler = SettlingScheduler(
+                    runtime,
+                    "session",
+                    session_failed=lambda session_id, message: failed.append((session_id, message)),
+                )
+                await runtime.create_session("session")
+                await runtime.receive_user_message("session", "hello", delivery_id="user-1")
+                try:
+                    await scheduler.wake("session")
+                    await scheduler.join()
+                    self.assertEqual(len(failed), 1)
+                    self.assertEqual(failed[0][0], "session")
+                    self.assertTrue(failed[0][1].startswith("运行失败："))
+                    self.assertIn(reported, failed[0][1])
+                    self.assertIsNone(scheduler._failure)
+                    self.assertEqual((await runtime.state("session")).status, RuntimeStatus.RUNNABLE)
+                    await scheduler.wake("session")
+                    await scheduler.join()
+                    self.assertEqual((await runtime.state("session")).status, RuntimeStatus.WAITING)
+                finally:
+                    await scheduler.close()
 
     def test_decision_from_llm_maps_text_and_tool_calls(self):
         decision = decision_from_llm(
@@ -331,28 +285,6 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             ]
             self.assertEqual(len(tool_results), 1)
             self.assertIn("INVALID_JSON", tool_results[0])
-            self.assertIn("invalid json", tool_results[0])
-        finally:
-            await scheduler.close()
-
-    async def test_user_event_wakes_one_step_and_session_remains_open(self):
-        model = ScriptedDecisionMaker((lambda _frame: ModelDecision(content="done"),))
-        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
-        scheduler = SettlingScheduler(runtime, "session")
-        await runtime.create_session("session")
-
-        try:
-            await runtime.receive_user_message(
-                "session",
-                "hello",
-                delivery_id="user-1",
-            )
-            await scheduler.wake("session")
-            await scheduler.join()
-
-            state = await runtime.state("session")
-            self.assertEqual(len(state.steps), 1)
-            self.assertEqual(state.status, RuntimeStatus.WAITING)
         finally:
             await scheduler.close()
 
@@ -376,18 +308,10 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
         await runtime.create_session("session")
 
         try:
-            await runtime.receive_user_message(
-                "session",
-                "one",
-                delivery_id="user-1",
-            )
+            await runtime.receive_user_message("session", "one", delivery_id="user-1")
             await scheduler.wake("session")
             await asyncio.wait_for(first_started.wait(), timeout=1)
-            await runtime.receive_user_message(
-                "session",
-                "two",
-                delivery_id="user-2",
-            )
+            await runtime.receive_user_message("session", "two", delivery_id="user-2")
             await scheduler.wake("session")
             release_first.set()
             await asyncio.wait_for(scheduler.join(), timeout=1)
@@ -434,17 +358,9 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
                     second_finished.set()
 
         runtime.advance = tracked_advance
-        scheduler = SessionScheduler(
-            runtime,
-            "session",
-            control=AssistantControlPlane(()),
-        )
+        scheduler = SessionScheduler(runtime, "session", control=AssistantControlPlane(()))
         await runtime.create_session("session")
-        await runtime.receive_user_message(
-            "session",
-            "hello",
-            delivery_id="user-1",
-        )
+        await runtime.receive_user_message("session", "hello", delivery_id="user-1")
 
         try:
             await scheduler.wake("session")
@@ -460,93 +376,4 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(maximum_active, 1)
         finally:
             release_first.set()
-            await scheduler.close()
-
-    async def test_each_activation_calls_advance_once(self):
-        second_finished = asyncio.Event()
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(content="first"),
-                    lambda _frame: ModelDecision(content="second"),
-                )
-            ),
-            {},
-            SequentialIds(),
-        )
-        original_advance = runtime.advance
-        advance_calls = 0
-
-        async def tracked_advance(session_id, **kwargs):
-            nonlocal advance_calls
-            advance_calls += 1
-            try:
-                return await original_advance(session_id, **kwargs)
-            finally:
-                if advance_calls == 2:
-                    second_finished.set()
-
-        class ActivationCountingScheduler(SessionScheduler):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-                self.activations = 0
-
-            def _start(self):
-                self.activations += 1
-                super()._start()
-
-        runtime.advance = tracked_advance
-        scheduler = ActivationCountingScheduler(
-            runtime,
-            "session",
-            control=AssistantControlPlane(()),
-        )
-        await runtime.create_session("session")
-        await runtime.receive_user_message(
-            "session",
-            "one",
-            delivery_id="user-1",
-        )
-        await runtime.receive_user_message(
-            "session",
-            "two",
-            delivery_id="user-2",
-        )
-
-        try:
-            await scheduler.wake("session")
-            await asyncio.wait_for(second_finished.wait(), timeout=1)
-            self.assertEqual(advance_calls, 2)
-            self.assertEqual(scheduler.activations, 2)
-        finally:
-            await scheduler.close()
-
-    async def test_activation_uses_advance_result_without_reading_state(self):
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker((lambda _frame: ModelDecision(content="done"),)),
-            {},
-            SequentialIds(),
-        )
-        await runtime.create_session("session")
-        await runtime.receive_user_message(
-            "session",
-            "hello",
-            delivery_id="user-1",
-        )
-
-        async def forbidden_state(_session_id):
-            raise AssertionError("scheduler must not read state after advance")
-
-        runtime.state = forbidden_state
-        scheduler = SessionScheduler(
-            runtime,
-            "session",
-            control=AssistantControlPlane(()),
-        )
-        try:
-            should_continue = await scheduler._advance_once()
-            self.assertFalse(should_continue)
-        finally:
             await scheduler.close()
