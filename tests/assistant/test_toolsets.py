@@ -21,6 +21,7 @@ from redpanda.runtime import (
     MemoryJournal,
     ModelDecision,
     RuntimeStatus,
+    StepCommitted,
 )
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
@@ -115,7 +116,9 @@ class NestedSchemaProvider(FakeEchoProvider):
             ),
         )
 
-    def restore(self, toolset_id, revision, tools):
+    def restore(
+        self, toolset_id: str, revision: int, tools: tuple[LoadedToolSnapshot, ...]
+    ) -> tuple[LoadedTool, ...]:
         self.snapshots = tools
         return super().restore(toolset_id, revision, tools)
 
@@ -225,18 +228,24 @@ class ToolsetProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
         )
         await runtime.receive_user_message(SESSION_ID, "use echo", delivery_id="ask-1")
         result = await settle_session(runtime, SESSION_ID)
+        events = await runtime.snapshot(SESSION_ID)
+        pings = {
+            command.command_id
+            for event in events
+            if isinstance(event.payload, StepCommitted)
+            for command in event.payload.step.commands
+            if isinstance(command.effect, InvokeTool) and command.effect.name == "demo_ping"
+        }
         echoes = [
             event.payload.outcome.value
-            for event in await runtime.snapshot(SESSION_ID)
-            if isinstance(event.payload, CommandOutcomeReceived)
-            and isinstance(event.payload.outcome.value, Mapping)
-            and event.payload.outcome.value.get("code") == "ECHO"
+            for event in events
+            if isinstance(event.payload, CommandOutcomeReceived) and event.payload.command_id in pings
         ]
 
         self.assertEqual(result.state.status, RuntimeStatus.WAITING)
         self.assertEqual(delivered, ["done"])
         self.assertEqual(seen, [{LOAD_TOOLSET}, {LOAD_TOOLSET, "demo_ping"}])
-        self.assertEqual(echoes[0]["data"]["echo"], "hi")
+        self.assertEqual([echo["data"]["echo"] for echo in echoes], ["hi"])
 
     async def test_loaded_toolset_cache_can_be_rehydrated_from_journal(self):
         events = await self._committed_load_events()

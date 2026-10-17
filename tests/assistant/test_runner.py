@@ -285,6 +285,7 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             ]
             self.assertEqual(len(tool_results), 1)
             self.assertIn("INVALID_JSON", tool_results[0])
+            self.assertIn("invalid json", tool_results[0])
         finally:
             await scheduler.close()
 

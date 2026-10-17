@@ -30,8 +30,6 @@ from redpanda.runtime import (
 from redpanda.runtime.model import AuthorizationPolicy
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
-__all__ = ["RecordingTool", "ScriptedDecisionMaker", "SequentialIds", "runtime_for"]
-
 
 NOW = datetime(2026, 8, 21, 14, 0, tzinfo=timezone.utc)
 
