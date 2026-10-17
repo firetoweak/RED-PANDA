@@ -5,24 +5,9 @@ import logging
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Mapping, Protocol, cast
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, Protocol, cast
 
 import anyio
-import httpx2
-from mcp import Client, MCPError
-from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.client.streamable_http import streamable_http_client
-from mcp.types import (
-    CallToolResult,
-    GetPromptResult,
-    InputRequiredResult,
-    ListPromptsResult,
-    ListResourcesResult,
-    ListResourceTemplatesResult,
-    ListToolsResult,
-    ReadResourceResult,
-    Tool,
-)
 
 from redpanda.mcp.models import (
     QUERY_SECRET_KEY,
@@ -34,6 +19,20 @@ from redpanda.mcp.models import (
     sanitize_error_summary,
 )
 from redpanda.mcp.secrets import McpSecretStore
+
+if TYPE_CHECKING:
+    from mcp import Client
+    from mcp.types import (
+        CallToolResult,
+        GetPromptResult,
+        InputRequiredResult,
+        ListPromptsResult,
+        ListResourcesResult,
+        ListResourceTemplatesResult,
+        ListToolsResult,
+        ReadResourceResult,
+        Tool,
+    )
 
 
 class McpClientError(RuntimeError):
@@ -52,17 +51,25 @@ class McpConnectionInvalidatedError(McpClientError):
     """连接建立期间被外部配置变更主动失效。"""
 
 
-_EXPECTED_SDK_ERRORS = (
-    MCPError,
-    TimeoutError,
-    OSError,
-    httpx2.HTTPError,
-    anyio.EndOfStream,
-    anyio.BrokenResourceError,
-    anyio.ClosedResourceError,
-)
+def _expected_sdk_errors() -> tuple[type[BaseException], ...]:
+    # The SDK is imported only when a server is actually used; Sessions without
+    # MCP servers never pay its import cost.
+    import httpx2
+    from mcp import MCPError
+
+    return (
+        MCPError,
+        TimeoutError,
+        OSError,
+        httpx2.HTTPError,
+        anyio.EndOfStream,
+        anyio.BrokenResourceError,
+        anyio.ClosedResourceError,
+    )
+
+
 def _is_expected_sdk_error(exc: BaseException) -> bool:
-    if isinstance(exc, (McpSdkError, *_EXPECTED_SDK_ERRORS)):
+    if isinstance(exc, (McpSdkError, *_expected_sdk_errors())):
         return True
     return isinstance(exc, BaseExceptionGroup) and all(
         _is_expected_sdk_error(item) for item in exc.exceptions
@@ -310,7 +317,7 @@ class ManagedMcpConnection:
             if not _is_transport_failure(exc):
                 raise
             raise _sdk_error(exc) from exc
-        except _EXPECTED_SDK_ERRORS as exc:
+        except _expected_sdk_errors() as exc:
             raise _sdk_error(exc) from exc
         except BaseExceptionGroup as exc:
             if not _is_transport_failure(exc):
@@ -481,7 +488,7 @@ class _SdkConnectionOwner:
                 if not _is_transport_failure(exc):
                     raise
                 raise _sdk_error(exc) from exc
-            except _EXPECTED_SDK_ERRORS as exc:
+            except _expected_sdk_errors() as exc:
                 raise _sdk_error(exc) from exc
             except BaseExceptionGroup as exc:
                 if not _is_transport_failure(exc):
@@ -518,7 +525,7 @@ class _SdkConnectionOwner:
                         if not current.result.done():
                             current.result.set_exception(exc)
                         raise
-                except _EXPECTED_SDK_ERRORS as exc:
+                except _expected_sdk_errors() as exc:
                     if not current.result.done():
                         error = _sdk_error(exc)
                         error.__cause__ = exc
@@ -562,6 +569,11 @@ class _SdkConnectionOwner:
                 raise
 
     async def _open_facade(self, stack: AsyncExitStack) -> _SdkClientFacade:
+        import httpx2
+        from mcp import Client
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+        from mcp.client.streamable_http import streamable_http_client
+
         read_timeout: float | None = None
         if self._record.transport is TransportKind.STDIO:
             config = cast(StdioTransportConfig, self._record.transport_config)
@@ -754,7 +766,7 @@ class McpClientManager:
     ) -> CallToolResult | InputRequiredResult:
         try:
             connection = await self._ensure_connection(record)
-        except (McpClientError, *_EXPECTED_SDK_ERRORS) as exc:
+        except (McpClientError, *_expected_sdk_errors()) as exc:
             raise McpToolNotStartedError(str(exc)) from exc
         try:
             return await connection.session.call_tool(tool_name, arguments)

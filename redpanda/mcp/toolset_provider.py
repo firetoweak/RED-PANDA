@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import anyio
-from mcp.types import InputRequiredResult
 
 from redpanda.tools.spec import ToolSpec
 from redpanda.mcp.toolsets import (
@@ -227,6 +226,8 @@ class McpToolsetProvider:
                     exc, error_summary=summary,
                     not_started=isinstance(exc, McpToolNotStartedError),
                 )
+            from mcp.types import InputRequiredResult
+
             if isinstance(result, InputRequiredResult):
                 return input_required_unsupported()
 
