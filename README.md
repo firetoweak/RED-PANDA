@@ -48,7 +48,7 @@ cd RED-PANDA
 **Windows（PowerShell）**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+.\scripts\setup.ps1
 ```
 
 **Linux**
@@ -68,7 +68,7 @@ Windows 还会自动补齐便携 Git 和[任务命令组件](native/execution/RE
 **Windows（PowerShell）**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+.\scripts\start.ps1
 ```
 
 **Linux**
