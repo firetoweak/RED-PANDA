@@ -50,6 +50,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         self.deliver = AsyncMock(side_effect=deliver)
         self.request_patch = patch.object(self.host, "request", self.deliver)
         self.request_patch.start()
+        self.commands = {}
 
     async def asyncTearDown(self):
         self.request_patch.stop()
@@ -62,8 +63,23 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
     async def transport(self, operation, session_id, arguments):
         return await self.host._route(operation, session_id, arguments)
 
+    async def command(self, sender, label):
+        """A real Command in the sender's Journal; the same label reuses it."""
+        key = (sender, label)
+        if key not in self.commands:
+            runtime = AgentRuntime(self.journal(sender), ScriptedDecisionMaker((lambda _: ModelDecision(
+                command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", "x"), ("text", "t"))),)),)),
+                {SEND_MESSAGE: ToolBinding(AsyncMock(return_value={"ok": True}))})
+            await runtime.receive_user_message(sender, label, delivery_id=label)
+            self.commands[key] = (await runtime.advance(sender)).step.commands[0].command_id
+            # Settle it so the sender's next decision is not held behind it.
+            await runtime.dispatcher.start_pending(sender)
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
+        return self.commands[key]
+
     async def send(self, sender="Ada", recipient="Lin", command="one", reply_to=None):
-        return await send_message(self.transport, sender, command,
+        return await send_message(self.transport, sender, await self.command(sender, command),
                                   {"recipient": recipient, "text": "请核对接口", "reply_to": reply_to})
 
     async def messages(self, session_id):
@@ -84,7 +100,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.message_id, reply["data"]["message_id"])
         self.assertEqual(response.sender.name, "Lin")
         with self.assertRaisesRegex(ValueError, "conflicts"):
-            await send_message(self.transport, "Ada", "one", {"recipient": "Lin", "text": "different"})
+            await send_message(self.transport, "Ada", await self.command("Ada", "one"),
+                               {"recipient": "Lin", "text": "different"})
 
     async def test_known_address_errors_and_same_pair_reply_validation(self):
         for name, code in (("Nobody", "RECIPIENT_NOT_FOUND"), ("Ada", "SELF_MESSAGE"),
@@ -135,6 +152,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         args = {"recipient": "Ada", "text": "继续", "reply_to": reference}
         runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker((lambda _: ModelDecision(
             command_requests=(InvokeTool(SEND_MESSAGE, tuple(args.items())),)),)), {SEND_MESSAGE: binding})
+        await runtime.receive_user_message("Lin", "继续", delivery_id="limit")
         advanced = await runtime.advance("Lin")
         context = AttemptContext("Lin", advanced.step.commands[0].command_id, "attempt-limit", 1)
         for _ in range(2):
@@ -185,3 +203,33 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             matching = [message for message in await self.messages("Lin") if message.sender.name == session_id]
             self.assertEqual(len(matching), 1)
             self.assertEqual(command.outcome.value["data"]["message_id"], matching[0].message_id)
+
+    async def test_one_origin_bounds_new_chains_and_the_replies_it_drives(self):
+        async def decide(session_id, *decisions):
+            runtime = AgentRuntime(self.journal(session_id), ScriptedDecisionMaker(decisions),
+                                   {SEND_MESSAGE: ToolBinding(AsyncMock())})
+            for _ in decisions:
+                step = (await runtime.advance(session_id)).step
+            return step.commands
+
+        tasks = lambda _: ModelDecision(command_requests=tuple(
+            InvokeTool(SEND_MESSAGE, (("recipient", "Lin"), ("text", f"任务{index}"))) for index in range(4)))
+        await AgentRuntime(self.journal("Ada"), None, {}).receive_user_message("Ada", "分头去做", delivery_id="human")
+        commands = await decide("Ada", lambda _: ModelDecision(content="你好"), tasks)
+        with patch("redpanda.assistant.host.agent_messages.MAX_MESSAGES_PER_ORIGIN", 3):
+            codes = [(await send_message(self.transport, "Ada", command.command_id,
+                                         {"recipient": recipient, "text": "新话题"}))["code"]
+                     for command, recipient in zip(commands, ("Lin", "Third", "Lin", "Third"))]
+            # New chains cannot escape the budget of the human message that drove them.
+            self.assertEqual(codes, ["DELIVERED"] * 3 + ["ORIGIN_LIMIT_REACHED"])
+            reply, = await decide("Lin", lambda _: ModelDecision(content="你好"), lambda _: ModelDecision(
+                command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", "Ada"), ("text", "收到"))),)))
+            result = await send_message(self.transport, "Lin", reply.command_id, {"recipient": "Ada", "text": "收到"})
+            self.assertEqual(result["code"], "ORIGIN_LIMIT_REACHED")
+            await AgentRuntime(self.journal("Third"), None, {}).receive_user_message("Third", "问问 Ada", delivery_id="human")
+            # Third first answers Ada's task message, then the human message.
+            fresh, = await decide("Third", lambda _: ModelDecision(content="你好"), lambda _: ModelDecision(content="稍后"),
+                                  lambda _: ModelDecision(
+                command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", "Ada"), ("text", "在吗"))),)))
+            result = await send_message(self.transport, "Third", fresh.command_id, {"recipient": "Ada", "text": "在吗"})
+            self.assertEqual(result["code"], "DELIVERED")
