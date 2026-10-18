@@ -19,7 +19,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal
 from tests.assistant.test_agent_worktrees_process import git
-from tests.fixtures.session_worker import ProcessLlm, direct_workspace_config
+from tests.fixtures.session_worker import ProcessLlm, config_for
 
 
 pytestmark = pytest.mark.process
@@ -73,7 +73,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.workspace = registry.register_path(self.project)
         self.llm = DelegatingLlm(self.root)
         self.host = HostSupervisor(SessionStore(self.home.runtime_sessions_root),
-                                   partial(direct_workspace_config, self.root), self.home, None,
+                                   partial(config_for, self.root), self.home, None,
                                    llm=self.llm, workspaces=registry)
 
     async def asyncTearDown(self):

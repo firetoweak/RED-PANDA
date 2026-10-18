@@ -20,12 +20,8 @@ from redpanda.assistant.subagent.subagent import (
     project_pending, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError, pending_authorization_ids
-from redpanda.assistant.workspaces import bound_workspace, bound_workspace_id
-from redpanda.filesystem import ChangesReadConflict, child_root, child_workspace, workspace_files
+from redpanda.assistant.workspaces import bound_workspace_id
 from redpanda.tools.results import file_error_message
-from redpanda.assistant.workspace_versions import (
-    WorkspaceFileResult, WorkspaceVersionFact, project_workspace_file_result, project_workspace_versions, session_file_operations,
-)
 from redpanda.runtime import (
     CommandPhase,
     CommandState,
@@ -51,10 +47,6 @@ ToolStatus = Literal[
 SessionActivity = Literal["running", "idle"]
 AgentStatus = Literal["working", "authorization", "waiting", "idle"]
 UNKNOWN_TOOL_ERROR = "执行已开始，但未取得最终结果，原因未知，可能已部分执行"
-
-
-class FileChangesConflict(Exception):
-    """文件在查询期间改变，需要重新读取。"""
 
 
 class FileChangesUnavailable(Exception):
@@ -135,8 +127,6 @@ class StepItem:
     tools: tuple[ToolItem, ...]
     occurred_at: datetime
     thinking: str | None = None
-    # 这一步跑完时的文件状态还记得住，人点它就能退回来。
-    rewindable: bool = False
 
 
 ConversationItem = UserItem | StepItem
@@ -152,8 +142,6 @@ class ConversationView:
     compact_count: int = 0
     compact_phase: str | None = None
     waiting_until: datetime | None = None
-    workspace_version: WorkspaceVersionFact | None = None
-    workspace_file_result: WorkspaceFileResult | None = None
     work_plan: dict | None = None
     work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
     context_input_tokens: int | None = None
@@ -352,16 +340,7 @@ class AssistantQueries:
                 return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
             except OSError as error:
                 raise FileChangesUnavailable(file_error_message(error)) from error
-        workspace = bound_workspace(session_id, events, self._sessions.workspaces)
-        if parent is not None:
-            workspace = child_workspace(workspace, child_root(self._sessions.home, parent, session_id))
-        operations = await session_file_operations(journal, events)
-        try:
-            return await workspace_files(self._sessions.home, workspace).review(operations, path=path, offset=offset)
-        except ChangesReadConflict as error:
-            raise FileChangesConflict(str(error)) from error
-        except OSError as error:
-            raise FileChangesUnavailable(file_error_message(error)) from error
+        raise FileChangesUnavailable("只有 Agent 和它委派的任务提供文件变化查看。")
 
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
@@ -541,8 +520,6 @@ def project_conversation(
     attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
-    versions = project_workspace_versions(events)
-    rewindable = {fact.step_id for fact in versions if fact.version is not None}
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -600,7 +577,6 @@ def project_conversation(
                     tuple(tools),
                     event.occurred_at,
                     thinking,
-                    payload.step.step_id in rewindable,
                 )
             )
     return ConversationView(
@@ -609,8 +585,6 @@ def project_conversation(
         revision=events[-1].sequence if events else 0,
         items=tuple(items),
         session=session,
-        workspace_version=versions[-1] if versions else None,
-        workspace_file_result=project_workspace_file_result(events),
         work_plan=project_work_plan(events),
         work_plan_updates=project_work_plan_updates(events),
         context_input_tokens=latest_input_tokens(events),

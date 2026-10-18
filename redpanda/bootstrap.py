@@ -21,7 +21,6 @@ from redpanda.model_settings import ModelSettings
 from redpanda.llm.connections import ModelConnections
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.composition import build_mcp
-from redpanda.filesystem import clear_stale_mounts
 from redpanda.filesystem.registry import WorkspaceRecord, WorkspaceRegistry
 from redpanda.skills.composition import build_skills
 from redpanda.skills.summarizer import LlmSkillDiffSummarizer
@@ -78,7 +77,6 @@ async def bootstrap_assistant(
     home = RedPandaHome.default()
     # 先独占数据根，再碰任何 Journal、挂载、定时或持续进程。
     with hold_data_root(home):
-        clear_stale_mounts(home)
         if fresh_sessions:
             for root in (home.runtime_sessions_root, home.state_root):
                 if root.exists():

@@ -19,7 +19,6 @@ class CommandEnvironment:
     command_executor: CommandExecutor
     shell_name: str
     shell_path: str
-    host_command_executor: CommandExecutor
 
     def __post_init__(self) -> None:
         if not self.shell_name.strip() or not self.shell_path.strip():

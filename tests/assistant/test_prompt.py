@@ -15,6 +15,7 @@ from redpanda.assistant.context.prompt import (
     DEFAULT_ASSISTANT_PROMPT,
     CODING_BOT_PROMPT,
     SUBAGENT_PROMPT,
+    SUBAGENT_READ_ONLY_PROMPT,
 )
 from redpanda.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
@@ -293,10 +294,9 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
-    async def test_subagent_prompt_reads_agents_md_from_its_own_copy(self):
+    async def test_read_only_subagent_reads_agents_md_from_the_parent_directory(self):
         from datetime import datetime, timezone
 
-        from redpanda.filesystem.children import ChildFiles, child_root
         from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
 
         with TemporaryDirectory() as directory:
@@ -306,9 +306,6 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
             workspace = workspace_record(root / "workspace")
             home = RedPandaHome(root / ".redpanda")
             child = "parent/sub-delegate-1"
-            await ChildFiles(home, workspace).create("parent", child)
-            copy = child_root(home, "parent", child)
-            self.assertEqual((copy / "AGENTS.md").read_text(encoding="utf-8"), "父工作区约定")
 
             journal = MemoryJournal()
             await journal.accept_delivery(EventDraft(
@@ -330,15 +327,9 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
                 decision = assembly.runtime.step_runner._decision_maker
                 state = SimpleNamespace(session_id=child)
                 prompt = decision.prompt_for(state)
-                self.assertTrue(prompt.startswith(SUBAGENT_PROMPT))
+                self.assertTrue(prompt.startswith(SUBAGENT_READ_ONLY_PROMPT))
                 self.assertIn("<project_instructions>\n", prompt)
                 self.assertIn("父工作区约定", prompt)
-
-                # 子 Agent 读的是自己副本的根目录，不是父工作区。
-                (copy / "AGENTS.md").write_text("子副本约定", encoding="utf-8")
-                prompt = decision.prompt_for(state)
-                self.assertIn("子副本约定", prompt)
-                self.assertNotIn("父工作区约定", prompt)
             finally:
                 await assembly.scheduler.close()
 

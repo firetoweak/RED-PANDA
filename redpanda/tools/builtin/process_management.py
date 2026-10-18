@@ -35,7 +35,7 @@ def create_process_specs(binding: FileAccess, processes: ProcessControl) -> list
         if not raw.command.strip():
             return {"ok": False, "code": "EMPTY_COMMAND", "error": "command 不能为空"}
         try:
-            cwd = binding.resolver.resolve("." if raw.cwd is None else raw.cwd, access="write", project=False).native_path
+            cwd = binding.resolver.resolve("." if raw.cwd is None else raw.cwd, access="write").native_path
         except EnvironmentInputError as exc:
             return environment_error(exc)
         if not cwd.is_dir():

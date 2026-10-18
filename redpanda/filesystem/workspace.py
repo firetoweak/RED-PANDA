@@ -3,10 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .operations import WorkspaceFiles
 
 
 class EnvironmentInputError(ValueError):
@@ -212,7 +208,6 @@ class FileAccess:
     workspace_view: WorkspaceViewSnapshot
     permission_binding: PermissionBinding
     cwd: Path
-    filesystem: WorkspaceFiles | None = None
 
     def __post_init__(self) -> None:
         resolved_cwd = self.cwd.resolve()
@@ -228,20 +223,11 @@ class WorkspacePathResolver:
     def __init__(self, binding: FileAccess) -> None:
         self.binding = binding
 
-    def resolve_native(self, native_path: str | Path) -> ResolvedEnvironmentPath:
-        """Translate native discovery results before applying logical permissions."""
-        path = Path(native_path)
-        projection = self.binding.filesystem
-        if projection is not None:
-            path = projection.logical_path(path)
-        return self.resolve(str(path))
-
     def resolve(
         self,
         raw_path: str,
         *,
         access: str = "read",
-        project: bool = True,
     ) -> ResolvedEnvironmentPath:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise InvalidEnvironmentPath("path 不能为空")
@@ -260,11 +246,7 @@ class WorkspacePathResolver:
         if access == "write" and permission is not FilesystemPermission.READ_WRITE:
             raise EnvironmentPermissionDenied(raw_path, access)
         return ResolvedEnvironmentPath(
-            native_path=(
-                self.binding.filesystem.native_path(resolved)
-                if project and membership.scope is WorkspaceScope.TASK and self.binding.filesystem is not None
-                else resolved
-            ),
+            native_path=resolved,
             location=EnvironmentLocation(
                 environment_id=self.binding.environment_id,
                 path=resolved.as_uri(),

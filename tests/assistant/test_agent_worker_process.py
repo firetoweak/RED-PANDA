@@ -20,7 +20,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal, replay
 from redpanda.runtime.json_values import thaw_value
-from tests.fixtures.session_worker import ProcessLlm, direct_workspace_config
+from tests.fixtures.session_worker import ProcessLlm, config_for
 from tests.fixtures.compact_worker import HANDOFF
 
 
@@ -106,10 +106,9 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             llm = WorktreeLlm(root)
 
             def host():
-                return HostSupervisor(store, partial(direct_workspace_config, root), home, None, llm=llm)
+                return HostSupervisor(store, partial(config_for, root), home, None, llm=llm)
 
             with patch.dict(os.environ, {
-                "REDPANDA_FILESYSTEM_EXECUTABLE": str(root / "missing-agentfs"),
                 "GIT_CONFIG_GLOBAL": str(global_config),
                 "GIT_AUTHOR_NAME": "Inherited Human",
                 "GIT_AUTHOR_EMAIL": "inherited@example.com",
@@ -190,7 +189,6 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                                         for request in llm.requests for message in request["messages"]))
                     for request in llm.requests:
                         names = {tool["function"]["name"] for tool in request["tools"]}
-                        self.assertFalse({"get_changes", "restore_workspace"} & names)
                         self.assertTrue({"land_branch", "sync_branch", "delegate"} <= names)
                         self.assertNotIn(workspace.workspace_id, json.dumps(request["messages"]))
                         for agent in agents:

@@ -7,7 +7,7 @@ from redpanda.execution.api import CommandEnvironment
 from redpanda.execution.local.bash import BashCommandRunner
 from redpanda.execution.local.powershell import PowerShellCommandRunner
 from redpanda.tools.builtin.command_execution import (
-    ExecuteCommandInput, create_command_execution_spec,
+    CommandInput, create_command_execution_spec,
 )
 
 
@@ -41,7 +41,7 @@ class CommandIoErrorsTest(unittest.IsolatedAsyncioTestCase):
         binding = SimpleNamespace(
             resolver=SimpleNamespace(resolve=lambda *args, **kwargs: resolved),
         )
-        outcome = await create_command_execution_spec(binding, CommandEnvironment(runner, "powershell", "powershell", runner)).handler(ExecuteCommandInput(command="x"))
+        outcome = await create_command_execution_spec(binding, CommandEnvironment(runner, "powershell", "powershell")).handler(CommandInput(command="x"))
         self.assertEqual(outcome["code"], "COMMAND_IO_FAILED")
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["data"]["io_errors"], list(result.io_errors))

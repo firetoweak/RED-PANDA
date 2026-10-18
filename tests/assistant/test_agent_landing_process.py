@@ -164,9 +164,8 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.change(agent, "note.txt", "initial\ncommitted\n")
         (agent.worktree / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
         status = git(agent.worktree, "status", "--porcelain")
-        with patch("redpanda.assistant.conversations.workspace_files", side_effect=AssertionError("AgentFS")):
-            listed = await queries.file_changes(agent.session_id)
-            detail = await queries.file_changes(agent.session_id, path="note.txt")
+        listed = await queries.file_changes(agent.session_id)
+        detail = await queries.file_changes(agent.session_id, path="note.txt")
         self.assertEqual([(file["path"], file["status"], file["added"], file["removed"]) for file in listed["files"]],
                          [("draft.txt", "added", 2, 0), ("note.txt", "modified", 1, 0)])
         self.assertEqual((listed["added"], listed["removed"]), (3, 0))

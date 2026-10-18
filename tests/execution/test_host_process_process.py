@@ -178,39 +178,9 @@ def test_host_port_survives_worker_retirement_and_archive_stops_process(tmp_path
     asyncio.run(scenario())
 
 
-def test_host_command_runs_without_file_service_or_task_hook(tmp_path):
-    from redpanda.assistant.assembly import build_assistant_assembly
-    from redpanda.runtime import MemoryJournal
-    from redpanda.runtime.dispatcher import AttemptContext
-    from tests.fixtures.workspaces import workspace_record
-    async def scenario():
-        root = tmp_path / "project"; root.mkdir()
-        assembly = await build_assistant_assembly(
-            config_for(root), lambda *args: None, MemoryJournal(), session_id="a",
-            workspace=workspace_record(root), home=RedPandaHome(tmp_path / "home"),
-        )
-        try:
-            context = AttemptContext("a", "host-write", "host-write", 1)
-            with patch.dict(os.environ, {"REDPANDA_FILESYSTEM_EXECUTABLE": str(tmp_path / "missing.exe")}), patch(
-                "redpanda.execution.local.windows_task.native_task_launcher", return_value=tmp_path / "missing-launcher.exe",
-            ):
-                arguments = {"command": shell(sys.executable, "-c", "from pathlib import Path;Path('value.txt').write_text('HOST')")}
-                result = await assembly.bindings["execute_command"].handler(context, {**arguments, "file_access": "host"})
-                assert result["data"]["exit_code"] == 0, result
-                assert (root / "value.txt").read_text() == "HOST"
-                arguments["command"] = shell(sys.executable, "-c", "from pathlib import Path;Path('value.txt').write_text('MANAGED')")
-                result = await assembly.bindings["execute_command"].handler(context, arguments)
-                assert result["code"] == "FILESYSTEM_UNAVAILABLE", result
-                assert (root / "value.txt").read_text() == "HOST"
-        finally:
-            await assembly.scheduler.close()
-    asyncio.run(scenario())
-
-
 @pytest.mark.parametrize("launcher", ["node", "npm"])
-def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launcher):
+def test_host_server_observes_file_edits(tmp_path, launcher):
     from redpanda.assistant.assembly import build_assistant_assembly
-    from redpanda.filesystem import workspace_files, operation_id
     from redpanda.runtime import SqliteJournal
     from redpanda.runtime.dispatcher import AttemptContext
     node = shutil.which("node")
@@ -264,7 +234,7 @@ def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launc
                 await until(predicate)
             await observes("BASE")
             result = await tool("execute_command", {
-                "command": "Start-Sleep -Seconds 10" if os.name == "nt" else "sleep 10", "file_access": "host", "timeout_seconds": 1,
+                "command": "Start-Sleep -Seconds 10" if os.name == "nt" else "sleep 10", "timeout_seconds": 1,
             }, "foreground-timeout")
             assert result["code"] == "COMMAND_TIMEOUT", result
             await observes("BASE")
@@ -272,9 +242,6 @@ def test_host_server_observes_multiple_managed_edits_and_restore(tmp_path, launc
                 result = await tool("apply_patch", {"path": "value.txt", "old_block": old, "new_block": new}, command_id)
                 assert result["ok"], result
                 await observes(new)
-            files = workspace_files(home, workspace)
-            await files.restore(operation_id("a", "first"), identity=operation_id("a", "restore"), policy="preserve")
-            await observes("ONE1")
             state = await tool("read_process", {"process_id": identity}, "read-final")
             assert state["data"]["state"] == "running"
             assert "RELOAD" in state["data"]["stdout"]["content"]

@@ -48,7 +48,6 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.filesystem import ChildFiles
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
@@ -348,11 +347,8 @@ class HostSupervisor:
                         raise ValueError("conflict source has no completed files")
                     conflict_child_id = source.child_session_id
                 parent_agent = await self.agents.by_session(expected_task.parent_session_id)
-                if parent_agent is None:
-                    await ChildFiles(self.home, parent_workspace).create(
-                        expected_task.parent_session_id, session_id, conflict_child_id=conflict_child_id
-                    )
-                else:
+                # A plain session's delegated task only reads the parent's own directory.
+                if parent_agent is not None:
                     await _settle(asyncio.to_thread(self.agent_worktrees.create_child, parent_workspace,
                                                     parent_agent, session_id, conflict_child_id))
                 if not self.store.path(session_id).parent.exists():
@@ -396,9 +392,6 @@ class HostSupervisor:
                     return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
                             "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
                             "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再试。"}
-                return {"ok": True}
-            workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
-            await ChildFiles(self.home, workspace).finish(task.parent_session_id, session_id)
             return {"ok": True}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
@@ -857,11 +850,6 @@ class HostSupervisor:
             if self.store.path(intent.child_session_id).exists():
                 await self._reclaim_child(intent.child_session_id,
                                           {"parent_session_id": session_id, "reason": "父会话归档"})
-        # An Agent's delegated branches stay with the long-lived Agent.
-        if intents and await self.agents.by_session(session_id) is None:
-            await self.wait_quiescent(session_id)
-            workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
-            await ChildFiles(self.home, workspace).discard(session_id, [i.child_session_id for i in intents])
         self._archived.set(session_id, True)
         if self.processes is not None:
             await self.processes.stop_session(session_id)

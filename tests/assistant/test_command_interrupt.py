@@ -33,7 +33,7 @@ from redpanda.filesystem.workspace import (
     WorkspaceViewSnapshot,
 )
 from redpanda.tools.builtin.command_execution import (
-    ExecuteCommandInput,
+    CommandInput,
     create_command_execution_spec,
 )
 from redpanda.tools.builtin.command_interrupts import (
@@ -56,7 +56,7 @@ def _binding(root: Path, runner) -> tuple[FileAccess, CommandEnvironment]:
         )),
         cwd=root,
     )
-    return files, CommandEnvironment(runner, "powershell", "powershell", runner)
+    return files, CommandEnvironment(runner, "powershell", "powershell")
 
 
 def _interrupted(stdout: str) -> CommandResult:
@@ -151,7 +151,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         async def handler(context, arguments):
             async def execute():
                 return await spec.handler(
-                    ExecuteCommandInput.model_validate(arguments)
+                    CommandInput.model_validate(arguments)
                 )
 
             return await run_interruptible(
@@ -263,7 +263,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
 
         async def queued(_context, arguments):
             async with serialized:
-                return await spec.handler(ExecuteCommandInput.model_validate(arguments))
+                return await spec.handler(CommandInput.model_validate(arguments))
 
         runtime = AgentRuntime(
             SqliteJournal(root / "journal.sqlite"),
@@ -314,7 +314,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
         async def handler(context, arguments):
             async def execute():
                 return await spec.handler(
-                    ExecuteCommandInput.model_validate(arguments)
+                    CommandInput.model_validate(arguments)
                 )
 
             return await run_interruptible(

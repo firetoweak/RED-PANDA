@@ -310,7 +310,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_file_management_consumers_use_public_entry_points(self):
-        """File-view transport, persistence and Git stay behind the file capability."""
+        """Internal file helpers stay behind the package entry point."""
         files_root = FILESYSTEM_ROOT
         offenders = []
         for path in FILESYSTEM_ROOT.parent.rglob("*.py"):

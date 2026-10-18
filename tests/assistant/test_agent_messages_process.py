@@ -21,7 +21,7 @@ from redpanda.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, In
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.assistant.test_supervisor import until
 from tests.fixtures.agent_messages import interrupted_send_config
-from tests.fixtures.session_worker import ProcessLlm, direct_workspace_config
+from tests.fixtures.session_worker import ProcessLlm, config_for
 
 
 pytestmark = pytest.mark.process
@@ -73,7 +73,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             await until(lambda: agent.session_id not in self.host.workers)
 
     def new_host(self, when=None):
-        factory = partial(direct_workspace_config, self.root) if when is None else partial(interrupted_send_config, self.root, when)
+        factory = partial(config_for, self.root) if when is None else partial(interrupted_send_config, self.root, when)
         return HostSupervisor(self.store, factory, self.home, None, llm=self.llm)
 
     async def asyncTearDown(self):
