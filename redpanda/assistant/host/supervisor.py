@@ -927,6 +927,7 @@ class HostSupervisor:
         if self.models is not None:
             self.models.initialize_session(session_id)
         agent = AgentRecord(session_id, identity)
+        await self.agents.add(agent)
         # Colleagues learn of the join before anything the new Agent does;
         # replaying its creation fact then starts the Worker for its first decision.
         await self.agent_messages.joined(agent)
