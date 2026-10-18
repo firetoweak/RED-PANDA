@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.agents import project_agent, project_direction
+from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_fact, project_agent, project_direction
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
@@ -529,6 +529,12 @@ def project_conversation(
     by_event = {step.committed_event_id: step for step in steps}
     versions = project_workspace_versions(events)
     rewindable = {fact.step_id for fact in versions if fact.version is not None}
+    communication_notices: dict[str, list] = {}
+    for event in events:
+        if (isinstance(event.payload, DomainFactCommitted)
+                and event.payload.fact_type == COMMUNICATION_LIMIT_REACHED):
+            communication_notices.setdefault(event.causation_id, []).append(
+                parse_agent_fact(event.payload))
     items: list[ConversationItem] = []
     for event in events:
         payload = event.payload
@@ -551,6 +557,9 @@ def project_conversation(
             continue
         step = by_event[event.event_id]
         text = step.step.decision.content.strip()
+        for notice in communication_notices.get(event.event_id, ()):
+            text = "\n\n".join(filter(None, (text,
+                f"与 {notice.recipient} 的私信交流已达上限，需要你判断是否继续。")))
         thinking = _step_thinking(step.decision_metadata)
         tools: list[ToolItem] = []
         for command_state in step.commands:

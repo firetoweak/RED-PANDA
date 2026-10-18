@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 
 from redpanda.automation.recovery import recover_schedule_attempts
+from redpanda.assistant.agent_messages import recover_message_attempts
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure
 from redpanda.assistant.host.llm_port import WorkerLlmPort
@@ -68,6 +69,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     stop = asyncio.Event()
     active_requests = 0
     ready = asyncio.Event()
+    recovery_complete = asyncio.Event()
     revision = 0
     advertised = -1
     advertised_busy = False
@@ -188,6 +190,13 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         direct_workspace=agent is not None,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)
+    before_advance = assembly.scheduler.before_advance
+
+    async def after_recovery():
+        await recovery_complete.wait()
+        return await before_advance()
+
+    assembly.scheduler.before_advance = after_recovery
     async with config.llm, assembly.mcp.client_manager:
         reader = asyncio.create_task(peer.run())
         stopped = asyncio.create_task(stop.wait())
@@ -203,11 +212,15 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 assembly.sessions._management,
                 assembly.catalog,
             )
+            # Accept facts while peers recover each other's sends, but do not
+            # let either model advance until its unknown sends are resolved.
+            ready.set()
+            await recover_message_attempts(journal, session_id, peer.request)
             await assembly.sessions.recover_control(session_id)
             parent = project_parent(events)
             if parent is not None:
                 assembly.subagents._parents[session_id] = parent
-            ready.set()
+            recovery_complete.set()
             while not stop.is_set():
                 changed = asyncio.create_task(assembly.scheduler.changed.wait())
                 done, _ = await asyncio.wait(

@@ -31,6 +31,8 @@ from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments, project_agent
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
+from redpanda.assistant.host.agent_messages import AgentMessages
+from redpanda.assistant.agent_messages import LIST_COLLEAGUES, SEND_MESSAGE
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -175,6 +177,7 @@ class HostSupervisor:
             else WorkspaceRegistry.load(home.workspaces_path)
         )
         self.agents = AgentRoster(store)
+        self.agent_messages = AgentMessages(self)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
         self._agent_creation_lock = asyncio.Lock()
         self._landing_locks: dict[str, asyncio.Lock] = {}
@@ -203,6 +206,10 @@ class HostSupervisor:
                 self._pause.set(session_id, True)
 
     async def _route(self, operation, session_id, arguments, *, worker=None):
+        if operation == LIST_COLLEAGUES:
+            return await self.agent_messages.colleagues(session_id)
+        if operation == SEND_MESSAGE:
+            return await self.agent_messages.send(session_id, arguments)
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":
@@ -518,6 +525,8 @@ class HostSupervisor:
                 raise ValueError(f"Unknown Host signal: {kind}")
 
         async def route(operation, target, arguments):
+            if operation in {SEND_MESSAGE, LIST_COLLEAGUES} and target != session_id:
+                raise ValueError("communication request does not belong to this Worker")
             return await self._route(
                 operation,
                 target,
