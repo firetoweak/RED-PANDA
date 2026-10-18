@@ -33,7 +33,9 @@ from redpanda.assistant.host.agent_worktrees import AgentWorktrees
 from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
 from redpanda.assistant.host.agent_groups import AgentGroups
-from redpanda.assistant.agent_messages import DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_GROUP_MESSAGE, SEND_MESSAGE
+from redpanda.assistant.agent_messages import (
+    DECLARE_DIRECTION, LIST_COLLEAGUES, MESSAGE_USER, SEND_GROUP_MESSAGE, SEND_MESSAGE,
+)
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -241,6 +243,10 @@ class HostSupervisor:
             return await self.agent_messages.send_group(session_id, arguments)
         if operation == DECLARE_DIRECTION:
             return await self.agent_messages.declare(session_id, arguments)
+        if operation == MESSAGE_USER:
+            if self.sink is not None:
+                await emit_delivery(self.sink, session_id, arguments["output_id"], arguments["text"])
+            return None
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":

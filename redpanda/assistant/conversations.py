@@ -11,6 +11,8 @@ from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_f
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
+from redpanda.assistant.agent_messages import MESSAGE_USER
+from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
 from redpanda.assistant.host.session_store import SessionStore
@@ -109,6 +111,8 @@ class ToolItem:
 
 @dataclass(frozen=True, slots=True)
 class StepItem:
+    """``audience`` says whether the text is a reply to the person or the Agent's work log."""
+
     kind: Literal["step"]
     step_id: str
     output_id: str
@@ -116,6 +120,7 @@ class StepItem:
     tools: tuple[ToolItem, ...]
     occurred_at: datetime
     thinking: str | None = None
+    audience: Audience = "user"
 
 
 ConversationItem = UserItem | StepItem
@@ -414,6 +419,7 @@ def project_conversation(
     attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
+    audience_of = audiences(events)
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -447,9 +453,16 @@ def project_conversation(
                 f"与 {notice.recipient} 的交流已达上限，需要你判断是否继续。")))
         thinking = _step_thinking(step.decision_metadata)
         tools: list[ToolItem] = []
+        messages: list[StepItem] = []
         for command_state in step.commands:
             effect = command_state.command.effect
             if effect.name == DELIVER_TOOL_NAME:
+                continue
+            if effect.name == MESSAGE_USER:
+                messages.append(StepItem(
+                    "step", f"{payload.step.step_id}:{command_state.command.command_id}",
+                    command_state.command.command_id, effect.argument_dict()["text"], (),
+                    event.occurred_at))
                 continue
             status, error = _tool_status(command_state)
             tools.append(
@@ -471,8 +484,10 @@ def project_conversation(
                     tuple(tools),
                     event.occurred_at,
                     thinking,
+                    audience_of(payload.step.trigger_event_id),
                 )
             )
+        items.extend(messages)
     return ConversationView(
         session_id=session_id,
         workspace_id=bound_workspace_id(events),
