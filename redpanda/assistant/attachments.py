@@ -15,7 +15,6 @@ from uuid import uuid4
 
 from PIL import Image
 
-from redpanda.assistant.asset_locations import inherited_drawers
 from redpanda.assistant.file_attachments import (
     FileAttachment, FileAttachmentStore, InvalidAttachmentName, is_file_attachment_id,
 )
@@ -121,12 +120,10 @@ def _admit(data: bytes, declared_mime: str) -> tuple[bytes, str, tuple[int, int]
 class AttachmentStore:
     """单个 Session 的附件抽屉。"""
 
-    def __init__(self, root: Path, inherited: tuple[Path, ...] = ()) -> None:
+    def __init__(self, root: Path) -> None:
         self._root = root.resolve()
-        self._inherited = inherited
         self.files = FileAttachmentStore(
             self._root / "files", self._root.parent / ".materials",
-            tuple(path / "files" for path in inherited),
         )
 
     def save_file_stream(self, stream, name: str) -> FileAttachment:
@@ -173,13 +170,7 @@ class AttachmentStore:
             return self.files.source(attachment_id)
         if not is_valid_attachment_id(attachment_id):
             raise ValueError("attachment id 格式无效")
-        name = attachment_id[len(_ATTACHMENT_ID_PREFIX) :]
-        own = self._root / name
-        return next(
-            (path for path in (own, *(root / name for root in self._inherited))
-             if path.is_file()),
-            own,
-        )
+        return self._root / attachment_id[len(_ATTACHMENT_ID_PREFIX) :]
 
     def owns(self, attachment_id: str) -> bool:
         """只检查本会话登记，不检查挂入的外部路径是否仍存在。"""
@@ -217,18 +208,13 @@ def _outcome_images(event) -> list[dict[str, object]]:
 class AttachmentGateway:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
-        self._inherited: dict[str, tuple[Path, ...]] = {}
 
     def for_session(self, session_id: str) -> AttachmentStore:
         drawer = sha256(session_id.encode("utf-8")).hexdigest()
-        inherited = self._inherited.get(session_id)
-        if inherited is None:
-            inherited = inherited_drawers(self._root, session_id, ".attachments")
-            self._inherited[session_id] = inherited
-        return AttachmentStore(self._root / drawer / ".attachments", inherited)
+        return AttachmentStore(self._root / drawer / ".attachments")
 
     async def available_in_session(self, session_id: str, attachment_id: str) -> bool:
-        """Web 可预览自身挂入的附件；来源原件只按实际历史引用读取。"""
+        """本会话挂入或历史引用过的附件；历史引用的字节缺失由读取方暴露为损坏。"""
 
         store = self.for_session(session_id)
         if store.owns(attachment_id):

@@ -236,7 +236,7 @@ def _translate_visible_events(
     system_prompt: str,
     attachments: AttachmentStore | None = None,
 ) -> list[_Projected]:
-    # Compact 和分支恢复只改变可见窗口；已经提交的材料仍属于此 Session。
+    # Compact 只改变可见窗口；已经提交的材料仍属于此 Session。
     file_refs = {
         ref for event in events if isinstance(event.payload, UserMessageReceived)
         for ref in event.artifact_refs if is_file_attachment_id(ref)
@@ -249,7 +249,6 @@ def _translate_visible_events(
         system_prompt += (
             f"\n当前会话的文件材料目录：{attachments.files.materials}。"
             "材料只读，需要修改时先复制到当前工作区。"
-            "历史中的材料路径不存在时，在当前材料目录下按相同子路径查找。"
         )
     visible = set(state.visible_event_ids)
     steps = {step.committed_event_id: step for step in state.steps}

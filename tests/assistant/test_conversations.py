@@ -6,15 +6,12 @@ from datetime import datetime, timezone
 from redpanda.assistant.conversations import (
     UNKNOWN_TOOL_ERROR,
     project_conversation,
-    project_session_summary,
 )
 from redpanda.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
 from redpanda.assistant.compact.core import MODEL_USAGE, WINDOW
 from redpanda.assistant.sessions import SessionView
-from redpanda.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
 from redpanda.runtime import (
     Command,
-    CommandAuthorized,
     CommandOutcome,
     CommandOutcomeReceived,
     CommandRejected,
@@ -266,72 +263,6 @@ class ConversationProjectionTest(unittest.TestCase):
             "命令已被打断，执行结果未知。",
         )
 
-    def test_idle_summary_keeps_subagent_active_until_report_is_received(self):
-        child_id = child_session_id("session-1", "delegate-1")
-        command = Command("delegate-1", InvokeTool(DELEGATE, (("task", "调查问题"),)))
-        events = (event(1, "user-1", UserMessageReceived("调查问题")),)
-        events += (canonical_step_event(events, "step-1", "", (command,)),)
-        events += (
-            event(3, "dispatch-1", DispatchAttemptStarted("attempt-1", command.command_id), causation_id="step-1"),
-            event(4, "outcome-1", CommandOutcomeReceived(
-                command.command_id, "attempt-1", CommandOutcome(OutcomeStatus.SUCCEEDED, value={
-                    "ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id},
-                }),
-            ), causation_id="dispatch-1"),
-            event(5, "report-1", DomainFactCommitted(REPORT_FACT, {"child_session_id": child_id})),
-        )
-        for snapshot, active in ((events[:4], True), (events, False)):
-            with self.subTest(active=active):
-                summary = project_session_summary(
-                    "session-1", snapshot, workspace_id="workspace-1", activity="idle",
-                )
-                self.assertEqual(summary.activity, "idle")
-                self.assertEqual(summary.has_active_subagents, active)
-
-    def test_summary_attention_tracks_pending_authorization_and_current_failure(self):
-        command = Command("write", InvokeTool("write_file", ()), requires_authorization=True)
-        events = (event(1, "user-1", UserMessageReceived("修改文件")),)
-        events += (canonical_step_event(events, "step-1", "修改", (command,)),)
-        events += (event(3, "approved", CommandAuthorized("write"), causation_id="step-1"),)
-        for snapshot, error, expected in (
-            (events[:1], None, False),
-            (events[:2], None, True),
-            (events, None, False),
-            (events, "模型调用失败，请重试", True),
-        ):
-            with self.subTest(length=len(snapshot), error=error):
-                summary = project_session_summary(
-                    "session-1", snapshot, workspace_id="workspace-1",
-                    activity="running", last_error=error,
-                )
-                self.assertEqual(summary.needs_attention, expected)
-
-    def test_summary_attention_tracks_pending_control_confirmation(self):
-        from redpanda.assistant.control import CONTROL_APPROVED, CONTROL_PROPOSED, CONTROL_REQUEST_METADATA
-
-        events = (event(1, "user-1", UserMessageReceived("安装工具")),)
-        events += (canonical_step_event(events, "step-1", "请确认安装", (), {
-            CONTROL_REQUEST_METADATA: {
-                "request_id": "install", "tool": "install_tool", "action": "install",
-                "arguments": {},
-            },
-        }),)
-        events += (
-            event(3, "proposed", DomainFactCommitted(CONTROL_PROPOSED, {
-                "request_id": "install", "action": "install", "payload": {},
-                "summary": "安装工具", "risk": "执行安装命令",
-            })),
-            event(4, "approved", DomainFactCommitted(CONTROL_APPROVED, {
-                "request_id": "install", "action": "install",
-            })),
-        )
-        for snapshot, expected in ((events[:2], False), (events[:3], True), (events, False)):
-            with self.subTest(length=len(snapshot)):
-                summary = project_session_summary(
-                    "session-1", snapshot, workspace_id="workspace-1", activity="idle",
-                )
-                self.assertEqual(summary.needs_attention, expected)
-
     def test_pending_authorization_and_rejection_are_distinct_statuses(self):
         write = Command(
             "cmd-write",
@@ -372,7 +303,7 @@ class ConversationProjectionTest(unittest.TestCase):
 
 
 class _Workspaces:
-    """list_sessions 只问 registry 一件事：这个工作区还在不在。"""
+    """查询只问 registry 一件事：这个工作区还在不在。"""
 
     def __init__(self, *workspace_ids: str) -> None:
         self._workspace_ids = set(workspace_ids)
@@ -396,12 +327,6 @@ class Idle:
     def current_failure(self, session_id):
         return None
 
-    def is_archived(self, session_id):
-        return False
-
-    def session_title(self, session_id):
-        return None
-
     def conversation_status(self, session_id):
         from redpanda.assistant.compact.store import ConversationStatus
 
@@ -414,8 +339,8 @@ class Idle:
         raise AssertionError("读会话不得唤醒 Worker")
 
 
-class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
-    async def test_omits_journals_without_user_messages(self):
+class QueriesTest(unittest.IsolatedAsyncioTestCase):
+    async def test_conversation_carries_host_session_flags(self):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
@@ -427,7 +352,6 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
             queries = AssistantQueries(store, Idle())
-            await store.create("empty", workspace_id="workspace-1")
             await store.create("spoken", workspace_id="workspace-1")
             await SqliteJournal(store.require("spoken")).accept_delivery(
                 EventDraft(
@@ -438,46 +362,12 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
                     delivery=DeliveryIdentity("web", "d1"),
                 )
             )
-            listed = await queries.list_sessions()
             spoken = await queries.conversation("spoken")
 
-        self.assertEqual([item.session_id for item in listed], ["spoken"])
-        self.assertEqual(listed[0].title, "你好")
         self.assertTrue(spoken.session.auto_authorize)
         self.assertTrue(spoken.session.paused)
 
-    async def test_archived_identities_stay_out_of_the_top_level_list(self):
-        """归档只是不再出现在列表里，会话仍可读。"""
-        from pathlib import Path
-        from tempfile import TemporaryDirectory
-
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import SqliteJournal
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
-
-        class Archived(Idle):
-            def is_archived(self, session_id):
-                return session_id == "spoken"
-
-        with TemporaryDirectory() as directory:
-            store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Archived())
-            await store.create("spoken", workspace_id="workspace-1")
-            await SqliteJournal(store.require("spoken")).accept_delivery(
-                EventDraft(
-                    event_id="user-1",
-                    session_id="spoken",
-                    payload=UserMessageReceived("你好"),
-                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
-                    delivery=DeliveryIdentity("web", "d1"),
-                )
-            )
-
-            self.assertEqual(await queries.list_sessions(), ())
-            self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
-
-    async def test_inbox_lists_pending_items_before_any_user_message(self):
+    async def test_inbox_lists_only_agent_pending_items(self):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
@@ -493,10 +383,6 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
             StateProjector, Step, StepClaimRequest, StepCommitted,
         )
         from redpanda.runtime.events import DeliveryIdentity, EventDraft
-
-        class Archived(Idle):
-            def is_archived(self, session_id):
-                return session_id == "old"
 
         async def wake(store, session_id: str, payload: DomainFactCommitted, source: str) -> None:
             await SqliteJournal(store.require(session_id)).accept_delivery(
@@ -575,10 +461,23 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Archived())
-            for session_id in ("quiet", "named", "old", "spoken"):
+            queries = AssistantQueries(store, Idle())
+            for session_id in ("quiet", "named", "old"):
                 await store.create(session_id, workspace_id="workspace-1")
-            await wake(store, "quiet", DomainFactCommitted("test.wake", {}, requests_decision=True), "test")
+            await wake(
+                store, "quiet",
+                DomainFactCommitted(
+                    AGENT_CREATED,
+                    {
+                        "name": "安静熊猫",
+                        "workspace_id": "workspace-1",
+                        "worktree": str(Path(directory)),
+                        "branch": "agent/quiet",
+                    },
+                    requests_decision=True,
+                ),
+                "coding_bot",
+            )
             await commit(store, "quiet", commands=(
                 Command("cmd-quiet", InvokeTool("apply_patch", (("path", "note.txt"),)), requires_authorization=True),
             ))
@@ -623,23 +522,11 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
                 },
             })
             await propose(store, "old", "req-old")
-            await SqliteJournal(store.require("spoken")).accept_delivery(
-                EventDraft(
-                    event_id="user-spoken",
-                    session_id="spoken",
-                    payload=UserMessageReceived("你好"),
-                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
-                    delivery=DeliveryIdentity("web", "spoken"),
-                )
-            )
-
             inbox = await queries.list_inbox()
-            listed = await queries.list_sessions()
 
-        self.assertEqual([item.session_id for item in listed], ["spoken"])
         self.assertEqual(
             [(item.kind, item.label, item.session_id) for item in inbox],
-            [("authorization", "新会话", "quiet"), ("control", "验证熊猫", "named")],
+            [("authorization", "安静熊猫", "quiet"), ("control", "验证熊猫", "named")],
         )
         self.assertEqual(inbox[0].name, "apply_patch")
         self.assertEqual(inbox[0].arguments, {"path": "note.txt"})

@@ -17,7 +17,7 @@ import { GroupChatPage } from "../features/groups/GroupChatPage";
 import { InboxPage } from "../features/inbox/InboxPage";
 import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
 import { AgentHome } from "../features/sessions/AgentHome";
-import { SessionSidebar } from "../features/sessions/SessionSidebar";
+import { AgentSidebar } from "../features/sessions/AgentSidebar";
 import { openEventBridge } from "../realtime/eventBridge";
 
 export function App() {
@@ -77,7 +77,7 @@ export function App() {
       transitionDuration={resizingSidebar ? 0 : 180}
     >
       <AppShell.Navbar className="app-navbar" p="md">
-        <SessionSidebar onNavigate={closeNavigation} />
+        <AgentSidebar onNavigate={closeNavigation} />
         <div
           aria-label="调节侧栏宽度"
           aria-orientation="vertical"

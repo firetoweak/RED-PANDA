@@ -1,12 +1,12 @@
 # 布局与外观
 
-明暗主题、侧栏宽度、窄屏会话列表、欢迎页与右侧内容页。来源：`web/src/app/App.tsx`、`web/src/main.tsx`、`ColorSchemeSwitcher.tsx`、`sidebarWidth.ts`、`ConversationWelcome.tsx`、`web/src/features/conversation/ContentPage.tsx`、`Conversation.tsx`。
+明暗主题、侧栏宽度、窄屏 Agent 名册、欢迎页与右侧内容页。来源：`web/src/app/App.tsx`、`web/src/main.tsx`、`ColorSchemeSwitcher.tsx`、`sidebarWidth.ts`、`ConversationWelcome.tsx`、`web/src/features/conversation/ContentPage.tsx`、`Conversation.tsx`。
 
 ## Sub-features
 
 - `color-scheme`：侧栏底部图标按钮 `外观` 打开菜单（标签 `外观`），只有 `深色`、`亮色` 两项，当前项带勾；默认深色（`main.tsx` 的 `defaultColorScheme="dark"`），没有「跟随系统」。
 - `sidebar-resize`：侧栏右边缘分隔条（`role="separator"`，名称 `调节侧栏宽度`，带 `aria-valuemin`/`aria-valuemax`/`aria-valuenow`），只支持指针拖动，无键盘调节；宽度夹在 220–520，默认 288，松手时写入 `localStorage` 的 `redpanda.sidebarWidth`。
-- `mobile-sidebar`：视口窄于 `sm` 时侧栏收进 `打开会话列表`。
+- `mobile-sidebar`：视口窄于 `sm` 时侧栏收进 `打开 Agent 名册`。
 - `welcome`：欢迎区（图 alt `折纸小熊猫`、标题 `今天想一起完成什么？`）出现在空会话（含刚打开的草稿会话）和没有工作区时的首页。
 - `content-page`：子 Agent、文件改动、错误详情在右侧内容页打开，标题分别为 `子 Agent`、`文件改动`、`<标题> · 错误详情`；关闭按钮 `关闭内容页`；分隔条 `调节内容页宽度`（指针拖动或聚焦后左右方向键，最小 320，存于 `localStorage` 的 `redpanda.contentPageWidth`）。
 
@@ -27,7 +27,7 @@
   - (c) 主区域内容随之变窄/变宽，不被遮挡。
   - (d) 拖到极小/极大 → 被夹在 220 和 520；把该键手动改成非数字后刷新 → 回到 288。
 - **窄屏**：视口 390×844。
-  - (b) 出现 `打开会话列表`，点开能切换会话，选完自动收起。
+  - (b) 出现 `打开 Agent 名册`，点开能切换 Agent，选完自动收起。
   - (c) 刷新后仍正常收起，不丢会话。
   - (d) 打开子 Agent 内容页（标题 `子 Agent`）后，输入框仍可用，`关闭内容页` 可点并关闭；内容页宽度被限制在可用宽度内。
 - **欢迎区**：(b) 刚打开的草稿会话与没有工作区的首页都显示 `折纸小熊猫` 与 `今天想一起完成什么？`；发出首条消息后欢迎区消失。

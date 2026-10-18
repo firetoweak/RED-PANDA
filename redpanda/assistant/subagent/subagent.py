@@ -404,52 +404,11 @@ REPORT_SCHEMA: dict[str, object] = {
 }
 
 
-def _frozen_delegate_child(command_id: str, value: object) -> tuple[str, str] | None:
-    """成功 DELEGATED Outcome 里冻结的 (parent, child)。
-
-    子 id 必须仍是 `{parent}/sub-{command_id}`。父身份可以不是正在读
-    这条线的 Session：分支重放会把事件收成当前身份，Outcome 不会跟着改。
-    自产 Outcome：不是 DELEGATED 成功则跳过；形状不对则暴露。
-    """
-
-    if not isinstance(value, Mapping) or value.get("ok") is not True:
-        return None
-    if value.get("code") != "DELEGATED":
-        return None
-    child_id = value["data"]["child_session_id"]
-    suffix = f"/sub-{command_id}"
-    if type(child_id) is not str or not child_id.endswith(suffix):
-        raise ValueError("delegate outcome child_session_id 无效")
-    parent = child_id[: -len(suffix)]
-    if not parent:
-        raise ValueError("delegate outcome child_session_id 无效")
-    return parent, child_id
-
-
-def _frozen_delegate_children(events: Sequence[Event]) -> dict[str, tuple[str, str]]:
-    found: dict[str, tuple[str, str]] = {}
-    for event in events:
-        payload = event.payload
-        if not isinstance(payload, CommandOutcomeReceived):
-            continue
-        if payload.outcome.status is not OutcomeStatus.SUCCEEDED:
-            continue
-        child = _frozen_delegate_child(payload.command_id, payload.outcome.value)
-        if child is not None:
-            found[payload.command_id] = child
-    return found
-
-
 def project_delegate_intents(
     events: Sequence[Event],
 ) -> tuple[DelegateIntent, ...]:
-    """从父 Step 已提交的 delegate Command 冻结全部 child identity。
+    """从父 Step 已提交的 delegate Command 派生全部 child identity。"""
 
-    已有成功 Outcome 时用里面那份 child id。还没有 Outcome 的命令只会出现
-    在提交它的会话上，这时才用事件上的 session id 派生。
-    """
-
-    frozen = _frozen_delegate_children(events)
     intents: list[DelegateIntent] = []
     for event in events:
         payload = event.payload
@@ -462,16 +421,11 @@ def project_delegate_intents(
                 task = arguments.get("task")
                 if type(task) is not str or not task.strip():
                     continue
-                parent_session_id = event.session_id
-                child_id = child_session_id(parent_session_id, command.command_id)
-                committed = frozen.get(command.command_id)
-                if committed is not None:
-                    parent_session_id, child_id = committed
                 intents.append(
                     DelegateIntent(
                         command.command_id,
-                        parent_session_id,
-                        child_id,
+                        event.session_id,
+                        child_session_id(event.session_id, command.command_id),
                         task.strip(),
                         arguments.get("resolve_conflicts_of"),
                     )
@@ -578,11 +532,7 @@ def project_unreported_returns(
     events: Sequence[Event],
     returns_by_child: Mapping[str, Mapping[str, object]],
 ) -> tuple[UnreportedChildReturn, ...]:
-    """待回收集合里，子 Journal 已经有回传的那些。
-
-    回收事实投到提交委派的那条会话。分支只继承截止点之前的前缀，
-    读子会话的回传才能知道它已经结束，不必把后来的回收复制进这条线。
-    """
+    """待回收集合里，子 Journal 已经有回传的那些。"""
 
     intents = {
         intent.child_session_id: intent for intent in project_delegate_intents(events)
@@ -704,17 +654,8 @@ class SubAgentHost:
     async def refresh_activity(self, session_id: str) -> None:
         events = await self._require_runtime().snapshot(session_id)
         if project_parent(events) is None:
-            self._visible_pending[session_id] = set(await self.pending_children(session_id, events))
+            self._visible_pending[session_id] = set(project_pending(events))
             self._publish_activity(session_id)
-
-    async def pending_children(self, session_id, events):
-        pending = set(project_pending(events))
-        for intent in project_delegate_intents(events):
-            if (intent.child_session_id in pending
-                and intent.parent_session_id != session_id
-                and await self._transport("subagent_returned", intent.child_session_id, {})):
-                pending.remove(intent.child_session_id)
-        return frozenset(pending)
 
     def tool_names(self, session_id: str) -> frozenset[str] | None:
         """本 Session 允许出现的工具名；None 表示不设限。"""
@@ -805,7 +746,7 @@ class SubAgentHost:
                         report_arguments(session_id, event.payload.data),
                     )
             return ()
-        pending_ids = await self.pending_children(session_id, events)
+        pending_ids = project_pending(events)
         intents = project_delegate_intents(events)
         state = await runtime.state(session_id)
         commands = {
@@ -974,15 +915,6 @@ class SubAgentHost:
                 "error": "不是当前会话委派的子 Agent",
             }
         if child_session_id in project_reclaimed(events):
-            return {
-                "ok": True,
-                "code": "ALREADY_RECLAIMED",
-                "data": {"child_session_id": child_session_id},
-            }
-        intent = next(item for item in project_delegate_intents(events)
-                      if item.child_session_id == child_session_id)
-        if (intent.parent_session_id != context.session_id
-            and await self._transport("subagent_returned", child_session_id, {})):
             return {
                 "ok": True,
                 "code": "ALREADY_RECLAIMED",

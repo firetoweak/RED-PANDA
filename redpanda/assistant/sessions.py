@@ -27,7 +27,7 @@ from redpanda.assistant.runner import (
 from redpanda.assistant.toolsets import ToolSurface
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.catalog import CapabilityCatalog
-from redpanda.assistant.subagent.subagent import SubAgentHost
+from redpanda.assistant.subagent.subagent import SubAgentHost, project_pending
 from redpanda.runtime import AgentRuntime, RuntimeStatus
 from redpanda.runtime.model import CanonicalState, CommandPhase
 
@@ -175,7 +175,7 @@ class AssistantSessions:
         state = await self._runtime.state(session_id)
         has_active_subagents = False
         if self._subagents is not None:
-            has_active_subagents = bool(await self._subagents.pending_children(session_id, events))
+            has_active_subagents = bool(project_pending(events))
         return self._view(
             state,
             events,

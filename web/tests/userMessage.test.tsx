@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { EditableUserMessage } from "../src/features/conversation/EditableUserMessage";
+import { UserMessage } from "../src/features/conversation/UserMessage";
 
 const writeText = vi.fn();
 
@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 it("消息下方呈现发送时间，复制原文", async () => {
-  render(<MantineProvider><EditableUserMessage
+  render(<MantineProvider><UserMessage
     sessionId="session" text="本项目还未提交的代码，都有哪些成分"
     occurredAt="2026-10-03T08:00:05Z" images={[]} files={[]}
   /></MantineProvider>);

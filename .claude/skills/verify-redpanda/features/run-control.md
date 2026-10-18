@@ -42,7 +42,6 @@
 ## Gotchas
 
 - 进程级中断两平台实现不同：Linux 在 `redpanda/execution/process_posix.py`（`os.killpg(..., SIGKILL)`），Windows 在 `redpanda/execution/local/windows_job.py`（`TerminateJobObject`），两边都要单独验。
-- `POST /api/sessions/{id}/paused` 仍存在（`redpandaApi.ts` 里有 `setPaused`），但前端没有任何调用方；不要用它代替 `停止`/`继续` 的用户操作。
 - 输入框里的 `重试` 只属于附件上传失败的重试，与回合控制无关。
 - 提示只写 runtime 真知道的：被用户停止、可能已部分执行、续跑前先检查现场。不要求给出退出码、耗时等细节。
 - 中断后计划仍显示 `in_progress` 不算问题（见 work-plan）。

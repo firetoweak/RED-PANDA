@@ -49,7 +49,6 @@ class ProcessManager:
         self._processes: dict[str, OwnedProcess] = {}
         self._lock = asyncio.Lock()
         self._closed = False
-        self._retired_sessions: set[str] = set()
 
     async def start(self, session_id: str, command: str, cwd: Path) -> dict:
         if sys.platform == "win32":
@@ -61,8 +60,6 @@ class ProcessManager:
         async with self._lock:
             if self._closed:
                 raise RuntimeError("Process owner is closed")
-            if session_id in self._retired_sessions:
-                raise RuntimeError("Process Session is retired")
             runner = create_host_command_runner(self.environment)
             argv, environment = runner.prepare(command)
             process_id = uuid4().hex
@@ -138,13 +135,6 @@ class ProcessManager:
             for entry in entries:
                 await self._refresh(entry)
             return [entry.status() for entry in entries]
-
-    async def stop_session(self, session_id: str) -> None:
-        async with self._lock:
-            self._retired_sessions.add(session_id)
-            for entry in self._processes.values():
-                if entry.session_id == session_id:
-                    await self._stop(entry)
 
     async def close(self) -> None:
         async with self._lock:

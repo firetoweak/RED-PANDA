@@ -77,10 +77,6 @@ class ModelTestRequest(ConnectionRequest):
     model: str
 
 
-class CreateSessionRequest(ConnectionRequest):
-    workspace_id: str
-
-
 class CreateAgentRequest(ConnectionRequest):
     workspace_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
@@ -151,25 +147,6 @@ class AutoAuthorizeRequest(BaseModel):
 
     connection_id: str = Field(min_length=1)
     enabled: bool
-
-
-class PauseRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    connection_id: str = Field(min_length=1)
-    paused: bool
-
-
-class TitleRequest(ConnectionRequest):
-    title: str
-
-    @field_validator("title")
-    @classmethod
-    def named(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("title must be a non-empty str")
-        return stripped
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -406,21 +383,9 @@ def create_web_app(
     async def inbox(request: Request):
         return await _channel(request).list_inbox()
 
-    @app.get("/api/sessions")
-    async def sessions(request: Request):
-        return await _channel(request).list_sessions()
-
-    @app.get("/api/session-titles")
-    async def session_titles(request: Request):
-        return _channel(request).session_titles()
-
     @app.get("/api/sessions/{session_id}")
     async def conversation(session_id: str, request: Request):
         return await _channel(request).conversation(session_id)
-
-    @app.post("/api/sessions", status_code=201)
-    async def create_session(body: CreateSessionRequest, request: Request):
-        return await _channel(request).create(body.connection_id, body.workspace_id)
 
     @app.get("/api/sessions/{session_id}/changes")
     async def file_changes(session_id: str, request: Request, path: str | None = None,
@@ -621,38 +586,6 @@ def create_web_app(
             body.connection_id,
             session_id,
             body.enabled,
-        )
-
-    @app.post("/api/sessions/{session_id}/paused")
-    async def set_paused(
-        session_id: str,
-        body: PauseRequest,
-        request: Request,
-    ):
-        return await _channel(request).set_paused(
-            body.connection_id,
-            session_id,
-            body.paused,
-        )
-
-    @app.post("/api/sessions/{session_id}/archive")
-    async def archive_session(
-        session_id: str,
-        body: ConnectionRequest,
-        request: Request,
-    ):
-        return await _channel(request).archive(body.connection_id, session_id)
-
-    @app.post("/api/sessions/{session_id}/title")
-    async def set_session_title(
-        session_id: str,
-        body: TitleRequest,
-        request: Request,
-    ):
-        return await _channel(request).set_title(
-            body.connection_id,
-            session_id,
-            body.title,
         )
 
     if static_dir is not None:

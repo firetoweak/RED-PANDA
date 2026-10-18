@@ -53,9 +53,6 @@ class WebChannel:
         self._connections.remove(connection.connection_id)
         await self._sessions.release(connection.owner)
 
-    async def list_sessions(self):
-        return await self._queries.list_sessions()
-
     async def list_agents(self):
         return await self._queries.list_agents()
 
@@ -105,13 +102,6 @@ class WebChannel:
 
     async def file_changes(self, session_id: str, *, path=None, offset=0):
         return await self._queries.file_changes(session_id, path=path, offset=offset)
-
-    async def create(self, connection_id: str, workspace_id: str):
-        connection = self._require_connection(connection_id)
-        session_id = f"session-{uuid4().hex}"
-        await self._sessions.create(session_id, workspace_id)
-        view = await self._sessions.select(connection.owner, session_id)
-        return await self._queries.conversation(session_id, view=view)
 
     async def select(self, connection_id: str, session_id: str):
         connection = self._require_connection(connection_id)
@@ -277,36 +267,6 @@ class WebChannel:
     def set_model(self, connection_id: str, session_id: str, model: str):
         self._require_connection(connection_id)
         return self._sessions.set_model(session_id, model)
-
-    async def set_paused(
-        self,
-        connection_id: str,
-        session_id: str,
-        paused: bool,
-    ):
-        self._require_connection(connection_id)
-        if type(session_id) is not str or not session_id:
-            raise ValueError("session_id must be a non-empty str")
-        view = await self._sessions.set_paused(session_id, bool(paused))
-        return await self._queries.conversation(session_id, view=view)
-
-    def session_titles(self) -> dict[str, str]:
-        return self._sessions.session_titles()
-
-    async def archive(self, connection_id: str, session_id: str):
-        self._require_connection(connection_id)
-        if type(session_id) is not str or not session_id:
-            raise ValueError("session_id must be a non-empty str")
-        await self._sessions.archive(session_id)
-        return {}
-
-    async def set_title(self, connection_id: str, session_id: str, title: str):
-        self._require_connection(connection_id)
-        if type(session_id) is not str or not session_id:
-            raise ValueError("session_id must be a non-empty str")
-        cleaned = self._require_text(title)
-        self._sessions.set_title(session_id, cleaned)
-        return {"title": cleaned}
 
     def _store(self) -> AttachmentGateway:
         if self._attachments is None:

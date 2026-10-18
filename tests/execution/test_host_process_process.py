@@ -136,7 +136,7 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
     asyncio.run(scenario())
 
 
-def test_host_port_survives_worker_retirement_and_archive_stops_process(tmp_path):
+def test_host_port_survives_worker_retirement(tmp_path):
     from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
     async def scenario():
         root = tmp_path / "project"; root.mkdir()
@@ -171,8 +171,6 @@ def test_host_port_survives_worker_retirement_and_archive_stops_process(tmp_path
             replacement_port = WorkerProcessPort(host._route, "a")
             assert (await replacement_port.list())[0]["process_id"] == entry["process_id"]
             assert (await replacement_port.read(entry["process_id"], 0, 0))["state"] == "running"
-            await host.archive("a")
-            assert (await replacement_port.list())[0]["state"] == "stopped"
         finally:
             await host.close()
     asyncio.run(scenario())

@@ -148,7 +148,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
                        if item.command.effect.name == SEND_MESSAGE)
         self.assertTrue(command.outcome.value["data"]["paused"])
         self.assertIn("在人让它继续后处理", command.outcome.value["data"]["notice"])
-        await self.host.set_paused(self.lin.session_id, False)
+        await self.host.retry(self.lin.session_id)
         await self.settled(self.lin)
         self.assertTrue(any(isinstance(e.payload, StepCommitted) for e in await self.events(self.lin)))
         for request in self.llm.requests:

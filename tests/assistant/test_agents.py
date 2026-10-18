@@ -12,7 +12,7 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.compact.core import window_preamble
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
-from redpanda.assistant.host.session_store import SessionForkUnavailableError, SessionStore
+from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.config import write_json
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -126,12 +126,3 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("HANDOFF", window[1]["content"])
         for internal in (agent.session_id, agent.workspace_id, agent.identity.branch):
             self.assertNotIn(internal, window[0]["content"])
-
-    async def test_existing_history_branch_entry_cannot_clone_an_agent_identity(self):
-        agent = await self.create()
-        journal = SqliteJournal(self.store.require(agent.session_id))
-        creation = (await journal.snapshot(agent.session_id))[-1]
-        with self.assertRaises(SessionForkUnavailableError):
-            await self.store.fork_after_event(agent.session_id, creation.event_id, "clone")
-        self.assertFalse(self.store.path("clone").exists())
-        self.assertEqual(len(await self.host.agents.list()), 1)

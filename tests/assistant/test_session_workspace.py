@@ -34,13 +34,6 @@ async def _append_user_message(store, session_id: str, text: str) -> None:
     )
 
 
-async def _create_unbound(store, session_id: str, text: str) -> None:
-    path = store.path(session_id)
-    path.parent.mkdir()
-    await SqliteJournal(path).create_session(session_id)
-    await _append_user_message(store, session_id, text)
-
-
 class _IdleSessions:
     def __init__(self, workspaces: WorkspaceRegistry) -> None:
         self.workspaces = workspaces
@@ -55,12 +48,6 @@ class _IdleSessions:
         return False
 
     def current_failure(self, session_id: str) -> None:
-        return None
-
-    def is_archived(self, session_id: str) -> bool:
-        return False
-
-    def session_title(self, session_id: str) -> str | None:
         return None
 
     def conversation_status(self, session_id: str):
@@ -109,30 +96,8 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(resolved, record)
 
-    async def test_listing_hides_sessions_without_a_workspace(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            task_root = root / "task"
-            task_root.mkdir()
-            registry = WorkspaceRegistry.load(root / "workspaces.json")
-            record = registry.create(name="demo", task_root=task_root)
-            store = SessionStore(root / "sessions")
-            await store.create("bound", workspace_id=record.workspace_id)
-            await _append_user_message(store, "bound", "有归属")
-            await _create_unbound(store, "legacy", "无归属")
-
-            listed = await AssistantQueries(
-                store, _IdleSessions(registry)
-            ).list_sessions()
-
-            self.assertEqual(
-                [summary.session_id for summary in listed],
-                ["bound"],
-            )
-            self.assertEqual(listed[0].workspace_id, record.workspace_id)
-
-    async def test_deleting_the_workspace_hides_its_sessions(self):
-        """删除工作区只移除登记：Journal 和目录都不动，会话不再列出。"""
+    async def test_deleting_the_workspace_keeps_its_journals(self):
+        """删除工作区只移除登记：Journal 和目录都不动。"""
         with TemporaryDirectory() as directory:
             root = Path(directory)
             task_root = root / "task"
@@ -146,7 +111,6 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             registry.delete(record.workspace_id)
 
             queries = AssistantQueries(store, _IdleSessions(registry))
-            self.assertEqual(await queries.list_sessions(), ())
             self.assertEqual(
                 (await queries.conversation("bound")).items[0].text,
                 "有归属",

@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `home-empty`：`/` 与 `/workspaces/:workspaceId` 由 `AgentHome` 处理，不自动 `POST /api/sessions`。一个项目都没有时主区域显示欢迎图、文字 `先选择一个文件夹作为工作区，小熊猫会在这里与你处理文件和任务。` 和按钮 `创建工作区`。已有项目时文字是 `从左侧选择一个 Agent，或在项目里新建一个。`
+- `home-empty`：`/` 与 `/workspaces/:workspaceId` 由 `AgentHome` 处理，不自动新建会话。一个项目都没有时主区域显示欢迎图、文字 `先选择一个文件夹作为工作区，小熊猫会在这里与你处理文件和任务。` 和按钮 `创建工作区`。已有项目时文字是 `从左侧选择一个 Agent，或在项目里新建一个。`
 - `open-agent`：按 session-sidebar 创建一个 Agent 后进入 `/sessions/<id>`。不再有草稿行或 `new agent` 标题。
 - `send-message`：在 `消息` 输入框（占位 `输入消息，Enter 发送，可拖入文件或粘贴图片`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`。
 - `reply-render`：回复以 Markdown 渲染（`MarkdownMessage.tsx`），可 `复制回复`；思考内容折叠块标题为 `思考`（`ThinkingBlock.tsx`）；尚无正文时运行提示为 `思考中`（`Conversation.tsx` 的 `RunningHint`、`stepHeading.ts`）。
@@ -20,7 +20,7 @@
 
 - **打开 Agent（发消息之前）**：工作区建好后按 session-sidebar 创建一个 Agent，不要先发消息。
   - (a) 地址栏变为 `/sessions/<id>`；`GET /api/sessions/<id>` 返回 200，`workspace_id` 等于刚建的工作区；`$REDPANDA_HOME/runtime_sessions/` 下多出一个以该会话 id 的 sha256 命名、内含 `journal.sqlite` 的目录；`GET /api/agents` 里有它。
-  - (b) `POST /api/agents` 返回 201，且发生在任何 `POST .../inputs` 之前；侧栏出现这个名字。刷新 `/` 停在欢迎页，不会再 `POST /api/sessions`。
+  - (b) `POST /api/agents` 返回 201，且发生在任何 `POST .../inputs` 之前；侧栏出现这个名字。刷新 `/` 停在欢迎页，不会再新建会话。
   - (c) `$SCRATCH_WORKSPACE/note.txt` 仍是 `verify`。
   - (d) 错误路径：打开 `/sessions/session-不存在` → 页面显示 `这个会话不存在。请从左侧新建或选择会话。`，`GET /api/sessions/session-不存在` 返回 404。
 - **发首条消息**：发送 `请只回复 PING_OK`。

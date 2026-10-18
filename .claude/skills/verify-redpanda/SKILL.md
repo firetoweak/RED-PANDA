@@ -7,7 +7,7 @@ description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace,
 
 Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are roster Agents: each works in its own Git worktree under `$REDPANDA_HOME/state/coding_bot/`, so a workspace used for Agents must be a Git repository with a first commit. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
 
-UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开会话列表`.
+UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开 Agent 名册`.
 
 ## Launch
 
@@ -110,7 +110,7 @@ Use the browser automation in the session (Playwright or Chrome DevTools). The v
 
 The conversation timeline is a virtual list (react-virtuoso) and dialogs and menus are Mantine transitions; all of them need `requestAnimationFrame` and `ResizeObserver`. In a browser pane that is hidden (for example the desktop app's built-in Browser pane while it is not on screen) those callbacks do not fire: the timeline renders no turns and `新建工作区`, `外观`, `等待确认` never open. Check with a tiny probe before trusting an empty page; if the pane cannot be kept visible, record those entries as `unreachable` with that prerequisite, not as product failures.
 
-`curl` is only the read-only confirmation written next to an action. Posting to `/api/workspaces`, `/api/sessions`, or `/api/sessions/.../inputs` does not prove the page.
+`curl` is only the read-only confirmation written next to an action. Posting to `/api/workspaces`, `/api/agents`, or `/api/sessions/.../inputs` does not prove the page.
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
 

@@ -45,7 +45,7 @@ import {
   writeCollapsedWorkspaces,
 } from "./workspaces";
 
-type SessionSidebarProps = {
+type AgentSidebarProps = {
   onNavigate: () => void;
 };
 
@@ -56,7 +56,7 @@ const STATUS_LABEL = {
   idle: "空闲",
 } as const;
 
-export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
+export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
   const groupId = useMatch("/groups/:groupId")?.params.groupId;
