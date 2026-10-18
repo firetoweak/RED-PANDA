@@ -32,7 +32,7 @@ from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments,
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
 from redpanda.assistant.host.agent_messages import AgentMessages
-from redpanda.assistant.agent_messages import LIST_COLLEAGUES, SEND_MESSAGE
+from redpanda.assistant.agent_messages import DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_MESSAGE
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -210,6 +210,8 @@ class HostSupervisor:
             return await self.agent_messages.colleagues(session_id)
         if operation == SEND_MESSAGE:
             return await self.agent_messages.send(session_id, arguments)
+        if operation == DECLARE_DIRECTION:
+            return await self.agent_messages.declare(session_id, arguments)
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":
@@ -525,7 +527,7 @@ class HostSupervisor:
                 raise ValueError(f"Unknown Host signal: {kind}")
 
         async def route(operation, target, arguments):
-            if operation in {SEND_MESSAGE, LIST_COLLEAGUES} and target != session_id:
+            if operation in {SEND_MESSAGE, LIST_COLLEAGUES, DECLARE_DIRECTION} and target != session_id:
                 raise ValueError("communication request does not belong to this Worker")
             return await self._route(
                 operation,
@@ -926,7 +928,12 @@ class HostSupervisor:
             raise
         if self.models is not None:
             self.models.initialize_session(session_id)
-        return AgentRecord(session_id, identity)
+        agent = AgentRecord(session_id, identity)
+        # Colleagues learn of the join before anything the new Agent does;
+        # replaying its creation fact then starts the Worker for its first decision.
+        await self.agent_messages.joined(agent)
+        await self.request("fact", session_id, fact_arguments(identity, delivery_id="created"))
+        return agent
 
     async def select(self, owner, session_id):
         async with self.selection_locks.setdefault(owner, asyncio.Lock()):

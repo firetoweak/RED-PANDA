@@ -6,7 +6,7 @@ from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from redpanda.assistant.agents import CommunicationLimitReached, fact_arguments
+from redpanda.assistant.agents import CommunicationLimitReached, DirectionDeclared, fact_arguments, project_agent
 from redpanda.runtime import (
     AgentRuntime, CommandOutcome, CommandOutcomeReceived, CommandPhase, EventDraft,
     OutcomeStatus, ToolBinding, replay,
@@ -15,6 +15,7 @@ from redpanda.runtime import (
 
 SEND_MESSAGE = "send_message"
 LIST_COLLEAGUES = "list_colleagues"
+DECLARE_DIRECTION = "declare_direction"
 MAX_MESSAGE_HOPS = 10
 LIMIT_NOTICE = "这条交流已达上限，已通知人；需要继续时请在与人的对话中说明。"
 
@@ -33,11 +34,38 @@ class MessageArguments(BaseModel):
         return value
 
 
+class DirectionArguments(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    direction: str = Field(min_length=1)
+
+    @field_validator("direction")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("文字不能为空白")
+        return value
+
+
 MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
-        "description": "查询同项目中可发私信的同事名字。",
+        "description": "查询同项目的同事名字与他们声明的负责方向；未声明时方向为 null。",
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    }},
+    {"type": "function", "function": {
+        "name": DECLARE_DIRECTION,
+        "description": (
+            "记下你负责的方向，同事会看到。在用户认可或修正你的提议后使用；"
+            "方向变化时再次声明，以最新一次为准。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "direction": {"type": "string", "minLength": 1, "description": "一句话说明你负责什么。"},
+            },
+            "required": ["direction"],
+            "additionalProperties": False,
+        },
     }},
     {"type": "function", "function": {
         "name": SEND_MESSAGE,
@@ -90,7 +118,23 @@ def message_bindings(transport, journal):
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "list_colleagues 不接受参数。"}
         return await transport(LIST_COLLEAGUES, context.session_id, {})
 
-    return {SEND_MESSAGE: ToolBinding(send), LIST_COLLEAGUES: ToolBinding(colleagues)}
+    async def declare(context, arguments):
+        try:
+            parsed = DirectionArguments.model_validate(dict(arguments))
+        except ValidationError as error:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": str(error)}
+        agent = project_agent(await journal.snapshot(context.session_id))
+        declaration = DirectionDeclared(name=agent.name, direction=parsed.direction)
+        delivery_id = f"direction:{context.command_id}"
+        # The roster reads this Agent's own timeline; colleagues receive a copy.
+        await AgentRuntime(journal, None, {}).receive_domain_fact(
+            context.session_id, **fact_arguments(declaration, delivery_id=delivery_id))
+        await transport(DECLARE_DIRECTION, context.session_id, {"direction": declaration.direction,
+                                                                 "delivery_id": delivery_id})
+        return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": declaration.direction}}
+
+    return {SEND_MESSAGE: ToolBinding(send), LIST_COLLEAGUES: ToolBinding(colleagues),
+            DECLARE_DIRECTION: ToolBinding(declare)}
 
 
 async def recover_message_attempts(journal, session_id, transport):

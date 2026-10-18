@@ -46,6 +46,10 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         self.registry = WorkspaceRegistry.load(self.home.workspaces_path)
         self.workspace = self.registry.register_path(self.project)
         self.store = SessionStore(self.home.runtime_sessions_root)
+        # These tests own Git creation; waking the new Agent is covered with a real Worker elsewhere.
+        activation = patch.object(HostSupervisor, "request", AsyncMock())
+        activation.start()
+        self.addCleanup(activation.stop)
         self.host = self.new_host()
 
     def new_host(self):

@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -37,6 +38,10 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.workspace = registry.register_path(self.project)
         self.host = HostSupervisor(SessionStore(home.runtime_sessions_root), None, home, None,
                                    llm=None, workspaces=registry)
+        # These tests own landing; waking the new Agent is covered with a real Worker elsewhere.
+        activation = patch.object(self.host, "request", AsyncMock())
+        activation.start()
+        self.addCleanup(activation.stop)
         # The Worker transport ends at the Host route; drive the model tools through it.
         self.tools = agent_git_bindings(self.host._route)
         self.integration = self.host.agent_worktrees.integration(self.workspace.workspace_id).path

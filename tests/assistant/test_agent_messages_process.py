@@ -10,8 +10,8 @@ import unittest
 
 import pytest
 
-from redpanda.assistant.agent_messages import SEND_MESSAGE
-from redpanda.assistant.agents import PRIVATE_MESSAGE, parse_agent_fact
+from redpanda.assistant.agent_messages import DECLARE_DIRECTION, SEND_MESSAGE
+from redpanda.assistant.agents import COLLEAGUE_JOINED, DIRECTION_DECLARED, PRIVATE_MESSAGE, parse_agent_fact
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -19,6 +19,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, replay
 from tests.assistant.test_runner import ScriptedDecisionMaker
+from tests.assistant.test_supervisor import until
 from tests.fixtures.agent_messages import interrupted_send_config
 from tests.fixtures.session_worker import ProcessLlm, direct_workspace_config
 
@@ -41,6 +42,11 @@ class MessagingLlm(ProcessLlm):
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
             elif SEND_MESSAGE not in called:
                 calls = (ToolCall("send", SEND_MESSAGE, json.dumps({"recipient": "Lin", "text": "请核对接口"})),)
+        elif "Kai" in text:
+            if "list_colleagues" not in called:
+                calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
+            elif DECLARE_DIRECTION not in called:
+                calls = (ToolCall("declare", DECLARE_DIRECTION, json.dumps({"direction": "负责命令执行"})),)
         return LLMCallResult(LLMResponse(content="" if calls else "done", calls=calls),
                              LLMUsage(input_tokens=10, output_tokens=5))
 
@@ -61,6 +67,10 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.host = self.new_host()
         self.ada = await self.host.create_agent(name="Ada", workspace_id=self.workspace.workspace_id)
         self.lin = await self.host.create_agent(name="Lin", workspace_id=self.workspace.workspace_id)
+        # Creation wakes each Agent once; tests start from settled, offline Agents.
+        for agent in (self.ada, self.lin):
+            await self.settled(agent)
+            await until(lambda: agent.session_id not in self.host.workers)
 
     def new_host(self, when=None):
         factory = partial(direct_workspace_config, self.root) if when is None else partial(interrupted_send_config, self.root, when)
@@ -75,6 +85,28 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
 
     async def settled(self, agent):
         await asyncio.wait_for(self.host.wait_quiescent(agent.session_id), 30)
+
+    async def test_created_agent_wakes_without_human_and_its_direction_reaches_colleagues(self):
+        steps = {agent.session_id: sum(isinstance(e.payload, StepCommitted) for e in await self.events(agent))
+                 for agent in (self.ada, self.lin)}
+        self.assertTrue(all(steps.values()))
+        kai = await self.host.create_agent(name="Kai", workspace_id=self.workspace.workspace_id)
+        await self.settled(kai)
+        for agent in (self.ada, self.lin):
+            await self.settled(agent)
+        self.assertTrue(any("你刚加入这个项目" in json.dumps(r["messages"], ensure_ascii=False)
+                            and "Kai" in json.dumps(r["messages"], ensure_ascii=False) for r in self.llm.requests))
+        roster = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
+        self.assertEqual(roster, {"Ada": None, "Kai": "负责命令执行", "Lin": None})
+        for agent in (self.ada, self.lin):
+            events = await self.events(agent)
+            facts = [(e.payload.fact_type, parse_agent_fact(e.payload).name) for e in events
+                     if isinstance(e.payload, DomainFactCommitted)
+                     and e.payload.fact_type in {COLLEAGUE_JOINED, DIRECTION_DECLARED}]
+            self.assertEqual(facts[-2:], [(COLLEAGUE_JOINED, "Kai"), (DIRECTION_DECLARED, "Kai")])
+            # Roster changes are visible later but do not make colleagues decide.
+            self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), steps[agent.session_id])
+        self.assertTrue(self.host.failures.empty())
 
     async def test_paused_offline_recipient_gets_fact_but_no_step_until_human_continues(self):
         # Persist the human pause without creating a Worker, as after a Host restart.
@@ -152,6 +184,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             runtime = AgentRuntime(journal, ScriptedDecisionMaker((lambda _, name=recipient.name: ModelDecision(
                 command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", name), ("text", "恢复中的私信"))),)),)),
                 {SEND_MESSAGE: ToolBinding(interrupted)})
+            await runtime.receive_user_message(sender.session_id, "互发私信", delivery_id="mutual")
             await runtime.advance(sender.session_id)
             await runtime.dispatcher.start_pending(sender.session_id)
             await asyncio.wait_for(entered.wait(), 3)

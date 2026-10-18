@@ -7,10 +7,10 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.agent_messages import (
-    LIST_COLLEAGUES, SEND_MESSAGE, message_bindings, recover_message_attempts, send_message,
+    DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_MESSAGE, message_bindings, recover_message_attempts, send_message,
 )
 from redpanda.assistant.agents import (
-    COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
+    COMMUNICATION_LIMIT_REACHED, DIRECTION_DECLARED, PRIVATE_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.host.session_store import SessionStore
@@ -95,7 +95,27 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.send(reply_to=reference))["code"], "INVALID_REPLY")
         self.assertEqual(len(await self.messages("Lin")), 1)
         colleagues = await self.transport(LIST_COLLEAGUES, "Ada", {})
-        self.assertEqual(colleagues, {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": ["Lin", "Third"]}})
+        self.assertEqual(colleagues["data"]["colleagues"], [{"name": "Lin", "direction": None},
+                                                             {"name": "Third", "direction": None}])
+
+    async def test_declared_direction_is_own_roster_entry_and_reaches_colleagues(self):
+        binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]
+        for extra in ({"name": "Lin"}, {"direction": " "}):
+            result = await binding.handler(AttemptContext("Ada", "bad", "attempt-bad", 1), {"direction": "x", **extra})
+            self.assertEqual(result["code"], "INVALID_ARGUMENT")
+        for command in ("first", "first", "second"):
+            result = await binding.handler(AttemptContext("Ada", command, f"attempt-{command}", 1),
+                                           {"direction": f"负责{command}"})
+            self.assertEqual(result["code"], "DIRECTION_DECLARED")
+        directions = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
+        self.assertEqual(directions, {"Ada": "负责second", "Lin": None, "Third": None, "Elsewhere": None})
+        colleagues = await self.transport(LIST_COLLEAGUES, "Lin", {})
+        self.assertIn({"name": "Ada", "direction": "负责second"}, colleagues["data"]["colleagues"])
+        for session_id, count in (("Ada", 2), ("Lin", 2), ("Third", 2), ("Elsewhere", 0)):
+            received = [event for event in await self.journal(session_id).snapshot(session_id)
+                        if isinstance(event.payload, DomainFactCommitted)
+                        and event.payload.fact_type == DIRECTION_DECLARED]
+            self.assertEqual(len(received), count, session_id)
 
     async def test_external_arguments_cannot_supply_sender_thread_or_count(self):
         for extra in ({"sender": "Third"}, {"hop": 0}, {"thread_id": "new"}, {"text": " "}):

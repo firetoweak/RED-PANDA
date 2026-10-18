@@ -4,9 +4,11 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.agents import DirectionDeclared, fact_arguments, project_agent
+from redpanda.assistant.agents import (
+    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, fact_arguments, project_agent,
+)
 from redpanda.assistant.conversations import AssistantQueries, FileChangesUnavailable
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.session_store import SessionForkUnavailableError, SessionStore
@@ -32,6 +34,10 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
                                 self.host.agent_worktrees.agent(project.workspace_id, session_id))
         self.git.start()
         self.addCleanup(self.git.stop)
+        # Worker activation is covered in process; here only the requested facts matter.
+        self.requests = patch.object(self.host, "request", AsyncMock())
+        self.request = self.requests.start()
+        self.addCleanup(self.requests.stop)
 
     async def asyncTearDown(self):
         await self.host.close()
@@ -55,6 +61,16 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.host.agents.resolve(other.workspace_id, "小熊猫"), second)
         with self.assertRaises(AgentNotFound):
             await self.host.agents.resolve(other.workspace_id, "unknown")
+
+    async def test_creation_wakes_the_new_agent_and_tells_existing_colleagues(self):
+        first = await self.create("Ada")
+        self.request.reset_mock()
+        second = await self.create("Lin")
+        sent = [(session_id, arguments["fact_type"], arguments["requests_decision"])
+                for operation, session_id, arguments in (call.args for call in self.request.await_args_list)]
+        # Colleagues hear of the join before the new Agent can act.
+        self.assertEqual(sent, [(first.session_id, COLLEAGUE_JOINED, False),
+                                (second.session_id, AGENT_CREATED, True)])
 
     async def test_identity_and_latest_direction_rebuild_from_journals(self):
         agent = await self.create()
