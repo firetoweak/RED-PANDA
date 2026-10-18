@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -234,9 +235,21 @@ class AssistantQueries:
         journal = SqliteJournal(self._store.require(session_id))
         events = await journal.snapshot(session_id)
         parent = project_parent(events)
-        if project_agent(events) is not None or (parent is not None and project_agent(
-                await SqliteJournal(self._store.require(parent)).snapshot(parent)) is not None):
-            raise FileChangesUnavailable("当前 Agent 尚未提供 Git 变更查看。")
+        agent = project_agent(events)
+        parent_agent = None if parent is None else project_agent(
+            await SqliteJournal(self._store.require(parent)).snapshot(parent))
+        if agent is not None or parent_agent is not None:
+            # An Agent's changes are what it has not landed yet; a delegated
+            # task's are what it has not merged into its parent yet.
+            trees = self._sessions.agent_worktrees
+            if agent is not None:
+                root, base = agent.worktree, trees.integration(agent.workspace_id).branch
+            else:
+                root, base = trees.child(parent_agent.workspace_id, session_id).path, parent_agent.identity.branch
+            try:
+                return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
+            except OSError as error:
+                raise FileChangesUnavailable(file_error_message(error)) from error
         workspace = bound_workspace(session_id, events, self._sessions.workspaces)
         if parent is not None:
             workspace = child_workspace(workspace, child_root(self._sessions.home, parent, session_id))
