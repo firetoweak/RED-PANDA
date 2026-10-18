@@ -105,10 +105,10 @@ class SkillToolCatalog:
                         f"SKILL.md 中的 name {bundle.name} 与目录名 {package.name} 不一致"
                     )
             except SkillPackageError as exc:
-                skills.append(ProjectSkill(skill_id, f"项目 Skill 无法使用：{exc}", 1, package, None))
+                skills.append(ProjectSkill(skill_id, f"项目 Skill 无法使用：{exc}", 1, package.absolute(), None))
                 continue
             skills.append(ProjectSkill(
-                skill_id, bundle.description, _content_revision(bundle.content_hash), package, bundle,
+                skill_id, bundle.description, _content_revision(bundle.content_hash), package.resolve(), bundle,
             ))
         return tuple(skills)
 
