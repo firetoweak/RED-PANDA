@@ -1,11 +1,11 @@
 ---
 name: verify-redpanda
-description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, chat, tool authorization, session file changes, and file rewind — and capture proof. Use when changing Web, sandbox file review or restore, model settings, or when a change needs a real-app check before it ships."
+description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, Agent roster and chat, tool authorization, and the Agent's Git file changes — and capture proof. Use when changing Web, file review, model settings, or when a change needs a real-app check before it ships."
 ---
 
 # Verify RED PANDA
 
-Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat, tool calls, and file rewind also need a configured model and, for file tools, the native sandbox. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
+Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are roster Agents: each works in its own Git worktree under `$REDPANDA_HOME/state/coding_bot/`, so a workspace used for Agents must be a Git repository with a first commit. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
 
 UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开会话列表`.
 
@@ -26,21 +26,18 @@ export REDPANDA_VERIFY_URL="http://127.0.0.1:$PORT"
 SESSION="redpanda-verify-$RUN_ID"
 mkdir -p "$REDPANDA_HOME" "$SCRATCH_WORKSPACE" "$EVIDENCE_DIR"
 printf 'verify\n' > "$SCRATCH_WORKSPACE/note.txt"
+git -C "$SCRATCH_WORKSPACE" init -q
+git -C "$SCRATCH_WORKSPACE" add note.txt
+git -C "$SCRATCH_WORKSPACE" -c user.name=verify -c user.email=verify@example.invalid commit -qm init
 ```
 
 `REDPANDA_HOME` and `SCRATCH_WORKSPACE` are siblings. The personal directory must not sit inside the workspace directory.
 
-Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. `sh scripts/setup.sh` (Linux x64 only; network required) downloads the project Python into `redpanda-env`, then runs `scripts/setup.py`: it installs the released native file service (`agentfs_runtime.py install --with-runtime`), puts pinned Node/rg/fd under `.tools/runtime/`, installs Python deps, runs `npm ci` and `npm run build` in `web/`, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone. `setup.py --check` rejects Node outside 22.x (≥22.13) or 24.x. If only the web bundle is stale, rebuilding it alone is enough:
+Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. `sh scripts/setup.sh` (Linux x64 only; network required) downloads the project Python into `redpanda-env`, then runs `scripts/setup.py` in four steps: it puts pinned Node/rg/fd (and Git when missing) under `.tools/runtime/`, installs Python deps, runs `npm ci` and `npm run build` in `web/`, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone. `setup.py --check` rejects Node outside 22.x (≥22.13) or 24.x. If only the web bundle is stale, rebuilding it alone is enough:
 
 ```sh
 sh scripts/setup.sh
 ( cd web && npm ci && npm run build )
-```
-
-File-tool and rewind proofs also need the native sandbox binary at `redpanda/filesystem/bin/redpanda-agentfs` (setup installs a released one). Linux needs `fusermount3` and a writable `/dev/fuse`. macOS has no file view; do not build or drive file rewind there. Building from source needs `rustup` (`build_agentfs.py` exits with `缺少 rustup` otherwise):
-
-```sh
-./redpanda-env/bin/python scripts/build_agentfs.py
 ```
 
 Pick another `PORT` if `8876` is already listening. Then start the server in its own tmux session and record the process id. `exec` keeps that id on `web_chat.py`.
@@ -54,7 +51,7 @@ Ready means `doctor.py` exits 0. The log line `Uvicorn running on http://127.0.0
 
 ### Windows
 
-From the repository root in PowerShell. Install once with `.\scripts\setup.ps1`: it installs the released native file service, the Windows command-execution components under `redpanda\execution\bin\`, WinFsp, the pinned tools, Python deps, and builds `web\dist`. Building the native binary from source is only needed for native changes and also needs rustup, LLVM MinGW (`--llvm-dir`) and the WinFsp Developer SDK (`--winfsp-dir`); see `native/filesystem/BUILD.md`.
+From the repository root in PowerShell. Install once with `.\scripts\setup.ps1`: it installs the pinned tools (portable Git when missing), Python deps, and builds `web\dist`.
 
 Set the run variables as process environment, so the server started below inherits them:
 
@@ -68,6 +65,9 @@ $env:PORT = "8876"
 $env:REDPANDA_VERIFY_URL = "http://127.0.0.1:$env:PORT"
 New-Item -ItemType Directory -Force $env:REDPANDA_HOME, $env:SCRATCH_WORKSPACE, $env:EVIDENCE_DIR | Out-Null
 Set-Content -Path "$env:SCRATCH_WORKSPACE\note.txt" -Value verify
+git -C $env:SCRATCH_WORKSPACE init -q
+git -C $env:SCRATCH_WORKSPACE add note.txt
+git -C $env:SCRATCH_WORKSPACE -c user.name=verify -c user.email=verify@example.invalid commit -qm init
 $proc = Start-Process -FilePath .\redpanda-env\Scripts\python.exe -ArgumentList @('web_chat.py','--host','127.0.0.1','--port',$env:PORT) -PassThru -WindowStyle Hidden -RedirectStandardOutput "$env:RUN_DIR\web.log" -RedirectStandardError "$env:RUN_DIR\web.err"
 Set-Content -Path "$env:RUN_DIR\web.pid" -Value $proc.Id
 ```
@@ -89,13 +89,11 @@ Run this before the first click, after any surprising failure, and before claimi
 .\redpanda-env\Scripts\python.exe .claude\skills\verify-redpanda\doctor.py --url $env:REDPANDA_VERIFY_URL --home $env:REDPANDA_HOME --pid-file "$env:RUN_DIR\web.pid"
 ```
 
-Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME` (on Windows the process environment is not readable: the command line is checked, and the home is checked only through `connections_path`), `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready` and `sandbox.ready`.
+Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME` (on Windows the process environment is not readable: the command line is checked, and the home is checked only through `connections_path`), `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready`.
 
-`live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, coding tool rounds, and file rewind when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
+`live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, and coding tool rounds when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
-`sandbox.ready` is false on macOS, when `redpanda/filesystem/bin/redpanda-agentfs` is missing (or `REDPANDA_FILESYSTEM_EXECUTABLE` on the server process points nowhere), on Linux without `/dev/fuse` and `fusermount3`, or on Windows without `redpanda\execution\bin\redpanda-command.exe` and `redpanda-hook.dll`. Doctor does not read the binary's version: compare `package.version` in `redpanda/filesystem/bin/BUILD.json` with `native/filesystem/release.json` when the release matters. **Skip coding tool rounds and file rewind in that case.** `python -m pytest -m process` is a separate contract check; it is not a substitute for those Web entries.
-
-Add `--require-model` or `--require-sandbox` only when the feature you are about to drive cannot be skipped.
+Add `--require-model` only when the feature you are about to drive cannot be skipped. `python -m pytest -m process` is a separate contract check, not a substitute for Web entries.
 
 A non-zero exit means do not click. Wrong home, a dead pid, or a page that is not RED PANDA is a different instance.
 
@@ -116,7 +114,7 @@ The conversation timeline is a virtual list (react-virtuoso) and dialogs and men
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
 
-For session file review, read `features/session-file-changes.md`. Open the summary above the composer, then a file in `会话变更`; verify the retained net effect, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. The panel and `get_changes` use the current session scope, including inherited branch changes; the model tool expands to all workspace sessions only with explicit `scope=workspace`. Preparing changed files through a coding round requires both Doctor prerequisites; a unit test or direct POST does not prove the panel.
+For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. Only Agents and their delegated tasks have this panel; other sessions get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
 
 Wait until the sidebar text is `已连接`. `正在连接…` means the event stream is not up; run Doctor again instead of typing.
 
@@ -129,9 +127,9 @@ For each driven entry point save:
 - `snapshot.txt` — accessibility snapshot taken after the action, while the resulting state is on screen
 - `page.png` — screenshot of that same state, with the sidebar word `RED PANDA` visible
 - `state.json` — the read-only HTTP body named in the feature file
-- `note.txt` — feature id, entry point, and either `passed` or `skipped` plus the Doctor field that blocked it (`live_model_ready` or `sandbox.ready`)
+- `note.txt` — feature id, entry point, and either `passed` or `skipped` plus the Doctor field that blocked it (`live_model_ready`)
 
-A skipped live-model or sandbox step is not a pass and not a pass via pytest. Capture the action and the result. For a workspace, the result is the sidebar control and `GET /api/workspaces`. For a chat send, the result is the user text in the transcript and `GET /api/sessions/<id>`. For a file rewind, the result is the shortened transcript and the workspace file contents on disk.
+A skipped live-model step is not a pass and not a pass via pytest. Capture the action and the result. For a workspace, the result is the sidebar control and `GET /api/workspaces`. For a chat send, the result is the user text in the transcript and `GET /api/sessions/<id>`. For a coding round, the result is the transcript and the file contents in the Agent's worktree.
 
 ## Cleanup
 
@@ -163,7 +161,7 @@ After cleanup, the screenshot and `state.json` must still be in `$EVIDENCE_DIR`.
 
 ## Helpers
 
-`doctor.py` is the only helper. It is read-only: four GETs, plus the pid and the sandbox binary path. Invocation is in Doctor. `--require-model` and `--require-sandbox` turn the matching warning into a blocker.
+`doctor.py` is the only helper. It is read-only: four GETs plus the pid. Invocation is in Doctor. `--require-model` turns the model warning into a blocker.
 
 ## Maintenance
 

@@ -13,19 +13,19 @@
 
 ## 数据落点速查（判据里反复用到）
 
-来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/filesystem/children.py`：
+来源 `redpanda/paths.py`、`redpanda/model_settings.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/assistant/host/agent_worktrees.py`：
 
 | 内容 | 位置 |
 |---|---|
 | 默认模型与候选模型 | `$REDPANDA_HOME/config.json` |
 | 供应商连接（含密钥） | `$REDPANDA_HOME/connections.json` |
 | 工作区登记 | `$REDPANDA_HOME/workspaces.json` |
-| 会话运行数据（journal、附件、文件版本） | `$REDPANDA_HOME/runtime_sessions/` |
+| 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
 | 会话归档（不再列出，仍可读） | `$REDPANDA_HOME/runtime_sessions/archived.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
-| 子 Agent 工作副本 / 文件交换 | `$REDPANDA_HOME/state/subagent_worktrees/`、`state/file_exchanges/` |
+| 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<项目>/`（`integration`、`<Agent>`、`children/<子>`） |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 
 ## 判据写法约定
@@ -43,14 +43,13 @@
 
 - 证据（快照、截图、HTTP 响应体、`note.txt`）放在 `$EVIDENCE_DIR/<功能 id>/`，`note.txt` 里写功能 id 与入口。
 - `live_model_ready` 为 false 时，跳过所有需要模型回复的步骤，并在 note 里写明。
-- `sandbox.ready` 为 false 时，跳过文件工具、回滚、子 Agent 合并。macOS 没有文件视图，始终跳过。
 - 走不到的入口就记为走不到，换一条路走通不算验证了它。
 
 ## 功能条目约定
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（26 个）
+## 功能列表（22 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -61,24 +60,20 @@
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总命令授权与控制提案 | 未跑 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
-| session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
-| file-rewind | [file-rewind.md](./file-rewind.md) | 已删除：没有 `从这一步之后重开` | 已删除（2026-10-18，C1） |
-| edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | 已删除：没有 `编辑消息` / `从这一轮之后建立新会话` | 已删除（2026-10-18，C1） |
+| session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent 会话输入框上方 Git 差异摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
-| subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
+| subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent`（Agent 分支委派） | 通过（2026-10-12，main@1a4790a） |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
-| agent-workspace-restore | [agent-workspace-restore.md](./agent-workspace-restore.md) | 模型调用 `restore_workspace` 撤回文件变化 | 部分（2026-10-12，修复后；结果如实报告，UI 待复跑） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏会话列表 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
-| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
-| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
-| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | 用户时间旅行已删除；人机混合修改只剩模型 `restore_workspace` | 用户入口已删除（2026-10-18，C1） |
-| setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_agentfs.py`、`agentfs_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
+| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
+| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
+| setup-and-launch | [setup-and-launch.md](./setup-and-launch.md) | `setup.sh`/`setup.ps1` 四步准备、模型向导、`start.sh`/`dev.sh` | 未跑（2026-10-18 改为四步准备后未 live 复跑） |
 
 ## 入口 → 地图条目 覆盖表
 
@@ -103,7 +98,7 @@
 | `GET /api/agents`、`POST /api/agents` | session-sidebar |
 | `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | web-session-chat |
 | `GET /api/inbox` | inbox |
-| `GET /api/sessions/{id}/changes`（摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
+| `GET /api/sessions/{id}/changes`（仅 Agent 与其委派任务；摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions` | 名册不再调用 |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
 | `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | 名册不提供改名或归档 |
@@ -119,10 +114,9 @@
 
 | 工具 | 来源 | 条目 |
 |---|---|---|
-| `read_file` `glob` `grep` `write_file` `apply_patch` `replace_all` `execute_command` `get_changes` | `redpanda/tools/builtin/` | tool-coding-round |
-| `restore_workspace` | `redpanda/tools/builtin/workspace_restore.py` | agent-workspace-restore |
+| `read_file` `glob` `grep` `write_file` `apply_patch` `replace_all` `execute_command` | `redpanda/tools/builtin/` | tool-coding-round |
 | `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
-| `read_image` | `redpanda/assistant/attachments.py` | rewind-edge-cases、composer-attachments |
+| `read_image` | `redpanda/assistant/attachments.py` | composer-attachments |
 | `update_plan` | `redpanda/assistant/work_plan.py` | work-plan |
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
 | `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
@@ -136,14 +130,10 @@
 |---|---|
 | `web_chat.py [--dev] [--host] [--port] [--workspace]` | web-session-chat（`--workspace` 见 workspace-management Gotchas） |
 | `console_chat.py [--home] [--workspace]`，会内 `/new` `/mcp ...` `/skill ...` | console-chat、extensions |
-| `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-sandbox-install |
-| `python -m redpanda.initialize --configure / --if-needed` | setup-and-sandbox-install |
-| `scripts/build_agentfs.py [--check] [--debug] [--offline] ...` | setup-and-sandbox-install |
-| `scripts/agentfs_runtime.py install [--replace] [--with-runtime]` | setup-and-sandbox-install |
-| `scripts/agentfs_runtime.py package --platform ... --output ...` | **不覆盖**：发布打包，面向维护者，非用户入口 |
-| `scripts/install_winfsp.ps1` | setup-and-sandbox-install（仅 Windows，未 live） |
-| `scripts/start.sh`、`scripts/start.ps1`（→ `scripts/launch.py` → `web_chat.py`） | setup-and-sandbox-install |
-| `scripts/dev.sh`、`scripts/dev.ps1`（→ `scripts.launch --dev`） | setup-and-sandbox-install |
+| `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-launch |
+| `python -m redpanda.initialize --configure / --if-needed` | setup-and-launch |
+| `scripts/start.sh`、`scripts/start.ps1`（→ `scripts/launch.py` → `web_chat.py`） | setup-and-launch |
+| `scripts/dev.sh`、`scripts/dev.ps1`（→ `scripts.launch --dev`） | setup-and-launch |
 
 ### 非入口类场景（故障与边界）
 
@@ -153,24 +143,24 @@
 | 未完成命令 `CommandPhase.UNKNOWN` / `NO_RESULT_YET` | `runtime/state.py`、`assistant/context/projection.py`、`assistant/conversations.py` | crash-recovery |
 | 模型错误分类与重试 | `thinllm/chat_completions.py`、`assistant/failures.py` | crash-recovery |
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
-| 已落地文件效果、分支继承的操作范围、净变更来源与行数、差异版本变化 | `assistant/conversations.py`、`filesystem/review.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
-| 残留 FUSE 挂载清理 | `native/filesystem/src/main.rs` `clear_stale_mount` | crash-recovery |
+| Agent 与委派任务的 Git 差异、差异版本变化 | `assistant/conversations.py`、`assistant/agent_git.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
-| 人机混合修改回滚（preserve/original、`restore_summary`、carryover/rescue 事实） | `native/filesystem/src/restore.rs`、`restore/namespace.rs`、`filesystem/operations.py`、`assistant/workspace_versions.py` | rewind-edge-cases、agent-workspace-restore |
-| 回滚分叉、compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | rewind-edge-cases |
+| compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | work-plan-and-usage、composer-attachments |
 
 ### 有意不覆盖
 
 - `thinllm/`：底层 LLM 适配库，不是用户入口；经 model-settings 的 `测试` 间接覆盖。
-- `native/vfs`、`native/filesystem` 的 Rust 内部 API：由 `cargo test` 覆盖，用户只经文件工具与回滚感知，见 tool-coding-round、file-rewind。
 - `redpanda/runtime/journal` 的内部恢复逻辑：用户不可直接触发；判据里通过 `GET /api/sessions/{id}` 读 journal 投影。
-- macOS 文件视图：源码未实现，始终跳过。
 
+
+## 历史轮次
+
+以下轮次记录保留当时事实。2026-10-18 起文件回退整体移除：agent-workspace-restore、file-rewind、rewind-edge-cases、edit-and-branch 已删除，setup-and-sandbox-install 改为 setup-and-launch，Doctor 不再检查 `sandbox.ready`。
 
 ## 2026-10-12 live 实跑
 证据根目录：`/workspace/verify-run-20261012`（下文路径相对于它），完整报告见该目录 `REPORT.md`。
 
-该轮次对应源码基线 `main@1a4790a`。其后的 2026-10-12 修复轮次已把落地契约写入对应架构文档（如 `docs/架构/入口/Web.md`、`docs/架构/Agent文件系统/文件操作与回退.md`）：隔离 API 复跑记录在仓库 `.tools/verification/fixapi-20261012/`（16 项检查，覆盖附件入口边界、已知入口错误、模型失败可见与再试）；真实 UI 流程未在该环境复跑，本表中相关条目标注「UI 待复跑」。
+该轮次对应源码基线 `main@1a4790a`。其后的 2026-10-12 修复轮次已把落地契约写入对应架构文档（如 `docs/架构/入口/Web.md` 与当时的文件操作与回退文档）：隔离 API 复跑记录在仓库 `.tools/verification/fixapi-20261012/`（16 项检查，覆盖附件入口边界、已知入口错误、模型失败可见与再试）；真实 UI 流程未在该环境复跑，本表中相关条目标注「UI 待复跑」。
 
 ## 2026-10-16 维护轮次
 
@@ -207,11 +197,8 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。
-- 会话变更面板与模型工具 `get_changes` 默认使用当前会话范围（含分支继承的修改）；工具显式 `scope=workspace` 才覆盖工作区所有会话的助手操作。工具可以保留已触碰文件的 `external`、`unchanged` 等状态供核对，面板列表只显示当前仍保留的会话成果。混合来源、二进制或原文不完整的文件不提供精确面板行数；外部编辑暂需手动刷新。
-- 人手动（Web）回滚：固定用 `preserve`，只回滚 agent 的改动，不覆盖人的改动；字节混合可接受。成功条件要求提示说明「此文件 agent 改过、人也改过，只回滚了 agent 的部分」。当前界面文案「文件部分回退，部分后续值已保留」未写清这一点，记为剩余缺口。
-- 回滚失败：给用户看得见的失败提示就算成功；不保证文件一定恢复，201 加失败的文件结果是正常的。普通步骤回滚返回 201 也正常。
+- 会话变更面板只对 Agent 与其委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
 - 工作计划由模型制定和控制，没有完整状态机。
-- 回滚后同会话附件 API 仍可下载但 Web 不显示，不算用户问题；跨会话必须 404。
 - `select-directory` 是 human-in-the-loop，人不选就一直等。
 - 停止：只有一个 `停止`；一次性写入写完再停，长命令杀进程组，中断调用标 unknown 并给模型简短提示，`继续` 不自动重跑。
 

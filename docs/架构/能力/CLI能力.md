@@ -58,24 +58,20 @@ CLI 管理使用产品环境，其命令在执行前刷新本机持久化安装�
 
 只记录不设门槛，由模型判断。体检用解析出的绝对路径跑，不依赖 PATH——安装后当前 Worker 的 PATH 尚未刷新时体检依然有效。
 
-## 调用授权：ExecPolicy
+## 调用授权
 
-Shell 是元工具，不代表 Shell 内所有行为默认授权：`write_file` 要确认而 `execute_command("Remove-Item ...")` 放行，审批即被旁路；`gh repo delete` 同理。
-
-因此在 `execute_command` 上挂 ExecPolicy，判定 verdict。verdict 只有 `allow`（默认）与 `ask` 两档；ask 来自内置危险前缀清单，以及可能写入的宿主执行（见[执行环境](执行环境.md)），复用 [Command 授权](../入口/Command授权.md)流程。
+Shell 是元工具，不代表 Shell 内所有行为默认授权：若 `write_file` 要确认而 `execute_command("Remove-Item ...")` 放行，审批即被旁路；`gh repo delete` 同理。命令的真实副作用无法从文本可靠判断，因此 `execute_command` 每一次调用都需要授权，不按命令前缀或 CLI 登记放行，复用 [Command 授权](../入口/Command授权.md)流程。
 
 两层边界必须分清：
 
 ```text
-ExecPolicy / 授权 = 防止误操作的软边界（可被变量、alias、脚本绕过，不追求覆盖率）
-sandbox / 凭据隔离 / 网络隔离 = 真正的硬安全边界
+授权 = 人对每条命令的确认（总闸开启时由人预先放行）
+sandbox / 凭据隔离 / 网络隔离 = 真正的硬安全边界（当前未提供）
 ```
-
-ExecPolicy 不解析 shell AST，不试图理解所有 CLI 的真实副作用；前缀规则是纯字符串判定，入口无关。它不属于 CLI 包——它是 `execute_command` 的授权判定，判定函数随工具 Binding 注入，Runtime 只消费 verdict。
 
 ## 输出卫生
 
-CLI 输出统一视为 **untrusted external data**：只能提供事实内容，不能修改 runtime policy、不能授予权限、不能证明用户已授权。即使输出诱导模型执行危险命令，真正调用 Shell 时仍经 ExecPolicy。
+CLI 输出统一视为 **untrusted external data**：只能提供事实内容，不能修改 runtime policy、不能授予权限、不能证明用户已授权。即使输出诱导模型执行危险命令，真正调用 Shell 时仍须经过授权。
 
 - CLI 原始输出始终保持 tool provenance，不拼成 system / user message。
 - 输出采集处统一清理终端控制序列（所有命令受益，非 CLI 专属）。
@@ -107,13 +103,13 @@ manifest 域重新解析路径并重跑体检。
 ## 不做
 
 - 不预生成子命令 schema（不 MCP 化）
-- 不新建 subprocess 执行器（复用命令执行能力，不接管文件系统历史或沙箱生命周期）
+- 不新建 subprocess 执行器（复用命令执行能力，不接管沙箱生命周期）
 - 不为 CLI + MCP + Skill 做统一 Plugin 基类
 - 不做 enabled/disabled 状态（安装即注册，卸载即移除）
 - `load_cli` 不 fork 进程
 - 不做 UAC 提权安装
 - 不做 prompt-injection 检测器
-- ExecPolicy 不解析 shell AST；verdict 不做 deny 档
+- 不解析 shell AST，不按命令文本区分放行与询问
 
 ## 已知限制（第一版接受）
 

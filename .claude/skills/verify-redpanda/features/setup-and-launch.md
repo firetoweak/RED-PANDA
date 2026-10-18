@@ -1,0 +1,47 @@
+# 安装、初始化与启动
+
+从源码准备环境、初始化个人目录与模型、日常启动与开发模式启动。来源：`scripts/setup.sh`、`setup.ps1`、`setup.py`、`scripts/runtime_tools.py`、`runtime_tools.json`、`redpanda/initialize.py`、`scripts/dev.sh`、`dev.ps1`、`scripts/start.sh`、`start.ps1`、`scripts/launch.py`，文档 `docs/运行指南.md`、`docs/开发指南.md`。
+
+## Sub-features
+
+- `setup`：`sh scripts/setup.sh`（Windows 为 `scripts/setup.ps1`）先装固定版本 uv、下载 `.python-version` 指定的 Python、建 `redpanda-env`，再跑 `python -m scripts.setup` 四步：
+  - `[1/4] 准备应用命令行工具`：PATH 上缺失的工具（Node 还要求版本受支持且有 npm）装进 `.tools/runtime/`：Node `24.22.0`、rg `14.1.1`、fd `10.2.0`，Windows 另有 MinGit；Linux 缺 `git` 时经系统包管理器安装。不安装驱动或其他系统组件。
+  - `[2/4] 安装 Python 依赖`、`[3/4] 安装前端依赖并构建网页`（`npm ci` + build）、`[4/4] 初始化配置`（`python -m redpanda.initialize`，带 `--configure` 时进向导）。
+  - 成功末行 `运行环境准备完成。使用 scripts/start.ps1 或 scripts/start.sh 启动，在网页侧栏配置模型。`；任一子命令失败打印 `准备未完成（命令退出码 N）。请处理上方错误后重新执行。`。非 Linux 跑 `setup.sh` 打印 `RED PANDA supports Windows x64 and Linux x64. Use setup.ps1 on Windows.` 退出 1。
+- `setup-flags`：`setup.py` 只有 `--configure`（安装后在终端配模型；默认在网页配）与 `--check`。`--check` 先把 `.tools/runtime/` 下已有工具加到本进程 PATH 前面，再查 Git/rg/fd/Node/npm，Node 须 22.x（≥22.13）或 24.x；不通过时打印 `系统依赖未就绪：` 加各项（如 `Node.js 版本不支持；请使用 22.x（至少 22.13）或 24.x，或重新运行准备命令自动安装。`）退出 1，通过时打印 `系统依赖检查通过。`。
+- `start`：`sh scripts/start.sh` → `scripts.launch` → `web_chat.py`。
+- `initialize`：`python -m redpanda.initialize --configure`（交互添加/修改默认模型）、`--if-needed`（缺默认模型或连接时进入向导）；两者互斥。
+- `dev`：`sh scripts/dev.sh` → `scripts.launch --dev` → `web_chat.py --dev`。
+
+## How to get to it (user POV)
+
+- 新克隆仓库后按 `README.md` / `docs/运行指南.md` 依次执行。
+
+## Driving it with the shell
+
+在一次性目录（新 clone + 临时 `REDPANDA_HOME`）里做，避免破坏现有环境。
+
+- **setup**：
+  - (a) `redpanda-env/bin/python --version`（Windows `redpanda-env\Scripts\python.exe`）与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`、`workspaces.json`；PATH 缺工具时 `.tools/runtime/` 下出现对应版本。
+  - (b) 依次打印 `[1/4]`…`[4/4]` 与成功末行，退出码 0。
+  - (c) 已有的 `config.json`、`connections.json` 不被覆盖（先写入标记内容再跑一次，逐字节比较）。
+  - (d) 从 PATH 去掉 `rg` 再跑 **不会**报错：`[1/4]` 把 rg `14.1.1` 装进 `.tools/runtime/` 后继续。要看到失败路径，用下载失败（断网且 `.tools/runtime/` 缺工具）→ `[1/4]` 失败并以 `准备未完成…` 结束，不进入 `[2/4]`。
+- **setup.py --check**：
+  - (a) 直接用已有解释器跑 `python -m scripts.setup --check` 不装 Python 依赖、不跑 `npm`、不改 `.tools/runtime/`。
+  - (b) 依赖齐全时 `系统依赖检查通过。` 退出 0。
+  - (c) `.tools/runtime/` 里已有的工具算作可用（被加到 PATH 前面），不要求它们在系统 PATH 上。
+  - (d) 系统 PATH 只有 Node 20 且 `.tools/runtime/` 没有 Node → `系统依赖未就绪：` + `Node.js 版本不支持…` 退出 1。注意 `sh scripts/setup.sh --check` 会先装 uv/Python 并创建 `redpanda-env`，再执行检查。
+- **initialize**：
+  - (b) `--if-needed` 已配置时打印 `默认模型与连接设置已填写，保留现有配置。` 退出 0。
+  - (c) 已配置时 `--if-needed` 不进入向导、文件不变。
+  - (d) 非交互终端（stdin/stdout 不是 TTY）跑 `--configure` → argparse 错误 `请在交互终端运行项目 Python -m redpanda.initialize --configure，或编辑上面的配置文件。` 退出 2；`--if-needed` 未配置但非 TTY 时只打印同一句、退出 0。
+- **start / dev**：
+  - (d) 缺 `redpanda-env`：`start.sh` 打印 `Run sh scripts/setup.sh first to prepare RED PANDA.`，`dev.sh`（还检查 `web/node_modules/vite/bin/vite.js`）打印 `Run sh scripts/setup.sh first to prepare the project environment.`，都退出 1。Windows 的 `start.ps1` / `dev.ps1` 抛出 `Run scripts\setup.ps1 first to prepare RED PANDA.` / `Run scripts\setup.ps1 first to prepare the project environment.`。
+  - (d) 有 venv 但缺 `web/dist/index.html`（`--dev` 时缺 `web/node_modules/vite/bin/vite.js`）→ `scripts/launch.py` 退出并打印 `网页尚未准备好，请先运行 scripts/setup.ps1 或 scripts/setup.sh。`。
+
+## Gotchas
+
+- `setup.ps1` 需 Windows 机器。
+- Linux 自动安装 `git` 会调用 `apt-get`/`dnf`，可能要 sudo 密码；无人值守环境提前装好。
+- 2026-10-18 改写：准备流程从五步改为四步，不再下载原生运行包、不装驱动；旧的构建与运行包条目已删除。未 live 复跑。
+- 历史验证：2026-10-12（main@1a4790a）与 2026-10-16（main@e191eab）验证了当时的五步准备流程；`setup.py --check` 在 Node 20.19 上按预期报版本不支持。

@@ -1,6 +1,6 @@
 # 工具授权
 
-同一批待授权调用和控制请求也汇总在侧栏 `待处理` 打开的 `/inbox`（见 [inbox.md](./inbox.md)）；会话内的待处理条仍然保留。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `start_process`、`merge_subagent` 默认要用户批准；`execute_command` 只在 `command_requires_authorization`（`redpanda/tools/builtin/exec_policy.py`）判为需要时批准：命令文本命中危险前缀（`rm `、`del `、`git push -f `、`git reset --hard `、`git clean -f ` 等），或 `file_access=host` 且 `workspace_effect` 为 `may_write`（缺省即 `may_write`）；普通命令（如 `touch`）直接执行。子 Agent 隔离副本里三个写文件工具不需要授权（`redpanda/assistant/builtin_tools.py`）。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`、`exec_policy.py`。
+同一批待授权调用和控制请求也汇总在侧栏 `待处理` 打开的 `/inbox`（见 [inbox.md](./inbox.md)）；会话内的待处理条仍然保留。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command`、`start_process` 每次都要用户批准；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
 
 ## Sub-features
 
@@ -33,7 +33,7 @@
 - **自动放行**：先让模型写一个文件停在 `待授权`，再打开开关；然后让模型写 `auto`。
   - (a) 打开开关后原待授权调用立即被批准并执行，待处理条随服务端状态消失（2026-10-18 实测 0.5 s 内）；之后不再出现 `待授权`，文件直接变为 `auto`；`GET /api/sessions/<id>` 中 `session.auto_authorize` 为 true；`runtime_sessions/auto_authorize.json` 里该会话为 true；重启服务后刷新页面开关仍为开。
   - (b) `POST .../auto-authorize` 2xx。
-  - (c) 其他会话的自动放行状态不变；`exec_policy` 判为需要授权的 `execute_command` 同样被自动放行（它也是授权工具）。
+  - (c) 其他会话的自动放行状态不变；`execute_command` 同样被自动放行（它也是授权工具）。
   - (d) 关掉后同类请求重新出现 `待授权`。
 - **控制确认**：触发一个模型控制请求（如 extensions 中的 `propose_*` 安装类请求）。
   - (a) `GET /api/sessions/<id>` 中 `session.control_approval` 非空，含摘要与风险。
@@ -43,10 +43,11 @@
 
 ## Gotchas
 
-- `exec_policy` 是前缀清单软边界，不是只读判定：未命中清单的命令（含写文件的命令）不需授权。验证拒绝路径请用 `write_file` 或 `rm -f`。
+- 所有 `execute_command` 调用都需授权，包括只读命令；自动放行关闭时，验证中要跑的每条命令都会停在 `待授权`。
 - 没有单独的「文件管理」工具；`file_manage.py` 只注册 `write_file`。
 - 自动放行只覆盖「写文件等工具」这类工具授权；控制请求（如 MCP/Skill/CLI 的 `propose_*` 安装类）不受它影响，仍需在待处理条确认，见 extensions。
 - 待处理条与步骤卡片都有 `允许`/`拒绝`：待处理条按钮的无障碍名称带工具名（`允许 apply_patch`），按名称点击时用它避免歧义。
 - 授权入口的已知错误有明确状态码：失效连接 409、授权目标不存在 404、重复授权/拒绝 409；未知内部异常仍原样暴露，不做全局兜底。
 - 已知产品缺口（2026-10-18 源码核对）：`/control` 的冲突（`ControlDecisionConflict`，继承 `ValueError`，`redpanda/assistant/control.py`）以及「当前没有待确认的控制操作」（`NoPendingControlApproval`）在 `app.py` 都没有异常处理器，预计返回 500 而不是 409。判据保持 409 的预期。
+- 2026-10-18 改写：命令放行名单删除，命令一律授权，`merge_subagent` 不再需要授权。未 live 复跑。
 - 历史 live 记录：2026-10-16（main@e191eab，仅 API，界面未验证）：`write_file` 待授权 → 拒绝 200、文件未建、重复拒绝 409、无目标 404；批准后落盘；`rm -f` 进入待授权；`touch` 不需授权。部分（2026-10-12，修复后）：重复授权/无目标返回 500 已修（目标不存在 404、重复授权/拒绝 409；自动化 + 隔离 API 通过）。2026-10-18 Windows live（弹窗版本）发现：待授权时打开自动放行后 `等待授权` 弹窗残留——随弹窗改为待处理条已消除。同日 Windows live（deepseek-flash，待处理条版本）：待授权 → 拒绝 / 允许、待授权时打开自动放行、控制确认取消与确认均通过；页面无弹窗。
