@@ -229,6 +229,10 @@ export const scheduleChangedEventSchema = z
   .object({ session_id: z.string().min(1) })
   .strict();
 
+export const groupChangedEventSchema = z
+  .object({ group_id: z.string().min(1) })
+  .strict();
+
 export const sessionFailedEventSchema = z
   .object({
     session_id: z.string().min(1),

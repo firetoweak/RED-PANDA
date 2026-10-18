@@ -9,7 +9,7 @@
 - `post`：`群消息` 输入框 + `发送到群`（Ctrl+Enter 也可）；`点名` 为空时叫全体成员。
 - `calling`：Host 正在等某个成员时显示 `正在等 <名字> 回应…`。
 - `stop`：`停止本轮` 只在一串调度进行中可用。
-- `refresh`：群列表与群记录随成员活动和 `send_group_message` 工具完成自动刷新，不需要手动重载。
+- `refresh`：SSE `group_changed`（只带 `group_id`）在发言写入、换人、调度结束和停止时到达，页面重读群数据，不需要手动重载。
 
 ## How to get to it (user POV)
 
@@ -39,7 +39,7 @@
   - (a) `GET /api/groups/<id>` 的 `active` 为 false、`calling` 为 `[]`。
   - (b) `POST /api/groups/<id>/stop` 200；被叫成员像人打断一样停下（暂停）。
   - (c) 已经写入的群发言保留；之后不会再叫其他成员。
-  - (d) 没有进行中的调度时按钮不可用。
+  - (d) 没有进行中的调度时按钮不可用；一串调度自然结束后（`active` 变为 false），页面不再显示 `正在等 …`，`停止本轮` 随即不可用，不需要刷新。
 
 ## Gotchas
 

@@ -116,9 +116,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         group = await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name="开发组",
                                                     members=["Ada", "Lin"])
         await self.host.agent_groups.post(group.group_id, "大家同步一下进度", [])
-        drive = self.host.agent_groups._drives[group.group_id]
-        while drive.task is not None and not drive.task.done():
-            await asyncio.wait_for(drive.task, 60)
+        await asyncio.wait_for(until(lambda: not self.host.agent_groups._drives[group.group_id].running), 60)
         for agent in (self.ada, self.lin):
             await self.settled(agent)
         speakers = [message.sender.name for message in await self.host.agent_groups.messages(group.group_id)]

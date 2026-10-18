@@ -7,6 +7,7 @@ import {
   previewAbortedEventSchema,
   previewDeltaEventSchema,
   previewStartedEventSchema,
+  groupChangedEventSchema,
   scheduleChangedEventSchema,
   sessionActivityEventSchema,
   sessionFailedEventSchema,
@@ -71,8 +72,6 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Agents",
-        // Calling the next group member starts its activity.
-        "Groups",
         "Inbox",
       ]),
     );
@@ -84,6 +83,10 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         { type: "Conversation", id: payload.session_id },
       ]),
     );
+  });
+  source.addEventListener("group_changed", (event) => {
+    groupChangedEventSchema.parse(JSON.parse(event.data));
+    dispatch(redpandaApi.util.invalidateTags(["Groups"]));
   });
   source.addEventListener("session_failed", (event) => {
     const payload = sessionFailedEventSchema.parse(JSON.parse(event.data));
@@ -222,8 +225,6 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     dispatch(
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
-        // A group speech is a member's tool call; show it as soon as it settles.
-        ...(payload.status === "settled" && payload.name === "send_group_message" ? ["Groups" as const] : []),
       ]),
     );
   });

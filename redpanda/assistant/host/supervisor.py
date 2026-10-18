@@ -126,6 +126,7 @@ class HostSupervisor:
         session_activity_sink=None,
         session_failed_sink=None,
         schedule_changed_sink=None,
+        group_changed_sink=None,
         workspaces=None,
     ):
         self.store = store
@@ -149,6 +150,7 @@ class HostSupervisor:
         self.session_activity_sink = session_activity_sink
         self.session_failed_sink = session_failed_sink
         self.schedule_changed_sink = schedule_changed_sink
+        self.group_changed_sink = group_changed_sink
         self.workers: dict[str, Worker] = {}
         self.watchers: set[asyncio.Task] = set()
         self.locks: dict[str, asyncio.Lock] = {}
