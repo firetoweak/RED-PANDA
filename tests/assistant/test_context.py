@@ -12,6 +12,7 @@ from redpanda.assistant.artifacts import (
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.compact.core import CompactContext
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.agents import PrivateMessage, Speaker, fact_arguments
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
@@ -449,6 +450,38 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         tool = self._tool_messages(prepared.messages)[0]
         self.assertIn("fresh-result", tool["content"])
         self.assertEqual(prepared.age_dehydrated_command_ids, ())
+
+    async def test_a_colleague_message_opens_a_new_protection_window(self):
+        async def ping(_context, _arguments):
+            return _result("old-result")
+
+        runtime = AgentRuntime(
+            MemoryJournal(),
+            ScriptedDecisionMaker((
+                lambda _frame: ModelDecision(content="checking", command_requests=(InvokeTool("ping"),)),
+                lambda _frame: _deliver("done"),
+                lambda _frame: _deliver("seen"),
+            )),
+            {"ping": ToolBinding(ping), **deliver_binding(lambda *_values: None)},
+            SequentialIds(),
+        )
+        await runtime.receive_user_message(self.SESSION, "go", delivery_id="ask-1")
+        await settle_session(runtime, self.SESSION)
+        message = PrivateMessage(
+            message_id="private-1", sender=Speaker(kind="agent", name="Ada"), recipient="Lin",
+            thread_id="thread-1", hop=0, reply_to=None, text="看一下", origin="origin-1",
+        )
+        await runtime.receive_domain_fact(self.SESSION, **fact_arguments(message, delivery_id="private-1"))
+        await settle_session(runtime, self.SESSION)
+        events = await runtime._journal.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events,
+            StateProjector().project_visible(self.SESSION, events),
+            self.SESSION,
+            "sys",
+        )
+        self.assertNotIn("old-result", self._tool_messages(prepared.messages)[0]["content"])
+        self.assertEqual(len(prepared.age_dehydrated_command_ids), 1)
 
     async def test_failed_result_before_latest_user_stays(self):
         async def boom(_context, _arguments):
