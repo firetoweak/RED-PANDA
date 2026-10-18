@@ -21,6 +21,7 @@ LOAD_SKILL = "load_skill"
 READ_SKILL_RESOURCE = "read_skill_resource"
 PROJECT_SKILL_PREFIX = "project:"
 PROJECT_SKILLS_DIRECTORY = (".claude", "skills")
+PROJECT_SKILL_OVER_BUDGET = "项目 Skill 无法使用：技能目录超出长度上限，精简项目 Skill 的描述或数量后可用。"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,14 +88,41 @@ class SkillToolCatalog:
     def project_skills(self) -> tuple[ProjectSkill, ...]:
         """Packages under the task root's .claude/skills, read as they are on disk now.
 
-        A package that cannot be read stays listed with the reason, so a broken
-        project Skill is visible instead of silently missing.
+        Repository content must never stop the Agent: a package that cannot be
+        read, a skills directory that leads outside the task root, or packages
+        beyond the catalog budget stay listed with the reason instead.
         """
         if self.project_root is None:
             return ()
         directory = self.project_root.joinpath(*PROJECT_SKILLS_DIRECTORY)
         if not directory.is_dir():
             return ()
+        if not directory.resolve().is_relative_to(self.project_root.resolve()):
+            return (ProjectSkill(
+                PROJECT_SKILL_PREFIX + "/".join(PROJECT_SKILLS_DIRECTORY),
+                "项目 Skill 无法使用：这个目录指向任务根以外，不读取其中的 Skill。",
+                1, directory.absolute(), None,
+            ),)
+        return self._within_budget(self._read_project_packages(directory))
+
+    def _within_budget(self, skills: list[ProjectSkill]) -> tuple[ProjectSkill, ...]:
+        installed = "\n".join(
+            f"- {record.name}: {record.description}"
+            for record in self.registry.snapshot()
+            if record.enabled
+        )
+        used = len(installed)
+        fitted = []
+        for skill in skills:
+            for candidate in (skill, ProjectSkill(skill.id, PROJECT_SKILL_OVER_BUDGET, 1, skill.directory, None)):
+                cost = len(f"- {candidate.id}: {candidate.description}") + (1 if used else 0)
+                if used + cost <= self.max_catalog_chars:
+                    fitted.append(candidate)
+                    used += cost
+                    break
+        return tuple(fitted)
+
+    def _read_project_packages(self, directory: Path) -> list[ProjectSkill]:
         skills = []
         for package in sorted(item for item in directory.iterdir() if item.is_dir()):
             skill_id = PROJECT_SKILL_PREFIX + package.name
@@ -110,7 +138,7 @@ class SkillToolCatalog:
             skills.append(ProjectSkill(
                 skill_id, bundle.description, _content_revision(bundle.content_hash), package.resolve(), bundle,
             ))
-        return tuple(skills)
+        return skills
 
     def tool_specs(
         self,

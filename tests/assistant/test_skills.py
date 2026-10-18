@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from collections.abc import Awaitable, Callable
@@ -153,6 +154,42 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         write_skill(skills_root / "verify", name="verify", description="Verify the app",
                     body="\nRun the new checks.\n")
         self.assertEqual((await load(context, {"skill_id": "project:verify"}))["code"], "SKILL_CATALOG_STALE")
+
+    async def test_project_skills_beyond_the_catalog_budget_are_listed_unavailable(self):
+        project = Path(self.temporary.name) / "crowded"
+        for index in range(3):
+            write_skill(project / ".claude" / "skills" / f"big-{index}", name=f"big-{index}",
+                        description="x" * 120)
+        constrained = SkillApplicationService(self.workspace, max_catalog_chars=400)
+        adapter = SkillToolAdapter(
+            type("Skills", (), {"tool_catalog": constrained.tool_catalog})(),
+            MemoryArtifactGateway(), ModelContextSettings(), project_root=project,
+        )
+        catalog = adapter.registry_catalog()
+        by_id = {item["id"]: item["description"] for item in catalog}
+        self.assertEqual(by_id["project:big-0"], "x" * 120)
+        self.assertIn("长度上限", by_id["project:big-2"])
+        adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "project:big-2"})
+        self.assertEqual(result["code"], "SKILL_PACKAGE_INVALID")
+
+    async def test_project_skills_directory_leading_outside_the_task_root_is_not_read(self):
+        outside = Path(self.temporary.name) / "outside-skills"
+        write_skill(outside / "elsewhere", name="elsewhere")
+        linked = Path(self.temporary.name) / "linked"
+        (linked / ".claude").mkdir(parents=True)
+        try:
+            os.symlink(outside, linked / ".claude" / "skills", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("current platform cannot create symlinks")
+        linked_adapter = SkillToolAdapter(
+            type("Skills", (), {"tool_catalog": self.service.tool_catalog})(),
+            MemoryArtifactGateway(), ModelContextSettings(), project_root=linked,
+        )
+        ids = {item["id"] for item in linked_adapter.registry_catalog()}
+        self.assertNotIn("project:elsewhere", ids)
+        self.assertIn("project:.claude/skills", ids)
 
     async def test_disable_keeps_skill_tool_definitions_stable(self):
         before = self.adapter.schemas()
