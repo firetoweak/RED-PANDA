@@ -4,12 +4,12 @@
 
 <h1 align="center">RED PANDA</h1>
 
-<p align="center">面向开发者的 coding agent。</p>
+<p align="center">面向开发者的 coding bot：几个长期在线的 Agent 在同一项目上协作。</p>
 
 > [!WARNING]
 > 项目正在从单会话 coding agent 转向多个长期在线 Agent 协作的 coding bot，**近期会频繁更新**。功能、界面和本地数据格式都可能发生不兼容的变化，不保留旧版兼容。方向见 [Coding Bot](docs/架构/CodingBot/方向.md)。
 
-RED PANDA 连接你选择的模型，在代码工作区里理解项目、修改文件、执行命令并验证结果。行动过程可以查看，修改文件与执行命令需要授权；Agent 在自己的 Git 分支上工作，改动可以按差异审阅。
+RED PANDA 连接你选择的模型，让几个长期在线的 Agent 在同一个项目里理解代码、修改文件、执行命令并验证结果，彼此私信和群聊协作。行动过程可以查看，执行命令需要授权；每个 Agent 在自己的 Git 分支上工作，改动可以按差异审阅，合入由你决定。
 
 ## 快速开始
 
@@ -27,7 +27,7 @@ cd RED-PANDA
 | 准备 | `.\scripts\setup.ps1` | `sh scripts/setup.sh` |
 | 启动 | `.\scripts\start.ps1` | `sh scripts/start.sh` |
 
-准备脚本会补齐运行所需的 Python、Node.js 等工具，不修改系统 PATH，也不需要预装 Python、Rust 或 Docker。启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，再新建工作区开始使用。
+准备脚本会补齐运行所需的 Python、Node.js 等工具，不修改系统 PATH，也不需要预装 Python、Rust 或 Docker。启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，新建工作区（须是已有首个提交的 Git 仓库），再在名册里新建 Agent 开始使用。
 
 安装参数、平台要求、终端入口与数据位置见[运行指南](docs/运行指南.md)。
 
