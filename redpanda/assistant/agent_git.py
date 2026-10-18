@@ -26,7 +26,7 @@ class GitWorkspace:
 
 @dataclass(frozen=True, slots=True)
 class MergeResult:
-    status: Literal["merged", "unchanged", "conflict", "blocked", "in_progress"]
+    status: Literal["merged", "unchanged", "conflict", "blocked", "failed", "in_progress"]
     head: str
     fast_forward: bool = False
     files: tuple[str, ...] = ()
@@ -66,14 +66,21 @@ class Git:
         if self._is_ancestor(root, source, head):
             return MergeResult("unchanged", head)
         fast_forward = self._is_ancestor(root, head, source)
+        # 128 is Git's own fatal error, such as a leftover index.lock.
         result = self.run(root, "merge", "--no-edit", "-m", message, source,
-                          accepted=(0, 1, 2), environment=identity(author))
+                          accepted=(0, 1, 2, 128), environment=identity(author))
         if result.returncode == 0:
             return MergeResult("merged", self.oid(root, "HEAD"), fast_forward)
         if not self.merging(root):
-            # Git refused before merging, e.g. local files would be overwritten;
-            # its exit code differs between fast-forward and real merges.
-            return MergeResult("blocked", head, detail=result.stderr.decode("utf-8", "replace").strip())
+            detail = git_error(result)
+            # Only files the merge would overwrite are a refusal we name; any other
+            # failure goes back with Git's own words. The exit code of a refusal
+            # differs between fast-forward and real merges, and Git indents the
+            # listed files with a tab or spaces depending on the merge.
+            if "would be overwritten by merge" not in detail:
+                return MergeResult("failed", head, detail=detail)
+            files = tuple(line.strip() for line in detail.splitlines() if line[:1].isspace())
+            return MergeResult("blocked", head, files=files, detail=detail)
         files = tuple(path.decode("utf-8") for path in self.run(
             root, "diff", "--name-only", "--diff-filter=U", "-z").stdout.split(b"\0") if path)
         if not files:
@@ -138,6 +145,10 @@ class Git:
 def identity(author: str) -> dict[str, str]:
     return {"GIT_AUTHOR_NAME": author, "GIT_AUTHOR_EMAIL": AUTHOR_EMAIL,
             "GIT_COMMITTER_NAME": author, "GIT_COMMITTER_EMAIL": AUTHOR_EMAIL}
+
+
+def git_error(result: subprocess.CompletedProcess[bytes]) -> str:
+    return result.stderr.decode("utf-8", "replace").strip()
 
 
 def raise_git(result: subprocess.CompletedProcess[bytes]) -> NoReturn:

@@ -124,6 +124,38 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((second.worktree / "shared.txt").read_text(encoding="utf-8"), "local\n")
         self.assertEqual(git(second.worktree, "rev-parse", "HEAD"), head)
 
+    async def test_landing_does_not_overwrite_files_left_in_integration(self):
+        agent = await self.agent("甲")
+        self.change(agent, "part.txt", "landed\n")
+        (self.integration / "part.txt").write_text("left\n", encoding="utf-8")
+        head = git(self.integration, "rev-parse", "HEAD")
+        result = await self.call(LAND, agent)
+        self.assertEqual((result["code"], result["data"]), ("LAND_BLOCKED", {"files": ["part.txt"]}))
+        self.assertEqual((self.integration / "part.txt").read_text(encoding="utf-8"), "left\n")
+        self.assertEqual(git(self.integration, "rev-parse", "HEAD"), head)
+
+    async def test_staged_changes_in_integration_block_a_real_merge_and_are_listed(self):
+        first, second = await self.agent("甲"), await self.agent("乙")
+        self.change(first, "first.txt", "first\n")
+        await self.call(LAND, first)
+        self.change(second, "second.txt", "second\n")
+        (self.integration / "note.txt").write_text("staged\n", encoding="utf-8")
+        git(self.integration, "add", "note.txt")
+        result = await self.call(LAND, second)
+        self.assertEqual((result["code"], result["data"]), ("LAND_BLOCKED", {"files": ["note.txt"]}))
+
+    async def test_git_failure_comes_back_with_git_own_words(self):
+        agent = await self.agent("甲")
+        self.change(agent, "part.txt", "landed\n")
+        head = git(self.integration, "rev-parse", "HEAD")
+        lock = Path(git(self.integration, "rev-parse", "--absolute-git-dir")) / "index.lock"
+        lock.touch()
+        self.addCleanup(lock.unlink)
+        result = await self.call(LAND, agent)
+        self.assertEqual(result["code"], "LAND_FAILED")
+        self.assertIn("index.lock", result["data"]["git"])
+        self.assertEqual(git(self.integration, "rev-parse", "HEAD"), head)
+
     async def test_change_review_shows_unlanded_work_without_touching_the_index(self):
         agent = await self.agent("甲")
         queries = AssistantQueries(self.host.store, self.host)

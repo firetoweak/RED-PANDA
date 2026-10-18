@@ -391,7 +391,11 @@ class HostSupervisor:
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
             parent_agent = await self.agents.by_session(task.parent_session_id)
             if parent_agent is not None:
-                await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent, session_id))
+                failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent, session_id))
+                if failure is not None:
+                    return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
+                            "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
+                            "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再试。"}
                 return {"ok": True}
             workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
             await ChildFiles(self.home, workspace).finish(task.parent_session_id, session_id)
@@ -797,7 +801,7 @@ class HostSupervisor:
         if operation == "fact" and arguments["fact_type"] == REPORT_FACT:
             prepared = await self._route("prepare_child_files", arguments["data"]["child_session_id"],
                                          {"parent_session_id": session_id})
-            if not prepared["ok"]:
+            if not prepared["ok"] and prepared["code"] == "CHILD_STILL_WORKING":
                 raise ValueError("child report precedes its durable return")
         lock = self.locks.setdefault(session_id, asyncio.Lock())
         just_started = False
