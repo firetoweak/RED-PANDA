@@ -296,17 +296,11 @@ class CompactContext:
             self.projector.attachments_for(self.session_id),
         )[1:]
         messages = deepcopy(self.request["messages"])
-        for item in own:
-            if item.sequence == 1:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": PURPOSE
-                        + f"\n当前可检索的历史截至消息序号 {self.seed[1]['upto']}。",
-                    }
-                )
-            else:
-                messages.append(item.message)
+        messages.append({
+            "role": "user",
+            "content": PURPOSE + f"\n当前可检索的历史截至消息序号 {self.seed[1]['upto']}。",
+        })
+        messages.extend(item.message for item in own)
         return PreparedModelContext(
             messages=messages,
             protection_start_index=0,

@@ -47,6 +47,7 @@ PROSE_VOCABULARY = frozenset(
         "coding",
         "agent",
         "diff",
+        "git",
         "env",
         "false",
         "null",

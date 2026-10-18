@@ -79,6 +79,17 @@ def config_for(workspace: Path):
     )
 
 
+def direct_workspace_config(workspace: Path):
+    """Fail if a real Agent Worker or its compactor reconnects AgentFS."""
+    from redpanda.assistant import assembly
+
+    def unexpected_file_service(*args, **kwargs):
+        raise AssertionError("direct workspace instantiated AgentFS")
+
+    assembly.workspace_files = unexpected_file_service
+    return config_for(workspace)
+
+
 class CancellableProcessLlm(ProcessLlm):
     async def chat(self, messages, model, *, tools=None, on_content_delta=None, on_reasoning_delta=None):
         if "CANCEL_PROCESS" not in json.dumps(messages):

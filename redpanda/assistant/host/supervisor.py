@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from redpanda.automation.once import (
     SOURCE as AUTOMATION_SOURCE,
@@ -33,6 +34,8 @@ from redpanda.assistant.delivery import emit_delivery
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments, project_agent
+from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -155,6 +158,8 @@ class HostSupervisor:
             if workspaces is not None
             else WorkspaceRegistry.load(home.workspaces_path)
         )
+        self.agents = AgentRoster(store)
+        self._agent_creation_lock = asyncio.Lock()
 
     async def pause_unfinished_sessions(self) -> None:
         """进程刚起来时，还会自己往下走的顶层会话先停住。
@@ -371,7 +376,12 @@ class HostSupervisor:
 
     async def _start(self, session_id):
         path = self.store.require(session_id)
-        is_subagent = project_parent(await SqliteJournal(path).snapshot(session_id)) is not None
+        events = await SqliteJournal(path).snapshot(session_id)
+        is_subagent = project_parent(events) is not None
+        agent = project_agent(events)
+        reader_job = self.compact.store.reader_job(session_id)
+        if reader_job is not None:
+            agent = await self.agents.by_session(reader_job["source"])
         # close() may have taken its Worker snapshot while the Journal read waited.
         if self.closed:
             raise RuntimeError("Host closed")
@@ -503,6 +513,7 @@ class HostSupervisor:
                 self.home.root,
                 admit_recv,
                 self.command_environment,
+                agent,
             ),
             name=f"session:{session_id}",
         )
@@ -852,6 +863,27 @@ class HostSupervisor:
             await self.store.create(session_id, workspace_id=workspace_id)
             if self.models is not None:
                 self.models.initialize_session(session_id)
+
+    async def create_agent(
+        self, *, name: str, workspace_id: str, worktree: Path, branch: str,
+    ) -> AgentRecord:
+        """Register an already prepared worktree; Git creation belongs to the next slice."""
+        self.workspaces.get(workspace_id)
+        identity = AgentCreated(name=name, workspace_id=workspace_id,
+                                worktree=str(worktree.resolve()), branch=branch)
+        if not worktree.is_dir():
+            raise FileNotFoundError(worktree)
+        async with self._agent_creation_lock:
+            if any(entry.agent.name == name for entry in await self.agents.list(workspace_id)):
+                raise AgentNameTaken(f"项目内已有 Agent：{name}")
+            session_id = f"agent-{uuid4().hex}"
+            await self.store.create(
+                session_id, workspace_id=workspace_id,
+                initial_fact=fact_arguments(identity, delivery_id="created"),
+            )
+            if self.models is not None:
+                self.models.initialize_session(session_id)
+            return AgentRecord(session_id, identity)
 
     async def fork_and_accept_input(
         self,
