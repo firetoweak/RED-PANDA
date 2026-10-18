@@ -68,9 +68,6 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             git("init")
             git("add", "note.txt")
             git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
-            roots = [root / "agent-a", root / "agent-b"]
-            for index, worktree in enumerate(roots):
-                git("worktree", "add", "-b", f"agent-{index}", str(worktree))
             (project / "note.txt").write_text("human-uncommitted")
             original_status = git("status", "--porcelain").stdout
             home = RedPandaHome(root / "home")
@@ -85,11 +82,11 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             with patch.dict(os.environ, {"REDPANDA_FILESYSTEM_EXECUTABLE": str(root / "missing-agentfs")}):
                 try:
                     agents = []
-                    for index, worktree in enumerate(roots):
+                    for index in range(2):
                         agent = await current.create_agent(
                             name=f"同事{index}", workspace_id=workspace.workspace_id,
-                            worktree=worktree, branch=f"agent-{index}",
                         )
+                        worktree = agent.worktree
                         agents.append(agent)
                         await current.select(f"page-{index}", agent.session_id)
                         await current.set_auto_authorize(agent.session_id, True)

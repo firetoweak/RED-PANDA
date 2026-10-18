@@ -36,6 +36,7 @@ from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments, project_agent
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
+from redpanda.assistant.host.agent_worktrees import AgentWorktrees
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -159,6 +160,7 @@ class HostSupervisor:
             else WorkspaceRegistry.load(home.workspaces_path)
         )
         self.agents = AgentRoster(store)
+        self.agent_worktrees = AgentWorktrees(home, self.command_environment)
         self._agent_creation_lock = asyncio.Lock()
 
     async def pause_unfinished_sessions(self) -> None:
@@ -865,25 +867,50 @@ class HostSupervisor:
                 self.models.initialize_session(session_id)
 
     async def create_agent(
-        self, *, name: str, workspace_id: str, worktree: Path, branch: str,
+        self, *, name: str, workspace_id: str,
     ) -> AgentRecord:
-        """Register an already prepared worktree; Git creation belongs to the next slice."""
-        self.workspaces.get(workspace_id)
+        """Create a project-owned Git worktree before publishing the Agent fact."""
+        project = self.workspaces.get(workspace_id)
+        session_id = f"agent-{uuid4().hex}"
+        worktree = self.agent_worktrees.agent(workspace_id, session_id)
         identity = AgentCreated(name=name, workspace_id=workspace_id,
-                                worktree=str(worktree.resolve()), branch=branch)
-        if not worktree.is_dir():
-            raise FileNotFoundError(worktree)
+                                worktree=str(worktree.path), branch=worktree.branch)
         async with self._agent_creation_lock:
             if any(entry.agent.name == name for entry in await self.agents.list(workspace_id)):
                 raise AgentNameTaken(f"项目内已有 Agent：{name}")
-            session_id = f"agent-{uuid4().hex}"
+            # A cancelled request must not release creation ownership while Git
+            # is still running or leave a worktree without its identity fact.
+            creation = asyncio.create_task(self._create_agent(project, session_id, identity))
+            try:
+                return await asyncio.shield(creation)
+            except asyncio.CancelledError as cancelled:
+                try:
+                    while not creation.done():
+                        try:
+                            await asyncio.shield(creation)
+                        except asyncio.CancelledError:
+                            continue
+                    creation.result()
+                except BaseException as error:
+                    raise BaseExceptionGroup("Agent creation failed during cancellation", [cancelled, error]) from None
+                raise
+
+    async def _create_agent(self, project, session_id, identity) -> AgentRecord:
+        worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)
+        try:
             await self.store.create(
-                session_id, workspace_id=workspace_id,
+                session_id, workspace_id=project.workspace_id,
                 initial_fact=fact_arguments(identity, delivery_id="created"),
             )
-            if self.models is not None:
-                self.models.initialize_session(session_id)
-            return AgentRecord(session_id, identity)
+        except BaseException as error:
+            try:
+                await asyncio.to_thread(self.agent_worktrees.remove, project, worktree)
+            except BaseException as cleanup_error:
+                raise BaseExceptionGroup("Agent registration and worktree cleanup failed", [error, cleanup_error]) from None
+            raise
+        if self.models is not None:
+            self.models.initialize_session(session_id)
+        return AgentRecord(session_id, identity)
 
     async def fork_and_accept_input(
         self,

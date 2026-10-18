@@ -59,7 +59,7 @@
 
 ## Gotchas
 
-- 本条驱动的是现有 Web 受管会话。Coding Bot 的身份与直接目录装配骨架已接入，但尚无 Web 名册入口；直接目录模式的进程验证不能当成本页面的 Agent 模式验证，待名册入口落地后补充对应驱动路径。
+- 本条驱动的是现有 Web 受管会话。Coding Bot 的身份、Host 自动创建 Git worktree 与直接目录装配已接入，但尚无 Web 名册入口；真实 Git、Worker 与重启的进程验证不能当成本页面的 Agent 模式验证，待名册入口落地后补充对应驱动路径。
 
 - 非零退出不是工具失败：`ok` 仍为 true，`code` 为 `COMMAND_EXIT_NONZERO`（不是 `COMMAND_COMPLETED`）；模型应读 hint/stderr，不要把非零当作成功。
 - `ok:null` 的结果（`COMMAND_INTERRUPTED`、`COMMAND_CONSTRAINT_FAILED`）在时间线是「中断」，不是「失败」；不要按失败判。
