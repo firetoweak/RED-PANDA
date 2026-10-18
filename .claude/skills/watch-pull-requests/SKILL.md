@@ -5,7 +5,7 @@ description: "For the Agent that coordinates PR testing on this repository: chec
 
 # Watch pull requests
 
-You coordinate testing of pull requests into `main`. Code is written by the person and their coding agents; you never change code, comment on GitHub, merge, or edit the verification map. Testers verify in the running app with `verify-redpanda`; you decide what needs testing, who tests it, and what the person hears.
+You coordinate testing of pull requests into `main`. Code is written by the person and their coding agents; you never change code, merge, or edit the verification map. Verification findings reach the PR as comments from the testers, so whoever changes the PR sees them right away. Testers verify in the running app with `verify-redpanda`; you decide what needs testing, who tests it, and what the person hears.
 
 ## Each run
 
@@ -20,6 +20,7 @@ It prints JSON:
 - `first_run`: true the first time in this worktree. Nothing counts as a change yet; read `open` to learn the current state and stop there.
 - `changes`: only what changed since the previous run. Each has `pr`, `title`, `head`, and one `change`:
   - `opened`, `pushed` (new head; `previous_head` is the old one), `ready_for_review`
+  - `wrong_base`: the PR now targets `base` instead of `main`
   - `checks_finished`: all checks on this head are done; `checks.result` is `success` or `failure`, `checks.failing` names the failed ones
   - `conflicting`: the PR no longer merges cleanly into `main`
   - `merged`: with `merge_commit`
@@ -32,13 +33,13 @@ If `changes` is empty, end with one short line. Do not message the person or the
 
 ## What to do with a change
 
-Wait for `checks_finished` before acting on a new head; `opened` or `pushed` alone only tells you a run has started.
+Wait for `checks_finished` before acting on a new head; `opened` or `pushed` alone only tells you a run has started. A head whose checks are already done when first seen gets both in the same run.
 
 **Return to the person, not the group,** with `message_user`, one line each:
 
 - checks failed (name the failing checks; see Known flaky checks below);
 - the PR conflicts with `main`;
-- the PR does not target `main`.
+- the PR does not target `main` (`wrong_base`).
 
 If a tester is already verifying an older head of that PR, tell that tester directly with `send_message` to stop.
 
@@ -47,7 +48,7 @@ If a tester is already verifying an older head of that PR, tell that tester dire
 **Needs real verification** — checks passed on a new head:
 
 1. Use `list_colleagues` to find a tester who is idle. A PR goes to the tester who had it before; that tester knows it and has earlier evidence to compare.
-2. In the testing group, call that tester by name with `send_group_message`: `开工 #N`, the title, the head commit, and the instruction to merge the head onto the latest `main` and verify with `verify-redpanda` (smoke run plus the PR's new behavior), then post the report in the group.
+2. In the testing group, call that tester by name with `send_group_message`: `开工 #N`, the title, the head commit, and the instruction to merge the head onto the latest `main` and verify with `verify-redpanda` (smoke run plus the PR's new behavior), then post the report in the group and as a comment on the PR (`gh pr comment`).
 3. Tell the person in one line which tester has it.
 4. Remember the dispatch (PR, head, tester, time) in your own words in that message; you will look for it later. Do not dispatch the same head twice.
 
@@ -66,7 +67,7 @@ Only real dispatches, the coordination they need (such as "stop testing the old 
 
 ## Testers (for the dispatch message)
 
-Each tester verifies in its own worktree with its own `REDPANDA_HOME`, port range and evidence directory, agreed in the group when the team was set up; `verify-redpanda` describes isolated launch. Automatic authorization is allowed inside the isolated verification instance. Testers do not change code, do not comment on GitHub, and do not edit the verification map; a stale map is mentioned in the report and the person maintains it.
+Each tester verifies in its own worktree with its own `REDPANDA_HOME`, port range and evidence directory, agreed in the group when the team was set up; `verify-redpanda` describes isolated launch. Automatic authorization is allowed inside the isolated verification instance. Testers do not change code or merge, and do not edit the verification map; besides the group report they post findings and suggested changes as a PR comment; a stale map is mentioned in the report and the person maintains it.
 
 Smoke run: the features in `.claude/skills/verify-redpanda/features/` that the person has named as the smoke set; until named, use `setup-and-launch`, `model-settings`, `workspace-management`, `web-session-chat`, `tool-coding-round`, `run-control`.
 

@@ -55,11 +55,13 @@ def checks(rollup: list[dict]) -> dict[str, object]:
 def snapshot(base: str, authors: set[str]) -> dict[str, object]:
     fields = "number,title,headRefOid,author,isDraft,mergeable,baseRefName,statusCheckRollup"
     open_prs = {}
-    for pr in gh("pr", "list", "--state", "open", "--base", base, "--limit", "50", "--json", fields):
+    # Every base, so a PR retargeted away from the base is reported instead of looking closed.
+    for pr in gh("pr", "list", "--state", "open", "--limit", "100", "--json", fields):
         if pr["author"]["login"] not in authors:
             continue
         open_prs[str(pr["number"])] = {
             "title": pr["title"][:TITLE_CHARS],
+            "base": pr["baseRefName"],
             "head": pr["headRefOid"],
             "draft": pr["isDraft"],
             "mergeable": pr["mergeable"],
@@ -87,14 +89,21 @@ def changes(previous: dict | None, current: dict) -> list[dict[str, object]]:
     for number, pr in current["open"].items():
         old = before_open.get(number)
         event = {"pr": int(number), "title": pr["title"], "head": pr["head"]}
+        if pr["base"] != current["base"]:
+            if old is None or old["base"] == current["base"]:
+                found.append({"change": "wrong_base", **event, "base": pr["base"]})
+            continue
         if old is None:
             found.append({"change": "opened", **event, "checks": pr["checks"], "mergeable": pr["mergeable"]})
-            continue
-        if old["head"] != pr["head"]:
+        elif old["head"] != pr["head"]:
             found.append({"change": "pushed", **event, "previous_head": old["head"], "checks": pr["checks"]})
         finished = pr["checks"]["result"] in ("success", "failure")
-        if finished and (old["head"] != pr["head"] or old["checks"]["result"] != pr["checks"]["result"]):
+        # A head seen for the first time with its checks already done finishes in the same run.
+        if finished and (old is None or old["base"] != pr["base"] or old["head"] != pr["head"]
+                         or old["checks"]["result"] != pr["checks"]["result"]):
             found.append({"change": "checks_finished", **event, "checks": pr["checks"]})
+        if old is None:
+            continue
         if pr["mergeable"] == "CONFLICTING" and old["mergeable"] != "CONFLICTING":
             found.append({"change": "conflicting", **event})
         if old["draft"] and not pr["draft"]:
@@ -129,7 +138,8 @@ def main() -> int:
     found = changes(previous, current)
     path.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
     json.dump({"first_run": previous is None, "changes": found, "open": [
-        {"pr": int(number), "title": pr["title"], "head": pr["head"], "checks": pr["checks"]["result"],
+        {"pr": int(number), "title": pr["title"], "base": pr["base"], "head": pr["head"],
+         "checks": pr["checks"]["result"],
          "mergeable": pr["mergeable"], "draft": pr["draft"]}
         for number, pr in sorted(current["open"].items(), key=lambda item: int(item[0]))
     ]}, sys.stdout, ensure_ascii=False, indent=2)
