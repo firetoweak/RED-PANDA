@@ -26,6 +26,7 @@ from redpanda.assistant.subagent.subagent import (
 )
 from redpanda.assistant.toolsets import LOAD_TOOLSET
 from redpanda.assistant.work_plan import WORK_PLAN_TAG
+from redpanda.skills.runtime import PROJECT_SKILL_PREFIX, PROJECT_SKILLS_DIRECTORY
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
@@ -131,6 +132,7 @@ def _fact_type_tokens() -> set[str]:
     tokens: set[str] = set()
     for fact_type in (TASK_FACT, REPORT_FACT):
         tokens |= _ascii_tokens(fact_type)
+    tokens |= _ascii_tokens(PROJECT_SKILL_PREFIX + "/".join(PROJECT_SKILLS_DIRECTORY))
     task = task_fact_arguments(DelegateIntent("command", "parent", "parent/sub-command", "task"))
     return tokens | set(task["data"])
 

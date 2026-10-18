@@ -123,6 +123,37 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("demo: Demo workflow", _load_skill_description(schemas))
 
+    async def test_project_skills_come_from_the_task_root_and_follow_its_changes(self):
+        project = Path(self.temporary.name) / "project"
+        skills_root = project / ".claude" / "skills"
+        write_skill(skills_root / "verify", name="verify", description="Verify the app",
+                    body="\nRun the checks.\n")
+        (skills_root / "broken").mkdir()
+        adapter = SkillToolAdapter(
+            type("Skills", (), {"tool_catalog": self.service.tool_catalog})(),
+            MemoryArtifactGateway(),
+            ModelContextSettings(),
+            project_root=project,
+        )
+        catalog = adapter.registry_catalog()
+        by_id = {item["id"]: item for item in catalog}
+        self.assertEqual(set(by_id), {"demo", "project:broken", "project:verify"})
+        self.assertEqual(by_id["project:verify"]["description"], "Verify the app")
+        self.assertIn("SKILL.md", by_id["project:broken"]["description"])
+        adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        load = adapter.bindings()[LOAD_SKILL].handler
+
+        loaded = await load(context, {"skill_id": "project:verify"})
+        self.assertTrue(loaded["ok"])
+        self.assertIn("Run the checks.", loaded["data"]["content"])
+        self.assertEqual(Path(loaded["data"]["skill_dir"]), (skills_root / "verify").resolve())
+        self.assertEqual((await load(context, {"skill_id": "project:broken"}))["code"], "SKILL_PACKAGE_INVALID")
+
+        write_skill(skills_root / "verify", name="verify", description="Verify the app",
+                    body="\nRun the new checks.\n")
+        self.assertEqual((await load(context, {"skill_id": "project:verify"}))["code"], "SKILL_CATALOG_STALE")
+
     async def test_disable_keeps_skill_tool_definitions_stable(self):
         before = self.adapter.schemas()
         await self.service.set_enabled("demo", False)
