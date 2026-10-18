@@ -77,6 +77,28 @@ class Worker:
     live_tools: dict[str, str] = field(default_factory=dict)
 
 
+async def _settle(awaitable):
+    """Wait for Git work even when the caller is cancelled.
+
+    A cancelled request must not release Git ownership (a lock or a pending
+    identity fact) while the work it started is still running.
+    """
+    work = asyncio.ensure_future(awaitable)
+    try:
+        return await asyncio.shield(work)
+    except asyncio.CancelledError as cancelled:
+        try:
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue
+            work.result()
+        except BaseException as error:
+            raise BaseExceptionGroup("Git work failed during cancellation", [cancelled, error]) from None
+        raise
+
+
 class HostSupervisor:
     """One local owner, one process per active Session. No Runtime projection."""
 
@@ -155,6 +177,7 @@ class HostSupervisor:
         self.agents = AgentRoster(store)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
         self._agent_creation_lock = asyncio.Lock()
+        self._landing_locks: dict[str, asyncio.Lock] = {}
 
     async def pause_unfinished_sessions(self) -> None:
         """进程刚起来时，还会自己往下走的顶层会话先停住。
@@ -180,6 +203,14 @@ class HostSupervisor:
                 self._pause.set(session_id, True)
 
     async def _route(self, operation, session_id, arguments, *, worker=None):
+        if operation in {"agent_land", "agent_sync"}:
+            agent = await self.agents.by_session(session_id)
+            if operation == "agent_sync":
+                result = await _settle(asyncio.to_thread(self.agent_worktrees.sync, agent))
+            else:
+                async with self._landing_locks.setdefault(agent.workspace_id, asyncio.Lock()):
+                    result = await _settle(asyncio.to_thread(self.agent_worktrees.land, agent))
+            return asdict(result)
         if operation in {"process_start", "process_read", "process_stop", "process_list"}:
             self.store.require(session_id)
             if self.processes is None:
@@ -868,22 +899,8 @@ class HostSupervisor:
         async with self._agent_creation_lock:
             if any(entry.agent.name == name for entry in await self.agents.list(workspace_id)):
                 raise AgentNameTaken(f"项目内已有 Agent：{name}")
-            # A cancelled request must not release creation ownership while Git
-            # is still running or leave a worktree without its identity fact.
-            creation = asyncio.create_task(self._create_agent(project, session_id, identity))
-            try:
-                return await asyncio.shield(creation)
-            except asyncio.CancelledError as cancelled:
-                try:
-                    while not creation.done():
-                        try:
-                            await asyncio.shield(creation)
-                        except asyncio.CancelledError:
-                            continue
-                    creation.result()
-                except BaseException as error:
-                    raise BaseExceptionGroup("Agent creation failed during cancellation", [cancelled, error]) from None
-                raise
+            # A cancelled request must not leave a worktree without its identity fact.
+            return await _settle(self._create_agent(project, session_id, identity))
 
     async def _create_agent(self, project, session_id, identity) -> AgentRecord:
         worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)

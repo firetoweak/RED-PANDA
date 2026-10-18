@@ -67,6 +67,8 @@ class WorktreeLlm(ProcessLlm):
                 calls = (ToolCall("agent-commit", "execute_command", json.dumps({
                     "command": commit,
                 })),)
+        elif text == "LAND_AGENT" and "land_branch" not in results:
+            calls = (ToolCall("agent-land", "land_branch", "{}"),)
         elif text == "READ_AGENT" and "read_file" not in results:
             self.read_started.set()
             await self.read_release.wait()
@@ -145,6 +147,11 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(git("diff", "--name-only", base.decode().strip(),
                                          agents[0].identity.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
                     self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
+                    await current.receive_user_message(agents[0].session_id, "LAND_AGENT", delivery_id="land")
+                    await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
+                    integration = current.agent_worktrees.integration(workspace.workspace_id)
+                    self.assertEqual(git("rev-parse", integration.branch).stdout, committed)
+                    self.assertEqual((integration.path / "note.txt").read_text(), "WRITE_AGENT_0")
                     await current.close()
                     current = host()
                     recovered = await current.agents.resolve(workspace.workspace_id, "同事0")
@@ -184,6 +191,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     for request in llm.requests:
                         names = {tool["function"]["name"] for tool in request["tools"]}
                         self.assertFalse({"get_changes", "restore_workspace", "delegate"} & names)
+                        self.assertTrue({"land_branch", "sync_branch"} <= names)
                         self.assertNotIn(workspace.workspace_id, json.dumps(request["messages"]))
                         for agent in agents:
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))

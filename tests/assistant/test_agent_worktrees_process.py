@@ -135,7 +135,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         (linked / ".git").write_text("gitdir: missing-metadata\n", encoding="utf-8")
         workspace = self.registry.create(name="broken", task_root=linked)
         expected = subprocess.run(["git", "-C", str(linked), "rev-parse", "--is-inside-work-tree"],
-                                  capture_output=True, env=self.host.agent_worktrees.environment)
+                                  capture_output=True, env=self.host.agent_worktrees.git.environment)
         with self.assertRaises(subprocess.CalledProcessError) as raised:
             await self.create(workspace=workspace)
         self.assertEqual(raised.exception.returncode, expected.returncode)
