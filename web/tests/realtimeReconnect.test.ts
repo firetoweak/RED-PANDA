@@ -40,3 +40,16 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   close();
   store.dispatch(redpandaApi.util.resetApiState());
 });
+
+it("群变化事件让群数据重新读取，调度结束后页面不会停在旧的等待状态", () => {
+  const listeners = new Map<string, (event: MessageEvent) => void>();
+  vi.stubGlobal("EventSource", class {
+    addEventListener(name: string, listener: (event: MessageEvent) => void) { listeners.set(name, listener); }
+    close() {}
+  });
+  const dispatch = vi.fn();
+  const close = openEventBridge(dispatch);
+  listeners.get("group_changed")!(new MessageEvent("group_changed", { data: JSON.stringify({ group_id: "group-1" }) }));
+  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Groups"]));
+  close();
+});

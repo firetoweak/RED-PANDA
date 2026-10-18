@@ -108,13 +108,16 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                                                    members=list(members))
 
     async def settled(self, group):
-        drive = self.host.agent_groups._drives[group.group_id]
-        while drive.task is not None and not drive.task.done():
-            await drive.task
+        while self.host.agent_groups._drives[group.group_id].running:
+            await asyncio.sleep(0.01)
         await asyncio.gather(*self.work)
 
     async def test_creation_checks_members_and_tells_only_them(self):
+        notified = AsyncMock()
+        self.host.group_changed_sink = notified
         group = await self.group(("Ada", "Lin"))
+        await asyncio.gather(*self.host.watchers)
+        notified.assert_awaited_once_with(group.group_id)
         for name, count in (("Ada", 1), ("Lin", 1), ("Third", 0)):
             created = await self.facts(name, GROUP_CREATED)
             self.assertEqual(len(created), count)
@@ -176,6 +179,21 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                          [["DELIVERED", "DELIVERED", "DELIVERED", "SPEECH_LIMIT_REACHED"],
                           ["DELIVERED", "GROUP_LIMIT_REACHED"]])
         self.assertEqual(self.calls, ["Ada", "Lin", "Lin", "Ada"])
+
+    async def test_observers_hear_when_the_drive_ends(self):
+        group = await self.group(("Ada", "Lin"))
+        seen = []
+
+        async def changed(group_id):
+            view = await self.host.agent_groups.view(group_id)
+            seen.append((view["active"], view["calling"], len(view["messages"])))
+
+        self.host.group_changed_sink = changed
+        await self.host.agent_groups.post(group.group_id, "大家好", [])
+        await self.settled(group)
+        await asyncio.gather(*self.host.watchers)
+        # The last notice comes after the drive ended, so a page reading it is never left "calling".
+        self.assertEqual(seen[-1], (False, [], 1))
 
     async def test_stop_interrupts_the_called_member_and_calls_no_one_else(self):
         group = await self.group()

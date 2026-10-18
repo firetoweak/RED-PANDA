@@ -18,6 +18,7 @@ import {
   IconPlus,
   IconAdjustments,
   IconAlertCircle,
+  IconUsersGroup,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
@@ -26,12 +27,14 @@ import { useMatch, useNavigate } from "react-router-dom";
 import type { AgentRosterEntry, Workspace } from "../../api/contracts";
 import {
   useGetAgentsQuery,
+  useGetGroupsQuery,
   useGetInboxQuery,
   useGetWorkspacesQuery,
 } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { redPandaMark } from "../../app/brand";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
+import { CreateGroupModal } from "../groups/CreateGroupModal";
 import { CreateAgentModal } from "./CreateAgentModal";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import { RemoveWorkspaceModal } from "./RemoveWorkspaceModal";
@@ -56,6 +59,7 @@ const STATUS_LABEL = {
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
+  const groupId = useMatch("/groups/:groupId")?.params.groupId;
   const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
     .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
@@ -63,6 +67,8 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: agents = [], isLoading } = useGetAgentsQuery();
   const { data: inbox = [] } = useGetInboxQuery();
+  const { data: chatGroups = [] } = useGetGroupsQuery();
+  const [groupWorkspaceId, setGroupWorkspaceId] = useState<string | null>(null);
   const { data: workspaces = [], isLoading: workspacesLoading } =
     useGetWorkspacesQuery();
   const [
@@ -86,10 +92,12 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
     id: workspace.workspace_id,
     name: workspace.name,
     agents: agents.filter((agent) => agent.workspace_id === workspace.workspace_id),
+    chats: chatGroups.filter((chat) => chat.workspace_id === workspace.workspace_id),
   }));
   const currentWorkspaceId = agents.find(
     (agent) => agent.session_id === sessionId,
-  )?.workspace_id ?? routeWorkspaceId ?? null;
+  )?.workspace_id ?? chatGroups.find((chat) => chat.group_id === groupId)?.workspace_id
+    ?? routeWorkspaceId ?? null;
   const canCreateAgent = connectionId !== null && workspaces.length > 0;
 
   function toggleWorkspace(workspaceId: string) {
@@ -227,6 +235,18 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
               workspaceId={creatingWorkspaceId}
               workspaces={workspaces}
             />
+            <CreateGroupModal
+              agents={agents}
+              connectionId={connectionId}
+              onClose={() => setGroupWorkspaceId(null)}
+              onCreated={(createdId) => {
+                setGroupWorkspaceId(null);
+                navigate(`/groups/${encodeURIComponent(createdId)}`);
+                onNavigate();
+              }}
+              opened={groupWorkspaceId !== null}
+              workspaceId={groupWorkspaceId}
+            />
             {removingWorkspace === null ? null : (
               <RemoveWorkspaceModal
                 onClose={() => setRemovingWorkspace(null)}
@@ -259,6 +279,7 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                     registered={workspaceRecords.has(workspace.id)}
                     onToggle={() => toggleWorkspace(workspace.id)}
                     onCreate={() => openCreate(workspace.id)}
+                    onCreateGroup={() => setGroupWorkspaceId(workspace.id)}
                     onRename={() => setRenamingWorkspace(workspaceRecords.get(workspace.id)!)}
                     onRemove={() => setRemovingWorkspace(workspaceRecords.get(workspace.id)!)}
                   />
@@ -280,6 +301,23 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                             onNavigate();
                           }}
                         />
+                      ))}
+                      {workspace.chats.map((chat) => (
+                        <UnstyledButton
+                          key={chat.group_id}
+                          aria-current={chat.group_id === groupId ? "page" : undefined}
+                          aria-label={`群聊 ${chat.name}`}
+                          className={chat.group_id === groupId ? "session-row is-active" : "session-row"}
+                          onClick={() => {
+                            navigate(`/groups/${encodeURIComponent(chat.group_id)}`);
+                            onNavigate();
+                          }}
+                        >
+                          <Group gap={6} wrap="nowrap">
+                            <IconUsersGroup size={14} />
+                            <Text className="session-title" fz={13} truncate>{chat.name}</Text>
+                          </Group>
+                        </UnstyledButton>
                       ))}
                     </Stack>
                   </Collapse>

@@ -7,6 +7,7 @@ import {
   previewAbortedEventSchema,
   previewDeltaEventSchema,
   previewStartedEventSchema,
+  groupChangedEventSchema,
   scheduleChangedEventSchema,
   sessionActivityEventSchema,
   sessionFailedEventSchema,
@@ -55,7 +56,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Inbox"]));
+    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox"]));
     refreshChanges();
   });
   source.addEventListener("session_activity", (event) => {
@@ -82,6 +83,10 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         { type: "Conversation", id: payload.session_id },
       ]),
     );
+  });
+  source.addEventListener("group_changed", (event) => {
+    groupChangedEventSchema.parse(JSON.parse(event.data));
+    dispatch(redpandaApi.util.invalidateTags(["Groups"]));
   });
   source.addEventListener("session_failed", (event) => {
     const payload = sessionFailedEventSchema.parse(JSON.parse(event.data));

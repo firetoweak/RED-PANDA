@@ -160,6 +160,9 @@ class WebEventHub:
     async def schedule_changed(self, session_id: str) -> None:
         await self._broadcast("schedule_changed", {"session_id": session_id})
 
+    async def group_changed(self, group_id: str) -> None:
+        await self._broadcast("group_changed", {"group_id": group_id})
+
     async def session_failed(self, session_id: str, message: str) -> None:
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")

@@ -66,6 +66,7 @@ async def bootstrap_assistant(
     session_activity_sink=None,
     session_failed_sink=None,
     schedule_changed_sink=None,
+    group_changed_sink=None,
     command_environment: dict[str, str] | None = None,
     fresh_sessions: bool = False,
 ) -> AsyncIterator[BootstrappedAssistant]:
@@ -116,6 +117,7 @@ async def bootstrap_assistant(
             session_activity_sink=session_activity_sink,
             session_failed_sink=session_failed_sink,
             schedule_changed_sink=schedule_changed_sink,
+            group_changed_sink=group_changed_sink,
         )
         mcp = build_mcp(home)
         skills = build_skills(

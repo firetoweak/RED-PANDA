@@ -11,6 +11,8 @@ import {
   agentRosterEntrySchema,
   conversationViewSchema,
   directorySelectionSchema,
+  groupSummarySchema,
+  groupViewSchema,
   modelSettingsSchema,
   modelTestResultSchema,
   sessionModelSchema,
@@ -20,6 +22,8 @@ import {
   type AgentRosterEntry,
   type ConversationView,
   type DirectorySelection,
+  type GroupSummary,
+  type GroupView,
   type ModelConfig,
   type ModelSettings,
   type ModelTestResult,
@@ -116,7 +120,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -170,6 +174,57 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) =>
         agentRosterEntrySchema.array().parse(value),
       providesTags: ["Agents"],
+    }),
+    getGroups: build.query<GroupSummary[], void>({
+      query: () => "/groups",
+      transformResponse: (value: unknown) => groupSummarySchema.array().parse(value),
+      providesTags: ["Groups"],
+    }),
+    getGroup: build.query<GroupView, string>({
+      query: (groupId) => `/groups/${encodeURIComponent(groupId)}`,
+      transformResponse: (value: unknown) => groupViewSchema.parse(value),
+      providesTags: ["Groups"],
+    }),
+    createGroup: build.mutation<
+      GroupView,
+      { connectionId: string; workspaceId: string; name: string; members: string[] }
+    >({
+      query: ({ connectionId, workspaceId, name, members }) => ({
+        url: "/groups",
+        method: "POST",
+        body: { connection_id: connectionId, workspace_id: workspaceId, name, members },
+      }),
+      transformResponse: (value: unknown) => groupViewSchema.parse(value),
+      transformErrorResponse: (response) => {
+        if (response.status !== 409 && response.status !== 422 && response.status !== 404) {
+          return response;
+        }
+        return apiErrorDetail(response.data) ?? response;
+      },
+      invalidatesTags: ["Groups"],
+    }),
+    postGroupMessage: build.mutation<
+      GroupView,
+      { connectionId: string; groupId: string; text: string; mention: string[] }
+    >({
+      query: ({ connectionId, groupId, text, mention }) => ({
+        url: `/groups/${encodeURIComponent(groupId)}/messages`,
+        method: "POST",
+        body: { connection_id: connectionId, text, mention },
+      }),
+      transformResponse: (value: unknown) => groupViewSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 422 || response.status === 404
+        ? apiErrorDetail(response.data) ?? response : response,
+      invalidatesTags: ["Groups"],
+    }),
+    stopGroup: build.mutation<GroupView, { connectionId: string; groupId: string }>({
+      query: ({ connectionId, groupId }) => ({
+        url: `/groups/${encodeURIComponent(groupId)}/stop`,
+        method: "POST",
+        body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => groupViewSchema.parse(value),
+      invalidatesTags: ["Groups", "Agents"],
     }),
     getInbox: build.query<InboxItem[], void>({
       query: () => "/inbox",
@@ -398,6 +453,11 @@ export const {
   useGetAgentsQuery,
   useCreateAgentMutation,
   useGetInboxQuery,
+  useGetGroupsQuery,
+  useGetGroupQuery,
+  useCreateGroupMutation,
+  usePostGroupMessageMutation,
+  useStopGroupMutation,
   useGetWorkspacesQuery,
   useGetConversationQuery,
   useObserveSubagentQuery,

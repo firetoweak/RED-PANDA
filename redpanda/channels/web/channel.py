@@ -68,6 +68,33 @@ class WebChannel:
     async def list_inbox(self):
         return await self._queries.list_inbox()
 
+    async def list_groups(self):
+        return [{"group_id": group.group_id, "workspace_id": group.workspace_id,
+                 "name": group.name, "members": group.members}
+                for group in await self._sessions.agent_groups.list()]
+
+    async def group(self, group_id: str):
+        return await self._sessions.agent_groups.view(group_id)
+
+    async def create_group(self, connection_id: str, workspace_id: str, name: str, members: list[str]):
+        self._require_connection(connection_id)
+        group = await self._sessions.agent_groups.create(workspace_id=workspace_id, name=name, members=members)
+        return await self._sessions.agent_groups.view(group.group_id)
+
+    async def post_group_message(self, connection_id: str, group_id: str, text: str, mention: list[str]):
+        self._require_connection(connection_id)
+        content = self._require_text(text)
+        group = await self._sessions.agent_groups.get(group_id)
+        if any(name not in group.members for name in mention):
+            raise WebInputInvalid("只能点名这个群里的成员。")
+        await self._sessions.agent_groups.post(group_id, content, mention)
+        return await self._sessions.agent_groups.view(group_id)
+
+    async def stop_group(self, connection_id: str, group_id: str):
+        self._require_connection(connection_id)
+        await self._sessions.agent_groups.stop(group_id)
+        return await self._sessions.agent_groups.view(group_id)
+
     async def conversation(self, session_id: str):
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")

@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { AgentRosterEntry, Workspace } from "../src/api/contracts";
+import type { AgentRosterEntry, GroupSummary, Workspace } from "../src/api/contracts";
 import { SessionSidebar } from "../src/features/sessions/SessionSidebar";
 import runtimeReducer, { connected, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
@@ -36,10 +36,14 @@ const queries = vi.hoisted(() => ({
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve(agent({ session_id: "agent-new", name: "小熊猫" })) })),
+  groups: [] as GroupSummary[],
+  createGroup: vi.fn(() => ({ unwrap: () => Promise.resolve({ group_id: "group-new" }) })),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetAgentsQuery: () => ({ data: queries.agents, isLoading: false }),
   useGetInboxQuery: () => ({ data: queries.inbox, isLoading: false }),
+  useGetGroupsQuery: () => ({ data: queries.groups, isLoading: false }),
+  useCreateGroupMutation: () => [queries.createGroup, { isLoading: false, reset: vi.fn() }],
   useGetWorkspacesQuery: () => ({ data: queries.workspaces, isLoading: false }),
   useCreateAgentMutation: () => [queries.createAgent, { isLoading: false, reset: vi.fn() }],
   useCreateWorkspaceMutation: () => [vi.fn(), {}],
@@ -241,4 +245,37 @@ it("待处理按钮显示收件箱条数并进入收件箱", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "待处理 · 2" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/inbox");
+});
+
+it("群聊列在所属项目下：点开进入群，新建群只能从同项目 Agent 里选成员", async () => {
+  browserStubs();
+  queries.workspaces = [workspace("workspace", "工作区"), workspace("other", "别处")];
+  queries.agents = [
+    agent({ session_id: "a", name: "Ada" }),
+    agent({ session_id: "l", name: "Lin" }),
+    agent({ session_id: "x", name: "外人", workspace_id: "other" }),
+  ];
+  queries.groups = [{ group_id: "group-1", workspace_id: "workspace", name: "开发组", members: ["Ada", "Lin"] }];
+  renderSidebar("/");
+
+  fireEvent.click(screen.getByLabelText("群聊 开发组"));
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/group-1");
+
+  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "新建群聊" }));
+  const dialog = screen.getByRole("dialog", { name: "新建群聊" });
+  fireEvent.change(screen.getByLabelText("群名"), { target: { value: "评审组" } });
+  fireEvent.click(screen.getByRole("combobox", { name: "成员" }));
+  expect(screen.queryByRole("option", { name: "外人" })).not.toBeInTheDocument();
+  const create = screen.getByRole("button", { name: "创建" });
+  fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
+  expect(create).toBeDisabled();
+  fireEvent.click(screen.getByRole("combobox", { name: "成员" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Lin" }));
+  fireEvent.click(create);
+  await waitFor(() => expect(queries.createGroup).toHaveBeenCalledWith({
+    connectionId: "connection", workspaceId: "workspace", name: "评审组", members: ["Ada", "Lin"],
+  }));
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/group-new"));
+  expect(dialog).not.toBeInTheDocument();
 });

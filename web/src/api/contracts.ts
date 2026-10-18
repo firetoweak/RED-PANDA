@@ -82,6 +82,40 @@ export const workspaceSchema = z
 
 export type Workspace = z.infer<typeof workspaceSchema>;
 
+export const groupSummarySchema = z
+  .object({
+    group_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    name: z.string().min(1),
+    members: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export type GroupSummary = z.infer<typeof groupSummarySchema>;
+
+export const groupMessageSchema = z
+  .object({
+    message_id: z.string().min(1),
+    sender: z.string().min(1).nullable(),
+    text: z.string().min(1),
+    mentioned_agents: z.array(z.string().min(1)),
+    reply_to: z.string().min(1).nullable(),
+    occurred_at: z.string().min(1),
+  })
+  .strict();
+
+export type GroupMessage = z.infer<typeof groupMessageSchema>;
+
+export const groupViewSchema = groupSummarySchema
+  .extend({
+    calling: z.array(z.string().min(1)),
+    active: z.boolean(),
+    messages: z.array(groupMessageSchema),
+  })
+  .strict();
+
+export type GroupView = z.infer<typeof groupViewSchema>;
+
 export const directorySelectionSchema = z
   .object({
     directory: z
@@ -193,6 +227,10 @@ export const sessionActivityEventSchema = z
 
 export const scheduleChangedEventSchema = z
   .object({ session_id: z.string().min(1) })
+  .strict();
+
+export const groupChangedEventSchema = z
+  .object({ group_id: z.string().min(1) })
   .strict();
 
 export const sessionFailedEventSchema = z

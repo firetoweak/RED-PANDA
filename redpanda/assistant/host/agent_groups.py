@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -57,7 +58,7 @@ class _Drive:
     pending: dict[str, str] = field(default_factory=dict)
     waiting: dict[str, asyncio.Event] = field(default_factory=dict)
     stopped: asyncio.Event = field(default_factory=asyncio.Event)
-    task: asyncio.Task | None = None
+    running: bool = False
 
     def queue(self, speaker: str | None, mentioned: list[str], message_id: str) -> None:
         for name in _targets(self.group, speaker, mentioned):
@@ -99,6 +100,26 @@ class AgentGroups:
                 return group
         raise GroupNotFound(group_id)
 
+    async def view(self, group_id: str) -> dict:
+        """What a person sees: the public record and who the Host is calling now."""
+        group = await self.get(group_id)
+        events = await self._journal(group_id).snapshot(group_id)
+        drive = self._drives.get(group_id)
+        active = drive is not None and drive.running and not drive.stopped.is_set()
+        return {
+            "group_id": group.group_id, "workspace_id": group.workspace_id, "name": group.name,
+            "members": group.members, "calling": list(drive.waiting) if active else [],
+            "active": active,
+            "messages": [
+                {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
+                 "mentioned_agents": fact.mentioned_agents, "reply_to": fact.reply_to,
+                 "occurred_at": event.occurred_at.isoformat()}
+                for event in events
+                if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE
+                for fact in (parse_agent_fact(event.payload),)
+            ],
+        }
+
     async def messages(self, group_id: str) -> list[GroupMessage]:
         return [parse_agent_fact(event.payload) for event in await self._journal(group_id).snapshot(group_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE]
@@ -116,6 +137,8 @@ class AgentGroups:
         await asyncio.gather(*(
             self.host.request("fact", agent.session_id, fact_arguments(created, delivery_id=f"joined:{group_id}"))
             for agent in agents))
+        # Other pages list groups too; a new group is a change they must hear about.
+        self._changed(group_id)
         return GroupRecord(group_id, workspace_id, created)
 
     async def _publish(self, group: GroupRecord, message: GroupMessage) -> None:
@@ -125,6 +148,17 @@ class AgentGroups:
         recipients = [await self.host.agents.resolve(group.workspace_id, name)
                       for name in group.members if name != message.sender.name]
         await asyncio.gather(*(self.host.request("fact", agent.session_id, arguments) for agent in recipients))
+        self._changed(group.group_id)
+
+    def _changed(self, group_id: str) -> None:
+        """Tell observers the record or who is being called changed; never delays scheduling."""
+        if self.host.group_changed_sink is not None:
+            self.host._track(group_id, asyncio.create_task(self._notify(group_id)))
+
+    async def _notify(self, group_id: str) -> None:
+        observed = self.host.group_changed_sink(group_id)
+        if isinstance(observed, Awaitable):
+            await observed
 
     async def post(self, group_id: str, text: str, mention: list[str]) -> GroupMessage:
         """A human message starts a new drive, superseding the previous one."""
@@ -149,20 +183,24 @@ class AgentGroups:
         return drive
 
     def _schedule(self, drive: _Drive) -> None:
-        if drive.pending and not drive.exhausted and not drive.stopped.is_set() and (
-                drive.task is None or drive.task.done()):
-            drive.task = asyncio.create_task(self._run(drive))
-            self.host._track(drive.group.group_id, drive.task)
+        if drive.pending and not drive.exhausted and not drive.stopped.is_set() and not drive.running:
+            drive.running = True
+            self.host._track(drive.group.group_id, asyncio.create_task(self._run(drive)))
 
     async def _run(self, drive: _Drive) -> None:
-        while drive.pending and not drive.exhausted and not drive.stopped.is_set():
-            calls, drive.pending = drive.pending, {}
-            drive.rounds += 1
-            drive.spoken = Counter()
-            for name, message_id in calls.items():
-                if drive.stopped.is_set() or self.host.closed:
-                    return
-                await self._call(drive, name, message_id)
+        try:
+            while drive.pending and not drive.exhausted and not drive.stopped.is_set():
+                calls, drive.pending = drive.pending, {}
+                drive.rounds += 1
+                drive.spoken = Counter()
+                for name, message_id in calls.items():
+                    if drive.stopped.is_set() or self.host.closed:
+                        return
+                    await self._call(drive, name, message_id)
+        finally:
+            # Cleared before any await so a speech arriving now starts a new run.
+            drive.running = False
+            self._changed(drive.group.group_id)
 
     async def _call(self, drive: _Drive, name: str, message_id: str) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
@@ -170,6 +208,7 @@ class AgentGroups:
         if self.host.is_paused(agent.session_id):
             return
         spoke = drive.waiting[name] = asyncio.Event()
+        self._changed(drive.group.group_id)
         try:
             await self.host.request("fact", agent.session_id, fact_arguments(
                 GroupAttention(group=drive.group.name, message_id=message_id),
@@ -184,6 +223,7 @@ class AgentGroups:
                 task.result()
         finally:
             del drive.waiting[name]
+            self._changed(drive.group.group_id)
 
     async def send(self, session_id: str, arguments: dict, origin: str, admit):
         """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new."""
