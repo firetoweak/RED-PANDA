@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_fact, project_agent
+from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_fact, project_agent, project_direction
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
@@ -48,6 +48,7 @@ ToolStatus = Literal[
     "rejected",
 ]
 SessionActivity = Literal["running", "idle"]
+AgentStatus = Literal["working", "authorization", "waiting", "idle"]
 UNKNOWN_TOOL_ERROR = "执行已开始，但未取得最终结果，原因未知，可能已部分执行"
 
 
@@ -57,6 +58,16 @@ class FileChangesConflict(Exception):
 
 class FileChangesUnavailable(Exception):
     """无法读取文件变更。"""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRosterEntry:
+    session_id: str
+    workspace_id: str
+    name: str
+    direction: str | None
+    activity: SessionActivity
+    status: AgentStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +203,41 @@ class AssistantQueries:
         return SubagentObservation(
             child_id, intent.task, self._sessions.activity(child_id), result,
             await self._conversation(child_id, child_events),
+        )
+
+    async def list_agents(self) -> tuple[AgentRosterEntry, ...]:
+        entries: list[AgentRosterEntry] = []
+        for view in await self._sessions.agents.list():
+            record = view.agent
+            if not self._sessions.workspaces.contains(record.workspace_id):
+                continue
+            events = await SqliteJournal(self._store.require(record.session_id)).snapshot(
+                record.session_id
+            )
+            entries.append(project_agent_roster_entry(
+                record.session_id,
+                events,
+                name=record.name,
+                workspace_id=record.workspace_id,
+                direction=view.direction,
+                activity=self._sessions.activity(record.session_id),
+                last_error=self._sessions.current_failure(record.session_id),
+            ))
+        return tuple(entries)
+
+    async def agent_entry(self, session_id: str) -> AgentRosterEntry:
+        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
+        agent = project_agent(events)
+        if agent is None:
+            raise SessionNotFoundError(session_id)
+        return project_agent_roster_entry(
+            session_id,
+            events,
+            name=agent.name,
+            workspace_id=agent.workspace_id,
+            direction=project_direction(events, agent),
+            activity=self._sessions.activity(session_id),
+            last_error=self._sessions.current_failure(session_id),
         )
 
     async def list_inbox(self) -> tuple[InboxItem, ...]:
@@ -358,6 +404,53 @@ class AssistantQueries:
             if returned is not None:
                 found[child_id] = returned
         return found
+
+
+def project_agent_status(
+    *,
+    activity: SessionActivity,
+    has_active_subagents: bool,
+    pending_authorization: bool,
+    control_approval: bool,
+    waiting_for: tuple[str, ...],
+    last_error: str | None,
+) -> AgentStatus:
+    """名册状态只归约 Worker、授权和等待这些已经存在的事实。"""
+    if activity == "running" or has_active_subagents:
+        return "working"
+    if pending_authorization or control_approval:
+        return "authorization"
+    if last_error is not None or waiting_for == ("external_fact",):
+        return "waiting"
+    return "idle"
+
+
+def project_agent_roster_entry(
+    session_id: str,
+    events: tuple[Event, ...],
+    *,
+    name: str,
+    workspace_id: str,
+    direction: str | None,
+    activity: SessionActivity,
+    last_error: str | None,
+) -> AgentRosterEntry:
+    state = replay(session_id, events).state
+    return AgentRosterEntry(
+        session_id=session_id,
+        workspace_id=workspace_id,
+        name=name,
+        direction=direction,
+        activity=activity,
+        status=project_agent_status(
+            activity=activity,
+            has_active_subagents=bool(project_pending(events)),
+            pending_authorization=bool(pending_authorization_ids(state)),
+            control_approval=pending_approval_view(events) is not None,
+            waiting_for=state.waiting_for,
+            last_error=last_error,
+        ),
+    )
 
 
 def project_inbox_items(
