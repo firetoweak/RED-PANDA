@@ -1,27 +1,10 @@
-import {
-  ActionIcon,
-  Button,
-  Group,
-  Modal,
-  Paper,
-  Stack,
-  Text,
-  Textarea,
-  Tooltip,
-} from "@mantine/core";
-import {
-  IconArrowUp,
-  IconCheck,
-  IconCopy,
-  IconPencil,
-  IconX,
-} from "@tabler/icons-react";
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { ActionIcon, Group, Paper, Stack, Text, Tooltip } from "@mantine/core";
+import { IconCheck, IconCopy } from "@tabler/icons-react";
+import { useEffect, useState } from "react";
 
 import { AttachmentTile, attachmentUrl } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { formatMessageTime } from "./messageTime";
-import { composeSendContent } from "./parkDraft";
 
 const ATTACHMENT_TOKEN = /\[(?:Image|File) #\d+\]/g;
 
@@ -31,11 +14,6 @@ type EditableUserMessageProps = {
   occurredAt: string;
   images: string[];
   files: { attachment_id: string; name: string; size: number }[];
-  disabled: boolean;
-  saving: boolean;
-  // 这条消息之后还跑过东西，文件就可能和这一刻对不上。
-  hasLaterWork: boolean;
-  onSave: (text: string, restoreFiles: boolean, artifactRefs: string[]) => Promise<void>;
 };
 
 export function EditableUserMessage({
@@ -44,33 +22,22 @@ export function EditableUserMessage({
   occurredAt,
   images,
   files,
-  disabled,
-  saving,
-  hasLaterWork,
-  onSave,
 }: EditableUserMessageProps) {
   const displayText = text.replace(ATTACHMENT_TOKEN, "").trim();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(displayText);
-  const [retainedRefs, setRetainedRefs] = useState<string[]>([]);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const time = formatMessageTime(occurredAt);
-  const canSend = !disabled && !saving && (draft.trim() !== "" || retainedRefs.length > 0);
-  const shownFiles = editing ? files.filter((file) => retainedRefs.includes(file.attachment_id)) : files;
-  const fileCards = shownFiles.length === 0 ? null : (
-    <Group gap={8} justify={editing ? "flex-start" : "flex-end"}>
-      {shownFiles.map((file) => <FileAttachmentTile key={file.attachment_id} name={file.name} size={file.size}
-        href={attachmentUrl(sessionId, file.attachment_id)}
-        onRemove={editing && !saving ? () => removeAttachment(file.attachment_id) : undefined} />)}
+  const fileCards = files.length === 0 ? null : (
+    <Group gap={8} justify="flex-end">
+      {files.map((file) => (
+        <FileAttachmentTile
+          key={file.attachment_id}
+          name={file.name}
+          size={file.size}
+          href={attachmentUrl(sessionId, file.attachment_id)}
+        />
+      ))}
     </Group>
   );
-
-  useEffect(() => {
-    if (!editing) {
-      setDraft(displayText);
-    }
-  }, [editing, displayText]);
 
   useEffect(() => {
     if (!copied) {
@@ -79,177 +46,6 @@ export function EditableUserMessage({
     const timer = window.setTimeout(() => setCopied(false), 1500);
     return () => window.clearTimeout(timer);
   }, [copied]);
-
-  useEffect(() => {
-    if (!editing) {
-      return;
-    }
-    function cancelOnOutsidePointer() {
-      if (!saving && !confirmOpen) {
-        setEditing(false);
-        setDraft(displayText);
-      }
-    }
-    document.addEventListener("pointerdown", cancelOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", cancelOnOutsidePointer);
-  }, [editing, saving, displayText, confirmOpen]);
-
-  function beginEditing() {
-    setDraft(displayText);
-    setRetainedRefs([...images, ...files.map((file) => file.attachment_id)]);
-    setConfirmOpen(false);
-    setEditing(true);
-  }
-
-  function removeAttachment(attachmentId: string) {
-    setRetainedRefs((current) => current.filter((ref) => ref !== attachmentId));
-  }
-
-  function close() {
-    if (saving) {
-      return;
-    }
-    setEditing(false);
-    setDraft(displayText);
-  }
-
-  function contentToSend() {
-    return composeSendContent(draft, retainedRefs.map((ref) => ({
-      kind: images.includes(ref) ? "image" : "file",
-    })));
-  }
-
-  async function save() {
-    if (!canSend) {
-      return;
-    }
-    if (hasLaterWork) {
-      setConfirmOpen(true);
-      return;
-    }
-    await onSave(contentToSend(), false, retainedRefs);
-    setEditing(false);
-  }
-
-  async function confirm(restoreFiles: boolean) {
-    setConfirmOpen(false);
-    await onSave(contentToSend(), restoreFiles, retainedRefs);
-    setEditing(false);
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.nativeEvent.isComposing) {
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void save();
-    }
-  }
-
-  if (editing) {
-    return (
-      <Stack
-        className="user-message-row user-message-editing"
-        gap={8}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <Paper className="user-edit" px="sm" py="sm" radius="lg" withBorder>
-          <Stack gap={8}>
-            {fileCards}
-            {images.filter((ref) => retainedRefs.includes(ref)).length === 0 ? null : (
-              <Group className="user-attachments" gap={8} justify="flex-start">
-                {images.filter((ref) => retainedRefs.includes(ref)).map((attachmentId) => (
-                  <AttachmentTile
-                    key={attachmentId}
-                    name="图片"
-                    src={attachmentUrl(sessionId, attachmentId)}
-                    onRemove={saving ? undefined : () => removeAttachment(attachmentId)}
-                  />
-                ))}
-              </Group>
-            )}
-            <Group align="flex-end" gap={8} wrap="nowrap">
-              <Textarea
-                aria-label="编辑消息"
-                autosize
-                autoFocus
-                className="user-edit-input"
-                disabled={saving}
-                maxRows={12}
-                minRows={1}
-                onChange={(event) => setDraft(event.currentTarget.value)}
-                onKeyDown={onKeyDown}
-                value={draft}
-                variant="unstyled"
-              />
-              <Group gap={6} wrap="nowrap">
-                <Tooltip label="取消">
-                  <ActionIcon
-                    aria-label="取消编辑"
-                    disabled={saving}
-                    onClick={close}
-                    radius="xl"
-                    size={32}
-                    type="button"
-                    variant="subtle"
-                  >
-                    <IconX size={16} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label="改写并执行">
-                  <ActionIcon
-                    aria-label="改写并执行"
-                    disabled={!canSend}
-                    loading={saving}
-                    onClick={() => void save()}
-                    radius="xl"
-                    size={32}
-                    type="button"
-                    variant="filled"
-                  >
-                    <IconArrowUp size={16} stroke={2.2} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            </Group>
-          </Stack>
-        </Paper>
-        <Modal
-          centered
-          closeOnClickOutside={!saving}
-          closeOnEscape={!saving}
-          onClose={() => {
-            if (!saving) setConfirmOpen(false);
-          }}
-          opened={confirmOpen}
-          title="改写这条消息"
-        >
-          <Stack gap="md">
-            <Text size="sm">
-              对话会从这条消息重新开始。文件可以一起回滚到这条消息之前，也可以保持现状。
-            </Text>
-            <Text size="sm" c="dimmed">
-              文件回滚仅恢复工作区内已记录的受管修改。宿主命令、持续进程及工作区外操作产生的副作用不会撤销。
-            </Text>
-            <Group justify="flex-end" gap="xs">
-              <Button disabled={saving} onClick={() => void confirm(false)} variant="default">
-                只回滚会话
-              </Button>
-              <Button disabled={saving} onClick={() => void confirm(true)}>
-                会话和文件一起回滚
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
-      </Stack>
-    );
-  }
 
   return (
     <Stack className="user-message-row" align="flex-end" gap={6}>
@@ -274,19 +70,6 @@ export function EditableUserMessage({
         </Paper>
       )}
       <Group className="user-message-actions" gap={4} justify="flex-end" wrap="nowrap">
-        <Tooltip label={disabled ? "连接建立后可编辑" : "编辑或原文重发"}>
-          <ActionIcon
-            aria-label="编辑消息"
-            className="user-message-action"
-            disabled={disabled}
-            onClick={beginEditing}
-            radius="xl"
-            size="sm"
-            variant="subtle"
-          >
-            <IconPencil size={14} />
-          </ActionIcon>
-        </Tooltip>
         <Tooltip label={copied ? "已复制" : "复制消息"}>
           <ActionIcon
             aria-label={copied ? "已复制消息" : "复制消息"}

@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -10,13 +9,11 @@ import {
   Stack,
   Text,
   ThemeIcon,
-  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconAlertTriangle,
-  IconArrowBackUp,
   IconArrowFork,
   IconCheck,
   IconChevronDown,
@@ -61,8 +58,6 @@ interface ExecutionProcessProps {
   steps: VisibleStep[];
   authorizationDisabled: boolean;
   onAuthorize: (commandId: string, approved: boolean) => void;
-  onRestart: (stepId: string) => void;
-  restartDisabled: boolean;
   onObserveSubagent?: (commandId: string) => void;
 }
 
@@ -71,8 +66,6 @@ export function ExecutionProcess({
   steps,
   authorizationDisabled,
   onAuthorize,
-  onRestart,
-  restartDisabled,
   onObserveSubagent,
 }: ExecutionProcessProps) {
   const [opened, setOpened] = useState(!complete);
@@ -133,8 +126,6 @@ export function ExecutionProcess({
               index={index}
               key={step.key}
               onAuthorize={onAuthorize}
-              onRestart={onRestart}
-              restartDisabled={restartDisabled}
               onObserveSubagent={onObserveSubagent}
               step={step}
             />
@@ -150,8 +141,6 @@ export function StepDisclosure({
   step,
   authorizationDisabled = false,
   onAuthorize,
-  onRestart,
-  restartDisabled = false,
   onObserveSubagent,
   expandRunning = false,
 }: {
@@ -159,8 +148,6 @@ export function StepDisclosure({
   step: VisibleStep;
   authorizationDisabled?: boolean;
   onAuthorize?: (commandId: string, approved: boolean) => void;
-  onRestart?: (stepId: string) => void;
-  restartDisabled?: boolean;
   onObserveSubagent?: (commandId: string) => void;
   expandRunning?: boolean;
 }) {
@@ -195,7 +182,6 @@ export function StepDisclosure({
                 {stepHeading(step)}
               </Text>
             </Group>
-            {/* 「完成」不带信息，每一步跑完都是它；让位给重开控件。 */}
             {status === "succeeded" ? null : (
               <Badge color={STATUS_COLOR[status]} size="xs" variant="light">
                 {STATUS_LABEL[status]}
@@ -203,20 +189,6 @@ export function StepDisclosure({
             )}
           </Group>
         </UnstyledButton>
-        {onRestart !== undefined && step.rewindable && step.stepId !== null ? (
-          <Tooltip label="从这一步之后重开">
-            <ActionIcon
-              aria-label="从这一步之后重开"
-              disabled={restartDisabled}
-              onClick={() => onRestart(step.stepId!)}
-              radius="xl"
-              size="sm"
-              variant="subtle"
-            >
-              <IconArrowBackUp size={14} />
-            </ActionIcon>
-          </Tooltip>
-        ) : null}
       </Group>
       <Collapse expanded={opened}>
         {opened ? (

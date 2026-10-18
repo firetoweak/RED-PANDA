@@ -165,97 +165,12 @@ class WebChannel:
         )
         return await self._queries.conversation(session_id, view=view)
 
-    async def edit_and_fork(
-        self,
-        connection_id: str,
-        source_session_id: str,
-        message_id: str,
-        text: str,
-        delivery_id: str,
-        artifact_refs: tuple[str, ...],
-        listed: bool = False,
-        restore_files: bool = False,
-    ):
-        connection = self._require_connection(connection_id)
-        content = self._require_text(text)
-        for label, value in (
-            ("source_session_id", source_session_id),
-            ("message_id", message_id),
-            ("delivery_id", delivery_id),
-        ):
-            if type(value) is not str or not value:
-                raise ValueError(f"{label} must be a non-empty str")
-        child_session_id = f"session-{uuid4().hex}"
-        refs = await self._require_refs(source_session_id, artifact_refs)
-        view = await self._sessions.fork_and_accept_input(
-            connection.owner,
-            source_session_id,
-            message_id,
-            content,
-            child_session_id=child_session_id,
-            delivery_id=delivery_id,
-            artifact_refs=refs,
-            source="web",
-            listed=bool(listed),
-            restore_files=bool(restore_files),
-        )
-        return await self._queries.conversation(child_session_id, view=view)
-
-    async def branch_after_turn(
-        self,
-        connection_id: str,
-        source_session_id: str,
-        message_id: str,
-    ):
-        connection = self._require_connection(connection_id)
-        for label, value in (
-            ("source_session_id", source_session_id),
-            ("message_id", message_id),
-        ):
-            if type(value) is not str or not value:
-                raise ValueError(f"{label} must be a non-empty str")
-        child_session_id = f"session-{uuid4().hex}"
-        view = await self._sessions.branch_after_turn(
-            connection.owner,
-            source_session_id,
-            message_id,
-            child_session_id,
-        )
-        return await self._queries.conversation(child_session_id, view=view)
-
     async def cancel(self, connection_id: str, session_id: str):
         self._require_connection(connection_id)
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
         view = await self._sessions.cancel_turn(session_id)
         return await self._queries.conversation(session_id, view=view)
-
-    async def restart_from_step(
-        self,
-        connection_id: str,
-        session_id: str,
-        step_id: str,
-        delivery_id: str,
-        restore_files: bool,
-    ):
-        connection = self._require_connection(connection_id)
-        for label, value in (
-            ("session_id", session_id),
-            ("step_id", step_id),
-            ("delivery_id", delivery_id),
-        ):
-            if type(value) is not str or not value:
-                raise ValueError(f"{label} must be a non-empty str")
-        child_session_id = f"session-{uuid4().hex}"
-        view = await self._sessions.restart_from_step(
-            connection.owner,
-            session_id,
-            step_id,
-            child_session_id,
-            delivery_id,
-            restore_files=restore_files,
-        )
-        return await self._queries.conversation(child_session_id, view=view)
 
     async def retry(self, connection_id: str, session_id: str):
         self._require_connection(connection_id)

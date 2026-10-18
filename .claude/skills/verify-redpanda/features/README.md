@@ -23,7 +23,7 @@
 | 会话运行数据（journal、附件、文件版本） | `$REDPANDA_HOME/runtime_sessions/` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
-| 回滚/改写后的会话取代关系（被取代的会话不再列出） | `$REDPANDA_HOME/runtime_sessions/lineage.json` |
+| 会话归档（不再列出，仍可读） | `$REDPANDA_HOME/runtime_sessions/archived.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 子 Agent 工作副本 / 文件交换 | `$REDPANDA_HOME/state/subagent_worktrees/`、`state/file_exchanges/` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
@@ -61,8 +61,8 @@
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
-| file-rewind | [file-rewind.md](./file-rewind.md) | `从这一步之后重开` → `会话和文件一起回滚` / `只回滚会话` | 部分（2026-10-12，修复后；文件结果分别展示，UI 待复跑） |
-| edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | `编辑消息` → `改写并执行`；`从这一轮之后建立新会话` | 通过（2026-10-12，main@1a4790a；改写后模型回复偏题，待查） |
+| file-rewind | [file-rewind.md](./file-rewind.md) | 已删除：没有 `从这一步之后重开` | 已删除（2026-10-18，C1） |
+| edit-and-branch | [edit-and-branch.md](./edit-and-branch.md) | 已删除：没有 `编辑消息` / `从这一轮之后建立新会话` | 已删除（2026-10-18，C1） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
 | subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent` | 通过（2026-10-12，main@1a4790a） |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
@@ -76,7 +76,7 @@
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、副本隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker/沙箱、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
-| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | compact 前后回滚、compact 中回滚、带附件会话的回滚与改写、人机混合修改文件的回滚（A/B 情况） | 部分（2026-10-12，修复后；四类问题对应修复已落地，UI 待复跑） |
+| rewind-edge-cases | [rewind-edge-cases.md](./rewind-edge-cases.md) | 用户时间旅行已删除；人机混合修改只剩模型 `restore_workspace` | 用户入口已删除（2026-10-18，C1） |
 | setup-and-sandbox-install | [setup-and-sandbox-install.md](./setup-and-sandbox-install.md) | `setup.sh`/`setup.ps1`、模型向导、`build_agentfs.py`、`agentfs_runtime.py`、`dev.sh` | 通过（2026-10-12，main@1a4790a；doctor 与 sandbox 构建通过） |
 
 ## 入口 → 地图条目 覆盖表
@@ -107,8 +107,6 @@
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
-| `POST .../restarts` | file-rewind、rewind-edge-cases |
-| `POST .../forks`、`POST .../branches` | edit-and-branch、rewind-edge-cases（带附件改写） |
 | `POST .../paused`、`POST .../cancel`、`POST .../retry` | run-control、crash-recovery（故障后重试） |
 | `GET .../subagents/{command_id}` | subagents、subagents-parallel |
 | `/assets/*`、`/{path:path}` 静态页 | web-session-chat |

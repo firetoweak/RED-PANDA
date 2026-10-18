@@ -5,7 +5,6 @@ import {
   timelineTurns,
   turnElapsedMs,
   formatElapsedTime,
-  turnCanStartSession,
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
@@ -629,54 +628,6 @@ describe("turnIsSettled", () => {
       streaming: false,
     });
     expect(turnNeedsSilentEnd(turn, true)).toBe(false);
-  });
-
-  it("offers a new session only after a settled turn has actually ended", () => {
-    const user = {
-      key: "user-1",
-      kind: "user" as const,
-      occurredAt: "2026-09-15T08:00:00+00:00",
-      text: "hi",
-      images: [],
-      files: [],
-    };
-    expect(turnCanStartSession(toolOnlyTurn(user), true)).toBe(true);
-    expect(
-      turnCanStartSession(
-        {
-          key: "user-1",
-          user,
-          process: [],
-          active: null,
-          final: {
-            key: "output:user-1",
-            kind: "step",
-            outputId: "user-1",
-            stepId: "step-1",
-            rewindable: false,
-            text: "好",
-            thinking: null,
-            thinkingPending: false,
-            pending: false,
-            tools: [],
-          },
-        },
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      turnCanStartSession(
-        {
-          key: "user-1",
-          user,
-          process: [],
-          active: null,
-          final: null,
-        },
-        true,
-      ),
-    ).toBe(false);
-    expect(turnCanStartSession(toolOnlyTurn(user), false)).toBe(false);
   });
 });
 
