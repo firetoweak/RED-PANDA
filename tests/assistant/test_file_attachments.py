@@ -17,7 +17,7 @@ from redpanda.assistant.context.projection import project_chat_messages
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView
-from redpanda.runtime import AgentRuntime, MemoryJournal, SqliteJournal, StateProjector
+from redpanda.runtime import AgentRuntime, MemoryJournal, StateProjector
 from redpanda.filesystem.registry import WorkspaceRecord
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
@@ -73,39 +73,7 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(store.read(ref.attachment_id), b"original")
             self.assertEqual(material.read_bytes(), b"original")
 
-    async def test_fork_rebuilds_its_own_materials_from_inherited_originals(self):
-        with TemporaryDirectory() as directory:
-            sessions = SessionStore(Path(directory))
-            await sessions.create("source", workspace_id="workspace-test")
-            gateway = AttachmentGateway(sessions.root)
-            source = gateway.for_session("source")
-            ref = _save(source, b"original", "report.pdf")
-            runtime = AgentRuntime(SqliteJournal(sessions.require("source")), ScriptedDecisionMaker(()), {}, SequentialIds())
-            event = await runtime.receive_user_message("source", "[File #1]", delivery_id="input", artifact_refs=(ref.attachment_id,))
-            source.files.materialize(ref.attachment_id)
-            self.assertTrue(source.files.materials.exists())
-            await sessions.fork_after_event("source", event.event_id, "branch")
-            branch = gateway.for_session("branch")
-            self.assertFalse(branch.files.materials.exists())
-            events = await SqliteJournal(sessions.require("branch")).snapshot("branch")
-            state = StateProjector().project_visible("branch", events)
-            messages = project_chat_messages(events, state, "sys", attachments=branch)
-            self.assertIn(str(branch.files.materials), messages[0]["content"])
-            self.assertEqual(branch.files.materialize(ref.attachment_id).read_bytes(), b"original")
-            await sessions.fork_after_event("branch", event.event_id, "grandchild")
-            source_events = await SqliteJournal(sessions.require("source")).snapshot("source")
-            await sessions.fork_after_event("source", source_events[0].event_id, "rewound")
-            self.assertFalse(
-                gateway.for_session("rewound").files.materials.exists()
-            )
-            self.assertEqual(
-                gateway.for_session("grandchild").files.materialize(
-                    ref.attachment_id
-                ).read_bytes(),
-                b"original",
-            )
-
-    async def test_path_admit_does_not_copy_and_survives_fork_via_pointer(self):
+    async def test_path_admit_does_not_copy_and_materializes_via_pointer(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             live = root / "growing.log"
@@ -125,12 +93,7 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(source.path(ref.attachment_id), live.resolve())
             live.write_bytes(b"head\nmore\n")
             self.assertEqual(source.files.describe(ref.attachment_id).size, live.stat().st_size)
-            runtime = AgentRuntime(SqliteJournal(sessions.require("source")), ScriptedDecisionMaker(()), {}, SequentialIds())
-            event = await runtime.receive_user_message("source", "[File #1]", delivery_id="input", artifact_refs=(ref.attachment_id,))
-            await sessions.fork_after_event("source", event.event_id, "branch")
-            branch = gateway.for_session("branch")
-            self.assertEqual(branch.path(ref.attachment_id), live.resolve())
-            self.assertEqual(branch.files.materialize(ref.attachment_id).read_bytes(), live.read_bytes())
+            self.assertEqual(source.files.materialize(ref.attachment_id).read_bytes(), live.read_bytes())
 
     async def test_analysis_files_ignore_image_byte_cap(self):
         with TemporaryDirectory() as directory:

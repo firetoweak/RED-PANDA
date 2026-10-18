@@ -130,7 +130,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         continuation = await context.find_history(None, {**args, "offset": first["next_offset"]})
         self.assertEqual(continuation["code"], "INVALID_ARGUMENT")
 
-    async def test_logical_history_survives_interleaved_compaction_and_nested_forks(self):
+    async def test_logical_history_survives_repeated_compaction(self):
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
             sid = "b0"
@@ -180,14 +180,10 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
                         "context": material, "bundle": bundle,
                     },
                 })
-                tail = await runtime.receive_user_message(sid, f"tail {index}", delivery_id=f"tail {index}")
-                child = f"b{index + 1}"
-                await store.fork_after_event(sid, tail.event_id, child)
-                await runtime.receive_user_message(sid, f"excluded side {index}", delivery_id="excluded")
-                sid = child
-                runtime = AgentRuntime(SqliteJournal(store.require(sid)), None, {})
+                await runtime.receive_user_message(sid, f"tail {index}", delivery_id=f"tail {index}")
+            runtime = AgentRuntime(SqliteJournal(store.require(sid)), None, {})
 
-            # Fresh gateways resolve all owners from the inherited logical history.
+            # Fresh gateways resolve all owners from the persisted history.
             attachments = AttachmentGateway(store.root)
             projector = ModelContextProjector(gateway=FileArtifactGateway(store.root), attachments=attachments)
             events = await runtime.snapshot(sid)
@@ -195,7 +191,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             restored.runtime = runtime
             visible = restored.visible(events, StateProjector().project_visible(sid, events))
             self.assertNotIn(original.event_id, visible.visible_event_ids)
-            self.assertIn('"source": "b2"', restored.prefix[0]["content"])
+            self.assertIn('"source": "b0"', restored.prefix[0]["content"])
             prepared = projector.prepare(events, visible, sid, "frozen system", prefix=restored.prefix)
             self.assertNotIn("original analysis", json.dumps(prepared.messages))
             self.assertNotIn("original reasoning", json.dumps(prepared.messages))
@@ -213,7 +209,6 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             records = [record for page in pages for record in page]
             text = json.dumps(records)
             self.assertGreater(len(pages), 1)
-            self.assertNotIn("excluded side", text)
             for index in range(3):
                 self.assertIn(f"tail {index}", text)
             self.assertEqual([r["sequence"] for r in records], sorted(r["sequence"] for r in records))
