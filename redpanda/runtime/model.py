@@ -9,12 +9,11 @@ from typing import TypeAlias
 
 from redpanda.runtime.json_values import thaw_value
 
-
 Arguments: TypeAlias = tuple[tuple[str, object], ...]
 
-# 授权判定钩子：签发 Command 时对工具参数求值，返回 True 表示需要用户确认。
-# 必须是纯函数——只看参数，不读外部状态。静态布尔是它的常量特例。
-AuthorizationPolicy: TypeAlias = Callable[[Mapping[str, object]], bool]
+# 授权判定钩子：True 表示需要确认；拒绝参数冻结为不执行工具的结果。
+# 不得产生副作用；文件工具可只读检查目标权限，签发后冻结判定结果。
+AuthorizationPolicy: TypeAlias = Callable[[Mapping[str, object]], bool | Arguments]
 MAX_JSON_VALUE_BYTES = 128 * 1024
 MAX_JSON_VALUE_DEPTH = 32
 
@@ -36,7 +35,7 @@ def _require_nonnegative_int(value: object, name: str) -> None:
         raise ValueError(f"{name} must be a nonnegative int")
 
 
-# 工具参数文本不是 JSON object 时，Command 仍要入账，但参数里只有这份拒绝。
+# 工具参数无法使用或目标权限拒绝时，Command 仍要入账，但参数里只有这份拒绝。
 # 它不是工具 schema 的字段：Dispatcher 不调用工具，授权也不看它。
 ARGUMENT_REJECTION_KEY = "argument_rejection"
 _ARGUMENT_REJECTION_FIELDS = frozenset({"raw", "code", "error", "hint"})
@@ -49,7 +48,7 @@ def rejected_tool_arguments(
     error: str,
     hint: str,
 ) -> Arguments:
-    """把无法成为工具参数的原文装进 InvokeTool。"""
+    """把签发前已拒绝的参数原文与原因装进 InvokeTool。"""
 
     if any(type(item) is not str for item in (raw, code, error, hint)):
         raise TypeError("argument rejection fields must be str")

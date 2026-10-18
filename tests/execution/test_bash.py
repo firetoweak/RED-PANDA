@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -110,13 +111,14 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"PATH": "/product/bin", "JAVA_HOME": "/product/jdk"}),
             patch("redpanda.execution.local.bash.shutil.which", return_value="/usr/bin/bash"),
             patch(
-                "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=RuntimeError("stop after environment capture")),
+                "redpanda.execution.local.owned_command.Running" if sys.platform == "linux"
+                else "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
+                side_effect=RuntimeError("stop after environment capture"),
             ) as spawn,
             self.assertRaisesRegex(RuntimeError, "stop after environment capture"),
         ):
             await runner.run("printf ok", Path.cwd(), 10)
-        child = spawn.call_args.kwargs["env"]
+        child = spawn.call_args.args[2] if sys.platform == "linux" else spawn.call_args.kwargs["env"]
         self.assertEqual(child["PATH"], "/project/bin")
         self.assertEqual(child["JAVA_HOME"], "/project/jdk")
 
@@ -129,8 +131,9 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
                 return_value="/usr/bin/bash",
             ),
             patch(
-                "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=RuntimeError("internal bug")),
+                "redpanda.execution.local.owned_command.Running" if sys.platform == "linux"
+                else "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
+                side_effect=RuntimeError("internal bug"),
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, "internal bug"):
@@ -203,30 +206,20 @@ class BashCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancellation_terminates_child_process_group(self):
         runner = BashCommandRunner()
-        spawned = asyncio.Event()
-        create_process = asyncio.create_subprocess_exec
-
-        async def spawn(*args, **kwargs):
-            process = await create_process(*args, **kwargs)
-            spawned.set()
-            return process
-
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch("redpanda.execution.local.bash.asyncio.create_subprocess_exec", new=spawn):
-                task = asyncio.create_task(runner.run(
-                    "(sleep 1; printf leaked > child.txt) & printf started > started; wait",
-                    root,
-                    10,
-                ))
-                async with asyncio.timeout(10):
-                    await spawned.wait()
-                    while not (root / "started").exists():
-                        await asyncio.sleep(0.01)
-                task.cancel()
+            task = asyncio.create_task(runner.run(
+                "(sleep 1; printf leaked > child.txt) & printf started > started; wait",
+                root,
+                10,
+            ))
+            async with asyncio.timeout(10):
+                while not (root / "started").exists():
+                    await asyncio.sleep(0.01)
+            task.cancel()
 
-                with self.assertRaises(asyncio.CancelledError):
-                    await task
+            with self.assertRaises(asyncio.CancelledError):
+                await task
             await asyncio.sleep(1.1)
 
             self.assertFalse((root / "child.txt").exists())

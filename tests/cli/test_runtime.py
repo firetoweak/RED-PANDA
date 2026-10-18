@@ -1,10 +1,16 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from redpanda.cli.models import CliHealth, CliRecord, CliSourceRef, utc_now
 from redpanda.cli.registry import CliRegistry
-from redpanda.cli.runtime import LOAD_CLI, CliToolCatalog, LoadCliInput
+from redpanda.cli.runtime import (
+    CLI_DESCRIPTION_OMITTED,
+    LOAD_CLI,
+    CliToolCatalog,
+    LoadCliInput,
+)
 
 
 def make_record(name: str) -> CliRecord:
@@ -70,7 +76,35 @@ class CliRuntimeTest(unittest.IsolatedAsyncioTestCase):
         loaded = await new_specs[LOAD_CLI].handler(LoadCliInput(cli_id="rg"))
         self.assertEqual(loaded["code"], "CLI_LOADED")
 
-    async def test_catalog_over_budget_fails_loudly(self):
-        catalog = CliToolCatalog(self.registry, max_catalog_chars=4)
-        with self.assertRaises(RuntimeError):
-            catalog.tool_specs()
+    async def test_catalog_over_budget_shortens_description_but_cli_remains_loadable(self):
+        await self.registry.replace(replace(make_record("rg"), description="x" * 1000))
+        catalog = CliToolCatalog(self.registry, max_catalog_chars=80)
+        self.assertEqual(catalog.catalog_records()[0].description, CLI_DESCRIPTION_OMITTED)
+        specs = catalog.tool_specs()
+        self.assertEqual([spec.to_openai_tool() for spec in specs],
+                         [spec.to_openai_tool() for spec in self.catalog.tool_specs()])
+        loaded = await specs[0].handler(LoadCliInput(cli_id="rg"))
+        self.assertEqual(loaded["code"], "CLI_LOADED")
+        self.assertEqual(loaded["data"]["description"], "x" * 1000)
+
+    async def test_forty_clis_stay_visible_even_when_minimum_catalog_exceeds_budget(self):
+        names = {f"cli-{index:02}" for index in range(40)}
+        for name in sorted(names):
+            await self.registry.add(replace(make_record(name), description="x" * 500))
+        original = self.registry.snapshot()
+        for budget in (4000, 4):
+            with self.subTest(budget=budget):
+                catalog = CliToolCatalog(self.registry, max_catalog_chars=budget)
+                records = catalog.catalog_records()
+                self.assertEqual({record.name for record in records}, names | {"rg"})
+                rendered = "\n".join(f"- {record.name}: {record.description}" for record in records)
+                if budget == 4000:
+                    self.assertLessEqual(len(rendered), budget)
+                else:
+                    self.assertGreater(len(rendered), budget)
+                self.assertEqual(next(record.description for record in records if record.name == "cli-39"),
+                                 CLI_DESCRIPTION_OMITTED)
+                loaded = await catalog.tool_specs()[0].handler(LoadCliInput(cli_id="cli-39"))
+                self.assertEqual(loaded["code"], "CLI_LOADED")
+                self.assertEqual(loaded["data"]["description"], "x" * 500)
+                self.assertEqual(self.registry.snapshot(), original)

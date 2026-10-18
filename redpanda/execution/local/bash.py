@@ -5,6 +5,7 @@ import codecs
 import os
 import shutil
 import signal
+import sys
 import time
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -112,6 +113,9 @@ class BashCommandRunner:
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
         argv, child_env = self.prepare(command)
+        if sys.platform == "linux":
+            from redpanda.execution.local.owned_command import run_owned_command
+            return await run_owned_command(argv, child_env, cwd, timeout_seconds, interrupt, self.capture_limit)
         started = time.perf_counter()
         try:
             proc = await asyncio.create_subprocess_exec(

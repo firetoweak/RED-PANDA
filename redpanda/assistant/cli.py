@@ -3,16 +3,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from redpanda.assistant.artifacts import ArtifactGateway
+from redpanda.assistant.catalog import CatalogCli
 from redpanda.assistant.context.projection import (
     ModelContextSettings,
     externalize_tool_result,
 )
+from redpanda.assistant.tool_results import runtime_tool_result
+from redpanda.cli.runtime import LOAD_CLI
 from redpanda.runtime import ToolBinding
 from redpanda.runtime.dispatcher import AttemptContext
-from redpanda.assistant.tool_results import runtime_tool_result
 from redpanda.tools.spec import ToolArgumentsError
-from redpanda.cli.runtime import LOAD_CLI
-from redpanda.assistant.catalog import CatalogCli
 
 
 class CliToolAdapter:
@@ -31,7 +31,6 @@ class CliToolAdapter:
         self._catalogs: dict[str, dict[str, int]] = {}
 
     def registry_catalog(self) -> list[dict[str, object]]:
-        self._catalog.tool_specs()
         return sorted(
             (
                 {
@@ -40,7 +39,7 @@ class CliToolAdapter:
                     "version": record.version,
                     "revision": record.revision,
                 }
-                for record in self._catalog.registry.snapshot()
+                for record in self._catalog.catalog_records()
             ),
             key=lambda item: item["id"],
         )

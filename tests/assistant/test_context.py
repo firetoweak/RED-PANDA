@@ -6,21 +6,23 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from redpanda.assistant.agents import (
+    AgentCreated,
+    PrivateMessage,
+    Speaker,
+    fact_arguments,
+)
 from redpanda.assistant.artifacts import (
     FileArtifactStore,
 )
-from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.compact.core import CompactContext
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.assistant.agents import PrivateMessage, Speaker, fact_arguments
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
 )
-from tests.fixtures.projection import parse_tool_result_meta, project_chat_messages
 from redpanda.assistant.decision import bind_executor_tools
-from tests.session_scheduler import SettlingScheduler, settle_session
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
@@ -31,10 +33,13 @@ from redpanda.runtime import (
     StateProjector,
     ToolBinding,
 )
-from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext, ToolTerminal
 from redpanda.runtime.model import MAX_JSON_VALUE_BYTES
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
+from tests.fixtures.artifacts import MemoryArtifactGateway
+from tests.fixtures.memory_journal import MemoryJournal
+from tests.fixtures.projection import parse_tool_result_meta, project_chat_messages
+from tests.session_scheduler import SettlingScheduler, settle_session
 
 
 class ArtifactBoundaryTest(unittest.TestCase):
@@ -514,6 +519,49 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         tool = self._tool_messages(prepared.messages)[0]
         self.assertIn("failed-on-purpose", tool["content"])
         self.assertEqual(prepared.age_dehydrated_command_ids, ())
+
+    async def test_control_results_and_agent_creation_open_new_protection_windows(self):
+        from redpanda.assistant.control import (
+            CONTROL_CONCLUDED,
+            CONTROL_FAILED,
+            CONTROL_PREPARATION_FAILED,
+            CONTROL_REJECTED,
+            CONTROL_SUCCEEDED,
+        )
+        facts = [{"fact_type": kind, "data": {
+            "request_id": "request", "action": "test", "message": "done", "data": {},
+        }, "source": "assistant.control", "delivery_id": "control", "requests_decision": True}
+            for kind in (CONTROL_CONCLUDED, CONTROL_REJECTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
+                         CONTROL_PREPARATION_FAILED)]
+        facts.append(fact_arguments(AgentCreated(name="Ada", workspace_id="workspace-test",
+                                                worktree=str(Path.cwd()), branch="ada"), delivery_id="created"))
+        for fact in facts:
+            with self.subTest(fact=fact["fact_type"]):
+                async def ping(_context, _arguments):
+                    return _result("7 bytes")
+
+                runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker((
+                    lambda _: ModelDecision(command_requests=(InvokeTool("ping"),)),
+                    lambda _: _deliver("used"),
+                    lambda _: _deliver("seen"),
+                )), {"ping": ToolBinding(ping), **deliver_binding(lambda *_: None)})
+                try:
+                    await runtime.receive_user_message(self.SESSION, "go", delivery_id="go")
+                    await settle_session(runtime, self.SESSION)
+                    await runtime.receive_domain_fact(self.SESSION, **fact)
+                    await runtime.advance(self.SESSION)
+                    while runtime.dispatcher.active_count:
+                        await asyncio.sleep(0)
+                    events = await runtime.snapshot(self.SESSION)
+                    prepared = self._projector().prepare(
+                        events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
+                    )
+                    self.assertEqual(len(prepared.age_dehydrated_command_ids), 1)
+                    tool = self._tool_messages(prepared.messages)[0]
+                    self.assertIn("引用不表示原结果很大或失败", tool["content"])
+                    self.assertNotIn("7 bytes", tool["content"])
+                finally:
+                    await runtime.dispatcher.close()
 
     async def test_oversized_result_in_protection_window_is_stubbed(self):
         blob = "N" * 200

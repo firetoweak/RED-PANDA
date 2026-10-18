@@ -7,9 +7,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.compact.core import CompactBoundary, save_document
-from redpanda.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
+from redpanda.assistant.loop_guard import NOTICE, LoopGuard, committed_notice
 from redpanda.assistant.loop_guard_strategies import Action, ConsecutiveActions
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
@@ -24,9 +23,10 @@ from redpanda.runtime import (
     StepCommitted,
     UserMessageReceived,
 )
-from redpanda.runtime.json_values import thaw_value
 from redpanda.runtime.codec import EVENT_SCHEMA_VERSION
+from redpanda.runtime.json_values import thaw_value
 from redpanda.runtime.model import Command, Step
+from tests.fixtures.projection import project_chat_messages
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import settle_session
 
@@ -99,6 +99,24 @@ class LoopGuardTest(unittest.TestCase):
         self.assertEqual(notice["evidence"][0]["new_count"], 3)
         self.assertEqual(len({a["command_id"] for a in notice["evidence"][0]["references"]}), 3)
         self.assertIsNone(LoopGuard().inspect((event(2, ("a", "b", "a", "b", "a", "b")),), 2))
+
+    def test_control_results_and_agent_creation_restart_continuous_action_count(self):
+        from redpanda.assistant.agents import AGENT_CREATED
+        from redpanda.assistant.control import (
+            CONTROL_CONCLUDED,
+            CONTROL_FAILED,
+            CONTROL_PREPARATION_FAILED,
+            CONTROL_REJECTED,
+            CONTROL_SUCCEEDED,
+        )
+        for kind in (CONTROL_CONCLUDED, CONTROL_REJECTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
+                     CONTROL_PREPARATION_FAILED, AGENT_CREATED):
+            with self.subTest(fact=kind):
+                trigger = replace(event(4), payload=DomainFactCommitted(kind, {}, requests_decision=True))
+                before = (event(1), event(2))
+                self.assertIsNone(LoopGuard().inspect(before + (trigger, event(5), event(6)), 6))
+                fresh = LoopGuard().inspect(before + (trigger, event(5), event(6), event(7)), 7)
+                self.assertEqual(fresh["evidence"][0]["new_count"], 3)
 
     def test_multiple_hits_merge_and_old_text_is_replayed_verbatim(self):
         trigger = replace(event(1), event_id="trigger-2", payload=UserMessageReceived("go"))

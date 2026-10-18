@@ -6,12 +6,11 @@ import unittest
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.assistant.context.projection import ModelContextSettings
-from tests.session_scheduler import settle_session
-from redpanda.assistant.skills import SkillToolAdapter
 from redpanda.assistant.catalog import CatalogSkill
+from redpanda.assistant.context.projection import ModelContextSettings
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.skills import SkillToolAdapter
+from redpanda.paths import RedPandaHome
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
@@ -20,13 +19,13 @@ from redpanda.runtime import (
     RuntimeStatus,
     StepCommitted,
 )
-from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.state import DecisionFrame
-from redpanda.paths import RedPandaHome
 from redpanda.skills.application import SkillApplicationService
 from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from tests.fixtures.artifacts import MemoryArtifactGateway
+from tests.fixtures.memory_journal import MemoryJournal
+from tests.session_scheduler import settle_session
 from tests.skills.test_package import write_skill
-
 
 DecisionScript = Callable[
     [DecisionFrame],
@@ -157,21 +156,23 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_project_skills_beyond_the_catalog_budget_are_listed_unavailable(self):
         project = Path(self.temporary.name) / "crowded"
-        for index in range(3):
-            write_skill(project / ".claude" / "skills" / f"big-{index}", name=f"big-{index}",
+        for index in range(40):
+            write_skill(project / ".claude" / "skills" / f"big-{index:02}", name=f"big-{index:02}",
                         description="x" * 120)
-        constrained = SkillApplicationService(self.workspace, max_catalog_chars=400)
+        constrained = SkillApplicationService(self.workspace, max_catalog_chars=4000)
         adapter = SkillToolAdapter(
             type("Skills", (), {"tool_catalog": constrained.tool_catalog})(),
             MemoryArtifactGateway(), ModelContextSettings(), project_root=project,
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item["description"] for item in catalog}
-        self.assertEqual(by_id["project:big-0"], "x" * 120)
-        self.assertIn("长度上限", by_id["project:big-2"])
+        self.assertEqual(set(by_id), {"demo"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertLessEqual(len("\n".join(f"- {key}: {value}" for key, value in by_id.items())), 4000)
+        self.assertEqual(by_id["project:big-00"], "x" * 120)
+        self.assertIn("长度上限", by_id["project:big-39"])
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
-        result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "project:big-2"})
+        result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "project:big-39"})
         self.assertEqual(result["code"], "SKILL_PACKAGE_INVALID")
 
     async def test_project_skills_directory_leading_outside_the_task_root_is_not_read(self):
@@ -190,6 +191,28 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         ids = {item["id"] for item in linked_adapter.registry_catalog()}
         self.assertNotIn("project:elsewhere", ids)
         self.assertIn("project:.claude/skills", ids)
+
+    async def test_crowded_project_catalog_preserves_every_id_and_explains_unavailability(self):
+        project = Path(self.temporary.name) / "forty-skills"
+        for index in range(40):
+            name = f"big-{index:02}"
+            write_skill(project / ".claude" / "skills" / name, name=name, description="x" * 500)
+        constrained = SkillApplicationService(self.workspace, max_catalog_chars=400)
+        adapter = SkillToolAdapter(
+            type("Skills", (), {"tool_catalog": constrained.tool_catalog})(),
+            MemoryArtifactGateway(), ModelContextSettings(), project_root=project,
+        )
+        catalog = adapter.registry_catalog()
+        by_id = {item["id"]: item for item in catalog}
+        self.assertEqual(set(by_id), {"demo"} | {f"project:big-{index:02}" for index in range(40)})
+        adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        for index in range(40):
+            skill_id = f"project:big-{index:02}"
+            self.assertIn("长度上限", by_id[skill_id]["description"])
+            result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": skill_id})
+            self.assertEqual(result["code"], "SKILL_PACKAGE_INVALID")
+            self.assertIn("长度上限", result["error"])
 
     async def test_disable_keeps_skill_tool_definitions_stable(self):
         before = self.adapter.schemas()

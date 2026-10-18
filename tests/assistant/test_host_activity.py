@@ -163,9 +163,9 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 crashed = AgentRuntime(
                     SqliteJournal(store.require("session-crashed")),
                     ScriptedDecisionMaker((
-                        lambda _: ModelDecision(command_requests=(InvokeTool("run"),)),
+                        lambda _: ModelDecision(command_requests=(InvokeTool("execute_command"),)),
                     )),
-                    {"run": ToolBinding(unfinished)},
+                    {"execute_command": ToolBinding(unfinished)},
                 )
                 await crashed.receive_user_message(
                     "session-crashed", "跑命令", delivery_id="d2"
@@ -190,10 +190,28 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 await host.resume_unfinished_sessions()
 
                 resumed = {call.args[0] for call in host.resume.await_args_list}
-                self.assertEqual(resumed, {"session-open", "session-crashed"})
-                for session_id in ("session-waiting", "session-open", "session-crashed", child):
+                self.assertEqual(resumed, {"session-open"})
+                for session_id in ("session-waiting", "session-open", child):
                     self.assertFalse(host.is_paused(session_id))
+                self.assertTrue(host.is_paused("session-crashed"))
                 self.assertTrue(host.is_paused("session-stopped"))
+
+                # Explicit continuation releases the stop. Once a decision has
+                # seen the interruption, the old unknown does not stop a later restart.
+                await host.retry("session-crashed")
+                self.assertFalse(host.is_paused("session-crashed"))
+                reviewed = AgentRuntime(
+                    SqliteJournal(store.require("session-crashed")),
+                    ScriptedDecisionMaker((lambda _: ModelDecision(content="已核对中断现场"),)),
+                    {"execute_command": ToolBinding(unfinished)},
+                )
+                await reviewed.advance("session-crashed")
+                await reviewed.dispatcher.close()
+                await reviewed.receive_user_message("session-crashed", "下一项", delivery_id="next")
+                host.resume.reset_mock()
+                await host.resume_unfinished_sessions()
+                self.assertIn("session-crashed", {call.args[0] for call in host.resume.await_args_list})
+                self.assertFalse(host.is_paused("session-crashed"))
             finally:
                 await host.close()
 

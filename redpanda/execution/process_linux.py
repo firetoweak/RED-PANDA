@@ -40,8 +40,8 @@ class Running:
             raise RuntimeError("Linux process owner exited without a response; inspect owner.log")
         return json.loads(response)
 
-    def poll(self):
-        return self._request({"operation": "poll"})["exit_code"]
+    def poll(self, *, leader_only=False):
+        return self._request({"operation": "poll", "leader_only": leader_only})["exit_code"]
 
     def close(self):
         if self._closed:
@@ -79,7 +79,7 @@ def _serve():
             request = json.loads(line)
             if request["operation"] != "poll":
                 raise ValueError("Unknown Linux process owner operation")
-            send({"exit_code": task.poll()})
+            send({"exit_code": task.poll(leader_only=request["leader_only"])})
     finally:
         task.close()
 
