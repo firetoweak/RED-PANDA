@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import tarfile
@@ -12,10 +13,15 @@ import tempfile
 from urllib.request import urlopen
 import zipfile
 
-from scripts.agentfs_runtime import host_platform
-
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def host_platform() -> str:
+    name = f"{platform.system().lower()}-x86_64"
+    if platform.machine().lower() not in {"amd64", "x86_64"} or name not in {"windows-x86_64", "linux-x86_64"}:
+        raise ValueError("应用工具目前只支持 Windows x64 和 Linux x64。")
+    return name
 
 
 def packages(root: Path) -> dict:

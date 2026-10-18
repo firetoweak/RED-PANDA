@@ -16,7 +16,3 @@ start-*.ps1
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
-redpanda/filesystem/bin/
-redpanda/execution/bin/
-native/filesystem/target/
-dist/

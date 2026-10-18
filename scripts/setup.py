@@ -1,4 +1,4 @@
-"""Python 引导完成后，准备应用工具、网页与原生文件服务。"""
+"""Python 引导完成后，准备应用工具与网页。"""
 from __future__ import annotations
 
 import argparse
@@ -37,10 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         runtime_tools.activate(ROOT)
     else:
-        print("[1/5] 准备文件服务、任务命令组件与平台运行组件", flush=True)
-        subprocess.run([sys.executable, "-m", "scripts.agentfs_runtime", "install", "--with-runtime"],
-                       cwd=ROOT, check=True)
-        print("[2/5] 准备应用命令行工具", flush=True)
+        print("[1/4] 准备应用命令行工具", flush=True)
         runtime_tools.prepare(ROOT)
     errors = check_dependencies()
     if errors:
@@ -50,16 +47,16 @@ def main(argv: list[str] | None = None) -> int:
         print("系统依赖检查通过。")
         return 0
     uv = ROOT / ".tools/uv" / ("uv.exe" if WINDOWS else "uv")
-    print("[3/5] 安装 Python 依赖", flush=True)
+    print("[2/4] 安装 Python 依赖", flush=True)
     # uv-created environments do not contain pip; keep it available for developer commands.
     subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "pip"], cwd=ROOT, check=True)
     subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "-r", "requirements.lock", "--require-hashes"],
                    cwd=ROOT, check=True)
-    print("[4/5] 安装前端依赖并构建网页", flush=True)
+    print("[3/4] 安装前端依赖并构建网页", flush=True)
     npm = shutil.which("npm.cmd" if WINDOWS else "npm")
     subprocess.run([npm, "--prefix", "web", "ci"], cwd=ROOT, check=True)
     subprocess.run([npm, "--prefix", "web", "run", "build"], cwd=ROOT, check=True)
-    print("[5/5] 初始化配置", flush=True)
+    print("[4/4] 初始化配置", flush=True)
     initialize = [sys.executable, "-m", "redpanda.initialize"]
     if args.configure:
         initialize.append("--configure")
