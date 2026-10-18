@@ -1,6 +1,6 @@
 # 群聊
 
-项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群里发言，可用 `点名` 选成员，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。`停止本轮` 清空待叫队列并打断当前被叫醒的成员。来源：`web/src/features/groups/`、`SessionSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
+项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群里发言，可用 `点名` 选成员，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。`停止本轮` 清空待叫队列并打断当前被叫醒的成员。来源：`web/src/features/groups/`、`AgentSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
 
 ## Sub-features
 

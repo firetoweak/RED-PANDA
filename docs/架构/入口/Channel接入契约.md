@@ -55,8 +55,8 @@ Step 原子提交后，Assistant 正文通过产品拥有的 `deliver` Command �
 
 ## Session 操作
 
-- `/new`：生成新 identity，创建 Session，并将当前 Channel owner 原子切换到它；
-- 选择已有 Session（Web 会话列表；TUI 不提供）：切换到已存在的 Session、完成未发布的窗口切换准备、重建 Host 投影，并按当前 State 决定是否 wake；切换失败时保留原选择；
+- `/new`（TUI）：生成新 identity，创建 Session，并将当前 Channel owner 原子切换到它；Web 不新建普通会话，新会话只随创建 Agent 产生；
+- 选择已有 Session（Web 从 Agent 名册或收件箱进入；TUI 不提供）：切换到已存在的 Session、完成未发布的窗口切换准备、重建 Host 投影，并按当前 State 决定是否 wake；切换失败时保留原选择；
 - 不提供 `/stop`；退出进程不写 Runtime Event。
 
 Channel 关闭时释放 owner。Runtime 的 `WAITING` 不决定 Worker 是否退出——Host 在 Worker 静止后根据 owner 选择决定是否继续驻留。

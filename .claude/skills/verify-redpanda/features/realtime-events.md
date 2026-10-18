@@ -1,6 +1,6 @@
 # 实时事件与连接
 
-页面通过 `GET /api/events`（SSE）接收所有实时更新，`connected` 事件里的 `connection_id` 用于后续写操作。来源：`redpanda/channels/web/app.py` 的 `stream_events` 与 `SSE_KEEPALIVE_SECONDS`、`redpanda/channels/web/hub.py`（`subscribe` 快照）、`redpanda/channels/web/channel.py`（`_require_connection`）、`redpanda/assistant/host/supervisor.py`（`release`）、`web/src/realtime/eventBridge.ts`、`runtimeSlice.ts`、`textDeltaBuffer.ts`、`SessionSidebar.tsx`、`Composer.tsx`。
+页面通过 `GET /api/events`（SSE）接收所有实时更新，`connected` 事件里的 `connection_id` 用于后续写操作。来源：`redpanda/channels/web/app.py` 的 `stream_events` 与 `SSE_KEEPALIVE_SECONDS`、`redpanda/channels/web/hub.py`（`subscribe` 快照）、`redpanda/channels/web/channel.py`（`_require_connection`）、`redpanda/assistant/host/supervisor.py`（`release`）、`web/src/realtime/eventBridge.ts`、`runtimeSlice.ts`、`textDeltaBuffer.ts`、`AgentSidebar.tsx`、`Composer.tsx`。
 
 ## Sub-features
 

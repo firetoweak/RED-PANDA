@@ -1,6 +1,6 @@
 # Agent 名册
 
-左侧按项目列出 Agent，支持新建、切换、折叠分组，并显示每个 Agent 的状态。不列普通会话，也不提供改名或归档。来源：`web/src/features/sessions/SessionSidebar.tsx`、`CreateAgentModal.tsx`、`WorkspaceHeader.tsx`、`AgentHome.tsx`、`app.py` 的 `/api/agents`。
+左侧按项目列出 Agent，支持新建、切换、折叠分组，并显示每个 Agent 的状态。不列普通会话，也不提供改名或归档。来源：`web/src/features/sessions/AgentSidebar.tsx`、`CreateAgentModal.tsx`、`WorkspaceHeader.tsx`、`AgentHome.tsx`、`app.py` 的 `/api/agents`。
 
 文件审阅仍是会话变更，不在这一条。
 

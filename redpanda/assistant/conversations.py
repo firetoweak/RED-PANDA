@@ -89,17 +89,6 @@ InboxItem = AuthorizationInboxItem | ControlInboxItem
 
 
 @dataclass(frozen=True, slots=True)
-class SessionSummary:
-    session_id: str
-    workspace_id: str
-    title: str
-    updated_at: datetime | None
-    activity: SessionActivity
-    has_active_subagents: bool
-    needs_attention: bool
-
-
-@dataclass(frozen=True, slots=True)
 class UserItem:
     kind: Literal["user"]
     message_id: str
@@ -235,12 +224,8 @@ class AssistantQueries:
             journal = SqliteJournal(path)
             session_id = await journal.session_identity()
             events = await journal.snapshot(session_id)
-            if project_parent(events) is not None:
-                continue
-            workspace_id = bound_workspace_id(events)
-            if workspace_id is None or not self._sessions.workspaces.contains(workspace_id):
-                continue
-            if self._sessions.is_archived(session_id):
+            agent = project_agent(events)
+            if agent is None or not self._sessions.workspaces.contains(agent.workspace_id):
                 continue
             view = session_view(
                 replay(session_id, events).state,
@@ -248,67 +233,12 @@ class AssistantQueries:
             )
             if not view.pending_authorization_commands and view.control_approval is None:
                 continue
-            agent = project_agent(events)
-            label = agent.name if agent is not None else project_session_summary(
-                session_id, events, workspace_id=workspace_id,
-                activity="idle", title=self._sessions.session_title(session_id),
-            ).title
             items.extend(project_inbox_items(
-                session_id=session_id, workspace_id=workspace_id, label=label,
+                session_id=session_id, workspace_id=agent.workspace_id, label=agent.name,
                 authorizations=view.pending_authorization_commands,
                 control=view.control_approval,
             ))
         return tuple(sorted(items, key=_inbox_sort_key))
-
-    async def list_sessions(self) -> tuple[SessionSummary, ...]:
-        summaries: list[SessionSummary] = []
-        for path in self._store.journals():
-            journal = SqliteJournal(path)
-            session_id = await journal.session_identity()
-            events = await journal.snapshot(session_id)
-            if project_parent(events) is not None:
-                continue
-            if not any(
-                isinstance(event.payload, UserMessageReceived) for event in events
-            ):
-                continue
-            workspace_id = bound_workspace_id(events)
-            if workspace_id is None:
-                continue
-            if not self._sessions.workspaces.contains(workspace_id):
-                # 工作区已被删除：会话 Journal 保留，但不再出现在列表里。
-                continue
-            if self._sessions.is_archived(session_id):
-                continue
-            summary = project_session_summary(
-                session_id,
-                events,
-                workspace_id=workspace_id,
-                activity=self._sessions.activity(session_id),
-                title=self._sessions.session_title(session_id),
-                last_error=self._sessions.current_failure(session_id),
-            )
-            terminals = project_unreported_returns(
-                events, await self._child_returns(events),
-            )
-            summaries.append(replace(
-                summary,
-                has_active_subagents=bool(
-                    set(project_pending(events))
-                    - {item.child_session_id for item in terminals}
-                ),
-            ))
-        return tuple(
-            sorted(
-                summaries,
-                key=lambda item: (
-                    item.updated_at is not None,
-                    item.updated_at or datetime.min,
-                    item.session_id,
-                ),
-                reverse=True,
-            )
-        )
 
     async def conversation(
         self,
@@ -473,42 +403,6 @@ def project_inbox_items(
 def _inbox_sort_key(item: InboxItem) -> tuple:
     identity = item.command_id if item.kind == "authorization" else item.request_id
     return (item.label, item.session_id, item.kind, identity)
-
-
-def project_session_summary(
-    session_id: str,
-    events: tuple[Event, ...],
-    *,
-    workspace_id: str,
-    activity: SessionActivity,
-    title: str | None = None,
-    last_error: str | None = None,
-) -> SessionSummary:
-    if title is None:
-        title = "新会话"
-        for event in events:
-            if isinstance(event.payload, UserMessageReceived):
-                title = event.payload.content.strip().splitlines()[0]
-                break
-    return SessionSummary(
-        session_id=session_id,
-        workspace_id=workspace_id,
-        title=title,
-        updated_at=next(
-            (
-                event.occurred_at for event in reversed(events)
-                if isinstance(event.payload, UserMessageReceived)
-            ),
-            None,
-        ),
-        activity=activity,
-        has_active_subagents=bool(project_pending(events)),
-        needs_attention=bool(
-            last_error is not None
-            or pending_authorization_ids(replay(session_id, events).state)
-            or pending_approval_view(events) is not None
-        ),
-    )
 
 
 def project_conversation(

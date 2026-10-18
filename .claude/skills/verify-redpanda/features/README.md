@@ -23,7 +23,6 @@
 | 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
-| 会话归档（不再列出，仍可读） | `$REDPANDA_HOME/runtime_sessions/archived.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<项目>/`（`integration`、`<Agent>`、`children/<子>`） |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
@@ -55,7 +54,7 @@
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 部分（2026-10-12，修复后；错误码与失败再试已修，UI 待复跑） |
 | workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
-| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
+| session-sidebar | [session-sidebar.md](./session-sidebar.md) | Agent 名册、新建与切换 Agent、状态徽标 | 部分（2026-10-12，main@1a4790a） |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总命令授权与控制提案 | 未跑 |
@@ -70,7 +69,7 @@
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
-| layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏会话列表 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
+| layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏 Agent 名册 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 跳过（2026-10-12，main@1a4790a；需真 TTY） |
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | 部分（2026-10-12，修复后；父中断收回子任务，UI 待复跑） |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 部分（2026-10-12，修复后；失败可见与再试已修，UI 待复跑） |
@@ -98,18 +97,16 @@
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar |
-| `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | web-session-chat |
+| `GET /api/sessions/{id}` | web-session-chat |
 | `GET /api/inbox` | inbox |
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages`、`POST /api/groups/{group_id}/stop` | group-chat |
 | `GET /api/sessions/{id}/changes`（仅 Agent 与其委派任务；摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
-| `POST /api/sessions` | 名册不再调用 |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
-| `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | 名册不提供改名或归档 |
 | `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
-| `POST .../paused`、`POST .../cancel`、`POST .../retry` | run-control、crash-recovery（故障后重试） |
+| `POST .../cancel`、`POST .../retry` | run-control、crash-recovery（故障后重试） |
 | `GET .../subagents/{command_id}` | subagents、subagents-parallel |
 | `/assets/*`、`/{path:path}` 静态页 | web-session-chat |
 

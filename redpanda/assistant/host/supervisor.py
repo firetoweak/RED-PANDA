@@ -19,10 +19,7 @@ from redpanda.automation.once import (
     ScheduledCheck,
 )
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.session_metadata import (
-    SessionFlagStore,
-    SessionTextStore,
-)
+from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
 from redpanda.assistant.delivery import emit_delivery
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
@@ -168,8 +165,6 @@ class HostSupervisor:
                           if sys.platform in {"win32", "linux"} else None)
         self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
         self._pause = SessionFlagStore(store.root, "paused.json")
-        self._archived = SessionFlagStore(store.root, "archived.json")
-        self._titles = SessionTextStore(store.root, "titles.json")
         self.automation = OneShotClock(
             OneShotSchedules(home.state_root / "automation.sqlite")
         )
@@ -253,8 +248,8 @@ class HostSupervisor:
             if self.processes is None:
                 raise RuntimeError("Persistent processes require Windows or Linux")
             if operation == "process_start":
-                if self.closed or self._archived.get(session_id):
-                    raise RuntimeError("Cannot start process for a closed owner or archived Session")
+                if self.closed:
+                    raise RuntimeError("Cannot start process for a closed owner")
                 try:
                     process = await self.processes.start(session_id, arguments["command"], Path(arguments["cwd"]))
                 except ShellNotFoundError as exc:
@@ -836,34 +831,6 @@ class HostSupervisor:
     def is_paused(self, session_id):
         return self._pause.get(session_id)
 
-    def is_archived(self, session_id):
-        return self._archived.get(session_id)
-
-    def session_title(self, session_id):
-        return self._titles.get(session_id)
-
-    def session_titles(self):
-        return self._titles.items()
-
-    async def archive(self, session_id):
-        self.store.require(session_id)
-        self._pause.set(session_id, True)
-        if session_id in self.workers:
-            await self.compact.application("cancel_turn", session_id, {})
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-        intents = project_delegate_intents(events)
-        for intent in intents:
-            if self.store.path(intent.child_session_id).exists():
-                await self._reclaim_child(intent.child_session_id,
-                                          {"parent_session_id": session_id, "reason": "父会话归档"})
-        self._archived.set(session_id, True)
-        if self.processes is not None:
-            await self.processes.stop_session(session_id)
-
-    def set_title(self, session_id, title):
-        self.store.require(session_id)
-        self._titles.set(session_id, title)
-
     def _with_host_metadata(self, view, session_id):
         return replace(
             view,
@@ -1039,7 +1006,7 @@ class HostSupervisor:
 
     async def retry(self, session_id):
         if self.is_paused(session_id):
-            return await self.set_paused(session_id, False)
+            self._pause.set(session_id, False)
         return await self.resume(session_id)
 
     async def view(self, session_id):
@@ -1095,15 +1062,6 @@ class HostSupervisor:
     def set_model(self, session_id, model):
         self.store.require(session_id)
         return self.models.select(session_id, model)
-
-    async def set_paused(self, session_id, paused):
-        self._pause.set(session_id, bool(paused))
-        if paused:
-            return self._with_host_metadata(
-                await self.compact.application("view", session_id, {}),
-                session_id,
-            )
-        return await self.resume(session_id)
 
     async def resolve_control(self, session_id, request_id, *, approved):
         return await self.compact.application(

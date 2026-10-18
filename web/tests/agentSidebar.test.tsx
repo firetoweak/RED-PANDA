@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { AgentRosterEntry, GroupSummary, Workspace } from "../src/api/contracts";
-import { SessionSidebar } from "../src/features/sessions/SessionSidebar";
+import { AgentSidebar } from "../src/features/sessions/AgentSidebar";
 import runtimeReducer, { connected, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
 function workspace(workspaceId: string, name: string): Workspace {
@@ -77,7 +77,7 @@ function renderSidebar(initialEntry: string) {
           <AppShell navbar={{ width: 240, breakpoint: 0 }}>
             <AppShell.Navbar>
               <CurrentPath />
-              <SessionSidebar onNavigate={() => {}} />
+              <AgentSidebar onNavigate={() => {}} />
             </AppShell.Navbar>
           </AppShell>
         </MemoryRouter>
@@ -104,7 +104,7 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" }));
   const sidebar = () => <Provider store={store}><MantineProvider><MemoryRouter>
     <AppShell navbar={{ width: 240, breakpoint: 0 }}><AppShell.Navbar>
-      <SessionSidebar onNavigate={() => {}} />
+      <AgentSidebar onNavigate={() => {}} />
     </AppShell.Navbar></AppShell>
   </MemoryRouter></MantineProvider></Provider>;
   const view = render(sidebar());
