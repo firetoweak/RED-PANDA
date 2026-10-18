@@ -38,7 +38,7 @@ from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, sess
 from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, agent_git_bindings
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
-from redpanda.assistant.subagent.review import ChildWorkspaceReview
+from redpanda.assistant.subagent.review import ChildWorkspaceReview, GitChildReview
 from redpanda.filesystem import ChildFiles, child_root, child_workspace, workspace_files
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
@@ -120,9 +120,7 @@ async def build_assistant_assembly(
     agent = project_agent(await journal.snapshot(session_id))
     colleague_schemas = MESSAGE_SCHEMAS if agent is not None and session_transport is not None else []
     colleague_bindings = (message_bindings(session_transport, journal) if colleague_schemas else {})
-    if direct_workspace and task is not None:
-        raise ValueError("直接目录模式尚未接入子任务工作树")
-    if task is not None:
+    if task is not None and not direct_workspace:
         root = child_root(home, task.parent_session_id, session_id)
         if not root.is_dir():
             raise ValueError(f"child workspace missing: {root}")
@@ -161,11 +159,11 @@ async def build_assistant_assembly(
         return await child_review.review(*args, **kwargs)
 
     review_schemas, review_bindings, review_exclusive = (
-        subagent_review_tools(review_operation)
-        if not direct_workspace and task is None and session_transport is not None else ([], {}, frozenset())
+        subagent_review_tools(review_operation, direct_workspace=direct_workspace)
+        if task is None and session_transport is not None else ([], {}, frozenset())
     )
     exclusive_tools |= review_exclusive
-    agent_git = direct_workspace and session_transport is not None
+    agent_git = direct_workspace and task is None and session_transport is not None
     if agent_git:
         exclusive_tools |= AGENT_GIT_TOOLS
     settings = ModelContextSettings()
@@ -226,7 +224,7 @@ async def build_assistant_assembly(
     )
     skill_tools = SkillToolAdapter(skills, gateway, settings)
     cli_tools = CliToolAdapter(cli, gateway, settings)
-    subagents = SubAgentHost(subagent_activity_sink)
+    subagents = SubAgentHost(subagent_activity_sink, direct_workspace=direct_workspace)
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
@@ -314,7 +312,7 @@ async def build_assistant_assembly(
         **skill_tools.bindings(),
         **cli_tools.bindings(),
         **management.bindings(),
-        **(subagents.bindings() if not direct_workspace else {}),
+        **subagents.bindings(),
         **compact_context.bindings(),
     }
     if not direct_workspace:
@@ -345,6 +343,7 @@ async def build_assistant_assembly(
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
             own_copy=task is not None or direct_workspace, direct_workspace=direct_workspace,
+            delegated=task is not None,
         ),
         project_root=workspace.task_root,
         surface=surface,
@@ -356,15 +355,15 @@ async def build_assistant_assembly(
         compact_threshold_tokens=config.compact_threshold_tokens,
         reasoning_effort=config.reasoning_effort,
         context_usage_sink=context_usage_sink,
-        subagents=None if direct_workspace else subagents,
+        subagents=subagents,
         compact=compact_context,
         exclusive_tool_names=exclusive_tools,
         loop_guard=LoopGuard(),
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
-    if not direct_workspace:
-        child_review = ChildWorkspaceReview(runtime, session_id, ChildFiles(home, workspace), session_transport, versions)
+    child_review = (GitChildReview(runtime, session_id, session_transport) if direct_workspace else
+                    ChildWorkspaceReview(runtime, session_id, ChildFiles(home, workspace), session_transport, versions))
     surface.attach(runtime)
     compact_context.runtime = runtime
     scheduler = scheduler_factory(
@@ -397,7 +396,7 @@ async def build_assistant_assembly(
         control=control,
         management=management,
         catalog=catalog,
-        subagents=None if direct_workspace else subagents,
+        subagents=subagents,
         workspace_versions=version_boundary,
     )
 
