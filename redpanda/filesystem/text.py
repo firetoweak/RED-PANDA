@@ -3,6 +3,8 @@ from pathlib import Path
 from os.path import commonprefix
 from io import DEFAULT_BUFFER_SIZE
 import unicodedata
+import errno
+import stat
 
 from .lifecycle import settled
 
@@ -48,6 +50,8 @@ def _write_text(path, content, overwrite):
     if path.is_dir():
         return {"ok": False, "code": "IS_A_DIR"}
     existed = path.exists()
+    if existed and overwrite:
+        _require_writable(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with path.open("w" if overwrite else "x", encoding="utf-8", newline="") as handle:
@@ -90,6 +94,7 @@ def _replace_text(path, old, new, all_matches):
         return {"ok": False, "code": "OLD_BLOCK_NOT_UNIQUE", "matches": count}
     after = content.replace(old, new, -1 if all_matches else 1).encode("utf-8")
     if before != after:
+        _require_writable(path)
         with path.open("r+b") as handle:
             if len(before) == len(after):
                 # Separate replacements must not rewrite the gaps between them.
@@ -115,3 +120,9 @@ def _replace_text(path, old, new, all_matches):
 
 def normalize_for_match(text: str) -> str:
     return unicodedata.normalize("NFKC", text.replace("\r\n", "\n").replace("\r", "\n"))
+
+
+def _require_writable(path: Path) -> None:
+    # Even a privileged process must respect a file made read-only while awaiting approval.
+    if not path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH):
+        raise PermissionError(errno.EACCES, "文件已设为只读，无法写入", str(path))

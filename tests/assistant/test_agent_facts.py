@@ -74,7 +74,9 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         events = await runtime.snapshot("owner")
         shown = json.dumps(project_chat_messages(
             events, StateProjector().project_visible("owner", events), "sys"), ensure_ascii=False)
-        for expected in ("按 Skill 检查。", "2026-10-19T01:00:00+00:00", "不是人的新消息"):
+        from datetime import datetime
+        local_time = datetime.fromisoformat("2026-10-19T01:00:00+00:00").astimezone().isoformat()
+        for expected in ("按 Skill 检查。", local_time, "不是人的新消息"):
             self.assertIn(expected, shown)
 
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):

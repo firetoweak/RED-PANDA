@@ -5,10 +5,12 @@ from redpanda.runtime.json_values import thaw_value
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import datetime
 import json
 
 from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
 from redpanda.automation.routines import ROUTINE_DUE
+from redpanda.automation.once import TIME_REACHED
 from redpanda.assistant.agents import (
     AGENT_FACT_TYPES, GROUP_MESSAGE, PRIVATE_MESSAGE, agent_fact_for_model,
 )
@@ -45,7 +47,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 16
+PROJECTOR_VERSION = 17
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -272,6 +274,9 @@ def _translate_visible_events(
                 continue
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
+            if payload.fact_type in {TIME_REACHED, ROUTINE_DUE}:
+                for key in ("planned_at", "fired_at"):
+                    shown_data[key] = datetime.fromisoformat(shown_data[key]).astimezone().isoformat()
             if payload.fact_type == "assistant.catalog":
                 shown_data = catalog_for_model(shown_data)
             elif payload.fact_type in AGENT_FACT_TYPES:

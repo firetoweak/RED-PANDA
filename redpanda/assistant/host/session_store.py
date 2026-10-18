@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -60,6 +61,7 @@ class SessionStore:
         *,
         workspace_id: str,
         initial_fact: dict | None = None,
+        agent_colleagues: tuple[str, ...] | None = None,
     ) -> None:
         path = self.path(session_id)
         if path.parent.exists():
@@ -93,4 +95,6 @@ class SessionStore:
                     ),
                 )
             )
+        if agent_colleagues is not None:
+            (staging / "agent-creation.json").write_text(json.dumps({"colleagues": agent_colleagues}), encoding="utf-8")
         os.rename(staging, path.parent)

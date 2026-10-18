@@ -77,8 +77,10 @@ class AgentMessages:
             for entry in await self.host.agents.list(sender.workspace_id)
             if entry.agent.session_id != sender.session_id))
 
-    async def joined(self, agent):
-        await self._broadcast(agent, ColleagueJoined(name=agent.name), f"joined:{agent.session_id}")
+    async def joined(self, agent, colleagues):
+        for session_id in colleagues:
+            await self.host.request("fact", session_id, fact_arguments(
+                ColleagueJoined(name=agent.name), delivery_id=f"joined:{agent.session_id}"))
 
     async def declare(self, session_id, arguments):
         sender = await self.host.agents.by_session(session_id)

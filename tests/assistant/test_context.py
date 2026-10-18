@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from redpanda.assistant.agents import (
     AgentCreated,
@@ -72,6 +74,33 @@ def _result(data):
 
 class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     SESSION = "ctx-session"
+
+    async def test_schedule_trigger_times_reach_the_model_in_local_time(self):
+        from redpanda.automation.once import TIME_REACHED
+        from redpanda.automation.routines import ROUTINE_DUE
+
+        runtime = AgentRuntime(MemoryJournal(), None, {}, SequentialIds())
+        await runtime.create_session(self.SESSION)
+        stamp = "2026-10-18T23:00:00+00:00"
+        for kind, data in ((TIME_REACHED, {"schedule_id": "once", "purpose": "observe"}),
+                           (ROUTINE_DUE, {"routine_id": "repeat", "name": "检查", "intent": "observe"})):
+            await runtime.receive_domain_fact(self.SESSION, fact_type=kind,
+                data={**data, "planned_at": stamp, "fired_at": stamp},
+                source="automation", delivery_id=kind, requests_decision=True)
+        events = await runtime.snapshot(self.SESSION)
+        local = timezone(timedelta(hours=8))
+
+        class LocalDateTime(datetime):
+            def astimezone(self, tz=None):
+                return super().astimezone(local if tz is None else tz)
+
+        with patch("redpanda.assistant.context.projection.datetime", LocalDateTime, create=True):
+            messages = project_chat_messages(events, StateProjector().project_visible(self.SESSION, events))
+        shown = json.dumps(messages, ensure_ascii=False)
+        self.assertEqual(shown.count("2026-10-19T07:00:00+08:00"), 4)
+        self.assertNotIn(stamp, shown)
+        # Projection does not rewrite the UTC facts used for durable delivery identity.
+        self.assertIn(stamp, str(events))
 
     async def test_message_during_thinking_follows_the_previous_reply(self):
         for with_tool in (False, True):
