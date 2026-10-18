@@ -17,11 +17,16 @@ from PIL import Image
 from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
+from redpanda.assistant.agents import AgentCreated, AgentRecord
 from redpanda.assistant.conversations import (
+    AgentRosterEntry,
     ConversationView,
     SessionSummary,
     UserItem,
+    project_agent_status,
 )
+from redpanda.assistant.host.agent_roster import AgentNameTaken
+from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.model_settings import ModelSettings
 from redpanda.config import write_json
@@ -115,6 +120,23 @@ class _Sessions:
 
     async def create(self, session_id, workspace_id):
         self.calls.append(("create", session_id, workspace_id))
+
+    async def create_agent(self, *, name, workspace_id):
+        self.calls.append(("create_agent", name, workspace_id))
+        if name == "taken":
+            raise AgentNameTaken(f"项目内已有 Agent：{name}")
+        if name == "nogit":
+            raise AgentProjectRequired("项目必须是 Git 仓库，请先初始化并创建首个提交。")
+        self.queries.created = (name, workspace_id)
+        return AgentRecord(
+            "agent-new",
+            AgentCreated(
+                name=name,
+                workspace_id=workspace_id,
+                worktree=r"C:\agents\one",
+                branch="redpanda/hidden/one",
+            ),
+        )
 
     async def select(self, owner, session_id):
         self.calls.append(("select", owner, session_id))
@@ -213,9 +235,17 @@ class _Sessions:
 class _Queries:
     def __init__(self):
         self.accepted: list[tuple[str, str]] = []
+        self.created: tuple[str, str] | None = None
 
     def record(self, session_id, content):
         self.accepted.append((session_id, content))
+
+    async def list_agents(self):
+        return ()
+
+    async def agent_entry(self, session_id):
+        name, workspace_id = self.created
+        return AgentRosterEntry(session_id, workspace_id, name, "前端", "idle", "waiting")
 
     async def list_sessions(self):
         return (
@@ -646,6 +676,66 @@ class WebFirstSliceTest(unittest.TestCase):
                 },
             ),
         )
+
+    def test_agent_roster_accepts_a_name_and_project_only(self):
+        self.assertEqual(self.client.get("/api/agents").json(), [])
+        created = self.client.post("/api/agents", json={
+            "connection_id": self.connection.connection_id,
+            "workspace_id": "workspace-old",
+            "name": "小熊猫",
+        })
+        self.assertEqual(created.status_code, 201)
+        body = created.json()
+        self.assertEqual(body["name"], "小熊猫")
+        self.assertEqual(body["workspace_id"], "workspace-old")
+        self.assertEqual(body["status"], "waiting")
+        self.assertEqual(body["direction"], "前端")
+        self.assertNotIn("worktree", body)
+        self.assertNotIn("branch", body)
+        self.assertEqual(self.sessions.calls[0], ("create_agent", "小熊猫", "workspace-old"))
+        self.assertEqual(self.sessions.calls[1][0], "select")
+
+        self.assertEqual(self.client.post("/api/agents", json={
+            "connection_id": self.connection.connection_id,
+            "workspace_id": "workspace-old",
+            "name": "小熊猫",
+            "worktree": r"C:\nope",
+        }).status_code, 422)
+        self.assertEqual(self.client.post("/api/agents", json={
+            "connection_id": self.connection.connection_id,
+            "workspace_id": "workspace-old",
+            "name": " 小熊猫",
+        }).status_code, 422)
+        taken = self.client.post("/api/agents", json={
+            "connection_id": self.connection.connection_id,
+            "workspace_id": "workspace-old",
+            "name": "taken",
+        })
+        self.assertEqual(taken.status_code, 409)
+        self.assertIn("已有 Agent", taken.json()["detail"])
+        missing_git = self.client.post("/api/agents", json={
+            "connection_id": self.connection.connection_id,
+            "workspace_id": "workspace-old",
+            "name": "nogit",
+        })
+        self.assertEqual(missing_git.status_code, 422)
+        self.assertIn("Git", missing_git.json()["detail"])
+
+    def test_roster_status_uses_existing_worker_and_wait_facts(self):
+        def status(**overrides):
+            facts = dict(activity="idle", has_active_subagents=False, pending_authorization=False,
+                         control_approval=False, waiting_for=(), last_error=None)
+            facts.update(overrides)
+            return project_agent_status(**facts)
+
+        self.assertEqual(status(activity="running"), "working")
+        self.assertEqual(status(has_active_subagents=True), "working")
+        self.assertEqual(status(activity="running", pending_authorization=True), "working")
+        self.assertEqual(status(pending_authorization=True), "authorization")
+        self.assertEqual(status(control_approval=True), "authorization")
+        self.assertEqual(status(waiting_for=("external_fact",)), "waiting")
+        self.assertEqual(status(last_error="失败"), "waiting")
+        self.assertEqual(status(), "idle")
 
     def test_archive_hides_the_session_from_the_list(self):
         response = self.client.post(

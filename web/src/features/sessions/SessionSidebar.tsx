@@ -9,49 +9,35 @@ import {
   Skeleton,
   Stack,
   Text,
-  TextInput,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import {
-  IconArchive,
   IconFolderPlus,
   IconMessageCircle,
-  IconPencil,
   IconPlus,
   IconAdjustments,
   IconAlertCircle,
-  IconCircleCheck,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
-import type { SessionSummary, Workspace } from "../../api/contracts";
+import type { AgentRosterEntry, Workspace } from "../../api/contracts";
 import {
-  useArchiveSessionMutation,
-  useGetSessionsQuery,
-  useGetSessionTitlesQuery,
+  useGetAgentsQuery,
   useGetWorkspacesQuery,
-  useSetSessionTitleMutation,
 } from "../../api/redpandaApi";
-import { useAppDispatch, useAppSelector } from "../../app/hooks";
-import { lockDraft } from "../../realtime/runtimeSlice";
+import { useAppSelector } from "../../app/hooks";
 import { redPandaMark } from "../../app/brand";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
+import { CreateAgentModal } from "./CreateAgentModal";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import { RemoveWorkspaceModal } from "./RemoveWorkspaceModal";
 import { RenameWorkspaceModal } from "./RenameWorkspaceModal";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 import {
-  DRAFT_TITLE,
-  draftSessionId,
-  defaultWorkspaceId,
-  formatRelativeTime,
-  groupSessions,
   readCollapsedWorkspaces,
-  workspaceOfSession,
-  workspaceSessionRows,
   writeCollapsedWorkspaces,
 } from "./workspaces";
 
@@ -59,26 +45,30 @@ type SessionSidebarProps = {
   onNavigate: () => void;
 };
 
+const STATUS_LABEL = {
+  working: "干活",
+  authorization: "等授权",
+  waiting: "等人回话",
+  idle: "空闲",
+} as const;
+
 export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
-  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
   const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
     .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
-  const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
-  const [expandedWorkspaces, setExpandedWorkspaces] = useState<
-    Record<string, boolean>
-  >({});
-  const { data: sessions = [], isLoading } = useGetSessionsQuery();
-  const { data: titles = {} } = useGetSessionTitlesQuery();
+  const { data: agents = [], isLoading } = useGetAgentsQuery();
   const { data: workspaces = [], isLoading: workspacesLoading } =
     useGetWorkspacesQuery();
   const [
     createWorkspaceOpened,
     { open: openCreateWorkspace, close: closeCreateWorkspace },
   ] = useDisclosure(false);
+  const [creatingWorkspaceId, setCreatingWorkspaceId] = useState<string | null>(
+    null,
+  );
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(
     readCollapsedWorkspaces,
   );
@@ -89,16 +79,15 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const workspaceRecords = new Map(
     workspaces.map((workspace) => [workspace.workspace_id, workspace]),
   );
-  const workspaceGroups = groupSessions(sessions, workspaces);
-  const fallbackWorkspaceId = defaultWorkspaceId(workspaceGroups, workspaces);
-  const currentWorkspaceId = workspaceOfSession(
-    sessionId,
-    sessions,
-    draftSessions,
-  );
-  const defaultDraftId = draftSessionId(draftSessions, fallbackWorkspaceId);
-  const canCreateSession =
-    connectionId !== null && workspaces.length > 0;
+  const groups = workspaces.map((workspace) => ({
+    id: workspace.workspace_id,
+    name: workspace.name,
+    agents: agents.filter((agent) => agent.workspace_id === workspace.workspace_id),
+  }));
+  const currentWorkspaceId = agents.find(
+    (agent) => agent.session_id === sessionId,
+  )?.workspace_id ?? routeWorkspaceId ?? null;
+  const canCreateAgent = connectionId !== null && workspaces.length > 0;
 
   function toggleWorkspace(workspaceId: string) {
     setCollapsedWorkspaces((current) => {
@@ -108,37 +97,24 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
     });
   }
 
-  function openDraft(workspaceId?: string) {
-    const targetId = workspaceId ?? fallbackWorkspaceId;
-    if (targetId === null) {
-      return;
-    }
+  function openCreate(workspaceId: string) {
     setCollapsedWorkspaces((current) => {
-      if (current[targetId] !== true) {
+      if (current[workspaceId] !== true) {
         return current;
       }
-      const next = { ...current, [targetId]: false };
+      const next = { ...current, [workspaceId]: false };
       writeCollapsedWorkspaces(next);
       return next;
     });
-    const existing = draftSessionId(draftSessions, targetId);
-    if (sessionId !== undefined && sessionId === existing) {
-      onNavigate();
-      return;
-    }
-    navigate(`/workspaces/${encodeURIComponent(targetId)}`);
-    onNavigate();
+    setCreatingWorkspaceId(workspaceId);
   }
 
   function leaveRemovedWorkspace(workspace: Workspace) {
-    // 正在看这条工作区里的会话或草稿时，先离开它，否则页面停在一个已不存在的落点上。
     if (
       currentWorkspaceId === workspace.workspace_id ||
       routeWorkspaceId === workspace.workspace_id
     ) {
-      const next = workspaceGroups.find(
-        (group) => group.id !== workspace.workspace_id,
-      );
+      const next = groups.find((group) => group.id !== workspace.workspace_id);
       navigate(
         next === undefined ? "/" : `/workspaces/${encodeURIComponent(next.id)}`,
       );
@@ -167,12 +143,17 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
           fullWidth
           justify="flex-start"
           leftSection={<IconPlus size={17} />}
-          disabled={!canCreateSession}
-          onClick={() => openDraft()}
+          disabled={!canCreateAgent}
+          onClick={() => {
+            const target = currentWorkspaceId ?? workspaces[0]?.workspace_id;
+            if (target !== undefined) {
+              openCreate(target);
+            }
+          }}
           radius="md"
-          variant={sessionId === defaultDraftId ? "filled" : "light"}
+          variant="light"
         >
-          新建会话
+          新建 Agent
         </Button>
       </AppShell.Section>
 
@@ -204,7 +185,7 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
             {!workspacesLoading && workspaces.length === 0 ? (
               <Box px={8} py="sm">
                 <Text c="dimmed" fz={12}>
-                  添加一个工作区，整理会话与相关文件。
+                  添加一个项目，再在里面新建 Agent。
                 </Text>
                 <Button
                   fullWidth
@@ -221,6 +202,18 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
               onClose={closeCreateWorkspace}
               opened={createWorkspaceOpened}
             />
+            <CreateAgentModal
+              connectionId={connectionId}
+              onClose={() => setCreatingWorkspaceId(null)}
+              onCreated={(createdId) => {
+                setCreatingWorkspaceId(null);
+                navigate(`/sessions/${encodeURIComponent(createdId)}`);
+                onNavigate();
+              }}
+              opened={creatingWorkspaceId !== null}
+              workspaceId={creatingWorkspaceId}
+              workspaces={workspaces}
+            />
             {removingWorkspace === null ? null : (
               <RemoveWorkspaceModal
                 onClose={() => setRemovingWorkspace(null)}
@@ -235,17 +228,8 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                 workspace={renamingWorkspace}
               />
             )}
-            {workspaceGroups.map((workspace) => {
+            {groups.map((workspace) => {
               const collapsed = collapsedWorkspaces[workspace.id] === true;
-              const expanded = expandedWorkspaces[workspace.id] === true;
-              const draftId = draftSessions[workspace.id];
-              const { shown: shownSessions, hiddenCount } = workspaceSessionRows(
-                workspace.sessions,
-                workspace.id,
-                draftId,
-                expanded,
-                titles[draftId ?? ""] ?? DRAFT_TITLE,
-              );
               return (
                 <Box
                   className={
@@ -256,64 +240,34 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
                   key={workspace.id}
                 >
                   <WorkspaceHeader
-                    workspace={workspace}
+                    name={workspace.name}
                     collapsed={collapsed}
                     connectionId={connectionId}
-                    draftId={draftId}
                     registered={workspaceRecords.has(workspace.id)}
                     onToggle={() => toggleWorkspace(workspace.id)}
-                    onCreate={() => openDraft(workspace.id)}
+                    onCreate={() => openCreate(workspace.id)}
                     onRename={() => setRenamingWorkspace(workspaceRecords.get(workspace.id)!)}
                     onRemove={() => setRemovingWorkspace(workspaceRecords.get(workspace.id)!)}
-                    onArchived={(archivedId) => {
-                      dispatch(lockDraft(archivedId));
-                      if (archivedId === sessionId) {
-                        navigate(`/workspaces/${encodeURIComponent(workspace.id)}`);
-                        onNavigate();
-                      }
-                    }}
                   />
                   <Collapse expanded={!collapsed}>
                     <Stack className="workspace-sessions" gap={3}>
-                      {shownSessions.map((session) => (
-                        <SessionRow
-                          key={session.session_id}
-                          active={session.session_id === sessionId}
-                          connectionId={connectionId}
+                      {workspace.agents.length === 0 ? (
+                        <Text c="dimmed" fz={12} px={8} py={4}>
+                          还没有 Agent
+                        </Text>
+                      ) : workspace.agents.map((agent) => (
+                        <AgentRow
+                          key={agent.session_id}
+                          active={agent.session_id === sessionId}
+                          agent={agent}
                           onOpen={() => {
                             navigate(
-                              `/sessions/${encodeURIComponent(session.session_id)}`,
+                              `/sessions/${encodeURIComponent(agent.session_id)}`,
                             );
                             onNavigate();
-                          }}
-                          onArchivedCurrent={() => {
-                            navigate(
-                              `/workspaces/${encodeURIComponent(workspace.id)}`,
-                            );
-                            onNavigate();
-                          }}
-                          session={{
-                            ...session,
-                            title:
-                              titles[session.session_id] ?? session.title,
                           }}
                         />
                       ))}
-                      {hiddenCount > 0 ? (
-                        <UnstyledButton
-                          className="workspace-more"
-                          onClick={() =>
-                            setExpandedWorkspaces((current) => ({
-                              ...current,
-                              [workspace.id]: true,
-                            }))
-                          }
-                        >
-                          <Text c="dimmed" fz={12}>
-                            更多 · {hiddenCount}
-                          </Text>
-                        </UnstyledButton>
-                      ) : null}
                     </Stack>
                   </Collapse>
                 </Box>
@@ -345,179 +299,58 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   );
 }
 
-function SessionRow({
-  session,
+function AgentRow({
+  agent,
   active,
-  connectionId,
   onOpen,
-  onArchivedCurrent,
 }: {
-  session: SessionSummary;
+  agent: AgentRosterEntry;
   active: boolean;
-  connectionId: string | null;
   onOpen: () => void;
-  onArchivedCurrent: () => void;
 }) {
-  const dispatch = useAppDispatch();
-  const activity = useAppSelector(
-    (state) => state.runtime.sessions[session.session_id]?.activity ?? session.activity,
+  const live = useAppSelector(
+    (state) => state.runtime.sessions[agent.session_id]?.activity,
   );
-  const showSpinner = activity === "running" || session.has_active_subagents;
-  const unread = useAppSelector(
-    (state) => state.runtime.sessions[session.session_id]?.unread ?? 0,
-  );
-  const status = session.needs_attention ? "attention"
-    : showSpinner ? "running"
-    : unread > 0 ? "completed" : "idle";
-  const activityLabel = status === "attention" ? "需要操作"
-    : status === "completed" ? "执行已结束，有新结果"
-    : activity === "running" ? "运行中"
-    : session.has_active_subagents ? "等待子 Agent" : "空闲";
-  const [archiveSession] = useArchiveSessionMutation();
-  const [setSessionTitle] = useSetSessionTitleMutation();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(session.title);
-  const updatedAt = formatRelativeTime(session.updated_at);
-
-  useEffect(() => {
-    if (!editing) {
-      setDraft(session.title);
-    }
-  }, [editing, session.title]);
-
-  async function saveTitle() {
-    const title = draft.trim();
-    if (connectionId === null || title === "" || title === session.title) {
-      setDraft(session.title);
-      setEditing(false);
-      return;
-    }
-    await setSessionTitle({
-      connectionId,
-      sessionId: session.session_id,
-      title,
-    }).unwrap();
-    setEditing(false);
-  }
-
-  async function archive() {
-    if (connectionId === null) {
-      return;
-    }
-    await archiveSession({
-      connectionId,
-      sessionId: session.session_id,
-    }).unwrap();
-    dispatch(lockDraft(session.session_id));
-    if (active) {
-      onArchivedCurrent();
-    }
-  }
+  const status = agent.status === "authorization" ? "authorization"
+    : live === "running" ? "working"
+    : agent.status;
+  const label = STATUS_LABEL[status];
+  const dot = status === "authorization" ? "attention"
+    : status === "working" ? "running" : "idle";
 
   return (
     <Group
-      className={
-        active
-          ? "session-row is-active"
-          : editing
-            ? "session-row is-editing"
-            : "session-row"
-      }
+      className={active ? "session-row is-active" : "session-row"}
       gap={6}
       wrap="nowrap"
     >
-      <Tooltip label={activityLabel} openDelay={400} position="right">
+      <Tooltip label={label} openDelay={400} position="right">
         <span
-          className={`activity-dot activity-dot-${status}`}
-          aria-label={activityLabel}
+          className={`activity-dot activity-dot-${dot}`}
+          aria-label={label}
         >
-          {status === "attention" ? <IconAlertCircle size={13} />
-            : status === "completed" ? <IconCircleCheck size={13} /> : null}
+          {status === "authorization" ? <IconAlertCircle size={13} /> : null}
         </span>
       </Tooltip>
-      {editing ? (
-        <TextInput
-          autoFocus
-          aria-label="会话标题"
-          className="session-title-input"
-          onBlur={() => {
-            void saveTitle();
-          }}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void saveTitle();
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              setDraft(session.title);
-              setEditing(false);
-            }
-          }}
-          size="xs"
-          value={draft}
-        />
-      ) : (
-        <UnstyledButton
-          aria-current={active ? "page" : undefined}
-          aria-label={session.title}
-          className="session-row-main"
-          onClick={onOpen}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            if (connectionId !== null) {
-              setEditing(true);
-            }
-          }}
-        >
-          <Tooltip label={session.title} openDelay={700} position="right">
+      <UnstyledButton
+        aria-current={active ? "page" : undefined}
+        aria-label={agent.name}
+        className="session-row-main"
+        onClick={onOpen}
+      >
+        <Tooltip label={agent.direction ?? agent.name} openDelay={700} position="right">
+          <Stack gap={0}>
             <Text className="session-title" fz={13} truncate>
-              {session.title}
+              {agent.name}
             </Text>
-          </Tooltip>
-        </UnstyledButton>
-      )}
-      {editing ? null : (
-        <Group className="session-row-meta" gap={2} wrap="nowrap">
-          {updatedAt === "" ? null : (
-            <Text className="session-time" c="dimmed" fz={11}>
-              {updatedAt}
-            </Text>
-          )}
-          <Group className="session-actions" gap={0} wrap="nowrap">
-            <Tooltip label="重命名" openDelay={400} position="right">
-              <ActionIcon
-                aria-label={`重命名 ${session.title}`}
-                disabled={connectionId === null}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setEditing(true);
-                }}
-                size="sm"
-                variant="subtle"
-              >
-                <IconPencil size={13} />
-              </ActionIcon>
-            </Tooltip>
-            <Tooltip label="归档" openDelay={400} position="right">
-              <ActionIcon
-                aria-label={`归档 ${session.title}`}
-                disabled={connectionId === null}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void archive();
-                }}
-                size="sm"
-                variant="subtle"
-              >
-                <IconArchive size={13} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Group>
-      )}
+            {agent.direction === null ? null : (
+              <Text c="dimmed" fz={11} truncate>
+                {agent.direction}
+              </Text>
+            )}
+          </Stack>
+        </Tooltip>
+      </UnstyledButton>
     </Group>
   );
 }

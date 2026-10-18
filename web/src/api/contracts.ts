@@ -34,6 +34,19 @@ const sessionViewSchema = z
   })
   .strict();
 
+export const agentRosterEntrySchema = z
+  .object({
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    name: z.string().min(1),
+    direction: z.string().min(1).nullable(),
+    activity: z.enum(["running", "idle"]),
+    status: z.enum(["working", "authorization", "waiting", "idle"]),
+  })
+  .strict();
+
+export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
+
 export const sessionSummarySchema = z
   .object({
     session_id: z.string().min(1),

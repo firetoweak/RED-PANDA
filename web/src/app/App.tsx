@@ -14,7 +14,7 @@ import {
 } from "./sidebarWidth";
 import { SessionConversation } from "../features/conversation/SessionConversation";
 import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
-import { DraftRedirect } from "../features/sessions/DraftRedirect";
+import { AgentHome } from "../features/sessions/AgentHome";
 import { SessionSidebar } from "../features/sessions/SessionSidebar";
 import { openEventBridge } from "../realtime/eventBridge";
 
@@ -95,7 +95,7 @@ export function App() {
       <AppShell.Main className="main-pane">
         <ActionIcon
           className="mobile-nav-trigger"
-          aria-label="打开会话列表"
+          aria-label="打开 Agent 名册"
           hiddenFrom="sm"
           onClick={toggleNavigation}
           radius="xl"
@@ -106,11 +106,8 @@ export function App() {
         </ActionIcon>
         <Routes>
           <Route path="/settings/models" element={<ModelSettingsPage />} />
-          <Route path="/" element={<DraftRedirect />} />
-          <Route
-            path="/workspaces/:workspaceId"
-            element={<DraftRedirect />}
-          />
+          <Route path="/" element={<AgentHome />} />
+          <Route path="/workspaces/:workspaceId" element={<AgentHome />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />
         </Routes>
       </AppShell.Main>

@@ -55,7 +55,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Sessions"]));
+    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Sessions", "Agents"]));
     refreshChanges();
   });
   source.addEventListener("session_activity", (event) => {
@@ -71,6 +71,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Sessions",
+        "Agents",
       ]),
     );
   });
@@ -90,7 +91,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         message: payload.message,
       }),
     );
-    dispatch(redpandaApi.util.invalidateTags(["Sessions"]));
+    dispatch(redpandaApi.util.invalidateTags(["Sessions", "Agents"]));
   });
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
