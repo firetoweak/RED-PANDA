@@ -53,6 +53,18 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     )
     if agent is not None:
         workspace = replace(workspace, task_root=agent.worktree)
+        # Git identity belongs to this Bot, not the person launching the Host.
+        # Environment defaults leave commit decisions and commands to the model.
+        identity = {
+            "GIT_AUTHOR_NAME": agent.name,
+            "GIT_AUTHOR_EMAIL": "bot@redpanda.local",
+            "GIT_COMMITTER_NAME": agent.name,
+            "GIT_COMMITTER_EMAIL": "bot@redpanda.local",
+        }
+        command_environment = {
+            key: value for key, value in command_environment.items()
+            if key.upper() not in identity
+        } | identity
     stop = asyncio.Event()
     active_requests = 0
     ready = asyncio.Event()

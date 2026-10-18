@@ -58,7 +58,7 @@ class WorktreeLlm(ProcessLlm):
                 calls = (ToolCall("agent-command", "execute_command", json.dumps({"command": command})),)
         elif text == "FINISH_AGENT":
             stage = "git add -- note.txt command.txt"
-            commit = 'git -c user.name=Bot -c user.email=bot@example.invalid commit -m "record agent changes"'
+            commit = 'git commit -m "record agent changes"'
             if stage not in commands:
                 calls = (ToolCall("agent-stage", "execute_command", json.dumps({
                     "command": stage,
@@ -90,6 +90,12 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             git("add", "note.txt")
             git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
             base = git("rev-parse", "HEAD").stdout
+            git("config", "user.name", "Human")
+            git("config", "user.email", "human@example.com")
+            repository_config = (project / ".git" / "config").read_bytes()
+            global_config = root / "gitconfig"
+            global_config.write_text('[user]\n\tname = Global Human\n\temail = global@example.com\n')
+            original_global_config = global_config.read_bytes()
             (project / "note.txt").write_text("human-uncommitted")
             original_status = git("status", "--porcelain").stdout
             home = RedPandaHome(root / "home")
@@ -100,8 +106,15 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             def host():
                 return HostSupervisor(store, partial(direct_workspace_config, root), home, None, llm=llm)
 
-            current = host()
-            with patch.dict(os.environ, {"REDPANDA_FILESYSTEM_EXECUTABLE": str(root / "missing-agentfs")}):
+            with patch.dict(os.environ, {
+                "REDPANDA_FILESYSTEM_EXECUTABLE": str(root / "missing-agentfs"),
+                "GIT_CONFIG_GLOBAL": str(global_config),
+                "GIT_AUTHOR_NAME": "Inherited Human",
+                "GIT_AUTHOR_EMAIL": "inherited@example.com",
+                "GIT_COMMITTER_NAME": "Inherited Human",
+                "GIT_COMMITTER_EMAIL": "inherited@example.com",
+            }):
+                current = host()
                 try:
                     agents = []
                     for index in range(2):
@@ -125,6 +138,9 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
                     committed = git("rev-parse", agents[0].identity.branch).stdout
                     self.assertNotEqual(committed, base)
+                    self.assertEqual(git("show", "-s", "--format=%an%n%ae%n%cn%n%ce",
+                                         agents[0].identity.branch).stdout.decode().splitlines(),
+                                     ["同事0", "bot@redpanda.local", "同事0", "bot@redpanda.local"])
                     self.assertEqual(git("show", f"{agents[0].identity.branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
                     self.assertEqual(git("diff", "--name-only", base.decode().strip(),
                                          agents[0].identity.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
@@ -177,5 +193,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
                     self.assertEqual((project / "note.txt").read_text(), "human-uncommitted")
                     self.assertEqual(git("status", "--porcelain").stdout, original_status)
+                    self.assertEqual((project / ".git" / "config").read_bytes(), repository_config)
+                    self.assertEqual(global_config.read_bytes(), original_global_config)
                 finally:
                     await current.close()
