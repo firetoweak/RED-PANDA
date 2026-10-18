@@ -124,11 +124,6 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
             (root / "a.txt").write_text("same evidence", encoding="utf-8")
             llm = RepeatingLlm()
             journal = SqliteJournal(root / "journal.sqlite")
-            # 本层守循环提示契约；真实投影在 sandbox process 层验证。
-            async def execute(self, identity, callback):
-                return await callback()
-            self.enterContext(patch("redpanda.filesystem.operations.WorkspaceFiles.execute", execute))
-            self.enterContext(patch("redpanda.filesystem.operations.WorkspaceFiles.native_path", lambda self, path: path))
             assembly = await build_assistant_assembly(
                 AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",

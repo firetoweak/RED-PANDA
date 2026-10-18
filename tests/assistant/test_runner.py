@@ -180,6 +180,11 @@ class SessionSchedulerTest(unittest.IsolatedAsyncioTestCase):
             {"path": "a.py"},
         )
 
+    def test_exclusive_batch_uses_declarations_not_tool_names(self):
+        calls = (ToolCall("one", "arbitrary_exclusive", "{}"), ToolCall("two", "read", "{}"))
+        with self.assertRaisesRegex(InvalidLLMResponse, "only tool call"):
+            decision_from_llm(LLMResponse(calls=calls), {"arbitrary_exclusive", "read"}, {"arbitrary_exclusive"})
+
     def test_invalid_tool_arguments_stay_on_the_tool_call(self):
         broken = decision_from_llm(
             LLMResponse(calls=(ToolCall("call-1", "execute_command", "{not json"),)),

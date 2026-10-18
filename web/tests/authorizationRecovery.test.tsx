@@ -50,7 +50,7 @@ it("submits a recovered pending command with the new connection without an autho
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],
@@ -61,7 +61,7 @@ it("submits a recovered pending command with the new connection without an autho
     items: [
       { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "step", output_id: "user", text: null, thinking: null,
-        occurred_at: "2026-09-22T00:00:01Z", rewindable: false, tools: [{ command_id: commandId,
+        occurred_at: "2026-09-22T00:00:01Z", tools: [{ command_id: commandId,
           name: "write_file", status: "awaiting_authorization", error: null, arguments: { path: "probe.md" } }] },
     ],
   };
@@ -107,7 +107,7 @@ it("disables pending authorization buttons while the web connection is down", as
   const commandId = "command-write";
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 4,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],
@@ -118,7 +118,7 @@ it("disables pending authorization buttons while the web connection is down", as
     items: [
       { kind: "user", message_id: "user", text: "write probe", occurred_at: "2026-09-22T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "step", output_id: "user", text: null, thinking: null,
-        occurred_at: "2026-09-22T00:00:01Z", rewindable: false, tools: [{ command_id: commandId,
+        occurred_at: "2026-09-22T00:00:01Z", tools: [{ command_id: commandId,
           name: "write_file", status: "awaiting_authorization", error: null, arguments: { path: "probe.md" } }] },
     ],
   };
@@ -158,8 +158,7 @@ it("recovers a model failure from the conversation after refresh and retries wit
   prepareBrowser();
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 1,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null,
-    workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+    compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "runnable", waiting_for: [], pending_authorization_ids: [], pending_authorization_commands: [],
       should_wake: true, has_active_subagents: false, control_approval: null, control_message: null,

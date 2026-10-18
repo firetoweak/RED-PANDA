@@ -31,10 +31,11 @@
   - (e) 同一 `--home` 再开第二个 → 报错退出，信息含第一个的进程号。
 - **/new**：(a) `runtime_sessions/` 多一个会话。(b) 打印 `新 Session 已创建：session-...`。(c) 原会话历史不变。
 - **与 Web 无关**：Web 与终端同时运行互不阻塞；终端建的会话不出现在 Web 的 `GET /api/sessions`。
-- **退出**：Ctrl+D（或 Ctrl+C）退出，打印 `已退出。`。(c) 无残留子进程；Linux 上 FUSE 挂载已卸载（`mount | grep redpanda` 为空）。
+- **退出**：Ctrl+D（或 Ctrl+C）退出，打印 `已退出。`。(c) 无残留子进程。
 
 ## Gotchas
 
 - 需要真 TTY（prompt_toolkit）；不能用管道喂输入。Linux 用 tmux；Windows 必须在真实控制台（Windows Terminal / ConPTY）里跑。
 - 与 Web 不同，终端缺省会用启动目录登记工作区，且每次启动都是全新会话，没有办法接回旧会话。
+- 终端会话的文件工具与命令直接作用于工作区真实目录，没有回退；写文件与每条命令都要 yes/no 授权。委派的子 Agent 只读调查，没有写工具，也没有 `compare_subagent`/`merge_subagent`。
 - 历史验证：2026-10-12（main@1a4790a）跳过，需真 TTY。2026-10-18 按源码改写启动文案与 Windows 入口，未 live 复跑。

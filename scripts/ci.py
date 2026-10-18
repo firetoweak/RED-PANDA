@@ -39,31 +39,12 @@ def clean_checkout(targets: list[str]) -> None:
             run(["git", "worktree", "remove", "--force", str(checkout)])
 
 
-def require_process_inputs() -> None:
-    from scripts.agentfs_runtime import host_platform
-    from redpanda.filesystem.file_view.client import native_executable
-
-    archive = ROOT / f"dist/agentFS/agentFS-{host_platform()}.zip"
-    required = [native_executable(), archive, archive.with_suffix(".zip.sha256"),
-                ROOT / "redpanda-env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")]
-    if os.name == "nt":
-        from redpanda.execution.local.windows_task import native_task_launcher
-        commands = ROOT / "dist/agentFS/redpanda-execution-windows-x86_64.zip"
-        required.extend([native_task_launcher(), native_task_launcher().with_name("redpanda-hook.dll"),
-                         commands, commands.with_suffix(".zip.sha256")])
-    for path in required:
-        if not path.is_file():
-            raise SystemExit(f"process 验证缺少必需文件：{path}")
-    if sys.platform == "linux" and (not Path("/dev/fuse").exists() or not shutil.which("fusermount3")):
-        raise SystemExit("process 验证需要 /dev/fuse 和 fusermount3。")
-
-
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("targets", nargs="*", choices=("python", "web", "web-test", "web-build", "process"))
     parser.add_argument("--clean", action="store_true",
                         help="在独立虚拟环境与干净 HEAD 中验证 python/web；不携带本机产物")
-    parser.add_argument("--process-group", choices=("compact", "supervisor", "filesystem", "execution", "integration", "gate"),
+    parser.add_argument("--process-group", choices=("compact", "supervisor", "execution", "integration"),
                         help="只验证指定 process 测试组；不指定时验证全部 process 用例")
     parser.add_argument("--workers", type=int, default=1,
                         help="process 组内并行 worker 数；默认串行")
@@ -78,7 +59,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error(f"请使用 Python {expected_python}")
     if args.clean:
         if "process" in targets:
-            parser.error("--clean 只验证 python/web；process 需要在当前 checkout 构建、打包并准备平台运行组件")
+            parser.error("--clean 只验证 python/web；process 在当前 checkout 中准备应用命令行工具")
         clean_checkout(targets)
         return
     # Also applies before collection and to all test child processes.
@@ -94,7 +75,9 @@ def main(argv: list[str] | None = None) -> None:
     if "python" in targets or "process" in targets:
         run([sys.executable, "-m", "pip", "install", "--require-hashes", "-r", "requirements.lock"])
     if "process" in targets:
-        require_process_inputs()
+        from scripts import runtime_tools
+        # rg / fd / Node for this process and the tests it starts; not the user's PATH.
+        runtime_tools.prepare(ROOT)
     if needs_web:
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
         run([npm, "ci"], cwd=ROOT / "web")
@@ -122,6 +105,6 @@ def main(argv: list[str] | None = None) -> None:
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-    # Direct script execution must also support imports used by the process preflight.
+    # Direct script execution must also import the process tool preparation.
     sys.path.insert(0, str(ROOT))
     main()

@@ -1,18 +1,5 @@
-"""Agent file-management entry points; storage and merge backends stay internal."""
-from .children import ChildFiles, child_root, child_workspace
-from .changes import read_changes, ChangesReadConflict
+"""Workspace path resolution, registration and text file access."""
 from .text import read_text, write_text, replace_text
-from .operations import (
-    FileSystemUnavailable,
-    UnknownWorkspaceVersion,
-    WorkspaceFiles,
-    WorkspaceRestore,
-    WorkspaceRestoreFailed,
-    clear_stale_mounts,
-    operation_id,
-    validate_version,
-    workspace_files,
-)
 from .workspace import (
     FileAccess,
     EnvironmentInputError,
@@ -32,23 +19,9 @@ from .workspace import (
 )
 
 __all__ = [
-    "ChildFiles",
-    "ChangesReadConflict",
-    "FileSystemUnavailable",
-    "UnknownWorkspaceVersion",
-    "WorkspaceFiles",
-    "WorkspaceRestore",
-    "WorkspaceRestoreFailed",
-    "child_root",
-    "child_workspace",
-    "clear_stale_mounts",
-    "operation_id",
-    "read_changes",
     "read_text",
     "write_text",
     "replace_text",
-    "validate_version",
-    "workspace_files",
     "FileAccess",
     "EnvironmentInputError",
     "EnvironmentLocation",

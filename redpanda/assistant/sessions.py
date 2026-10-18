@@ -112,7 +112,6 @@ class AssistantSessions:
         management: ManagementSurface,
         catalog: CapabilityCatalog,
         subagents: SubAgentHost | None = None,
-        workspace_versions=None,
     ) -> None:
         self._runtime = runtime
         self._surface = surface
@@ -121,7 +120,6 @@ class AssistantSessions:
         self._management = management
         self._catalog = catalog
         self._subagents = subagents
-        self._workspace_versions = workspace_versions
         self._auto_authorize: dict[str, bool] = {}
         self._control_locks: dict[str, asyncio.Lock] = {}
 

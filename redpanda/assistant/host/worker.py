@@ -183,7 +183,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_transport=peer.request,
         model_selection_source=model_selection_source,
         home=home,
-        direct_workspace=git_workspace is not None,
+        agent_branch=git_workspace is not None,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)
     before_advance = assembly.scheduler.before_advance

@@ -35,8 +35,7 @@ def project_instructions_prompt(workspace_root: Path) -> str:
 
 
 def environment_prompt(
-    workspace_root: Path, *, full_access: bool, own_copy: bool, direct_workspace: bool = False,
-    delegated: bool = False,
+    workspace_root: Path, *, full_access: bool, own_copy: bool, delegated: bool = False,
 ) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
     system = platform.system()
@@ -49,23 +48,19 @@ def environment_prompt(
         else "文件工具只能访问工作区内的文件。"
     )
     file_rules = (
-        ("文件工具直接作用于这份副本的真实目录，当前不提供文件回退；交回后由父 Agent 比较并合入。",)
-        if direct_workspace and delegated else
-        ("文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。尚未提交的改动用 git diff 核对，也要检查暂存区和未跟踪文件；已提交的改动用 git show 或提交差异核对。项目文件修改优先用专用文件工具。",)
-        if direct_workspace else (
-            "get_changes 和 restore_workspace 只覆盖文件工具和 file_access=managed 命令在工作区内的修改；host 命令、持续进程、外部服务工具、工作区外写入、安装和网络副作用都不在此范围，需要自行核对。项目文件修改优先用专用文件工具。",
-            "工作区内的文件工具和 managed 命令不支持目录重命名、硬链接、mmap 一致性和完整的符号链接语义。",
-            "Windows 上还不支持只改大小写的重命名、重解析点（reparse）、ACL 和备用数据流（ADS）。"
-            if system == "Windows" else
-            "POSIX 符号链接不支持单独修改链接权限。",
-        )
+        "文件工具直接作用于这份副本的真实目录，当前不提供文件回退；交回后由父 Agent 比较并合入。"
+        if own_copy and delegated else
+        "这是用户的真实目录，你只能读取，不能修改。"
+        if delegated else
+        "文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。在 Git 项目中，尚未提交的改动用 git diff 核对，"
+        "也要检查暂存区和未跟踪文件；已提交的改动用 git show 或提交差异核对。项目文件修改优先用专用文件工具。"
     )
     return "\n".join((
         "<environment>",
         f"系统：{system}",
         workspace,
         f"相对路径从工作区开始；{access}",
-        *file_rules,
+        file_rules,
         "命令不提供进程、系统或网络隔离，可以访问本机其他位置；不能假定有沙箱。",
         "</environment>",
     ))
@@ -109,7 +104,7 @@ _ASSISTANT_PROMPT = """
 - 用户后续消息默认延续当前任务。只有当它同样能解读成新目标、且两种解读会导致不同操作时，才先简短确认一次。
 - 说要做某个动作，就在同一响应里发出对应的工具调用；不要以未来计划结束一次决策。
 - 持续推进到目标完成并得到验证。结果为空、不完整或失败时调整方案；真实路径被阻塞就明确报告阻塞。
-- 改文件后用当前提供的 get_changes 或 git diff 核对，也要检查未跟踪文件；范围外的修改用 read_file 或实际结果核对，不把外部或来源不明的改动算作自己完成。
+- 改文件后用 git diff 或 read_file 核对，也要检查未跟踪文件；范围外的修改用 read_file 或实际结果核对，不把外部或来源不明的改动算作自己完成。
 - 按改动影响运行必要的测试、构建或静态检查；检查失败时依据证据判断原因，无法验证的部分说明原因。
 {git_rules}
 
@@ -135,14 +130,14 @@ _ASSISTANT_PROMPT = """
 """.strip()
 
 
-def assistant_prompt(*, direct_workspace: bool = False) -> str:
+def assistant_prompt(*, agent_branch: bool = False) -> str:
     git_rules = (
         "- 你维护自己的工作分支。在修改代码的任务中，根据任务进展主动核对、暂存和提交自己的修改，由你选择提交时机、范围和说明，通过现有命令能力执行 Git；只读任务不暂存或提交，用户要求不提交时遵守。\n"
         "- 修改任务收尾前，核对自己的相关修改是否已提交；未提交时执行提交，成功后再报告完成。用户要求不提交时按要求完成；任务或提交受阻时说明未完成的部分与未提交的原因。没有文件变化时无需创建空提交。\n"
         "- 提交前核对差异并完成必要验证，只纳入自己的相关修改；不强制加入被忽略的文件，不提交敏感信息。已提交的修改用 git show 或提交差异核对，git diff 为空不表示任务没有改动。\n"
         "- 命令环境已将 Git 作者和提交者设为你的名字与本地机器人邮箱，直接提交即可；不要覆盖成用户或其他名字，不修改用户的 Git 配置。提交后核对实际作者和提交者。\n"
         "- 提交限于自己的工作分支；不擅自修改用户或同事的分支、推送到远端、重写已有 Git 历史，或执行用户未要求的破坏性操作。"
-        if direct_workspace else
+        if agent_branch else
         "- 不擅自提交或推送代码、重写 Git 历史，或执行用户未要求的破坏性操作。"
     )
     return "\n\n".join((
@@ -152,7 +147,7 @@ def assistant_prompt(*, direct_workspace: bool = False) -> str:
 
 
 DEFAULT_ASSISTANT_PROMPT = assistant_prompt()
-CODING_BOT_PROMPT = assistant_prompt(direct_workspace=True)
+CODING_BOT_PROMPT = assistant_prompt(agent_branch=True)
 
 
 def _subagent_prompt(workspace: str) -> str:
@@ -174,6 +169,5 @@ def _subagent_prompt(workspace: str) -> str:
 """.strip().format(workspace=workspace) + "\n\n" + CODING_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
 
 
-SUBAGENT_PROMPT = _subagent_prompt("你的工作区是用户文件的副本，可以直接读取和修改，无需请求授权；修改后用 get_changes 核对。")
-# A delegated copy of an Agent branch has no get_changes; the parent compares it.
-SUBAGENT_BRANCH_PROMPT = _subagent_prompt("你的工作区是父 Agent 已提交工作的副本，可以直接读取和修改，无需请求授权。")
+SUBAGENT_PROMPT = _subagent_prompt("你的工作区是父 Agent 已提交工作的副本，可以直接读取和修改，无需请求授权。")
+SUBAGENT_READ_ONLY_PROMPT = _subagent_prompt("你的工作区是用户的目录，只能读取，不能修改；任务要求修改时，在 report 里写明建议的改法，由父 Agent 决定。")

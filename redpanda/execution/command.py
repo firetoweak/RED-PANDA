@@ -114,13 +114,6 @@ class CommandStartError(OSError):
     pass
 
 
-class CommandConstraintError(RuntimeError):
-    def __init__(self, result: CommandResult, stage: int, error: int):
-        self.result = result
-        self.unsupported_process = stage == 3 and error == 50
-        super().__init__(f"Windows task constraint failed: stage={stage}, error={error}")
-
-
 class CommandExecutor(Protocol):
     async def run(
         self,

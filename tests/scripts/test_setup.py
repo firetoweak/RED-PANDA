@@ -1,5 +1,3 @@
-import subprocess
-
 import pytest
 
 from scripts import setup
@@ -31,14 +29,13 @@ def test_preparation_uses_project_environment_and_configures_only_when_requested
     commands = []
     monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: commands.append((command, kwargs)))
     assert setup.main(arguments) == 0
-    assert len(commands) == 6
-    assert commands[0][0] == [setup.sys.executable, "-m", "scripts.agentfs_runtime", "install", "--with-runtime"]
-    assert commands[1][0][1:] == ["pip", "install", "--python", setup.sys.executable, "pip"]
-    assert commands[2][0][1:] == ["pip", "install", "--python", setup.sys.executable,
+    assert len(commands) == 5
+    assert commands[0][0][1:] == ["pip", "install", "--python", setup.sys.executable, "pip"]
+    assert commands[1][0][1:] == ["pip", "install", "--python", setup.sys.executable,
                                   "-r", "requirements.lock", "--require-hashes"]
-    assert commands[3][0] == ["npm", "--prefix", "web", "ci"]
-    assert commands[4][0] == ["npm", "--prefix", "web", "run", "build"]
-    assert commands[5][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
+    assert commands[2][0] == ["npm", "--prefix", "web", "ci"]
+    assert commands[3][0] == ["npm", "--prefix", "web", "run", "build"]
+    assert commands[4][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
     assert all(kwargs == {"cwd": setup.ROOT, "check": True} for _, kwargs in commands)
 
 
@@ -54,23 +51,8 @@ def test_project_preparation_does_not_invoke_rust_or_llvm(monkeypatch):
 
     monkeypatch.setattr(setup.subprocess, "run", run)
     assert setup.main([]) == 0
-    assert len(commands) == 6
-    assert all("scripts/build_agentfs.py" not in command for command in commands)
-
-
-def test_unavailable_native_runtime_stops_before_tool_and_dependency_downloads(monkeypatch):
-    monkeypatch.setattr(setup.runtime_tools, "prepare", lambda root: pytest.fail("must not download tools"))
-    monkeypatch.setattr(setup, "check_dependencies", lambda: [])
-    calls = []
-
-    def run(command, **kwargs):
-        calls.append(command)
-        raise subprocess.CalledProcessError(1, command)
-
-    monkeypatch.setattr(setup.subprocess, "run", run)
-    with pytest.raises(subprocess.CalledProcessError):
-        setup.main([])
-    assert len(calls) == 1
+    assert len(commands) == 5
+    assert not any("cargo" in part or "rustup" in part for command in commands for part in map(str, command))
 
 
 def test_check_mode_only_validates_dependencies(monkeypatch):

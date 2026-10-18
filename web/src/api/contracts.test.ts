@@ -53,13 +53,12 @@ describe("conversationViewSchema", () => {
             },
           ],
           occurred_at: "2026-09-15T08:00:01+00:00",
-          rewindable: false,
         },
       ],
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+      waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
 
     expect(parsed.items[1]).toMatchObject({
@@ -115,7 +114,7 @@ describe("conversationViewSchema", () => {
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+      waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       kind: "user",
@@ -139,13 +138,12 @@ describe("conversation thinking field", () => {
           thinking: "先确认目标",
           tools: [],
           occurred_at: "2026-09-15T08:00:01+00:00",
-          rewindable: false,
         },
       ],
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+      waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       text: "world",
@@ -207,13 +205,12 @@ describe("toolProgressEventSchema", () => {
             },
           ],
           occurred_at: "2026-09-15T08:00:01+00:00",
-          rewindable: false,
         },
       ],
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+      waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       tools: [{ command_id: "cmd-1", status: "unknown" }],
@@ -242,13 +239,12 @@ describe("toolProgressEventSchema", () => {
             },
           ],
           occurred_at: "2026-09-15T08:00:01+00:00",
-          rewindable: false,
         },
       ],
       session,
       compact_count: 0,
       compact_phase: null,
-      waiting_until: null, workspace_version: null, workspace_file_result: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
+      waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     });
     expect(parsed.items[0]).toMatchObject({
       kind: "step",

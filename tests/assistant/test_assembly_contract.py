@@ -5,33 +5,15 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import AsyncMock, patch
-import pytest
+from unittest.mock import patch
 
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import DecisionCancelled, MemoryJournal, SqliteJournal, StepCommitted
-from redpanda.runtime.dispatcher import AttemptContext
-from redpanda.filesystem import operation_id
+from redpanda.runtime import DecisionCancelled, MemoryJournal, StepCommitted
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
-
-
-@pytest.fixture(autouse=True)
-def version_backend():
-    # 本层验证装配；真实 VFS 文件恢复在 process 层。
-    async def execute(self, identity, callback):
-        return await callback()
-    with (
-        patch("redpanda.filesystem.operations.WorkspaceFiles.record", return_value="a" * 64),
-        patch("redpanda.filesystem.operations.WorkspaceFiles.execute", execute),
-        patch("redpanda.filesystem.operations.WorkspaceFiles.native_path", lambda self, path: path),
-        patch("redpanda.filesystem.operations.WorkspaceFiles.logical_path", lambda self, path: path),
-    ):
-        yield
-
 
 
 class CapturingLlm:
@@ -93,92 +75,6 @@ class BlockingStreamingLlm:
 
 
 class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
-    async def test_get_changes_binds_current_session_operations_by_default(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            workspace = root / "workspace"
-            workspace.mkdir()
-            changes = AsyncMock(return_value={"ok": True, "code": "CHANGES_READ", "scope": "session",
-                "changes": [], "content_complete": True, "truncated": False, "next_offset": None})
-            journal_path = root / "sessions" / ("a" * 64) / "journal.sqlite"
-            journal_path.parent.mkdir(parents=True)
-            journal = SqliteJournal(journal_path)
-            await journal.create_session("entry")
-            with (
-                patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=RedPandaHome(root / "home")),
-                patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
-                patch("redpanda.filesystem.operations.WorkspaceFiles.changes", changes),
-            ):
-                assembly = await build_assistant_assembly(
-                    AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=CapturingLlm()),
-                    lambda *_: None, journal, session_id="entry", workspace=workspace_record(workspace),
-                )
-                try:
-                    await assembly.runtime.receive_user_message("entry", "inspect", delivery_id="input")
-                    step = (await assembly.runtime.advance("entry")).step
-                    context = AttemptContext("entry", "query", "attempt-query", 1)
-                    result = await assembly.bindings["get_changes"].handler(context, {})
-                    self.assertTrue(result["ok"])
-                    changes.assert_awaited_once_with(workspace, operations=tuple(
-                        operation_id("entry", command.command_id) for command in step.commands), offset=0, text_offset=0)
-                    await assembly.bindings["get_changes"].handler(context, {"scope": "workspace"})
-                    changes.assert_awaited_with(workspace, operations=None, offset=0, text_offset=0)
-                finally:
-                    await assembly.scheduler.close()
-
-    async def test_workspace_route_follows_each_command_effect(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = root / "workspace"
-            workspace.mkdir()
-            (workspace / "file.txt").write_text("published")
-            home = RedPandaHome(root / ".redpanda")
-            routes = []
-            async def read(self, callback):
-                routes.append("read")
-                return await callback()
-            async def execute(self, identity, callback):
-                routes.append("candidate")
-                return await callback()
-            with (
-                patch("redpanda.assistant.assembly.RedPandaHome.default", return_value=home),
-                patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"),
-                patch("redpanda.filesystem.operations.WorkspaceFiles.read", read),
-                patch("redpanda.filesystem.operations.WorkspaceFiles.execute", execute),
-            ):
-                assembly = await build_assistant_assembly(
-                    AssistantConfig(model_name="test", compact_threshold_tokens=200_000,
-                                    llm=CapturingLlm()),
-                    lambda *_: None, MemoryJournal(), session_id="entry",
-                    workspace=workspace_record(workspace),
-                )
-                try:
-                    context = AttemptContext("entry", "read", "attempt-read", 1)
-                    result = await assembly.bindings["read_file"].handler(context, {"path": "file.txt"})
-                    self.assertTrue(result["ok"])
-                    self.assertEqual(routes, ["read"])
-                    cases = (
-                        ({"command": "", "workspace_effect": "read_only"}, "EMPTY_COMMAND", "read"),
-                        ({"command": "", "workspace_effect": "may_write"}, "EMPTY_COMMAND", "candidate"),
-                        ({"command": ""}, "EMPTY_COMMAND", "candidate"),
-                        ({"command": 42, "workspace_effect": "read_only"}, "VALIDATION_ERROR", "read"),
-                        ({"command": "", "workspace_effect": "unknown"}, "VALIDATION_ERROR", "candidate"),
-                    )
-                    for index, (arguments, code, route) in enumerate(cases):
-                        with self.subTest(arguments=arguments):
-                            context = AttemptContext("entry", f"command-{index}", f"attempt-{index}", 1)
-                            result = await assembly.bindings["execute_command"].handler(context, arguments)
-                            self.assertEqual(result["code"], code)
-                            self.assertEqual(routes.pop(), route)
-                    routes.clear()
-                    result = await assembly.bindings["execute_command"].handler(context, {
-                        "command": "", "file_access": "host",
-                    })
-                    self.assertEqual(result["code"], "EMPTY_COMMAND")
-                    self.assertEqual(routes, [])
-                finally:
-                    await assembly.scheduler.close()
-
     async def test_cancelled_model_call_aborts_its_preview(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

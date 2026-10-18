@@ -1,6 +1,5 @@
 """Parent ownership and acceptance of delegated file results."""
 from redpanda.assistant.subagent.subagent import project_delegate_intents, project_failed_delegations
-from redpanda.filesystem import operation_id
 
 
 async def _returned_intent(runtime, session_id, transport, tool_call_id):
@@ -52,40 +51,3 @@ class GitChildReview:
                     "hint": "按 Git 原文处理后再合入；处理不了就把原文告诉用户。"}
         return {"ok": False, "code": "MERGE_IN_PROGRESS", "error": "你的工作区还有一次合并没有完成。",
                 "hint": "先用 git add 和 git commit 完成它，或用 git merge --abort 放弃，再合入。"}
-
-
-class ChildWorkspaceReview:
-    def __init__(self, runtime, session_id, files, transport, filesystem):
-        self.runtime = runtime
-        self.session_id = session_id
-        self.files = files
-        self.transport = transport
-        self.filesystem = filesystem
-
-    async def review(self, command_id, tool_call_id, paths=None, *, merge=False, offset=0):
-        try:
-            return await self._review(command_id, tool_call_id, paths, merge=merge, offset=offset)
-        except OSError:
-            return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
-                    "error": "无法读取或合入子任务文件；可稍后重试一次；仍失败请告诉用户检查磁盘空间、文件占用和权限。"}
-
-    async def _review(self, command_id, tool_call_id, paths, *, merge, offset):
-        intent, failure = await _returned_intent(self.runtime, self.session_id, self.transport, tool_call_id)
-        if failure is not None:
-            return failure
-        if merge:
-            async def apply():
-                try:
-                    result = await self.files.merge(self.session_id, intent.child_session_id, self.filesystem)
-                except OSError:
-                    return {"ok": False, "code": "CHILD_WORKSPACE_FAILED",
-                            "error": "无法合入子任务文件；可稍后重试一次；仍失败请告诉用户检查磁盘空间、文件占用和权限。"}
-                if result.conflicts:
-                    return {"ok": False, "code": "MERGE_CONFLICT", "data": {"conflicts": list(result.conflicts)},
-                            "error": "合入冲突，用户的文件没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。"}
-                return {"ok": True, "code": "SUBAGENT_MERGED",
-                        "data": {"tool_call_id": tool_call_id, "changed_files": list(result.changed_paths[:100]),
-                                 "changed_count": len(result.changed_paths), "truncated": len(result.changed_paths) > 100}}
-            return await self.filesystem.execute(operation_id(self.session_id, command_id), apply)
-        data = await self.files.compare(self.session_id, intent.child_session_id, tuple(paths or ()), offset=offset)
-        return {"ok": True, "code": "SUBAGENT_CHANGES", "data": data}

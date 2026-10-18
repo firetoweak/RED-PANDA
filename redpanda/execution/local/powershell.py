@@ -97,9 +97,7 @@ class PowerShellCommandRunner:
         capture_limit: CaptureLimit | None = None,
         *,
         environment: Mapping[str, str] | None = None,
-        task_root: Path | None = None,
     ) -> None:
-        self.task_root = task_root
         self._environment = (
             None if environment is None
             else {name.upper(): value for name, value in environment.items()}
@@ -156,22 +154,11 @@ class PowerShellCommandRunner:
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
         argv, child_env = self.prepare(command)
-        task = None
-        if self.task_root is not None:
-            from .windows_task import WindowsTask
-            task = WindowsTask(self.task_root, cwd, argv)
-            spawn = {"startupinfo": task.startupinfo, "creationflags": 0x08000000}
-            argv = task.argv
-        else:
-            # Product CLI management has no task workspace; its Shell still waits
-            # until the outer Job owns it before evaluating the command.
-            argv[-1] = "$null=[Console]::In.Read();" + argv[-1]
-            spawn = {}
+        # The Shell waits until the outer Job owns it before evaluating the command.
+        argv[-1] = "$null=[Console]::In.Read();" + argv[-1]
         try:
             job = WindowsJob.create()
         except OSError as exc:
-            if task is not None:
-                task.close()
             raise CommandStartError(str(exc)) from exc
         started = time.perf_counter()
         try:
@@ -182,20 +169,13 @@ class PowerShellCommandRunner:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                **spawn,
             )
         except OSError as exc:
             job.close()
-            if task is not None:
-                task.close()
             raise CommandStartError(str(exc)) from exc
         except BaseException:
             job.close()
-            if task is not None:
-                task.close()
             raise
-        if task is not None:
-            task.spawned()
         assert proc.stdin is not None
         assert proc.stdout is not None
         assert proc.stderr is not None
@@ -206,8 +186,6 @@ class PowerShellCommandRunner:
             proc.kill()
             await proc.wait()
             job.close()
-            if task is not None:
-                task.close()
             raise CommandStartError(str(exc)) from exc
 
         stdout_capture = BoundedTextCapture(self.capture_limit)
@@ -262,23 +240,15 @@ class PowerShellCommandRunner:
                         "命令执行失败且清理失败", [run_error, cleanup_error]
                     )
                 raise
-            finally:
-                if task is not None:
-                    task.close()
             raise
         else:
             timed_out = kind == "timed_out"
             interrupted = kind == "interrupted"
             cleanup = asyncio.create_task(terminate_and_drain())
             try:
-                try:
-                    await asyncio.shield(cleanup)
-                except asyncio.CancelledError:
-                    await cleanup
-                    raise
-            except BaseException:
-                if task is not None:
-                    task.close()
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await cleanup
                 raise
 
         result = CommandResult(
@@ -290,4 +260,4 @@ class PowerShellCommandRunner:
             io_errors=tuple(io_errors),
             interrupted=interrupted,
         )
-        return result if task is None else task.finish(result)
+        return result

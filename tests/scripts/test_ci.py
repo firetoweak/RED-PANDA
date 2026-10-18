@@ -4,7 +4,7 @@ from scripts.ci import verification_environment
 
 def test_verification_environment_excludes_inherited_test_and_product_settings(monkeypatch):
     for name in ("REDPANDA_HOME", "REDPANDA_CONFIG", "REDPANDA_RUN_LIVE_TESTS",
-                 "REDPANDA_FILESYSTEM_EXECUTABLE", "PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONPATH"):
+                 "PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONPATH"):
         monkeypatch.setenv(name, "inherited")
     monkeypatch.setenv("PYTHONUTF8", "0")
     monkeypatch.setenv("PYTHONIOENCODING", "cp1252")

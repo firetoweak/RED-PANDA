@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import urllib.error
@@ -19,20 +18,16 @@ def main() -> int:
     parser.add_argument("--url", required=True, help="Web origin, for example http://127.0.0.1:8876")
     parser.add_argument("--home", required=True, type=Path, help="REDPANDA_HOME for this run")
     parser.add_argument("--pid-file", required=True, type=Path, help="pid file written by Launch")
-    parser.add_argument("--repo", type=Path, help="repository root; default walks up from this file")
     parser.add_argument("--timeout", type=float, default=10)
     parser.add_argument("--require-model", action="store_true")
-    parser.add_argument("--require-sandbox", action="store_true")
     args = parser.parse_args()
 
     url = args.url.rstrip("/")
     home = args.home.expanduser().resolve()
-    repo = (args.repo or find_repo()).resolve()
     report: dict = {
         "ok": False,
         "url": url,
         "home": str(home),
-        "repo": str(repo),
         "blockers": [],
         "warnings": [],
     }
@@ -58,25 +53,15 @@ def main() -> int:
 
     settings = http_json(url + "/api/model-settings", args.timeout, report, "model_settings")
     describe_models(settings, home, report)
-    describe_sandbox(pid, repo, report)
     describe_events(url, args.timeout, report)
 
     if args.require_model and not report.get("live_model_ready"):
         report["blockers"].append("no configured provider for the default model")
-    if args.require_sandbox and not report.get("sandbox", {}).get("ready"):
-        report["blockers"].append(report.get("sandbox", {}).get("reason", "sandbox is not ready"))
 
     report["ok"] = not report["blockers"]
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
     return 0 if report["ok"] else 1
-
-
-def find_repo() -> Path:
-    for parent in Path(__file__).resolve().parents:
-        if (parent / "web_chat.py").is_file():
-            return parent
-    raise SystemExit("pass --repo; web_chat.py was not found above doctor.py")
 
 
 def read_pid(path: Path, report: dict) -> int | None:
@@ -242,51 +227,6 @@ def credential_fields(value) -> list[str]:
 
     walk(value)
     return found
-
-
-def describe_sandbox(pid: int | None, repo: Path, report: dict) -> None:
-    system = sys.platform
-    configured = process_env(pid, "REDPANDA_FILESYSTEM_EXECUTABLE") if pid and Path(f"/proc/{pid}").is_dir() else None
-    if configured:
-        executable = Path(configured)
-    else:
-        name = "redpanda-agentfs.exe" if os.name == "nt" else "redpanda-agentfs"
-        executable = repo / "redpanda" / "filesystem" / "bin" / name
-    sandbox = {
-        "platform": system,
-        "executable": str(executable),
-        "executable_present": executable.is_file(),
-        "ready": False,
-        "reason": "",
-    }
-    if system == "darwin":
-        sandbox["reason"] = "macOS file view is not implemented"
-    elif not executable.is_file():
-        sandbox["reason"] = "native sandbox binary is absent; run scripts/build_agentfs.py"
-    elif system.startswith("linux"):
-        fuse = os.access("/dev/fuse", os.R_OK | os.W_OK)
-        mount = shutil.which("fusermount3")
-        sandbox["fuse_device"] = fuse
-        sandbox["fusermount3"] = mount is not None
-        if fuse and mount:
-            sandbox["ready"] = True
-            sandbox["reason"] = "linux sandbox binary, /dev/fuse, and fusermount3 are present"
-        else:
-            sandbox["reason"] = "linux file view needs a writable /dev/fuse and fusermount3"
-    elif os.name == "nt":
-        execution = repo / "redpanda" / "execution" / "bin"
-        missing = [name for name in ("redpanda-command.exe", "redpanda-hook.dll") if not (execution / name).is_file()]
-        sandbox["execution_components_missing"] = missing
-        if missing:
-            sandbox["reason"] = f"Windows command execution needs {', '.join(missing)} under {execution}; run scripts/setup.ps1"
-        else:
-            sandbox["ready"] = True
-            sandbox["reason"] = "sandbox binary and execution components are present; WinFsp still has to be installed on the machine"
-    else:
-        sandbox["reason"] = f"file view is not implemented for {system}"
-    report["sandbox"] = sandbox
-    if not sandbox["ready"]:
-        report["warnings"].append(sandbox["reason"] + "; skip file rewind and coding tool rounds")
 
 
 def describe_events(url: str, timeout: float, report: dict) -> None:

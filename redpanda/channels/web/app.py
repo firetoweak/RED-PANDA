@@ -21,7 +21,7 @@ from redpanda.assistant.attachments import (
     is_valid_attachment_id,
 )
 from redpanda.assistant.file_attachments import is_file_attachment_id
-from redpanda.assistant.conversations import FileChangesConflict, FileChangesUnavailable
+from redpanda.assistant.conversations import FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.agent_roster import AgentNameTaken
 from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
@@ -375,8 +375,6 @@ def create_web_app(
             raise HTTPException(422, "续读时必须指定文件。")
         try:
             result = await _channel(request).file_changes(session_id, path=path, offset=offset)
-        except FileChangesConflict as error:
-            raise HTTPException(409, str(error)) from error
         except FileChangesUnavailable as error:
             raise HTTPException(503, str(error)) from error
         if result is None:

@@ -1,6 +1,6 @@
 # 异常恢复
 
-进程被杀、沙箱/FUSE 死掉、断网、模型 API 出错之后，会话能否正确续上：journal 状态、执行一半的工具、待授权、挂载清理、重连后的界面、再试不重复。
+进程被杀、断网、模型 API 出错之后，会话能否正确续上：journal 状态、执行一半的工具、待授权、重连后的界面、再试不重复。
 
 源码事实（判据以此为准，2026-10-18 核对）：
 - **进程结构**：Web 进程内的 `HostSupervisor`（`redpanda/assistant/host/supervisor.py`）为每个会话用 `multiprocessing` spawn 起 Worker 子进程（命令行含 `spawn_main`）；Worker 在父进程退出后自行退出（`worker.py` 的 `parent_process().join()`）。Worker 失败经 `report_worker_failures`（`redpanda/channels/web/app.py`）发 SSE `session_failed`，文案 `Session 进程失败：...`，同一文案也记为该会话的 `last_error`。
@@ -10,14 +10,12 @@
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：超时为 `connect=10, read=60, write=30, pool=10` 秒。408/425/429/500/502/503/504 与 `httpx.TransportError`（含 `ReadTimeout`、`ConnectTimeout`、连接被拒）→ `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次（共 4 次尝试）；收到任何一行后就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `模型响应不符合约定`；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。
 - **失败可见与再试**：已识别的模型失败只停该会话，SSE `session_failed` 与 `last_error` 文案均为 `运行失败：<原因>`（`redpanda/assistant/runner.py`）；界面横幅 `执行已停止。运行失败：…`，按钮 `查看详情`、`再试`。`last_error` 只在 Web 进程内存里，刷新页面仍在，重启 Web 后消失。`再试` 沿用原待处理输入，不新增用户消息、不重复已完成工具。
-- **FUSE 挂载**：`native/filesystem/src/main.rs` 的 `clear_stale_mount` 在下次挂载前执行 `fusermount3 -u -z` 清理残留挂载。崩溃契约测试只有 Windows（`native/vfs/crates/vfs-mount/tests/windows_execution_crash.rs`）。
 - **定时任务**：`redpanda/automation/recovery.py` 只补全重启前处于 UNKNOWN 的 `schedule_once`/`cancel_schedule` 调用；定时本身的持久与触发见 scheduling。
 
 ## Sub-features
 
 - `kill-web`：`kill -9` Web 进程后同 home 重启。
 - `kill-worker`：只杀某会话的 Worker 子进程。
-- `kill-sandbox`：工具执行中杀掉 `redpanda-agentfs`/FUSE 进程。
 - `network-loss`：模型请求期间断网（连接被拒 / 丢包）。
 - `model-errors`：超时、429、5xx、流被截断、无效 key。
 - `pending-auth-survives`：待授权跨重启保留。
@@ -41,15 +39,14 @@
 
 ## Driving it with the browser + shell
 
-记录故障前的基线：`sqlite3 <会话 journal.sqlite> 'select count(*) from events'`、工作区文件哈希、`mount | grep -i fuse`（Linux）、上面的 Worker 列表。
+记录故障前的基线：`sqlite3 <会话 journal.sqlite> 'select count(*) from events'`、工作区文件哈希、上面的 Worker 列表。
 
 - **kill -9 Web（工具执行中）**：让模型 `execute_command` 跑 `sleep 30 && echo DONE >> out.txt`，运行中杀 Web，同 home 重启。
   - (a) 该命令状态 `unknown`（`GET /api/sessions/<id>`），界面徽标 `中断`、文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`；`session.paused` 为 true；事件数不少于基线 + 已提交事件；`out.txt` 是否存在都可以，但**之后不得再出现第二行 `DONE`**。
   - (b) 重启后侧栏底部从 `正在连接…` 变为 `已连接`；会话不会自动续跑，输入框出现 `继续`；侧栏不应永远停在运行状态。
   - (c) 其他会话 journal 不变；工作区里与该命令无关的文件不变；重启前记下的 Worker pid 都已不在（无孤儿继续写 journal）。
-  - (d) 点 `继续` → 模型读到 `NO_RESULT_YET`，应先检查 `out.txt` 再决定；若系统自动重跑了该命令（`out.txt` 出现两行），判失败。残留：`sleep 30` 在 30 秒内结束；Linux 下 `mount | grep -i fuse` 无残留，或下一次文件工具调用前被 `clear_stale_mount` 清掉（再次 `read_file` 成功即证）。
+  - (d) 点 `继续` → 模型读到 `NO_RESULT_YET`，应先检查 `out.txt` 再决定；若系统自动重跑了该命令（`out.txt` 出现两行），判失败。残留：`sleep 30` 在 30 秒内结束。
 - **kill -9 Worker**：只杀 Worker。(b) SSE `session_failed`，界面横幅 `执行已停止。Session 进程失败：...`，按钮 `再试`。(a) 点 `再试` 或再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。(d) Web 已断开时点 `再试` → `再试失败，请确认后端连接后重试。`。
-- **kill 沙箱/FUSE 进程**：`apply_patch` 或 `execute_command` 期间 先 `pgrep -af redpanda-agentfs`，只挑参数路径落在 `$REDPANDA_HOME` 或 `$SCRATCH_WORKSPACE` 下的 pid，再 `kill -9 <pid>`（不要用不带过滤的 `pkill`）。(a) 该工具以失败或 `unknown` 结束，不得报告成功；工作区文件要么旧内容要么新内容，不得半截。(c) `ls $SCRATCH_WORKSPACE` 不报 `Transport endpoint is not connected`。(d) 立即再发一次文件操作 → 成功。若挂载点残留且后续工具一直失败，记为问题。
 - **断网**：
   - 连接被拒（base URL 指向不监听的端口）：(b) 约 3.5 秒（0.5+1+2 秒重试等待）后横幅 `执行已停止。运行失败：模型服务暂时不可用：... transport failed`。
   - 丢包（`iptables -j DROP` 等，连接不上也不回绝）：(b) 约 4×10 + 3.5 ≈ 43.5 秒后出现同类失败。
@@ -68,12 +65,11 @@
 
 - 已知产品缺口（2026-10-18 源码核对，待 live 确认）：同一 `delivery_id` 改了内容重放时，`DeliveryConflictError` 在 Worker 里抛出；`redpanda/assistant/host/ipc.py` 的 `_handle` 只把授权类错误转成可回传的错误，其他异常让 Worker 失败，因此很可能表现为 500 + `session_failed`（`Session 进程失败：...`），而不是 409。判据保持 409/4xx 且会话不受影响。
 - 疑似问题：流开始判定太早。收到任何一行（包括空行/keep-alive）就置 `stream.started`，之后的 5xx/断流/读超时不再重试；`Retry-After` 头没有被读取。
-- 疑似问题：Linux 崩溃路径没有测试。只有 Windows 有崩溃契约测试，Linux FUSE 的清理只靠 `clear_stale_mount`，必须 live 验。
 - 工具 handler 的普通 `Exception` 不是会话崩溃路径：应表现为工具结果 `TOOL_HANDLER_ERROR`（见 tool-coding-round），不应变成 `session_failed`。
 - 已知入口错误已分类：失效连接 409、空消息 422、授权目标不存在 404、重复授权/拒绝 409；内部契约违规与未知异常原样暴露，不做全局兜底。
 - `last_error` 不持久：重启 Web 后失败横幅消失，这是当前实现；"刷新后仍可见"只针对不重启的刷新。
 - 重启后会话被自动 paused 不是卡死，点 `继续` 即可。
 - Windows 上 Worker 在 Web 进程的 kill-on-close Job 里，随 Web 一起退出；仍用上面的进程查询确认没有残留。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
-- 历史 live 状态：部分（2026-10-12，修复后）：模型失败可见与再试经隔离 API 注入认证失败验证（`.tools/verification/fixapi-20261012/`），kill -9 后工具不重复执行通过；真实 UI、真实供应商 429、Linux FUSE 残留清理未验。2026-10-18 按源码改写，未重新 live 验证。
+- 历史 live 状态：部分（2026-10-12，修复后）：模型失败可见与再试经隔离 API 注入认证失败验证（`.tools/verification/fixapi-20261012/`），kill -9 后工具不重复执行通过；真实 UI、真实供应商 429 未验。2026-10-18 按源码改写，未重新 live 验证；同日删除随文件服务移除的沙箱进程与挂载清理条目。
 - 已知产品缺口（2026-10-18 Windows live）：命令运行中只杀会话 Worker 后，`last_error`、`unknown` 与新文案、无孤儿进程、文件未写出都符合；但会话随后永久卡死——`再试` 返回 200 而 `should_wake=false` 无动作，新消息只记 `user.message.received` 不产生回合，重启 Web 后也不自动 paused、不出现 `继续`。journal 末尾是没有 outcome 的 `command.attempt.started`。

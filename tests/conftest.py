@@ -7,23 +7,12 @@ import pytest
 
 
 PROCESS_GROUP_PATHS = {
-    "gate": ("execution/test_windows_gate_process.py",),
     "compact": ("assistant/test_compact.py",),
     "supervisor": ("assistant/test_supervisor.py",),
-    "filesystem": (
-        "sandbox/file_view/",
-        "sandbox/test_vfs_workspace_process.py",
-        "sandbox/test_windows_hidden_process.py",
-        "sandbox/test_windows_readonly_process.py",
-    ),
     "execution": (
         "execution/",
         "tools/test_command_execution.py",
-        "tools/test_host_execution.py",
-        "tools/test_exec_policy.py",
         "tools/test_command_io_errors.py",
-        "sandbox/test_bash.py",
-        "sandbox/test_command_wait.py",
     ),
 }
 
@@ -45,8 +34,6 @@ def pytest_addoption(parser):
         choices=(*PROCESS_GROUP_PATHS, "integration"),
         help="只运行指定 process 测试组；integration 包含其余所有 process 用例",
     )
-    parser.addoption("--gate-runtime", type=Path,
-                     help="Windows gate 测试使用的已编译 launcher 路径；省略时现场编译")
 
 
 def pytest_collection_modifyitems(config, items):

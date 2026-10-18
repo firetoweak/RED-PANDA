@@ -86,14 +86,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.filesystem.children import ChildFiles
         from redpanda.runtime.events import (
             DomainFactCommitted,
             EventDraft,
             DeliveryIdentity,
         )
 
-        await ChildFiles(self.home, self.workspace).create(PARENT, CHILD)
         await self.store.create(CHILD, workspace_id=self.workspace.workspace_id)
         journal = SqliteJournal(self.store.require(CHILD))
         await journal.accept_delivery(
@@ -424,7 +422,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancel_parent_reclaims_all_children_and_later_input_can_continue(self):
         from redpanda.assistant.subagent.subagent import project_pending, project_returned
-        from redpanda.filesystem.children import child_root
 
         await self.host.create(PARENT, self.workspace.workspace_id)
         await self.host.select("web", PARENT)
@@ -433,15 +430,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         before = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
         children = project_pending(before)
         self.assertEqual(len(children), 2)
-        roots = [child_root(self.home, PARENT, child) for child in children]
-        self.assertTrue(all(root.is_dir() for root in roots))
 
         view = await self.host.cancel_turn(PARENT)
 
         self.assertTrue(view.paused)
         self.assertFalse(view.has_active_subagents)
         self.assertEqual(self.host.activity(PARENT), "idle")
-        self.assertTrue(all(root.is_dir() for root in roots))
         for child in children:
             self.assertNotIn(child, self.host.workers)
             child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
@@ -574,9 +568,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(project_reclaimed(unrelated)), 0)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_parent_archive_removes_child_worktrees_after_stopping_workers(self):
-        from redpanda.filesystem.children import child_root
-
+    async def test_parent_archive_stops_child_workers(self):
         started = set()
         route = self.host._route
 
@@ -598,12 +590,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(started, set(children))
         workers = [self.host.workers[child] for child in children]
         self.assertTrue(all(worker.process.is_alive() for worker in workers))
-        roots = [child_root(self.home, "parent", child) for child in children]
-        self.assertTrue(all(root.is_dir() for root in roots))
         await asyncio.wait_for(self.host.archive("parent"), 30)
         self.assertTrue(self.host.is_archived("parent"))
         self.assertTrue(all(worker.exited.is_set() for worker in workers))
-        self.assertTrue(all(not root.exists() for root in roots))
         self.assertTrue(all(child not in self.host.workers for child in children))
         self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
 

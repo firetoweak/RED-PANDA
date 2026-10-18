@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -22,9 +22,7 @@ from redpanda.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
 from redpanda.tools.builtin import (
     create_process_specs,
     CommandInterrupts,
-    READ_ONLY_WORKSPACE_TOOLS,
     create_workspace_tool_specs,
-    create_workspace_restore_spec,
     create_subagent_workspace_specs,
 )
 
@@ -34,17 +32,6 @@ class BuiltinToolRunner:
     schemas: tuple[dict[str, object], ...]
     command_interrupts: CommandInterrupts
     _executor: ToolsExecutor
-
-    def uses_workspace_files(self, name: str, arguments: Mapping[str, object]) -> bool:
-        return not (
-            name == "execute_command" and arguments.get("file_access") == "host"
-            or name in {"start_process", "read_process", "stop_process", "list_processes"}
-        )
-
-    def reads_published_workspace(self, name: str, arguments: Mapping[str, object]) -> bool:
-        return name in READ_ONLY_WORKSPACE_TOOLS or (
-            name == "execute_command" and arguments.get("workspace_effect") == "read_only"
-        )
 
     async def execute(self, name: str, arguments: Mapping[str, object]) -> object:
         return runtime_tool_result(
@@ -77,13 +64,10 @@ class BuiltinToolRunner:
 async def build_builtin_tools(
     workspace: WorkspaceRecord,
     *,
-    session_operations: Callable[[], Awaitable[tuple[str, ...]]],
     materials_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
-    filesystem=None,
     processes: ProcessControl | None = None,
-    direct_workspace: bool = False,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -92,15 +76,12 @@ async def build_builtin_tools(
             *view.roots,
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
-    commands = create_local_command_environment(
-        command_environment, task_root=workspace.task_root, direct_workspace=direct_workspace,
-    )
+    commands = create_local_command_environment(command_environment)
     binding = FileAccess(
         environment_id="local",
         workspace_view=view,
         permission_binding=PermissionBinding.read_write(view),
         cwd=workspace.task_root,
-        filesystem=filesystem,
     )
     if materials_root is not None:
         binding = replace(
@@ -114,10 +95,7 @@ async def build_builtin_tools(
         )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
-    for spec in create_workspace_tool_specs(
-        binding, commands, interrupts, session_operations=session_operations,
-        direct_workspace=direct_workspace,
-    ):
+    for spec in create_workspace_tool_specs(binding, commands, interrupts):
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)
@@ -131,45 +109,17 @@ async def build_builtin_tools(
     )
 
 
-def workspace_restore_tool(
-    operation: Callable[[str, str, str], Awaitable[dict]],
-    *,
-    isolated: bool = False,
-):
-    """声明来自 ToolSpec；每次执行绑定 Runtime 提供的调用身份。"""
+def subagent_review_tools(operation):
     from redpanda.runtime import ToolBinding
 
-    def executor(command_id):
-        async def restore(target, policy):
-            return await operation(command_id, target, policy)
-        spec = create_workspace_restore_spec(restore, isolated=isolated)
-        registry = ToolRegistry()
-        registry.register(spec)
-        return spec, ToolsExecutor(registry)
-
-    # 这里只取声明；执行器在收到实际 AttemptContext 时构造。
-    spec, _ = executor(None)
-
-    async def handler(context, arguments):
-        bound, tools = executor(context.command_id)
-        return runtime_tool_result(await tools.execute_parsed(bound.name, arguments))
-
-    binding = ToolBinding(handler, requires_authorization=spec.requires_authorization)
-    exclusive = frozenset({spec.name}) if spec.exclusive_batch else frozenset()
-    return spec.to_openai_tool(), binding, exclusive
-
-
-def subagent_review_tools(operation, *, direct_workspace=False):
-    from redpanda.runtime import ToolBinding
-
-    specs = create_subagent_workspace_specs(operation, direct_workspace=direct_workspace)
+    specs = create_subagent_workspace_specs(operation)
     bindings = {}
     for spec in specs:
         async def handler(context, arguments, _name=spec.name):
             async def review(*args, **kwargs):
                 return await operation(context.command_id, *args, **kwargs)
             registry = ToolRegistry()
-            for bound in create_subagent_workspace_specs(review, direct_workspace=direct_workspace):
+            for bound in create_subagent_workspace_specs(review):
                 registry.register(bound)
             executor = ToolsExecutor(registry)
             return runtime_tool_result(await executor.execute_parsed(_name, arguments))

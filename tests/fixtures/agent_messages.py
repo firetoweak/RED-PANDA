@@ -5,7 +5,7 @@ import os
 
 from redpanda.assistant.agent_messages import SEND_MESSAGE
 from redpanda.runtime import ToolBinding
-from tests.fixtures.session_worker import direct_workspace_config
+from tests.fixtures.session_worker import config_for
 
 
 def interrupted_send_config(root, when):
@@ -33,4 +33,4 @@ def interrupted_send_config(root, when):
         return built
 
     worker.build_assistant_assembly = assembly
-    return direct_workspace_config(root)
+    return config_for(root)

@@ -34,13 +34,13 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
       session_id: "child", workspace_id: "workspace", revision: 1, items: [{
         kind: "step", step_id: "step", output_id: "old", text: "已提交过程", thinking: "历史思考",
         tools: [{ command_id: "cmd", name: "read_file", status: "queued", error: null, arguments: { path: "a.py" } }],
-        occurred_at: "2026-10-03T00:00:00Z", rewindable: true,
+        occurred_at: "2026-10-03T00:00:00Z",
       }],
       session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
         pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
         control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
       compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
-      work_plan: null, work_plan_updates: [], workspace_version: null,
+      work_plan: null, work_plan_updates: [],
     },
   };
   store.dispatch(sessionActivity({ sessionId: "child", activity: "running" }));
@@ -102,13 +102,13 @@ it("子任务输入默认折叠可展开，长任务不挤掉过程区", () => {
       session_id: "child", workspace_id: "workspace", revision: 1, items: [{
         kind: "step", step_id: "step", output_id: "old", text: "已提交过程", thinking: "历史思考",
         tools: [{ command_id: "cmd", name: "read_file", status: "queued", error: null, arguments: { path: "a.py" } }],
-        occurred_at: "2026-10-03T00:00:00Z", rewindable: true,
+        occurred_at: "2026-10-03T00:00:00Z",
       }],
       session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
         pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
         control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
       compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
-      work_plan: null, work_plan_updates: [], workspace_version: null,
+      work_plan: null, work_plan_updates: [],
     },
   };
   render(<Provider store={store}><MantineProvider>

@@ -24,10 +24,6 @@ from redpanda.assistant.control import (
 )
 from redpanda.assistant.subagent.subagent import TASK_FACT
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
-from redpanda.assistant.workspace_versions import (
-    WORKSPACE_RESCUE_FACT, WORKSPACE_RESTORE_FACT, WORKSPACE_VERSION_FACT, WorkspaceVersionFact,
-    workspace_rescue_result, workspace_file_result_note,
-)
 from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
 from redpanda.runtime.events import (
     DomainFactCommitted,
@@ -47,14 +43,14 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 14
+PROJECTOR_VERSION = 15
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
 DEFAULT_MAX_TOOL_IMAGES = 5
 
 _INTERNAL_FACT_TYPES = frozenset({
-    WORKSPACE_RESTORE_FACT, SESSION_WORKSPACE_FACT,
+    SESSION_WORKSPACE_FACT,
     "compact.task", "compact.handoff_created", "compact.window_rolled_over",
 })
 _IMAGE_EVICTED_HINT = "\n图片已移出上下文；需要重新查看时用上面的 id 调用 read_image。"
@@ -254,13 +250,6 @@ def _translate_visible_events(
             "历史中的材料路径不存在时，在当前材料目录下按相同子路径查找。"
         )
     visible = set(state.visible_event_ids)
-    # 记录失败可能在触发本次 Decision 的 Outcome 之后提交；不重加 Compact 已移出的事实。
-    visible_tail = max((e.sequence for e in events if e.event_id in visible), default=0)
-    for event in events:
-        if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == WORKSPACE_VERSION_FACT:
-            fact = WorkspaceVersionFact.parse(event.payload.data)
-            if fact.error is not None and event.sequence > visible_tail:
-                visible.add(event.event_id)
     steps = {step.committed_event_id: step for step in state.steps}
     items: list[_Projected] = [
         _Projected(
@@ -311,18 +300,12 @@ def _translate_visible_events(
         if isinstance(payload, DomainFactCommitted):
             if payload.fact_type in _INTERNAL_FACT_TYPES:
                 continue
-            if payload.fact_type == WORKSPACE_VERSION_FACT:
-                fact = WorkspaceVersionFact.parse(payload.data)
-                if fact.error is None:
-                    continue
             # Protocol has four roles; identify application facts explicitly.
             shown_data = thaw_value(payload.data)
             if payload.fact_type == "assistant.catalog":
                 shown_data = catalog_for_model(shown_data)
             elif payload.fact_type in AGENT_FACT_TYPES:
                 shown_data = agent_fact_for_model(payload)
-            elif payload.fact_type == WORKSPACE_VERSION_FACT:
-                shown_data = {"error": shown_data["error"]}
             elif payload.fact_type == TASK_FACT:
                 shown_data = {
                     key: shown_data[key] for key in ("task", "resolve_conflicts_of")
@@ -343,9 +326,6 @@ def _translate_visible_events(
                     key: shown_data[key]
                     for key in ("request_id", "action", "message", "data")
                 }
-            if payload.fact_type == WORKSPACE_RESCUE_FACT:
-                result = workspace_rescue_result(payload.data)
-                shown_data = {**thaw_value(payload.data["result"]), "note": workspace_file_result_note(result)}
             content = json.dumps(
                 {"fact": payload.fact_type, "data": shown_data},
                 ensure_ascii=False,

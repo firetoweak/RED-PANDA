@@ -34,12 +34,10 @@ from redpanda.assistant.decision import (
     with_command_interrupts,
 )
 from redpanda.assistant.runner import SessionScheduler
-from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, session_file_operations
 from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, agent_git_bindings
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
-from redpanda.assistant.subagent.review import ChildWorkspaceReview, GitChildReview
-from redpanda.filesystem import ChildFiles, child_root, child_workspace, workspace_files
+from redpanda.assistant.subagent.review import GitChildReview
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -55,9 +53,8 @@ from redpanda.automation.tool import (
     cancel_schedule_binding,
     schedule_once_binding,
 )
-from redpanda.assistant.builtin_tools import build_builtin_tools, workspace_restore_tool, subagent_review_tools
+from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
 from redpanda.filesystem.registry import WorkspaceRecord
-from redpanda.filesystem import FileSystemUnavailable, operation_id
 from redpanda.assistant.cli import CliToolAdapter
 from redpanda.assistant.mcp import McpToolsetAdapter
 from redpanda.assistant.management import (
@@ -112,7 +109,7 @@ async def build_assistant_assembly(
     session_transport=None,
     model_selection_source=None,
     home: RedPandaHome | None = None,
-    direct_workspace: bool = False,
+    agent_branch: bool = False,
 ) -> AssistantAssembly:
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = RedPandaHome.default() if home is None else home
@@ -120,50 +117,24 @@ async def build_assistant_assembly(
     agent = project_agent(await journal.snapshot(session_id))
     colleague_schemas = MESSAGE_SCHEMAS if agent is not None and session_transport is not None else []
     colleague_bindings = (message_bindings(session_transport, journal) if colleague_schemas else {})
-    if task is not None and not direct_workspace:
-        root = child_root(home, task.parent_session_id, session_id)
-        if not root.is_dir():
-            raise ValueError(f"child workspace missing: {root}")
-        workspace = child_workspace(workspace, root)
-    versions = None if direct_workspace else workspace_files(home, workspace)
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
-    async def current_file_operations():
-        return await session_file_operations(journal, await journal.snapshot(session_id))
-
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
         command_environment=command_environment,
-        filesystem=versions,
-        direct_workspace=direct_workspace,
-        session_operations=current_file_operations,
         processes=(WorkerProcessPort(session_transport, session_id)
                    if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
 
-    async def restore_workspace(command_id, target, policy):
-        events = await runtime.snapshot(session_id)
-        state = runtime.projector.project_visible(session_id, events)
-        visible = compact_context.visible(events, state)
-        return await version_boundary.restore(command_id, target, events, visible, policy)
-
-    restore_schemas, restore_bindings, exclusive_tools = [], {}, frozenset()
-    if not direct_workspace:
-        restore_schema, restore_binding, exclusive_tools = workspace_restore_tool(
-            restore_workspace, isolated=task is not None,
-        )
-        restore_schemas = [restore_schema]
-        restore_bindings = {restore_schema["function"]["name"]: restore_binding}
     async def review_operation(*args, **kwargs):
         return await child_review.review(*args, **kwargs)
 
-    review_schemas, review_bindings, review_exclusive = (
-        subagent_review_tools(review_operation, direct_workspace=direct_workspace)
-        if task is None and session_transport is not None else ([], {}, frozenset())
+    # Only an Agent's delegated tasks write; they are branches merged back into its own branch.
+    agent_git = agent_branch and task is None and session_transport is not None
+    review_schemas, review_bindings, exclusive_tools = (
+        subagent_review_tools(review_operation) if agent_git else ([], {}, frozenset())
     )
-    exclusive_tools |= review_exclusive
-    agent_git = direct_workspace and task is None and session_transport is not None
     if agent_git:
         exclusive_tools |= AGENT_GIT_TOOLS
     settings = ModelContextSettings()
@@ -224,7 +195,7 @@ async def build_assistant_assembly(
     )
     skill_tools = SkillToolAdapter(skills, gateway, settings)
     cli_tools = CliToolAdapter(cli, gateway, settings)
-    subagents = SubAgentHost(subagent_activity_sink, direct_workspace=direct_workspace)
+    subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch)
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
@@ -241,7 +212,6 @@ async def build_assistant_assembly(
         providers=(McpToolsetAdapter(mcp, attachments, read_only_only=task is not None),),
         base_schemas=[
             *builtin_tools.schemas,
-            *restore_schemas,
             *review_schemas,
             *colleague_schemas,
             *(AGENT_GIT_SCHEMAS if agent_git else []),
@@ -255,7 +225,6 @@ async def build_assistant_assembly(
         ],
         reserved_names=(
             *builtin_tools.names(),
-            *restore_bindings,
             *review_bindings,
             *colleague_bindings,
             *AGENT_GIT_TOOLS,
@@ -295,7 +264,6 @@ async def build_assistant_assembly(
             gateway,
             settings,
         ),
-        **restore_bindings,
         **review_bindings,
         **colleague_bindings,
         **(agent_git_bindings(session_transport) if agent_git else {}),
@@ -315,35 +283,16 @@ async def build_assistant_assembly(
         **subagents.bindings(),
         **compact_context.bindings(),
     }
-    if not direct_workspace:
-        for name in builtin_tools.names():
-            binding = bindings[name]
-            async def projected(context, arguments, _handler=binding.handler,
-                                _name=name):
-                if not builtin_tools.uses_workspace_files(_name, arguments):
-                    return await _handler(context, arguments)
-                try:
-                    if builtin_tools.reads_published_workspace(_name, arguments):
-                        return await versions.read(lambda: _handler(context, arguments))
-                    return await versions.execute(operation_id(context.session_id, context.command_id),
-                                                  lambda: _handler(context, arguments))
-                except FileSystemUnavailable:
-                    return {"ok": False, "code": "FILESYSTEM_UNAVAILABLE",
-                            "error": "当前无法执行工作区文件操作，请让用户检查应用安装后重试。"}
-            bindings[name] = ToolBinding(projected, decision_on_outcome=binding.decision_on_outcome,
-                                         requires_authorization=binding.requires_authorization)
-    # Outside the serialized file operation: a stop must also reach commands still queued for it.
     bindings["execute_command"] = with_command_interrupts(bindings["execute_command"], command_interrupts)
     bindings = _with_tool_progress(bindings, tool_progress_sink)
     decision = JournalBackedLlmDecisionMaker(
         journal,
         config.llm,
         config.model_name,
-        system_prompt=CODING_BOT_PROMPT if direct_workspace else DEFAULT_ASSISTANT_PROMPT,
+        system_prompt=CODING_BOT_PROMPT if agent_branch else DEFAULT_ASSISTANT_PROMPT,
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
-            own_copy=task is not None or direct_workspace, direct_workspace=direct_workspace,
-            delegated=task is not None,
+            own_copy=agent_branch, delegated=task is not None,
         ),
         project_root=workspace.task_root,
         surface=surface,
@@ -362,8 +311,7 @@ async def build_assistant_assembly(
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
-    child_review = (GitChildReview(runtime, session_id, session_transport) if direct_workspace else
-                    ChildWorkspaceReview(runtime, session_id, ChildFiles(home, workspace), session_transport, versions))
+    child_review = GitChildReview(runtime, session_id, session_transport)
     surface.attach(runtime)
     compact_context.runtime = runtime
     scheduler = scheduler_factory(
@@ -387,8 +335,6 @@ async def build_assistant_assembly(
 
         scheduler.propagate_failures = compact_context.is_reader
     subagents.attach(runtime, session_transport)
-    version_boundary = (None if direct_workspace else
-                        WorkspaceVersionBoundary(runtime, session_id, workspace.workspace_id, versions))
     sessions = AssistantSessions(
         runtime,
         surface,
@@ -397,7 +343,6 @@ async def build_assistant_assembly(
         management=management,
         catalog=catalog,
         subagents=subagents,
-        workspace_versions=version_boundary,
     )
 
     async def before_advance():
@@ -412,12 +357,6 @@ async def build_assistant_assembly(
 
     scheduler.before_advance = before_advance
 
-    async def record_workspace_versions():
-        if not compact_context.is_reader:
-            await version_boundary.sync()
-
-    if not direct_workspace:
-        scheduler.record_workspace_versions = record_workspace_versions
     scheduler.auto_authorize = sessions.is_auto_authorized
     scheduler.authorization_required = authorization_required_sink
     return AssistantAssembly(

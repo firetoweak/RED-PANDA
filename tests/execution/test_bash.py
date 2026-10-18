@@ -70,7 +70,6 @@ class BashDiscoveryTest(unittest.TestCase):
 
 class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
     def test_selects_bash_for_non_windows(self):
-        root = Path.cwd()
         with (
             patch("redpanda.execution.local.provider.os.name", "other"),
             patch(
@@ -78,14 +77,13 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
             ) as runner_type,
         ):
             runner_type.return_value.executable = "/usr/bin/bash"
-            provider = create_local_command_environment(task_root=root)
+            provider = create_local_command_environment()
 
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "bash")
         self.assertEqual(provider.shell_path, "/usr/bin/bash")
 
     def test_selects_powershell_for_windows(self):
-        root = Path.cwd()
         with (
             patch("redpanda.execution.local.provider.os.name", "nt"),
             patch(
@@ -93,7 +91,7 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
             ) as runner_type,
         ):
             runner_type.return_value.executable = "C:/PowerShell/7/pwsh.exe"
-            provider = create_local_command_environment(task_root=root)
+            provider = create_local_command_environment()
 
         self.assertIs(provider.command_executor, runner_type.return_value)
         self.assertEqual(provider.shell_name, "powershell")

@@ -70,7 +70,6 @@ class SessionScheduler:
         self._session_failed = session_failed
         self._preview = PreviewEmitter() if preview is None else preview
         self.before_advance = None
-        self.record_workspace_versions = None
         self.auto_authorize = None
         self.authorization_required = None
         self.command_interrupts: CommandInterrupts | None = None
@@ -104,8 +103,6 @@ class SessionScheduler:
 
     async def _advance_once(self) -> bool:
         session_id = self._session_id
-        if self.record_workspace_versions is not None:
-            await self.record_workspace_versions()
         events = await self._runtime.snapshot(session_id)
         position = events[-1].sequence if events else 0
         if self.before_advance is not None and not await self.before_advance():
@@ -134,8 +131,6 @@ class SessionScheduler:
             await self._emit_session_failed(session_id, f"运行失败：{message}")
             await self._failed(session_id, message)
             return False
-        if self.record_workspace_versions is not None:
-            await self.record_workspace_versions()
         if advance.step is None and advance.status is not RuntimeStatus.RUNNABLE:
             await self._preview.abort(session_id)
             await self._preview.abort_thinking(session_id)

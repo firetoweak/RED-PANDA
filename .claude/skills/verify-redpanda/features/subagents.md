@@ -1,6 +1,6 @@
 # 子 Agent
 
-主 Agent 用 `delegate` 派出子任务，子 Agent 在独立工作副本里干活，`report` 交回结论；主 Agent 可 `reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合并。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/assistant/subagent/review.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/filesystem/children.py`、`redpanda/assistant/conversations.py`（`observe_subagent`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`ExecutionProcess.tsx`、`ContentPage.tsx`、`Conversation.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
+主 Agent 用 `delegate` 派出子任务，子 Agent 在从 Agent 分支切出的 worktree 里干活，`report` 交回结论；主 Agent 可 `reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合进自己的分支。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/assistant/subagent/review.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/assistant/host/agent_worktrees.py`（`create_child`/`compare_child`/`merge_child`）、`redpanda/assistant/conversations.py`（`observe_subagent`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`ExecutionProcess.tsx`、`ContentPage.tsx`、`Conversation.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
 
 ## Sub-features
 
@@ -8,14 +8,14 @@
 - `turn-marker`：执行过程顶部 `本轮子 Agent 任务`，徽标 `子 Agent · N`，每个任务一个按钮（aria-label `查看子 Agent 过程：<task>`）。
 - `observe-panel`：点 `查看过程` 或上面的任务按钮，右侧打开内容页，标题与 aria-label 都是 `子 Agent`；状态 `正在创建`/`运行中`/`等待中`/`已交回`/`已收回`/`已结束，未报告`/`执行失败`/`连接中断`；有 `交回结论` 区、`收回原因：<reason>`、`回到最新`；关闭按钮 `关闭内容页`，拖宽分隔条 `调节内容页宽度`。
 - `parent-hints`：父会话最新一轮在子仍未回收时显示 `子 Agent 执行中`；子以失败结束时显示 Alert `子 Agent 执行失败`。
-- `isolation`：子 Agent 改动写在 `$REDPANDA_HOME/state/subagent_worktrees/<key>`，不直接动用户文件。
-- `compare-merge`：`compare_subagent` 先列文件再给 diff；`merge_subagent` 需要授权，合并进用户文件；冲突返回 `MERGE_CONFLICT`。
+- `isolation`：子 Agent 从 Agent 分支上已提交的工作切出自己的分支，改动写在 `$REDPANDA_HOME/state/coding_bot/<项目>/children/<子>`，看不到 Agent 未提交的修改，也不动 Agent 工作树。
+- `compare-merge`：`compare_subagent` 先列文件再给 diff；`merge_subagent` 不需要授权、必须单独调用，把子分支合进 Agent 自己的分支；冲突返回 `MERGE_CONFLICT`，Agent 分支不变。
 - `reclaim`：`reclaim` 结果码 `RECLAIMED`/`ALREADY_RECLAIMED`/`UNKNOWN_CHILD`/`RECLAIM_NOT_ALLOWED`。
 - `sidebar-wait`：主会话侧栏显示 `等待子 Agent`。
 
 ## How to get to it (user POV)
 
-- 发 `请委派一个子 Agent 在 note.txt 末尾追加一行 child，完成后比较并合并它的修改。`
+- 在名册里的 Agent 会话里发 `请委派一个子 Agent 在 note.txt 末尾追加一行 child，完成后比较并合并它的修改。`（`note.txt` 须已提交在 Agent 分支上）
 
 ## Driving it with the browser
 
@@ -24,14 +24,14 @@
   - (b) 卡片徽标走到 `已派出`；子运行期间父最新一轮显示 `子 Agent 执行中`；子交回后内容页状态 `已交回`，`交回结论` 区显示摘要。
   - (c) 关闭内容页（`关闭内容页`）不影响子的运行；重新用 `查看子 Agent 过程：<task>` 打开，内容一致。
   - (d) `GET .../subagents/不存在` → 404，body `{"detail":"委派不存在：不存在"}`；面板读取失败时显示 `无法读取子任务过程`。
-- **隔离**：合并前 (a) `note.txt` 不含 `child`；`state/subagent_worktrees/` 下的副本含 `child`。(c) 合并前用户文件字节与 mtime 不变。(b) `compare_subagent` 结果只列 `note.txt`。(d) 没有 `sandbox.ready` 时副本无法创建，整条跳过并记录。
-- **合并**：`merge_subagent` 卡片 `待授权` → 允许。
-  - (a) `note.txt` 末尾多一行 `child`，原有内容保留；结果 `code=SUBAGENT_MERGED`，`changed_count` 与实际改动文件数一致。
-  - (b) 授权前卡片 `待授权`，拒绝后 `已拒绝`。
-  - (c) 拒绝授权 → 用户文件不变。
-  - (d) 合并前先在 `note.txt` 末尾手动改同一处制造冲突 → 结果 `ok=false`、`code=MERGE_CONFLICT`、`data.conflicts` 列出 `note.txt`，`error` 为「合入冲突，用户的文件没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。」；`note.txt` 保持你手动改后的内容，不出现冲突标记。
+- **隔离**：合并前 (a) Agent 工作树的 `note.txt` 不含 `child`；`$REDPANDA_HOME/state/coding_bot/<项目>/children/<子>` 下的 `note.txt` 含 `child`。(c) 合并前 Agent 工作树与人的 `$SCRATCH_WORKSPACE` 不变。(b) `compare_subagent` 结果只列 `note.txt`。(d) 子 Agent 不能执行命令；任务里要求它跑命令 → 如实报告做不到。
+- **合并**：`merge_subagent` 直接执行，不进入待处理条。
+  - (a) Agent 工作树的 `note.txt` 末尾多一行 `child`，原有内容保留；`git log` 在 Agent 分支上多出合并结果；结果 `code=SUBAGENT_MERGED`，`changed_count` 与实际改动文件数一致。
+  - (b) 卡片不出现 `待授权`。
+  - (c) 人的 `$SCRATCH_WORKSPACE` 与集成分支不变。
+  - (d) 合并前让 Agent 在自己分支上改 `note.txt` 末尾同一处并提交，制造冲突 → 结果 `ok=false`、`code=MERGE_CONFLICT`、`data.conflicts` 列出 `note.txt`，`error` 为「合入冲突，你的分支没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。」；Agent 分支与工作树不出现冲突标记。Agent 工作树有会被覆盖的未提交文件或未完成合并时，返回 `MERGE_BLOCKED` / `MERGE_IN_PROGRESS`。
 - **收回**：子运行中让主 Agent `reclaim` 并给出原因。
-  - (a) 子 journal 有回传事实 `cancelled=true`；副本内容不合入用户文件。
+  - (a) 子 journal 有回传事实 `cancelled=true`；子分支内容不合入 Agent 分支。
   - (b) 工具结果 `code=RECLAIMED`；内容页状态 `已收回`，显示 `收回原因：<reason>`。
   - (c) 进程表里没有该子会话残留的 Worker（进程查询见 crash-recovery）。
   - (d) 再收回一次 → `ALREADY_RECLAIMED`；给一个不是本会话委派的 id → `UNKNOWN_CHILD`（「不是当前会话委派的子 Agent」）；子 Agent 自己调 `reclaim` → `RECLAIM_NOT_ALLOWED`（「子 Agent 不能收回其他子 Agent」）。
@@ -39,7 +39,8 @@
 
 ## Gotchas
 
-- 没有 `sandbox.ready` 时副本无法创建，整条跳过。
+- 只在 Agent 会话里验证本条。普通会话（终端入口）的子 Agent 只读调查：只读父的真实目录，没有写工具，也没有 `compare_subagent`/`merge_subagent`。
+- 子分支跟随 Agent 保留，不随交回删除。
 - 模型可能不委派；通过条件是 `delegate` 工具真实出现在步骤里。
 - `已派出` 只表示 `delegate` 调用本身成功（子已开工），不表示子任务完成；完成看内容页状态和 `交回结论`。
 - 内容页与 `文件改动`、错误详情共用同一个右侧页面，一次只开一个。

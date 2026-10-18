@@ -11,6 +11,7 @@ from redpanda.assistant.delivery import deliver_binding
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     CHILD_BUILTIN_TOOL_NAMES,
+    READ_ONLY_CHILD_TOOL_NAMES,
     RECLAIM,
     REPORT,
     REPORT_FACT,
@@ -644,7 +645,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(restarted.is_subagent(child_session_id))
             self.assertEqual(
                 restarted.tool_names(child_session_id),
-                CHILD_BUILTIN_TOOL_NAMES,
+                READ_ONLY_CHILD_TOOL_NAMES,
             )
             # 已经回收过，不需要再推它。
             self.assertEqual(pending, ())
@@ -878,7 +879,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         surface.attach(runtime)
         surface.apply_catalog("child", surface.registry_descriptors())
         await surface.load("child", "demo")
-        host = SubAgentHost()
+        host = SubAgentHost(agent_branch=True)
         host._parents["child"] = "parent"
         maker = _decision_maker(runtime, None, host)
         maker._surface = surface

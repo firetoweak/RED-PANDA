@@ -267,7 +267,7 @@ describe("timelineTurns", () => {
         status: "succeeded", error: null, arguments: {} }],
         occurred_at: "2026-09-15T08:00:10+00:00" },
       { kind: "step", step_id: "step-2", output_id: "out-final", text: "完成",
-        thinking: null, tools: [], occurred_at: "2026-09-15T08:01:23.400+00:00", rewindable: false },
+        thinking: null, tools: [], occurred_at: "2026-09-15T08:01:23.400+00:00" },
     ] }, {}, null, {});
     const turn = timelineTurns(items)[0];
     expect(turnElapsedMs(turn, true)).toBe(83400);
@@ -281,7 +281,7 @@ describe("timelineTurns", () => {
     expect(turnElapsedMs(timelineTurns(items)[0], true)).toBeNull();
     const orphan = visibleTimeline({ ...conversation, items: [
       { kind: "step", step_id: "step", output_id: "out", text: "回复",
-        thinking: null, tools: [], occurred_at: "2026-09-15T08:00:01+00:00", rewindable: false },
+        thinking: null, tools: [], occurred_at: "2026-09-15T08:00:01+00:00" },
     ] }, {}, null, {});
     expect(turnElapsedMs(timelineTurns(orphan)[0], true)).toBeNull();
     expect(formatElapsedTime(2300)).toBe("2.3 秒");

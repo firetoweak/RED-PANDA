@@ -29,7 +29,7 @@ from redpanda.filesystem.workspace import (
 from redpanda.tools.registry import ToolRegistry
 from redpanda.tools.executor import ToolsExecutor
 from redpanda.tools.builtin.command_execution import (
-    ExecuteCommandInput,
+    CommandInput,
     create_command_execution_spec,
 )
 from redpanda.tools.spec import EmptyInput, pydantic_tool_spec
@@ -52,7 +52,7 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
             pydantic_tool_spec(
                 name="strict_command",
                 description="strict input",
-                input_model=ExecuteCommandInput,
+                input_model=CommandInput,
                 handler=handler,
             )
         )
@@ -69,9 +69,9 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(coerced["code"], "VALIDATION_ERROR")
         self.assertEqual(extra["code"], "VALIDATION_ERROR")
-        for bad in ({"timeout_seconds": 301}, {"workspace_effect": "unknown"}):
+        for bad in ({"timeout_seconds": 301},):
             with self.subTest(bad=bad), self.assertRaises(ValidationError):
-                ExecuteCommandInput.model_validate({"command": "ok", **bad})
+                CommandInput.model_validate({"command": "ok", **bad})
 
     async def test_handler_unexpected_exception_becomes_tool_error(self):
         async def handler(_value):
@@ -173,13 +173,10 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             binding = _read_write_binding(Path(directory), 'linux-test')
-            commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash", MissingShellRunner())
+            commands = CommandEnvironment(MissingShellRunner(), "bash", "/bin/bash")
             spec = create_command_execution_spec(binding, commands)
 
-            result = await spec.handler(ExecuteCommandInput(
-                command="true",
-                workspace_effect="read_only",
-            ))
+            result = await spec.handler(CommandInput(command="true"))
 
         self.assertEqual(result["code"], "SHELL_NOT_FOUND")
         self.assertEqual(result["shell"], "bash")
@@ -199,11 +196,9 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
                 binding = _read_write_binding(Path(directory), 'exit-test')
                 runner = ExitRunner(exit_code)
                 spec = create_command_execution_spec(
-                    binding, CommandEnvironment(runner, "bash", "/bin/bash", runner),
+                    binding, CommandEnvironment(runner, "bash", "/bin/bash"),
                 )
-                result = await spec.handler(ExecuteCommandInput(
-                    command="x", workspace_effect="read_only",
-                ))
+                result = await spec.handler(CommandInput(command="x"))
                 self.assertTrue(result["ok"])
                 self.assertEqual(result["code"], code)
                 self.assertEqual(result["data"]["exit_code"], exit_code)
@@ -215,11 +210,11 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             binding = _read_write_binding(Path(directory), 'failure-test')
-            commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash", BrokenRunner())
+            commands = CommandEnvironment(BrokenRunner(), "bash", "/bin/bash")
             spec = create_command_execution_spec(binding, commands)
 
             with self.assertRaisesRegex(RuntimeError, "internal executor bug"):
-                await spec.handler(ExecuteCommandInput(command="true"))
+                await spec.handler(CommandInput(command="true"))
 
 
 class PowerShellDiscoveryTest(unittest.TestCase):
@@ -483,7 +478,7 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
             cwd=self.workspace_root,
         )
-        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL, runner)
+        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL)
         registry = ToolRegistry()
         registry.register(
             create_command_execution_spec(
@@ -517,9 +512,8 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             workspace_view=self.binding.workspace_view,
             permission_binding=PermissionBinding((('project', FilesystemPermission.READ_ONLY),)),
             cwd=self.binding.cwd,
-            filesystem=self.binding.filesystem,
         )
-        read_only_commands = CommandEnvironment(self.commands.command_executor, self.commands.shell_name, self.commands.shell_path, self.commands.host_command_executor)
+        read_only_commands = CommandEnvironment(self.commands.command_executor, self.commands.shell_name, self.commands.shell_path)
         registry = ToolRegistry()
         registry.register(create_command_execution_spec(read_only_binding, read_only_commands))
         executor = ToolsExecutor(registry)
@@ -528,16 +522,8 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             "execute_command",
             json.dumps({"command": "Write-Output ok"}),
         )
-        allowed = await executor.execute(
-            "execute_command",
-            json.dumps({
-                "command": "Write-Output ok",
-                "workspace_effect": "read_only",
-            }),
-        )
 
         self.assertEqual(denied["code"], "ENVIRONMENT_PERMISSION_DENIED")
-        self.assertEqual(allowed["code"], "COMMAND_COMPLETED")
 
     async def test_runs_in_workspace_relative_cwd(self):
         child = self.workspace_root / "child"

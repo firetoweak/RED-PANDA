@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from redpanda.assistant.context.prompt import SUBAGENT_BRANCH_PROMPT, SUBAGENT_PROMPT
+from redpanda.assistant.context.prompt import SUBAGENT_PROMPT, SUBAGENT_READ_ONLY_PROMPT
 from redpanda.assistant.delivery import DeliverySink, emit_delivery
 from redpanda.assistant.host.ipc import ProcessFailure
 from redpanda.runtime import (
@@ -269,13 +269,11 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "read_file",
         "read_content",
         "find_history",
-        "get_changes",
         "load_skill",
         "read_skill_resource",
         "write_file",
         "apply_patch",
         "replace_all",
-        "restore_workspace",
         "update_plan",
         REPORT,
     }
@@ -283,21 +281,24 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
 """子 Session 能看见的内建工具；外部工具从只读 Server 目录渐进加载。
 
 显式列举：新增任何工具默认进不来，要进必须有人明确加。
-`get_changes` 核对子的自身修改，不代替父的成果验收。
 `execute_command` 不在其中——执行等进程沙箱。`DELEGATE` 也不在其中，
 递归委派因此被同一份名单挡住。
 """
+# A task delegated by a plain session reads the person's own directory and changes nothing.
+READ_ONLY_CHILD_TOOL_NAMES = CHILD_BUILTIN_TOOL_NAMES - {"write_file", "apply_patch", "replace_all"}
 
 
+# An Agent delegates from its committed branch and merges back without approval.
 DELEGATE_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": DELEGATE,
         "description": (
-            "把可独立完成的任务交给子 Agent。它在自己的文件副本里工作，可以改文件，不能执行命令。"
+            "把可独立完成的任务交给子 Agent。它从你分支上已提交的工作开始，在自己的文件副本里工作，"
+            "看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。"
             "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
-            "验收用 compare_subagent，经授权用 merge_subagent 合入。"
+            "验收用 compare_subagent，用 merge_subagent 合入你的分支。"
             "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
             "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
         ),
@@ -326,15 +327,30 @@ DELEGATE_SCHEMA: dict[str, object] = {
 }
 
 
-# An Agent delegates from its committed branch and merges back without approval.
-DELEGATE_BRANCH_SCHEMA: dict[str, object] = {
+DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
-        **DELEGATE_SCHEMA["function"],
-        "description": DELEGATE_SCHEMA["function"]["description"].replace(
-            "它在自己的文件副本里工作，可以改文件，不能执行命令。",
-            "它从你分支上已提交的工作开始，在自己的文件副本里工作，看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。",
-        ).replace("经授权用 merge_subagent 合入。", "用 merge_subagent 合入你的分支。"),
+        "name": DELEGATE,
+        "description": (
+            "把可独立完成的调查交给子 Agent。它只能读取你的工作区，不能修改文件，也不能执行命令。"
+            "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
+            "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
+            "互不依赖的调查可在同一次决策里各发一次 delegate 并行，结论逐个返回。"
+            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": (
+                        "交给子 Agent 的完整调查任务。它看不到当前对话，所需背景必须写在这里。"
+                        "路径先自己核实再写进来；写明找不到目标时如实报告，不要换目标。"
+                    ),
+                },
+            },
+            "required": ["task"],
+        },
     },
 }
 
@@ -651,9 +667,9 @@ class SubAgentHost:
         self,
         activity_sink: SubAgentActivitySink | None = None,
         *,
-        direct_workspace: bool = False,
+        agent_branch: bool = False,
     ) -> None:
-        self._direct_workspace = direct_workspace
+        self._agent_branch = agent_branch
         self._runtime: AgentRuntime | None = None
         self._transport = None
         self._parents: dict[str, str] = {}
@@ -703,17 +719,19 @@ class SubAgentHost:
     def tool_names(self, session_id: str) -> frozenset[str] | None:
         """本 Session 允许出现的工具名；None 表示不设限。"""
 
-        return CHILD_BUILTIN_TOOL_NAMES if self.is_subagent(session_id) else None
+        if not self.is_subagent(session_id):
+            return None
+        return CHILD_BUILTIN_TOOL_NAMES if self._agent_branch else READ_ONLY_CHILD_TOOL_NAMES
 
     def system_prompt(self, session_id: str) -> str | None:
         if not self.is_subagent(session_id):
             return None
-        return SUBAGENT_BRANCH_PROMPT if self._direct_workspace else SUBAGENT_PROMPT
+        return SUBAGENT_PROMPT if self._agent_branch else SUBAGENT_READ_ONLY_PROMPT
 
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
             return [REPORT_SCHEMA]
-        return [DELEGATE_BRANCH_SCHEMA if self._direct_workspace else DELEGATE_SCHEMA, RECLAIM_SCHEMA]
+        return [DELEGATE_SCHEMA if self._agent_branch else DELEGATE_READ_ONLY_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {
