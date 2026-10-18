@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const hooks = vi.hoisted(() => ({ summary: vi.fn(), diff: vi.fn() }));
 vi.mock("../src/api/redpandaApi", () => ({ useGetFileChangesQuery: hooks.summary, useGetFileDiffQuery: hooks.diff }));
-import { FileChangesPanel } from "../src/features/conversation/FileChangesPanel";
+import { FileChangesPanel, FileChangesSummary } from "../src/features/conversation/FileChangesPanel";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 beforeEach(() => {
@@ -15,8 +15,8 @@ it("retries a failed diff as well as its summary when the file revision stays th
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const summaryRefetch = vi.fn(), diffRefetch = vi.fn();
   hooks.summary.mockReturnValue({ currentData: {
-    files: [{ path: "src/app.py", status: "modified", added: 1, removed: 1, partial: false, binary: false, origin: "agent", revision: "a".repeat(64) }],
-    added: 1, removed: 1, partial: false,
+    files: [{ path: "src/app.py", status: "modified", added: 1, removed: 1, binary: false, revision: "a".repeat(64) }],
+    added: 1, removed: 1,
   }, isFetching: false, isError: false, refetch: summaryRefetch });
   hooks.diff.mockReturnValue({ currentData: undefined, isFetching: false, isError: true, refetch: diffRefetch });
   render(<MantineProvider><FileChangesPanel sessionId="session" /></MantineProvider>);
@@ -30,15 +30,17 @@ it("opens a file with line numbers and resets pagination when its revision chang
   let revision = "a".repeat(64);
   const refetch = vi.fn();
   hooks.summary.mockImplementation(() => ({ currentData: {
-    files: ["src/app.py", "tests/app.test.py"].map((path) => ({ path, status: "modified", added: 1, removed: 1, partial: false, binary: false, origin: "agent", revision })),
-    added: 1, removed: 1, partial: false,
+    files: ["src/app.py", "tests/app.test.py"].map((path) => ({ path, status: "modified", added: 1, removed: 1, binary: false, revision })),
+    added: 1, removed: 1,
   }, isFetching: false, isError: false, refetch }));
   hooks.diff.mockImplementation(({ offset }) => ({ currentData: {
-    partial: false, binary: false, origin: "agent", properties: [], next_offset: offset === 0 ? 200 : null,
-    lines: [{ kind: "delete", old_line: 12, new_line: null, origin: "agent", text: "old value\n" },
-      { kind: "add", old_line: null, new_line: 12, origin: "agent", text: "new value\n" }],
+    binary: false, properties: [], next_offset: offset === 0 ? 200 : null,
+    lines: [{ kind: "delete", old_line: 12, new_line: null, text: "old value\n" },
+      { kind: "add", old_line: null, new_line: 12, text: "new value\n" }],
   }, isFetching: false, isError: false }));
-  const view = render(<MantineProvider><FileChangesPanel sessionId="session" /></MantineProvider>);
+  const panel = <><FileChangesSummary sessionId="session" onOpen={() => {}} /><FileChangesPanel sessionId="session" /></>;
+  const view = render(<MantineProvider>{panel}</MantineProvider>);
+  expect(screen.getByRole("button", { name: "2 个文件已更改+1−1" })).toBeInTheDocument();
   expect(screen.getByLabelText("src/app.py 的差异")).toHaveTextContent("12");
   expect(screen.getByText("old value")).toBeInTheDocument();
   expect(screen.getByText("new value")).toBeInTheDocument();
@@ -52,9 +54,9 @@ it("opens a file with line numbers and resets pagination when its revision chang
   expect(screen.getByLabelText("tests/app.test.py 的差异")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下一页" }));
   revision = "b".repeat(64);
-  view.rerender(<MantineProvider><FileChangesPanel sessionId="session" /></MantineProvider>);
+  view.rerender(<MantineProvider><FileChangesSummary sessionId="session" onOpen={() => {}} /><FileChangesPanel sessionId="session" /></MantineProvider>);
   expect(screen.getByText("第 1 页")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "刷新文件变更" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "刷新文件变更" })[0]);
   expect(refetch).toHaveBeenCalledOnce();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

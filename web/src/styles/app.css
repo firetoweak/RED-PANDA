@@ -840,7 +840,6 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 .changed-file { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--rp-border); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
 .changed-file:hover, .changed-file.is-selected { background: var(--rp-accent-fill); }
 .changed-file-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mantine-font-family-monospace); }
-.changes-partial, .diff-origin { color: var(--mantine-color-orange-6); font-size: 10px; }
 .file-diff { border: 1px solid var(--rp-border); border-radius: 6px; font: 12px/1.7 var(--mantine-font-family-monospace); }
 .diff-line { display: flex; min-width: max-content; padding-right: 8px; }
 .diff-number { flex: 0 0 45px; text-align: right; padding-right: 8px; color: var(--mantine-color-dimmed); user-select: none; }
@@ -849,7 +848,6 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 .diff-add { background: light-dark(#edf9ee, #173323); }
 .diff-delete { background: light-dark(#fff0f0, #3b2023); }
 .diff-hunk { background: var(--rp-accent-fill); color: var(--mantine-color-dimmed); }
-.diff-origin { margin-left: 12px; }
 
 @media (max-height: 600px) {
   .conversation-intro { padding-block: 20px; }

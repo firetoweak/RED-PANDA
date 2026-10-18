@@ -75,7 +75,7 @@ async def bootstrap_assistant(
         command_environment = dict(os.environ)
     install_host_environment()
     home = RedPandaHome.default()
-    # 先独占数据根，再碰任何 Journal、挂载、定时或持续进程。
+    # 先独占数据根，再碰任何 Journal、定时或持续进程。
     with hold_data_root(home):
         if fresh_sessions:
             for root in (home.runtime_sessions_root, home.state_root):

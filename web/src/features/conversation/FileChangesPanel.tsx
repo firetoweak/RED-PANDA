@@ -22,18 +22,14 @@ function Diff({ sessionId, file, refresh }: { sessionId: string; file: ChangedFi
   return <div className="file-diff-page">
     <ScrollArea key={offset} className="file-diff-scroll" type="hover">
       <Stack gap="xs" p="sm">
-      {data.partial && <Text size="xs" c="dimmed">部分统计：混合来源、二进制或不完整原文不计入精确行数；? 表示无法确定的旧行号。</Text>}
-      {data.origin === "mixed" && <Text size="xs" c="orange">包含当前会话之外的变化，请结合来源标记审阅。</Text>}
       {data.binary && <Text size="sm">二进制或非 UTF-8 内容，无法显示文本差异。</Text>}
-      {data.properties.map((property, index) => <Text key={index} size="xs" c="dimmed">{property.text}{property.origin === "external" ? "（会话外）" : ""}</Text>)}
+      {data.properties.map((property, index) => <Text key={index} size="xs" c="dimmed">{property.text}</Text>)}
       <div className="file-diff" aria-label={`${file.path} 的差异`} aria-busy={isFetching}>
         {data.lines.map((line, index) => <div key={`${offset}-${index}`} className={`diff-line diff-${line.kind}`}>
           <span className="diff-number">{line.old_line ?? (line.kind === "delete" || line.kind === "context" ? "?" : "")}</span>
           <span className="diff-number">{line.new_line ?? ""}</span>
           <span className="diff-sign">{line.kind === "add" ? "+" : line.kind === "delete" ? "−" : ""}</span>
           <span className="diff-text">{line.text.replace(/\r?\n$/, "")}</span>
-          {line.kind !== "context" && line.kind !== "hunk" && line.origin !== "agent" &&
-            <span className="diff-origin">{line.origin === "external" ? "会话外" : line.origin === "mixed" ? "混合" : "来源未知"}</span>}
         </div>)}
       </div>
       </Stack>
@@ -53,7 +49,7 @@ export function FileChangesSummary({ sessionId, onOpen }: { sessionId: string; o
       <Button variant="default" size="compact-sm" radius="xl" leftSection={<IconFileDiff size={15} />}
         onClick={onOpen} loading={data === undefined && isFetching}>
         {isError ? "文件变更暂不可用" : data === undefined ? "读取文件变更" : `${data.files.length} 个文件已更改`}
-        {data !== undefined && !isError && <span className="changes-counts"><Counts file={data} />{data.partial && <span>部分统计</span>}</span>}
+        {data !== undefined && !isError && <span className="changes-counts"><Counts file={data} /></span>}
       </Button>
       <ActionIcon variant="subtle" color="gray" aria-label="刷新文件变更" loading={isFetching} onClick={refresh}><IconRefresh size={15} /></ActionIcon>
     </Group>;
@@ -87,7 +83,6 @@ function FileTree({ files, selected, onSelect, prefix = "" }: {
       <span className={`file-change-status file-change-${file.status}`} aria-label={statuses[file.status]}>{statusMarks[file.status]}</span>
       <span className="changed-file-path">{file.path.slice(prefix.length)}</span>
       <span className="changes-counts"><Counts file={file} /></span>
-      {file.partial && <span className="changes-partial">部分</span>}
     </button>)}
   </>;
 }

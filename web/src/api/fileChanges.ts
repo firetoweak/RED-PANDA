@@ -1,25 +1,22 @@
 import { z } from "zod";
 
-const origin = z.enum(["agent", "mixed", "external", "unknown"]);
 const count = z.number().int().nonnegative();
 export const changedFileSchema = z.object({
   path: z.string().min(1),
   status: z.enum(["added", "deleted", "modified"]),
-  origin,
   added: count.nullable(),
   removed: count.nullable(),
-  partial: z.boolean(),
   binary: z.boolean(),
   revision: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 export const fileChangesSchema = z.object({
-  files: changedFileSchema.array(), added: count, removed: count, partial: z.boolean(),
+  files: changedFileSchema.array(), added: count, removed: count,
 }).strict();
 export const fileDiffSchema = changedFileSchema.extend({
-  properties: z.object({ origin, text: z.string() }).strict().array(),
+  properties: z.object({ text: z.string() }).strict().array(),
   lines: z.object({
     kind: z.enum(["hunk", "context", "add", "delete"]),
-    old_line: count.nullable(), new_line: count.nullable(), origin, text: z.string(),
+    old_line: count.nullable(), new_line: count.nullable(), text: z.string(),
   }).strict().array(),
   next_offset: count.nullable(),
 }).strict();
