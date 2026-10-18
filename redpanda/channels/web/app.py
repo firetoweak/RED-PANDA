@@ -343,6 +343,10 @@ def create_web_app(
             body.connection_id, body.workspace_id, body.name,
         )
 
+    @app.get("/api/inbox")
+    async def inbox(request: Request):
+        return await _channel(request).list_inbox()
+
     @app.get("/api/sessions")
     async def sessions(request: Request):
         return await _channel(request).list_sessions()

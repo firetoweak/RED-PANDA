@@ -382,7 +382,6 @@ class _Workspaces:
 
 
 class Idle:
-    superseded: frozenset[str] = frozenset()
     workspaces = _Workspaces("workspace-1")
 
     def activity(self, session_id):
@@ -396,9 +395,6 @@ class Idle:
 
     def current_failure(self, session_id):
         return None
-
-    def is_superseded(self, session_id):
-        return session_id in self.superseded
 
     def is_archived(self, session_id):
         return False
@@ -480,6 +476,175 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(await queries.list_sessions(), ())
             self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
+
+    async def test_inbox_lists_pending_items_before_any_user_message(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from redpanda.assistant.agents import AGENT_CREATED
+        from redpanda.assistant.compact.core import MODEL_USAGE
+        from redpanda.assistant.control import (
+            CONTROL_PROPOSED, CONTROL_REQUEST_METADATA, CONTROL_SOURCE,
+        )
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import (
+            Command, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal,
+            StateProjector, Step, StepClaimRequest, StepCommitted,
+        )
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+
+        class Archived(Idle):
+            def is_archived(self, session_id):
+                return session_id == "old"
+
+        async def wake(store, session_id: str, payload: DomainFactCommitted, source: str) -> None:
+            await SqliteJournal(store.require(session_id)).accept_delivery(
+                EventDraft(
+                    event_id=f"wake-{session_id}",
+                    session_id=session_id,
+                    payload=payload,
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity(source, f"wake-{session_id}"),
+                )
+            )
+
+        async def commit(store, session_id: str, commands=(), metadata=None) -> None:
+            journal = SqliteJournal(store.require(session_id))
+            frame = StateProjector().project(
+                session_id, await journal.snapshot(session_id),
+            ).next_decision
+            lease = await journal.acquire_step(
+                StepClaimRequest(
+                    session_id,
+                    frame.trigger_event.event_id,
+                    frame.decision_cursor,
+                    frame.basis_state_version,
+                    frame.observed_journal_position,
+                ),
+                token=f"claim-{session_id}",
+                owner_id="worker-1",
+                lease_seconds=30,
+            )
+            await journal.commit_step(
+                lease,
+                EventDraft(
+                    event_id=f"step-{session_id}",
+                    session_id=session_id,
+                    payload=StepCommitted(
+                        Step(
+                            f"decision-{session_id}",
+                            frame.trigger_event.event_id,
+                            frame.decision_cursor,
+                            frame.basis_state_version,
+                            frame.observed_journal_position,
+                            ModelDecision("等待决定", tuple(command.effect for command in commands)),
+                            commands,
+                        ),
+                        metadata or {
+                            MODEL_USAGE: {
+                                "window": None, "input_tokens": 1,
+                                "output_tokens": 1, "cached_input_tokens": 0,
+                            },
+                        },
+                    ),
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    causation_id=frame.trigger_event.event_id,
+                ),
+            )
+
+        async def propose(store, session_id: str, request_id: str) -> None:
+            await SqliteJournal(store.require(session_id)).accept_delivery(
+                EventDraft(
+                    event_id=f"proposed-{request_id}",
+                    session_id=session_id,
+                    payload=DomainFactCommitted(
+                        CONTROL_PROPOSED,
+                        {
+                            "request_id": request_id,
+                            "action": "workspace.remove",
+                            "payload": {"workspace_id": "workspace-1"},
+                            "summary": "删除工作区",
+                            "risk": "high",
+                        },
+                    ),
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity(CONTROL_SOURCE, f"{request_id}:proposed"),
+                )
+            )
+
+        with TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory))
+            queries = AssistantQueries(store, Archived())
+            for session_id in ("quiet", "named", "old", "spoken"):
+                await store.create(session_id, workspace_id="workspace-1")
+            await wake(store, "quiet", DomainFactCommitted("test.wake", {}, requests_decision=True), "test")
+            await commit(store, "quiet", commands=(
+                Command("cmd-quiet", InvokeTool("apply_patch", (("path", "note.txt"),)), requires_authorization=True),
+            ))
+            await wake(
+                store, "named",
+                DomainFactCommitted(
+                    AGENT_CREATED,
+                    {
+                        "name": "验证熊猫",
+                        "workspace_id": "workspace-1",
+                        "worktree": str(Path(directory)),
+                        "branch": "agent/verify",
+                    },
+                    requests_decision=True,
+                ),
+                "coding_bot",
+            )
+            await commit(store, "named", metadata={
+                CONTROL_REQUEST_METADATA: {
+                    "request_id": "req-named",
+                    "tool": "propose_workspace_remove",
+                    "action": "workspace.remove",
+                    "arguments": {"workspace_id": "workspace-1"},
+                },
+                MODEL_USAGE: {
+                    "window": None, "input_tokens": 1,
+                    "output_tokens": 1, "cached_input_tokens": 0,
+                },
+            })
+            await propose(store, "named", "req-named")
+            await wake(store, "old", DomainFactCommitted("test.wake", {}, requests_decision=True), "test")
+            await commit(store, "old", metadata={
+                CONTROL_REQUEST_METADATA: {
+                    "request_id": "req-old",
+                    "tool": "propose_workspace_remove",
+                    "action": "workspace.remove",
+                    "arguments": {"workspace_id": "workspace-1"},
+                },
+                MODEL_USAGE: {
+                    "window": None, "input_tokens": 1,
+                    "output_tokens": 1, "cached_input_tokens": 0,
+                },
+            })
+            await propose(store, "old", "req-old")
+            await SqliteJournal(store.require("spoken")).accept_delivery(
+                EventDraft(
+                    event_id="user-spoken",
+                    session_id="spoken",
+                    payload=UserMessageReceived("你好"),
+                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity("web", "spoken"),
+                )
+            )
+
+            inbox = await queries.list_inbox()
+            listed = await queries.list_sessions()
+
+        self.assertEqual([item.session_id for item in listed], ["spoken"])
+        self.assertEqual(
+            [(item.kind, item.label, item.session_id) for item in inbox],
+            [("authorization", "新会话", "quiet"), ("control", "验证熊猫", "named")],
+        )
+        self.assertEqual(inbox[0].name, "apply_patch")
+        self.assertEqual(inbox[0].arguments, {"path": "note.txt"})
+        self.assertEqual(inbox[1].summary, "删除工作区")
+        self.assertEqual(inbox[1].risk, "high")
 
     async def test_conversation_projects_control_approval_from_journal(self):
         from pathlib import Path

@@ -65,6 +65,9 @@ class WebChannel:
         await self._sessions.select(connection.owner, record.session_id)
         return await self._queries.agent_entry(record.session_id)
 
+    async def list_inbox(self):
+        return await self._queries.list_inbox()
+
     async def conversation(self, session_id: str):
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")

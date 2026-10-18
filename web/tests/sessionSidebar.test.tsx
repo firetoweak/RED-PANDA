@@ -31,6 +31,7 @@ function agent(partial: Partial<AgentRosterEntry> & Pick<AgentRosterEntry, "sess
 
 const queries = vi.hoisted(() => ({
   agents: [] as AgentRosterEntry[],
+  inbox: [] as { kind: "authorization"; label: string }[],
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
@@ -38,6 +39,7 @@ const queries = vi.hoisted(() => ({
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetAgentsQuery: () => ({ data: queries.agents, isLoading: false }),
+  useGetInboxQuery: () => ({ data: queries.inbox, isLoading: false }),
   useGetWorkspacesQuery: () => ({ data: queries.workspaces, isLoading: false }),
   useCreateAgentMutation: () => [queries.createAgent, { isLoading: false, reset: vi.fn() }],
   useCreateWorkspaceMutation: () => [vi.fn(), {}],
@@ -86,7 +88,7 @@ function browserStubs() {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); queries.inbox = []; vi.unstubAllGlobals(); });
 
 it("名册用干活、等授权、等人回话和空闲标出状态，运行中的活动盖过空闲", () => {
   browserStubs();
@@ -229,4 +231,14 @@ it("点 Agent 打开它的会话", () => {
   renderSidebar("/");
   fireEvent.click(screen.getByRole("button", { name: "小熊猫" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
+});
+
+it("待处理按钮显示收件箱条数并进入收件箱", () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.inbox = [{ kind: "authorization", label: "验证熊猫" }, { kind: "authorization", label: "验证熊猫" }];
+  renderSidebar("/");
+
+  fireEvent.click(screen.getByRole("button", { name: "待处理 · 2" }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/inbox");
 });

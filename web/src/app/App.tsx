@@ -13,6 +13,7 @@ import {
   writeSidebarWidth,
 } from "./sidebarWidth";
 import { SessionConversation } from "../features/conversation/SessionConversation";
+import { InboxPage } from "../features/inbox/InboxPage";
 import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
 import { AgentHome } from "../features/sessions/AgentHome";
 import { SessionSidebar } from "../features/sessions/SessionSidebar";
@@ -108,6 +109,7 @@ export function App() {
           <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<AgentHome />} />
           <Route path="/workspaces/:workspaceId" element={<AgentHome />} />
+          <Route path="/inbox" element={<InboxPage />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />
         </Routes>
       </AppShell.Main>

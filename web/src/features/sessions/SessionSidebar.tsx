@@ -26,6 +26,7 @@ import { useMatch, useNavigate } from "react-router-dom";
 import type { AgentRosterEntry, Workspace } from "../../api/contracts";
 import {
   useGetAgentsQuery,
+  useGetInboxQuery,
   useGetWorkspacesQuery,
 } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
@@ -58,8 +59,10 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
     .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
+  const inboxActive = useMatch("/inbox") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: agents = [], isLoading } = useGetAgentsQuery();
+  const { data: inbox = [] } = useGetInboxQuery();
   const { data: workspaces = [], isLoading: workspacesLoading } =
     useGetWorkspacesQuery();
   const [
@@ -154,6 +157,16 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
           variant="light"
         >
           新建 Agent
+        </Button>
+        <Button
+          fullWidth
+          justify="flex-start"
+          mt={8}
+          onClick={() => { navigate("/inbox"); onNavigate(); }}
+          radius="md"
+          variant={inboxActive ? "filled" : "subtle"}
+        >
+          {inbox.length === 0 ? "待处理" : `待处理 · ${inbox.length}`}
         </Button>
       </AppShell.Section>
 

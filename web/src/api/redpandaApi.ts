@@ -14,6 +14,7 @@ import {
   modelSettingsSchema,
   modelTestResultSchema,
   sessionModelSchema,
+  inboxItemSchema,
   subagentObservationSchema,
   workspaceSchema,
   type AgentRosterEntry,
@@ -23,6 +24,7 @@ import {
   type ModelSettings,
   type ModelTestResult,
   type SessionModel,
+  type InboxItem,
   type SubagentObservation,
   type Workspace,
 } from "./contracts";
@@ -114,7 +116,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
+  tagTypes: ["Agents", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -168,6 +170,11 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) =>
         agentRosterEntrySchema.array().parse(value),
       providesTags: ["Agents"],
+    }),
+    getInbox: build.query<InboxItem[], void>({
+      query: () => "/inbox",
+      transformResponse: (value: unknown) => inboxItemSchema.array().parse(value),
+      providesTags: ["Inbox"],
     }),
     createAgent: build.mutation<
       AgentRosterEntry,
@@ -243,7 +250,7 @@ export const redpandaApi = createApi({
         url: `/workspaces/${encodeURIComponent(workspaceId)}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Workspaces", "Agents"],
+      invalidatesTags: ["Workspaces", "Agents", "Inbox"],
     }),
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
@@ -323,6 +330,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Agents", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -335,6 +343,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, request_id: requestId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Agents", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -388,6 +397,7 @@ export const {
   useSelectLocalFileMutation,
   useGetAgentsQuery,
   useCreateAgentMutation,
+  useGetInboxQuery,
   useGetWorkspacesQuery,
   useGetConversationQuery,
   useObserveSubagentQuery,

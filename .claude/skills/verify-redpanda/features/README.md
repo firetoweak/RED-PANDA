@@ -50,7 +50,7 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（25 个）
+## 功能列表（26 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -59,6 +59,7 @@
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 会话列表、`重命名`、`归档`、状态徽标 | 部分（2026-10-12，main@1a4790a；归档不可撤销） |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
+| inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总命令授权与控制提案 | 未跑 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | 输入框上方会话净变更摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | file-rewind | [file-rewind.md](./file-rewind.md) | 已删除：没有 `从这一步之后重开` | 已删除（2026-10-18，C1） |
@@ -88,6 +89,7 @@
 | `/` → `AgentHome` | session-sidebar、web-session-chat |
 | `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat 及所有会话类条目 |
+| `/inbox` → `InboxPage` | inbox |
 | `/settings/models` → `ModelSettingsPage` | model-settings |
 | 其他路径回落 `index.html`（`app.py` 的 `/{path:path}`） | web-session-chat（Gotchas） |
 
@@ -100,6 +102,7 @@
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar |
 | `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | web-session-chat |
+| `GET /api/inbox` | inbox |
 | `GET /api/sessions/{id}/changes`（摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions` | 名册不再调用 |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
