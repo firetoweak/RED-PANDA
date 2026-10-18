@@ -53,6 +53,18 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     )
     if agent is not None:
         workspace = replace(workspace, task_root=agent.worktree)
+        # Git identity belongs to this Bot, not the person launching the Host.
+        # Environment defaults leave commit decisions and commands to the model.
+        identity = {
+            "GIT_AUTHOR_NAME": agent.name,
+            "GIT_AUTHOR_EMAIL": "bot@redpanda.local",
+            "GIT_COMMITTER_NAME": agent.name,
+            "GIT_COMMITTER_EMAIL": "bot@redpanda.local",
+        }
+        command_environment = {
+            key: value for key, value in command_environment.items()
+            if key.upper() not in identity
+        } | identity
     stop = asyncio.Event()
     active_requests = 0
     ready = asyncio.Event()
@@ -61,28 +73,27 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     advertised_busy = False
 
     async def handle(operation, target, arguments):
-        nonlocal revision, active_requests
+        nonlocal revision, active_requests, advertised, advertised_busy
         assert target == session_id
         await ready.wait()
         active_requests += 1
         revision += 1
         try:
             if operation == "compact_publish":
-                return await assembly.compact.publish(arguments)
-            if operation == "compact_snapshot":
-                return await assembly.compact.snapshot(**arguments)
-            if operation == "compact_ready":
+                result = await assembly.compact.publish(arguments)
+            elif operation == "compact_snapshot":
+                result = await assembly.compact.snapshot(**arguments)
+            elif operation == "compact_ready":
                 await assembly.scheduler.wake(session_id)
-                return None
-            if operation == "fact":
+                result = None
+            elif operation == "fact":
                 await assembly.runtime.receive_domain_fact(session_id, **arguments)
                 parent = project_parent(await journal.snapshot(session_id))
                 if parent is not None:
                     assembly.subagents._parents[session_id] = parent
                 await assembly.subagents.refresh_activity(session_id)
-                if await assembly.subagents.note_returned(session_id):
-                    return None
-                await assembly.scheduler.wake(session_id)
+                if not await assembly.subagents.note_returned(session_id):
+                    await assembly.scheduler.wake(session_id)
                 result = None
             elif operation == "create":
                 result = await assembly.sessions.view(session_id)
@@ -90,6 +101,12 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 result = await getattr(assembly.sessions, operation)(
                     session_id, **arguments
                 )
+            # A startup idle notice may already be in transit. Invalidate it
+            # before acknowledging a request that has started new work.
+            if not assembly.scheduler.idle and not advertised_busy:
+                advertised_busy = True
+                advertised = -1
+                await peer.send(("busy",))
             return result
         finally:
             active_requests -= 1
@@ -214,13 +231,20 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                     active_requests == 0
                     and advertised != revision
                 ):
+                    observed_revision = revision
                     view = await assembly.sessions.view(session_id)
-                    advertised = revision
+                    # Reading the view yields: a new request or decision may
+                    # have started since the idle check above.
+                    if (revision != observed_revision or active_requests != 0
+                            or not assembly.scheduler.idle):
+                        assembly.scheduler.changed.set()
+                        continue
+                    advertised = observed_revision
                     advertised_busy = False
                     await peer.send(
                         (
                             "idle",
-                            revision,
+                            observed_revision,
                             view.has_active_subagents,
                         )
                     )

@@ -19,7 +19,7 @@ from redpanda.assistant.delivery import (
     PreviewEmitter,
     deliver_binding,
 )
-from redpanda.assistant.context.prompt import environment_prompt
+from redpanda.assistant.context.prompt import CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from redpanda.assistant.host.process_port import WorkerProcessPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
@@ -326,6 +326,7 @@ async def build_assistant_assembly(
         journal,
         config.llm,
         config.model_name,
+        system_prompt=CODING_BOT_PROMPT if direct_workspace else DEFAULT_ASSISTANT_PROMPT,
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
             own_copy=task is not None or direct_workspace, direct_workspace=direct_workspace,
