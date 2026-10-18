@@ -568,34 +568,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(project_reclaimed(unrelated)), 0)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_parent_archive_stops_child_workers(self):
-        started = set()
-        route = self.host._route
-
-        async def observe_child_request(operation, session_id, arguments, **kwargs):
-            if operation == "llm_chat" and session_id.startswith("parent/sub-"):
-                started.add(session_id)
-            return await route(operation, session_id, arguments, **kwargs)
-
-        self.host._route = observe_child_request
-        await self.host.create("parent", self.workspace.workspace_id)
-        await self.host.receive_user_message("parent", "DELEGATE_CHILDREN", delivery_id="input")
-        # Observe each child's real IPC request, rather than counting random
-        # marker files left by model calls (which need not be one per Worker).
-        await until(lambda: len(started) >= 2 or not self.host.failures.empty())
-        self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
-        events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
-        children = project_delegations(events)
-        self.assertEqual(len(children), 2)
-        self.assertEqual(started, set(children))
-        workers = [self.host.workers[child] for child in children]
-        self.assertTrue(all(worker.process.is_alive() for worker in workers))
-        await asyncio.wait_for(self.host.archive("parent"), 30)
-        self.assertTrue(self.host.is_archived("parent"))
-        self.assertTrue(all(worker.exited.is_set() for worker in workers))
-        self.assertTrue(all(child not in self.host.workers for child in children))
-        self.assertTrue(self.host.failures.empty(), list(self.host.failures._queue))
-
     async def test_child_recovery_preserves_unfinished_read_and_reports_once(self):
         from redpanda.runtime import DispatchAttemptStarted
 

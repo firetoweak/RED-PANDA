@@ -23,11 +23,6 @@ class _Sessions:
         del owner
 
 
-class _Queries:
-    async def list_sessions(self):
-        return ()
-
-
 def _parse_sse_block(block: str) -> tuple[str | None, object | None]:
     event = None
     data = None
@@ -227,7 +222,7 @@ async def main(argv: list[str] | None = None) -> None:
     intervals = [int(item) for item in args.intervals.split(",") if item.strip()]
 
     hub = WebEventHub()
-    app = create_web_app(WebChannel(_Sessions(), _Queries()), hub)
+    app = create_web_app(WebChannel(_Sessions(), None), hub)
     config = uvicorn.Config(
         app,
         host=args.host,

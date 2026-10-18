@@ -30,7 +30,7 @@
   - (d) 再次启动后 `runtime_sessions/` 只剩新会话，上次的会话已清掉。
   - (e) 同一 `--home` 再开第二个 → 报错退出，信息含第一个的进程号。
 - **/new**：(a) `runtime_sessions/` 多一个会话。(b) 打印 `新 Session 已创建：session-...`。(c) 原会话历史不变。
-- **与 Web 无关**：Web 与终端同时运行互不阻塞；终端建的会话不出现在 Web 的 `GET /api/sessions`。
+- **与 Web 无关**：Web 与终端同时运行互不阻塞；终端建的会话不出现在 Web 的 Agent 名册（`GET /api/agents`）与收件箱。
 - **退出**：Ctrl+D（或 Ctrl+C）退出，打印 `已退出。`。(c) 无残留子进程。
 
 ## Gotchas

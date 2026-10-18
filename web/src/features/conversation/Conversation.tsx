@@ -41,7 +41,7 @@ import {
 import { Composer } from "./Composer";
 import { FileChangesPanel, FileChangesSummary } from "./FileChangesPanel";
 import { createClientId } from "./clientId";
-import { EditableUserMessage } from "./EditableUserMessage";
+import { UserMessage } from "./UserMessage";
 import { ErrorDetails, ErrorNotice } from "./ErrorNotice";
 import { ContentPage } from "./ContentPage";
 import { ExecutionProcess } from "./ExecutionProcess";
@@ -229,7 +229,7 @@ export function Conversation() {
               <Stack gap="lg" key={turn.key}>
                 {turn.user === null ? null : (
                   <Box component="article" className="message message-user">
-                    <EditableUserMessage
+                    <UserMessage
                       images={turn.user.images}
                       files={turn.user.files}
                       sessionId={sessionId}

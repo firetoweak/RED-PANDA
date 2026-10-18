@@ -23,7 +23,6 @@ from redpanda.assistant.conversations import (
     AuthorizationInboxItem,
     ConversationView,
     ControlInboxItem,
-    SessionSummary,
     UserItem,
     project_agent_status,
 )
@@ -121,9 +120,6 @@ class _Sessions:
     def set_model(self, session_id, model):
         return self.models.select(session_id, model)
 
-    async def create(self, session_id, workspace_id):
-        self.calls.append(("create", session_id, workspace_id))
-
     async def create_agent(self, *, name, workspace_id):
         self.calls.append(("create_agent", name, workspace_id))
         if name == "taken":
@@ -185,19 +181,6 @@ class _Sessions:
         self.calls.append(("set_auto_authorize", session_id, enabled))
         return SessionView("waiting", ("external_fact",), (), False, auto_authorize=enabled)
 
-    async def set_paused(self, session_id, paused):
-        self.calls.append(("set_paused", session_id, paused))
-        return SessionView("waiting", ("external_fact",), (), False, paused=paused)
-
-    def session_titles(self):
-        return {"session-old": "改过的标题"}
-
-    async def archive(self, session_id):
-        self.calls.append(("archive", session_id))
-
-    def set_title(self, session_id, title):
-        self.calls.append(("set_title", session_id, title))
-
 
 class _Queries:
     def __init__(self):
@@ -214,19 +197,14 @@ class _Queries:
         name, workspace_id = self.created
         return AgentRosterEntry(session_id, workspace_id, name, "前端", "idle", "waiting")
 
-    async def list_sessions(self):
-        return (
-            SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False, False),
-        )
-
     async def list_inbox(self):
         return (
             AuthorizationInboxItem(
-                "authorization", "session-old", "workspace-old", "旧会话",
+                "authorization", "session-old", "workspace-old", "验证熊猫",
                 "cmd-1", "apply_patch", {"path": "note.txt"},
             ),
             ControlInboxItem(
-                "control", "session-old", "workspace-old", "旧会话",
+                "control", "session-old", "workspace-old", "验证熊猫",
                 "req-1", "删除工作区", "high",
             ),
         )
@@ -669,16 +647,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(status(last_error="失败"), "waiting")
         self.assertEqual(status(), "idle")
 
-    def test_archive_hides_the_session_from_the_list(self):
-        response = self.client.post(
-            "/api/sessions/session-old/archive",
-            json={"connection_id": self.connection.connection_id},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {})
-        self.assertEqual(self.sessions.calls, [("archive", "session-old")])
-
     def test_rejected_upload_is_a_client_error(self):
         response = self.client.post(
             "/api/sessions/session-old/attachments",
@@ -789,7 +757,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 "kind": "authorization",
                 "session_id": "session-old",
                 "workspace_id": "workspace-old",
-                "label": "旧会话",
+                "label": "验证熊猫",
                 "command_id": "cmd-1",
                 "name": "apply_patch",
                 "arguments": {"path": "note.txt"},
@@ -798,7 +766,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 "kind": "control",
                 "session_id": "session-old",
                 "workspace_id": "workspace-old",
-                "label": "旧会话",
+                "label": "验证熊猫",
                 "request_id": "req-1",
                 "summary": "删除工作区",
                 "risk": "high",

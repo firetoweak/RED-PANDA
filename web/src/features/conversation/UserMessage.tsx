@@ -8,7 +8,7 @@ import { formatMessageTime } from "./messageTime";
 
 const ATTACHMENT_TOKEN = /\[(?:Image|File) #\d+\]/g;
 
-type EditableUserMessageProps = {
+type UserMessageProps = {
   sessionId: string;
   text: string;
   occurredAt: string;
@@ -16,13 +16,13 @@ type EditableUserMessageProps = {
   files: { attachment_id: string; name: string; size: number }[];
 };
 
-export function EditableUserMessage({
+export function UserMessage({
   sessionId,
   text,
   occurredAt,
   images,
   files,
-}: EditableUserMessageProps) {
+}: UserMessageProps) {
   const displayText = text.replace(ATTACHMENT_TOKEN, "").trim();
   const [copied, setCopied] = useState(false);
   const time = formatMessageTime(occurredAt);

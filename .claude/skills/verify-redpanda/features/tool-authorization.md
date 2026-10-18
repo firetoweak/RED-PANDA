@@ -16,7 +16,7 @@
 ## Driving it with the browser
 
 - **待授权**：发送上面的请求。
-  - (a) `GET /api/sessions/<id>` 中该调用处于待授权；`GET /api/sessions` 中该会话 `needs_attention` 为 true；`note.txt` 仍是 `verify`。
+  - (a) `GET /api/sessions/<id>` 中该调用处于待授权；`GET /api/inbox` 含这条授权；`note.txt` 仍是 `verify`。
   - (b) SSE 收到 `authorization_required`（带 `command_id`）；步骤徽标 `待授权`；区域 `待处理` 显示 `待处理 · 1 项`、`apply_patch · note.txt`；页面没有任何 `dialog`。
   - (c) 在批准前工作区文件不变，不出现任何写入。
   - (d) 关闭页面再打开 → 待处理条与步骤卡片仍在，不会被默认放行。
