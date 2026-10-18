@@ -33,11 +33,16 @@ EXECUTE_COMMAND_DESCRIPTION = """
 """.strip()
 
 
-class ExecuteCommandInput(BaseModel):
-    file_access: Literal["managed", "host"] = Field(
-        default="managed",
-        description="managed：工作区内修改可用 get_changes 核对、可回退；host：直接访问本机文件，不可回退。",
-    )
+DIRECT_COMMAND_DESCRIPTION = """
+用途：用 {shell_name} 执行一次有超时的前台非交互命令，用于安装、构建、测试、格式化、静态检查、Git 和运行脚本；文件查找、读取和修改用专用文件工具。
+文件：直接作用于工作区真实目录，不提供文件回退；用 git diff 和实际文件核对改动，也要检查未跟踪文件。命令可以访问工作区之外和网络，执行前需要用户授权。
+限制：不支持中途的 UAC、sudo 密码或硬件确认；遇到时停止，告诉用户需要在工具外完成的步骤。
+执行环境：每次调用独立，不继承上次的环境激活、变量或目录；需要特定环境就在 command 里显式调用解释器或环境管理器。陌生 CLI 或遇到 unknown option 时逐层查 `--help`，不要猜 flag。
+结果：退出码 0 为 COMMAND_COMPLETED，非 0 为 COMMAND_EXIT_NONZERO（已运行但不算成功）。检查 stdout、stderr 的 truncated 和 io_errors（非空表示输出可能不完整）。
+""".strip()
+
+
+class DirectCommandInput(BaseModel):
     cwd: str | None = Field(
         default=None,
         description="命令启动目录；省略时为工作区",
@@ -55,6 +60,13 @@ class ExecuteCommandInput(BaseModel):
         ge=1,
         le=300,
         description="命令超时秒数，范围 1 到 300",
+    )
+
+
+class ExecuteCommandInput(DirectCommandInput):
+    file_access: Literal["managed", "host"] = Field(
+        default="managed",
+        description="managed：工作区内修改可用 get_changes 核对、可回退；host：直接访问本机文件，不可回退。",
     )
 
 
@@ -76,12 +88,15 @@ def create_command_execution_spec(
     binding: FileAccess,
     commands: CommandEnvironment,
     interrupt_source: Callable[[], asyncio.Event | None] = lambda: None,
+    *,
+    direct_workspace: bool = False,
 ) -> ToolSpec:
     """`interrupt_source` 由调用方显式提供，默认不可打断。"""
 
-    async def execute_command(raw: ExecuteCommandInput) -> dict[str, Any]:
-        runner = (commands.host_command_executor if raw.file_access == "host"
-                  else commands.command_executor)
+    async def execute_command(raw: DirectCommandInput) -> dict[str, Any]:
+        managed = not direct_workspace and raw.file_access == "managed"
+        runner = commands.command_executor if managed else commands.host_command_executor
+        file_access = {} if direct_workspace else {"file_access": raw.file_access}
         if not raw.command.strip():
             return {
                 "ok": False,
@@ -97,7 +112,7 @@ def create_command_execution_spec(
                     if raw.workspace_effect == "may_write"
                     else "read"
                 ),
-                project=raw.file_access == "managed",
+                project=managed,
             )
         except EnvironmentInputError as exc:
             return environment_error(exc)
@@ -155,7 +170,7 @@ def create_command_execution_spec(
                 "data": {
                     "cwd": resolved_cwd.workspace_membership.display_path,
                     "workspace_effect": raw.workspace_effect,
-                    "file_access": raw.file_access,
+                    **file_access,
                     **_result_data(exc.result), "exit_code": None, "output_is_result": False,
                 },
                 "hint": "先检查相关文件或外部状态，再决定是否调整命令或重试。",
@@ -164,7 +179,7 @@ def create_command_execution_spec(
         data = {
             "cwd": resolved_cwd.workspace_membership.display_path,
             "workspace_effect": raw.workspace_effect,
-            "file_access": raw.file_access,
+            **file_access,
             **_result_data(result),
         }
         if result.interrupted:
@@ -206,7 +221,7 @@ def create_command_execution_spec(
 
     return ToolSpec(
         name="execute_command",
-        description=EXECUTE_COMMAND_DESCRIPTION.format(
+        description=(DIRECT_COMMAND_DESCRIPTION if direct_workspace else EXECUTE_COMMAND_DESCRIPTION).format(
             shell_name=commands.shell_name,
             write_constraint=(
                 "Windows managed 命令写文件时用相对路径或由当前目录推出的绝对路径，不要用工作区的绝对路径写文件；"
@@ -215,7 +230,7 @@ def create_command_execution_spec(
                 "误标为 read_only 的修改不能回退。"
             ),
         ),
-        parameters=PydanticParameters(ExecuteCommandInput),
+        parameters=PydanticParameters(DirectCommandInput if direct_workspace else ExecuteCommandInput),
         handler=execute_command,
-        requires_authorization=command_requires_authorization,
+        requires_authorization=True if direct_workspace else command_requires_authorization,
     )

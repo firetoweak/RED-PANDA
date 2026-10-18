@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import json
 
 from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
+from redpanda.assistant.agents import AGENT_FACT_TYPES, agent_fact_for_model
+from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
 from redpanda.assistant.artifacts import (
     ArtifactGateway,
     ArtifactStore,
@@ -45,11 +47,16 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 12
+PROJECTOR_VERSION = 13
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
 DEFAULT_MAX_TOOL_IMAGES = 5
+
+_INTERNAL_FACT_TYPES = frozenset({
+    WORKSPACE_RESTORE_FACT, SESSION_WORKSPACE_FACT,
+    "compact.task", "compact.handoff_created", "compact.window_rolled_over",
+})
 _IMAGE_EVICTED_HINT = "\n图片已移出上下文；需要重新查看时用上面的 id 调用 read_image。"
 _USER_ATTACHMENT_HINT = "\n（本消息附图 id：{ids}；需要重看时用 read_image 回读）"
 
@@ -294,7 +301,7 @@ def _translate_visible_events(
             )
             continue
         if isinstance(payload, DomainFactCommitted):
-            if payload.fact_type == WORKSPACE_RESTORE_FACT:
+            if payload.fact_type in _INTERNAL_FACT_TYPES:
                 continue
             if payload.fact_type == WORKSPACE_VERSION_FACT:
                 fact = WorkspaceVersionFact.parse(payload.data)
@@ -304,6 +311,8 @@ def _translate_visible_events(
             shown_data = thaw_value(payload.data)
             if payload.fact_type == "assistant.catalog":
                 shown_data = catalog_for_model(shown_data)
+            elif payload.fact_type in AGENT_FACT_TYPES:
+                shown_data = agent_fact_for_model(payload)
             elif payload.fact_type == WORKSPACE_VERSION_FACT:
                 shown_data = {"error": shown_data["error"]}
             elif payload.fact_type == TASK_FACT:

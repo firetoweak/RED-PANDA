@@ -1,6 +1,6 @@
 # RED PANDA 文档
 
-RED PANDA 是面向开发者的 coding agent，围绕代码工作区完成项目理解、代码修改、命令执行和结果验证。正在转向 coding bot：几个长期在线的 coding Agent 在同一项目上协作，群聊是核心玩法，见 [Coding Bot](架构/未开始/CodingBot.md)。源码安装与日常启动从[快速开始](../README.md#快速开始)进入。
+RED PANDA 是面向开发者的 coding agent，围绕代码工作区完成项目理解、代码修改、命令执行和结果验证。正在转向 coding bot：几个长期在线的 coding Agent 在同一项目上协作，群聊是核心玩法，见 [Coding Bot](架构/CodingBot/方向.md)。源码安装与日常启动从[快速开始](../README.md#快速开始)进入。
 
 当前系统按 **Session / Event / State / Step / Command** 运行。
 
@@ -109,13 +109,19 @@ RED PANDA 是面向开发者的 coding agent，围绕代码工作区完成项目
 | [会话模型选择](架构/入口/会话模型选择.md) | 会话偏好、决策生效边界与个人连接热更新 |
 | [Command 授权](架构/入口/Command授权.md) | Command Authorization 契约；Control Approval 另做 |
 
+### CodingBot/
+
+| 文档 | 角色 |
+|---|---|
+| [Coding Bot 总览](架构/CodingBot/总览.md) | 准绳：稳定身份、名册事实源、项目归属与执行目录、通信事实边界 |
+| [后续方向](架构/CodingBot/方向.md) | 尚未落地的 worktree 管理、Git 历史、落地、私信、群聊与 Web 入口 |
+
 ### 未开始
 
 只有方向与已经排除的做法，不是准绳。
 
 | 文档 | 要解决什么 |
 |---|---|
-| [Coding Bot](架构/未开始/CodingBot.md) | 即将动工。长期 Agent 在同一项目上自由协作：Agent 名册、每个 Agent 一条分支并自行落地、私信、群聊（核心玩法）；含供多个 agent 并行实施的落地顺序 |
 | [交互式资源](架构/未开始/交互式资源.md) | 浏览器、ssh、REPL 活过 Command；人机往返只能在 Command 之间 |
 | [处境观测](架构/未开始/处境观测.md) | Session 处境是 Journal 投影，不是 Runtime 状态的扩展；无人值守的升级路径，含"卡住"与"跑偏"两种触发 |
 | [进程沙箱](架构/未开始/进程沙箱.md) | 独立执行隔离，可接入外部模块或由外部环境提供；接入设计尚未开始 |

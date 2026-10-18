@@ -83,6 +83,7 @@ async def build_builtin_tools(
     command_environment: Mapping[str, str] | None = None,
     filesystem=None,
     processes: ProcessControl | None = None,
+    direct_workspace: bool = False,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     if materials_root is not None:
@@ -91,7 +92,9 @@ async def build_builtin_tools(
             *view.roots,
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
-    commands = create_local_command_environment(command_environment, task_root=workspace.task_root)
+    commands = create_local_command_environment(
+        command_environment, task_root=workspace.task_root, direct_workspace=direct_workspace,
+    )
     binding = FileAccess(
         environment_id="local",
         workspace_view=view,
@@ -111,7 +114,10 @@ async def build_builtin_tools(
         )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
-    for spec in create_workspace_tool_specs(binding, commands, interrupts, session_operations=session_operations):
+    for spec in create_workspace_tool_specs(
+        binding, commands, interrupts, session_operations=session_operations,
+        direct_workspace=direct_workspace,
+    ):
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)

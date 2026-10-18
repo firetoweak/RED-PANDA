@@ -27,10 +27,19 @@ def create_local_command_environment(
     command_environment: Mapping[str, str] | None = None,
     *,
     task_root: Path,
+    direct_workspace: bool = False,
 ) -> CommandEnvironment:
     task_root = task_root.resolve()
     # 独立命令来源，包含用户准备的项目变量；不读取随后改变的产品环境。
     environment = dict(os.environ if command_environment is None else command_environment)
+    if direct_workspace:
+        runner = create_host_command_runner(environment)
+        return CommandEnvironment(
+            runner,
+            shell_name="powershell" if os.name == "nt" else "bash",
+            shell_path=runner.executable,
+            host_command_executor=runner,
+        )
     if os.name == "nt":
         from redpanda.execution.local.powershell import (
             CommandEnvironmentPolicy, PowerShellCommandRunner,
