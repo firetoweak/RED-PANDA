@@ -17,7 +17,7 @@ from redpanda.assistant.context.projection import project_chat_messages
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView
-from redpanda.runtime import AgentRuntime, MemoryJournal, SqliteJournal, StateProjector
+from redpanda.runtime import AgentRuntime, MemoryJournal, StateProjector
 from redpanda.filesystem.registry import WorkspaceRecord
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
