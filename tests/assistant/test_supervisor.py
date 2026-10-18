@@ -451,6 +451,23 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.host.is_paused(PARENT))
         self.assertTrue(self.host.failures.empty())
 
+    async def test_group_stop_interrupts_and_reclaims_without_parking_the_member(self):
+        from redpanda.assistant.subagent.subagent import project_pending, project_returned
+
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
+        await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
+        children = project_pending(await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT))
+
+        view = await self.host.interrupt_for_group(PARENT)
+
+        self.assertFalse(view.paused)
+        self.assertFalse(self.host.is_paused(PARENT))
+        for child in children:
+            child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
+            self.assertTrue(project_returned(child_events))
+        self.assertTrue(self.host.failures.empty())
+
     async def test_input_during_parent_reclaim_is_accepted_after_stop_finishes(self):
         from unittest.mock import AsyncMock
 

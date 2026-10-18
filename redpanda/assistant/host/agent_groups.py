@@ -291,4 +291,4 @@ class AgentGroups:
         called = list(drive.waiting)
         drive.stopped.set()
         sessions = [(await self.host.agents.resolve(drive.group.workspace_id, name)).session_id for name in called]
-        await asyncio.gather(*(self.host.cancel_turn(session_id) for session_id in sessions))
+        await asyncio.gather(*(self.host.interrupt_for_group(session_id) for session_id in sessions))

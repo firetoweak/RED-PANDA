@@ -56,11 +56,11 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.work = []
         for target, mock in (("request", AsyncMock(side_effect=deliver)),
                              ("wait_quiescent", AsyncMock(side_effect=self.turn)),
-                             ("cancel_turn", AsyncMock())):
+                             ("interrupt_for_group", AsyncMock())):
             patcher = patch.object(self.host, target, mock)
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.cancel_turn = self.host.cancel_turn
+        self.interrupt = self.host.interrupt_for_group
 
     async def asyncTearDown(self):
         await self.host.close()
@@ -211,7 +211,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         await self.host.agent_groups.stop(group.group_id)
         await self.settled(group)
         self.assertEqual(self.calls, ["Ada"])
-        self.cancel_turn.assert_awaited_once_with("Ada")
+        self.interrupt.assert_awaited_once_with("Ada")
 
     async def test_agent_speech_is_idempotent_and_checks_its_addressing(self):
         group = await self.group(("Ada", "Lin"))
