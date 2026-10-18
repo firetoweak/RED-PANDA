@@ -38,6 +38,10 @@ class WorktreeLlm(ProcessLlm):
         text = messages[last_input]["content"] if last_input >= 0 else ""
         results = {call["function"]["name"] for message in messages[last_input + 1:]
                    for call in message.get("tool_calls", ())}
+        commands = {json.loads(call["function"]["arguments"])["command"]
+                    for message in messages[last_input + 1:]
+                    for call in message.get("tool_calls", ())
+                    if call["function"]["name"] == "execute_command"}
         calls = ()
         if isinstance(text, str) and text.startswith("WRITE_AGENT_"):
             if "write_file" not in results:
@@ -48,6 +52,17 @@ class WorktreeLlm(ProcessLlm):
                 command = ("Set-Content -LiteralPath command.txt -Value command-ok"
                            if os.name == "nt" else "printf 'command-ok\\n' > command.txt")
                 calls = (ToolCall("agent-command", "execute_command", json.dumps({"command": command})),)
+        elif text == "FINISH_AGENT":
+            stage = "git add -- note.txt command.txt"
+            commit = 'git -c user.name=Bot -c user.email=bot@example.invalid commit -m "record agent changes"'
+            if stage not in commands:
+                calls = (ToolCall("agent-stage", "execute_command", json.dumps({
+                    "command": stage,
+                })),)
+            elif commit not in commands:
+                calls = (ToolCall("agent-commit", "execute_command", json.dumps({
+                    "command": commit,
+                })),)
         elif text == "READ_AGENT" and "read_file" not in results:
             calls = (ToolCall("agent-read", "read_file", '{"path":"note.txt"}'),)
         return LLMCallResult(LLMResponse(content="" if calls else "done", calls=calls),
@@ -68,6 +83,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             git("init")
             git("add", "note.txt")
             git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
+            base = git("rev-parse", "HEAD").stdout
             (project / "note.txt").write_text("human-uncommitted")
             original_status = git("status", "--porcelain").stdout
             home = RedPandaHome(root / "home")
@@ -94,9 +110,19 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                         self.assertEqual((worktree / "note.txt").read_text(), f"WRITE_AGENT_{index}")
                         self.assertEqual((worktree / "command.txt").read_text().strip(), "command-ok")
+                        # Completing write and reply Steps must not stage or commit.
+                        self.assertEqual(git("rev-parse", agent.identity.branch).stdout, base)
                         self.assertEqual(await current.bound_workspace_id(agent.session_id), workspace.workspace_id)
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
+                    await current.receive_user_message(agents[0].session_id, "FINISH_AGENT", delivery_id="finish")
+                    await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
+                    committed = git("rev-parse", agents[0].identity.branch).stdout
+                    self.assertNotEqual(committed, base)
+                    self.assertEqual(git("show", f"{agents[0].identity.branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
+                    self.assertEqual(git("diff", "--name-only", base.decode().strip(),
+                                         agents[0].identity.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
+                    self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
                     await current.close()
                     current = host()
                     recovered = await current.agents.resolve(workspace.workspace_id, "同事0")
@@ -125,6 +151,8 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
+                    self.assertEqual(git("rev-parse", agents[0].identity.branch).stdout, committed)
+                    self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
                     self.assertEqual((project / "note.txt").read_text(), "human-uncommitted")
                     self.assertEqual(git("status", "--porcelain").stdout, original_status)
                 finally:

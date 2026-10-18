@@ -78,6 +78,9 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn("managed", command["description"])
                     environment = next(message["content"] for message in llm.messages if "<environment>" in str(message["content"]))
                     self.assertIn("当前不提供文件回退", environment)
+                    self.assertIn("主动核对、暂存和提交自己的修改", environment)
+                    self.assertNotIn("不擅自提交或推送代码", environment)
+                    self.assertIn("git show", environment)
                     self.assertNotIn("file_access=managed", environment)
                     self.assertFalse((home.state_root / "workspace_views").exists())
                 finally:

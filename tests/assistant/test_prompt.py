@@ -13,6 +13,7 @@ from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
     PROJECT_INSTRUCTIONS_LIMIT,
     DEFAULT_ASSISTANT_PROMPT,
+    CODING_BOT_PROMPT,
     SUBAGENT_PROMPT,
 )
 from redpanda.assistant.subagent.subagent import (
@@ -48,6 +49,7 @@ PROSE_VOCABULARY = frozenset(
         "agent",
         "diff",
         "git",
+        "show",
         "env",
         "false",
         "null",
@@ -206,16 +208,17 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_default_prompt_names_only_real_tools_and_fields(self):
-        unknown = (
-            _ascii_tokens(DEFAULT_ASSISTANT_PROMPT)
-            - PROSE_VOCABULARY
-            - self._known_names("vocabulary")
-        )
-        self.assertEqual(
-            unknown,
-            set(),
-            f"prompt 指向了不存在的工具名或字段名: {sorted(unknown)}",
-        )
+        for prompt in (DEFAULT_ASSISTANT_PROMPT, CODING_BOT_PROMPT):
+            unknown = (
+                _ascii_tokens(prompt)
+                - PROSE_VOCABULARY
+                - self._known_names("vocabulary")
+            )
+            self.assertEqual(
+                unknown,
+                set(),
+                f"prompt 指向了不存在的工具名或字段名: {sorted(unknown)}",
+            )
 
     def test_subagent_prompt_names_only_real_tools_and_fields(self):
         session_id = "parent/sub-vocabulary"
@@ -235,6 +238,8 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         decision = self._assembly.runtime.step_runner._decision_maker
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
         self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
+        self.assertIn("不擅自提交或推送代码", prompt)
+        self.assertNotIn("主动核对、暂存和提交自己的修改", prompt)
 
     def test_workspace_agents_md_reaches_prompt_as_separate_block(self):
         decision = self._assembly.runtime.step_runner._decision_maker
