@@ -8,7 +8,7 @@
 
 - 按 `../SKILL.md` 启动一个隔离实例：地址 `$REDPANDA_VERIFY_URL`，数据目录 `$REDPANDA_HOME`，临时工作区 `$SCRATCH_WORKSPACE`（内含 `note.txt`，内容为一行 `verify`）。
 - 第一次点击前 `doctor.py` 必须对该 pid 和 home 返回 0。
-- 视口至少 1280×800，侧栏才在屏幕上（窄屏时侧栏收在 `打开会话列表` 后面）。
+- 视口至少 1280×800，侧栏才在屏幕上（窄屏时侧栏收在 `打开 Agent 名册` 后面）。
 - 不要驱动 `~/.redpanda`、不要占用别人的 8765 端口、不要用带 `--workspace` 或 `--dev` 启动的服务。
 
 ## 数据落点速查（判据里反复用到）
@@ -86,8 +86,8 @@
 
 | 入口 | 条目 |
 |---|---|
-| `/` → `DraftRedirect` | web-session-chat |
-| `/workspaces/:workspaceId` | web-session-chat、workspace-management |
+| `/` → `AgentHome` | session-sidebar、web-session-chat |
+| `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat 及所有会话类条目 |
 | `/inbox` → `InboxPage` | inbox |
 | `/settings/models` → `ModelSettingsPage` | model-settings |
@@ -100,12 +100,13 @@
 | `GET /api/events` | realtime-events |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
-| `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | session-sidebar、web-session-chat |
+| `GET /api/agents`、`POST /api/agents` | session-sidebar |
+| `GET /api/sessions`、`GET /api/session-titles`、`GET /api/sessions/{id}` | web-session-chat |
 | `GET /api/inbox` | inbox |
 | `GET /api/sessions/{id}/changes`（摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
-| `POST /api/sessions` | web-session-chat、session-sidebar |
-| `POST /api/sessions/{id}/select` | session-sidebar |
-| `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | session-sidebar |
+| `POST /api/sessions` | 名册不再调用 |
+| `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
+| `POST /api/sessions/{id}/title`、`POST /api/sessions/{id}/archive` | 名册不提供改名或归档 |
 | `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
