@@ -933,6 +933,8 @@ class HostSupervisor:
     ) -> AgentRecord:
         """Create a project-owned Git worktree before publishing the Agent fact."""
         project = self.workspaces.get(workspace_id)
+        if self.models is not None:
+            self.models.require_default_ready()
         session_id = f"agent-{uuid4().hex}"
         worktree = self.agent_worktrees.agent(workspace_id, session_id)
         identity = AgentCreated(name=name, workspace_id=workspace_id,

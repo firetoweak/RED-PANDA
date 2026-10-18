@@ -129,7 +129,7 @@ class Git:
         files = [file for file, _ in reviewed]
         if path is None:
             return dict(files=files, added=sum(file["added"] or 0 for file in files),
-                        removed=sum(file["removed"] or 0 for file in files), partial=False)
+                        removed=sum(file["removed"] or 0 for file in files))
         if not reviewed:
             return None
         lines = _review_lines(patch)
@@ -171,11 +171,11 @@ def _review_files(raw: bytes, counts: bytes) -> list[tuple[dict, list[dict]]]:
         old_mode, new_mode, old_oid, new_oid, status = header.decode("ascii")[1:].split(" ")
         path = name.decode("utf-8")
         added, removed = numbers[path]
-        file = dict(path=path, status=_STATUS[status[0]], origin="agent", added=added, removed=removed,
-                    partial=False, binary=added is None)
+        file = dict(path=path, status=_STATUS[status[0]], added=added, removed=removed,
+                    binary=added is None)
         # Blob ids and modes identify this exact difference for page continuation.
         file["revision"] = sha256(json.dumps([path, old_mode, new_mode, old_oid, new_oid]).encode()).hexdigest()
-        properties = ([dict(origin="agent", text=f"权限：{old_mode} → {new_mode}")]
+        properties = ([dict(text=f"权限：{old_mode} → {new_mode}")]
                       if status[0] == "M" and old_mode != new_mode else [])
         reviewed.append((file, properties))
     return reviewed
@@ -188,16 +188,16 @@ def _review_lines(patch: bytes) -> list[dict]:
         hunk = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
         if hunk is not None:
             old, new = int(hunk[1]), int(hunk[2])
-            rows.append(dict(kind="hunk", old_line=None, new_line=None, origin="unknown", text=hunk[0]))
+            rows.append(dict(kind="hunk", old_line=None, new_line=None, text=hunk[0]))
         elif old is None or line.startswith("\\"):
             continue
         elif line.startswith("+"):
-            rows.append(dict(kind="add", old_line=None, new_line=new, origin="agent", text=line[1:]))
+            rows.append(dict(kind="add", old_line=None, new_line=new, text=line[1:]))
             new += 1
         elif line.startswith("-"):
-            rows.append(dict(kind="delete", old_line=old, new_line=None, origin="agent", text=line[1:]))
+            rows.append(dict(kind="delete", old_line=old, new_line=None, text=line[1:]))
             old += 1
         else:
-            rows.append(dict(kind="context", old_line=old, new_line=new, origin="unknown", text=line[1:]))
+            rows.append(dict(kind="context", old_line=old, new_line=new, text=line[1:]))
             old, new = old + 1, new + 1
     return rows

@@ -12,7 +12,9 @@ from redpanda.assistant.agents import (
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.session_store import SessionForkUnavailableError, SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.config import write_json
 from redpanda.filesystem.registry import WorkspaceRegistry
+from redpanda.model_settings import ModelConfigurationError, ModelSettings
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import AgentRuntime, SqliteJournal
 
@@ -70,6 +72,17 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         # Colleagues hear of the join before the new Agent can act.
         self.assertEqual(sent, [(first.session_id, COLLEAGUE_JOINED, False),
                                 (second.session_id, AGENT_CREATED, True)])
+
+    async def test_creation_without_a_usable_default_model_is_refused_before_anything_exists(self):
+        # A new Agent decides right after creation; without a model that decision cannot run.
+        for default in (None, "deepseek/pro"):
+            candidates = [] if default is None else [{"model": default, "compact_threshold_tokens": 1000}]
+            write_json(self.home.config_path, {"model": {"default": default, "candidates": candidates}})
+            self.host.models = ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
+            with self.assertRaises(ModelConfigurationError):
+                await self.create()
+            self.assertEqual(self.store.journals(), ())
+            self.request.assert_not_awaited()
 
     async def test_identity_and_latest_direction_rebuild_from_journals(self):
         agent = await self.create()

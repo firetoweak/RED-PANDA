@@ -160,7 +160,7 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         agent = await self.agent("甲")
         queries = AssistantQueries(self.host.store, self.host)
         self.assertEqual(await queries.file_changes(agent.session_id),
-                         {"files": [], "added": 0, "removed": 0, "partial": False})
+                         {"files": [], "added": 0, "removed": 0})
         self.change(agent, "note.txt", "initial\ncommitted\n")
         (agent.worktree / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
         status = git(agent.worktree, "status", "--porcelain")
