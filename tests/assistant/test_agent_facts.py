@@ -51,7 +51,11 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
             arguments = fact_arguments(creation, delivery_id="created")
             self.assertTrue(arguments["requests_decision"])
             payload = DomainFactCommitted(arguments["fact_type"], arguments["data"], True)
-            self.assertEqual(agent_fact_for_model(payload), {"name": "Ada"})
+            shown = agent_fact_for_model(payload)
+            self.assertEqual(set(shown), {"name", "notice"})
+            self.assertEqual(shown["name"], "Ada")
+            for internal in ("workspace-internal", "internal-branch", directory):
+                self.assertNotIn(internal, str(shown))
         private = PrivateMessage(
             message_id="message-2", sender=Speaker(kind="agent", name="Ada"),
             recipient="Lin", thread_id="thread-1", hop=2, reply_to="message-1", text="请检查测试。",

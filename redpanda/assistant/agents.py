@@ -17,6 +17,7 @@ PRIVATE_MESSAGE = "coding_bot.private_message"
 GROUP_MESSAGE = "coding_bot.group_message"
 GROUP_ATTENTION = "coding_bot.group_attention"
 DIRECTION_DECLARED = "coding_bot.direction_declared"
+COLLEAGUE_JOINED = "coding_bot.colleague_joined"
 COMMUNICATION_LIMIT_REACHED = "coding_bot.communication_limit_reached"
 SOURCE = "coding_bot"
 
@@ -95,6 +96,10 @@ class DirectionDeclared(_Fact):
     direction: Text
 
 
+class ColleagueJoined(_Fact):
+    name: Text
+
+
 class CommunicationLimitReached(_Fact):
     recipient: Text
     text: Text
@@ -106,6 +111,7 @@ _FACTS = {
     GROUP_MESSAGE: (GroupMessage, False),
     GROUP_ATTENTION: (GroupAttention, True),
     DIRECTION_DECLARED: (DirectionDeclared, False),
+    COLLEAGUE_JOINED: (ColleagueJoined, False),
     COMMUNICATION_LIMIT_REACHED: (CommunicationLimitReached, False),
 }
 AGENT_FACT_TYPES = frozenset(_FACTS)
@@ -160,14 +166,14 @@ def project_agent(events) -> AgentRecord | None:
 
 
 def project_direction(events, agent: AgentRecord) -> str | None:
+    """Colleagues' declarations also reach this timeline; only the Agent's own counts."""
     direction = None
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == DIRECTION_DECLARED:
             declaration = parse_agent_fact(payload)
-            if declaration.name != agent.name:
-                raise ValueError("direction declaration belongs to another Agent")
-            direction = declaration.direction
+            if declaration.name == agent.name:
+                direction = declaration.direction
     return direction
 
 
@@ -175,7 +181,11 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     """Only observable identities, messages and requested actions reach the model."""
     fact = parse_agent_fact(payload)
     if isinstance(fact, AgentCreated):
-        return {"name": fact.name}
+        return {"name": fact.name, "notice": (
+            "你刚加入这个项目。先了解项目，用 list_colleagues 查看同事的负责方向，"
+            "再向用户提议你打算负责什么；用户认可或修正后，用 declare_direction 记下。")}
+    if isinstance(fact, ColleagueJoined):
+        return {"colleague": fact.name, "notice": "这位同事刚加入项目，还没有声明负责方向。"}
     if isinstance(fact, DirectionDeclared):
         return {"agent": fact.name, "direction": fact.direction}
     if isinstance(fact, GroupAttention):

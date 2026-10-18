@@ -1,10 +1,13 @@
 """Host-owned addressing, reply validation and durable delivery to colleagues."""
 from __future__ import annotations
 
+import asyncio
 from hashlib import sha256
 
 from redpanda.assistant.agent_messages import MAX_MESSAGE_HOPS, LIMIT_NOTICE
-from redpanda.assistant.agents import PRIVATE_MESSAGE, PrivateMessage, Speaker, fact_arguments, parse_agent_fact
+from redpanda.assistant.agents import (
+    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, parse_agent_fact,
+)
 from redpanda.assistant.host.agent_roster import AgentNotFound
 from redpanda.runtime import DomainFactCommitted, SqliteJournal
 
@@ -22,9 +25,28 @@ class AgentMessages:
         sender = await self.host.agents.by_session(session_id)
         if sender is None:
             raise ValueError("colleague query requires a Coding Bot identity")
-        return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [entry.agent.name
+        return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [
+            {"name": entry.agent.name, "direction": entry.direction}
             for entry in await self.host.agents.list(sender.workspace_id)
             if entry.agent.session_id != session_id]}}
+
+    async def _broadcast(self, sender, fact, delivery_id):
+        """Roster changes reach colleagues as facts that do not request a decision."""
+        await asyncio.gather(*(
+            self.host.request("fact", entry.agent.session_id, fact_arguments(fact, delivery_id=delivery_id))
+            for entry in await self.host.agents.list(sender.workspace_id)
+            if entry.agent.session_id != sender.session_id))
+
+    async def joined(self, agent):
+        await self._broadcast(agent, ColleagueJoined(name=agent.name), f"joined:{agent.session_id}")
+
+    async def declare(self, session_id, arguments):
+        sender = await self.host.agents.by_session(session_id)
+        if sender is None:
+            raise ValueError("direction declaration requires a Coding Bot identity")
+        await self._broadcast(sender, DirectionDeclared(name=sender.name, direction=arguments["direction"]),
+                              f"{session_id}:{arguments['delivery_id']}")
+        return None
 
     async def _messages(self, session_id):
         events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
