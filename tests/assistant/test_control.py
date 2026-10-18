@@ -6,8 +6,9 @@ from types import SimpleNamespace
 
 from pydantic import BaseModel, ConfigDict
 
-from redpanda.assistant.artifacts import MemoryArtifactStore
-from redpanda.assistant.context.projection import ModelContextProjector, project_chat_messages
+from tests.fixtures.artifacts import MemoryArtifactGateway, MemoryArtifactStore
+from redpanda.assistant.context.projection import ModelContextProjector
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.control import (
     CONTROL_APPROVED,
     CONTROL_CONCLUDED,
@@ -26,7 +27,8 @@ from redpanda.assistant.control import (
     project_pending_approval,
 )
 from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
-from redpanda.assistant.delivery import deliver_binding
+from redpanda.assistant.delivery import PreviewEmitter, deliver_binding
+from redpanda.assistant.loop_guard import LoopGuard
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.toolsets import ToolSurface
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
@@ -34,10 +36,10 @@ from redpanda.runtime import (
     AgentRuntime,
     DomainFactCommitted,
     LeaseLostError,
-    MemoryJournal,
     RuntimeStatus,
     StepCommitted,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.json_values import thaw_value
 from redpanda.tools.control import (
     ControlApprovalExecution,
@@ -187,7 +189,13 @@ def _decision_maker(journal, llm, control, *, projector=None):
         cli_tools=EmptyTools(),
         control=control,
         management=OpenControlManagement(),
-        projector=projector,
+        projector=(
+            ModelContextProjector(gateway=MemoryArtifactGateway())
+            if projector is None
+            else projector
+        ),
+        loop_guard=LoopGuard(),
+        preview=PreviewEmitter(),
     )
 
 

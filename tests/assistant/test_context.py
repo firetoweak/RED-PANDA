@@ -8,30 +8,29 @@ from tempfile import TemporaryDirectory
 
 from redpanda.assistant.artifacts import (
     FileArtifactStore,
-    MemoryArtifactGateway,
 )
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.compact.core import CompactContext
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
-    parse_tool_result_meta,
-    project_chat_messages,
 )
+from tests.fixtures.projection import parse_tool_result_meta, project_chat_messages
 from redpanda.assistant.decision import bind_executor_tools
 from tests.session_scheduler import SettlingScheduler, settle_session
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     OutcomeStatus,
     SqliteJournal,
     StateProjector,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext, ToolTerminal
 from redpanda.runtime.model import MAX_JSON_VALUE_BYTES
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds

@@ -11,8 +11,9 @@ from redpanda.assistant.agents import (
     AGENT_CREATED, AgentCreated, GroupAttention, GroupMessage, PrivateMessage,
     Speaker, agent_fact_for_model, fact_arguments, parse_agent_fact,
 )
-from redpanda.assistant.context.projection import project_chat_messages
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, MemoryJournal, ModelDecision, StateProjector
+from tests.fixtures.projection import project_chat_messages
+from redpanda.runtime import AgentRuntime, DomainFactCommitted, ModelDecision, StateProjector
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

@@ -19,10 +19,10 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.runtime import (
     AgentRuntime,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import settle_session

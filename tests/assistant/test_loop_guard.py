@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.context.projection import project_chat_messages
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.compact.core import CompactBoundary, save_document
 from redpanda.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
 from redpanda.assistant.loop_guard_strategies import Action, ConsecutiveActions

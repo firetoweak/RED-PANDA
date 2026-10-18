@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from redpanda.assistant.context.projection import ModelContextProjector, outcome_text
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.decision import with_command_interrupts
 from redpanda.assistant.runner import SessionScheduler
@@ -14,7 +15,6 @@ from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     SqliteJournal,
@@ -22,6 +22,7 @@ from redpanda.runtime import (
     StepContinuationCancelled,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.filesystem import FileAccess
 from redpanda.execution.api import CommandEnvironment
 from redpanda.execution.command import CapturedOutput, CommandResult
@@ -232,7 +233,7 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
 
         await runtime.receive_user_message("session", "继续", delivery_id="continue")
         restored_events = await SqliteJournal(root / "journal.sqlite").snapshot("session")
-        prepared = ModelContextProjector().prepare(
+        prepared = ModelContextProjector(gateway=MemoryArtifactGateway()).prepare(
             restored_events, StateProjector().project_visible("session", restored_events),
             "session",
         )

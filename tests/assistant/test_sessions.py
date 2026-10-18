@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.context.projection import ModelContextSettings
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
@@ -21,11 +21,11 @@ from redpanda.runtime import (
     AgentRuntime,
     CommandPhase,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.assistant.test_toolsets import FakeEchoProvider, _schema_names
 from tests.session_scheduler import RecordingScheduler, settle_session

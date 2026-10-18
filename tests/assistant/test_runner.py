@@ -4,20 +4,20 @@ import asyncio
 import unittest
 from collections.abc import Awaitable, Callable
 
-from redpanda.assistant.context.projection import project_chat_messages
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.control import AssistantControlPlane
-from redpanda.assistant.decision import decision_from_llm
+from tests.fixtures.projection import decision_from_llm
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.llm.api import InvalidLLMResponse, LLMProviderError
 from redpanda.llm.api import LLMResponse, ToolCall
 from redpanda.runtime import (
     AgentRuntime,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     ToolBinding,
     UserMessageReceived,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.model import argument_rejection
 from redpanda.runtime.state import DecisionFrame, StateProjector
 from tests.session_scheduler import SettlingScheduler

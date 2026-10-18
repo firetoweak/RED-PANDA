@@ -9,11 +9,11 @@ from redpanda.runtime import (
     CommandOutcomeReceived,
     DispatchAttemptStarted,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     OutcomeStatus,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 

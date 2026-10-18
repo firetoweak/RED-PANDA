@@ -8,12 +8,12 @@ from redpanda.runtime import (
     CommandOutcomeReceived,
     CommandPhase,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     ToolBinding,
     UserMessageReceived,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
 from tests.session_scheduler import SettlingScheduler

@@ -27,7 +27,6 @@ from redpanda.runtime.journal.api import (
     DeliveryConflictError,
     Journal,
     LeaseLostError,
-    MemoryJournal,
     StepClaimRequest,
     StepLease,
 )
@@ -97,7 +96,6 @@ __all__ = [
     "InvokeTool",
     "Journal",
     "LeaseLostError",
-    "MemoryJournal",
     "ModelDecision",
     "OutcomeStatus",
     "ReplayView",
