@@ -127,3 +127,16 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((parent.worktree / "note.txt").read_text(encoding="utf-8"), "parent and child\n")
         self.assertEqual(trees.merge_child(parent, first)[0].status, "unchanged")
         self.assertEqual(git(self.project, "status", "--porcelain"), "")
+
+    async def test_git_failure_while_fixing_a_returned_result_comes_back_with_git_own_words(self):
+        parent = await self.host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+        trees = self.host.agent_worktrees
+        task = f"{parent.session_id}/sub-1"
+        child = trees.create_child(self.host.workspaces.get(self.workspace.workspace_id), parent, task)
+        (child.path / "note.txt").write_text("child\n", encoding="utf-8")
+        lock = Path(git(child.path, "rev-parse", "--absolute-git-dir")) / "index.lock"
+        lock.touch()
+        self.assertIn("index.lock", trees.finish_child(parent, task))
+        lock.unlink()
+        self.assertIsNone(trees.finish_child(parent, task))
+        self.assertEqual(git(child.path, "status", "--porcelain"), "")

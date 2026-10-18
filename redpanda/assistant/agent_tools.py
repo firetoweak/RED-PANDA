@@ -61,8 +61,12 @@ def _land_result(result: Mapping[str, object]) -> dict[str, object]:
                 "hint": "先用 sync_branch 同步并解决冲突，再落地。"}
     if status == "blocked":
         return {"ok": False, "code": "LAND_BLOCKED", "data": {"files": list(result["files"])},
-                "error": "集成分支那边有不属于任何落地的文件会被这次落地覆盖，落地没有执行，集成分支没有改变。",
+                "error": "集成分支那边有不属于任何落地的改动挡住了这次落地，落地没有执行，集成分支没有改变。",
                 "hint": "这些文件不在你的工作区里，你无法处理。告诉用户落地被这些文件挡住，需要用户清理；你分支上的提交都还在，清理后再落地。"}
+    if status == "failed":
+        return {"ok": False, "code": "LAND_FAILED", "data": {"git": result["detail"]},
+                "error": "落地时 Git 报错，落地没有成功。",
+                "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再落地；你分支上的提交都还在。"}
     raise ValueError(f"unexpected land status: {status}")
 
 
@@ -82,6 +86,10 @@ def _sync_result(result: Mapping[str, object]) -> dict[str, object]:
         return {"ok": False, "code": "SYNC_BLOCKED", "data": {"git": result["detail"]},
                 "error": "工作区里未提交的改动或未跟踪文件会被同步覆盖，同步没有执行。",
                 "hint": "处理 git 列出的文件后再同步。"}
+    if status == "failed":
+        return {"ok": False, "code": "SYNC_FAILED", "data": {"git": result["detail"]},
+                "error": "同步时 Git 报错，同步没有成功。",
+                "hint": "按 Git 原文处理后再同步；处理不了就把原文告诉用户。"}
     if status == "in_progress":
         return {"ok": False, "code": "SYNC_MERGE_IN_PROGRESS",
                 "error": "还有一次合并没有完成。",

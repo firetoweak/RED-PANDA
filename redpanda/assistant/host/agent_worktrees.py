@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from redpanda.assistant.agent_git import Git, MergeResult, identity, raise_git
+from redpanda.assistant.agent_git import Git, MergeResult, git_error, identity, raise_git
 from redpanda.assistant.agents import AgentRecord
 from redpanda.filesystem.registry import WorkspaceRecord
 from redpanda.paths import RedPandaHome
@@ -100,20 +100,26 @@ class AgentWorktrees:
                            author=parent.name, message="合入待解决冲突的子任务成果", keep_conflict=True)
         return child
 
-    def finish_child(self, parent: AgentRecord, child_session_id: str) -> None:
+    def finish_child(self, parent: AgentRecord, child_session_id: str) -> str | None:
         """Fix the returned task's result as one commit on its branch.
 
         The task cannot run commands, so it cannot commit itself; its branch is
         only the vehicle the parent compares and merges. A conflict-resolving
-        task's result completes the merge it started in.
+        task's result completes the merge it started in. Returns Git's own error
+        when Git fails, such as on a leftover index.lock.
         """
         child = self.child(parent.workspace_id, child_session_id)
-        self.git.run(child.path, "add", "--all")
+        added = self.git.run(child.path, "add", "--all", accepted=(0, 128))
+        if added.returncode:
+            return git_error(added)
         merging = self.git.merging(child.path)
         if merging or self.git.run(child.path, "diff", "--cached", "--quiet", accepted=(0, 1)).returncode == 1:
-            self.git.run(child.path, "commit", "--quiet", "--no-verify",
-                         *(("--no-edit",) if merging else ("-m", "子任务成果")),
-                         environment=identity(parent.name))
+            committed = self.git.run(child.path, "commit", "--quiet", "--no-verify",
+                                     *(("--no-edit",) if merging else ("-m", "子任务成果")),
+                                     environment=identity(parent.name), accepted=(0, 1, 128))
+            if committed.returncode:
+                return git_error(committed)
+        return None
 
     def compare_child(self, parent: AgentRecord, child_session_id: str,
                       paths: tuple[str, ...], offset: int) -> dict:

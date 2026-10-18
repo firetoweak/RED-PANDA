@@ -46,6 +46,10 @@ class GitChildReview:
             return {"ok": False, "code": "MERGE_BLOCKED", "data": {"git": result["detail"]},
                     "error": "工作区里未提交的改动或未跟踪文件会被合入覆盖，合入没有执行。",
                     "hint": "处理 git 列出的文件后再合入。"}
+        if status == "failed":
+            return {"ok": False, "code": "MERGE_FAILED", "data": {"git": result["detail"]},
+                    "error": "合入时 Git 报错，合入没有成功。",
+                    "hint": "按 Git 原文处理后再合入；处理不了就把原文告诉用户。"}
         return {"ok": False, "code": "MERGE_IN_PROGRESS", "error": "你的工作区还有一次合并没有完成。",
                 "hint": "先用 git add 和 git commit 完成它，或用 git merge --abort 放弃，再合入。"}
 
