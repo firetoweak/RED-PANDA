@@ -60,6 +60,31 @@ class FileChangesUnavailable(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class AuthorizationInboxItem:
+    kind: Literal["authorization"]
+    session_id: str
+    workspace_id: str
+    label: str
+    command_id: str
+    name: str
+    arguments: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ControlInboxItem:
+    kind: Literal["control"]
+    session_id: str
+    workspace_id: str
+    label: str
+    request_id: str
+    summary: str
+    risk: str
+
+
+InboxItem = AuthorizationInboxItem | ControlInboxItem
+
+
+@dataclass(frozen=True, slots=True)
 class SessionSummary:
     session_id: str
     workspace_id: str
@@ -168,6 +193,37 @@ class AssistantQueries:
             child_id, intent.task, self._sessions.activity(child_id), result,
             await self._conversation(child_id, child_events),
         )
+
+    async def list_inbox(self) -> tuple[InboxItem, ...]:
+        items: list[InboxItem] = []
+        for path in self._store.journals():
+            journal = SqliteJournal(path)
+            session_id = await journal.session_identity()
+            events = await journal.snapshot(session_id)
+            if project_parent(events) is not None:
+                continue
+            workspace_id = bound_workspace_id(events)
+            if workspace_id is None or not self._sessions.workspaces.contains(workspace_id):
+                continue
+            if self._sessions.is_archived(session_id):
+                continue
+            view = session_view(
+                replay(session_id, events).state,
+                control_approval=pending_approval_view(events),
+            )
+            if not view.pending_authorization_commands and view.control_approval is None:
+                continue
+            agent = project_agent(events)
+            label = agent.name if agent is not None else project_session_summary(
+                session_id, events, workspace_id=workspace_id,
+                activity="idle", title=self._sessions.session_title(session_id),
+            ).title
+            items.extend(project_inbox_items(
+                session_id=session_id, workspace_id=workspace_id, label=label,
+                authorizations=view.pending_authorization_commands,
+                control=view.control_approval,
+            ))
+        return tuple(sorted(items, key=_inbox_sort_key))
 
     async def list_sessions(self) -> tuple[SessionSummary, ...]:
         summaries: list[SessionSummary] = []
@@ -302,6 +358,35 @@ class AssistantQueries:
             if returned is not None:
                 found[child_id] = returned
         return found
+
+
+def project_inbox_items(
+    *,
+    session_id: str,
+    workspace_id: str,
+    label: str,
+    authorizations,
+    control,
+) -> tuple[InboxItem, ...]:
+    """收件箱只搬出已经待人决定的命令授权和控制提案。"""
+    items: list[InboxItem] = [
+        AuthorizationInboxItem(
+            "authorization", session_id, workspace_id, label,
+            item.command_id, item.name, dict(item.arguments),
+        )
+        for item in authorizations
+    ]
+    if control is not None:
+        items.append(ControlInboxItem(
+            "control", session_id, workspace_id, label,
+            control.request_id, control.summary, control.risk,
+        ))
+    return tuple(items)
+
+
+def _inbox_sort_key(item: InboxItem) -> tuple:
+    identity = item.command_id if item.kind == "authorization" else item.request_id
+    return (item.label, item.session_id, item.kind, identity)
 
 
 def project_session_summary(
