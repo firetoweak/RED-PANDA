@@ -8,7 +8,9 @@ from dataclasses import dataclass
 import json
 
 from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
-from redpanda.assistant.agents import AGENT_FACT_TYPES, agent_fact_for_model
+from redpanda.assistant.agents import (
+    AGENT_FACT_TYPES, GROUP_MESSAGE, PRIVATE_MESSAGE, agent_fact_for_model,
+)
 from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
 from redpanda.assistant.artifacts import (
     ArtifactGateway,
@@ -270,20 +272,7 @@ def _translate_visible_events(
             continue
         payload = event.payload
         if isinstance(payload, UserMessageReceived):
-            items.append(
-                _Projected(
-                    {
-                        "role": "system",
-                        "content": (
-                            "<message_received_at>"
-                            f"{event.occurred_at.astimezone().isoformat(timespec='minutes')}"
-                            "</message_received_at>"
-                        ),
-                    },
-                    "message_received_at",
-                    sequence=event.sequence,
-                )
-            )
+            items.append(_received_at(event))
             items.append(
                 _Projected(
                     {
@@ -330,6 +319,8 @@ def _translate_visible_events(
                 {"fact": payload.fact_type, "data": shown_data},
                 ensure_ascii=False,
             )
+            if payload.fact_type in {PRIVATE_MESSAGE, GROUP_MESSAGE}:
+                items.append(_received_at(event))
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
             items.append(_Projected(
@@ -339,6 +330,22 @@ def _translate_visible_events(
         if isinstance(payload, StepCommitted):
             items.extend(_project_step(steps[event.event_id]))
     return _hoist_tool_images(items)
+
+
+def _received_at(event) -> _Projected:
+    """Messages from people and colleagues carry when they arrived; timelines span days."""
+    return _Projected(
+        {
+            "role": "system",
+            "content": (
+                "<message_received_at>"
+                f"{event.occurred_at.astimezone().isoformat(timespec='minutes')}"
+                "</message_received_at>"
+            ),
+        },
+        "message_received_at",
+        sequence=event.sequence,
+    )
 
 
 def _shown_arguments(effect: InvokeTool) -> str:
