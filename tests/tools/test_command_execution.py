@@ -427,6 +427,54 @@ class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("started", result.stdout.content)
             self.assertFalse(marker.exists())
 
+    async def test_interrupt_returns_only_after_killed_descendant_has_exited(self):
+        import ctypes
+        import sys
+
+        runner = PowerShellCommandRunner()
+        interrupt = asyncio.Event()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ready = root / "ready"
+            (root / "writer.py").write_text(
+                "import os, pathlib, time\n"
+                "held = bytearray(300 * 1024 * 1024)\n"
+                "pathlib.Path('ready.tmp').write_text(str(os.getpid()))\n"
+                "os.replace('ready.tmp', 'ready')\n"
+                "time.sleep(30)\n",
+                encoding="utf-8",
+            )
+            # The writer holds none of the command's output pipes, so draining
+            # them cannot stand in for waiting on its exit.
+            (root / "spawn.py").write_text(
+                "import subprocess, sys\n"
+                "N = subprocess.DEVNULL\n"
+                "subprocess.run([sys.executable, 'writer.py'], stdin=N, stdout=N, stderr=N)\n",
+                encoding="utf-8",
+            )
+            executable = sys.executable.replace("'", "''")
+            task = asyncio.create_task(runner.run(
+                f"& '{executable}' spawn.py", root, 60, interrupt=interrupt,
+            ))
+            while not ready.exists():
+                self.assertFalse(task.done(), "command ended before the writer started")
+                await asyncio.sleep(0.01)
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.OpenProcess.restype = ctypes.c_void_p
+            kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+            handle = kernel.OpenProcess(0x100000, False, int(ready.read_text()))
+            self.assertTrue(handle)
+            try:
+                interrupt.set()
+                result = await task
+                self.assertTrue(result.interrupted)
+                # A killed process leaves the Job before it has closed its
+                # handles; the interrupt must outlast the process itself.
+                self.assertEqual(kernel.WaitForSingleObject(handle, 0), 0)
+            finally:
+                kernel.CloseHandle(handle)
+
     async def test_normal_completion_terminates_background_process_tree(self):
         runner = PowerShellCommandRunner()
         executable = str(runner.executable).replace("'", "''")

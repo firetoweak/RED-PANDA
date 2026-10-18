@@ -6,10 +6,18 @@ import time
 from ctypes import wintypes
 
 
+JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x00000008
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+JOB_OBJECT_BASIC_PROCESS_ID_LIST_CLASS = 3
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9
 PROCESS_TERMINATE = 0x0001
 PROCESS_SET_QUOTA = 0x0100
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+SYNCHRONIZE = 0x00100000
+ERROR_INVALID_PARAMETER = 87
+ERROR_MORE_DATA = 234
+WAIT_OBJECT_0 = 0
+WAIT_TIMEOUT = 0x102
 
 
 class _IoCounters(ctypes.Structure):
@@ -76,6 +84,10 @@ if os.name == "nt":
     _kernel32.TerminateJobObject.restype = wintypes.BOOL
     _kernel32.QueryInformationJobObject.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p)
     _kernel32.QueryInformationJobObject.restype = wintypes.BOOL
+    _kernel32.IsProcessInJob.argtypes = (wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL))
+    _kernel32.IsProcessInJob.restype = wintypes.BOOL
+    _kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    _kernel32.WaitForSingleObject.restype = wintypes.DWORD
 else:
     _kernel32 = None
 
@@ -123,20 +135,69 @@ class WindowsJob:
 
     def close(self) -> None:
         assert _kernel32 is not None
-        if not _kernel32.TerminateJobObject(self._handle, 130):
+        # A terminated process leaves the Job before it has closed its handles,
+        # so the Job's counters cannot tell when it is gone. Freeze membership,
+        # hold every member, then wait for the members themselves.
+        limits = _ExtendedLimitInformation()
+        limits.BasicLimitInformation.LimitFlags = (
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+        )
+        limits.BasicLimitInformation.ActiveProcessLimit = 1
+        if not _kernel32.SetInformationJobObject(
+            self._handle,
+            JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+            ctypes.byref(limits),
+            ctypes.sizeof(limits),
+        ):
             raise ctypes.WinError(ctypes.get_last_error())
-        class Accounting(ctypes.Structure):
-            _fields_ = [("times", ctypes.c_longlong * 4), ("faults", wintypes.DWORD),
-                        ("total", wintypes.DWORD), ("active", wintypes.DWORD), ("terminated", wintypes.DWORD)]
-        deadline = time.monotonic() + 10
-        while True:
-            accounting = Accounting()
-            if not _kernel32.QueryInformationJobObject(self._handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None):
+        members = []
+        try:
+            for pid in self._process_ids():
+                process = _kernel32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                if not process:
+                    error = ctypes.get_last_error()
+                    if error != ERROR_INVALID_PARAMETER:
+                        raise ctypes.WinError(error)
+                    continue  # Already fully gone.
+                inside = wintypes.BOOL()
+                if not _kernel32.IsProcessInJob(process, self._handle, ctypes.byref(inside)):
+                    error = ctypes.get_last_error()
+                    _kernel32.CloseHandle(process)
+                    raise ctypes.WinError(error)
+                if inside:
+                    members.append(process)
+                else:  # The id was reused after its member was fully gone.
+                    _kernel32.CloseHandle(process)
+            if not _kernel32.TerminateJobObject(self._handle, 130):
                 raise ctypes.WinError(ctypes.get_last_error())
-            if not accounting.active:
-                break
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Windows task Job did not drain")
-            time.sleep(0.01)
+            deadline = time.monotonic() + 10
+            for process in members:
+                remaining = max(0, round((deadline - time.monotonic()) * 1000))
+                result = _kernel32.WaitForSingleObject(process, remaining)
+                if result == WAIT_TIMEOUT:
+                    raise TimeoutError("Windows task Job did not drain")
+                if result != WAIT_OBJECT_0:
+                    raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            for process in members:
+                _kernel32.CloseHandle(process)
         if not _kernel32.CloseHandle(self._handle):
             raise ctypes.WinError(ctypes.get_last_error())
+
+    def _process_ids(self) -> list[int]:
+        assert _kernel32 is not None
+        count = 1
+        while True:
+            class ProcessIdList(ctypes.Structure):
+                _fields_ = [("assigned", wintypes.DWORD), ("listed", wintypes.DWORD),
+                            ("ids", ctypes.c_size_t * count)]
+            listing = ProcessIdList()
+            if _kernel32.QueryInformationJobObject(
+                self._handle, JOB_OBJECT_BASIC_PROCESS_ID_LIST_CLASS,
+                ctypes.byref(listing), ctypes.sizeof(listing), None,
+            ):
+                return list(listing.ids[:listing.listed])
+            error = ctypes.get_last_error()
+            if error != ERROR_MORE_DATA:
+                raise ctypes.WinError(error)
+            count = listing.assigned
