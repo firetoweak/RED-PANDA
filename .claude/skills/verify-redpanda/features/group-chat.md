@@ -9,7 +9,7 @@
 - `post`：`群消息` 输入框 + `发送到群`（Ctrl+Enter 也可）；`点名` 为空时叫全体成员。
 - `calling`：Host 正在等某个成员时显示 `正在等 <名字> 回应…`。
 - `stop`：`停止本轮` 只在一串调度进行中可用。
-- `refresh`：SSE `group_changed`（只带 `group_id`）在发言写入、换人、调度结束和停止时到达，页面重读群数据，不需要手动重载。
+- `refresh`：SSE `group_changed`（只带 `group_id`）在建群、发言写入、换人、调度结束和停止时到达；别的标签页建的群也随之出现在侧栏，页面重读群数据，不需要手动重载。
 
 ## How to get to it (user POV)
 

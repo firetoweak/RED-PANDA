@@ -137,6 +137,8 @@ class AgentGroups:
         await asyncio.gather(*(
             self.host.request("fact", agent.session_id, fact_arguments(created, delivery_id=f"joined:{group_id}"))
             for agent in agents))
+        # Other pages list groups too; a new group is a change they must hear about.
+        self._changed(group_id)
         return GroupRecord(group_id, workspace_id, created)
 
     async def _publish(self, group: GroupRecord, message: GroupMessage) -> None:

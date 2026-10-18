@@ -113,7 +113,11 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*self.work)
 
     async def test_creation_checks_members_and_tells_only_them(self):
+        notified = AsyncMock()
+        self.host.group_changed_sink = notified
         group = await self.group(("Ada", "Lin"))
+        await asyncio.gather(*self.host.watchers)
+        notified.assert_awaited_once_with(group.group_id)
         for name, count in (("Ada", 1), ("Lin", 1), ("Third", 0)):
             created = await self.facts(name, GROUP_CREATED)
             self.assertEqual(len(created), count)
