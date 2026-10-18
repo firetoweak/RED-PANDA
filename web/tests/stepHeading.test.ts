@@ -60,8 +60,8 @@ describe("stepHeading", () => {
   });
 
   it("uses the bare tool name when it has no string argument", () => {
-    expect(stepHeading(step({ tools: [tool("get_changes", { patch: 3 })] }))).toBe(
-      "get_changes",
+    expect(stepHeading(step({ tools: [tool("list_processes", { patch: 3 })] }))).toBe(
+      "list_processes",
     );
   });
 

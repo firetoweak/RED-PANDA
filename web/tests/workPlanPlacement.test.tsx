@@ -40,8 +40,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
   };
   const view: ConversationView = {
     session_id: "session", workspace_id: "workspace", revision: 5,
-    compact_count: 0, compact_phase: null, waiting_until: null, workspace_version: null, workspace_file_result: null,
-    context_input_tokens: null, work_plan: completed,
+    compact_count: 0, compact_phase: null, waiting_until: null, context_input_tokens: null, work_plan: completed,
     work_plan_updates: [{ step_id: "plan-step", plan: completed }],
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
@@ -51,10 +50,10 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     items: [
       { kind: "user", message_id: "first", text: "第一轮请求", occurred_at: "2026-10-03T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "plan-step", output_id: "plan-output", text: "更新计划", thinking: null,
-        occurred_at: "2026-10-03T00:00:01Z", rewindable: false,
+        occurred_at: "2026-10-03T00:00:01Z",
         tools: [{ command_id: "plan-command", name: "update_plan", status: "succeeded", error: null, arguments: {} }] },
       { kind: "step", step_id: "reply-step", output_id: "reply-output", text: "第一轮完成回复", thinking: null,
-        occurred_at: "2026-10-03T00:00:02Z", rewindable: false, tools: [] },
+        occurred_at: "2026-10-03T00:00:02Z", tools: [] },
     ],
   };
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(view)));
@@ -79,7 +78,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     items: [...view.items,
       { kind: "user", message_id: "second", text: "第二轮请求", occurred_at: "2026-10-03T00:01:00Z", images: [], files: [] },
       { kind: "step", step_id: "next-plan-step", output_id: "next-output", text: "调查中", thinking: null,
-        occurred_at: "2026-10-03T00:01:01Z", rewindable: false, tools: [] },
+        occurred_at: "2026-10-03T00:01:01Z", tools: [] },
     ],
   };
   await act(async () => { await store.dispatch(redpandaApi.util.upsertQueryData("getConversation", "session", next)); });
