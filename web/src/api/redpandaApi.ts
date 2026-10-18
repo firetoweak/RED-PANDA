@@ -13,6 +13,7 @@ import {
   modelSettingsSchema,
   modelTestResultSchema,
   sessionModelSchema,
+  inboxItemSchema,
   sessionSummarySchema,
   subagentObservationSchema,
   workspaceSchema,
@@ -22,6 +23,7 @@ import {
   type ModelSettings,
   type ModelTestResult,
   type SessionModel,
+  type InboxItem,
   type SessionSummary,
   type SubagentObservation,
   type Workspace,
@@ -106,7 +108,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel", "FileChanges"],
+  tagTypes: ["Inbox", "Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel", "FileChanges"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -154,6 +156,11 @@ export const redpandaApi = createApi({
       transformErrorResponse: (response) => response.status === 400
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "SessionModel", id: sessionId }],
+    }),
+    getInbox: build.query<InboxItem[], void>({
+      query: () => "/inbox",
+      transformResponse: (value: unknown) => inboxItemSchema.array().parse(value),
+      providesTags: ["Inbox"],
     }),
     getSessions: build.query<SessionSummary[], void>({
       query: () => "/sessions",
@@ -316,7 +323,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
+      invalidatesTags: ["Sessions", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -329,7 +336,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, request_id: requestId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
+      invalidatesTags: ["Sessions", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -412,6 +419,7 @@ export const {
   useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
+  useGetInboxQuery,
   useGetSessionsQuery,
   useGetSessionTitlesQuery,
   useGetWorkspacesQuery,

@@ -18,7 +18,9 @@ from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
 from redpanda.assistant.conversations import (
+    AuthorizationInboxItem,
     ConversationView,
+    ControlInboxItem,
     SessionSummary,
     UserItem,
 )
@@ -183,6 +185,18 @@ class _Queries:
     async def list_sessions(self):
         return (
             SessionSummary("session-old", "workspace-old", "旧会话", None, "idle", False, False),
+        )
+
+    async def list_inbox(self):
+        return (
+            AuthorizationInboxItem(
+                "authorization", "session-old", "workspace-old", "旧会话",
+                "cmd-1", "apply_patch", {"path": "note.txt"},
+            ),
+            ControlInboxItem(
+                "control", "session-old", "workspace-old", "旧会话",
+                "req-1", "删除工作区", "high",
+            ),
         )
 
     async def conversation(self, session_id, *, view=None):
@@ -627,6 +641,32 @@ class WebFirstSliceTest(unittest.TestCase):
 
         self.assertEqual(first.status_code, 201)
         self.assertEqual(second.status_code, 409)
+
+
+    def test_inbox_returns_pending_authorization_and_control(self):
+        response = self.client.get("/api/inbox")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [
+            {
+                "kind": "authorization",
+                "session_id": "session-old",
+                "workspace_id": "workspace-old",
+                "label": "旧会话",
+                "command_id": "cmd-1",
+                "name": "apply_patch",
+                "arguments": {"path": "note.txt"},
+            },
+            {
+                "kind": "control",
+                "session_id": "session-old",
+                "workspace_id": "workspace-old",
+                "label": "旧会话",
+                "request_id": "req-1",
+                "summary": "删除工作区",
+                "risk": "high",
+            },
+        ])
 
 
 class ReportWorkerFailuresTest(unittest.IsolatedAsyncioTestCase):
