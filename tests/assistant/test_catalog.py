@@ -6,14 +6,14 @@ from redpanda.assistant.catalog import (
     CapabilityCatalog,
     project_catalog,
 )
-from redpanda.assistant.context.projection import project_chat_messages
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.toolsets import ToolsetDescriptor
 from redpanda.runtime import (
     AgentRuntime,
-    MemoryJournal,
     DomainFactCommitted,
     StateProjector,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 
 
 class CatalogTest(unittest.IsolatedAsyncioTestCase):

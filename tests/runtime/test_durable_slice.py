@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.context.projection import ModelContextSettings
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.sessions import AssistantSessions

@@ -16,7 +16,8 @@ from redpanda.assistant.management import (
 )
 from redpanda.assistant.context.projection import ModelContextSettings
 from tests.session_scheduler import settle_session
-from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision
+from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.state import DecisionFrame
 from redpanda.tools.control import ControlApprovalExecution, ControlOperation
 from redpanda.tools.spec import PydanticParameters, ToolSpec

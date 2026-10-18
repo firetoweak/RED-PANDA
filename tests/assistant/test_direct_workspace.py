@@ -14,7 +14,7 @@ from redpanda.assistant.subagent.subagent import DELEGATE
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import MemoryJournal
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler

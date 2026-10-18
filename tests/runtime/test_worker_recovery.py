@@ -11,12 +11,12 @@ from redpanda.runtime import (
     CommandPhase,
     DispatchAttemptStarted,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     SqliteJournal,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.journal.api import LeaseLostError, StepClaimRequest
 from tests.assistant.test_runner import ScriptedDecisionMaker
 

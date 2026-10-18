@@ -5,9 +5,15 @@ from redpanda.assistant.subagent.subagent import (
     RETURN_FACT, TASK_FACT, persist_return, record_interrupted_return, return_data,
 )
 from redpanda.runtime import (
-    AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, MemoryJournal,
-    ModelDecision, StateProjector, ToolBinding,
+    AgentRuntime,
+    CommandPhase,
+    DomainFactCommitted,
+    InvokeTool,
+    ModelDecision,
+    StateProjector,
+    ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

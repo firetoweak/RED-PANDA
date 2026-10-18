@@ -11,7 +11,8 @@ from redpanda.assistant.authorization import (
 )
 from redpanda.assistant.host.ipc import PipePeer
 from redpanda.assistant.sessions import AssistantSessions
-from redpanda.runtime import InvokeTool, MemoryJournal, ModelDecision, SqliteJournal
+from redpanda.runtime import InvokeTool, ModelDecision, SqliteJournal
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
 

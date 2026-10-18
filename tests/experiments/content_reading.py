@@ -16,11 +16,12 @@ import types
 from thinllm import ChatCompletionsClient
 from redpanda.config import load_app_config
 from redpanda.llm.config import load_endpoint
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant import content
 from redpanda.assistant.context import projection
 from redpanda.assistant.compact import core
-from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, StateProjector, ToolBinding
+from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, StateProjector, ToolBinding
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.session_scheduler import settle_session
 

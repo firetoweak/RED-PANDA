@@ -74,21 +74,6 @@ class ToolRunner(Protocol):
     def requires_authorization(self, name: str) -> bool | AuthorizationPolicy: ...
 
 
-def decision_from_llm(
-    response: LLMResponse,
-    allowed_tool_names: AbstractSet[str],
-    exclusive_tool_names: AbstractSet[str] = frozenset(),
-) -> ModelDecision:
-    return ModelDecision(
-        content=response.content,
-        command_requests=_invoke_requests(
-            response.calls,
-            allowed_tool_names,
-            exclusive_tool_names,
-        ),
-    )
-
-
 def _invoke_requests(
     calls: Sequence[ToolCall],
     allowed_tool_names: AbstractSet[str],
@@ -241,14 +226,14 @@ class JournalBackedLlmDecisionMaker:
         environment: str,
         project_root: Path | None = None,
         system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
-        projector: ModelContextProjector | None = None,
+        projector: ModelContextProjector,
         compact_threshold_tokens: int,
         reasoning_effort: str | None = None,
         context_usage_sink: Callable[[str, int, int], None] | None = None,
         subagents: SubAgentHost | None = None,
         compact: CompactContext | None = None,
-        loop_guard: LoopGuard | None = None,
-        preview: PreviewEmitter | None = None,
+        loop_guard: LoopGuard,
+        preview: PreviewEmitter,
         exclusive_tool_names: AbstractSet[str] = frozenset(),
     ) -> None:
         self._exclusive_tool_names = exclusive_tool_names
@@ -259,7 +244,7 @@ class JournalBackedLlmDecisionMaker:
         self._system_prompt = system_prompt
         self._environment = environment
         self._project_root = project_root
-        self._projector = ModelContextProjector() if projector is None else projector
+        self._projector = projector
         self._surface = surface
         self._skill_tools = skill_tools
         self._cli_tools = cli_tools
@@ -269,8 +254,8 @@ class JournalBackedLlmDecisionMaker:
         self._compact_threshold_tokens = compact_threshold_tokens
         self._subagents = subagents
         self._compact = compact
-        self._loop_guard = LoopGuard() if loop_guard is None else loop_guard
-        self._preview = PreviewEmitter() if preview is None else preview
+        self._loop_guard = loop_guard
+        self._preview = preview
 
     def set_model(self, model: str, compact_threshold_tokens: int, reasoning_effort: str | None = None) -> None:
         self._model = model

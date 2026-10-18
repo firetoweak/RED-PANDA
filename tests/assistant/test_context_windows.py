@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 
 from PIL import Image
 
-from redpanda.assistant.artifacts import FileArtifactGateway, MemoryArtifactGateway
+from redpanda.assistant.artifacts import FileArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.compact.core import (
     CompactBoundary,
@@ -23,7 +24,8 @@ from redpanda.assistant.compact.core import (
 )
 from redpanda.assistant.context.projection import ModelContextProjector
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import AgentRuntime, InvokeTool, MemoryJournal, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
+from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.assistant.toolsets import ToolSurface
 from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
 from tests.assistant.test_toolsets import FakeEchoProvider
