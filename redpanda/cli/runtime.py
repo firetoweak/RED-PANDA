@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from pydantic import BaseModel
@@ -9,8 +10,8 @@ from redpanda.cli.models import CliRecord
 from redpanda.cli.registry import CliRegistry
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 
-
 LOAD_CLI = "load_cli"
+CLI_DESCRIPTION_OMITTED = "目录说明已省略；用 load_cli 读取完整信息。"
 
 
 class CliRuntimeError(Exception):
@@ -51,6 +52,27 @@ class CliToolCatalog:
         self.registry = registry
         self.max_catalog_chars = max_catalog_chars
 
+    def catalog_records(self) -> tuple[CliRecord, ...]:
+        """只压缩目录展示的描述；原始登记与 load_cli 的结果保持完整。"""
+        records = tuple(sorted(self.registry.snapshot(), key=lambda item: item.name))
+        costs = [len(f"- {record.name}: ") + min(len(record.description), len(CLI_DESCRIPTION_OMITTED)) + 1
+                 for record in records]
+        remaining = sum(costs)
+        # Keep every registered identity, even if the minimum directory is larger
+        # than the budget. Full descriptions remain available through load_cli.
+        limit = max(self.max_catalog_chars, remaining)
+        used = 0
+        fitted = []
+        for record, reserved in zip(records, costs):
+            remaining -= reserved
+            cost = len(f"- {record.name}: {record.description}") + (1 if fitted else 0)
+            if used + cost + remaining > limit:
+                record = replace(record, description=CLI_DESCRIPTION_OMITTED)
+                cost = len(f"- {record.name}: {record.description}") + (1 if fitted else 0)
+            fitted.append(record)
+            used += cost
+        return tuple(fitted)
+
     def tool_specs(
         self,
         catalog: Mapping[str, int] | None = None,
@@ -58,11 +80,6 @@ class CliToolCatalog:
         records = tuple(
             sorted(self.registry.snapshot(), key=lambda item: item.name)
         )
-        rendered_catalog = "\n".join(
-            f"- {record.name}: {record.description}" for record in records
-        )
-        if len(rendered_catalog) > self.max_catalog_chars:
-            raise RuntimeError("CLI_CATALOG_LIMIT: 完整 CLI 目录超出预算")
         revisions = (
             {record.name: record.revision for record in records}
             if catalog is None
