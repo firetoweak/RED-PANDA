@@ -311,6 +311,10 @@ def create_web_app(
     async def set_session_model(session_id: str, body: SessionModelRequest, request: Request):
         return _channel(request).set_model(body.connection_id, session_id, body.model)
 
+    @app.get("/api/inbox")
+    async def inbox(request: Request):
+        return await _channel(request).list_inbox()
+
     @app.get("/api/sessions")
     async def sessions(request: Request):
         return await _channel(request).list_sessions()

@@ -18,6 +18,29 @@ const pendingAuthorizationSchema = z
 
 export type PendingAuthorization = z.infer<typeof pendingAuthorizationSchema>;
 
+export const inboxItemSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("authorization"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    command_id: z.string().min(1),
+    name: z.string().min(1),
+    arguments: z.record(z.string(), z.unknown()),
+  }).strict(),
+  z.object({
+    kind: z.literal("control"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    request_id: z.string().min(1),
+    summary: z.string().min(1),
+    risk: z.string().min(1),
+  }).strict(),
+]);
+
+export type InboxItem = z.infer<typeof inboxItemSchema>;
+
 const sessionViewSchema = z
   .object({
     status: z.string().min(1),

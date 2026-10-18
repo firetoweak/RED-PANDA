@@ -30,6 +30,7 @@ import { useMatch, useNavigate } from "react-router-dom";
 import type { SessionSummary, Workspace } from "../../api/contracts";
 import {
   useArchiveSessionMutation,
+  useGetInboxQuery,
   useGetSessionsQuery,
   useGetSessionTitlesQuery,
   useGetWorkspacesQuery,
@@ -66,12 +67,14 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
   const routeWorkspaceId = useMatch("/workspaces/:workspaceId")?.params
     .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
+  const inboxActive = useMatch("/inbox") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<
     Record<string, boolean>
   >({});
   const { data: sessions = [], isLoading } = useGetSessionsQuery();
+  const { data: inbox = [] } = useGetInboxQuery();
   const { data: titles = {} } = useGetSessionTitlesQuery();
   const { data: workspaces = [], isLoading: workspacesLoading } =
     useGetWorkspacesQuery();
@@ -173,6 +176,16 @@ export function SessionSidebar({ onNavigate }: SessionSidebarProps) {
           variant={sessionId === defaultDraftId ? "filled" : "light"}
         >
           新建会话
+        </Button>
+        <Button
+          fullWidth
+          justify="flex-start"
+          mt={8}
+          onClick={() => { navigate("/inbox"); onNavigate(); }}
+          radius="md"
+          variant={inboxActive ? "filled" : "subtle"}
+        >
+          {inbox.length === 0 ? "待处理" : `待处理 · ${inbox.length}`}
         </Button>
       </AppShell.Section>
 

@@ -21,6 +21,7 @@ function workspace(workspaceId: string, name: string): Workspace {
 
 const queries = vi.hoisted(() => ({
   sessions: [] as SessionSummary[],
+  inbox: [] as { kind: "authorization"; label: string }[],
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
@@ -28,6 +29,7 @@ const queries = vi.hoisted(() => ({
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetSessionsQuery: () => ({ data: queries.sessions, isLoading: false }),
+  useGetInboxQuery: () => ({ data: queries.inbox, isLoading: false }),
   useGetSessionTitlesQuery: () => ({ data: {} }),
   useGetWorkspacesQuery: () => ({ data: queries.workspaces, isLoading: false }),
   useArchiveSessionMutation: () => [queries.archiveSession],
@@ -74,7 +76,7 @@ function renderSidebar(initialEntry: string, drafts: Record<string, string> = {}
   return { ...view, store };
 }
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); queries.inbox = []; vi.unstubAllGlobals(); });
 
 it("侧栏区分执行、待操作和结束，后台 step 输出仍保持旋钮", () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
@@ -273,4 +275,14 @@ it("归档失败保留未成功的当前会话并显示错误", async () => {
   fireEvent.click(await screen.findByRole("menuitem", { name: "归档所有会话" }));
   expect(await screen.findByText("归档失败")).toBeInTheDocument();
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/session");
+});
+
+it("待处理按钮显示收件箱条数并进入收件箱", () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  queries.inbox = [{ kind: "authorization", label: "验证熊猫" }, { kind: "authorization", label: "验证熊猫" }];
+  renderSidebar("/");
+
+  fireEvent.click(screen.getByRole("button", { name: "待处理 · 2" }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/inbox");
 });
