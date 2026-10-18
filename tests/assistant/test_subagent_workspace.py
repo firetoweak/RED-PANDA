@@ -55,3 +55,13 @@ def test_generated_child_can_write_with_long_home(tmp_path):
         assert result["ok"] is True
         assert (root / "result.txt").read_text() == "marker\n"
     asyncio.run(scenario())
+
+
+def test_agent_branch_merge_needs_no_authorization_and_stays_exclusive():
+    async def operation(*args, **kwargs):
+        return {"ok": True, "code": "OK"}
+    schemas, bindings, exclusive = subagent_review_tools(operation, direct_workspace=True)
+    merge = next(schema["function"] for schema in schemas if schema["function"]["name"] == "merge_subagent")
+    assert bindings["merge_subagent"].requires_authorization is False
+    assert "你的分支" in merge["description"] and "授权" in merge["description"]
+    assert exclusive == {"merge_subagent"}

@@ -23,7 +23,19 @@ class MergeSubagentInput(BaseModel):
     tool_call_id: str = Field(min_length=1, description="要验收合入的 delegate 调用 id")
 
 
-def create_subagent_workspace_specs(review):
+MERGE_INTO_USER_FILES = (
+    "把已交回子会话的修改合进用户的文件，与你这边的改动合并，需要授权。"
+    "成功结果列出实际改动文件；changed_count=0 表示本次没有改变文件。合入后用 get_changes 核对当前结果。"
+    "冲突时不改动任何文件，只返回冲突清单。必须单独调用。"
+)
+MERGE_INTO_BRANCH = (
+    "把已交回子会话的修改合进你的分支，与你已提交的改动合并，不需要授权。"
+    "成功结果列出实际改动文件；changed_count=0 表示本次没有改变文件。合入后用 git log 和 git diff 核对。"
+    "冲突时你的分支不变，只返回冲突清单。必须单独调用。"
+)
+
+
+def create_subagent_workspace_specs(review, *, direct_workspace=False):
     async def compare(raw: SubagentChangesInput):
         return await review(raw.tool_call_id, raw.paths, offset=raw.offset)
 
@@ -34,9 +46,7 @@ def create_subagent_workspace_specs(review):
         ToolSpec("compare_subagent", "查看已交回子会话相对委派时文件状态的变化；先列文件，再指定 paths 看 diff。"
                  "next_offset 非空时保持 paths 不变并用 offset 续读；截断片段不能作为完整 diff。二进制文件只列变化，不展示正文。",
                  PydanticParameters(SubagentChangesInput), compare),
-        ToolSpec("merge_subagent", "把已交回子会话的修改合进用户的文件，与你这边的改动合并，需要授权。"
-                 "成功结果列出实际改动文件；changed_count=0 表示本次没有改变文件。合入后用 get_changes 核对当前结果。"
-                 "冲突时不改动任何文件，只返回冲突清单。必须单独调用。",
+        ToolSpec("merge_subagent", MERGE_INTO_BRANCH if direct_workspace else MERGE_INTO_USER_FILES,
                  PydanticParameters(MergeSubagentInput), merge,
-                 exclusive_batch=True, requires_authorization=True),
+                 exclusive_batch=True, requires_authorization=not direct_workspace),
     )

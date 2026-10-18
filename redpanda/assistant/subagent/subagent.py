@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from redpanda.assistant.context.prompt import SUBAGENT_PROMPT
+from redpanda.assistant.context.prompt import SUBAGENT_BRANCH_PROMPT, SUBAGENT_PROMPT
 from redpanda.assistant.delivery import DeliverySink, emit_delivery
 from redpanda.assistant.host.ipc import ProcessFailure
 from redpanda.runtime import (
@@ -322,6 +322,19 @@ DELEGATE_SCHEMA: dict[str, object] = {
             },
             "required": ["task"],
         },
+    },
+}
+
+
+# An Agent delegates from its committed branch and merges back without approval.
+DELEGATE_BRANCH_SCHEMA: dict[str, object] = {
+    "type": "function",
+    "function": {
+        **DELEGATE_SCHEMA["function"],
+        "description": DELEGATE_SCHEMA["function"]["description"].replace(
+            "它在自己的文件副本里工作，可以改文件，不能执行命令。",
+            "它从你分支上已提交的工作开始，在自己的文件副本里工作，看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。",
+        ).replace("经授权用 merge_subagent 合入。", "用 merge_subagent 合入你的分支。"),
     },
 }
 
@@ -637,7 +650,10 @@ class SubAgentHost:
     def __init__(
         self,
         activity_sink: SubAgentActivitySink | None = None,
+        *,
+        direct_workspace: bool = False,
     ) -> None:
+        self._direct_workspace = direct_workspace
         self._runtime: AgentRuntime | None = None
         self._transport = None
         self._parents: dict[str, str] = {}
@@ -690,12 +706,14 @@ class SubAgentHost:
         return CHILD_BUILTIN_TOOL_NAMES if self.is_subagent(session_id) else None
 
     def system_prompt(self, session_id: str) -> str | None:
-        return SUBAGENT_PROMPT if self.is_subagent(session_id) else None
+        if not self.is_subagent(session_id):
+            return None
+        return SUBAGENT_BRANCH_PROMPT if self._direct_workspace else SUBAGENT_PROMPT
 
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
             return [REPORT_SCHEMA]
-        return [DELEGATE_SCHEMA, RECLAIM_SCHEMA]
+        return [DELEGATE_BRANCH_SCHEMA if self._direct_workspace else DELEGATE_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {

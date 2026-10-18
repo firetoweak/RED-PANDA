@@ -13,6 +13,13 @@ AUTHOR_EMAIL = "bot@redpanda.local"
 
 
 @dataclass(frozen=True, slots=True)
+class GitWorkspace:
+    """A real worktree a Session runs in directly, and whose Git identity it uses."""
+    worktree: Path
+    author: str
+
+
+@dataclass(frozen=True, slots=True)
 class MergeResult:
     status: Literal["merged", "unchanged", "conflict", "blocked", "in_progress"]
     head: str
@@ -55,7 +62,7 @@ class Git:
             return MergeResult("unchanged", head)
         fast_forward = self._is_ancestor(root, head, source)
         result = self.run(root, "merge", "--no-edit", "-m", message, source,
-                          accepted=(0, 1, 2), environment=_identity(author))
+                          accepted=(0, 1, 2), environment=identity(author))
         if result.returncode == 0:
             return MergeResult("merged", self.oid(root, "HEAD"), fast_forward)
         if not self.merging(root):
@@ -75,12 +82,31 @@ class Git:
             self.run(root, "merge", "--abort")
         return MergeResult("conflict", head, files=files)
 
+    def changed_paths(self, root: Path, base: str, version: str) -> tuple[str, ...]:
+        return tuple(path.decode("utf-8") for path in self.run(
+            root, "diff", "--no-renames", "--name-only", "-z", base, version, "--").stdout.split(b"\0") if path)
+
+    def compare(self, root: Path, base: str, version: str, paths: tuple[str, ...] = (), *, offset: int = 0) -> dict:
+        """Changes of `version` since its merge base with `base`, readable in pages."""
+        fork = self.run(root, "merge-base", base, version).stdout.decode("ascii").strip()
+        fields = self.run(root, "diff", "--no-renames", "--name-status", "-z", fork, version, "--"
+                          ).stdout.decode("utf-8").split("\0")[:-1]
+        result = {"files": [dict(status=fields[i], path=fields[i + 1]) for i in range(0, len(fields), 2)]}
+        if paths:
+            patch = self.run(root, "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
+                             fork, version, "--", *paths).stdout.decode("utf-8", errors="replace")
+            end = offset + 120_000
+            result.update(diff=patch[offset:end], truncated=len(patch) > end,
+                          offset=offset, next_offset=end if len(patch) > end else None)
+            result["limitations"] = ["binary 文件只提供变化摘要，不含正文"] if "Binary files " in patch else []
+        return result
+
     def _is_ancestor(self, root: Path, ancestor: str, descendant: str) -> bool:
         return self.run(root, "merge-base", "--is-ancestor", ancestor, descendant,
                         accepted=(0, 1)).returncode == 0
 
 
-def _identity(author: str) -> dict[str, str]:
+def identity(author: str) -> dict[str, str]:
     return {"GIT_AUTHOR_NAME": author, "GIT_AUTHOR_EMAIL": AUTHOR_EMAIL,
             "GIT_COMMITTER_NAME": author, "GIT_COMMITTER_EMAIL": AUTHOR_EMAIL}
 

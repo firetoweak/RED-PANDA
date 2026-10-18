@@ -11,13 +11,12 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.subagent.subagent import DELEGATE, RECLAIM, REPORT
+from redpanda.assistant.subagent.subagent import DELEGATE
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
-from redpanda.tools.builtin import create_subagent_workspace_specs
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
 
@@ -67,12 +66,11 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                     await assembly.scheduler.join()
                     names = {tool["function"]["name"] for tool in llm.tools}
                     self.assertTrue({"read_file", "write_file", "execute_command"} <= names)
-                    unavailable = {
-                        "get_changes", "restore_workspace", DELEGATE, RECLAIM, REPORT,
-                        *(spec.name for spec in create_subagent_workspace_specs(None)),
-                    }
+                    unavailable = {"get_changes", "restore_workspace"}
                     self.assertFalse(unavailable & names)
                     self.assertFalse(unavailable & assembly.bindings.keys())
+                    delegate = next(tool["function"] for tool in llm.tools if tool["function"]["name"] == DELEGATE)
+                    self.assertIn("merge_subagent 合入你的分支", delegate["description"])
                     command = next(tool["function"] for tool in llm.tools if tool["function"]["name"] == "execute_command")
                     self.assertNotIn("file_access", command["parameters"]["properties"])
                     self.assertNotIn("managed", command["description"])
