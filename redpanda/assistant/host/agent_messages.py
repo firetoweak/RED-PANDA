@@ -9,8 +9,15 @@ from redpanda.assistant.agents import (
     PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, message_origin,
     parse_agent_fact,
 )
+from redpanda.assistant.conversations import project_agent_roster_entry
 from redpanda.assistant.host.agent_roster import AgentNotFound
 from redpanda.runtime import DomainFactCommitted, SqliteJournal
+
+
+# The Web roster tells "waiting for the person" apart from idle; to a colleague both
+# mean the same thing: not working now, and a message reaches it.
+COLLEAGUE_STATUS = {"working": "working", "authorization": "awaiting_authorization",
+                    "waiting": "idle", "idle": "idle"}
 
 
 def message_identity(session_id, command_id):
@@ -66,9 +73,22 @@ class AgentMessages:
         if sender is None:
             raise ValueError("colleague query requires a Coding Bot identity")
         return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [
-            {"name": entry.agent.name, "direction": entry.direction, "worktree": str(entry.agent.worktree)}
-            for entry in await self.host.agents.list(sender.workspace_id)
+            await self._colleague(entry) for entry in await self.host.agents.list(sender.workspace_id)
             if entry.agent.session_id != session_id]}}
+
+    async def _colleague(self, entry):
+        """The same status the Web roster shows, plus the person's pause; reads this colleague's Journal."""
+        agent = entry.agent
+        events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
+        if self.host.is_paused(agent.session_id):
+            status = "paused"
+        else:
+            status = COLLEAGUE_STATUS[project_agent_roster_entry(
+                agent.session_id, events, name=agent.name, workspace_id=agent.workspace_id,
+                direction=entry.direction, activity=self.host.activity(agent.session_id),
+                last_error=self.host.current_failure(agent.session_id)).status]
+        return {"name": agent.name, "direction": entry.direction, "worktree": str(agent.worktree),
+                "status": status, "since": events[-1].occurred_at.astimezone().isoformat(timespec="minutes")}
 
     async def _broadcast(self, sender, fact, delivery_id):
         """Roster changes reach colleagues as facts that do not request a decision."""
