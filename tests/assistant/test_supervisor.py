@@ -49,6 +49,59 @@ async def until(predicate, timeout=30):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_large_cli_catalog_does_not_crash_worker_or_hide_registered_clis(self):
+        from dataclasses import replace
+
+        from redpanda.assistant.catalog import project_catalog
+        from redpanda.cli.registry import CliRegistry
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.runtime import CommandOutcomeReceived
+        from tests.cli.test_runtime import make_record
+
+        registry = CliRegistry(self.home.clis_root)
+        names = {f"cli-{index:02}" for index in range(40)}
+        for name in sorted(names):
+            await registry.add(replace(make_record(name), description="x" * 1000))
+
+        class LoadLastCli(ProcessLlm):
+            calls = 0
+
+            async def chat(client, messages, model, **kwargs):
+                client.calls += 1
+                if client.calls == 1:
+                    return LLMCallResult(LLMResponse(calls=(ToolCall(
+                        "last-cli", "load_cli", '{"cli_id":"cli-39"}',
+                    ),)), LLMUsage(input_tokens=10, output_tokens=5))
+                return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.llm = LoadLastCli(self.root)
+        sid = "large-cli-catalog"
+        await self.host.create(sid, self.workspace.workspace_id)
+        await self.host.select("cli-page", sid)
+        await self.host.accept_input(sid, "inspect the last CLI", delivery_id="inspect")
+        await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+        events = await SqliteJournal(self.store.require(sid)).snapshot(sid)
+        catalog = project_catalog(events)
+        self.assertEqual({item.id for item in catalog.clis}, names)
+        self.assertIn("load_cli", catalog.clis[-1].description)
+        loaded = next(event.payload.outcome.value for event in events
+                      if isinstance(event.payload, CommandOutcomeReceived)
+                      and event.payload.outcome.value["code"] == "CLI_LOADED")
+        self.assertEqual(loaded["data"]["cli_id"], "cli-39")
+        self.assertEqual(loaded["data"]["description"], "x" * 1000)
+        self.assertIn((sid, "done"), self.output)
+        self.assertTrue(self.host.failures.empty())
+
+        # Later catalog updates must remain usable while the directory is over budget.
+        await registry.add(replace(make_record("new-cli"), description="y" * 1000))
+        await self.host.accept_input(sid, "refresh the CLI directory", delivery_id="refresh")
+        await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+        updated = await SqliteJournal(self.store.require(sid)).snapshot(sid)
+        self.assertEqual({item.id for item in project_catalog(updated).clis}, names | {"new-cli"})
+        self.assertEqual(self.output.count((sid, "done")), 2)
+        self.assertIsNone(self.host.current_failure(sid))
+        self.assertTrue(self.host.failures.empty())
+
     async def test_web_can_reject_journal_authorization_after_host_restart(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock

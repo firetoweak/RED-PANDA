@@ -1,13 +1,15 @@
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from redpanda.execution.api import CommandEnvironment
 from redpanda.execution.local.bash import BashCommandRunner
 from redpanda.execution.local.powershell import PowerShellCommandRunner
 from redpanda.tools.builtin.command_execution import (
-    CommandInput, create_command_execution_spec,
+    CommandInput,
+    create_command_execution_spec,
 )
 
 
@@ -48,11 +50,29 @@ class CommandIoErrorsTest(unittest.IsolatedAsyncioTestCase):
         runner.run.assert_awaited_once()
 
     async def test_bash_read_failure_keeps_partial_output(self):
-        proc = self.process()
-        proc.stdout.read.side_effect = [b"partial", OSError("pipe read failed")]
-        with patch("redpanda.execution.local.bash.shutil.which", return_value="bash"), \
-             patch("redpanda.execution.local.bash.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
-            result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
+        if sys.platform == "linux":
+            stdout = MagicMock()
+            stdout.__enter__.return_value = stdout
+            stdout.read.side_effect = [b"partial", OSError("output read failed")]
+            stderr = MagicMock()
+            stderr.__enter__.return_value = stderr
+            stderr.read.return_value = b""
+
+            def open_output(path, *args, **kwargs):
+                return stdout if path.name == "stdout.bin" else stderr
+
+            running = Mock(poll=Mock(return_value=1))
+            with patch("redpanda.execution.local.bash.shutil.which", return_value="bash"), \
+                 patch("redpanda.execution.local.owned_command.Running", return_value=running), \
+                 patch("redpanda.execution.local.owned_command.Path.open", new=open_output):
+                result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
+            running.close.assert_called_once()
+        else:
+            proc = self.process()
+            proc.stdout.read.side_effect = [b"partial", OSError("pipe read failed")]
+            with patch("redpanda.execution.local.bash.shutil.which", return_value="bash"), \
+                 patch("redpanda.execution.local.bash.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
+                result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
         self.assertEqual(result.stdout.content, "partial")
         self.assertIn("stdout: OSError", result.io_errors[0])
 

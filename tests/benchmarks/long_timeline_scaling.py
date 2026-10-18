@@ -5,8 +5,9 @@ timelines hold many colleague messages, plus non-Agent Journals standing in
 for Compact readers and SubAgent children, then times the paths production
 takes:
 
-- roster listing (every send, group call and inbox read goes through it),
-- origin admission (each Agent message rescans every Agent timeline),
+- roster listing (every send, group call and inbox read goes through it):
+  the first call builds the index from the Journals, later calls read it,
+- origin admission (checked before each Agent message),
 - one Session's snapshot and replay (each decision does this).
 
 Usage:
@@ -21,12 +22,13 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from redpanda.assistant.agents import (
-    AgentCreated, PrivateMessage, Speaker, fact_arguments, parse_agent_fact, PRIVATE_MESSAGE,
-)
+from redpanda.assistant.agents import AgentCreated, PrivateMessage, Speaker, fact_arguments
+from types import SimpleNamespace
+
+from redpanda.assistant.host.agent_messages import OriginUsage
 from redpanda.assistant.host.agent_roster import AgentRoster
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal, replay
+from redpanda.runtime import AgentRuntime, SqliteJournal, replay
 
 
 async def build(root: Path, agents: int, events: int, extra: int) -> SessionStore:
@@ -66,21 +68,20 @@ async def main(agents: int, events: int, extra: int, runs: int) -> None:
               f"in {time.perf_counter() - started:.1f} s")
         roster = AgentRoster(store)
 
-        async def admission():
-            used = 0
-            for entry in await roster.list("project"):
-                session_id = entry.agent.session_id
-                for event in await SqliteJournal(store.require(session_id)).snapshot(session_id):
-                    if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
-                        used += parse_agent_fact(event.payload).origin == "origin-7"
-            return used
+        async def no_groups(*_arguments):
+            return []
+
+        origins = OriginUsage(SimpleNamespace(
+            agents=roster, store=store, agent_groups=SimpleNamespace(list=no_groups, messages=no_groups)))
 
         async def decision_replay():
             events_ = await SqliteJournal(store.require("agent-0")).snapshot("agent-0")
             replay("agent-0", events_)
 
+        await timed("roster index build (once per Host start)", 1, lambda: roster.list("project"))
         await timed("roster list", runs, lambda: roster.list("project"))
-        await timed("origin admission (one Agent message)", runs, admission)
+        await timed("origin index build (once per Host start)", 1, lambda: origins.count("project", "origin-7"))
+        await timed("origin admission (one Agent message)", runs, lambda: origins.count("project", "origin-7"))
         await timed("one timeline snapshot + replay (one decision)", runs, decision_replay)
 
 

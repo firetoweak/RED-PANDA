@@ -18,10 +18,48 @@ def message_identity(session_id, command_id):
     return f"message-{digest}"
 
 
+class OriginUsage:
+    """Which Agent messages each origin has driven, indexed once and kept current.
+
+    Message ids make recording idempotent, so redelivery during recovery never
+    counts twice.
+    """
+
+    def __init__(self, host):
+        self.host = host
+        self._used: dict[tuple[str, str], set[str]] | None = None
+        self._loading = asyncio.Lock()
+
+    async def _index(self):
+        async with self._loading:
+            if self._used is None:
+                used: dict[tuple[str, str], set[str]] = {}
+                for entry in await self.host.agents.list():
+                    events = await SqliteJournal(self.host.store.require(entry.agent.session_id)).snapshot(
+                        entry.agent.session_id)
+                    for event in events:
+                        if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
+                            fact = parse_agent_fact(event.payload)
+                            used.setdefault((entry.agent.workspace_id, fact.origin), set()).add(fact.message_id)
+                for group in await self.host.agent_groups.list():
+                    for message in await self.host.agent_groups.messages(group.group_id):
+                        if message.origin is not None:
+                            used.setdefault((group.workspace_id, message.origin), set()).add(message.message_id)
+                self._used = used
+            return self._used
+
+    async def count(self, workspace_id: str, origin: str) -> int:
+        return len((await self._index()).get((workspace_id, origin), ()))
+
+    async def record(self, workspace_id: str, origin: str, message_id: str) -> None:
+        (await self._index()).setdefault((workspace_id, origin), set()).add(message_id)
+
+
 class AgentMessages:
     def __init__(self, host):
         self.host = host
         self._project_locks: dict[str, asyncio.Lock] = {}
+        self.origins = OriginUsage(host)
 
     async def colleagues(self, session_id):
         sender = await self.host.agents.by_session(session_id)
@@ -46,6 +84,7 @@ class AgentMessages:
         sender = await self.host.agents.by_session(session_id)
         if sender is None:
             raise ValueError("direction declaration requires a Coding Bot identity")
+        await self.host.agents.declare(session_id, arguments["direction"])
         await self._broadcast(sender, DirectionDeclared(name=sender.name, direction=arguments["direction"]),
                               f"{session_id}:{arguments['delivery_id']}")
         return None
@@ -62,13 +101,7 @@ class AgentMessages:
     def _admission(self, workspace_id, origin):
         """One human message (or other non-Agent fact) drives a bounded number of Agent messages."""
         async def admit(recipient):
-            used = 0
-            for entry in await self.host.agents.list(workspace_id):
-                used += sum(fact.origin == origin for _, fact in await self._messages(entry.agent.session_id))
-            for group in await self.host.agent_groups.list(workspace_id):
-                used += sum(message.origin == origin
-                            for message in await self.host.agent_groups.messages(group.group_id))
-            if used >= MAX_MESSAGES_PER_ORIGIN:
+            if await self.origins.count(workspace_id, origin) >= MAX_MESSAGES_PER_ORIGIN:
                 return {"ok": False, "code": "ORIGIN_LIMIT_REACHED", "data": {"recipient": recipient},
                         "error": LIMIT_NOTICE}
             return None
@@ -79,10 +112,14 @@ class AgentMessages:
         if sender is None:
             raise ValueError("group speaker requires a Coding Bot identity")
         origin = await self._origin(session_id, arguments["command_id"])
+        identity = message_identity(session_id, arguments["command_id"])
         async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
-            return await self.host.agent_groups.send(
-                session_id, {**arguments, "message_id": message_identity(session_id, arguments["command_id"])},
+            result = await self.host.agent_groups.send(
+                session_id, {**arguments, "message_id": identity},
                 origin, self._admission(sender.workspace_id, origin))
+            if result["code"] == "DELIVERED":
+                await self.origins.record(sender.workspace_id, origin, identity)
+            return result
 
     async def send(self, session_id, arguments):
         sender = await self.host.agents.by_session(session_id)
@@ -110,6 +147,7 @@ class AgentMessages:
                     or fact.text != arguments["text"] or fact.reply_to != arguments["reply_to"]
                     or event.delivery.source != "coding_bot" or event.delivery.delivery_id != identity):
                 raise ValueError("persisted message conflicts with its sending Command")
+            await self.origins.record(sender.workspace_id, fact.origin, identity)
             return self._delivered(recipient, identity)
         reply_to = arguments["reply_to"]
         previous = None
@@ -131,6 +169,7 @@ class AgentMessages:
             recipient=name, text=arguments["text"], reply_to=reply_to,
             thread_id=identity if previous is None else previous.thread_id, hop=hop, origin=origin)
         await self.host.request("fact", recipient.session_id, fact_arguments(message, delivery_id=identity))
+        await self.origins.record(sender.workspace_id, origin, identity)
         return self._delivered(recipient, identity)
 
     def _delivered(self, recipient, identity):

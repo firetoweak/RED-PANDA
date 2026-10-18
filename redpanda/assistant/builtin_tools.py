@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from redpanda.assistant.tool_results import runtime_tool_result
-from redpanda.runtime.model import AuthorizationPolicy
-from redpanda.filesystem import FileAccess
-from redpanda.execution.local.provider import create_local_command_environment
 from redpanda.execution.api import ProcessControl
+from redpanda.execution.local.provider import create_local_command_environment
+from redpanda.filesystem import FileAccess
 from redpanda.filesystem.registry import WorkspaceRecord, workspace_view
 from redpanda.filesystem.workspace import (
     FilesystemPermission,
@@ -17,14 +17,15 @@ from redpanda.filesystem.workspace import (
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
+from redpanda.runtime.model import AuthorizationPolicy, rejected_tool_arguments
+from redpanda.tools.builtin import (
+    CommandInterrupts,
+    create_process_specs,
+    create_subagent_workspace_specs,
+    create_workspace_tool_specs,
+)
 from redpanda.tools.executor import ToolsExecutor
 from redpanda.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
-from redpanda.tools.builtin import (
-    create_process_specs,
-    CommandInterrupts,
-    create_workspace_tool_specs,
-    create_subagent_workspace_specs,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +59,19 @@ class BuiltinToolRunner:
         spec = self._executor.registry.get(name)
         if spec is None:
             raise KeyError(name)
-        return spec.requires_authorization
+        policy = spec.requires_authorization
+        if not callable(policy):
+            return policy
+
+        def verdict(arguments):
+            result = policy(arguments)
+            if type(result) is bool:
+                return result
+            return rejected_tool_arguments(
+                json.dumps(dict(arguments), ensure_ascii=False),
+                code=result["code"], error=result["error"], hint=result["hint"],
+            )
+        return verdict
 
 
 async def build_builtin_tools(

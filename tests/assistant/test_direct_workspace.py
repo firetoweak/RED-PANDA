@@ -44,7 +44,7 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
             try:
                 context = AttemptContext("agent", "write", "attempt-write", 1)
                 write = assembly.bindings["write_file"]
-                self.assertIs(write.requires_authorization, True)
+                self.assertIs(write.requires_authorization({"path": "note.txt"}), True)
                 result = await write.handler(context, {"path": "note.txt", "content": "direct"})
                 self.assertTrue(result["ok"])
                 self.assertEqual((workspace / "note.txt").read_text(), "direct")

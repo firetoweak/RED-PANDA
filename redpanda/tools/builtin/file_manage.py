@@ -4,13 +4,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from redpanda.filesystem import FileAccess
-from redpanda.tools.results import environment_error
+from redpanda.filesystem import FileAccess, write_text
 from redpanda.filesystem.workspace import EnvironmentInputError
-from redpanda.filesystem import write_text
-from redpanda.tools.results import file_error_message
+from redpanda.tools.builtin.file_write import write_authorization_policy
+from redpanda.tools.results import environment_error, file_error_message
 from redpanda.tools.spec import PydanticParameters, ToolSpec
-
 
 WRITE_FILE_DESCRIPTION = """
 用途：创建文本文件，或在明确允许时整体覆盖已有文件；父目录不存在时自动创建。
@@ -47,6 +45,6 @@ def create_file_manage_specs(binding: FileAccess) -> list[ToolSpec]:
             description=WRITE_FILE_DESCRIPTION,
             parameters=PydanticParameters(WriteFileInput),
             handler=write_file,
-            requires_authorization=True,
+            requires_authorization=write_authorization_policy(binding),
         )
     ]

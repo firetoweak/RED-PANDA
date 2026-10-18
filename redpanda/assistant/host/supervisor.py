@@ -53,7 +53,7 @@ from redpanda.assistant.subagent.subagent import (
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
-from redpanda.runtime import SqliteJournal, replay, DomainFactCommitted
+from redpanda.runtime import SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
 from redpanda.execution.local.windows_job import WindowsJob
 from redpanda.execution.processes import ProcessManager
 from redpanda.execution.command import CommandStartError, ShellNotFoundError
@@ -190,7 +190,7 @@ class HostSupervisor:
     async def resume_unfinished_sessions(self) -> None:
         """进程刚起来时，上一个进程里还会自己往下走的顶层会话接着推进。
 
-        长期 Agent 不因 Host 重启而停下；人停止过的会话保持暂停，等人继续。
+        长期 Agent 通常自动续跑；人停止过或命令结果未知的会话等人继续。
         等外部事实的会话本来就不会自己动，子会话只由父恢复时带起来，这里都不改。
 
         此刻没有任何 Worker，上一个进程留下的未完成 Attempt 先按接管记下，
@@ -207,7 +207,18 @@ class HostSupervisor:
             events = await journal.snapshot(session_id)
             if project_parent(events) is not None:
                 continue
-            if session_view(replay(session_id, events).state).should_wake:
+            state = replay(session_id, events).state
+            observed = max((step.step.observed_journal_position for step in state.steps), default=0)
+            unknown = {command.command.command_id for command in state.commands
+                       if command.phase is CommandPhase.UNKNOWN
+                       and command.command.effect.name in {"execute_command", "start_process"}}
+            if any(isinstance(event.payload, AttemptOrphaned)
+                   and event.payload.command_id in unknown and event.sequence > observed for event in events):
+                # An unknown execution may already have produced side effects.
+                # Persist the stop before any Worker or external wake can advance it.
+                self._pause.set(session_id, True)
+                continue
+            if session_view(state).should_wake:
                 unfinished.append(session_id)
         for session_id in unfinished:
             await self.resume(session_id)
@@ -986,9 +997,12 @@ class HostSupervisor:
             except BaseException as cleanup_error:
                 raise BaseExceptionGroup("Agent registration and worktree cleanup failed", [error, cleanup_error]) from None
             raise
+        agent = AgentRecord(session_id, identity)
+        # The identity is durable now; the roster must know it before anything else can fail,
+        # or a retry would publish a second Agent under the same name.
+        await self.agents.add(agent)
         if self.models is not None:
             self.models.initialize_session(session_id)
-        agent = AgentRecord(session_id, identity)
         # Colleagues learn of the join before anything the new Agent does;
         # replaying its creation fact then starts the Worker for its first decision.
         await self.agent_messages.joined(agent)

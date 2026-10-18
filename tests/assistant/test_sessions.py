@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.context.projection import ModelContextSettings
-from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.sessions import AssistantSessions, SessionView
+from redpanda.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     ToolSurface,
@@ -25,9 +26,10 @@ from redpanda.runtime import (
     RuntimeStatus,
     ToolBinding,
 )
-from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.assistant.test_toolsets import FakeEchoProvider, _schema_names
+from tests.fixtures.artifacts import MemoryArtifactGateway
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.session_scheduler import RecordingScheduler, settle_session
 
 
@@ -47,6 +49,35 @@ class RegistryCatalog:
 
 class AssistantSessionResumeTest(unittest.IsolatedAsyncioTestCase):
     SESSION_ID = "resume-session"
+
+    async def test_idle_session_keeps_child_active_until_parent_receives_report(self):
+        async def delegate(context, _arguments):
+            return {"ok": True, "code": "DELEGATED", "data": {
+                "child_session_id": child_session_id(context.session_id, context.command_id),
+            }}
+
+        runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker((
+            lambda _: ModelDecision(command_requests=(InvokeTool(DELEGATE, (("task", "调查"),)),)),
+        )), {DELEGATE: ToolBinding(delegate, decision_on_outcome=False)})
+        scheduler = RecordingScheduler(runtime, self.SESSION_ID)
+        sessions, _ = self._sessions(runtime, scheduler)
+        sessions._subagents = SimpleNamespace()
+        try:
+            await runtime.receive_user_message(self.SESSION_ID, "调查", delivery_id="ask")
+            issued = await runtime.advance(self.SESSION_ID)
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
+            view = await sessions.view(self.SESSION_ID)
+            self.assertEqual(view.status, "waiting")
+            self.assertTrue(view.has_active_subagents)
+            self.assertFalse(view.should_wake)
+            child = child_session_id(self.SESSION_ID, issued.step.commands[0].command_id)
+            await runtime.receive_domain_fact(self.SESSION_ID, REPORT_FACT, {"child_session_id": child},
+                                              source="subagent", delivery_id="report", requests_decision=True)
+            self.assertFalse((await sessions.view(self.SESSION_ID)).has_active_subagents)
+        finally:
+            await scheduler.close()
+            await runtime.dispatcher.close()
 
     def _sessions(
         self,
