@@ -10,7 +10,7 @@ from redpanda.assistant.agent_messages import (
     DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_MESSAGE, message_bindings, recover_message_attempts, send_message,
 )
 from redpanda.assistant.agents import (
-    COMMUNICATION_LIMIT_REACHED, DIRECTION_DECLARED, PRIVATE_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
+    COMMUNICATION_LIMIT_REACHED, DIRECTION_DECLARED, PRIVATE_MESSAGE, AgentCreated, AgentRecord, fact_arguments, parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.host.session_store import SessionStore
@@ -177,9 +177,11 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
     async def test_narrow_recovery_resolves_original_command_with_or_without_prior_delivery(self):
         for delivered in (True, False):
             session_id = f"Sender-{delivered}"
-            await self.store.create(session_id, workspace_id=self.workspace.workspace_id, initial_fact=fact_arguments(
-                AgentCreated(name=session_id, workspace_id=self.workspace.workspace_id,
-                             worktree=str(self.root), branch="sender"), delivery_id="created"))
+            identity = AgentCreated(name=session_id, workspace_id=self.workspace.workspace_id,
+                                    worktree=str(self.root), branch="sender")
+            await self.store.create(session_id, workspace_id=self.workspace.workspace_id,
+                                    initial_fact=fact_arguments(identity, delivery_id="created"))
+            await self.host.agents.add(AgentRecord(session_id, identity))
             entered = asyncio.Event()
 
             async def interrupted(context, arguments):

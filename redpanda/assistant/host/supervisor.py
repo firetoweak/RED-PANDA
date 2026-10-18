@@ -935,9 +935,12 @@ class HostSupervisor:
             except BaseException as cleanup_error:
                 raise BaseExceptionGroup("Agent registration and worktree cleanup failed", [error, cleanup_error]) from None
             raise
+        agent = AgentRecord(session_id, identity)
+        # The identity is durable now; the roster must know it before anything else can fail,
+        # or a retry would publish a second Agent under the same name.
+        await self.agents.add(agent)
         if self.models is not None:
             self.models.initialize_session(session_id)
-        agent = AgentRecord(session_id, identity)
         # Colleagues learn of the join before anything the new Agent does;
         # replaying its creation fact then starts the Worker for its first decision.
         await self.agent_messages.joined(agent)
