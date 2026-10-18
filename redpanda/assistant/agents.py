@@ -201,6 +201,28 @@ def project_direction(events, agent: AgentRecord) -> str | None:
     return direction
 
 
+def identity_for_model(events) -> dict | None:
+    """Who the Agent is, restated where earlier facts no longer reach the model."""
+    agent = project_agent(events)
+    if agent is None:
+        return None
+    shown = {"name": agent.name}
+    direction = project_direction(events, agent)
+    if direction is not None:
+        shown["direction"] = direction
+    shown["groups"] = [
+        {"group": fact.group, "members": fact.members}
+        for event in events
+        if isinstance(event.payload, DomainFactCommitted)
+        and event.payload.fact_type == GROUP_CREATED
+        for fact in (parse_agent_fact(event.payload),)
+    ]
+    shown["notice"] = (
+        "这是你的名字、你声明过的负责方向和你所在的群；之后的事实可能更新它们。"
+        "同事的负责方向用 list_colleagues 查看。")
+    return shown
+
+
 def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     """Only observable identities, messages and requested actions reach the model."""
     fact = parse_agent_fact(payload)
