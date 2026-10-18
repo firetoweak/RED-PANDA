@@ -24,11 +24,14 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.project = self.root / "project"
         self.project.mkdir()
-        self.worktree = self.root / "worktree"
-        self.worktree.mkdir()
         self.registry = WorkspaceRegistry.load(self.home.workspaces_path)
         self.workspace = self.registry.register_path(self.project)
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None, workspaces=self.registry)
+        # These tests own the roster/fact contract; real Git is covered in process.
+        self.git = patch.object(self.host.agent_worktrees, "create", side_effect=lambda project, session_id:
+                                self.host.agent_worktrees.agent(project.workspace_id, session_id))
+        self.git.start()
+        self.addCleanup(self.git.stop)
 
     async def asyncTearDown(self):
         await self.host.close()
@@ -37,7 +40,6 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
     async def create(self, name="小熊猫", workspace=None):
         return await self.host.create_agent(
             name=name, workspace_id=(workspace or self.workspace).workspace_id,
-            worktree=self.worktree, branch="agents/test",
         )
 
     async def test_names_are_unique_per_project_even_for_concurrent_creation(self):
@@ -71,7 +73,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entries[0].agent, agent)
         self.assertEqual(entries[0].direction, "负责命令执行")
         self.assertEqual(self.registry.get(agent.workspace_id).task_root, self.project)
-        self.assertEqual(agent.worktree, self.worktree)
+        self.assertEqual(agent.worktree, self.host.agent_worktrees.agent(agent.workspace_id, agent.session_id).path)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
 
