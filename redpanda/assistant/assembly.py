@@ -195,7 +195,7 @@ async def build_assistant_assembly(
         gateway,
         settings,
     )
-    skill_tools = SkillToolAdapter(skills, gateway, settings)
+    skill_tools = SkillToolAdapter(skills, gateway, settings, project_root=workspace.task_root)
     cli_tools = CliToolAdapter(cli, gateway, settings)
     subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch)
     if task is not None:

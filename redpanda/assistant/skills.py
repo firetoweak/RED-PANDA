@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from redpanda.assistant.artifacts import ArtifactGateway
 from redpanda.assistant.context.projection import (
@@ -11,7 +12,7 @@ from redpanda.runtime import ToolBinding
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.assistant.tool_results import runtime_tool_result
 from redpanda.tools.spec import ToolArgumentsError
-from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE, SkillToolCatalog
 from redpanda.assistant.catalog import CatalogSkill
 
 
@@ -23,27 +24,33 @@ class SkillToolAdapter:
         skills,
         gateway: ArtifactGateway,
         settings: ModelContextSettings,
+        *,
+        project_root: Path | None = None,
     ) -> None:
         self.skills = skills
-        self._catalog = skills.tool_catalog
+        installed = skills.tool_catalog
+        self._catalog = SkillToolCatalog(
+            installed.registry,
+            installed.package_reader,
+            max_catalog_chars=installed.max_catalog_chars,
+            project_root=project_root,
+        )
         self._gateway = gateway
         self._settings = settings
         self._catalogs: dict[str, dict[str, int]] = {}
 
     def registry_catalog(self) -> list[dict[str, object]]:
         self._catalog.tool_specs()
-        return sorted(
-            (
-                {
-                    "id": record.name,
-                    "description": record.description,
-                    "revision": record.revision,
-                }
-                for record in self._catalog.registry.snapshot()
-                if record.enabled
-            ),
-            key=lambda item: item["id"],
-        )
+        installed = [
+            {"id": record.name, "description": record.description, "revision": record.revision}
+            for record in self._catalog.registry.snapshot()
+            if record.enabled
+        ]
+        project = [
+            {"id": item.id, "description": item.description, "revision": item.revision}
+            for item in self._catalog.project_skills()
+        ]
+        return sorted(installed + project, key=lambda item: item["id"])
 
     def apply_catalog(
         self,
