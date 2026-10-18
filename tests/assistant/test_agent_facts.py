@@ -23,8 +23,8 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         await runtime.create_session("recipient")
         message = GroupMessage(
             message_id="message-1", sender=Speaker(kind="agent", name="Ada"),
-            thread_id="thread-1", hop=1, reply_to=None, text="接口已经修改，请核对。",
-            group="开发组", mentioned_agents=["Lin"], mention_all=False,
+            reply_to=None, text="接口已经修改，请核对。",
+            group="开发组", mentioned_agents=["Lin"], origin="origin-internal",
         )
         await runtime.receive_domain_fact("recipient", **fact_arguments(message, delivery_id="message-1"))
         self.assertIsNone((await runtime.advance("recipient")).step)
@@ -41,8 +41,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Ada", content)
         self.assertIn("开发组", content)
         self.assertIn("不构成用户授权", content)
-        self.assertNotIn("thread-1", content)
-        self.assertNotIn('"hop"', content)
+        self.assertNotIn("origin-internal", content)
 
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):
         with TemporaryDirectory() as directory:
@@ -59,6 +58,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         private = PrivateMessage(
             message_id="message-2", sender=Speaker(kind="agent", name="Ada"),
             recipient="Lin", thread_id="thread-1", hop=2, reply_to="message-1", text="请检查测试。",
+            origin="origin-1",
         )
         arguments = fact_arguments(private, delivery_id="command-2")
         payload = DomainFactCommitted(arguments["fact_type"], arguments["data"], arguments["requests_decision"])

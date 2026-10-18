@@ -1,12 +1,13 @@
-"""Host-owned addressing, reply validation and durable delivery to colleagues."""
+"""Host-owned addressing, reply validation, origin budgets and durable delivery to colleagues."""
 from __future__ import annotations
 
 import asyncio
 from hashlib import sha256
 
-from redpanda.assistant.agent_messages import MAX_MESSAGE_HOPS, LIMIT_NOTICE
+from redpanda.assistant.agent_messages import LIMIT_NOTICE, MAX_MESSAGE_HOPS, MAX_MESSAGES_PER_ORIGIN
 from redpanda.assistant.agents import (
-    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, parse_agent_fact,
+    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, message_origin,
+    parse_agent_fact,
 )
 from redpanda.assistant.host.agent_roster import AgentNotFound
 from redpanda.runtime import DomainFactCommitted, SqliteJournal
@@ -20,6 +21,7 @@ def message_identity(session_id, command_id):
 class AgentMessages:
     def __init__(self, host):
         self.host = host
+        self._project_locks: dict[str, asyncio.Lock] = {}
 
     async def colleagues(self, session_id):
         sender = await self.host.agents.by_session(session_id)
@@ -53,10 +55,43 @@ class AgentMessages:
         return [(event, parse_agent_fact(event.payload)) for event in events
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE]
 
+    async def _origin(self, session_id, command_id):
+        events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+        return message_origin(events, command_id)
+
+    def _admission(self, workspace_id, origin):
+        """One human message (or other non-Agent fact) drives a bounded number of Agent messages."""
+        async def admit(recipient):
+            used = 0
+            for entry in await self.host.agents.list(workspace_id):
+                used += sum(fact.origin == origin for _, fact in await self._messages(entry.agent.session_id))
+            for group in await self.host.agent_groups.list(workspace_id):
+                used += sum(message.origin == origin
+                            for message in await self.host.agent_groups.messages(group.group_id))
+            if used >= MAX_MESSAGES_PER_ORIGIN:
+                return {"ok": False, "code": "ORIGIN_LIMIT_REACHED", "data": {"recipient": recipient},
+                        "error": LIMIT_NOTICE}
+            return None
+        return admit
+
+    async def send_group(self, session_id, arguments):
+        sender = await self.host.agents.by_session(session_id)
+        if sender is None:
+            raise ValueError("group speaker requires a Coding Bot identity")
+        origin = await self._origin(session_id, arguments["command_id"])
+        async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
+            return await self.host.agent_groups.send(
+                session_id, {**arguments, "message_id": message_identity(session_id, arguments["command_id"])},
+                origin, self._admission(sender.workspace_id, origin))
+
     async def send(self, session_id, arguments):
         sender = await self.host.agents.by_session(session_id)
         if sender is None:
             raise ValueError("message sender requires a Coding Bot identity")
+        async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
+            return await self._send(sender, session_id, arguments)
+
+    async def _send(self, sender, session_id, arguments):
         name = arguments["recipient"]
         if name == sender.name:
             return {"ok": False, "code": "SELF_MESSAGE", "error": "不能给自己发私信。"}
@@ -88,9 +123,13 @@ class AgentMessages:
         hop = 0 if previous is None else previous.hop + 1
         if hop > MAX_MESSAGE_HOPS:
             return {"ok": False, "code": "HOP_LIMIT_REACHED", "data": {"recipient": name}, "error": LIMIT_NOTICE}
+        origin = await self._origin(session_id, arguments["command_id"])
+        refused = await self._admission(sender.workspace_id, origin)(name)
+        if refused is not None:
+            return refused
         message = PrivateMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
             recipient=name, text=arguments["text"], reply_to=reply_to,
-            thread_id=identity if previous is None else previous.thread_id, hop=hop)
+            thread_id=identity if previous is None else previous.thread_id, hop=hop, origin=origin)
         await self.host.request("fact", recipient.session_id, fact_arguments(message, delivery_id=identity))
         return self._delivered(recipient, identity)
 

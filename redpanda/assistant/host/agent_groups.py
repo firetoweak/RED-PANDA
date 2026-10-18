@@ -1,0 +1,254 @@
+"""Host-owned group records and deterministic turn scheduling for group chats."""
+from __future__ import annotations
+
+import asyncio
+from collections import Counter
+from dataclasses import dataclass, field
+from uuid import uuid4
+
+from redpanda.assistant.agent_messages import (
+    MAX_GROUP_REPLIES, MAX_GROUP_ROUNDS, MAX_SPEECHES_PER_ROUND,
+)
+from redpanda.assistant.agents import (
+    GROUP_CREATED, GROUP_MESSAGE, GroupAttention, GroupCreated, GroupMessage, Speaker,
+    fact_arguments, parse_agent_fact,
+)
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.workspaces import bound_workspace_id
+from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
+
+
+class GroupNameTaken(ValueError):
+    pass
+
+
+class GroupNotFound(LookupError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class GroupRecord:
+    group_id: str
+    workspace_id: str
+    created: GroupCreated
+
+    @property
+    def name(self) -> str:
+        return self.created.group
+
+    @property
+    def members(self) -> list[str]:
+        return self.created.members
+
+
+def _targets(group: GroupRecord, speaker: str | None, mentioned: list[str]) -> list[str]:
+    return [name for name in (mentioned or group.members) if name != speaker]
+
+
+@dataclass(eq=False)
+class _Drive:
+    """Rounds driven by one origin. Only the latest origin in a group schedules."""
+
+    group: GroupRecord
+    origin: str
+    rounds: int = 0
+    replies: int = 0
+    spoken: Counter = field(default_factory=Counter)
+    pending: dict[str, str] = field(default_factory=dict)
+    waiting: dict[str, asyncio.Event] = field(default_factory=dict)
+    stopped: asyncio.Event = field(default_factory=asyncio.Event)
+    task: asyncio.Task | None = None
+
+    def queue(self, speaker: str | None, mentioned: list[str], message_id: str) -> None:
+        for name in _targets(self.group, speaker, mentioned):
+            self.pending.setdefault(name, message_id)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.rounds >= MAX_GROUP_ROUNDS
+
+
+class AgentGroups:
+    def __init__(self, host):
+        self.host = host
+        self.store = SessionStore(host.home.state_root / "groups")
+        self._creation_lock = asyncio.Lock()
+        self._group_locks: dict[str, asyncio.Lock] = {}
+        self._drives: dict[str, _Drive] = {}
+
+    def _journal(self, group_id):
+        return SqliteJournal(self.store.require(group_id))
+
+    async def list(self, workspace_id: str | None = None) -> tuple[GroupRecord, ...]:
+        groups = []
+        for path in self.store.journals():
+            journal = SqliteJournal(path)
+            group_id = await journal.session_identity()
+            events = await journal.snapshot(group_id)
+            created, = (parse_agent_fact(event.payload) for event in events
+                        if isinstance(event.payload, DomainFactCommitted)
+                        and event.payload.fact_type == GROUP_CREATED)
+            record = GroupRecord(group_id, bound_workspace_id(events), created)
+            if workspace_id is None or record.workspace_id == workspace_id:
+                groups.append(record)
+        return tuple(sorted(groups, key=lambda group: (group.workspace_id, group.name)))
+
+    async def get(self, group_id: str) -> GroupRecord:
+        for group in await self.list():
+            if group.group_id == group_id:
+                return group
+        raise GroupNotFound(group_id)
+
+    async def messages(self, group_id: str) -> list[GroupMessage]:
+        return [parse_agent_fact(event.payload) for event in await self._journal(group_id).snapshot(group_id)
+                if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE]
+
+    async def create(self, *, workspace_id: str, name: str, members: list[str]) -> GroupRecord:
+        self.host.workspaces.get(workspace_id)
+        created = GroupCreated(group=name, members=members)
+        agents = [await self.host.agents.resolve(workspace_id, member) for member in created.members]
+        group_id = f"group-{uuid4().hex}"
+        async with self._creation_lock:
+            if any(group.name == name for group in await self.list(workspace_id)):
+                raise GroupNameTaken(f"项目内已有群：{name}")
+            await self.store.create(group_id, workspace_id=workspace_id,
+                                    initial_fact=fact_arguments(created, delivery_id="created"))
+        await asyncio.gather(*(
+            self.host.request("fact", agent.session_id, fact_arguments(created, delivery_id=f"joined:{group_id}"))
+            for agent in agents))
+        return GroupRecord(group_id, workspace_id, created)
+
+    async def _publish(self, group: GroupRecord, message: GroupMessage) -> None:
+        """The group record is the source; member timelines receive copies without deciding."""
+        arguments = fact_arguments(message, delivery_id=message.message_id)
+        await AgentRuntime(self._journal(group.group_id), None, {}).receive_domain_fact(group.group_id, **arguments)
+        recipients = [await self.host.agents.resolve(group.workspace_id, name)
+                      for name in group.members if name != message.sender.name]
+        await asyncio.gather(*(self.host.request("fact", agent.session_id, arguments) for agent in recipients))
+
+    async def post(self, group_id: str, text: str, mention: list[str]) -> GroupMessage:
+        """A human message starts a new drive, superseding the previous one."""
+        group = await self.get(group_id)
+        if any(name not in group.members for name in mention):
+            raise ValueError("点名的成员不在这个群里")
+        message = GroupMessage(message_id=f"group-message-{uuid4().hex}", sender=Speaker(kind="user", name=None),
+                               reply_to=None, text=text, group=group.name, mentioned_agents=mention, origin=None)
+        async with self._group_locks.setdefault(group_id, asyncio.Lock()):
+            await self._publish(group, message)
+            drive = self._replace_drive(group, message.message_id)
+            drive.queue(None, mention, message.message_id)
+            self._schedule(drive)
+        return message
+
+    def _replace_drive(self, group: GroupRecord, origin: str) -> _Drive:
+        previous = self._drives.get(group.group_id)
+        if previous is not None:
+            previous.stopped.set()
+        drive = _Drive(group, origin)
+        self._drives[group.group_id] = drive
+        return drive
+
+    def _schedule(self, drive: _Drive) -> None:
+        if drive.pending and not drive.exhausted and not drive.stopped.is_set() and (
+                drive.task is None or drive.task.done()):
+            drive.task = asyncio.create_task(self._run(drive))
+            self.host._track(drive.group.group_id, drive.task)
+
+    async def _run(self, drive: _Drive) -> None:
+        while drive.pending and not drive.exhausted and not drive.stopped.is_set():
+            calls, drive.pending = drive.pending, {}
+            drive.rounds += 1
+            drive.spoken = Counter()
+            for name, message_id in calls.items():
+                if drive.stopped.is_set() or self.host.closed:
+                    return
+                await self._call(drive, name, message_id)
+
+    async def _call(self, drive: _Drive, name: str, message_id: str) -> None:
+        """A turn ends when the member speaks or its triggered work settles."""
+        agent = await self.host.agents.resolve(drive.group.workspace_id, name)
+        if self.host.is_paused(agent.session_id):
+            return
+        spoke = drive.waiting[name] = asyncio.Event()
+        try:
+            await self.host.request("fact", agent.session_id, fact_arguments(
+                GroupAttention(group=drive.group.name, message_id=message_id),
+                delivery_id=f"attention:{drive.group.group_id}:{message_id}:{name}"))
+            waits = [asyncio.create_task(self.host.wait_quiescent(agent.session_id)),
+                     asyncio.create_task(spoke.wait()), asyncio.create_task(drive.stopped.wait())]
+            done, pending = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in done:
+                task.result()
+        finally:
+            del drive.waiting[name]
+
+    async def send(self, session_id: str, arguments: dict, origin: str, admit):
+        """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new."""
+        sender = await self.host.agents.by_session(session_id)
+        group = next((group for group in await self.list(sender.workspace_id)
+                      if group.name == arguments["group"]), None)
+        if group is None:
+            return {"ok": False, "code": "GROUP_NOT_FOUND", "error": "同项目中没有这个群。"}
+        if sender.name not in group.members:
+            return {"ok": False, "code": "NOT_A_MEMBER", "error": "你不在这个群里。"}
+        mention = arguments["mention"]
+        if any(name not in group.members or name == sender.name for name in mention):
+            return {"ok": False, "code": "INVALID_MENTION", "error": "只能点名这个群里的其他成员。"}
+        async with self._group_locks.setdefault(group.group_id, asyncio.Lock()):
+            messages = await self.messages(group.group_id)
+            identity = arguments["message_id"]
+            existing = next((message for message in messages if message.message_id == identity), None)
+            if existing is not None:
+                if (existing.sender != Speaker(kind="agent", name=sender.name) or existing.group != group.name
+                        or existing.text != arguments["text"] or existing.mentioned_agents != mention
+                        or existing.reply_to != arguments["reply_to"]):
+                    raise ValueError("persisted group message conflicts with its sending Command")
+                await self._publish(group, existing)
+                return self._delivered(group, identity, self._drives.get(group.group_id))
+            if arguments["reply_to"] is not None and all(
+                    message.message_id != arguments["reply_to"] for message in messages):
+                return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是这个群里的消息。"}
+            refused = await admit(group.name)
+            if refused is not None:
+                return refused
+            drive = self._drives.get(group.group_id)
+            if drive is not None and drive.origin == origin:
+                if drive.replies >= MAX_GROUP_REPLIES:
+                    return {"ok": False, "code": "GROUP_LIMIT_REACHED",
+                            "error": "这次群讨论的回复已达上限，等人在群里发言后再继续。"}
+                if drive.spoken[sender.name] >= MAX_SPEECHES_PER_ROUND:
+                    return {"ok": False, "code": "SPEECH_LIMIT_REACHED",
+                            "error": "你在这一轮的发言已达上限，等下一轮或人在群里发言后再继续。"}
+            else:
+                drive = self._replace_drive(group, origin)
+            message = GroupMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
+                                   reply_to=arguments["reply_to"], text=arguments["text"], group=group.name,
+                                   mentioned_agents=mention, origin=origin)
+            await self._publish(group, message)
+            drive.replies += 1
+            drive.spoken[sender.name] += 1
+            drive.queue(sender.name, mention, identity)
+            if sender.name in drive.waiting:
+                drive.waiting[sender.name].set()
+            self._schedule(drive)
+            return self._delivered(group, identity, drive)
+
+    def _delivered(self, group, identity, drive):
+        stalled = drive is None or drive.exhausted or drive.stopped.is_set()
+        return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity, "group": group.name,
+                "notice": "已送达；这次群讨论已达轮数上限或已被停止，不会再叫成员回应，等人在群里发言后再继续。"
+                if stalled else "已送达；被叫到的成员会依次回应，不等待回复。"}}
+
+    async def stop(self, group_id: str) -> None:
+        """Stop scheduling and interrupt members currently called; completed work stays."""
+        drive = self._drives.get(group_id)
+        if drive is None:
+            return
+        # Read who is being called before stopping releases their waits.
+        called = list(drive.waiting)
+        drive.stopped.set()
+        sessions = [(await self.host.agents.resolve(drive.group.workspace_id, name)).session_id for name in called]
+        await asyncio.gather(*(self.host.cancel_turn(session_id) for session_id in sessions))

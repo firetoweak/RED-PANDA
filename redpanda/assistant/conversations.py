@@ -573,7 +573,7 @@ def project_conversation(
         text = step.step.decision.content.strip()
         for notice in communication_notices.get(event.event_id, ()):
             text = "\n\n".join(filter(None, (text,
-                f"与 {notice.recipient} 的私信交流已达上限，需要你判断是否继续。")))
+                f"与 {notice.recipient} 的交流已达上限，需要你判断是否继续。")))
         thinking = _step_thinking(step.decision_metadata)
         tools: list[ToolItem] = []
         for command_state in step.commands:

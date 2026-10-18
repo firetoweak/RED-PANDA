@@ -10,8 +10,10 @@ import unittest
 
 import pytest
 
-from redpanda.assistant.agent_messages import DECLARE_DIRECTION, SEND_MESSAGE
-from redpanda.assistant.agents import COLLEAGUE_JOINED, DIRECTION_DECLARED, PRIVATE_MESSAGE, parse_agent_fact
+from redpanda.assistant.agent_messages import DECLARE_DIRECTION, SEND_GROUP_MESSAGE, SEND_MESSAGE
+from redpanda.assistant.agents import (
+    COLLEAGUE_JOINED, DIRECTION_DECLARED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
+)
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -37,7 +39,9 @@ class MessagingLlm(ProcessLlm):
         text = json.dumps(messages, ensure_ascii=False)
         called = {call["function"]["name"] for message in messages for call in message.get("tool_calls", ())}
         calls = ()
-        if "SEND_TO_LIN" in text:
+        if "轮到你回应这条群消息" in json.dumps(messages[-1], ensure_ascii=False):
+            calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps({"group": "开发组", "text": "收到"})),)
+        elif "SEND_TO_LIN" in text:
             if "list_colleagues" not in called:
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
             elif SEND_MESSAGE not in called:
@@ -106,6 +110,25 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(facts[-2:], [(COLLEAGUE_JOINED, "Kai"), (DIRECTION_DECLARED, "Kai")])
             # Roster changes are visible later but do not make colleagues decide.
             self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), steps[agent.session_id])
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_group_members_are_called_in_turn_and_speak_through_their_tool(self):
+        group = await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name="开发组",
+                                                    members=["Ada", "Lin"])
+        await self.host.agent_groups.post(group.group_id, "大家同步一下进度", [])
+        drive = self.host.agent_groups._drives[group.group_id]
+        while drive.task is not None and not drive.task.done():
+            await asyncio.wait_for(drive.task, 60)
+        for agent in (self.ada, self.lin):
+            await self.settled(agent)
+        speakers = [message.sender.name for message in await self.host.agent_groups.messages(group.group_id)]
+        # Every speech without a mention calls the other member, until the round limit.
+        self.assertEqual(speakers[0], None)
+        self.assertEqual(sorted(speakers[1:]), ["Ada"] * 3 + ["Lin"] * 3)
+        for agent in (self.ada, self.lin):
+            attentions = [e for e in await self.events(agent) if isinstance(e.payload, DomainFactCommitted)
+                          and e.payload.fact_type == GROUP_ATTENTION]
+            self.assertEqual(len(attentions), 3)
         self.assertTrue(self.host.failures.empty())
 
     async def test_paused_offline_recipient_gets_fact_but_no_step_until_human_continues(self):
