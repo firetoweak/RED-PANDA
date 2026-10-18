@@ -38,6 +38,7 @@ class WorkspaceScope(str, Enum):
     TASK = "task_workspace"
     HOST = "host_filesystem"
     MATERIALS = "session_materials"
+    COLLEAGUES = "colleague_worktrees"
 
 
 class FilesystemPermission(str, Enum):

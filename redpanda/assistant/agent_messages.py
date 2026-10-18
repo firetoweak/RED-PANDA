@@ -79,7 +79,10 @@ class DirectionArguments(BaseModel):
 MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
-        "description": "查询同项目的同事名字与他们声明的负责方向；未声明时方向为 null。",
+        "description": (
+            "查询同项目的同事名字、他们声明的负责方向和各自的工作目录；未声明时方向为 null。"
+            "可以用文件工具只读查看同事工作目录里尚未落地的改动，不能在其中写入。"
+        ),
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
     }},
     {"type": "function", "function": {
