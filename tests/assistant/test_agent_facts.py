@@ -44,6 +44,24 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("不构成用户授权", content)
         self.assertNotIn("origin-internal", content)
 
+    async def test_colleague_and_group_messages_carry_their_arrival_time(self):
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("recipient")
+        for message in (
+            PrivateMessage(message_id="private-1", sender=Speaker(kind="agent", name="Ada"),
+                           recipient="Lin", thread_id="thread-1", hop=0, reply_to=None,
+                           text="私信正文", origin="origin-1"),
+            GroupMessage(message_id="group-1", sender=Speaker(kind="agent", name="Ada"),
+                         reply_to=None, text="群聊正文", group="开发组", mentioned_agents=[],
+                         origin="origin-1"),
+        ):
+            await runtime.receive_domain_fact("recipient", **fact_arguments(message, delivery_id=message.message_id))
+        events = await runtime.snapshot("recipient")
+        shown = project_chat_messages(events, StateProjector().project_visible("recipient", events), "sys")
+        for text in ("私信正文", "群聊正文"):
+            index = next(i for i, item in enumerate(shown) if text in str(item["content"]))
+            self.assertIn("<message_received_at>", shown[index - 1]["content"])
+
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):
         with TemporaryDirectory() as directory:
             creation = AgentCreated(name="Ada", workspace_id="workspace-internal",
