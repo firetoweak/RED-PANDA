@@ -58,16 +58,14 @@ class AgentWorktrees:
     def land(self, agent: AgentRecord) -> MergeResult:
         """Merge the Agent's committed branch into the project integration branch.
 
-        Callers serialize landings per project. A conflict leaves integration untouched.
+        Callers serialize landings per project. A conflict or files in the integration
+        worktree that the merge would overwrite leave integration untouched.
         """
         integration = self.integration(agent.workspace_id)
-        result = self.git.merge(
+        return self.git.merge(
             integration.path, self.git.oid(integration.path, f"refs/heads/{agent.identity.branch}"),
             author=agent.name, message=f"合入 {agent.name} 的工作", keep_conflict=False,
         )
-        if result.status == "blocked":
-            raise RuntimeError(f"integration worktree has local changes: {result.detail}")
-        return result
 
     def sync(self, agent: AgentRecord) -> MergeResult:
         """Merge landed work into the Agent branch; conflicts stay for the Agent to resolve."""

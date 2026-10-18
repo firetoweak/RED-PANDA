@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -117,3 +118,23 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("shared.txt", result["data"]["git"])
         self.assertEqual((second.worktree / "shared.txt").read_text(encoding="utf-8"), "local\n")
         self.assertEqual(git(second.worktree, "rev-parse", "HEAD"), head)
+
+    async def test_landing_does_not_overwrite_files_left_in_integration(self):
+        agent = await self.agent("甲")
+        self.change(agent, "part.txt", "landed\n")
+        (self.integration / "part.txt").write_text("left\n", encoding="utf-8")
+        head = git(self.integration, "rev-parse", "HEAD")
+        result = await self.call(LAND, agent)
+        self.assertEqual((result["code"], result["data"]), ("LAND_BLOCKED", {"files": ["part.txt"]}))
+        self.assertEqual((self.integration / "part.txt").read_text(encoding="utf-8"), "left\n")
+        self.assertEqual(git(self.integration, "rev-parse", "HEAD"), head)
+
+    async def test_leftover_index_lock_is_git_failure_not_blocking_files(self):
+        agent = await self.agent("甲")
+        self.change(agent, "part.txt", "landed\n")
+        lock = Path(git(self.integration, "rev-parse", "--absolute-git-dir")) / "index.lock"
+        lock.touch()
+        self.addCleanup(lock.unlink)
+        with self.assertRaises(subprocess.CalledProcessError) as raised:
+            await self.call(LAND, agent)
+        self.assertIn(b"index.lock", raised.exception.stderr)

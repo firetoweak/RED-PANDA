@@ -59,9 +59,14 @@ class Git:
         if result.returncode == 0:
             return MergeResult("merged", self.oid(root, "HEAD"), fast_forward)
         if not self.merging(root):
-            # Git refused before merging, e.g. local files would be overwritten;
-            # its exit code differs between fast-forward and real merges.
-            return MergeResult("blocked", head, detail=result.stderr.decode("utf-8", "replace").strip())
+            detail = result.stderr.decode("utf-8", "replace").strip()
+            # Only files the merge would overwrite are a known refusal; anything else
+            # (such as a leftover index.lock) is Git's own error. The exit code of a
+            # refusal differs between fast-forward and real merges.
+            if "would be overwritten by merge" not in detail:
+                raise_git(result)
+            files = tuple(line.strip() for line in detail.splitlines() if line.startswith("	"))
+            return MergeResult("blocked", head, files=files, detail=detail)
         files = tuple(path.decode("utf-8") for path in self.run(
             root, "diff", "--name-only", "--diff-filter=U", "-z").stdout.split(b"\0") if path)
         if not files:

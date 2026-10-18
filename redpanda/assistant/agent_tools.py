@@ -59,6 +59,10 @@ def _land_result(result: Mapping[str, object]) -> dict[str, object]:
         return {"ok": False, "code": "LAND_CONFLICT", "data": {"files": list(result["files"])},
                 "error": "你的分支与集成分支上已落地的工作冲突，集成分支没有改变。",
                 "hint": "先用 sync_branch 同步并解决冲突，再落地。"}
+    if status == "blocked":
+        return {"ok": False, "code": "LAND_BLOCKED", "data": {"files": list(result["files"])},
+                "error": "集成分支那边有不属于任何落地的文件会被这次落地覆盖，落地没有执行，集成分支没有改变。",
+                "hint": "这些文件不在你的工作区里，你无法处理。告诉用户落地被这些文件挡住，需要用户清理；你分支上的提交都还在，清理后再落地。"}
     raise ValueError(f"unexpected land status: {status}")
 
 
