@@ -35,6 +35,7 @@ from redpanda.assistant.decision import (
 )
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, session_file_operations
+from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, agent_git_bindings
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.review import ChildWorkspaceReview
@@ -164,6 +165,9 @@ async def build_assistant_assembly(
         if not direct_workspace and task is None and session_transport is not None else ([], {}, frozenset())
     )
     exclusive_tools |= review_exclusive
+    agent_git = direct_workspace and session_transport is not None
+    if agent_git:
+        exclusive_tools |= AGENT_GIT_TOOLS
     settings = ModelContextSettings()
     gateway = FileArtifactGateway(sessions_root)
     projector = ModelContextProjector(
@@ -242,6 +246,7 @@ async def build_assistant_assembly(
             *restore_schemas,
             *review_schemas,
             *colleague_schemas,
+            *(AGENT_GIT_SCHEMAS if agent_git else []),
             *(
                 [SCHEDULE_ONCE_SCHEMA, CANCEL_SCHEDULE_SCHEMA]
                 if session_transport is not None else []
@@ -255,6 +260,7 @@ async def build_assistant_assembly(
             *restore_bindings,
             *review_bindings,
             *colleague_bindings,
+            *AGENT_GIT_TOOLS,
             SCHEDULE_ONCE,
             CANCEL_SCHEDULE,
             READ_CONTENT,
@@ -294,6 +300,7 @@ async def build_assistant_assembly(
         **restore_bindings,
         **review_bindings,
         **colleague_bindings,
+        **(agent_git_bindings(session_transport) if agent_git else {}),
         **(
             {
                 SCHEDULE_ONCE: schedule_once_binding(session_transport),
