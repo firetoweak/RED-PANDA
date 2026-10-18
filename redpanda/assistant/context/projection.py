@@ -323,7 +323,9 @@ def _translate_visible_events(
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
             items.append(_Projected(
-                {"role": "user", "content": content}, "fact", sequence=event.sequence,
+                {"role": "user", "content": content},
+                "trigger" if payload.requests_decision else "fact",
+                sequence=event.sequence,
             ))
             continue
         if isinstance(payload, StepCommitted):
@@ -862,11 +864,12 @@ class ModelContextProjector:
         return changed
 
     def _protection_start(self, items: list[_Projected]) -> int:
-        last_user = 0
+        """The window opens at the latest reason to act from outside the Session."""
+        last_trigger = 0
         for index, item in enumerate(items):
-            if item.kind == "user":
-                last_user = index
-        return last_user
+            if item.kind in {"user", "trigger"}:
+                last_trigger = index
+        return last_trigger
 
     def _save(
         self,
