@@ -34,7 +34,9 @@ def project_instructions_prompt(workspace_root: Path) -> str:
     )
 
 
-def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: bool) -> str:
+def environment_prompt(
+    workspace_root: Path, *, full_access: bool, own_copy: bool, direct_workspace: bool = False,
+) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
     system = platform.system()
     workspace = f"工作区：{workspace_root}"
@@ -45,17 +47,23 @@ def environment_prompt(workspace_root: Path, *, full_access: bool, own_copy: boo
         if full_access
         else "文件工具只能访问工作区内的文件。"
     )
+    file_rules = (
+        ("文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。改动用 git diff 和实际文件核对，也要检查未跟踪文件。项目文件修改优先用专用文件工具。",)
+        if direct_workspace else (
+            "get_changes 和 restore_workspace 只覆盖文件工具和 file_access=managed 命令在工作区内的修改；host 命令、持续进程、外部服务工具、工作区外写入、安装和网络副作用都不在此范围，需要自行核对。项目文件修改优先用专用文件工具。",
+            "工作区内的文件工具和 managed 命令不支持目录重命名、硬链接、mmap 一致性和完整的符号链接语义。",
+            "Windows 上还不支持只改大小写的重命名、重解析点（reparse）、ACL 和备用数据流（ADS）。"
+            if system == "Windows" else
+            "POSIX 符号链接不支持单独修改链接权限。",
+        )
+    )
     return "\n".join((
         "<environment>",
         f"系统：{system}",
         workspace,
         f"相对路径从工作区开始；{access}",
-        "get_changes 和 restore_workspace 只覆盖文件工具和 file_access=managed 命令在工作区内的修改；host 命令、持续进程、外部服务工具、工作区外写入、安装和网络副作用都不在此范围，需要自行核对。项目文件修改优先用专用文件工具。",
+        *file_rules,
         "命令不提供进程、系统或网络隔离，可以访问本机其他位置；不能假定有沙箱。",
-        "工作区内的文件工具和 managed 命令不支持目录重命名、硬链接、mmap 一致性和完整的符号链接语义。",
-        "Windows 上还不支持只改大小写的重命名、重解析点（reparse）、ACL 和备用数据流（ADS）。"
-        if system == "Windows" else
-        "POSIX 符号链接不支持单独修改链接权限。",
         "</environment>",
     ))
 
@@ -98,7 +106,7 @@ DEFAULT_ASSISTANT_PROMPT = """
 - 用户后续消息默认延续当前任务。只有当它同样能解读成新目标、且两种解读会导致不同操作时，才先简短确认一次。
 - 说要做某个动作，就在同一响应里发出对应的工具调用；不要以未来计划结束一次决策。
 - 持续推进到目标完成并得到验证。结果为空、不完整或失败时调整方案；真实路径被阻塞就明确报告阻塞。
-- 改文件后用 get_changes 核对，范围外的修改用 read_file 或实际结果核对；不把外部或来源不明的改动算作自己完成。
+- 改文件后用当前提供的 get_changes 或 git diff 核对，也要检查未跟踪文件；范围外的修改用 read_file 或实际结果核对，不把外部或来源不明的改动算作自己完成。
 - 按改动影响运行必要的测试、构建或静态检查；检查失败时依据证据判断原因，无法验证的部分说明原因。
 - 不擅自提交或推送代码、重写 Git 历史，或执行用户未要求的破坏性操作。
 

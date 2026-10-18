@@ -37,13 +37,16 @@ def create_workspace_tool_specs(
     interrupts: CommandInterrupts | None = None,
     *,
     session_operations,
+    direct_workspace: bool = False,
 ) -> list[ToolSpec]:
     return [
         *create_file_read_specs(binding),
         *create_file_write_specs(binding),
         *create_file_manage_specs(binding),
-        *create_get_changes_specs(binding, session_operations),
-        create_command_execution_spec(binding, commands)
-        if interrupts is None
-        else create_command_execution_spec(binding, commands, interrupts.current),
+        *(create_get_changes_specs(binding, session_operations) if not direct_workspace else []),
+        create_command_execution_spec(
+            binding, commands,
+            interrupt_source=interrupts.current if interrupts is not None else lambda: None,
+            direct_workspace=direct_workspace,
+        ),
     ]

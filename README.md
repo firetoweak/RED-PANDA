@@ -7,7 +7,7 @@
 <p align="center">面向开发者的 coding agent。</p>
 
 > [!WARNING]
-> 项目正在从单会话 coding agent 转向多个长期在线 Agent 协作的 coding bot，**近期会频繁更新**。功能、界面和本地数据格式都可能发生不兼容的变化，不保留旧版兼容。方向见 [Coding Bot](docs/架构/未开始/CodingBot.md)。
+> 项目正在从单会话 coding agent 转向多个长期在线 Agent 协作的 coding bot，**近期会频繁更新**。功能、界面和本地数据格式都可能发生不兼容的变化，不保留旧版兼容。方向见 [Coding Bot](docs/架构/CodingBot/方向.md)。
 
 RED PANDA 连接你选择的模型，在代码工作区里理解项目、修改文件、执行命令并验证结果。行动过程可以查看，命令执行需要授权，文件修改可以审阅和回退。
 

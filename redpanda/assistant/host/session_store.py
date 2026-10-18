@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from redpanda.assistant.runner import SessionNotFoundError
+from redpanda.assistant.agents import project_agent
 from redpanda.assistant.workspaces import workspace_binding
 from redpanda.runtime import RuntimeStatus, SqliteJournal, replay
 from redpanda.runtime.events import (
@@ -238,6 +239,8 @@ class SessionStore:
         await self._materialize(source_journal, prefix, child_session_id, child_path)
 
     async def _materialize(self, source_journal, prefix, child_session_id, child_path):
+        if project_agent(prefix) is not None:
+            raise SessionForkUnavailableError("长期 Agent 第一版不支持回退或从历史创建新会话。")
         staging = self.root / f".creating-{uuid4().hex}"
         staging.mkdir()
         try:

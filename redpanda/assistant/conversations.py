@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
+from redpanda.assistant.agents import project_agent
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
@@ -234,6 +235,8 @@ class AssistantQueries:
     async def file_changes(self, session_id: str, *, path=None, offset=0):
         journal = SqliteJournal(self._store.require(session_id))
         events = await journal.snapshot(session_id)
+        if project_agent(events) is not None:
+            raise FileChangesUnavailable("当前 Agent 尚未提供 Git 变更查看。")
         workspace = bound_workspace(session_id, events, self._sessions.workspaces)
         parent = project_parent(events)
         if parent is not None:
