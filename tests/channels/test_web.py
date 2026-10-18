@@ -33,7 +33,6 @@ from redpanda.config import write_json
 from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
 from redpanda.assistant.sessions import SessionView
-from redpanda.assistant.workspace_versions import StepNotRewindable
 from redpanda.channels.web import app as web_app
 from redpanda.channels.web.app import create_web_app, report_worker_failures
 from redpanda.channels.web.channel import WebChannel
@@ -133,7 +132,7 @@ class _Sessions:
             AgentCreated(
                 name=name,
                 workspace_id=workspace_id,
-                worktree=r"C:\agents\one",
+                worktree=str((Path.cwd() / "agent-worktree").resolve()),
                 branch="redpanda/hidden/one",
             ),
         )
@@ -156,42 +155,6 @@ class _Sessions:
     async def retry(self, session_id):
         self.calls.append(("retry", session_id))
         return SessionView("runnable", (), (), True)
-
-    async def restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id, restore_files=True
-    ):
-        self.calls.append(
-            ("restart_from_step", owner, session_id, step_id, child_session_id, delivery_id, restore_files)
-        )
-        if step_id == "step-unrecorded":
-            raise StepNotRewindable(step_id)
-        self.queries.record(child_session_id, "重开前说过的话")
-        return SessionView("runnable", (), (), False, paused=True)
-
-    async def fork_and_accept_input(
-        self, owner, source_session_id, message_id, content, **kwargs
-    ):
-        self.calls.append(
-            (
-                "fork_and_accept_input",
-                owner,
-                source_session_id,
-                message_id,
-                content,
-                kwargs,
-            )
-        )
-        self.queries.record(kwargs["child_session_id"], content)
-        return SessionView("runnable", (), (), True)
-
-    async def branch_after_turn(
-        self, owner, source_session_id, message_id, child_session_id
-    ):
-        self.calls.append(
-            ("branch_after_turn", owner, source_session_id, message_id, child_session_id)
-        )
-        self.queries.record(child_session_id, "这一轮已经说完")
-        return SessionView("waiting", ("external_fact",), (), False)
 
     async def release(self, owner):
         self.calls.append(("release", owner))
@@ -542,98 +505,6 @@ class WebFirstSliceTest(unittest.TestCase):
                 )
             ],
         )
-
-    def test_restarting_from_a_step_answers_with_the_new_identity(self):
-        """从一步重开产生新身份，源会话留在原处；没有版本的一步直接拒绝。"""
-        done = self.client.post(
-            "/api/sessions/session-old/restarts",
-            json={
-                "connection_id": self.connection.connection_id,
-                "delivery_id": "web-1",
-                "step_id": "step-1",
-            },
-        )
-        self.assertEqual(done.status_code, 201)
-        child_session_id = done.json()["session_id"]
-        self.assertNotEqual(child_session_id, "session-old")
-        self.assertTrue(done.json()["session"]["paused"])
-
-        refused = self.client.post(
-            "/api/sessions/session-old/restarts",
-            json={
-                "connection_id": self.connection.connection_id,
-                "delivery_id": "web-2",
-                "step_id": "step-unrecorded",
-            },
-        )
-        self.assertEqual(refused.status_code, 409)
-        self.assertIn("没有成功的版本记录", refused.json()["detail"])
-        self.assertEqual(
-            [(call[0], call[3], call[4]) for call in self.sessions.calls],
-            [
-                ("restart_from_step", "step-1", child_session_id),
-                ("restart_from_step", "step-unrecorded", self.sessions.calls[1][4]),
-            ],
-        )
-
-    def test_editing_user_message_creates_and_selects_a_new_branch(self):
-        response = self.client.post(
-            "/api/sessions/session-old/forks",
-            json={
-                "connection_id": self.connection.connection_id,
-                "message_id": "user-1",
-                "delivery_id": "edit-1",
-                "text": "  修改后  ",
-                "artifact_refs": [],
-            },
-        )
-
-        self.assertEqual(response.status_code, 201)
-        child_session_id = response.json()["session_id"]
-        self.assertNotEqual(child_session_id, "session-old")
-        self.assertEqual(response.json()["items"][0]["text"], "修改后")
-        self.assertEqual(
-            self.sessions.calls,
-            [
-                (
-                    "fork_and_accept_input",
-                    self.connection.owner,
-                    "session-old",
-                    "user-1",
-                    "修改后",
-                    {
-                        "child_session_id": child_session_id,
-                        "delivery_id": "edit-1",
-                        "artifact_refs": (),
-                        "source": "web",
-                        "listed": False,
-                        "restore_files": False,
-                    },
-                )
-            ],
-        )
-
-    def test_edit_forwards_only_retained_attachment_refs(self):
-        uploaded = self.client.post(
-            "/api/sessions/session-old/attachments",
-            data={"connection_id": self.connection.connection_id},
-            files={"file": ("shot.png", _png_bytes(), "image/png")},
-        )
-        attachment_id = uploaded.json()["attachment_id"]
-        for refs in ([attachment_id], []):
-            with self.subTest(refs=refs):
-                response = self.client.post(
-                    "/api/sessions/session-old/forks",
-                    json={
-                        "connection_id": self.connection.connection_id,
-                        "message_id": "user-1",
-                        "delivery_id": "edited",
-                        "text": "修改后 [Image #1]" if refs else "修改后",
-                        "artifact_refs": refs,
-                    },
-                )
-                self.assertEqual(response.status_code, 201)
-                self.assertEqual(self.sessions.calls[-1][-1]["artifact_refs"], tuple(refs))
 
     def test_upload_and_send_image_forwards_session_refs(self):
         uploaded = self.client.post(

@@ -1,4 +1,4 @@
-"""A real configured model codes through Worker/VFS, then Web's time travel path."""
+"""A real configured model codes through Worker/VFS."""
 import asyncio
 import json
 import os
@@ -9,12 +9,12 @@ import time
 
 import pytest
 
-from redpanda.assistant.workspace_versions import WORKSPACE_RESCUE_FACT, project_workspace_versions
+from redpanda.assistant.workspace_versions import project_workspace_versions
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.config import load_app_config
 from redpanda.paths import RedPandaHome
 from redpanda.filesystem.file_view.client import native_executable
-from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, SqliteJournal, StepCommitted
+from redpanda.runtime import CommandOutcomeReceived, InvokeTool, SqliteJournal, StepCommitted
 
 pytestmark = [pytest.mark.live, pytest.mark.skipif(
     os.environ.get("REDPANDA_RUN_LIVE_TESTS") != "1" or not native_executable().is_file(),
@@ -90,19 +90,8 @@ def test_real_model_codes_and_time_travel_restores_only_assistant_changes(tmp_pa
                 executed = [e.payload.outcome.value for e in events if isinstance(e.payload, CommandOutcomeReceived) and calls[e.payload.command_id].name == "execute_command"]
                 assert executed and all(value["ok"] for value in executed), executed
                 assert all(f.version is not None for f in project_workspace_versions(events))
-                first_read = next(e.payload.step.step_id for e in events if isinstance(e.payload, StepCommitted) and any(c.effect.name == "read_file" for c in e.payload.step.commands))
-                (root / "user.txt").write_text("human-created")
-                started = time.monotonic()
-                await host.restart_from_step("test-browser", "coding", first_read, "branch", "travel", restore_files=True)
-                timings["travel_seconds"] = time.monotonic() - started
-                assert (root / "calc.py").read_text() == original
-                assert not (root / "ignored.txt").exists()
-                assert (root / "user.txt").read_text() == "human-created"
-                branch = await SqliteJournal(host.store.require("branch")).snapshot("branch")
-                assert any(isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == WORKSPACE_RESCUE_FACT and e.payload.data["error"] is None for e in branch)
-                assert host.is_paused("branch")
                 (tmp_path / "result.json").write_text(json.dumps({"model": selected_model, "timings": timings, "tools": progress}, indent=2))
-                print("real coding + time travel passed:", timings, flush=True)
+                print("real coding passed:", timings, flush=True)
             finally:
                 failure.cancel(); waiting.cancel()
                 await asyncio.gather(failure, waiting, return_exceptions=True)

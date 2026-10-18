@@ -5,10 +5,8 @@ import { fileChangesSchema, fileDiffSchema, type FileChanges, type FileDiff } fr
 
 import {
   bindOwner,
-  clearLiveOutput,
   controlNotice,
 } from "../realtime/runtimeSlice";
-import { truncateAfterUserMessage } from "./truncateAfterUserMessage";
 import {
   agentRosterEntrySchema,
   conversationViewSchema,
@@ -40,26 +38,6 @@ type SendInput = SelectSession & {
   deliveryId: string;
   text: string;
   artifactRefs: string[];
-};
-
-type EditAndFork = SelectSession & {
-  deliveryId: string;
-  text: string;
-  artifactRefs: string[];
-  messageId: string;
-  // 改写顶掉原身份，新分支自己成一条会话线。
-  listed: boolean;
-  restoreFiles: boolean;
-};
-
-type RestartFromStep = SelectSession & {
-  stepId: string;
-  deliveryId: string;
-  restoreFiles: boolean;
-};
-
-type BranchAfterTurn = SelectSession & {
-  messageId: string;
 };
 
 type UploadAttachment = SelectSession & {
@@ -334,57 +312,6 @@ export const redpandaApi = createApi({
         putConversation(dispatch, getState, arg.sessionId, data);
       },
     }),
-    editAndFork: build.mutation<ConversationView, EditAndFork>({
-      query: ({
-        connectionId,
-        sessionId,
-        messageId,
-        deliveryId,
-        text,
-        listed,
-        restoreFiles,
-        artifactRefs,
-      }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/forks`,
-        method: "POST",
-        body: {
-          connection_id: connectionId,
-          message_id: messageId,
-          delivery_id: deliveryId,
-          text,
-          listed,
-          restore_files: restoreFiles,
-          artifact_refs: artifactRefs,
-        },
-      }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
-        const patch = dispatch(
-          redpandaApi.util.updateQueryData(
-            "getConversation",
-            arg.sessionId,
-            (draft) => {
-              const truncated = truncateAfterUserMessage(
-                draft,
-                arg.messageId,
-                arg.text.trim(),
-                arg.artifactRefs,
-              );
-              draft.items = truncated.items;
-            },
-          ),
-        );
-        dispatch(clearLiveOutput(arg.sessionId));
-        try {
-          const { data } = await queryFulfilled;
-          dispatch(bindOwner(data.session_id));
-          putConversation(dispatch, getState, data.session_id, data);
-        } catch {
-          patch.undo();
-        }
-      },
-    }),
     uploadAttachment: build.mutation<AttachmentRef, UploadAttachment>({
       query: ({ connectionId, sessionId, file }) => {
         const body = new FormData();
@@ -496,42 +423,6 @@ export const redpandaApi = createApi({
         putConversation(dispatch, getState, arg.sessionId, data);
       },
     }),
-    restartFromStep: build.mutation<ConversationView, RestartFromStep>({
-      query: ({ connectionId, sessionId, stepId, deliveryId, restoreFiles }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/restarts`,
-        method: "POST",
-        body: {
-          connection_id: connectionId,
-          delivery_id: deliveryId,
-          step_id: stepId,
-          restore_files: restoreFiles,
-        },
-      }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
-      async onQueryStarted(_arg, { dispatch, getState, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        dispatch(bindOwner(data.session_id));
-        putConversation(dispatch, getState, data.session_id, data);
-      },
-    }),
-    branchAfterTurn: build.mutation<ConversationView, BranchAfterTurn>({
-      query: ({ connectionId, sessionId, messageId }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/branches`,
-        method: "POST",
-        body: {
-          connection_id: connectionId,
-          message_id: messageId,
-        },
-      }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
-      async onQueryStarted(_arg, { dispatch, getState, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        dispatch(bindOwner(data.session_id));
-        putConversation(dispatch, getState, data.session_id, data);
-      },
-    }),
   }),
 });
 
@@ -558,7 +449,6 @@ export const {
   useObserveSubagentQuery,
   useSelectSessionMutation,
   useSendInputMutation,
-  useEditAndForkMutation,
   useUploadAttachmentMutation,
   useCancelTurnMutation,
   useAuthorizeCommandMutation,
@@ -568,6 +458,4 @@ export const {
   useArchiveSessionMutation,
   useSetSessionTitleMutation,
   useRetryTurnMutation,
-  useRestartFromStepMutation,
-  useBranchAfterTurnMutation,
 } = redpandaApi;

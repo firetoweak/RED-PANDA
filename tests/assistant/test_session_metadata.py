@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 
 from redpanda.assistant.session_metadata import (
     SessionFlagStore,
-    SessionLineageStore,
     SessionTextStore,
 )
 
@@ -54,20 +53,3 @@ class SessionTextStoreTest(unittest.TestCase):
                 "我起的名",
             )
             self.assertEqual(store.items(), {"session-1": "我起的名"})
-
-
-class SessionLineageStoreTest(unittest.TestCase):
-    def test_only_the_head_of_a_line_is_not_superseded(self):
-        """连续改写只留下最后一个身份代表这条线，中间的都被顶掉了。"""
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            store = SessionLineageStore(root, "lineage.json")
-
-            store.supersede("child", "parent")
-            store.supersede("grandchild", "child")
-
-            reloaded = SessionLineageStore(root, "lineage.json")
-            self.assertTrue(reloaded.is_superseded("parent"))
-            self.assertTrue(reloaded.is_superseded("child"))
-            self.assertFalse(reloaded.is_superseded("grandchild"))
-            self.assertFalse(reloaded.is_superseded("unrelated"))

@@ -9,14 +9,13 @@ import sys
 import pytest
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.workspace_versions import project_workspace_versions, workspace_version_event, WORKSPACE_RESCUE_FACT
-from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.workspace_versions import project_workspace_versions
 from redpanda.filesystem import workspace_files
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.filesystem.file_view.client import native_executable
-from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, InvokeTool, MemoryJournal, SqliteJournal, StepCommitted
+from redpanda.runtime import CommandOutcomeReceived, InvokeTool, MemoryJournal, StepCommitted
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
@@ -133,53 +132,4 @@ def test_native_coding_and_model_restore_are_one_history(tmp_path):
             assert all(f.version is not None for f in project_workspace_versions(await assembly.runtime.snapshot("coding")))
         finally:
             await assembly.scheduler.close()
-    asyncio.run(scenario())
-
-
-def test_time_travel_then_coding_uses_settled_branch_files(tmp_path):
-    async def scenario():
-        root = tmp_path / "project"
-        root.mkdir()
-        (root / "value").write_text("A")
-        workspace = workspace_record(root)
-        home = RedPandaHome(tmp_path / "home")
-        store = SessionStore(home.sessions_root)
-        await store.create("source", workspace_id=workspace.workspace_id)
-        async def build(identity):
-            model = CodingModel()
-            assembly = await build_assistant_assembly(AssistantConfig("test", 200000, model),
-                lambda *args: None, SqliteJournal(store.require(identity)), session_id=identity,
-                workspace=workspace, home=home, scheduler_factory=SettlingScheduler)
-            await assembly.sessions.apply_auto_authorize(identity, enabled=True)
-            return assembly, model
-        async def run(assembly, model, identity, name, arguments):
-            model.actions.extend(((name, arguments), None))
-            await assembly.runtime.receive_user_message(identity, "continue", delivery_id=str(len(await assembly.runtime.snapshot(identity))))
-            await assembly.scheduler.wake(identity)
-            await assembly.scheduler.join()
-            return await assembly.runtime.snapshot(identity)
-        source, model = await build("source")
-        try:
-            first = await run(source, model, "source", "apply_patch", {"path": "value", "old_block": "A", "new_block": "X"})
-            first_step = next(e.payload.step.step_id for e in first if isinstance(e.payload, StepCommitted) and any(c.effect.name == "apply_patch" for c in e.payload.step.commands))
-            await run(source, model, "source", "apply_patch", {"path": "value", "old_block": "X", "new_block": "Y"})
-            (root / "value").write_text("H")
-            marker = workspace_version_event(first, first_step)
-            await store.fork_after_event("source", marker.event_id, "branch")
-        finally:
-            await source.scheduler.close()
-        branch, model = await build("branch")
-        try:
-            before = await branch.runtime.snapshot("branch")
-            await branch.sessions.settle_forked_workspace("branch", restore=True, delivery_id="travel")
-            settled = await branch.runtime.snapshot("branch")
-            assert (root / "value").read_text() == "H"
-            assert all(isinstance(e.payload, DomainFactCommitted) for e in settled[len(before):])
-            assert any(e.payload.fact_type == WORKSPACE_RESCUE_FACT for e in settled[len(before):])
-            events = await run(branch, model, "branch", "apply_patch", {"path": "value", "old_block": "H", "new_block": "Z"})
-            patched = next(c.command_id for e in reversed(events) if isinstance(e.payload, StepCommitted) for c in e.payload.step.commands if c.effect.name == "apply_patch")
-            await run(branch, model, "branch", "restore_workspace", {"tool_call_id": patched, "policy": "original"})
-            assert (root / "value").read_text() == "H"
-        finally:
-            await branch.scheduler.close()
     asyncio.run(scenario())

@@ -6,7 +6,6 @@ import {
   Center,
   Group,
   Loader,
-  Modal,
   Stack,
   Text,
   ThemeIcon,
@@ -16,25 +15,21 @@ import {
   IconArrowDown,
   IconCheck,
   IconCopy,
-  IconArrowFork,
   IconSparkles,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import {
   useAuthorizeCommandMutation,
-  useBranchAfterTurnMutation,
   useCancelTurnMutation,
-  useEditAndForkMutation,
   useGetConversationQuery,
   useResolveControlMutation,
   useSelectSessionMutation,
   useSendInputMutation,
   useSetAutoAuthorizeMutation,
   useRetryTurnMutation,
-  useRestartFromStepMutation,
 } from "../../api/redpandaApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { redPandaMark } from "../../app/brand";
@@ -58,13 +53,11 @@ import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
-import { WorkspaceFileResultAlert } from "./WorkspaceFileResultAlert";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
   turnElapsedMs,
-  turnCanStartSession,
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
@@ -80,7 +73,6 @@ type OpenPage = { kind: "changes" } | { kind: "subagent"; commandId: string }
 
 export function Conversation() {
   const dispatch = useAppDispatch();
-  const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams();
   const routeId = routeSessionId ?? "";
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
@@ -97,15 +89,11 @@ export function Conversation() {
   const [following, setFollowing] = useState(true);
   const [selectSession] = useSelectSessionMutation();
   const [sendInput, sending] = useSendInputMutation();
-  const [editAndFork, editing] = useEditAndForkMutation();
-  const [branchAfterTurn, branching] = useBranchAfterTurnMutation();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
   const [resolveControl, resolvingControl] = useResolveControlMutation();
   const [setAutoAuthorize, autoAuthorizing] = useSetAutoAuthorizeMutation();
   const [cancelTurn, stopping] = useCancelTurnMutation();
   const [retryTurn, retrying] = useRetryTurnMutation();
-  const [restartFromStep, restarting] = useRestartFromStepMutation();
-  const [rewindStepId, setRewindStepId] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(viewing(sessionId === "" ? null : sessionId));
@@ -209,62 +197,6 @@ export function Conversation() {
     dispatch(lockDraft(sessionId));
   }
 
-  async function edit(
-    messageId: string,
-    text: string,
-    restoreFiles: boolean,
-    artifactRefs: string[],
-  ) {
-    if (connectionId === null) {
-      throw new Error("Web connection is not active");
-    }
-    const view = await editAndFork({
-      connectionId,
-      sessionId,
-      messageId,
-      deliveryId: `web-${createClientId()}`,
-      text,
-      listed: false,
-      restoreFiles,
-      artifactRefs,
-    }).unwrap();
-    navigate(`/sessions/${encodeURIComponent(view.session_id)}`, {
-      replace: true,
-    });
-  }
-
-  async function branch(messageId: string) {
-    if (connectionId === null) {
-      return;
-    }
-    try {
-      const view = await branchAfterTurn({
-        connectionId,
-        sessionId,
-        messageId,
-      }).unwrap();
-      navigate(`/sessions/${encodeURIComponent(view.session_id)}`);
-    } catch {
-      // 错误画在输入框上方，不把 Promise 拒绝甩到控制台。
-    }
-  }
-
-  async function restart(stepId: string, restoreFiles: boolean) {
-    if (connectionId === null) {
-      return;
-    }
-    setRewindStepId(null);
-    const view = await restartFromStep({
-      connectionId,
-      sessionId,
-      stepId,
-      deliveryId: `web-${createClientId()}`,
-      restoreFiles,
-    }).unwrap();
-    // 原地改写：新身份顶掉旧的，后退不该停在一个已经不代表这条线的 URL 上。
-    navigate(`/sessions/${encodeURIComponent(view.session_id)}`, { replace: true });
-  }
-
   async function authorize(commandId: string, approved: boolean) {
     if (connectionId === null) {
       return;
@@ -320,14 +252,8 @@ export function Conversation() {
                 {turn.user === null ? null : (
                   <Box component="article" className="message message-user">
                     <EditableUserMessage
-                      disabled={connectionId === null}
                       images={turn.user.images}
                       files={turn.user.files}
-                      hasLaterWork={turn.key !== lastTurnKey || turn.process.length > 0}
-                      onSave={(text, restoreFiles, artifactRefs) =>
-                        edit(turn.user!.key, text, restoreFiles, artifactRefs)
-                      }
-                      saving={editing.isLoading}
                       sessionId={sessionId}
                       text={turn.user.text}
                       occurredAt={turn.user.occurredAt}
@@ -344,8 +270,6 @@ export function Conversation() {
                     authorizationDisabled={connectionId === null}
                     complete={settled}
                     onAuthorize={authorize}
-                    onRestart={setRewindStepId}
-                    restartDisabled={connectionId === null || restarting.isLoading}
                     steps={turn.process}
                     onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
                   />
@@ -377,10 +301,6 @@ export function Conversation() {
                         />
                         {settled ? (
                           <TurnEndActions
-                            branchBusy={branching.isLoading}
-                            branchDisabled={connectionId === null}
-                            canBranch={turnCanStartSession(turn, settled)}
-                            onBranch={() => void branch(turn.user!.key)}
                             occurredAt={turn.final?.occurredAt ?? null}
                             replyText={reply.text}
                           />
@@ -415,18 +335,6 @@ export function Conversation() {
                     )
                   ))
                   : null}
-                {settled &&
-                reply === null &&
-                turnCanStartSession(turn, settled) ? (
-                  <TurnEndActions
-                    branchBusy={branching.isLoading}
-                    branchDisabled={connectionId === null}
-                    canBranch
-                    onBranch={() => void branch(turn.user!.key)}
-                    occurredAt={null}
-                    replyText={null}
-                  />
-                ) : null}
                 {completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />}
               </Stack>
               );
@@ -467,7 +375,6 @@ export function Conversation() {
           )}
         </Box>
         <Stack className="composer-column" gap={8}>
-        <WorkspaceFileResultAlert result={conversation.workspace_file_result} />
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
@@ -502,19 +409,9 @@ export function Conversation() {
             </Button>
           </ErrorNotice>
         )}
-        {sending.isError || editing.isError || retrying.isError || branching.isError || stopping.isError ? (
+        {sending.isError || retrying.isError || stopping.isError ? (
           <ErrorNotice title="操作失败" onOpen={(message) => setOpenPage({ kind: "error", title: "操作失败", message })} message={stopping.isError
               ? requestErrorMessage(stopping.error, "停止失败，请确认后端连接后重试。")
-              : branching.isError
-              ? requestErrorMessage(
-                  branching.error,
-                  "未能从这一轮建立新会话。",
-                )
-              : editing.isError
-              ? requestErrorMessage(
-                  editing.error,
-                  "消息编辑失败，未能改写这条消息。",
-                )
               : retrying.isError
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
                 : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")} />
@@ -555,40 +452,6 @@ export function Conversation() {
         />
         </Stack>
       </Box>
-      <Modal
-        centered
-        closeOnClickOutside={!restarting.isLoading}
-        closeOnEscape={!restarting.isLoading}
-        onClose={() => {
-          if (!restarting.isLoading) setRewindStepId(null);
-        }}
-        opened={rewindStepId !== null}
-        title="从这一步之后重开"
-      >
-        <Stack gap="md">
-          <Text size="sm">
-            对话会截到这一步，并从这里换一条走法。文件可以一起回滚，也可以保持现状。
-          </Text>
-          <Text size="sm" c="dimmed">
-            文件回滚仅恢复工作区内已记录的受管修改。宿主命令、持续进程及工作区外操作产生的副作用不会撤销。
-          </Text>
-          <Group justify="flex-end" gap="xs">
-            <Button
-              disabled={restarting.isLoading}
-              onClick={() => void restart(rewindStepId!, false)}
-              variant="default"
-            >
-              只回滚会话
-            </Button>
-            <Button
-              disabled={restarting.isLoading}
-              onClick={() => void restart(rewindStepId!, true)}
-            >
-              会话和文件一起回滚
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </Box>
     {openPage === null ? null : (
       <ContentPage title={openPage.kind === "changes" ? "文件改动"
@@ -623,17 +486,9 @@ function RunningHint({ label }: { label: string }) {
 function TurnEndActions({
   replyText,
   occurredAt,
-  canBranch,
-  branchBusy,
-  branchDisabled,
-  onBranch,
 }: {
   replyText: string | null;
   occurredAt: string | null;
-  canBranch: boolean;
-  branchBusy: boolean;
-  branchDisabled: boolean;
-  onBranch: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const time = occurredAt === null ? null : formatMessageTime(occurredAt);
@@ -655,19 +510,6 @@ function TurnEndActions({
           {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         </ActionIcon>
       )}
-      {canBranch ? (
-        <ActionIcon
-          aria-label="从这一轮之后建立新会话"
-          disabled={branchDisabled}
-          loading={branchBusy}
-          onClick={onBranch}
-          radius="xl"
-          size="sm"
-          variant="subtle"
-        >
-          <IconArrowFork size={14} style={{ transform: "rotate(180deg)" }} />
-        </ActionIcon>
-      ) : null}
       {time === null ? null : (
         <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} ml={4} title={`回复提交于 ${time.full}`}>
           {time.short}

@@ -20,10 +20,6 @@ from redpanda.assistant.attachments import (
     MAX_SOURCE_BYTES,
     is_valid_attachment_id,
 )
-from redpanda.assistant.host.session_store import (
-    ForkMessageNotFoundError,
-    SessionForkUnavailableError,
-)
 from redpanda.assistant.file_attachments import is_file_attachment_id
 from redpanda.assistant.conversations import FileChangesConflict, FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
@@ -33,7 +29,6 @@ from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.assistant.workspace_versions import StepNotRewindable
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.channels.web.channel import WebChannel, WebConnectionInactive, WebInputInvalid
 from redpanda.channels.web.directory_picker import (
@@ -112,26 +107,6 @@ class InputRequest(BaseModel):
             if not is_valid_attachment_id(item):
                 raise ValueError("artifact_refs 必须是有效的附件 id")
         return value
-
-
-class EditRequest(InputRequest):
-    artifact_refs: list[str]
-    message_id: str = Field(min_length=1)
-    listed: bool = False
-    restore_files: bool = False
-
-
-class RestartRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    connection_id: str = Field(min_length=1)
-    delivery_id: str = Field(min_length=1)
-    step_id: str = Field(min_length=1)
-    restore_files: bool = True
-
-
-class BranchRequest(ConnectionRequest):
-    message_id: str = Field(min_length=1)
 
 
 class AuthorizationRequest(BaseModel):
@@ -275,25 +250,6 @@ def create_web_app(
     @app.exception_handler(SessionNotFoundError)
     async def session_not_found(_request: Request, error: SessionNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(error)})
-
-    @app.exception_handler(ForkMessageNotFoundError)
-    async def fork_message_not_found(
-        _request: Request, error: ForkMessageNotFoundError
-    ):
-        return JSONResponse(status_code=404, content={"detail": str(error)})
-
-    @app.exception_handler(SessionForkUnavailableError)
-    async def fork_unavailable(
-        _request: Request, error: SessionForkUnavailableError
-    ):
-        return JSONResponse(status_code=409, content={"detail": str(error)})
-
-    @app.exception_handler(StepNotRewindable)
-    async def step_not_rewindable(_request: Request, error: StepNotRewindable):
-        return JSONResponse(
-            status_code=409,
-            content={"detail": f"这一步没有成功的版本记录，无法从它之后重开：{error}"},
-        )
 
     @app.exception_handler(AttachmentRejected)
     async def attachment_rejected(_request: Request, error: AttachmentRejected):
@@ -562,49 +518,6 @@ def create_web_app(
             session_id,
             body.request_id,
             body.approved,
-        )
-
-    @app.post("/api/sessions/{session_id}/forks", status_code=201)
-    async def edit_and_fork(
-        session_id: str,
-        body: EditRequest,
-        request: Request,
-    ):
-        return await _channel(request).edit_and_fork(
-            body.connection_id,
-            session_id,
-            body.message_id,
-            body.text,
-            body.delivery_id,
-            tuple(body.artifact_refs),
-            body.listed,
-            body.restore_files,
-        )
-
-    @app.post("/api/sessions/{session_id}/branches", status_code=201)
-    async def branch_after_turn(
-        session_id: str,
-        body: BranchRequest,
-        request: Request,
-    ):
-        return await _channel(request).branch_after_turn(
-            body.connection_id,
-            session_id,
-            body.message_id,
-        )
-
-    @app.post("/api/sessions/{session_id}/restarts", status_code=201)
-    async def restart_from_step(
-        session_id: str,
-        body: RestartRequest,
-        request: Request,
-    ):
-        return await _channel(request).restart_from_step(
-            body.connection_id,
-            session_id,
-            body.step_id,
-            body.delivery_id,
-            body.restore_files,
         )
 
     @app.post("/api/sessions/{session_id}/cancel")
