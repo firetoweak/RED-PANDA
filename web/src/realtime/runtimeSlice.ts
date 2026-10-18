@@ -35,7 +35,6 @@ type RuntimeState = {
   connectionId: string | null;
   viewingSessionId: string | null;
   ownerSessionId: string | null;
-  draftSessions: Record<string, string>;
   sessions: Record<string, SessionRuntime>;
 };
 
@@ -43,7 +42,6 @@ const initialState: RuntimeState = {
   connectionId: null,
   viewingSessionId: null,
   ownerSessionId: null,
-  draftSessions: {},
   sessions: {},
 };
 
@@ -90,25 +88,6 @@ const runtimeSlice = createSlice({
       state.viewingSessionId = action.payload;
       if (action.payload !== null) {
         runtimeOf(state, action.payload).unread = 0;
-      }
-    },
-    hydrateDrafts(
-      state,
-      action: PayloadAction<Record<string, string>>,
-    ) {
-      state.draftSessions = action.payload;
-    },
-    setDraftSession(
-      state,
-      action: PayloadAction<{ workspaceId: string; sessionId: string }>,
-    ) {
-      state.draftSessions[action.payload.workspaceId] = action.payload.sessionId;
-    },
-    lockDraft(state, action: PayloadAction<string>) {
-      for (const [workspaceId, sessionId] of Object.entries(state.draftSessions)) {
-        if (sessionId === action.payload) {
-          delete state.draftSessions[workspaceId];
-        }
       }
     },
     bindOwner(state, action: PayloadAction<string>) {
@@ -279,9 +258,6 @@ export const {
   connected,
   disconnected,
   viewing,
-  hydrateDrafts,
-  setDraftSession,
-  lockDraft,
   bindOwner,
   clearLiveOutput,
   controlNotice,

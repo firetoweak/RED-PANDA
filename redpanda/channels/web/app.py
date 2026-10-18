@@ -23,6 +23,8 @@ from redpanda.assistant.attachments import (
 from redpanda.assistant.file_attachments import is_file_attachment_id
 from redpanda.assistant.conversations import FileChangesConflict, FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
+from redpanda.assistant.host.agent_roster import AgentNameTaken
+from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
@@ -76,6 +78,18 @@ class ModelTestRequest(ConnectionRequest):
 
 class CreateSessionRequest(ConnectionRequest):
     workspace_id: str
+
+
+class CreateAgentRequest(ConnectionRequest):
+    workspace_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def stable_name(cls, value: str) -> str:
+        if value != value.strip():
+            raise ValueError("Agent 名字不能以空白开头或结尾")
+        return value
 
 
 class InputRequest(BaseModel):
@@ -245,6 +259,14 @@ def create_web_app(
     async def workspace_not_found(_request: Request, error: WorkspaceNotFound):
         return JSONResponse(status_code=404, content={"detail": str(error)})
 
+    @app.exception_handler(AgentNameTaken)
+    async def agent_name_taken(_request: Request, error: AgentNameTaken):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @app.exception_handler(AgentProjectRequired)
+    async def agent_project_required(_request: Request, error: AgentProjectRequired):
+        return JSONResponse(status_code=422, content={"detail": str(error)})
+
     @app.exception_handler(WorkspacePathTaken)
     async def workspace_path_taken(_request: Request, error: WorkspacePathTaken):
         return JSONResponse(status_code=409, content={"detail": str(error)})
@@ -310,6 +332,20 @@ def create_web_app(
     @app.put("/api/sessions/{session_id}/model")
     async def set_session_model(session_id: str, body: SessionModelRequest, request: Request):
         return _channel(request).set_model(body.connection_id, session_id, body.model)
+
+    @app.get("/api/agents")
+    async def agents(request: Request):
+        return await _channel(request).list_agents()
+
+    @app.post("/api/agents", status_code=201)
+    async def create_agent(body: CreateAgentRequest, request: Request):
+        return await _channel(request).create_agent(
+            body.connection_id, body.workspace_id, body.name,
+        )
+
+    @app.get("/api/inbox")
+    async def inbox(request: Request):
+        return await _channel(request).list_inbox()
 
     @app.get("/api/sessions")
     async def sessions(request: Request):
