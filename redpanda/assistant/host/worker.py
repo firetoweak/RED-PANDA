@@ -214,13 +214,20 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                     active_requests == 0
                     and advertised != revision
                 ):
+                    observed_revision = revision
                     view = await assembly.sessions.view(session_id)
-                    advertised = revision
+                    # Reading the view yields: a new request or decision may
+                    # have started since the idle check above.
+                    if (revision != observed_revision or active_requests != 0
+                            or not assembly.scheduler.idle):
+                        assembly.scheduler.changed.set()
+                        continue
+                    advertised = observed_revision
                     advertised_busy = False
                     await peer.send(
                         (
                             "idle",
-                            revision,
+                            observed_revision,
                             view.has_active_subagents,
                         )
                     )
