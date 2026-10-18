@@ -1,5 +1,6 @@
 import unittest
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,6 +21,7 @@ from redpanda.runtime import (
     SqliteJournal,
     StateProjector,
     StepCommitted,
+    UserMessageReceived,
 )
 from redpanda.runtime.json_values import thaw_value
 from redpanda.runtime.codec import EVENT_SCHEMA_VERSION
@@ -31,7 +33,7 @@ from tests.session_scheduler import settle_session
 def event(sequence, names=("read",), notice=None):
     effects = tuple(InvokeTool(name, (("path", "a"),)) for name in names)
     step = Step(
-        f"step-{sequence}", "trigger", 1, "basis", max(1, sequence - 1),
+        f"step-{sequence}", f"trigger-{sequence}", 1, "basis", max(1, sequence - 1),
         ModelDecision(content="working", command_requests=effects),
         tuple(Command(f"cmd-{sequence}-{i}", effect) for i, effect in enumerate(effects)),
     )
@@ -87,11 +89,13 @@ class LoopGuardTest(unittest.TestCase):
         self.assertIsNone(LoopGuard().inspect((event(2, ("a", "b", "a", "b", "a", "b")),), 2))
 
     def test_multiple_hits_merge_and_old_text_is_replayed_verbatim(self):
-        events = (event(2, ("read", "read", "read")),)
+        trigger = replace(event(1), event_id="trigger-2", payload=UserMessageReceived("go"))
+        events = (trigger, event(2, ("read", "read", "read")))
         notice = LoopGuard((ConsecutiveActions(2), ConsecutiveActions(3))).inspect(events, 2)
         self.assertEqual(len(notice["evidence"]), 2)
         notice["text"] = "<loop_guard_notice>historical wording</loop_guard_notice>"
-        events += (event(3, names=(), notice=notice),)
+        trigger = replace(event(3), event_id="trigger-4", payload=UserMessageReceived("continue"))
+        events += (trigger, event(4, names=(), notice=notice))
         messages = project_chat_messages(
             events, StateProjector().project_visible("s", events), "sys"
         )

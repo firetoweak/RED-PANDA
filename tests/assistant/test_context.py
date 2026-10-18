@@ -68,6 +68,80 @@ def _result(data):
 class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     SESSION = "ctx-session"
 
+    async def test_message_during_thinking_follows_the_previous_reply(self):
+        for with_tool in (False, True):
+            with self.subTest(with_tool=with_tool):
+                thinking = asyncio.Event()
+                release = asyncio.Event()
+
+                async def first(_frame, thinking=thinking, release=release, with_tool=with_tool):
+                    thinking.set()
+                    await release.wait()
+                    return ModelDecision(
+                        content="old reply",
+                        command_requests=(InvokeTool("work"),) if with_tool else (),
+                    )
+
+                async def work(_context, _arguments):
+                    return _result("done")
+
+                model = ScriptedDecisionMaker((first, lambda _: ModelDecision(content="ack")))
+                runtime = AgentRuntime(
+                    MemoryJournal(), model, {"work": ToolBinding(work)}, SequentialIds()
+                )
+                await runtime.receive_user_message(self.SESSION, "one", delivery_id="one")
+                advancing = asyncio.create_task(runtime.advance(self.SESSION))
+                await asyncio.wait_for(thinking.wait(), timeout=1)
+                later = await runtime.receive_user_message(self.SESSION, "two", delivery_id="two")
+                await runtime.receive_user_message(self.SESSION, "three", delivery_id="three")
+                release.set()
+                await advancing
+                while runtime.dispatcher.active_count:
+                    await asyncio.sleep(0)
+                await runtime.advance(self.SESSION)
+                events = await runtime.snapshot(self.SESSION)
+
+                # 实际决策视图与 Compact 使用的全量归约都应保留相同的对话顺序。
+                for state in (
+                    model.frames[1].state,
+                    StateProjector().project_visible(self.SESSION, events),
+                ):
+                    prepared = self._projector().prepare(events, state, self.SESSION)
+                    shown = [m for m in prepared.messages if m["role"] != "system"]
+                    expected = [("user", "one"), ("assistant", "old reply")]
+                    if with_tool:
+                        expected.append(("tool", None))
+                    expected.append(("user", "two"))
+                    self.assertEqual([
+                        (m["role"], None if m["role"] == "tool" else m["content"])
+                        for m in shown[:len(expected)]
+                    ], expected)
+                    self.assertEqual([
+                        seq for seq, message in zip(prepared.source_sequences, prepared.messages)
+                        if message["content"] == "two"
+                    ], [later.sequence])
+                self.assertNotIn("three", str(project_chat_messages(events, model.frames[1].state)))
+
+    async def test_queued_messages_keep_each_reply_with_its_trigger(self):
+        model = ScriptedDecisionMaker((
+            lambda _: ModelDecision(content="first reply"),
+            lambda _: ModelDecision(content="second reply"),
+        ))
+        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
+        await runtime.receive_user_message(self.SESSION, "one", delivery_id="one")
+        await runtime.receive_user_message(self.SESSION, "two", delivery_id="two")
+        await runtime.advance(self.SESSION)
+        await runtime.advance(self.SESSION)
+        events = await runtime.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
+        )
+        self.assertEqual([
+            (message["role"], message["content"])
+            for message in prepared.messages if message["role"] != "system"
+        ], [("user", "one"), ("assistant", "first reply"),
+            ("user", "two"), ("assistant", "second reply")])
+
     async def test_error_or_unknown_result_is_not_age_dehydrated(self):
         for ok in (False, None):
             with self.subTest(ok=ok):
