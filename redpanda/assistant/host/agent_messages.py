@@ -28,7 +28,7 @@ class AgentMessages:
         if sender is None:
             raise ValueError("colleague query requires a Coding Bot identity")
         return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [
-            {"name": entry.agent.name, "direction": entry.direction}
+            {"name": entry.agent.name, "direction": entry.direction, "worktree": str(entry.agent.worktree)}
             for entry in await self.host.agents.list(sender.workspace_id)
             if entry.agent.session_id != session_id]}}
 
