@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
 from typing import Mapping
 
+from redpanda.file_lock import exclusive
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.models import (
     McpServerRecord,
@@ -20,7 +20,8 @@ class McpRegistry:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
         self._path = self._root / "servers.json"
-        self._lock = asyncio.Lock()
+        # 数据根由所有 Agent 进程共享；读写都在这把锁内，写回基于锁内读到的最新内容。
+        self._lock_path = self._path.with_suffix(".lock")
 
     @classmethod
     def from_home(cls, home: RedPandaHome) -> "McpRegistry":
@@ -35,22 +36,23 @@ class McpRegistry:
         return self._path
 
     async def list_servers(self) -> tuple[McpServerRecord, ...]:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._read_unlocked()
 
     def snapshot(self) -> tuple[McpServerRecord, ...]:
         """同步读取一次文件快照，供 Toolset 目录投影。"""
-        return self._read_unlocked()
+        with exclusive(self._lock_path):
+            return self._read_unlocked()
 
     async def get(self, server_id: str) -> McpServerRecord | None:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._index_unlocked().get(server_id)
 
     async def replace_all(
         self,
         records: Mapping[str, McpServerRecord],
     ) -> tuple[McpServerRecord, ...]:
-        async with self._lock:
+        with exclusive(self._lock_path):
             ordered = tuple(
                 sorted(records.values(), key=lambda item: item.id)
             )
@@ -58,7 +60,7 @@ class McpRegistry:
             return ordered
 
     async def upsert(self, record: McpServerRecord) -> McpServerRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(record.id)
             if existing is None:
@@ -87,7 +89,7 @@ class McpRegistry:
         server_id: str,
         enabled: bool,
     ) -> McpServerRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(server_id)
             if existing is None:
@@ -123,7 +125,7 @@ class McpRegistry:
         error_summary: str = "",
     ) -> McpServerRecord:
         """持久化最近一次测试结果，不改变配置 revision。"""
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(server_id)
             if existing is None:
@@ -150,7 +152,7 @@ class McpRegistry:
             return updated
 
     async def remove(self, server_id: str) -> McpServerRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.pop(server_id, None)
             if existing is None:

@@ -8,11 +8,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
+from redpanda.file_lock import try_lock, unlock
 from redpanda.paths import RedPandaHome
-
-
-# Windows 字节锁会挡住别人读被锁的区间；锁在占用说明之外的远端字节上。
-_LOCK_OFFSET = 1 << 30
 
 
 class DataRootInUse(RuntimeError):
@@ -27,7 +24,7 @@ def hold_data_root(home: RedPandaHome) -> Iterator[None]:
     path = home.root / "host.lock"
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        if not _try_lock(fd):
+        if not try_lock(fd):
             owner = path.read_text(encoding="utf-8").strip() or "（占用者正在启动）"
             raise DataRootInUse(f"数据根 {home.root} 已被另一个 RED PANDA 占用：\n{owner}")
         os.ftruncate(fd, 0)
@@ -36,7 +33,7 @@ def hold_data_root(home: RedPandaHome) -> Iterator[None]:
         try:
             yield
         finally:
-            _unlock(fd)
+            unlock(fd)
     finally:
         os.close(fd)
 
@@ -45,32 +42,3 @@ def _owner() -> str:
     started = datetime.now().astimezone().isoformat(timespec="seconds")
     command = " ".join(sys.orig_argv)
     return f"进程：{os.getpid()}\n启动时间：{started}\n命令：{command}\n"
-
-
-if os.name == "nt":
-    import msvcrt
-
-    def _try_lock(fd: int) -> bool:
-        os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-        except PermissionError:
-            return False
-        return True
-
-    def _unlock(fd: int) -> None:
-        os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
-        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-
-else:
-    import fcntl
-
-    def _try_lock(fd: int) -> bool:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
-        return True
-
-    def _unlock(fd: int) -> None:
-        fcntl.flock(fd, fcntl.LOCK_UN)

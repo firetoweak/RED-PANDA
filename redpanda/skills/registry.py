@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
 
+from redpanda.file_lock import exclusive
 from redpanda.skills.models import SkillRecord, utc_now
 
 
@@ -14,7 +14,8 @@ class SkillRegistry:
     def __init__(self, skills_root: Path) -> None:
         self._root = skills_root.resolve()
         self._path = self._root / "registry.json"
-        self._lock = asyncio.Lock()
+        # 数据根由所有 Agent 进程共享；读写都在这把锁内，写回基于锁内读到的最新内容。
+        self._lock_path = self._path.with_suffix(".lock")
 
     @property
     def root(self) -> Path:
@@ -26,18 +27,19 @@ class SkillRegistry:
 
     def snapshot(self) -> tuple[SkillRecord, ...]:
         """读取一次原子文件快照，供 Decision Context 投影 Catalog。"""
-        return self._read_unlocked()
+        with exclusive(self._lock_path):
+            return self._read_unlocked()
 
     async def list_skills(self) -> tuple[SkillRecord, ...]:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._read_unlocked()
 
     async def get(self, skill_id: str) -> SkillRecord | None:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._index_unlocked().get(skill_id)
 
     async def add(self, record: SkillRecord) -> SkillRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             if record.name in index:
                 raise ValueError(f"Skill 已安装: {record.name}")
@@ -48,7 +50,7 @@ class SkillRegistry:
             return record
 
     async def set_enabled(self, skill_id: str, enabled: bool) -> SkillRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(skill_id)
             if existing is None:
@@ -73,7 +75,7 @@ class SkillRegistry:
             return updated
 
     async def replace(self, record: SkillRecord) -> SkillRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(record.name)
             if existing is None:
@@ -96,7 +98,7 @@ class SkillRegistry:
             return stored
 
     async def remove(self, skill_id: str) -> SkillRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.pop(skill_id, None)
             if existing is None:

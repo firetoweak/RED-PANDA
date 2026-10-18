@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
 
+from redpanda.file_lock import exclusive
 from redpanda.cli.models import CliRecord, utc_now
 
 
@@ -14,7 +14,8 @@ class CliRegistry:
     def __init__(self, clis_root: Path) -> None:
         self._root = clis_root.resolve()
         self._path = self._root / "registry.json"
-        self._lock = asyncio.Lock()
+        # 数据根由所有 Agent 进程共享；读写都在这把锁内，写回基于锁内读到的最新内容。
+        self._lock_path = self._path.with_suffix(".lock")
 
     @property
     def root(self) -> Path:
@@ -26,18 +27,19 @@ class CliRegistry:
 
     def snapshot(self) -> tuple[CliRecord, ...]:
         """读取一次原子文件快照，供 Decision Context 投影目录。"""
-        return self._read_unlocked()
+        with exclusive(self._lock_path):
+            return self._read_unlocked()
 
     async def list_clis(self) -> tuple[CliRecord, ...]:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._read_unlocked()
 
     async def get(self, cli_id: str) -> CliRecord | None:
-        async with self._lock:
+        with exclusive(self._lock_path):
             return self._index_unlocked().get(cli_id)
 
     async def add(self, record: CliRecord) -> CliRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             if record.name in index:
                 raise ValueError(f"CLI 已登记: {record.name}")
@@ -48,7 +50,7 @@ class CliRegistry:
             return record
 
     async def replace(self, record: CliRecord) -> CliRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.get(record.name)
             if existing is None:
@@ -71,7 +73,7 @@ class CliRegistry:
             return stored
 
     async def remove(self, cli_id: str) -> CliRecord:
-        async with self._lock:
+        with exclusive(self._lock_path):
             index = self._index_unlocked()
             existing = index.pop(cli_id, None)
             if existing is None:
