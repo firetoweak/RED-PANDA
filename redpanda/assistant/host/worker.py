@@ -61,28 +61,27 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     advertised_busy = False
 
     async def handle(operation, target, arguments):
-        nonlocal revision, active_requests
+        nonlocal revision, active_requests, advertised, advertised_busy
         assert target == session_id
         await ready.wait()
         active_requests += 1
         revision += 1
         try:
             if operation == "compact_publish":
-                return await assembly.compact.publish(arguments)
-            if operation == "compact_snapshot":
-                return await assembly.compact.snapshot(**arguments)
-            if operation == "compact_ready":
+                result = await assembly.compact.publish(arguments)
+            elif operation == "compact_snapshot":
+                result = await assembly.compact.snapshot(**arguments)
+            elif operation == "compact_ready":
                 await assembly.scheduler.wake(session_id)
-                return None
-            if operation == "fact":
+                result = None
+            elif operation == "fact":
                 await assembly.runtime.receive_domain_fact(session_id, **arguments)
                 parent = project_parent(await journal.snapshot(session_id))
                 if parent is not None:
                     assembly.subagents._parents[session_id] = parent
                 await assembly.subagents.refresh_activity(session_id)
-                if await assembly.subagents.note_returned(session_id):
-                    return None
-                await assembly.scheduler.wake(session_id)
+                if not await assembly.subagents.note_returned(session_id):
+                    await assembly.scheduler.wake(session_id)
                 result = None
             elif operation == "create":
                 result = await assembly.sessions.view(session_id)
@@ -90,6 +89,12 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 result = await getattr(assembly.sessions, operation)(
                     session_id, **arguments
                 )
+            # A startup idle notice may already be in transit. Invalidate it
+            # before acknowledging a request that has started new work.
+            if not assembly.scheduler.idle and not advertised_busy:
+                advertised_busy = True
+                advertised = -1
+                await peer.send(("busy",))
             return result
         finally:
             active_requests -= 1
