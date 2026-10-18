@@ -86,6 +86,16 @@ class ModelSettings:
         model = self.selected(session_id)
         if model is None:
             raise ModelConfigurationError("请先在会话输入区选择模型")
+        self._require_usable(model)
+
+    def require_default_ready(self):
+        """A new Agent decides right after creation, so it needs a usable default first."""
+        model = self.config().default_model
+        if model is None:
+            raise ModelConfigurationError("请先在模型配置中设置默认模型")
+        self._require_usable(model)
+
+    def _require_usable(self, model: str):
         self.config().get_model(model)
         provider = model.partition("/")[0]
         status = next(item for item in self.provider_states() if item["provider"] == provider)
