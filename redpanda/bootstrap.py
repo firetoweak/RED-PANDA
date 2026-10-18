@@ -27,6 +27,10 @@ from redpanda.skills.summarizer import LlmSkillDiffSummarizer
 from redpanda.timing import install_timing_logging
 
 
+class DataRootHasAgents(RuntimeError):
+    """要求全新会话的入口不能清空一个承载长期 Agent 的数据根。"""
+
+
 class UnboundHostLlm:
     async def chat(self, *args, **kwargs):
         raise RuntimeError("Worker must bind the Host LLM port")
@@ -70,7 +74,10 @@ async def bootstrap_assistant(
     command_environment: dict[str, str] | None = None,
     fresh_sessions: bool = False,
 ) -> AsyncIterator[BootstrappedAssistant]:
-    """``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。"""
+    """``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。
+
+    长期 Agent 的会话与工作树也在这些状态里；数据根里已有 Agent 时拒绝清空。
+    """
     install_timing_logging()
     if command_environment is None:
         command_environment = dict(os.environ)
@@ -79,6 +86,11 @@ async def bootstrap_assistant(
     # 先独占数据根，再碰任何 Journal、定时或持续进程。
     with hold_data_root(home):
         if fresh_sessions:
+            if home.agent_worktrees_root.exists():
+                raise DataRootHasAgents(
+                    f"数据根 {home.root} 里有长期 Agent 的会话与工作树，"
+                    "每次启动都清空会话的入口不能使用它；请换一个数据目录。"
+                )
             for root in (home.runtime_sessions_root, home.state_root):
                 if root.exists():
                     shutil.rmtree(root)

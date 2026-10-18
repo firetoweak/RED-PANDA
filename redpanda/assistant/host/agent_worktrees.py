@@ -34,7 +34,7 @@ def project_worktrees(home: RedPandaHome, workspace_id: str) -> Path:
 
 class AgentWorktrees:
     def __init__(self, home: RedPandaHome, environment: dict[str, str]):
-        self.root = (home.state_root / "coding_bot").resolve()
+        self.root = home.agent_worktrees_root.resolve()
         owner = _key(os.path.normcase(str(home.root)))
         self.namespace = f"redpanda/{owner}"
         self.git = Git(environment)
