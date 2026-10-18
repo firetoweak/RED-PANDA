@@ -217,54 +217,57 @@ class AgentRuntime:
                     return (*recorded, cancellation)
                 continue
 
-            events = await self._journal.snapshot(session_id)
-            projection = self.projector.project(session_id, events)
-            frame = projection.next_decision
-            if frame is not None:
-                cancellation = await self._journal.cancel_decision(
-                    EventDraft(
-                        event_id=self._id_factory("event"),
-                        session_id=session_id,
-                        payload=DecisionCancelled(frame.trigger_event.event_id),
-                        occurred_at=datetime.now(timezone.utc),
-                        causation_id=frame.trigger_event.event_id,
+            # 与 advance 共用推进锁：已提交 Step 的命令此时都已派发、登记为可打断，
+            # 调用方随后的打断才能送达它们。
+            async with self._step_locks.setdefault(session_id, asyncio.Lock()):
+                events = await self._journal.snapshot(session_id)
+                projection = self.projector.project(session_id, events)
+                frame = projection.next_decision
+                if frame is not None:
+                    cancellation = await self._journal.cancel_decision(
+                        EventDraft(
+                            event_id=self._id_factory("event"),
+                            session_id=session_id,
+                            payload=DecisionCancelled(frame.trigger_event.event_id),
+                            occurred_at=datetime.now(timezone.utc),
+                            causation_id=frame.trigger_event.event_id,
+                        )
                     )
-                )
-                if cancellation is not None:
-                    return (*recorded, cancellation)
-                continue
+                    if cancellation is not None:
+                        return (*recorded, cancellation)
+                    continue
 
-            cancelled_step_ids = {
-                event.payload.step_event_id
-                for event in events
-                if isinstance(event.payload, StepContinuationCancelled)
-            }
-            step_event_ids = {
-                command.issued_by_event_id
-                for command in projection.state.commands
-                if command.phase is not CommandPhase.TERMINAL
-                and command.authorization_rejected_by_event_id is None
-                and command.command.decision_on_outcome
-                and command.issued_by_event_id not in cancelled_step_ids
-            }
-            cancellations: list[Event] = []
-            for step_event_id in step_event_ids:
-                cancellation = await self._journal.cancel_continuation(
-                    EventDraft(
-                        event_id=self._id_factory("event"),
-                        session_id=session_id,
-                        payload=StepContinuationCancelled(step_event_id),
-                        occurred_at=datetime.now(timezone.utc),
-                        causation_id=step_event_id,
+                cancelled_step_ids = {
+                    event.payload.step_event_id
+                    for event in events
+                    if isinstance(event.payload, StepContinuationCancelled)
+                }
+                step_event_ids = {
+                    command.issued_by_event_id
+                    for command in projection.state.commands
+                    if command.phase is not CommandPhase.TERMINAL
+                    and command.authorization_rejected_by_event_id is None
+                    and command.command.decision_on_outcome
+                    and command.issued_by_event_id not in cancelled_step_ids
+                }
+                cancellations: list[Event] = []
+                for step_event_id in step_event_ids:
+                    cancellation = await self._journal.cancel_continuation(
+                        EventDraft(
+                            event_id=self._id_factory("event"),
+                            session_id=session_id,
+                            payload=StepContinuationCancelled(step_event_id),
+                            occurred_at=datetime.now(timezone.utc),
+                            causation_id=step_event_id,
+                        )
                     )
-                )
-                if cancellation is not None:
-                    cancellations.append(cancellation)
-            if cancellations:
-                recorded.extend(cancellations)
-                continue
-            if not step_event_ids:
-                return tuple(recorded)
+                    if cancellation is not None:
+                        cancellations.append(cancellation)
+                if cancellations:
+                    recorded.extend(cancellations)
+                    continue
+                if not step_event_ids:
+                    return tuple(recorded)
 
     async def grant_command(
         self,
