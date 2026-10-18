@@ -4,8 +4,10 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from redpanda.assistant.agents import DirectionDeclared, fact_arguments, project_agent
+from redpanda.assistant.conversations import AssistantQueries, FileChangesUnavailable
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.session_store import SessionForkUnavailableError, SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -81,3 +83,9 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             await self.store.fork_after_event(agent.session_id, creation.event_id, "clone")
         self.assertFalse(self.store.path("clone").exists())
         self.assertEqual(len(await self.host.agents.list()), 1)
+
+    async def test_existing_change_query_cannot_reconnect_an_agent_to_agentfs(self):
+        agent = await self.create()
+        with patch("redpanda.assistant.conversations.workspace_files", side_effect=AssertionError("AgentFS")):
+            with self.assertRaisesRegex(FileChangesUnavailable, "Git"):
+                await AssistantQueries(self.store, self.host).file_changes(agent.session_id)
