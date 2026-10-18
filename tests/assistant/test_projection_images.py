@@ -11,22 +11,22 @@ from PIL import Image
 
 from redpanda.assistant.attachments import AttachmentGateway
 
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
-    project_chat_messages,
 )
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.runtime import (
     AgentRuntime,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     StateProjector,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import settle_session
 
@@ -125,6 +125,7 @@ class ToolImageProjectionTest(unittest.IsolatedAsyncioTestCase):
         second = _image("second")
         events = await self._history((_shot(first), _shot(second)))
         prepared = ModelContextProjector(
+            gateway=MemoryArtifactGateway(),
             settings=ModelContextSettings(
                 max_tool_images=1,
             ),

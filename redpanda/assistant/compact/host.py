@@ -6,14 +6,13 @@ import asyncio
 import json
 from inspect import isawaitable
 from redpanda.assistant.artifacts import FileArtifactGateway
-from redpanda.assistant.context.projection import catalog_for_model
 from redpanda.assistant.compact.core import (
     TASK,
-    HANDOFF_PREFIX,
     compact_seed,
     load_document,
     save_document,
     projected_tail,
+    window_preamble,
 )
 from redpanda.assistant.compact.store import CompactStore
 from redpanda.assistant.subagent.subagent import project_parent, project_returned
@@ -189,26 +188,7 @@ class CompactHost:
             "upto": p,
             "request": material["inherited"],
         }
-        before = [
-            {
-                "role": "user",
-                "content": HANDOFF_PREFIX
-                + f"这份交接覆盖的历史截至消息序号 {p}。\n"
-                + job["summary"],
-            }
-        ]
-        if snapshot["catalog"] is not None:
-            before.append(
-                {
-                    "role": "user",
-                    "content": "<capability_catalog>\n"
-                    + json.dumps(
-                        {"fact": "assistant.catalog", "data": catalog_for_model(snapshot["catalog"])},
-                        ensure_ascii=False,
-                    )
-                    + "\n</capability_catalog>",
-                }
-            )
+        before = window_preamble(job["summary"], p, snapshot["catalog"], snapshot["identity"])
         after = projected_tail(bundle["records"], p, q)
         messages = [*before, *after]
         context = save_document(self.gateway, source, {"messages": messages})

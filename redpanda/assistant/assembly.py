@@ -22,6 +22,7 @@ from redpanda.assistant.delivery import (
     deliver_binding,
 )
 from redpanda.assistant.context.prompt import CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
+from redpanda.assistant.host.agent_worktrees import project_worktrees
 from redpanda.assistant.host.process_port import WorkerProcessPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
@@ -121,6 +122,7 @@ async def build_assistant_assembly(
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
+        colleague_root=project_worktrees(home, agent.workspace_id) if colleague_schemas else None,
         command_environment=command_environment,
         processes=(WorkerProcessPort(session_transport, session_id)
                    if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),

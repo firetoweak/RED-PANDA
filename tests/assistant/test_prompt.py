@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
@@ -30,7 +30,7 @@ from redpanda.skills.runtime import PROJECT_SKILL_PREFIX, PROJECT_SKILLS_DIRECTO
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import MemoryJournal
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
 from redpanda.tools.builtin import create_subagent_workspace_specs
 from redpanda.tools.executor import RESERVED_KEYS

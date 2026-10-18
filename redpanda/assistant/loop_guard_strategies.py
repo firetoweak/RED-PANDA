@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from itertools import groupby
 
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
-from redpanda.runtime import StepCommitted
+from redpanda.runtime import DomainFactCommitted, StepCommitted, UserMessageReceived
 
 
 @dataclass(frozen=True)
@@ -37,25 +37,38 @@ class Evidence:
     observation: str
 
 
+def requests_decision_from_outside(payload) -> bool:
+    """A new reason to act arrived: a person, a colleague, a timer, a returned child."""
+    return isinstance(payload, UserMessageReceived) or (
+        isinstance(payload, DomainFactCommitted) and payload.requests_decision
+    )
+
+
 @dataclass(frozen=True)
 class ConsecutiveActions:
+    """Repeats within one wake count; the same check made once per wake does not."""
+
     threshold: int = 3
 
     def __call__(self, events):
         actions = []
+        wake = 0
         for event in events:
+            if requests_decision_from_outside(event.payload):
+                wake += 1
+                continue
             if not isinstance(event.payload, StepCommitted):
                 continue
             for command in event.payload.step.commands:
                 effect = command.effect
                 if effect.name in {DELIVER_TOOL_NAME, "_accept_handoff"}:
                     continue
-                actions.append(Action(
+                actions.append((wake, Action(
                     event.sequence, command.command_id, effect.name, effect.argument_dict(),
-                ))
+                )))
         hits = []
-        for _, group in groupby(actions, key=lambda action: action.fingerprint):
-            run = tuple(group)
+        for _, entries in groupby(actions, key=lambda item: (item[0], item[1].fingerprint)):
+            run = tuple(action for _, action in entries)
             if len(run) >= self.threshold:
                 hits.append(Evidence(
                     "consecutive_action", 1, self.threshold, run,

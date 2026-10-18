@@ -17,7 +17,6 @@ from redpanda.runtime import (
     DomainFactCommitted,
     EventDraft,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     SqliteJournal,
@@ -27,6 +26,7 @@ from redpanda.runtime import (
     diagnose_artifacts,
     replay,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.model import AuthorizationPolicy
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 

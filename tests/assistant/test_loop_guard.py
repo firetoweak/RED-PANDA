@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.context.projection import project_chat_messages
+from tests.fixtures.projection import project_chat_messages
 from redpanda.assistant.compact.core import CompactBoundary, save_document
 from redpanda.assistant.loop_guard import LoopGuard, NOTICE, committed_notice
 from redpanda.assistant.loop_guard_strategies import Action, ConsecutiveActions
@@ -15,6 +15,7 @@ from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import (
+    DomainFactCommitted,
     Event,
     InvokeTool,
     ModelDecision,
@@ -81,6 +82,17 @@ class LoopGuardTest(unittest.TestCase):
         self.assertIsNone(LoopGuard((ConsecutiveActions(2),)).inspect(history, 27))
         # A rebuilt earlier branch does not inherit the later notice.
         self.assertEqual(LoopGuard().inspect(history[:3], 15), first)
+
+    def test_the_same_check_once_per_wake_is_not_a_repetition(self):
+        def wake(sequence, requests_decision=True):
+            return replace(event(sequence), event_id=f"wake-{sequence}", payload=DomainFactCommitted(
+                "automation.wake", {}, requests_decision))
+
+        per_wake = (wake(1), event(2), wake(3), event(4), wake(5), event(6))
+        self.assertIsNone(LoopGuard().inspect(per_wake, 6))
+        # A fact that asks for no decision is not a new wake.
+        quiet = (wake(1), event(2), wake(3, False), event(4), wake(5, False), event(6))
+        self.assertEqual(LoopGuard().inspect(quiet, 6)["evidence"][0]["new_count"], 3)
 
     def test_parallel_actions_are_distinct_but_alternation_is_not_continuous(self):
         notice = LoopGuard().inspect((event(2, ("read", "read", "read")),), 2)

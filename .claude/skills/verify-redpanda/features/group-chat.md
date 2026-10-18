@@ -37,7 +37,7 @@
   - (d) 超出每轮或每次讨论的上限时，工具结果为 `SPEECH_LIMIT_REACHED` / `GROUP_LIMIT_REACHED`，群记录不增加。
 - **群级停止**：在 `正在等 … 回应…` 显示时点 `停止本轮`。
   - (a) `GET /api/groups/<id>` 的 `active` 为 false、`calling` 为 `[]`。
-  - (b) `POST /api/groups/<id>/stop` 200；被叫成员像人打断一样停下（暂停）。
+  - (b) `POST /api/groups/<id>/stop` 200；被叫成员当前这一轮被打断，但不进入暂停（会话 `paused=false`），之后给它发私信会照常叫醒它。
   - (c) 已经写入的群发言保留；之后不会再叫其他成员。
   - (d) 没有进行中的调度时按钮不可用；一串调度自然结束后（`active` 变为 false），页面不再显示 `正在等 …`，`停止本轮` 随即不可用，不需要刷新。
 

@@ -6,7 +6,7 @@ import unittest
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from redpanda.assistant.artifacts import MemoryArtifactGateway
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.assistant.context.projection import ModelContextSettings
 from tests.session_scheduler import settle_session
@@ -16,11 +16,11 @@ from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     StepCommitted,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.state import DecisionFrame
 from redpanda.paths import RedPandaHome
 from redpanda.skills.application import SkillApplicationService

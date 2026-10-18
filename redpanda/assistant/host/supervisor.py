@@ -181,17 +181,17 @@ class HostSupervisor:
         self._agent_creation_lock = asyncio.Lock()
         self._landing_locks: dict[str, asyncio.Lock] = {}
 
-    async def pause_unfinished_sessions(self) -> None:
-        """进程刚起来时，还会自己往下走的顶层会话先停住。
+    async def resume_unfinished_sessions(self) -> None:
+        """进程刚起来时，上一个进程里还会自己往下走的顶层会话接着推进。
 
-        选中一条 RUNNABLE 会话会把它的 Worker 拉起来接着跑，子会话也跟着恢复。
-        暂停留在 Host 元数据里。等人点继续再醒。等外部事实的会话本来就不会
-        自己动，子会话只由父恢复时带起来，这里都不改。
+        长期 Agent 不因 Host 重启而停下；人停止过的会话保持暂停，等人继续。
+        等外部事实的会话本来就不会自己动，子会话只由父恢复时带起来，这里都不改。
 
         此刻没有任何 Worker，上一个进程留下的未完成 Attempt 先按接管记下，
         否则判断看到的是一条永远等不到结果的命令。
         """
 
+        unfinished = []
         for path in self.store.journals():
             journal = SqliteJournal(path)
             session_id = await journal.session_identity()
@@ -202,7 +202,9 @@ class HostSupervisor:
             if project_parent(events) is not None:
                 continue
             if session_view(replay(session_id, events).state).should_wake:
-                self._pause.set(session_id, True)
+                unfinished.append(session_id)
+        for session_id in unfinished:
+            await self.resume(session_id)
 
     async def _parent_agent(self, session_id) -> AgentRecord | None:
         parent = project_parent(await SqliteJournal(self.store.require(session_id)).snapshot(session_id))
@@ -311,9 +313,6 @@ class HostSupervisor:
             )
         if operation == "is_paused":
             return self.is_paused(session_id)
-        if operation == "subagent_returned":
-            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-            return project_returned(events)
         if operation == "compact_boundary":
             return await self.compact.boundary(session_id, arguments)
         if operation == "compact_complete":
@@ -1072,9 +1071,20 @@ class HostSupervisor:
 
     async def cancel_turn(self, session_id):
         async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
-            return await self._cancel_turn(session_id)
+            return await self._cancel_turn(session_id, "用户中断父会话")
 
-    async def _cancel_turn(self, session_id):
+    async def interrupt_for_group(self, session_id):
+        """A stopped group discussion interrupts its called member without parking it.
+
+        The member stays reachable: later messages wake it as usual, and whatever
+        the interruption left to decide is decided now.
+        """
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            await self._cancel_turn(session_id, "群讨论已被停止")
+            self._pause.set(session_id, False)
+            return await self._select_view(session_id)
+
+    async def _cancel_turn(self, session_id, reason):
         # Child return is a new external fact, even when it races with reclaim.
         # Keep the stopped parent paused until an explicit continuation/input.
         self._pause.set(session_id, True)
@@ -1093,7 +1103,7 @@ class HostSupervisor:
         stopped = await asyncio.gather(*(
             self._reclaim_child(
                 child_id,
-                {"parent_session_id": session_id, "reason": "用户中断父会话"},
+                {"parent_session_id": session_id, "reason": reason},
             )
             for child_id in await self._running_children(session_id)
         ), return_exceptions=True)
@@ -1126,8 +1136,7 @@ class HostSupervisor:
     async def _children_still_running(self, session_id) -> bool:
         """待回收集合里，子 Journal 还没有回传的那些才算还在工作。
 
-        分支可能继承了委派、却没有后来写到来源会话上的回收事实。
-        子会话自己的回传已经说明它停了，再等那份回收不会到来。
+        子会话自己的回传已经说明它停了，不必等父会话记下回收。
         """
 
         return bool(await self._running_children(session_id))

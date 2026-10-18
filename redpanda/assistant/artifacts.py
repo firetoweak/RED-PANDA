@@ -9,8 +9,6 @@ import sqlite3
 from typing import Protocol
 from uuid import uuid4
 
-from redpanda.assistant.asset_locations import inherited_drawers
-
 
 class ArtifactNotFoundError(LookupError):
     pass
@@ -77,56 +75,9 @@ class ArtifactGateway(Protocol):
         ...
 
 
-class MemoryArtifactStore:
-    def __init__(self) -> None:
-        self.contents: dict[str, str] = {}
-
-    def save(self, content: str) -> ArtifactRef:
-        if type(content) is not str:
-            raise TypeError("artifact content 必须是 str")
-        artifact_id = f"art_{uuid4().hex}"
-        self.contents[artifact_id] = content
-        return ArtifactRef(artifact_id, len(content))
-
-    def read(self, artifact_id: str, offset: int, limit: int) -> ArtifactChunk:
-        _validate_read_request(artifact_id, offset, limit)
-        if artifact_id not in self.contents:
-            raise ArtifactNotFoundError(artifact_id)
-        content = self.contents[artifact_id]
-        if offset > len(content):
-            raise ArtifactOffsetOutOfRangeError(
-                f"offset={offset}, total_chars={len(content)}"
-            )
-        end = min(offset + limit, len(content))
-        return ArtifactChunk(
-            artifact_id=artifact_id,
-            content=content[offset:end],
-            offset=offset,
-            next_offset=end if end < len(content) else None,
-            total_chars=len(content),
-        )
-
-    def find(self, artifact_id: str, query: str, offset: int) -> int:
-        _validate_read_request(artifact_id, offset, 1)
-        if artifact_id not in self.contents:
-            raise ArtifactNotFoundError(artifact_id)
-        return self.contents[artifact_id].find(query, offset)
-
-
-class MemoryArtifactGateway:
-    """测试与默认决策器用的进程内抽屉，按 Session 隔离。"""
-
-    def __init__(self) -> None:
-        self._stores: dict[str, MemoryArtifactStore] = {}
-
-    def for_session(self, session_id: str) -> MemoryArtifactStore:
-        return self._stores.setdefault(session_id, MemoryArtifactStore())
-
-
 class FileArtifactStore:
-    def __init__(self, root: Path, inherited: tuple[Path, ...] = ()) -> None:
+    def __init__(self, root: Path) -> None:
         self._root = root.resolve()
-        self._inherited = inherited
         self._root.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self._root / "contents.sqlite")) as db, db:
             db.executescript("""
@@ -179,15 +130,12 @@ class FileArtifactStore:
     def _locate(self, artifact_id: str) -> tuple[Path, int]:
         if not is_valid_artifact_id(artifact_id):
             raise ValueError("artifact_id 格式无效")
-        for root in (self._root, *self._inherited):
-            path = root / "contents.sqlite"
-            if not path.is_file():
-                continue
-            with closing(sqlite3.connect(path)) as db:
-                row = db.execute("SELECT size_chars FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
-            if row is not None:
-                return path, row[0]
-        raise ArtifactNotFoundError(artifact_id)
+        path = self._root / "contents.sqlite"
+        with closing(sqlite3.connect(path)) as db:
+            row = db.execute("SELECT size_chars FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
+        if row is None:
+            raise ArtifactNotFoundError(artifact_id)
+        return path, row[0]
 
     def find(self, artifact_id: str, query: str, offset: int) -> int:
         _validate_read_request(artifact_id, offset, 1)
@@ -221,12 +169,7 @@ class FileArtifactGateway:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
         self._root.mkdir(parents=True, exist_ok=True)
-        self._inherited: dict[str, tuple[Path, ...]] = {}
 
     def for_session(self, session_id: str) -> FileArtifactStore:
         drawer = sha256(session_id.encode("utf-8")).hexdigest()
-        inherited = self._inherited.get(session_id)
-        if inherited is None:
-            inherited = inherited_drawers(self._root, session_id, "artifacts")
-            self._inherited[session_id] = inherited
-        return FileArtifactStore(self._root / drawer / "artifacts", inherited)
+        return FileArtifactStore(self._root / drawer / "artifacts")

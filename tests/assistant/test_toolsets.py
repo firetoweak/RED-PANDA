@@ -18,11 +18,11 @@ from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     StepCommitted,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 

@@ -8,12 +8,13 @@ from dataclasses import dataclass
 import json
 
 from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
-from redpanda.assistant.agents import AGENT_FACT_TYPES, agent_fact_for_model
+from redpanda.assistant.agents import (
+    AGENT_FACT_TYPES, GROUP_MESSAGE, PRIVATE_MESSAGE, agent_fact_for_model,
+)
 from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
 from redpanda.assistant.artifacts import (
     ArtifactGateway,
     ArtifactStore,
-    MemoryArtifactGateway,
     is_valid_artifact_id,
 )
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
@@ -166,24 +167,6 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
     )
 
 
-def project_chat_messages(
-    events: tuple[Event, ...],
-    state: DecisionState,
-    system_prompt: str = DEFAULT_ASSISTANT_PROMPT,
-    attachments: AttachmentStore | None = None,
-) -> list[dict[str, object]]:
-    """把冻结可见 Event 译成模型协议消息，不脱水、不截断。"""
-    return [
-        item.message
-        for item in _translate_visible_events(
-            events,
-            state,
-            system_prompt,
-            attachments,
-        )
-    ]
-
-
 def _user_content(
     event: Event,
     text: str,
@@ -234,7 +217,7 @@ def _translate_visible_events(
     system_prompt: str,
     attachments: AttachmentStore | None = None,
 ) -> list[_Projected]:
-    # Compact 和分支恢复只改变可见窗口；已经提交的材料仍属于此 Session。
+    # Compact 只改变可见窗口；已经提交的材料仍属于此 Session。
     file_refs = {
         ref for event in events if isinstance(event.payload, UserMessageReceived)
         for ref in event.artifact_refs if is_file_attachment_id(ref)
@@ -247,7 +230,6 @@ def _translate_visible_events(
         system_prompt += (
             f"\n当前会话的文件材料目录：{attachments.files.materials}。"
             "材料只读，需要修改时先复制到当前工作区。"
-            "历史中的材料路径不存在时，在当前材料目录下按相同子路径查找。"
         )
     visible = set(state.visible_event_ids)
     steps = {step.committed_event_id: step for step in state.steps}
@@ -270,20 +252,7 @@ def _translate_visible_events(
             continue
         payload = event.payload
         if isinstance(payload, UserMessageReceived):
-            items.append(
-                _Projected(
-                    {
-                        "role": "system",
-                        "content": (
-                            "<message_received_at>"
-                            f"{event.occurred_at.astimezone().isoformat(timespec='minutes')}"
-                            "</message_received_at>"
-                        ),
-                    },
-                    "message_received_at",
-                    sequence=event.sequence,
-                )
-            )
+            items.append(_received_at(event))
             items.append(
                 _Projected(
                     {
@@ -330,15 +299,35 @@ def _translate_visible_events(
                 {"fact": payload.fact_type, "data": shown_data},
                 ensure_ascii=False,
             )
+            if payload.fact_type in {PRIVATE_MESSAGE, GROUP_MESSAGE}:
+                items.append(_received_at(event))
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
             items.append(_Projected(
-                {"role": "user", "content": content}, "fact", sequence=event.sequence,
+                {"role": "user", "content": content},
+                "trigger" if payload.requests_decision else "fact",
+                sequence=event.sequence,
             ))
             continue
         if isinstance(payload, StepCommitted):
             items.extend(_project_step(steps[event.event_id]))
     return _hoist_tool_images(items)
+
+
+def _received_at(event) -> _Projected:
+    """Messages from people and colleagues carry when they arrived; timelines span days."""
+    return _Projected(
+        {
+            "role": "system",
+            "content": (
+                "<message_received_at>"
+                f"{event.occurred_at.astimezone().isoformat(timespec='minutes')}"
+                "</message_received_at>"
+            ),
+        },
+        "message_received_at",
+        sequence=event.sequence,
+    )
 
 
 def _shown_arguments(effect: InvokeTool) -> str:
@@ -518,13 +507,6 @@ def _journaled_externalized_meta(value: object) -> dict[str, object] | None:
     return meta if _is_externalized_meta(meta) else None
 
 
-def parse_tool_result_meta(content: object) -> tuple[bool, str | None]:
-    meta = _externalized_meta(content)
-    if meta is None:
-        return False, None
-    return True, meta["reference"]
-
-
 def _content_char_length(content: object) -> int:
     if isinstance(content, str):
         return len(content)
@@ -619,11 +601,11 @@ class ModelContextProjector:
 
     def __init__(
         self,
-        gateway: ArtifactGateway | None = None,
+        gateway: ArtifactGateway,
         settings: ModelContextSettings | None = None,
         attachments: AttachmentGateway | None = None,
     ) -> None:
-        self._gateway = MemoryArtifactGateway() if gateway is None else gateway
+        self._gateway = gateway
         self._attachments = attachments
         self._settings = ModelContextSettings() if settings is None else settings
         self._index: dict[tuple[str, str], str] = {}
@@ -856,11 +838,12 @@ class ModelContextProjector:
         return changed
 
     def _protection_start(self, items: list[_Projected]) -> int:
-        last_user = 0
+        """The window opens at the latest reason to act from outside the Session."""
+        last_trigger = 0
         for index, item in enumerate(items):
-            if item.kind == "user":
-                last_user = index
-        return last_user
+            if item.kind in {"user", "trigger"}:
+                last_trigger = index
+        return last_trigger
 
     def _save(
         self,

@@ -65,17 +65,27 @@ async def build_builtin_tools(
     workspace: WorkspaceRecord,
     *,
     materials_root: Path | None = None,
+    colleague_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
     processes: ProcessControl | None = None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
+    read_only = set()
     if materials_root is not None:
         materials_root.mkdir(parents=True, exist_ok=True)
         view = WorkspaceViewSnapshot((
             *view.roots,
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
+        read_only.add("session_materials")
+    if colleague_root is not None:
+        # The Agent's own worktree is a deeper root inside this one and stays writable.
+        view = WorkspaceViewSnapshot((
+            *view.roots,
+            RootBinding("colleague_worktrees", WorkspaceScope.COLLEAGUES, colleague_root),
+        ))
+        read_only.add("colleague_worktrees")
     commands = create_local_command_environment(command_environment)
     binding = FileAccess(
         environment_id="local",
@@ -83,12 +93,12 @@ async def build_builtin_tools(
         permission_binding=PermissionBinding.read_write(view),
         cwd=workspace.task_root,
     )
-    if materials_root is not None:
+    if read_only:
         binding = replace(
             binding,
             permission_binding=PermissionBinding(
                 tuple(
-                    (root_id, FilesystemPermission.READ_ONLY if root_id == "session_materials" else access)
+                    (root_id, FilesystemPermission.READ_ONLY if root_id in read_only else access)
                     for root_id, access in binding.permission_binding.filesystem
                 ),
             ),

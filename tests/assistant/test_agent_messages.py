@@ -112,8 +112,12 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.send(reply_to=reference))["code"], "INVALID_REPLY")
         self.assertEqual(len(await self.messages("Lin")), 1)
         colleagues = await self.transport(LIST_COLLEAGUES, "Ada", {})
-        self.assertEqual(colleagues["data"]["colleagues"], [{"name": "Lin", "direction": None},
-                                                             {"name": "Third", "direction": None}])
+        self.assertEqual([{key: entry[key] for key in ("name", "direction")}
+                          for entry in colleagues["data"]["colleagues"]],
+                         [{"name": "Lin", "direction": None}, {"name": "Third", "direction": None}])
+        self.assertEqual({entry["worktree"] for entry in colleagues["data"]["colleagues"]},
+                         {str((await self.host.agents.resolve(self.workspace.workspace_id, name)).worktree)
+                          for name in ("Lin", "Third")})
 
     async def test_declared_direction_is_own_roster_entry_and_reaches_colleagues(self):
         binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]
@@ -127,7 +131,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         directions = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
         self.assertEqual(directions, {"Ada": "负责second", "Lin": None, "Third": None, "Elsewhere": None})
         colleagues = await self.transport(LIST_COLLEAGUES, "Lin", {})
-        self.assertIn({"name": "Ada", "direction": "负责second"}, colleagues["data"]["colleagues"])
+        self.assertIn({"name": "Ada", "direction": "负责second"},
+                      [{key: entry[key] for key in ("name", "direction")} for entry in colleagues["data"]["colleagues"]])
         for session_id, count in (("Ada", 2), ("Lin", 2), ("Third", 2), ("Elsewhere", 0)):
             received = [event for event in await self.journal(session_id).snapshot(session_id)
                         if isinstance(event.payload, DomainFactCommitted)

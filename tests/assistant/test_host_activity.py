@@ -114,8 +114,8 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
                 await host.close()
 
 
-class PauseUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_runnable_top_level_sessions_pause_and_are_not_resumed(self):
+class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
+    async def test_runnable_top_level_sessions_resume_unless_a_person_stopped_them(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             home = RedPandaHome(root / "home")
@@ -173,16 +173,27 @@ class PauseUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 await crashed.advance("session-crashed")
                 await crashed.dispatcher.close()
 
-                await host.pause_unfinished_sessions()
+                # 人停止过的会话：同样还会自己往下走，但保持暂停。
+                await host.create("session-stopped", workspace.workspace_id)
+                await SqliteJournal(store.require("session-stopped")).accept_delivery(
+                    EventDraft(
+                        event_id="user-2",
+                        session_id="session-stopped",
+                        payload=UserMessageReceived("先别动"),
+                        occurred_at=datetime.now(timezone.utc),
+                        delivery=DeliveryIdentity("user", "d3"),
+                    )
+                )
+                host._pause.set("session-stopped", True)
+                host.resume = AsyncMock()
 
-                self.assertFalse(host.is_paused("session-waiting"))
-                self.assertTrue(host.is_paused("session-open"))
-                self.assertTrue(host.is_paused("session-crashed"))
-                self.assertFalse(host.is_paused(child))
-                view = await host.select("web", "session-open")
-                self.assertTrue(view.paused)
-                self.assertTrue(view.should_wake)
-                self.assertEqual(host.workers, {})
+                await host.resume_unfinished_sessions()
+
+                resumed = {call.args[0] for call in host.resume.await_args_list}
+                self.assertEqual(resumed, {"session-open", "session-crashed"})
+                for session_id in ("session-waiting", "session-open", "session-crashed", child):
+                    self.assertFalse(host.is_paused(session_id))
+                self.assertTrue(host.is_paused("session-stopped"))
             finally:
                 await host.close()
 

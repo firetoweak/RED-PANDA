@@ -17,7 +17,7 @@ from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import MemoryJournal
+from tests.fixtures.memory_journal import MemoryJournal
 from tests.fixtures.workspaces import workspace_record
 
 

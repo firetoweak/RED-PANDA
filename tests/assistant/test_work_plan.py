@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from redpanda.assistant.context.projection import ModelContextProjector
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.compact.core import MODEL_USAGE
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.sessions import SessionView
@@ -102,7 +103,7 @@ def test_corrupt_persisted_plan_is_not_treated_as_an_empty_plan():
 
 
 def test_request_prefix_and_historical_plan_text_survive_replace_and_clear():
-    projector = ModelContextProjector()
+    projector = ModelContextProjector(gateway=MemoryArtifactGateway())
     events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
 
     def prepare(history, *, visible=None, prefix=None):
@@ -133,7 +134,7 @@ def test_request_prefix_and_historical_plan_text_survive_replace_and_clear():
 
 
 def test_unchanged_plan_is_not_appended_again():
-    projector = ModelContextProjector()
+    projector = ModelContextProjector(gateway=MemoryArtifactGateway())
     events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
     first = projector.prepare(events, StateProjector().project_visible("s", events), "s", "sys")
     events += update(5, PLAN, snapshot=first.work_plan_context)
@@ -146,7 +147,7 @@ def test_unchanged_plan_is_not_appended_again():
 def test_compact_reading_window_keeps_plan_from_full_journal_not_summary():
     events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
     state = StateProjector().project_visible("s", events, ())
-    prepared = ModelContextProjector().prepare(
+    prepared = ModelContextProjector(gateway=MemoryArtifactGateway()).prepare(
         events, state, "s", "sys", prefix=[{"role": "user", "content": "摘要未提及计划"}],
     )
     assert len(prepared.messages) == 3
@@ -159,7 +160,7 @@ def test_compact_reading_window_keeps_plan_from_full_journal_not_summary():
 
 
 def test_cleared_plan_overrides_old_plan_in_compact_handoff():
-    projector = ModelContextProjector()
+    projector = ModelContextProjector(gateway=MemoryArtifactGateway())
     events = (event(1, UserMessageReceived("修复附件上传")), *update(2, PLAN))
     previous = projector.prepare(
         events, StateProjector().project_visible("s", events), "s", "sys",
@@ -179,6 +180,6 @@ def test_cleared_plan_overrides_old_plan_in_compact_handoff():
 def test_no_plan_does_not_add_a_context_placeholder():
     events = (event(1, UserMessageReceived("你好")),)
     state = StateProjector().project_visible("s", events)
-    prepared = ModelContextProjector().prepare(events, state, "s", "sys")
+    prepared = ModelContextProjector(gateway=MemoryArtifactGateway()).prepare(events, state, "s", "sys")
     assert prepared.work_plan_context is None
     assert not any(str(m["content"]).startswith("<work_plan>") for m in prepared.messages)

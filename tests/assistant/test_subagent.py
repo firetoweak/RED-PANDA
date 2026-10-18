@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
-from redpanda.assistant.delivery import deliver_binding
+from redpanda.assistant.context.projection import ModelContextProjector
+from redpanda.assistant.delivery import PreviewEmitter, deliver_binding
+from redpanda.assistant.loop_guard import LoopGuard
+from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     CHILD_BUILTIN_TOOL_NAMES,
@@ -34,11 +37,11 @@ from redpanda.runtime import (
     DomainFactCommitted,
     InvokeTool,
     LeaseLostError,
-    MemoryJournal,
     ModelDecision,
     RuntimeStatus,
     ToolBinding,
 )
+from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.runtime.state import DecisionFrame
 from tests.assistant.test_runner import SequentialIds
@@ -223,6 +226,9 @@ def _decision_maker(runtime, llm, host):
         control=AssistantControlPlane(()),
         management=_NoManagement(),
         subagents=host,
+        projector=ModelContextProjector(gateway=MemoryArtifactGateway()),
+        loop_guard=LoopGuard(),
+        preview=PreviewEmitter(),
     )
 
 
