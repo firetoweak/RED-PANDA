@@ -96,8 +96,10 @@ class AgentWorktrees:
             self._add(project.task_root, child, parent.identity.branch)
         if conflict_source is not None and not self.git.merging(child.path):
             source = self.child(parent.workspace_id, conflict_source)
-            self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
-                           author=parent.name, message="合入待解决冲突的子任务成果", keep_conflict=True)
+            result = self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
+                                    author=parent.name, message="合入待解决冲突的子任务成果", keep_conflict=True)
+            if result.status in {"blocked", "failed"}:
+                raise RuntimeError(f"conflict-resolving task could not start its merge: {result.detail}")
         return child
 
     def finish_child(self, parent: AgentRecord, child_session_id: str) -> str | None:
