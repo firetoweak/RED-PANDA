@@ -1,10 +1,10 @@
 import { ActionIcon, Group, Menu, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { IconDots, IconFolder, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconDots, IconFolder, IconPencil, IconPlus, IconTrash, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 
 export function WorkspaceHeader({
   name, collapsed, connectionId, registered,
-  onToggle, onCreate, onRename, onRemove,
+  onToggle, onCreate, onCreateGroup, onRename, onRemove,
 }: {
   name: string;
   collapsed: boolean;
@@ -12,6 +12,7 @@ export function WorkspaceHeader({
   registered: boolean;
   onToggle: () => void;
   onCreate: () => void;
+  onCreateGroup: () => void;
   onRename: () => void;
   onRemove: () => void;
 }) {
@@ -61,6 +62,10 @@ export function WorkspaceHeader({
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
+          <Menu.Item leftSection={<IconUsersGroup size={15} />} disabled={connectionId === null}
+            onClick={onCreateGroup}>
+            新建群聊
+          </Menu.Item>
           <Menu.Item leftSection={<IconPencil size={15} />} disabled={!registered} onClick={onRename}>
             重命名工作区
           </Menu.Item>

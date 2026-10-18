@@ -99,6 +99,27 @@ class AgentGroups:
                 return group
         raise GroupNotFound(group_id)
 
+    async def view(self, group_id: str) -> dict:
+        """What a person sees: the public record and who the Host is calling now."""
+        group = await self.get(group_id)
+        events = await self._journal(group_id).snapshot(group_id)
+        drive = self._drives.get(group_id)
+        calling = [] if drive is None or drive.stopped.is_set() else list(drive.waiting)
+        return {
+            "group_id": group.group_id, "workspace_id": group.workspace_id, "name": group.name,
+            "members": group.members, "calling": calling,
+            "active": drive is not None and drive.task is not None and not drive.task.done()
+            and not drive.stopped.is_set(),
+            "messages": [
+                {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
+                 "mentioned_agents": fact.mentioned_agents, "reply_to": fact.reply_to,
+                 "occurred_at": event.occurred_at.isoformat()}
+                for event in events
+                if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE
+                for fact in (parse_agent_fact(event.payload),)
+            ],
+        }
+
     async def messages(self, group_id: str) -> list[GroupMessage]:
         return [parse_agent_fact(event.payload) for event in await self._journal(group_id).snapshot(group_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE]

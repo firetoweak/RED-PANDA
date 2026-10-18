@@ -23,7 +23,8 @@ from redpanda.assistant.attachments import (
 from redpanda.assistant.file_attachments import is_file_attachment_id
 from redpanda.assistant.conversations import FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
-from redpanda.assistant.host.agent_roster import AgentNameTaken
+from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound
+from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
@@ -90,6 +91,31 @@ class CreateAgentRequest(ConnectionRequest):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+
+class CreateGroupRequest(ConnectionRequest):
+    workspace_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    members: list[str] = Field(min_length=2, max_length=6)
+
+    @field_validator("name")
+    @classmethod
+    def stable_name(cls, value: str) -> str:
+        if value != value.strip():
+            raise ValueError("群名不能以空白开头或结尾")
+        return value
+
+    @field_validator("members")
+    @classmethod
+    def distinct(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("群成员不能重复")
+        return value
+
+
+class GroupMessageRequest(ConnectionRequest):
+    text: str
+    mention: list[str] = Field(default_factory=list)
 
 
 class InputRequest(BaseModel):
@@ -263,6 +289,18 @@ def create_web_app(
     async def agent_name_taken(_request: Request, error: AgentNameTaken):
         return JSONResponse(status_code=409, content={"detail": str(error)})
 
+    @app.exception_handler(GroupNameTaken)
+    async def group_name_taken(_request: Request, error: GroupNameTaken):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @app.exception_handler(GroupNotFound)
+    async def group_not_found(_request: Request, _error: GroupNotFound):
+        return JSONResponse(status_code=404, content={"detail": "群不存在"})
+
+    @app.exception_handler(AgentNotFound)
+    async def agent_not_found(_request: Request, error: AgentNotFound):
+        return JSONResponse(status_code=404, content={"detail": f"同项目中没有这位 Agent：{error}"})
+
     @app.exception_handler(AgentProjectRequired)
     async def agent_project_required(_request: Request, error: AgentProjectRequired):
         return JSONResponse(status_code=422, content={"detail": str(error)})
@@ -342,6 +380,26 @@ def create_web_app(
         return await _channel(request).create_agent(
             body.connection_id, body.workspace_id, body.name,
         )
+
+    @app.get("/api/groups")
+    async def groups(request: Request):
+        return await _channel(request).list_groups()
+
+    @app.post("/api/groups", status_code=201)
+    async def create_group(body: CreateGroupRequest, request: Request):
+        return await _channel(request).create_group(body.connection_id, body.workspace_id, body.name, body.members)
+
+    @app.get("/api/groups/{group_id}")
+    async def group(group_id: str, request: Request):
+        return await _channel(request).group(group_id)
+
+    @app.post("/api/groups/{group_id}/messages")
+    async def post_group_message(group_id: str, body: GroupMessageRequest, request: Request):
+        return await _channel(request).post_group_message(body.connection_id, group_id, body.text, body.mention)
+
+    @app.post("/api/groups/{group_id}/stop")
+    async def stop_group(group_id: str, body: ConnectionRequest, request: Request):
+        return await _channel(request).stop_group(body.connection_id, group_id)
 
     @app.get("/api/inbox")
     async def inbox(request: Request):

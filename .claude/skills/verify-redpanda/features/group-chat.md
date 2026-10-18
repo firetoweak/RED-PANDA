@@ -1,0 +1,49 @@
+# 群聊
+
+项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群里发言，可用 `点名` 选成员，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。`停止本轮` 清空待叫队列并打断当前被叫醒的成员。来源：`web/src/features/groups/`、`SessionSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
+
+## Sub-features
+
+- `create`：`新建群聊` 对话框，`群名` 与 `成员`（只列同项目 Agent，少于 2 个时 `创建` 不可用）；创建后进入群页。
+- `record`：群页列出发言；人的发言署名 `你`，Agent 的署名链到它的会话；点名显示为 `@名字` 徽标。
+- `post`：`群消息` 输入框 + `发送到群`（Ctrl+Enter 也可）；`点名` 为空时叫全体成员。
+- `calling`：Host 正在等某个成员时显示 `正在等 <名字> 回应…`。
+- `stop`：`停止本轮` 只在一串调度进行中可用。
+- `refresh`：群列表与群记录随成员活动和 `send_group_message` 工具完成自动刷新，不需要手动重载。
+
+## How to get to it (user POV)
+
+- 侧栏项目名右侧 `<项目> 工作区操作` → `新建群聊`。
+- 侧栏点 `群聊 <群名>`。
+
+## Driving it with the browser
+
+前置：同一项目里至少两个 Agent。成员发言需要 `live_model_ready`；没有可用模型时，成员每次被叫醒都以模型失败结束，Host 视为跳过并叫下一位，这足以验证顺序与停止，但不能验证发言。
+
+- **建群**：菜单 `新建群聊` → 填 `群名`、在 `成员` 选两个 Agent → `创建`。
+  - (a) `GET /api/groups` 多一项，`members` 为所选名字；每个成员的会话 journal 里有一条 `coding_bot.group_created`（不触发决策）。
+  - (b) `POST /api/groups` 201；页面跳到 `/groups/<group_id>`；侧栏出现 `群聊 <群名>`。
+  - (c) Agent 名册与各 Agent 状态不变；群不出现在 `/api/agents` 或 `/api/inbox`。
+  - (d) 同项目同名再建 → 409 `项目内已有群：…`；只选一个成员 → `创建` 不可用（直接 POST 为 422）；成员不在本项目 → 404 `同项目中没有这位 Agent：…`。
+- **人发言与依次叫醒**：在 `群消息` 输入后点 `发送到群`。
+  - (a) `GET /api/groups/<id>` 的 `messages` 末尾是 `sender: null` 的这条；`calling` 依次出现被叫成员；成员 journal 里先有 `coding_bot.group_message`（不触发决策），被叫到时才有 `coding_bot.group_attention`。
+  - (b) 页面出现 `你` 署名的消息，输入框清空，随后显示 `正在等 <名字> 回应…`。
+  - (c) 发言者以外的成员各收到一份发言；未点名的成员在点名发言里不会被叫。
+  - (d) 空白内容 → 422 `消息内容不能为空。`；点名非本群成员（直接 POST）→ 422 `只能点名这个群里的成员。`；不存在的群 → 404 `群不存在`。
+- **成员发言与轮次**（需要 `live_model_ready`）：不点名发一条让大家各说一句。
+  - (a) 每位成员被叫到后用 `send_group_message` 发言，群记录里出现以 Agent 名署名的消息；整轮无人发言或达到轮数上限后 `active` 为 false。
+  - (b) 成员的会话里能看到 `send_group_message` 工具调用；群页随工具完成刷新。
+  - (c) 一位成员发言后 Host 就叫下一位，不等它把剩下的活干完。
+  - (d) 超出每轮或每次讨论的上限时，工具结果为 `SPEECH_LIMIT_REACHED` / `GROUP_LIMIT_REACHED`，群记录不增加。
+- **群级停止**：在 `正在等 … 回应…` 显示时点 `停止本轮`。
+  - (a) `GET /api/groups/<id>` 的 `active` 为 false、`calling` 为 `[]`。
+  - (b) `POST /api/groups/<id>/stop` 200；被叫成员像人打断一样停下（暂停）。
+  - (c) 已经写入的群发言保留；之后不会再叫其他成员。
+  - (d) 没有进行中的调度时按钮不可用。
+
+## Gotchas
+
+- 调度状态只在内存：Web 服务重启后不恢复中断的轮次。
+- 群名项目内唯一；第一版不能改成员或删群。
+- 菜单、对话框与 `点名` 下拉依赖 `requestAnimationFrame`，浏览器面板隐藏时打不开，记为走不到。
+- 2026-10-18 Windows live（隐藏面板，`live_model_ready` false，默认模型指向不存在的 Ollama）：侧栏群行、发言、依次叫醒（Kai 失败跳过后叫 Mo）、`停止本轮` 通过；建群对话框与 `点名` 下拉走不到，改经 `POST /api/groups` 建群；成员发言跳过。同轮发现：没有默认模型时新建 Agent 返回 500（首轮唤醒在 Worker 里抛出模型未配置），另行修复。

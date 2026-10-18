@@ -55,7 +55,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Inbox"]));
+    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox"]));
     refreshChanges();
   });
   source.addEventListener("session_activity", (event) => {
@@ -71,6 +71,8 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Agents",
+        // Calling the next group member starts its activity.
+        "Groups",
         "Inbox",
       ]),
     );
@@ -220,6 +222,8 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     dispatch(
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
+        // A group speech is a member's tool call; show it as soon as it settles.
+        ...(payload.status === "settled" && payload.name === "send_group_message" ? ["Groups" as const] : []),
       ]),
     );
   });

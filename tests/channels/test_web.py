@@ -27,7 +27,9 @@ from redpanda.assistant.conversations import (
     UserItem,
     project_agent_status,
 )
-from redpanda.assistant.host.agent_roster import AgentNameTaken
+from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound, GroupRecord
+from redpanda.assistant.agents import GroupCreated
+from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.model_settings import ModelSettings
@@ -561,6 +563,49 @@ class WebFirstSliceTest(unittest.TestCase):
                 },
             ),
         )
+
+    def test_group_endpoints_check_human_input_and_map_known_failures(self):
+        record = GroupRecord("group-1", "workspace-old", GroupCreated(group="开发组", members=["Ada", "Lin"]))
+
+        async def create(*, workspace_id, name, members):
+            if name == "taken":
+                raise GroupNameTaken(f"项目内已有群：{name}")
+            if "Nobody" in members:
+                raise AgentNotFound("Nobody")
+            return record
+
+        async def get(group_id):
+            if group_id != "group-1":
+                raise GroupNotFound(group_id)
+            return record
+
+        groups = self.sessions.agent_groups = SimpleNamespace(
+            list=AsyncMock(return_value=(record,)), create=AsyncMock(side_effect=create),
+            get=AsyncMock(side_effect=get), post=AsyncMock(), stop=AsyncMock(),
+            view=AsyncMock(return_value={"group_id": "group-1", "messages": []}))
+        connection = self.connection.connection_id
+        self.assertEqual(self.client.get("/api/groups").json(), [{
+            "group_id": "group-1", "workspace_id": "workspace-old", "name": "开发组", "members": ["Ada", "Lin"]}])
+        create_body = {"connection_id": connection, "workspace_id": "workspace-old", "name": "开发组"}
+        self.assertEqual(self.client.post("/api/groups", json={**create_body, "members": ["Ada", "Lin"]}).status_code, 201)
+        for members in (["Ada"], ["Ada", "Ada"], [f"m{index}" for index in range(7)]):
+            self.assertEqual(self.client.post("/api/groups", json={**create_body, "members": members}).status_code, 422)
+        self.assertEqual(self.client.post("/api/groups", json={
+            **create_body, "name": "taken", "members": ["Ada", "Lin"]}).status_code, 409)
+        self.assertEqual(self.client.post("/api/groups", json={
+            **create_body, "members": ["Ada", "Nobody"]}).status_code, 404)
+
+        post = lambda group_id="group-1", **body: self.client.post(
+            f"/api/groups/{group_id}/messages", json={"connection_id": connection, "text": "大家好", **body})
+        self.assertEqual(post(mention=["Lin"]).status_code, 200)
+        groups.post.assert_awaited_once_with("group-1", "大家好", ["Lin"])
+        self.assertEqual(post(mention=["Elsewhere"]).status_code, 422)
+        self.assertEqual(post(text="  ").status_code, 422)
+        self.assertEqual(post("missing").status_code, 404)
+        self.assertEqual(post(connection_id="gone").status_code, 409)
+        self.assertEqual(groups.post.await_count, 1)
+        self.assertEqual(self.client.post("/api/groups/group-1/stop", json={"connection_id": connection}).status_code, 200)
+        groups.stop.assert_awaited_once_with("group-1")
 
     def test_agent_roster_accepts_a_name_and_project_only(self):
         self.assertEqual(self.client.get("/api/agents").json(), [])
