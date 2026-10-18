@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 
 from redpanda.automation.recovery import recover_schedule_attempts
+from redpanda.automation.routine_tool import recover_routine_attempts
 from redpanda.assistant.agent_git import identity as git_identity
 from redpanda.assistant.agent_messages import recover_message_attempts
 from redpanda.assistant.assembly import build_assistant_assembly
@@ -201,6 +202,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
             from redpanda.assistant.runner import resume_session
 
             await recover_schedule_attempts(journal, session_id, peer.request)
+            await recover_routine_attempts(journal, session_id, peer.request)
             await resume_session(
                 assembly.runtime,
                 assembly.surface,

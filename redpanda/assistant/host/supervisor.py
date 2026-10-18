@@ -10,6 +10,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from redpanda.automation.routine_tool import LIST_ROUTINES, SAVE_ROUTINE, SET_ROUTINE_STATE
+from redpanda.automation.routines import ROUTINE_DUE, RoutineClock, RoutineFire, RoutineStore
 from redpanda.automation.once import (
     SOURCE as AUTOMATION_SOURCE,
     TIME_REACHED,
@@ -169,6 +171,8 @@ class HostSupervisor:
             OneShotSchedules(home.state_root / "automation.sqlite")
         )
         self._automation_task: asyncio.Task[None] | None = None
+        self.routines = RoutineClock(RoutineStore(home.state_root / "routines.sqlite"))
+        self._routine_task: asyncio.Task[None] | None = None
         self.workspaces = (
             workspaces
             if workspaces is not None
@@ -270,6 +274,22 @@ class HostSupervisor:
             if self.models is not None:
                 return self.models.for_decision(session_id, apply=arguments["apply"])
             return None
+        if operation == SAVE_ROUTINE:
+            result = self.routines.store.save(
+                arguments["command_id"], session_id, routine_id=arguments["routine_id"],
+                name=arguments["name"], intent=arguments["intent"], schedule=arguments["schedule"])
+            self.routines.changed.set()
+            await self._emit_schedule_changed(session_id)
+            return result
+        if operation == SET_ROUTINE_STATE:
+            result = self.routines.store.set_state(
+                arguments["command_id"], session_id, arguments["routine_id"], arguments["state"])
+            self.routines.changed.set()
+            await self._emit_schedule_changed(session_id)
+            return result
+        if operation == LIST_ROUTINES:
+            return {"ok": True, "code": "ROUTINES_READ", "data": {"routines": [
+                routine.for_model() for routine in self.routines.store.list(session_id)]}}
         if operation == "cancel_schedule":
             code = self.automation.cancel(
                 arguments["command_id"], session_id, arguments["schedule_id"],
@@ -403,6 +423,42 @@ class HostSupervisor:
             self.automation.run(self._deliver_scheduled, self._emit_schedule_changed),
             name="assistant-one-shot-clock",
         )
+        self._routine_task = group.create_task(
+            self.routines.run(self._deliver_routine, self._emit_schedule_changed),
+            name="assistant-routine-clock",
+        )
+
+    async def _deliver_routine(self, fire: RoutineFire) -> None:
+        try:
+            await self.request("fact", fire.session_id, {
+                "fact_type": ROUTINE_DUE,
+                "data": {
+                    "routine_id": fire.routine_id,
+                    "name": fire.name,
+                    "intent": fire.intent,
+                    "planned_at": fire.planned_at.isoformat(),
+                    "fired_at": fire.fired_at.isoformat(),
+                },
+                "delivery_id": fire.fire_id,
+                "source": AUTOMATION_SOURCE,
+                "requests_decision": True,
+                "causation_id": fire.fire_id,
+            })
+        except WorkerFailed as error:
+            raise ScheduleDeliveryUnavailable(fire.fire_id) from error
+
+    def list_routines(self, session_id: str):
+        return self.routines.store.list(session_id)
+
+    async def set_routine_state_by_user(self, session_id: str, routine_id: str, state: str):
+        """The app's pause, resume and cancel buttons; an Agent cannot undo a person's pause."""
+        routine = next((item for item in self.routines.store.list(session_id) if item.routine_id == routine_id), None)
+        if routine is None:
+            raise LookupError(routine_id)
+        updated = self.routines.store.set_state_by_user(routine_id, state)
+        self.routines.changed.set()
+        await self._emit_schedule_changed(session_id)
+        return updated
 
     async def _emit_schedule_changed(self, session_id: str) -> None:
         if self.schedule_changed_sink is None:
@@ -1157,9 +1213,10 @@ class HostSupervisor:
         return await self.failures.get()
 
     async def close(self):
-        if self._automation_task is not None:
-            self._automation_task.cancel()
-            await asyncio.gather(self._automation_task, return_exceptions=True)
+        for task in (self._automation_task, self._routine_task):
+            if task is not None:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
         self.closed = True
         workers = tuple(self.workers.values())
         for worker in workers:

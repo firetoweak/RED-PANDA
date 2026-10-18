@@ -538,8 +538,16 @@ class CompactBoundary:
                 },
             ),
             "catalog": catalog,
-            "identity": identity_for_model(events),
+            "identity": await self._identity(events),
         }
+
+    async def _identity(self, events):
+        identity = identity_for_model(events)
+        if identity is not None and self.transport is not None:
+            listed = await self.transport("list_routines", self.context.session_id, {})
+            identity["routines"] = listed["data"]["routines"]
+            identity["notice"] += "routines 是你的例行任务。"
+        return identity
 
     async def publish(self, arguments):
         sid = self.context.session_id

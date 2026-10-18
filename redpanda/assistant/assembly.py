@@ -16,6 +16,7 @@ from redpanda.assistant.loop_guard import LoopGuard
 from redpanda.assistant.work_plan import UPDATE_PLAN, UPDATE_PLAN_SCHEMA, update_plan_binding
 from redpanda.assistant.agents import project_agent
 from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS, message_bindings
+from redpanda.automation.routine_tool import ROUTINE_SCHEMAS, ROUTINE_TOOLS, routine_bindings
 from redpanda.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
@@ -216,6 +217,7 @@ async def build_assistant_assembly(
             *builtin_tools.schemas,
             *review_schemas,
             *colleague_schemas,
+            *(ROUTINE_SCHEMAS if colleague_schemas else []),
             *(AGENT_GIT_SCHEMAS if agent_git else []),
             *(
                 [SCHEDULE_ONCE_SCHEMA, CANCEL_SCHEDULE_SCHEMA]
@@ -229,6 +231,7 @@ async def build_assistant_assembly(
             *builtin_tools.names(),
             *review_bindings,
             *colleague_bindings,
+            *ROUTINE_TOOLS,
             *AGENT_GIT_TOOLS,
             SCHEDULE_ONCE,
             CANCEL_SCHEDULE,
@@ -268,6 +271,7 @@ async def build_assistant_assembly(
         ),
         **review_bindings,
         **colleague_bindings,
+        **(routine_bindings(session_transport) if colleague_schemas else {}),
         **(agent_git_bindings(session_transport) if agent_git else {}),
         **(
             {
