@@ -4,7 +4,8 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 from redpanda.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
@@ -85,6 +86,17 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
                 await self.create()
             self.assertEqual(self.store.journals(), ())
             self.request.assert_not_awaited()
+
+    async def test_a_name_stays_taken_when_creation_fails_after_the_identity_is_durable(self):
+        with patch.object(self.host, "models", SimpleNamespace(
+                require_default_ready=lambda: None,
+                initialize_session=Mock(side_effect=PermissionError("models.json is locked")))):
+            with self.assertRaises(PermissionError):
+                await self.create()
+        with self.assertRaises(AgentNameTaken):
+            await self.create()
+        rebuilt = AgentRoster(SessionStore(self.store.root))
+        self.assertEqual(len(await rebuilt.list(self.workspace.workspace_id)), 1)
 
     async def test_identity_and_latest_direction_rebuild_from_journals(self):
         agent = await self.create()
