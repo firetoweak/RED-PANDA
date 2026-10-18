@@ -36,7 +36,6 @@ import { redPandaMark } from "../../app/brand";
 import { ConversationWelcome } from "../../app/ConversationWelcome";
 import {
   controlNotice,
-  lockDraft,
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
@@ -77,7 +76,6 @@ export function Conversation() {
   const routeId = routeSessionId ?? "";
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const ownerSessionId = useAppSelector((state) => state.runtime.ownerSessionId);
-  const draftSessions = useAppSelector((state) => state.runtime.draftSessions);
   const sessionId = routeId;
   const [openPage, setOpenPage] = useState<OpenPage | null>(null);
   const runtime = useAppSelector((state) => state.runtime.sessions[sessionId]);
@@ -113,25 +111,6 @@ export function Conversation() {
   }, [connectionId, ownerSessionId, routeSessionId, selectSession, sessionId]);
 
   const conversation = selected.currentData;
-  useEffect(() => {
-    if (
-      conversation !== undefined &&
-      Object.values(draftSessions).includes(conversation.session_id) &&
-      conversation.items.some((item) => item.kind === "user")
-    ) {
-      dispatch(lockDraft(conversation.session_id));
-    }
-  }, [conversation, dispatch, draftSessions]);
-  useEffect(() => {
-    if (
-      routeSessionId !== undefined &&
-      selected.isError &&
-      "status" in selected.error &&
-      selected.error.status === 404
-    ) {
-      dispatch(lockDraft(routeSessionId));
-    }
-  }, [dispatch, routeSessionId, selected.error, selected.isError]);
   if (
     conversation === undefined &&
     (selected.isLoading || selected.isUninitialized || selected.isFetching)
@@ -194,7 +173,6 @@ export function Conversation() {
       artifactRefs,
     }).unwrap();
     dispatch(controlNotice({ sessionId, message: null }));
-    dispatch(lockDraft(sessionId));
   }
 
   async function authorize(commandId: string, approved: boolean) {

@@ -134,6 +134,9 @@ it("移除工作区要先确认：取消不碰接口，确认才带上工作区 
   fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
   fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
   expect(screen.getByRole("dialog", { name: "移除工作区" })).toBeInTheDocument();
+  expect(screen.getByText(/绑在它上面的 Agent 也不再列出/)).toBeInTheDocument();
+  expect(screen.getByText(/不会把这些 Agent 认回来/)).toBeInTheDocument();
+  expect(screen.queryByText(/它下面的会话/)).not.toBeInTheDocument();
   expect(queries.deleteWorkspace).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole("button", { name: "取消" }));

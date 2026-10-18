@@ -47,18 +47,6 @@ export const agentRosterEntrySchema = z
 
 export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
-export const sessionSummarySchema = z
-  .object({
-    session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
-    title: z.string().min(1),
-    updated_at: z.string().datetime({ offset: true }).nullable(),
-    activity: z.enum(["running", "idle"]),
-    has_active_subagents: z.boolean(),
-    needs_attention: z.boolean(),
-  })
-  .strict();
-
 export const workspaceSchema = z
   .object({
     workspace_id: z.string().min(1),
@@ -330,7 +318,6 @@ export const subagentObservationSchema = z.object({
 }).strict();
 
 export type SubagentObservation = z.infer<typeof subagentObservationSchema>;
-export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ConversationView = z.infer<typeof conversationViewSchema>;
 export type ConversationItem = ConversationView["items"][number];
 export type ToolStatus = z.infer<typeof toolStatusSchema>;

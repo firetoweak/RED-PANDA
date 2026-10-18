@@ -572,11 +572,13 @@ class WebFirstSliceTest(unittest.TestCase):
             "name": "小熊猫",
             "worktree": r"C:\nope",
         }).status_code, 422)
-        self.assertEqual(self.client.post("/api/agents", json={
+        padded = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
             "workspace_id": "workspace-old",
             "name": " 小熊猫",
-        }).status_code, 422)
+        })
+        self.assertEqual(padded.status_code, 422)
+        self.assertIn("空白", json.dumps(padded.json(), ensure_ascii=False))
         taken = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
             "workspace_id": "workspace-old",
