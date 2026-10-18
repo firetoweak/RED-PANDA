@@ -54,25 +54,6 @@ class SessionFlagStore(_SessionMap):
         self._save()
 
 
-class SessionLineageStore(_SessionMap):
-    """会话线：原地改写产生的新身份，以及它顶掉的那个身份。
-
-    侧栏列的是线，不是 journal。被顶掉的身份照常可读，只是不再代表这条线。
-    """
-
-    def _coerce(self, value: Any) -> str:
-        if type(value) is not str or not value:
-            raise ValueError(f"{self._filename} values must be session ids")
-        return value
-
-    def supersede(self, session_id: str, replaced: str) -> None:
-        self._values[session_id] = self._coerce(replaced)
-        self._save()
-
-    def is_superseded(self, session_id: str) -> bool:
-        return session_id in self._values.values()
-
-
 class SessionTextStore(_SessionMap):
     """Session 级文案。缺省没有，只在人写过时落盘。"""
 

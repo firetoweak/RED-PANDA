@@ -21,13 +21,7 @@ from redpanda.automation.once import (
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.session_metadata import (
     SessionFlagStore,
-    SessionLineageStore,
     SessionTextStore,
-)
-from redpanda.assistant.workspace_versions import (
-    StepNotRewindable,
-    WorkspaceVersionFact,
-    workspace_version_event,
 )
 from redpanda.assistant.compact.host import CompactHost
 from redpanda.assistant.delivery import emit_delivery
@@ -149,7 +143,6 @@ class HostSupervisor:
         self._pause = SessionFlagStore(store.root, "paused.json")
         self._archived = SessionFlagStore(store.root, "archived.json")
         self._titles = SessionTextStore(store.root, "titles.json")
-        self._lineage = SessionLineageStore(store.root, "lineage.json")
         self.automation = OneShotClock(
             OneShotSchedules(home.state_root / "automation.sqlite")
         )
@@ -767,9 +760,6 @@ class HostSupervisor:
     def is_paused(self, session_id):
         return self._pause.get(session_id)
 
-    def is_superseded(self, session_id):
-        return self._lineage.is_superseded(session_id)
-
     def is_archived(self, session_id):
         return self._archived.get(session_id)
 
@@ -911,66 +901,6 @@ class HostSupervisor:
         if self.models is not None:
             self.models.initialize_session(session_id)
         return AgentRecord(session_id, identity)
-
-    async def fork_and_accept_input(
-        self,
-        owner,
-        source_session_id,
-        message_id,
-        edited_text,
-        *,
-        child_session_id,
-        delivery_id,
-        artifact_refs,
-        source="user",
-        listed=False,
-        restore_files=False,
-    ):
-        async with self.locks.setdefault(source_session_id, asyncio.Lock()):
-            await self.store.fork_before_message(
-                source_session_id,
-                message_id,
-                child_session_id,
-            )
-            if self.models is not None:
-                self.models.initialize_session(child_session_id, parent=source_session_id)
-        # ???????????????????????????????
-        if not listed:
-            self._lineage.supersede(child_session_id, source_session_id)
-        await self.select(owner, child_session_id)
-        # ????????????????????????????????
-        await self.compact.application(
-            "settle_forked_workspace",
-            child_session_id,
-            dict(restore=bool(restore_files), delivery_id=f"{delivery_id}-workspace"),
-        )
-        return await self.accept_input(
-            child_session_id,
-            edited_text,
-            delivery_id=delivery_id,
-            source=source,
-            artifact_refs=artifact_refs,
-        )
-
-    async def branch_after_turn(
-        self, owner, source_session_id, user_message_id, child_session_id
-    ):
-        """从这一轮收口之后切一条新会话线。
-
-        前缀含这一轮的全部回复，不含之后的用户消息。新身份自己成一条线，
-        不顶掉来源，也不写新的用户消息——人在新会话的输入框里接着说。
-        """
-        async with self.locks.setdefault(source_session_id, asyncio.Lock()):
-            await self.store.fork_after_turn(
-                source_session_id, user_message_id, child_session_id
-            )
-            if self.models is not None:
-                self.models.initialize_session(child_session_id, parent=source_session_id)
-        await self.select(owner, child_session_id)
-        return self._with_host_metadata(
-            await self.compact.application("view", child_session_id, {}),
-            child_session_id,
-        )
 
     async def select(self, owner, session_id):
         async with self.selection_locks.setdefault(owner, asyncio.Lock()):
@@ -1150,56 +1080,6 @@ class HostSupervisor:
         if errors:
             raise BaseExceptionGroup("收回子任务失败", errors)
         return await self.wait_quiescent(session_id)
-
-    async def restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
-    ):
-        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
-            return await self._restart_from_step(
-                owner, session_id, step_id, child_session_id, delivery_id,
-                restore_files=restore_files,
-            )
-
-    async def _restart_from_step(
-        self, owner, session_id, step_id, child_session_id, delivery_id, *, restore_files=True
-    ):
-        """人点时间线上的一步：从那一刻重开。
-
-        只退文件是残缺的——会话照样停在第十步，那七步基于旧世界的推理还在
-        上下文里，模型下次读文件会发现和自己的历史对不上。所以回退的载体是
-        会话本身：截到那一步，文件跟着回去，两边描述同一个世界。
-
-        先停源会话再切。跑着的命令会往共享工作树里写，也会继续往源 Journal
-        追加事件。停下来不是副作用，是这个动作的一部分——人接着通常要换一条
-        走法。
-        """
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-        boundary = workspace_version_event(events, step_id)
-        if boundary is None or WorkspaceVersionFact.parse(boundary.payload.data).version is None:
-            raise StepNotRewindable(step_id)
-
-        self._pause.set(session_id, True)
-        await self.compact.retire(session_id)
-        await self._cancel_turn(session_id)
-        await self.wait_quiescent(session_id)
-
-        async with self.locks.setdefault(session_id, asyncio.Lock()):
-            await self.store.fork_after_event(session_id, boundary.event_id, child_session_id)
-            if self.models is not None:
-                self.models.initialize_session(child_session_id, parent=session_id)
-        self._lineage.supersede(child_session_id, session_id)
-        # 新身份带着完整历史停在那一刻，不许自己往下走，等人给下一句话。
-        self._pause.set(child_session_id, True)
-        await self.select(owner, child_session_id)
-        await self.compact.application(
-            "settle_forked_workspace",
-            child_session_id,
-            dict(restore=bool(restore_files), delivery_id=f"{delivery_id}-workspace"),
-        )
-        return self._with_host_metadata(
-            await self.compact.application("view", child_session_id, {}),
-            child_session_id,
-        )
 
     async def wait_quiescent(self, session_id):
         worker = self.workers.get(session_id)

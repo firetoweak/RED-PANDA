@@ -450,36 +450,6 @@ class ListSessionsTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(spoken.session.auto_authorize)
         self.assertTrue(spoken.session.paused)
 
-    async def test_superseded_identities_stay_out_of_the_top_level_list(self):
-        """被改写顶掉的身份照常可读，只是不再作为一条会话出现在列表里。"""
-        from pathlib import Path
-        from tempfile import TemporaryDirectory
-
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import SqliteJournal
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
-
-        class Rewritten(Idle):
-            superseded = frozenset({"spoken"})
-
-        with TemporaryDirectory() as directory:
-            store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Rewritten())
-            await store.create("spoken", workspace_id="workspace-1")
-            await SqliteJournal(store.require("spoken")).accept_delivery(
-                EventDraft(
-                    event_id="user-1",
-                    session_id="spoken",
-                    payload=UserMessageReceived("你好"),
-                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
-                    delivery=DeliveryIdentity("web", "d1"),
-                )
-            )
-
-            self.assertEqual(await queries.list_sessions(), ())
-            self.assertEqual((await queries.conversation("spoken")).items[0].text, "你好")
-
     async def test_archived_identities_stay_out_of_the_top_level_list(self):
         """归档只是不再出现在列表里，会话仍可读。"""
         from pathlib import Path

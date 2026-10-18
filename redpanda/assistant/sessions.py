@@ -388,9 +388,3 @@ class AssistantSessions:
     async def cancel_turn(self, session_id: str) -> SessionView:
         await self._scheduler.cancel_turn(session_id)
         return await self.view(session_id)
-
-    async def settle_forked_workspace(
-        self, session_id: str, restore: bool, delivery_id: str
-    ) -> None:
-        assert self._workspace_versions is not None
-        await self._workspace_versions.settle_fork(restore, delivery_id)
