@@ -5,10 +5,12 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import pytest
 
 from redpanda.assistant.agent_tools import LAND, SYNC, agent_git_bindings
+from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -29,7 +31,7 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.project.mkdir()
         git(self.project, "init")
         git(self.project, "config", "core.autocrlf", "false")
-        (self.project / "note.txt").write_text("initial\n", encoding="utf-8")
+        (self.project / "note.txt").write_text("initial\n", encoding="utf-8", newline="\n")
         git(self.project, "add", "note.txt")
         git(self.project, "commit", "-m", "initial")
         home = RedPandaHome(root / "home")
@@ -49,7 +51,7 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
 
     def change(self, agent, path, text):
         """The Agent commits its own work."""
-        (agent.worktree / path).write_text(text, encoding="utf-8")
+        (agent.worktree / path).write_text(text, encoding="utf-8", newline="\n")
         git(agent.worktree, "add", path)
         git(agent.worktree, "commit", "-m", f"change {path}")
         return git(agent.worktree, "rev-parse", "HEAD")
@@ -117,3 +119,28 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("shared.txt", result["data"]["git"])
         self.assertEqual((second.worktree / "shared.txt").read_text(encoding="utf-8"), "local\n")
         self.assertEqual(git(second.worktree, "rev-parse", "HEAD"), head)
+
+    async def test_change_review_shows_unlanded_work_without_touching_the_index(self):
+        agent = await self.agent("甲")
+        queries = AssistantQueries(self.host.store, self.host)
+        self.assertEqual(await queries.file_changes(agent.session_id),
+                         {"files": [], "added": 0, "removed": 0, "partial": False})
+        self.change(agent, "note.txt", "initial\ncommitted\n")
+        (agent.worktree / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
+        status = git(agent.worktree, "status", "--porcelain")
+        with patch("redpanda.assistant.conversations.workspace_files", side_effect=AssertionError("AgentFS")):
+            listed = await queries.file_changes(agent.session_id)
+            detail = await queries.file_changes(agent.session_id, path="note.txt")
+        self.assertEqual([(file["path"], file["status"], file["added"], file["removed"]) for file in listed["files"]],
+                         [("draft.txt", "added", 2, 0), ("note.txt", "modified", 1, 0)])
+        self.assertEqual((listed["added"], listed["removed"]), (3, 0))
+        self.assertEqual(detail["revision"], listed["files"][1]["revision"])
+        self.assertEqual([(line["kind"], line["old_line"], line["new_line"], line["text"]) for line in detail["lines"]],
+                         [("hunk", None, None, "@@ -1 +1,2 @@"), ("context", 1, 1, "initial\n"),
+                          ("add", None, 2, "committed\n")])
+        self.assertIsNone(detail["next_offset"])
+        self.assertIsNone(await queries.file_changes(agent.session_id, path="missing.txt"))
+        self.assertEqual(git(agent.worktree, "status", "--porcelain"), status)
+        self.change(agent, "draft.txt", "one\ntwo\n")
+        await self.call(LAND, agent)
+        self.assertEqual((await queries.file_changes(agent.session_id))["files"], [])
