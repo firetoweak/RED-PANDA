@@ -28,9 +28,10 @@ from redpanda.assistant.delivery import emit_delivery
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments, project_agent
+from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
+from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
@@ -202,7 +203,29 @@ class HostSupervisor:
             if session_view(replay(session_id, events).state).should_wake:
                 self._pause.set(session_id, True)
 
+    async def _parent_agent(self, session_id) -> AgentRecord | None:
+        parent = project_parent(await SqliteJournal(self.store.require(session_id)).snapshot(session_id))
+        return None if parent is None else await self.agents.by_session(parent)
+
+    async def _git_workspace(self, session_id) -> GitWorkspace | None:
+        """Agents and the tasks they delegate run directly in their own Git worktrees."""
+        agent = await self.agents.by_session(session_id)
+        if agent is not None:
+            return GitWorkspace(agent.worktree, agent.name)
+        parent = await self._parent_agent(session_id)
+        if parent is None:
+            return None
+        return GitWorkspace(self.agent_worktrees.child(parent.workspace_id, session_id).path, parent.name)
+
     async def _route(self, operation, session_id, arguments, *, worker=None):
+        if operation == "agent_child_review":
+            parent = await self.agents.by_session(session_id)
+            child = arguments["child_session_id"]
+            if arguments["merge"]:
+                result, changed = await _settle(asyncio.to_thread(self.agent_worktrees.merge_child, parent, child))
+                return {**asdict(result), "changed_files": list(changed)}
+            return await asyncio.to_thread(self.agent_worktrees.compare_child, parent, child,
+                                           tuple(arguments["paths"]), arguments["offset"])
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":
@@ -315,9 +338,14 @@ class HostSupervisor:
                     if not source_files["ok"]:
                         raise ValueError("conflict source has no completed files")
                     conflict_child_id = source.child_session_id
-                await ChildFiles(self.home, parent_workspace).create(
-                    expected_task.parent_session_id, session_id, conflict_child_id=conflict_child_id
-                )
+                parent_agent = await self.agents.by_session(expected_task.parent_session_id)
+                if parent_agent is None:
+                    await ChildFiles(self.home, parent_workspace).create(
+                        expected_task.parent_session_id, session_id, conflict_child_id=conflict_child_id
+                    )
+                else:
+                    await _settle(asyncio.to_thread(self.agent_worktrees.create_child, parent_workspace,
+                                                    parent_agent, session_id, conflict_child_id))
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
@@ -352,6 +380,10 @@ class HostSupervisor:
             if not any(isinstance(event.payload, DomainFactCommitted)
                        and event.payload.fact_type == RETURN_FACT for event in events):
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
+            parent_agent = await self.agents.by_session(task.parent_session_id)
+            if parent_agent is not None:
+                await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent, session_id))
+                return {"ok": True}
             workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
             await ChildFiles(self.home, workspace).finish(task.parent_session_id, session_id)
             return {"ok": True}
@@ -404,10 +436,9 @@ class HostSupervisor:
         path = self.store.require(session_id)
         events = await SqliteJournal(path).snapshot(session_id)
         is_subagent = project_parent(events) is not None
-        agent = project_agent(events)
         reader_job = self.compact.store.reader_job(session_id)
-        if reader_job is not None:
-            agent = await self.agents.by_session(reader_job["source"])
+        # Background compaction keeps the source's execution root and assembly.
+        git_workspace = await self._git_workspace(session_id if reader_job is None else reader_job["source"])
         # close() may have taken its Worker snapshot while the Journal read waited.
         if self.closed:
             raise RuntimeError("Host closed")
@@ -539,7 +570,7 @@ class HostSupervisor:
                 self.home.root,
                 admit_recv,
                 self.command_environment,
-                agent,
+                git_workspace,
             ),
             name=f"session:{session_id}",
         )
@@ -811,7 +842,8 @@ class HostSupervisor:
             if self.store.path(intent.child_session_id).exists():
                 await self._reclaim_child(intent.child_session_id,
                                           {"parent_session_id": session_id, "reason": "父会话归档"})
-        if intents:
+        # An Agent's delegated branches stay with the long-lived Agent.
+        if intents and await self.agents.by_session(session_id) is None:
             await self.wait_quiescent(session_id)
             workspace = self.workspaces.get(await self.bound_workspace_id(session_id))
             await ChildFiles(self.home, workspace).discard(session_id, [i.child_session_id for i in intents])

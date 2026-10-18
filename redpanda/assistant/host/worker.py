@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 
 from redpanda.automation.recovery import recover_schedule_attempts
+from redpanda.assistant.agent_git import identity as git_identity
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure
 from redpanda.assistant.host.llm_port import WorkerLlmPort
@@ -21,10 +22,10 @@ from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.timing import install_timing_logging
 
 
-async def run_worker(connection, session_id, path, config_factory, home_root, command_environment, agent=None):
+async def run_worker(connection, session_id, path, config_factory, home_root, command_environment, git_workspace=None):
     journal = SqliteJournal(path)
     try:
-        await _run_session(connection, session_id, journal, config_factory, home_root, command_environment, agent)
+        await _run_session(connection, session_id, journal, config_factory, home_root, command_environment, git_workspace)
     except Exception as error:
         try:
             returned = await record_unexpected_return(journal, session_id, error)
@@ -38,7 +39,7 @@ async def run_worker(connection, session_id, path, config_factory, home_root, co
         raise
 
 
-async def _run_session(connection, session_id, journal, config_factory, home_root, command_environment, agent=None):
+async def _run_session(connection, session_id, journal, config_factory, home_root, command_environment, git_workspace=None):
     # Each process owns execution clients, caches and its single Journal.
     # The model implementation lives on the Host; this Worker only holds a Port.
     home = RedPandaHome(Path(home_root))
@@ -51,16 +52,11 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         events,
         WorkspaceRegistry.load(home.workspaces_path),
     )
-    if agent is not None:
-        workspace = replace(workspace, task_root=agent.worktree)
+    if git_workspace is not None:
+        workspace = replace(workspace, task_root=git_workspace.worktree)
         # Git identity belongs to this Bot, not the person launching the Host.
         # Environment defaults leave commit decisions and commands to the model.
-        identity = {
-            "GIT_AUTHOR_NAME": agent.name,
-            "GIT_AUTHOR_EMAIL": "bot@redpanda.local",
-            "GIT_COMMITTER_NAME": agent.name,
-            "GIT_COMMITTER_EMAIL": "bot@redpanda.local",
-        }
+        identity = git_identity(git_workspace.author)
         command_environment = {
             key: value for key, value in command_environment.items()
             if key.upper() not in identity
@@ -185,7 +181,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_transport=peer.request,
         model_selection_source=model_selection_source,
         home=home,
-        direct_workspace=agent is not None,
+        direct_workspace=git_workspace is not None,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)
     async with config.llm, assembly.mcp.client_manager:
@@ -259,7 +255,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                 await asyncio.gather(*notifications)
 
 
-def worker_main(connection, session_id, path, config_factory, home_root, admitted, command_environment, agent=None):
+def worker_main(connection, session_id, path, config_factory, home_root, admitted, command_environment, git_workspace=None):
     def exit_with_parent():
         multiprocessing.parent_process().join()
         os._exit(1)
@@ -270,7 +266,7 @@ def worker_main(connection, session_id, path, config_factory, home_root, admitte
         # rebuild breaks under some Linux sandbox /dev/shm setups).
         admitted.recv()
         admitted.close()
-        asyncio.run(run_worker(connection, session_id, path, config_factory, home_root, command_environment, agent))
+        asyncio.run(run_worker(connection, session_id, path, config_factory, home_root, command_environment, git_workspace))
     except BaseException as error:
         # Process boundary: transport original diagnostics, then let the process fail.
         connection.send(("failure", ProcessFailure.capture(error)))

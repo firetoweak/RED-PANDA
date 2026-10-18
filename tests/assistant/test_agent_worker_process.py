@@ -190,8 +190,8 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                                         for request in llm.requests for message in request["messages"]))
                     for request in llm.requests:
                         names = {tool["function"]["name"] for tool in request["tools"]}
-                        self.assertFalse({"get_changes", "restore_workspace", "delegate"} & names)
-                        self.assertTrue({"land_branch", "sync_branch"} <= names)
+                        self.assertFalse({"get_changes", "restore_workspace"} & names)
+                        self.assertTrue({"land_branch", "sync_branch", "delegate"} <= names)
                         self.assertNotIn(workspace.workspace_id, json.dumps(request["messages"]))
                         for agent in agents:
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))

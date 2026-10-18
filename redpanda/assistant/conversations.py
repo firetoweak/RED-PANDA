@@ -233,10 +233,11 @@ class AssistantQueries:
     async def file_changes(self, session_id: str, *, path=None, offset=0):
         journal = SqliteJournal(self._store.require(session_id))
         events = await journal.snapshot(session_id)
-        if project_agent(events) is not None:
+        parent = project_parent(events)
+        if project_agent(events) is not None or (parent is not None and project_agent(
+                await SqliteJournal(self._store.require(parent)).snapshot(parent)) is not None):
             raise FileChangesUnavailable("当前 Agent 尚未提供 Git 变更查看。")
         workspace = bound_workspace(session_id, events, self._sessions.workspaces)
-        parent = project_parent(events)
         if parent is not None:
             workspace = child_workspace(workspace, child_root(self._sessions.home, parent, session_id))
         operations = await session_file_operations(journal, events)

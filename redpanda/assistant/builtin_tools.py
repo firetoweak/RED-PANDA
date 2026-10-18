@@ -159,17 +159,17 @@ def workspace_restore_tool(
     return spec.to_openai_tool(), binding, exclusive
 
 
-def subagent_review_tools(operation):
+def subagent_review_tools(operation, *, direct_workspace=False):
     from redpanda.runtime import ToolBinding
 
-    specs = create_subagent_workspace_specs(operation)
+    specs = create_subagent_workspace_specs(operation, direct_workspace=direct_workspace)
     bindings = {}
     for spec in specs:
         async def handler(context, arguments, _name=spec.name):
             async def review(*args, **kwargs):
                 return await operation(context.command_id, *args, **kwargs)
             registry = ToolRegistry()
-            for bound in create_subagent_workspace_specs(review):
+            for bound in create_subagent_workspace_specs(review, direct_workspace=direct_workspace):
                 registry.register(bound)
             executor = ToolsExecutor(registry)
             return runtime_tool_result(await executor.execute_parsed(_name, arguments))

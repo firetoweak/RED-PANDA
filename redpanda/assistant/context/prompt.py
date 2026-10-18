@@ -36,6 +36,7 @@ def project_instructions_prompt(workspace_root: Path) -> str:
 
 def environment_prompt(
     workspace_root: Path, *, full_access: bool, own_copy: bool, direct_workspace: bool = False,
+    delegated: bool = False,
 ) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
     system = platform.system()
@@ -48,6 +49,8 @@ def environment_prompt(
         else "文件工具只能访问工作区内的文件。"
     )
     file_rules = (
+        ("文件工具直接作用于这份副本的真实目录，当前不提供文件回退；交回后由父 Agent 比较并合入。",)
+        if direct_workspace and delegated else
         ("文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。尚未提交的改动用 git diff 核对，也要检查暂存区和未跟踪文件；已提交的改动用 git show 或提交差异核对。项目文件修改优先用专用文件工具。",)
         if direct_workspace else (
             "get_changes 和 restore_workspace 只覆盖文件工具和 file_access=managed 命令在工作区内的修改；host 命令、持续进程、外部服务工具、工作区外写入、安装和网络副作用都不在此范围，需要自行核对。项目文件修改优先用专用文件工具。",
@@ -152,14 +155,15 @@ DEFAULT_ASSISTANT_PROMPT = assistant_prompt()
 CODING_BOT_PROMPT = assistant_prompt(direct_workspace=True)
 
 
-SUBAGENT_PROMPT = """
+def _subagent_prompt(workspace: str) -> str:
+    return """
 你是 RED PANDA 的子 Agent，负责 coding agent 任务中的独立调查或文件修改。父 Agent 交给你一件具体任务，你在自己的工作区内完成它，并把结论和依据交回去；需要执行命令的验证交由父 Agent 完成。
 
 你的处境和主对话不同：
 - 对话另一端没有人。不要提问、不要请求确认、不要说"需要我继续吗"。信息不足时，用现有工具尽力查证，然后如实报告你能确定什么、不能确定什么。
 - 任务以一条 subagent.task 事实给出，那是你的全部目标；此外没有历史对话可依赖。
 - resolve_conflicts_of 非空时，你的工作区里已有合入冲突标记（<<<<<<< / ======= / >>>>>>>），没冲突的部分已经合好。按任务要求解掉每一处标记，report 说明各处如何取舍。
-- 你的工作区是用户文件的副本，可以直接读取和修改，无需请求授权；修改后用 get_changes 核对。
+- {workspace}
 - 外部工具只有能力目录中的只读 Toolset，先 load_toolset 才能使用。
 
 完成方式：
@@ -167,4 +171,9 @@ SUBAGENT_PROMPT = """
 - report 的 summary 要能独立读懂：结论是什么、依据在哪里（文件路径、行号、工具结果）、还有什么没查清。不要只写"已完成"。
 - 修改过文件时，summary 说明改了哪些文件、各自为什么改、哪些没改完、做过哪些核对，以及尚需父 Agent 执行的验证。不要贴 diff，父 Agent 会自己比较你的工作区。
 - 不调用 report 就等于没有产出；调用后不再做别的。
-""".strip() + "\n\n" + CODING_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
+""".strip().format(workspace=workspace) + "\n\n" + CODING_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
+
+
+SUBAGENT_PROMPT = _subagent_prompt("你的工作区是用户文件的副本，可以直接读取和修改，无需请求授权；修改后用 get_changes 核对。")
+# A delegated copy of an Agent branch has no get_changes; the parent compares it.
+SUBAGENT_BRANCH_PROMPT = _subagent_prompt("你的工作区是父 Agent 已提交工作的副本，可以直接读取和修改，无需请求授权。")
