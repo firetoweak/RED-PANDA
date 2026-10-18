@@ -48,7 +48,7 @@ def environment_prompt(
         else "文件工具只能访问工作区内的文件。"
     )
     file_rules = (
-        ("文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。改动用 git diff 和实际文件核对，也要检查未跟踪文件。项目文件修改优先用专用文件工具。",)
+        ("文件工具和命令直接作用于工作区真实目录，工作区检出的是你自己的 Git 分支。每一步结束后，工作区里未被忽略的改动（含未跟踪文件）会自动提交到这个分支；用 git status、git diff 和 git log 核对改动。不要改写已有提交（amend、rebase、reset 到更早提交）。当前不提供文件回退。项目文件修改优先用专用文件工具。",)
         if direct_workspace else (
             "get_changes 和 restore_workspace 只覆盖文件工具和 file_access=managed 命令在工作区内的修改；host 命令、持续进程、外部服务工具、工作区外写入、安装和网络副作用都不在此范围，需要自行核对。项目文件修改优先用专用文件工具。",
             "工作区内的文件工具和 managed 命令不支持目录重命名、硬链接、mmap 一致性和完整的符号链接语义。",

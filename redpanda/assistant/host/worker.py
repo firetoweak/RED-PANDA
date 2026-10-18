@@ -168,7 +168,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_transport=peer.request,
         model_selection_source=model_selection_source,
         home=home,
-        direct_workspace=agent is not None,
+        agent=agent,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)
     async with config.llm, assembly.mcp.client_manager:

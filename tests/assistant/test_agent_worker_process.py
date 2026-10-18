@@ -94,6 +94,12 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                         self.assertEqual((worktree / "note.txt").read_text(), f"WRITE_AGENT_{index}")
                         self.assertEqual((worktree / "command.txt").read_text().strip(), "command-ok")
+                        committed = subprocess.run(
+                            ["git", "-C", str(worktree), "log", "-2", "--format=%an", "--name-only"],
+                            check=True, capture_output=True, encoding="utf-8").stdout.split()
+                        self.assertEqual(committed, [f"同事{index}", "command.txt", f"同事{index}", "note.txt"])
+                        self.assertEqual(subprocess.run(["git", "-C", str(worktree), "status", "--porcelain"],
+                                                        check=True, capture_output=True).stdout, b"")
                         self.assertEqual(await current.bound_workspace_id(agent.session_id), workspace.workspace_id)
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())

@@ -6,8 +6,8 @@ from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
-from typing import NoReturn
 
+from redpanda.assistant.agent_git import Git, raise_git
 from redpanda.filesystem.registry import WorkspaceRecord
 from redpanda.paths import RedPandaHome
 
@@ -31,11 +31,7 @@ class AgentWorktrees:
         self.root = (home.state_root / "coding_bot").resolve()
         owner = _key(os.path.normcase(str(home.root)))
         self.namespace = f"redpanda/{owner}"
-        # Repository selection must come from the registered project, never the
-        # shell that happened to launch the Host.
-        self.environment = {key: value for key, value in environment.items()
-                            if not key.upper().startswith("GIT_")}
-        self.environment["LC_ALL"] = "C"
+        self.git = Git(environment)
 
     def integration(self, workspace_id: str) -> GitWorktree:
         project = _key(workspace_id)
@@ -69,7 +65,7 @@ class AgentWorktrees:
         if result.returncode == 128:
             if b"not a git repository (or any of the parent directories)" in result.stderr:
                 raise AgentProjectRequired("项目必须是 Git 仓库，请先初始化并创建首个提交。")
-            self._raise(result)
+            raise_git(result)
         if result.stdout.strip() != b"true":
             raise AgentProjectRequired("项目必须是 Git 工作树，不能是裸仓库。")
         top = Path(self._git(root, "rev-parse", "--show-toplevel").stdout.decode("utf-8").rstrip("\r\n")).resolve()
@@ -119,16 +115,4 @@ class AgentWorktrees:
             raise
 
     def _git(self, root: Path, *arguments: str, accepted: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[bytes]:
-        result = subprocess.run(
-            ["git", "-c", "core.longpaths=true", "-c", f"core.hooksPath={os.devnull}",
-             "-C", str(root), *arguments],
-            env=self.environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        if result.returncode not in accepted:
-            self._raise(result)
-        return result
-
-    @staticmethod
-    def _raise(result: subprocess.CompletedProcess[bytes]) -> NoReturn:
-        raise subprocess.CalledProcessError(result.returncode, result.args,
-                                            output=result.stdout, stderr=result.stderr)
+        return self.git.run(root, *arguments, accepted=accepted)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+import os
 import sys
 
 from redpanda.assistant.artifacts import FileArtifactGateway
@@ -33,6 +34,9 @@ from redpanda.assistant.decision import (
 )
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.workspace_versions import WorkspaceVersionBoundary, session_file_operations
+from redpanda.assistant.agent_commits import AgentStepCommits
+from redpanda.assistant.agent_git import Git
+from redpanda.assistant.agents import AgentRecord
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.review import ChildWorkspaceReview
@@ -109,8 +113,9 @@ async def build_assistant_assembly(
     session_transport=None,
     model_selection_source=None,
     home: RedPandaHome | None = None,
-    direct_workspace: bool = False,
+    agent: AgentRecord | None = None,
 ) -> AssistantAssembly:
+    direct_workspace = agent is not None
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = RedPandaHome.default() if home is None else home
     task = project_task(await journal.snapshot(session_id))
@@ -397,12 +402,16 @@ async def build_assistant_assembly(
 
     scheduler.before_advance = before_advance
 
+    step_record = (
+        AgentStepCommits(runtime, session_id, agent, Git(os.environ if command_environment is None else command_environment))
+        if direct_workspace else version_boundary
+    )
+
     async def record_workspace_versions():
         if not compact_context.is_reader:
-            await version_boundary.sync()
+            await step_record.sync()
 
-    if not direct_workspace:
-        scheduler.record_workspace_versions = record_workspace_versions
+    scheduler.record_workspace_versions = record_workspace_versions
     scheduler.auto_authorize = sessions.is_auto_authorized
     scheduler.authorization_required = authorization_required_sink
     return AssistantAssembly(

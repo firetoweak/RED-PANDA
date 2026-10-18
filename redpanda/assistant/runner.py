@@ -108,6 +108,10 @@ class SessionScheduler:
             await self.record_workspace_versions()
         events = await self._runtime.snapshot(session_id)
         position = events[-1].sequence if events else 0
+        if self.record_workspace_versions is not None:
+            # An outcome committed after the first record must not reach the
+            # next Step unrecorded; a fact appended here makes this advance stale.
+            await self.record_workspace_versions()
         if self.before_advance is not None and not await self.before_advance():
             return False
         try:
