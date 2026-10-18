@@ -382,7 +382,6 @@ class _Workspaces:
 
 
 class Idle:
-    superseded: frozenset[str] = frozenset()
     workspaces = _Workspaces("workspace-1")
 
     def activity(self, session_id):
@@ -396,9 +395,6 @@ class Idle:
 
     def current_failure(self, session_id):
         return None
-
-    def is_superseded(self, session_id):
-        return session_id in self.superseded
 
     def is_archived(self, session_id):
         return False

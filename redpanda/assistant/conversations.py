@@ -205,7 +205,7 @@ class AssistantQueries:
             workspace_id = bound_workspace_id(events)
             if workspace_id is None or not self._sessions.workspaces.contains(workspace_id):
                 continue
-            if self._sessions.is_superseded(session_id) or self._sessions.is_archived(session_id):
+            if self._sessions.is_archived(session_id):
                 continue
             view = session_view(
                 replay(session_id, events).state,

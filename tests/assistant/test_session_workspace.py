@@ -57,9 +57,6 @@ class _IdleSessions:
     def current_failure(self, session_id: str) -> None:
         return None
 
-    def is_superseded(self, session_id: str) -> bool:
-        return False
-
     def is_archived(self, session_id: str) -> bool:
         return False
 
