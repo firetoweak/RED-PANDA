@@ -7,8 +7,10 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.agents import (
-    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, fact_arguments, project_agent,
+    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
+    identity_for_model, project_agent,
 )
+from redpanda.assistant.compact.core import window_preamble
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -105,3 +107,22 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
 
+    async def test_new_context_window_restates_identity_before_the_handoff(self):
+        agent = await self.create()
+        journal = SqliteJournal(self.store.require(agent.session_id))
+        runtime = AgentRuntime(journal, None, {})
+        for index, fact in enumerate((
+            DirectionDeclared(name=agent.name, direction="负责命令执行"),
+            DirectionDeclared(name="Lin", direction="负责前端"),
+            GroupCreated(group="开发组", members=[agent.name, "Lin"]),
+        )):
+            await runtime.receive_domain_fact(agent.session_id, **fact_arguments(fact, delivery_id=f"fact-{index}"))
+        identity = identity_for_model(await journal.snapshot(agent.session_id))
+        self.assertEqual(identity["name"], agent.name)
+        self.assertEqual(identity["direction"], "负责命令执行")
+        self.assertEqual(identity["groups"], [{"group": "开发组", "members": [agent.name, "Lin"]}])
+        window = window_preamble("HANDOFF", 7, None, identity)
+        self.assertIn(agent.name, window[0]["content"])
+        self.assertIn("HANDOFF", window[1]["content"])
+        for internal in (agent.session_id, agent.workspace_id, agent.identity.branch):
+            self.assertNotIn(internal, window[0]["content"])
