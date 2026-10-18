@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
-from collections.abc import Awaitable, Callable
 from typing import Any, Mapping, Protocol
-
-from redpanda.tools.control import ControlApprovalProposal, ControlPreparationFailure
 
 from jsonschema import ValidationError as JsonSchemaValidationError
 from jsonschema.validators import validator_for
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 from pydantic.json_schema import GenerateJsonSchema
+
+from redpanda.tools.control import ControlApprovalProposal, ControlPreparationFailure
 
 # ---------------------------------------------------------------------------
 # 参数描述与运行时校验必须来自同一个契约。
@@ -132,9 +132,9 @@ class JsonSchemaParameters:
         return payload
 
 
-# 授权判定钩子：签发时对工具参数求值，True = 需要用户确认（ask）。
-# 必须是纯函数，只看参数。静态布尔是它的常量特例。
-AuthorizationPolicy = Callable[[Mapping[str, object]], bool]
+# 授权判定钩子：True = 需要确认；也可返回明确的工具拒绝结果。
+# 不得产生副作用；文件工具可只读检查目标权限，执行时仍须重新检查。
+AuthorizationPolicy = Callable[[Mapping[str, object]], bool | dict[str, object]]
 
 
 @dataclass(frozen=True)

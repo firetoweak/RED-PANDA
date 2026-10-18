@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Protocol
 from uuid import uuid4
@@ -11,12 +11,12 @@ from redpanda.runtime.journal.api import Journal, StepLease
 from redpanda.runtime.model import (
     AuthorizationPolicy,
     Command,
+    InvokeTool,
     ModelDecision,
     Step,
     argument_rejection,
 )
 from redpanda.runtime.state import DecisionFrame, StateProjector
-
 
 IdFactory = Callable[[str], str]
 
@@ -105,10 +105,18 @@ class StepRunner:
                 decision_on_outcome = True
             else:
                 policy = self._requires_authorization[request.name]
-                requires_authorization = (
+                verdict = (
                     policy(request.argument_dict()) if callable(policy) else policy
                 )
                 decision_on_outcome = self._decision_on_outcome[request.name]
+                if type(verdict) is bool:
+                    requires_authorization = verdict
+                else:
+                    request = InvokeTool(request.name, verdict)
+                    if argument_rejection(request) is None:
+                        raise ValueError("authorization policy must return bool or rejected arguments")
+                    requires_authorization = False
+                    decision_on_outcome = True
             command = Command(
                 command_id=command_id,
                 effect=request,
@@ -123,7 +131,7 @@ class StepRunner:
             decision_cursor=frame.decision_cursor,
             basis_state_version=frame.basis_state_version,
             observed_journal_position=frame.observed_journal_position,
-            decision=decision,
+            decision=replace(decision, command_requests=tuple(command.effect for command in commands)),
             commands=command_tuple,
         )
         return await self._journal.commit_step(

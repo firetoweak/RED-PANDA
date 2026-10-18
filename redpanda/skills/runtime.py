@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from redpanda.tools.spec import PydanticParameters, ToolSpec
 from redpanda.skills.models import SkillBundle, SkillRecord
 from redpanda.skills.package import (
     LocalSkillPackageReader,
@@ -15,7 +14,7 @@ from redpanda.skills.package import (
     validate_relative_skill_path,
 )
 from redpanda.skills.registry import SkillRegistry
-
+from redpanda.tools.spec import PydanticParameters, ToolSpec
 
 LOAD_SKILL = "load_skill"
 READ_SKILL_RESOURCE = "read_skill_resource"
@@ -112,11 +111,24 @@ class SkillToolCatalog:
             if record.enabled
         )
         used = len(installed)
+        unavailable = [
+            ProjectSkill(skill.id, PROJECT_SKILL_OVER_BUDGET, 1, skill.directory, None)
+            for skill in skills
+        ]
+        # Reserve every identity before spending space on full descriptions. When
+        # even the minimal directory exceeds the limit, visibility takes priority.
+        costs = [
+            min(len(f"- {skill.id}: {skill.description}"), len(f"- {fallback.id}: {fallback.description}")) + 1
+            for skill, fallback in zip(skills, unavailable)
+        ]
+        remaining = sum(costs)
+        limit = max(self.max_catalog_chars, used + remaining)
         fitted = []
-        for skill in skills:
-            for candidate in (skill, ProjectSkill(skill.id, PROJECT_SKILL_OVER_BUDGET, 1, skill.directory, None)):
+        for skill, fallback, reserved in zip(skills, unavailable, costs):
+            remaining -= reserved
+            for candidate in (skill, fallback):
                 cost = len(f"- {candidate.id}: {candidate.description}") + (1 if used else 0)
-                if used + cost <= self.max_catalog_chars:
+                if used + cost + remaining <= limit:
                     fitted.append(candidate)
                     used += cost
                     break
@@ -155,11 +167,8 @@ class SkillToolCatalog:
             )
         )
         project = self.project_skills()
-        rendered_catalog = "\n".join(
-            [f"- {record.name}: {record.description}" for record in records]
-            + [f"- {item.id}: {item.description}" for item in project]
-        )
-        if len(rendered_catalog) > self.max_catalog_chars:
+        installed_catalog = "\n".join(f"- {record.name}: {record.description}" for record in records)
+        if len(installed_catalog) > self.max_catalog_chars:
             raise RuntimeError("SKILL_CATALOG_LIMIT: 完整 Skill 目录超出预算")
         revisions = (
             {
