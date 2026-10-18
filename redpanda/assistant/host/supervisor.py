@@ -316,9 +316,6 @@ class HostSupervisor:
             )
         if operation == "is_paused":
             return self.is_paused(session_id)
-        if operation == "subagent_returned":
-            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-            return project_returned(events)
         if operation == "compact_boundary":
             return await self.compact.boundary(session_id, arguments)
         if operation == "compact_complete":
@@ -1168,8 +1165,7 @@ class HostSupervisor:
     async def _children_still_running(self, session_id) -> bool:
         """待回收集合里，子 Journal 还没有回传的那些才算还在工作。
 
-        分支可能继承了委派、却没有后来写到来源会话上的回收事实。
-        子会话自己的回传已经说明它停了，再等那份回收不会到来。
+        子会话自己的回传已经说明它停了，不必等父会话记下回收。
         """
 
         return bool(await self._running_children(session_id))

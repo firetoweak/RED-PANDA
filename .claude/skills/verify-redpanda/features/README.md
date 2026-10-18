@@ -149,7 +149,7 @@
 | 输入去重 `delivery_id` | `runtime/journal/sqlite.py` | crash-recovery |
 | Agent 与委派任务的 Git 差异、差异版本变化 | `assistant/conversations.py`、`assistant/agent_git.py`、`web/src/features/conversation/FileChangesPanel.tsx` | session-file-changes |
 | 子 Agent 重启接管与中断回传 | `assistant/subagent/subagent.py` `rehydrate`、`record_interrupted_return` | subagents-parallel、crash-recovery |
-| compact 窗口继承、附件继承抽屉 | `assistant/host/session_store.py`、`assistant/compact/core.py`、`assistant/asset_locations.py` | work-plan-and-usage、composer-attachments |
+| compact 窗口继承 | `assistant/compact/core.py` | work-plan-and-usage |
 
 ### 有意不覆盖
 
