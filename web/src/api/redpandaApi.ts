@@ -8,21 +8,23 @@ import {
   controlNotice,
 } from "../realtime/runtimeSlice";
 import {
+  agentRosterEntrySchema,
   conversationViewSchema,
   directorySelectionSchema,
   modelSettingsSchema,
   modelTestResultSchema,
   sessionModelSchema,
-  sessionSummarySchema,
+  inboxItemSchema,
   subagentObservationSchema,
   workspaceSchema,
+  type AgentRosterEntry,
   type ConversationView,
   type DirectorySelection,
   type ModelConfig,
   type ModelSettings,
   type ModelTestResult,
   type SessionModel,
-  type SessionSummary,
+  type InboxItem,
   type SubagentObservation,
   type Workspace,
 } from "./contracts";
@@ -56,14 +58,6 @@ type SetAutoAuthorize = SelectSession & {
   enabled: boolean;
 };
 
-type SetPaused = SelectSession & {
-  paused: boolean;
-};
-
-type SetSessionTitle = SelectSession & {
-  title: string;
-};
-
 const attachmentRefSchema = z.discriminatedUnion("kind", [
   z
   .object({
@@ -86,6 +80,22 @@ const attachmentRefSchema = z.discriminatedUnion("kind", [
 
 export type AttachmentRef = z.infer<typeof attachmentRefSchema>;
 
+const validationIssue = z.object({ msg: z.string().min(1) }).passthrough();
+
+export function apiErrorDetail(data: unknown): string | undefined {
+  const parsed = z.object({
+    detail: z.union([z.string().min(1), z.array(validationIssue).min(1)]),
+  }).passthrough().safeParse(data);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const detail = parsed.data.detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  return detail.map((item) => item.msg.replace(/^Value error,\s*/, "")).join("\n");
+}
+
 function putConversation(
   dispatch: (action: unknown) => void,
   getState: () => unknown,
@@ -106,7 +116,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Sessions", "Workspaces", "Conversation", "SessionTitles", "ModelSettings", "SessionModel", "FileChanges"],
+  tagTypes: ["Agents", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -155,17 +165,38 @@ export const redpandaApi = createApi({
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "SessionModel", id: sessionId }],
     }),
-    getSessions: build.query<SessionSummary[], void>({
-      query: () => "/sessions",
+    getAgents: build.query<AgentRosterEntry[], void>({
+      query: () => "/agents",
       transformResponse: (value: unknown) =>
-        sessionSummarySchema.array().parse(value),
-      providesTags: ["Sessions"],
+        agentRosterEntrySchema.array().parse(value),
+      providesTags: ["Agents"],
     }),
-    getSessionTitles: build.query<Record<string, string>, void>({
-      query: () => "/session-titles",
-      transformResponse: (value: unknown) =>
-        z.record(z.string(), z.string()).parse(value),
-      providesTags: ["SessionTitles"],
+    getInbox: build.query<InboxItem[], void>({
+      query: () => "/inbox",
+      transformResponse: (value: unknown) => inboxItemSchema.array().parse(value),
+      providesTags: ["Inbox"],
+    }),
+    createAgent: build.mutation<
+      AgentRosterEntry,
+      { connectionId: string; workspaceId: string; name: string }
+    >({
+      query: ({ connectionId, workspaceId, name }) => ({
+        url: "/agents",
+        method: "POST",
+        body: { connection_id: connectionId, workspace_id: workspaceId, name },
+      }),
+      transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
+      transformErrorResponse: (response) => {
+        if (response.status !== 409 && response.status !== 422 && response.status !== 404) {
+          return response;
+        }
+        return apiErrorDetail(response.data) ?? response;
+      },
+      invalidatesTags: ["Agents"],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        const { data } = await queryFulfilled;
+        dispatch(bindOwner(data.session_id));
+      },
     }),
     getWorkspaces: build.query<Workspace[], void>({
       query: () => "/workspaces",
@@ -219,7 +250,7 @@ export const redpandaApi = createApi({
         url: `/workspaces/${encodeURIComponent(workspaceId)}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Workspaces", "Sessions"],
+      invalidatesTags: ["Workspaces", "Agents", "Inbox"],
     }),
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
@@ -236,22 +267,6 @@ export const redpandaApi = createApi({
         { type: "Conversation", id: parentSessionId },
         ...(result === undefined ? [] : [{ type: "Conversation" as const, id: result.session_id }]),
       ],
-    }),
-    createSession: build.mutation<
-      ConversationView,
-      { connectionId: string; workspaceId: string }
-    >({
-      query: ({ connectionId, workspaceId }) => ({
-        url: "/sessions",
-        method: "POST",
-        body: { connection_id: connectionId, workspace_id: workspaceId },
-      }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      async onQueryStarted(_arg, { dispatch, getState, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        dispatch(bindOwner(data.session_id));
-        putConversation(dispatch, getState, data.session_id, data);
-      },
     }),
     selectSession: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
@@ -278,7 +293,6 @@ export const redpandaApi = createApi({
         },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -316,7 +330,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
+      invalidatesTags: ["Agents", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -329,7 +343,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, request_id: requestId, approved },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      invalidatesTags: ["Sessions"],
+      invalidatesTags: ["Agents", "Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -353,36 +367,6 @@ export const redpandaApi = createApi({
         putConversation(dispatch, getState, arg.sessionId, data);
       },
     }),
-    setPaused: build.mutation<ConversationView, SetPaused>({
-      query: ({ connectionId, sessionId, paused }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/paused`,
-        method: "POST",
-        body: { connection_id: connectionId, paused },
-      }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
-      },
-    }),
-    archiveSession: build.mutation<void, SelectSession>({
-      query: ({ connectionId, sessionId }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/archive`,
-        method: "POST",
-        body: { connection_id: connectionId },
-      }),
-      invalidatesTags: ["Sessions"],
-    }),
-    setSessionTitle: build.mutation<{ title: string }, SetSessionTitle>({
-      query: ({ connectionId, sessionId, title }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/title`,
-        method: "POST",
-        body: { connection_id: connectionId, title },
-      }),
-      transformResponse: (value: unknown) =>
-        z.object({ title: z.string().min(1) }).strict().parse(value),
-      invalidatesTags: ["Sessions", "SessionTitles"],
-    }),
     retryTurn: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/retry`,
@@ -401,7 +385,6 @@ export const redpandaApi = createApi({
 export const {
   useGetFileChangesQuery,
   useGetFileDiffQuery,
-  useCreateSessionMutation,
   useGetModelSettingsQuery,
   useSaveModelSettingsMutation,
   useTestModelMutation,
@@ -412,8 +395,9 @@ export const {
   useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
-  useGetSessionsQuery,
-  useGetSessionTitlesQuery,
+  useGetAgentsQuery,
+  useCreateAgentMutation,
+  useGetInboxQuery,
   useGetWorkspacesQuery,
   useGetConversationQuery,
   useObserveSubagentQuery,
@@ -424,8 +408,5 @@ export const {
   useAuthorizeCommandMutation,
   useResolveControlMutation,
   useSetAutoAuthorizeMutation,
-  useSetPausedMutation,
-  useArchiveSessionMutation,
-  useSetSessionTitleMutation,
   useRetryTurnMutation,
 } = redpandaApi;

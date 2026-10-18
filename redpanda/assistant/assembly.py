@@ -14,6 +14,8 @@ from redpanda.assistant.compact.core import CompactContext, CompactBoundary, FIN
 from redpanda.assistant.content import READ_CONTENT, READ_CONTENT_SCHEMA
 from redpanda.assistant.loop_guard import LoopGuard
 from redpanda.assistant.work_plan import UPDATE_PLAN, UPDATE_PLAN_SCHEMA, update_plan_binding
+from redpanda.assistant.agents import project_agent
+from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS, message_bindings
 from redpanda.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
@@ -115,6 +117,9 @@ async def build_assistant_assembly(
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = RedPandaHome.default() if home is None else home
     task = project_task(await journal.snapshot(session_id))
+    agent = project_agent(await journal.snapshot(session_id))
+    colleague_schemas = MESSAGE_SCHEMAS if agent is not None and session_transport is not None else []
+    colleague_bindings = (message_bindings(session_transport, journal) if colleague_schemas else {})
     if task is not None and not direct_workspace:
         root = child_root(home, task.parent_session_id, session_id)
         if not root.is_dir():
@@ -238,6 +243,7 @@ async def build_assistant_assembly(
             *builtin_tools.schemas,
             *restore_schemas,
             *review_schemas,
+            *colleague_schemas,
             *(AGENT_GIT_SCHEMAS if agent_git else []),
             *(
                 [SCHEDULE_ONCE_SCHEMA, CANCEL_SCHEDULE_SCHEMA]
@@ -251,6 +257,7 @@ async def build_assistant_assembly(
             *builtin_tools.names(),
             *restore_bindings,
             *review_bindings,
+            *colleague_bindings,
             *AGENT_GIT_TOOLS,
             SCHEDULE_ONCE,
             CANCEL_SCHEDULE,
@@ -290,6 +297,7 @@ async def build_assistant_assembly(
         ),
         **restore_bindings,
         **review_bindings,
+        **colleague_bindings,
         **(agent_git_bindings(session_transport) if agent_git else {}),
         **(
             {
