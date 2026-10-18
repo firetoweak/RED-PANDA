@@ -721,7 +721,7 @@ def _is_waited_follow_up(
     event: Event,
     decision: _StateBuilder,
 ) -> bool:
-    """Whether this fact closes a Command the decision state can already see.
+    """Whether this fact advances a Command the decision state can already see.
 
     Membership follows the decision's causal order, not journal position.
     A Step that consumed an earlier trigger is visible here even when it
@@ -730,7 +730,8 @@ def _is_waited_follow_up(
 
     payload = event.payload
     if isinstance(
-        payload, (DispatchAttemptStarted, CommandOutcomeReceived, AttemptOrphaned)
+        payload,
+        (CommandAuthorized, DispatchAttemptStarted, CommandOutcomeReceived, AttemptOrphaned),
     ):
         return payload.command_id in decision.commands
     return False

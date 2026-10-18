@@ -47,7 +47,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 13
+PROJECTOR_VERSION = 14
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -268,7 +268,15 @@ def _translate_visible_events(
             "system",
         ),
     ]
-    for event in events:
+    # 回复跟随它消费的触发事实，而非提交时间；思考期间到达的新指令仍在回复之后。
+    # 原始 sequence 保留给历史检索和 Compact，工具结果仍由整个 Step 一起投影。
+    sequences = {event.event_id: event.sequence for event in events}
+    ordered = sorted(events, key=lambda event: (
+        sequences[event.payload.step.trigger_event_id]
+        if isinstance(event.payload, StepCommitted) else event.sequence,
+        event.sequence,
+    ))
+    for event in ordered:
         if event.event_id not in visible:
             continue
         payload = event.payload

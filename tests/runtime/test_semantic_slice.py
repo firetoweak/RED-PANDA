@@ -45,6 +45,47 @@ def _outcome_ids(events, command_id: str) -> set[str]:
 
 
 class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_later_message_sees_authorization_before_waited_dispatch(self):
+        slow = RecordingTool("slow")
+        approved = RecordingTool("approved", requires_authorization=True)
+        thinking = asyncio.Event()
+        release_think = asyncio.Event()
+
+        async def first(_frame):
+            thinking.set()
+            await release_think.wait()
+            return ModelDecision(
+                command_requests=(InvokeTool("slow"), InvokeTool("approved"))
+            )
+
+        model = ScriptedDecisionMaker((first, lambda _: ModelDecision(content="ack")))
+        runtime = AgentRuntime(
+            MemoryJournal(), model, {**slow.binding(), **approved.binding()}, SequentialIds()
+        )
+        await runtime.receive_user_message("session", "go", delivery_id="user-1")
+        advancing = asyncio.create_task(runtime.advance("session"))
+        await asyncio.wait_for(thinking.wait(), timeout=1)
+        later = await runtime.receive_user_message(
+            "session", "new direction", delivery_id="user-2"
+        )
+        release_think.set()
+        step = (await advancing).step
+        await asyncio.wait_for(slow.started.wait(), timeout=1)
+        authorized = await runtime.grant_command("session", step.commands[1].command_id)
+        await asyncio.wait_for(approved.started.wait(), timeout=1)
+        slow.release.set()
+        approved.release.set()
+        await _drain(runtime)
+
+        await runtime.advance("session")
+
+        frame = model.frames[1]
+        self.assertEqual(frame.trigger_event.event_id, later.event_id)
+        self.assertIn(authorized.event_id, frame.state.visible_event_ids)
+        for command in step.commands:
+            self.assertIsNotNone(frame.state.command(command.command_id).outcome)
+        self.assertEqual((await runtime.state("session")).decision_cursor, 2)
+
     async def test_parallel_command_group_waits_for_all_outcomes(self):
         left = asyncio.Event()
         right = asyncio.Event()
