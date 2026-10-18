@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -11,19 +10,12 @@ from uuid import uuid4
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.agents import project_agent
 from redpanda.assistant.workspaces import workspace_binding
-from redpanda.runtime import RuntimeStatus, SqliteJournal, replay
+from redpanda.runtime import SqliteJournal, replay
 from redpanda.runtime.events import (
     DeliveryIdentity,
     DomainFactCommitted,
     EventDraft,
-    UserMessageReceived,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class ForkedMessage:
-    content: str
-    artifact_refs: tuple[str, ...]
 
 
 class ForkMessageNotFoundError(LookupError):
@@ -113,97 +105,6 @@ class SessionStore:
             )
         os.rename(staging, path.parent)
 
-    async def fork_before_message(
-        self,
-        source_session_id: str,
-        message_id: str,
-        child_session_id: str,
-    ) -> ForkedMessage:
-        source_path = self.require(source_session_id)
-        child_path = self.path(child_session_id)
-        if child_path.parent.exists():
-            raise ValueError(f"Session 已存在: {child_session_id}")
-
-        source_journal = SqliteJournal(source_path)
-        source_events = await source_journal.snapshot(source_session_id)
-        target = next(
-            (event for event in source_events if event.event_id == message_id),
-            None,
-        )
-        if target is None:
-            raise ForkMessageNotFoundError(message_id)
-        if not isinstance(target.payload, UserMessageReceived):
-            raise SessionForkUnavailableError(
-                "fork target must be a user message"
-            )
-        prefix = tuple(
-            event for event in source_events if event.sequence < target.sequence
-        )
-        state = replay(source_session_id, prefix).state
-        if state.status is not RuntimeStatus.WAITING or state.waiting_for != (
-            "external_fact",
-        ):
-            raise SessionForkUnavailableError(
-                "fork prefix must end at an external-fact boundary"
-            )
-        await self._materialize(source_journal, prefix, child_session_id, child_path)
-        return ForkedMessage(target.payload.content, target.artifact_refs)
-
-    async def fork_after_turn(
-        self,
-        source_session_id: str,
-        user_message_id: str,
-        child_session_id: str,
-    ) -> None:
-        """从这条用户消息所在轮次的收口处切分支，含这一轮本身。
-
-        前缀停在下一轮用户消息之前；这是最后一轮则含整本 Journal。
-        一轮必须已经回到 WAITING(external_fact)，否则不是收口。
-        """
-        source_path = self.require(source_session_id)
-        child_path = self.path(child_session_id)
-        if child_path.parent.exists():
-            raise ValueError(f"Session 已存在: {child_session_id}")
-
-        source_journal = SqliteJournal(source_path)
-        source_events = await source_journal.snapshot(source_session_id)
-        target = next(
-            (event for event in source_events if event.event_id == user_message_id),
-            None,
-        )
-        if target is None:
-            raise ForkMessageNotFoundError(user_message_id)
-        if not isinstance(target.payload, UserMessageReceived):
-            raise SessionForkUnavailableError(
-                "branch target must be a user message"
-            )
-        next_user = next(
-            (
-                event
-                for event in source_events
-                if event.sequence > target.sequence
-                and isinstance(event.payload, UserMessageReceived)
-            ),
-            None,
-        )
-        prefix = (
-            tuple(
-                event
-                for event in source_events
-                if event.sequence < next_user.sequence
-            )
-            if next_user is not None
-            else source_events
-        )
-        state = replay(source_session_id, prefix).state
-        if state.status is not RuntimeStatus.WAITING or state.waiting_for != (
-            "external_fact",
-        ):
-            raise SessionForkUnavailableError(
-                "turn must end at an external-fact boundary"
-            )
-        await self._materialize(source_journal, prefix, child_session_id, child_path)
-
     async def fork_after_event(
         self,
         source_session_id: str,
@@ -212,9 +113,7 @@ class SessionStore:
     ) -> None:
         """在某条事件之后切一条分支，含这条事件本身。
 
-        不要求前缀停在外部事实边界。从 Step 边界重开时前缀是 RUNNABLE，
-        这正是想要的：新身份带着完整历史停在那一刻，等人给下一句话。挡住
-        自动续步的是暂停，不是这里的边界形状。
+        保留分支存储与前缀继承能力；前缀不能含尚未收口的命令。
         """
         source_path = self.require(source_session_id)
         child_path = self.path(child_session_id)

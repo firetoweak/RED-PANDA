@@ -171,7 +171,7 @@ it("recovers a model failure from the conversation after refresh and retries wit
     const path = new URL(request.url).pathname;
     const body = request.method === "POST" ? await request.json() : null;
     requests.push({ path, method: request.method, body });
-    if (path.endsWith("/changes")) return Response.json({ files: [], added: 0, removed: 0, partial: false });
+    if (path.endsWith("/changes")) return Response.json({ files: [], added: 0, removed: 0 });
     if (path.endsWith("/retry")) {
       view.session.last_error = null;
       view.session.status = "waiting";

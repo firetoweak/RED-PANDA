@@ -7,7 +7,7 @@ Agent 会话（名册里的会话）及其委派子任务在输入框上方显�
 - `summary`：输入框上方按钮，文字为 `N 个文件已更改`（加载中 `读取文件变更`，摘要请求失败 `文件变更暂不可用`），后接 `+a`、`−r`。二进制文件不计行数。按钮旁图标按钮 aria-label `刷新文件变更`。
 - `content-page`：内容页 `section` 的 aria-label 与标题都是 `文件改动`；关闭按钮 `关闭内容页`；工具栏左侧显示所选文件路径（无选择时显示 `当前会话仍保留的净变更`），右侧为所选文件的 `+a −r`、第二个 `刷新文件变更` 图标按钮、`文件列表` 开关（`aria-expanded`）。
 - `file-list`：侧栏 aria-label `改动文件列表`，标题 `改动文件 · N`；按目录分组（`details` 可折叠）。每个文件是按钮，名称 `查看 <path> 的差异`，`aria-pressed` 标示当前选中；按钮内显示状态字母 `A`/`D`/`M`（`新增`/`删除`/`修改` 只出现在字母的 aria-label 和按钮 title `<path> · <状态>` 里）与 `+a −r`。打开内容页时默认选中第一个文件。
-- `line-diff`：差异区 aria-label `<path> 的差异`；展示旧、新行号、`+`/`−` 和正文。Git 差异整体视为该 Agent 的工作，来源一律为 `agent`，不区分会话外修改；二进制文件只列变化，显示「二进制或非 UTF-8 内容，无法显示文本差异。」；权限变化单独一行（`权限：<旧> → <新>`）。
+- `line-diff`：差异区 aria-label `<path> 的差异`；展示旧、新行号、`+`/`−` 和正文。Git 差异整体视为该 Agent 的工作，不区分会话外修改；二进制文件只列变化，显示「二进制或非 UTF-8 内容，无法显示文本差异。」；权限变化单独一行（`权限：<旧> → <新>`）。
 - `pagination`：每页 200 个展示行（含 hunk 标题与上下文），`上一页`/`第 N 页`/`下一页`，首页 `上一页` 禁用、`next_offset=null` 时 `下一页` 禁用；分页不改变完整差异的统计。文件 revision（由两端对象身份算出）变化时差异区重建，回到第一页。
 - `refresh`：SSE 事件触发 `FileChanges` 缓存失效后自动刷新（`eventBridge.ts`）；两个 `刷新文件变更` 图标按钮手动刷新；差异读取失败时 Alert 内的 `刷新列表` 同时刷新摘要和该文件差异。
 - `scope`：Agent 的变化是它工作树当前状态（含已提交、未提交与未跟踪，不含被忽略文件）相对它与集成分支分叉点的差异，`land_branch` 后清空；委派子任务的变化以父 Agent 的分支为基准，`merge_subagent` 后清空。查询借临时索引收集未跟踪文件，不改动 Agent 自己的索引与 `git status`。
@@ -25,7 +25,7 @@ Agent 会话（名册里的会话）及其委派子任务在输入框上方显�
 
 - **定位控件**：页面上有两个 aria-label 同为 `刷新文件变更` 的按钮（摘要旁一个、内容页工具栏一个）。按名称点击时要限定容器（内容页在 `section[aria-label="文件改动"]` 内），否则会命中第一个或报重名。
 - **摘要、列表与正文**：在 `消息` 中发送：`请用 write_file 新建 review.txt，UTF-8 内容为 first 和 second 两行，每行末尾都有换行；不要提交，也不要修改其他文件。完成后停止。` 等文件操作完成。
-  - (a) Agent 工作树里 `review.txt` 为 `first\nsecond\n`；`GET /api/sessions/<A>/changes` 仅一个文件，`status=added`、`origin=agent`、`added=2`、`removed=0`。
+  - (a) Agent 工作树里 `review.txt` 为 `first\nsecond\n`；`GET /api/sessions/<A>/changes` 仅一个文件，`status=added`、`added=2`、`removed=0`。
   - (b) 页面无需手动刷新显示 `1 个文件已更改`、`+2`；点击摘要出现 `文件改动` 内容页，`review.txt` 已被选中（`查看 review.txt 的差异` 的 `aria-pressed=true`），状态字母 `A`（aria-label `新增`），新行号 1/2 及对应正文。只读 `GET .../changes?path=review.txt&revision=<摘要中该文件的 revision>&offset=0` 与页面一致。
   - (c) Agent 工作树的 `git status --porcelain` 在查询前后相同（未跟踪的 `review.txt` 仍是 `??`）；读列表、点文件和翻页不改磁盘文件，也不新增模型决策或工具调用。人自己的项目目录不出现 `review.txt`。
   - (d) 若显示 `文件变更暂不可用`（摘要请求失败）或内容页显示「无法读取文件变更，请刷新重试。」，先 Doctor，再读 `GET .../changes` 的 503 原文；确认实例正常后按提示刷新，不将警告当成零变更。

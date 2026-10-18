@@ -63,7 +63,7 @@
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent 会话输入框上方 Git 差异摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
 | subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent`（Agent 分支委派） | 通过（2026-10-12，main@1a4790a） |
-| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/回滚/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
+| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
@@ -184,7 +184,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 
 ## 2026-10-18 Windows live 轮次
 
-同日在 Windows 上按 `../SKILL.md` 隔离启动实跑（`setup.ps1` 全流程、Doctor `--require-model --require-sandbox` 通过、模型 `deepseek/deepseek-flash`、agentFS 0.5.1），用桌面 app 内置浏览器面板驱动，证据（`note.txt`、`state.json`、`page*.jpg`）留在本机证据目录。上表「live 验证状态」列以本节为准。
+同日在 Windows 上按 `../SKILL.md` 隔离启动实跑（`setup.ps1` 全流程、Doctor `--require-model --require-sandbox` 通过、模型 `deepseek/deepseek-flash`、agentFS 0.5.1），用桌面 app 内置浏览器面板驱动，证据（`note.txt`、`state.json`、`page*.jpg`）留在本机证据目录。本节仅记录移除前版本的 live 结果，不作为当前版本通过的依据；执行方式与判据有变化的条目需重新 live 验证。
 
 | 结果 | 功能 |
 |---|---|

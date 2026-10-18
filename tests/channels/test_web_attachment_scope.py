@@ -87,27 +87,28 @@ class WebAttachmentScopeTest(unittest.IsolatedAsyncioTestCase):
                     ).status_code, 404)
                 self.assertEqual(self.sessions.calls, [])
 
-    async def test_edited_refs_outside_prefix_become_readable_after_explicit_commit(self):
+    async def test_refs_outside_prefix_become_readable_after_explicit_commit(self):
         for kind in ("file", "image"):
             with self.subTest(kind=kind):
                 ref = self.save("source", kind, "purple")
                 runtime = self.runtime("source")
-                message = await runtime.receive_user_message(
-                    "source", "original", delivery_id=f"edit-{kind}", artifact_refs=(ref.attachment_id,),
+                boundary = (await runtime.snapshot("source"))[-1]
+                await runtime.receive_user_message(
+                    "source", "original", delivery_id=f"source-{kind}", artifact_refs=(ref.attachment_id,),
                 )
                 await runtime.advance("source")
-                # The source may supply its attachment to the edit operation.
+                # A branch can read a source attachment only after explicitly referencing it.
                 self.assertEqual(await self.channel._require_refs("source", (ref.attachment_id,)), (ref.attachment_id,))
-                edited = f"edited-{kind}"
-                await self.store.fork_before_message("source", message.event_id, edited)
+                branch = f"branch-{kind}"
+                await self.store.fork_after_event("source", boundary.event_id, branch)
                 with self.assertRaises(AttachmentNotInSession):
-                    await self.channel.attachment_file(edited, ref.attachment_id)
-                await self.runtime(edited).receive_user_message(
-                    edited, "edited", delivery_id="edit", artifact_refs=(ref.attachment_id,),
+                    await self.channel.attachment_file(branch, ref.attachment_id)
+                await self.runtime(branch).receive_user_message(
+                    branch, "referenced", delivery_id="reference", artifact_refs=(ref.attachment_id,),
                 )
-                path, _ = await self.channel.attachment_file(edited, ref.attachment_id)
+                path, _ = await self.channel.attachment_file(branch, ref.attachment_id)
                 self.assertEqual(path, self.gateway.for_session("source").path(ref.attachment_id))
-                self.assertEqual(await self.channel._require_refs(edited, (ref.attachment_id,)), (ref.attachment_id,))
+                self.assertEqual(await self.channel._require_refs(branch, (ref.attachment_id,)), (ref.attachment_id,))
 
     async def test_missing_registered_original_is_not_treated_as_out_of_scope(self):
         live = Path(self.directory.name) / "live.txt"

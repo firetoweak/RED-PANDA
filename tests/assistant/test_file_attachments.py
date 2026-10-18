@@ -105,43 +105,6 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
                 b"original",
             )
 
-    async def test_edited_message_keeps_attachment_outside_inherited_event_prefix(self):
-        with TemporaryDirectory() as directory:
-            sessions = SessionStore(Path(directory))
-            await sessions.create("source", workspace_id="workspace-test")
-            gateway = AttachmentGateway(sessions.root)
-            ref = _save(gateway.for_session("source"), b"original", "report.pdf")
-            source = AgentRuntime(
-                SqliteJournal(sessions.require("source")),
-                ScriptedDecisionMaker(()), {}, SequentialIds(),
-            )
-            target = await source.receive_user_message(
-                "source", "[File #1]", delivery_id="input",
-                artifact_refs=(ref.attachment_id,),
-            )
-            edited = await sessions.fork_before_message(
-                "source", target.event_id, "edited"
-            )
-            self.assertEqual(edited.artifact_refs, (ref.attachment_id,))
-            self.assertEqual(
-                gateway.for_session("edited").read(ref.attachment_id), b"original"
-            )
-            branch = AgentRuntime(
-                SqliteJournal(sessions.require("edited")),
-                ScriptedDecisionMaker(()), {}, SequentialIds(),
-            )
-            new_message = await branch.receive_user_message(
-                "edited", "revised [File #1]", delivery_id="input-edited",
-                artifact_refs=edited.artifact_refs,
-            )
-            await sessions.fork_after_event(
-                "edited", new_message.event_id, "grandchild"
-            )
-            self.assertEqual(
-                gateway.for_session("grandchild").read(ref.attachment_id),
-                b"original",
-            )
-
     async def test_path_admit_does_not_copy_and_survives_fork_via_pointer(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
