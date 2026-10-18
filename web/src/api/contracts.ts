@@ -18,6 +18,29 @@ const pendingAuthorizationSchema = z
 
 export type PendingAuthorization = z.infer<typeof pendingAuthorizationSchema>;
 
+export const inboxItemSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("authorization"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    command_id: z.string().min(1),
+    name: z.string().min(1),
+    arguments: z.record(z.string(), z.unknown()),
+  }).strict(),
+  z.object({
+    kind: z.literal("control"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    request_id: z.string().min(1),
+    summary: z.string().min(1),
+    risk: z.string().min(1),
+  }).strict(),
+]);
+
+export type InboxItem = z.infer<typeof inboxItemSchema>;
+
 const sessionViewSchema = z
   .object({
     status: z.string().min(1),
@@ -34,17 +57,18 @@ const sessionViewSchema = z
   })
   .strict();
 
-export const sessionSummarySchema = z
+export const agentRosterEntrySchema = z
   .object({
     session_id: z.string().min(1),
     workspace_id: z.string().min(1),
-    title: z.string().min(1),
-    updated_at: z.string().datetime({ offset: true }).nullable(),
+    name: z.string().min(1),
+    direction: z.string().min(1).nullable(),
     activity: z.enum(["running", "idle"]),
-    has_active_subagents: z.boolean(),
-    needs_attention: z.boolean(),
+    status: z.enum(["working", "authorization", "waiting", "idle"]),
   })
   .strict();
+
+export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
 export const workspaceSchema = z
   .object({
@@ -317,7 +341,6 @@ export const subagentObservationSchema = z.object({
 }).strict();
 
 export type SubagentObservation = z.infer<typeof subagentObservationSchema>;
-export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 export type ConversationView = z.infer<typeof conversationViewSchema>;
 export type ConversationItem = ConversationView["items"][number];
 export type ToolStatus = z.infer<typeof toolStatusSchema>;
