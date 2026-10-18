@@ -7,6 +7,7 @@ import unittest
 
 from pydantic import ValidationError
 
+from redpanda.automation.routines import ROUTINE_DUE
 from redpanda.assistant.agents import (
     AGENT_CREATED, AgentCreated, GroupAttention, GroupMessage, PrivateMessage,
     Speaker, agent_fact_for_model, fact_arguments, parse_agent_fact,
@@ -61,6 +62,20 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         for text in ("私信正文", "群聊正文"):
             index = next(i for i, item in enumerate(shown) if text in str(item["content"]))
             self.assertIn("<message_received_at>", shown[index - 1]["content"])
+
+    async def test_a_routine_reminder_shows_its_intent_times_and_that_it_is_not_a_person(self):
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("owner")
+        await runtime.receive_domain_fact(
+            "owner", ROUTINE_DUE, {"routine_id": "r-1", "name": "检查 PR", "intent": "按 Skill 检查。",
+                                   "planned_at": "2026-10-19T01:00:00+00:00",
+                                   "fired_at": "2026-10-19T01:00:02+00:00"},
+            source="automation", delivery_id="r-1:1:2026-10-19T01:00:00+00:00", requests_decision=True)
+        events = await runtime.snapshot("owner")
+        shown = json.dumps(project_chat_messages(
+            events, StateProjector().project_visible("owner", events), "sys"), ensure_ascii=False)
+        for expected in ("按 Skill 检查。", "2026-10-19T01:00:00+00:00", "不是人的新消息"):
+            self.assertIn(expected, shown)
 
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):
         with TemporaryDirectory() as directory:

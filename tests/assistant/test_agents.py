@@ -12,6 +12,8 @@ from redpanda.assistant.agents import (
     identity_for_model, project_agent,
 )
 from redpanda.assistant.compact.core import window_preamble
+from redpanda.automation.routine_tool import SAVE_ROUTINE, SET_ROUTINE_STATE
+from redpanda.automation.routines import PAUSED_BY_USER, ROUTINE_DUE
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -118,6 +120,28 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent.worktree, self.host.agent_worktrees.agent(agent.workspace_id, agent.session_id).path)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
+
+    async def test_a_saved_routine_fires_into_its_owner_timeline_and_asks_for_a_decision(self):
+        agent = await self.create()
+        saved = await self.host._route(SAVE_ROUTINE, agent.session_id, {
+            "command_id": "cmd-routine", "routine_id": None, "name": "检查 PR",
+            "intent": "按 watch-pull-requests 检查。", "schedule": "@every 10m"})
+        self.assertEqual(saved["code"], "ROUTINE_SAVED")
+        routine, = self.host.list_routines(agent.session_id)
+        fire = self.host.routines.store.fire(routine)
+        self.request.reset_mock()
+        await self.host._deliver_routine(fire)
+        operation, session_id, fact = self.request.await_args.args
+        self.assertEqual((operation, session_id), ("fact", agent.session_id))
+        self.assertEqual((fact["fact_type"], fact["delivery_id"]), (ROUTINE_DUE, fire.fire_id))
+        self.assertTrue(fact["requests_decision"])
+        self.assertEqual(fact["data"]["intent"], "按 watch-pull-requests 检查。")
+
+        paused = await self.host.set_routine_state_by_user(agent.session_id, routine.routine_id, PAUSED_BY_USER)
+        self.assertEqual(paused.state, PAUSED_BY_USER)
+        refused = await self.host._route(SET_ROUTINE_STATE, agent.session_id, {
+            "command_id": "cmd-resume", "routine_id": routine.routine_id, "state": "active"})
+        self.assertEqual(refused["code"], "PAUSED_BY_USER")
 
     async def test_new_context_window_restates_identity_before_the_handoff(self):
         agent = await self.create()
