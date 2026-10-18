@@ -181,14 +181,14 @@ class Running:
     def pid(self):
         return self.process.pid
 
-    def poll(self):
+    def poll(self, *, leader_only=False):
         self._reap_zombies()
         if self._leader_running():
             return None
         # Once the leader is a zombie, every remaining descendant has a direct
         # ancestor owned by this subreaper. Read the kernel's child list instead
         # of a /proc-wide census that can miss a newly reparented descendant.
-        if any(pid != self.process.pid and pid not in self._protected for pid in _child_pids()):
+        if not leader_only and any(pid != self.process.pid and pid not in self._protected for pid in _child_pids()):
             return None
         status = os.waitid(os.P_PID, self.process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
         if status is None:
