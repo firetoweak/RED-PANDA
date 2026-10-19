@@ -41,6 +41,8 @@ import {
 import { Composer } from "./Composer";
 import { FileChangesPanel, FileChangesSummary } from "./FileChangesPanel";
 import { createClientId } from "./clientId";
+import { attachmentUrl } from "./AttachmentTile";
+import { FileAttachmentTile } from "./FileAttachmentTile";
 import { UserMessage } from "./UserMessage";
 import { ErrorDetails, ErrorNotice } from "./ErrorNotice";
 import { ContentPage } from "./ContentPage";
@@ -240,6 +242,7 @@ export function Conversation() {
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
                       complete={settled}
+                      sessionId={sessionId}
                       onAuthorize={authorize}
                       steps={turn.process}
                       onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
@@ -270,6 +273,18 @@ export function Conversation() {
                             content={reply.text}
                             streaming={reply.streaming}
                           />
+                          {reply.files.length === 0 ? null : (
+                            <Group gap={8}>
+                              {reply.files.map((file) => (
+                                <FileAttachmentTile
+                                  key={file.attachment_id}
+                                  name={file.name}
+                                  size={file.size}
+                                  href={attachmentUrl(sessionId, file.attachment_id)}
+                                />
+                              ))}
+                            </Group>
+                          )}
                           {settled ? (
                             <TurnEndActions
                               occurredAt={turn.final?.occurredAt ?? null}

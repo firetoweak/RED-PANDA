@@ -155,6 +155,7 @@ class StepItem:
     occurred_at: datetime
     thinking: str | None = None
     audience: Audience = "user"
+    files: tuple[FileAttachment, ...] = ()
 
 
 ConversationItem = UserItem | StepItem
@@ -487,6 +488,18 @@ def _inbox_sort_key(item: InboxItem) -> tuple:
     return (item.label, item.session_id, item.kind, identity)
 
 
+def _message_files(command_state, attachments: AttachmentStore | None) -> tuple[FileAttachment, ...]:
+    outcome = command_state.outcome
+    if outcome is None or not isinstance(outcome.value, Mapping):
+        return ()
+    data = outcome.value.get("data")
+    attachment = data.get("attachment") if isinstance(data, Mapping) else None
+    attachment_id = attachment.get("attachment_id") if isinstance(attachment, Mapping) else None
+    if attachments is None or not is_file_attachment_id(attachment_id):
+        return ()
+    return (attachments.files.describe(attachment_id),)
+
+
 def project_conversation(
     session_id: str,
     events: tuple[Event, ...],
@@ -545,7 +558,7 @@ def project_conversation(
                 messages.append(StepItem(
                     "step", f"{payload.step.step_id}:{command_state.command.command_id}",
                     command_state.command.command_id, effect.argument_dict()["text"], (),
-                    event.occurred_at))
+                    event.occurred_at, files=_message_files(command_state, attachments)))
                 continue
             status, error = _tool_status(command_state)
             tools.append(

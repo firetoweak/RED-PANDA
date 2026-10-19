@@ -26,6 +26,8 @@ import {
 import { useEffect, useState } from "react";
 
 import type { ToolStatus } from "../../api/contracts";
+import { attachmentUrl } from "./AttachmentTile";
+import { FileAttachmentTile } from "./FileAttachmentTile";
 import { stepHeading } from "./stepHeading";
 import { isSubagentTool, subagentTask } from "./subagent";
 import { SubagentCallCard } from "./SubagentCallCard";
@@ -55,6 +57,7 @@ const STATUS_COLOR: Record<ToolStatus, string> = {
 
 interface ExecutionProcessProps {
   complete: boolean;
+  sessionId: string;
   steps: VisibleStep[];
   authorizationDisabled: boolean;
   onAuthorize: (commandId: string, approved: boolean) => void;
@@ -63,6 +66,7 @@ interface ExecutionProcessProps {
 
 export function ExecutionProcess({
   complete,
+  sessionId,
   steps,
   authorizationDisabled,
   onAuthorize,
@@ -127,6 +131,7 @@ export function ExecutionProcess({
               key={step.key}
               onAuthorize={onAuthorize}
               onObserveSubagent={onObserveSubagent}
+              sessionId={sessionId}
               step={step}
             />
           ))}
@@ -142,6 +147,7 @@ export function StepDisclosure({
   authorizationDisabled = false,
   onAuthorize,
   onObserveSubagent,
+  sessionId,
   expandRunning = false,
 }: {
   index: number;
@@ -149,6 +155,7 @@ export function StepDisclosure({
   authorizationDisabled?: boolean;
   onAuthorize?: (commandId: string, approved: boolean) => void;
   onObserveSubagent?: (commandId: string) => void;
+  sessionId?: string;
   expandRunning?: boolean;
 }) {
   const status = stepStatus(step);
@@ -192,7 +199,7 @@ export function StepDisclosure({
       </Group>
       <Collapse expanded={opened}>
         {opened ? (
-          <StepContent step={step} onAuthorize={onAuthorize}
+          <StepContent step={step} sessionId={sessionId} onAuthorize={onAuthorize}
             authorizationDisabled={authorizationDisabled} onObserveSubagent={onObserveSubagent} />
         ) : null}
       </Collapse>
@@ -200,8 +207,9 @@ export function StepDisclosure({
   );
 }
 
-function StepContent({ step, onAuthorize, authorizationDisabled = false, onObserveSubagent }: {
+function StepContent({ step, sessionId, onAuthorize, authorizationDisabled = false, onObserveSubagent }: {
   step: VisibleStep;
+  sessionId?: string;
   onAuthorize?: (commandId: string, approved: boolean) => void;
   authorizationDisabled?: boolean;
   onObserveSubagent?: (commandId: string) => void;
@@ -209,6 +217,18 @@ function StepContent({ step, onAuthorize, authorizationDisabled = false, onObser
   return <Stack className="step-content" gap="xs">
     {step.thinking === null ? null : <ThinkingBlock streaming={step.thinkingPending} text={step.thinking} />}
     {step.text === null ? null : <MarkdownMessage content={step.text} streaming={step.pending} />}
+    {step.files.length === 0 || sessionId === undefined ? null : (
+      <Group gap={8}>
+        {step.files.map((file) => (
+          <FileAttachmentTile
+            key={file.attachment_id}
+            name={file.name}
+            size={file.size}
+            href={attachmentUrl(sessionId, file.attachment_id)}
+          />
+        ))}
+      </Group>
+    )}
     {step.tools.map((tool) => isSubagentTool(tool.name)
       ? <SubagentCallCard key={tool.commandId} tool={tool} onObserve={onObserveSubagent} />
       : <ToolCard key={tool.commandId} tool={tool} onAuthorize={onAuthorize} authorizationDisabled={authorizationDisabled} />)}

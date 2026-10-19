@@ -20,6 +20,11 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
       turns.push(current);
       continue;
     }
+    if (item.files.length > 0) {
+      turns.push({ key: item.key, log: item.audience === "log", user: null, steps: [item] });
+      current = null;
+      continue;
+    }
     const log = item.audience === "log";
     if (current === null || current.log !== log) {
       current = { key: item.key, log, user: null, steps: [] };
@@ -83,7 +88,7 @@ export function turnIsSettled(
 export function turnReply(
   turn: TimelineTurn,
   settled: boolean,
-): { key: string; text: string; streaming: boolean } | null {
+): { key: string; text: string; streaming: boolean; files: VisibleStep["files"] } | null {
   const step = turn.final ?? turn.active;
   if (step === null) {
     return null;
@@ -95,6 +100,7 @@ export function turnReply(
   return {
     key: step.key,
     text: step.text ?? "",
+    files: step.files ?? [],
     streaming: !settled && turn.active !== null,
   };
 }

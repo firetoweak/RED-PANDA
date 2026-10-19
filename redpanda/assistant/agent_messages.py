@@ -83,9 +83,13 @@ MESSAGE_SCHEMAS = [
         "description": (
             "给人发一条消息：显示在你和人的对话里，并提醒人查看。用在人需要知道的时候——"
             "汇报结论、请人判断或授权、报告阻塞。没有值得人知道的内容就不要发。"
+            "人要看证据时，用 path 带上你工作区里的一个文件；文件会跟这条消息一起交给人。"
+            "同事之间不要用它传文件，对方直接读你的工作目录。"
         ),
         "parameters": {"type": "object", "properties": {
             "text": {"type": "string", "minLength": 1, "description": "发给人的消息正文。"},
+            "path": {"type": "string", "minLength": 1,
+                     "description": "可选。工作区内的相对路径，把这个文件的一份副本交给人。"},
         }, "required": ["text"], "additionalProperties": False},
     }},
     {"type": "function", "function": {
@@ -218,10 +222,20 @@ def message_bindings(transport, journal):
 
     async def message_user(context, arguments):
         text = arguments.get("text")
-        if set(arguments) != {"text"} or type(text) is not str or not text.strip():
+        path = arguments.get("path")
+        if set(arguments) - {"text", "path"} or type(text) is not str or not text.strip():
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "message_user 需要非空的 text。"}
-        await transport(MESSAGE_USER, context.session_id, {"output_id": context.command_id, "text": text})
-        return {"ok": True, "code": "MESSAGE_SENT"}
+        if path is not None and (type(path) is not str or not path.strip()):
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "path 必须是工作区内的相对路径。"}
+        delivered = await transport(MESSAGE_USER, context.session_id, {
+            "output_id": context.command_id, "text": text, "path": path,
+        })
+        if isinstance(delivered, dict) and delivered.get("ok") is False:
+            return delivered
+        data = {}
+        if isinstance(delivered, dict) and delivered.get("attachment") is not None:
+            data["attachment"] = delivered["attachment"]
+        return {"ok": True, "code": "MESSAGE_SENT", "data": data}
 
     return {SEND_MESSAGE: sender(SEND_MESSAGE), SEND_GROUP_MESSAGE: sender(SEND_GROUP_MESSAGE),
             LIST_COLLEAGUES: ToolBinding(colleagues), DECLARE_DIRECTION: ToolBinding(declare),
