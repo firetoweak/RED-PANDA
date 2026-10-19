@@ -269,7 +269,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
 
 
 def message_origin(events, command_id: str) -> str:
-    """Follow the issuing Step's trigger back to the non-Agent fact that drove it."""
+    """源头计数沿本批首条输入回溯，不据此判断行动的语义归属。"""
     session_id = events[0].session_id
     state = replay(session_id, events).state
     issued = {item.command.command_id: item.issued_by_event_id for item in state.commands}

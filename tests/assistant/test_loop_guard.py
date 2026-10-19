@@ -34,7 +34,7 @@ from tests.session_scheduler import settle_session
 def event(sequence, names=("read",), notice=None):
     effects = tuple(InvokeTool(name, (("path", "a"),)) for name in names)
     step = Step(
-        f"step-{sequence}", f"trigger-{sequence}", 1, "basis", max(1, sequence - 1),
+        f"step-{sequence}", (f"trigger-{sequence}",), 1, "basis", max(1, sequence - 1),
         ModelDecision(content="working", command_requests=effects),
         tuple(Command(f"cmd-{sequence}-{i}", effect) for i, effect in enumerate(effects)),
     )

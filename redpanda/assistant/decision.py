@@ -527,9 +527,9 @@ class JournalBackedLlmDecisionMaker:
             if show_preview and not decision.content.strip():
                 await self._preview.abort(frame.state.session_id)
         manifest = {
-            "schema": "decision-replay-manifest/v1",
+            "schema": "decision-replay-manifest/v2",
             "decision_basis": {
-                "trigger_event_id": frame.trigger_event.event_id,
+                "trigger_event_ids": list(frame.trigger_event_ids),
                 "decision_cursor": frame.decision_cursor,
                 "basis_state_version": frame.basis_state_version,
                 "observed_journal_position": frame.observed_journal_position,

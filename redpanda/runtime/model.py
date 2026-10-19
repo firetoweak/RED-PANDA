@@ -85,6 +85,12 @@ def _require_str_tuple(value: object, name: str) -> None:
         raise ValueError(f"{name} contains invalid values")
 
 
+def _require_event_ids(value: object) -> None:
+    _require_str_tuple(value, "decision input event ids")
+    if not value or len(value) != len(set(value)):
+        raise ValueError("decision input event ids must be non-empty and unique")
+
+
 def freeze_value(value: object) -> object:
     budget = [MAX_JSON_VALUE_BYTES]
     return _freeze_value(value, 0, budget)
@@ -217,16 +223,21 @@ class ModelDecision:
 @dataclass(frozen=True, slots=True)
 class Step:
     step_id: str
-    trigger_event_id: str
+    trigger_event_ids: tuple[str, ...]
     decision_cursor: int
     basis_state_version: str
     observed_journal_position: int
     decision: ModelDecision
     commands: tuple[Command, ...]
 
+    @property
+    def trigger_event_id(self) -> str:
+        """首条输入用作输出标识，不代表行动归属。"""
+        return self.trigger_event_ids[0]
+
     def __post_init__(self) -> None:
         _require_str(self.step_id, "step id")
-        _require_str(self.trigger_event_id, "trigger event id")
+        _require_event_ids(self.trigger_event_ids)
         _require_str(self.basis_state_version, "basis state version")
         if type(self.decision_cursor) is not int or self.decision_cursor < 1:
             raise ValueError("decision cursor must be positive")
@@ -428,7 +439,7 @@ class CanonicalState:
     status: RuntimeStatus
     commands: tuple[CommandState, ...]
     steps: tuple[StepState, ...]
-    next_trigger_event_id: str | None
+    next_trigger_event_ids: tuple[str, ...]
     waiting_command_ids: tuple[str, ...]
     waiting_for: tuple[str, ...]
 
@@ -446,10 +457,7 @@ class CanonicalState:
             type(step) is not StepState for step in self.steps
         ):
             raise TypeError("canonical steps are invalid")
-        _require_optional_str(
-            self.next_trigger_event_id,
-            "next trigger event id",
-        )
+        _require_str_tuple(self.next_trigger_event_ids, "next trigger event ids")
         _require_str_tuple(self.waiting_command_ids, "waiting command ids")
         _require_str_tuple(self.waiting_for, "waiting reasons")
 
@@ -458,3 +466,7 @@ class CanonicalState:
             if state.command.command_id == command_id:
                 return state
         raise KeyError(command_id)
+
+    @property
+    def next_trigger_event_id(self) -> str | None:
+        return self.next_trigger_event_ids[0] if self.next_trigger_event_ids else None

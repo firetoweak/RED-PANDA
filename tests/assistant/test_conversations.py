@@ -37,7 +37,7 @@ def event(sequence, event_id, payload, causation_id=None, artifact_refs=()):
         occurred_at=datetime(2026, 9, 15, sequence, tzinfo=timezone.utc),
         causation_id=causation_id,
         correlation_id=None,
-        schema_version=5,
+        schema_version=6,
         artifact_refs=artifact_refs,
     )
 
@@ -52,7 +52,7 @@ def committed_step(event_id, trigger, content, commands):
     return StepCommitted(
         Step(
             step_id=event_id,
-            trigger_event_id=trigger,
+            trigger_event_ids=(trigger,),
             decision_cursor=1,
             basis_state_version="basis",
             observed_journal_position=1,
@@ -66,7 +66,7 @@ def canonical_step_event(events, event_id, content, commands, metadata=None):
     frame = StateProjector().project("session-1", events).next_decision
     step = Step(
         step_id=f"decision-{event_id}",
-        trigger_event_id=frame.trigger_event.event_id,
+        trigger_event_ids=frame.trigger_event_ids,
         decision_cursor=frame.decision_cursor,
         basis_state_version=frame.basis_state_version,
         observed_journal_position=frame.observed_journal_position,
@@ -406,7 +406,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             lease = await journal.acquire_step(
                 StepClaimRequest(
                     session_id,
-                    frame.trigger_event.event_id,
+                    frame.trigger_event_ids,
                     frame.decision_cursor,
                     frame.basis_state_version,
                     frame.observed_journal_position,
@@ -423,7 +423,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                     payload=StepCommitted(
                         Step(
                             f"decision-{session_id}",
-                            frame.trigger_event.event_id,
+                            frame.trigger_event_ids,
                             frame.decision_cursor,
                             frame.basis_state_version,
                             frame.observed_journal_position,
@@ -645,7 +645,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             lease = await journal.acquire_step(
                 StepClaimRequest(
                     "spoken",
-                    frame.trigger_event.event_id,
+                    frame.trigger_event_ids,
                     frame.decision_cursor,
                     frame.basis_state_version,
                     frame.observed_journal_position,
@@ -662,7 +662,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                     payload=StepCommitted(
                         Step(
                             "step-1",
-                            frame.trigger_event.event_id,
+                            frame.trigger_event_ids,
                             frame.decision_cursor,
                             frame.basis_state_version,
                             frame.observed_journal_position,

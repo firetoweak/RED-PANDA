@@ -37,7 +37,7 @@ def event(sequence, payload, *, causation_id=None):
     return Event(
         event_id=f"e{sequence}", session_id="s", sequence=sequence,
         payload=payload, occurred_at=datetime.now(timezone.utc),
-        causation_id=causation_id, correlation_id=None, schema_version=5, artifact_refs=(),
+        causation_id=causation_id, correlation_id=None, schema_version=6, artifact_refs=(),
     )
 
 
@@ -47,7 +47,7 @@ def update(sequence, plan, *, snapshot=None, ok=True):
     return (
         event(sequence, StepCommitted(
             Step(
-                f"step{sequence}", f"e{sequence - 1}", sequence - 1, "basis", sequence - 1,
+                f"step{sequence}", (f"e{sequence - 1}",), sequence - 1, "basis", sequence - 1,
                 ModelDecision("调整计划", (effect,)), (command,),
             ),
             {

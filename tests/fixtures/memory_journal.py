@@ -171,10 +171,11 @@ class MemoryJournal:
         if lease_seconds <= 0:
             raise ValueError("step lease duration must be positive")
         async with self._lock:
-            trigger = self._event_ids.get(request.trigger_event_id)
-            if trigger is None or trigger.session_id != request.session_id:
-                raise KeyError(request.trigger_event_id)
-            if request.trigger_event_id in self._decision_consumptions:
+            for input_id in request.trigger_event_ids:
+                trigger = self._event_ids.get(input_id)
+                if trigger is None or trigger.session_id != request.session_id:
+                    raise KeyError(input_id)
+            if any(item in self._decision_consumptions for item in request.trigger_event_ids):
                 return None
             current = self._step_claims.get(request.session_id)
             now = self._clock()
@@ -269,7 +270,7 @@ class MemoryJournal:
                 if self._decision_consumptions.get(payload.trigger_event_id) != existing.event_id:
                     return None
                 return existing
-            if payload.trigger_event_id in self._decision_consumptions:
+            if any(item in self._decision_consumptions for item in payload.trigger_event_ids):
                 return None
             return self._append_locked(draft).event
 
@@ -537,7 +538,8 @@ class MemoryJournal:
         payload = event.payload
         if isinstance(payload, StepCommitted):
             step = payload.step
-            self._decision_consumptions[step.trigger_event_id] = event.event_id
+            for input_id in step.trigger_event_ids:
+                self._decision_consumptions[input_id] = event.event_id
             self._step_ids.add(step.step_id)
             for command in step.commands:
                 self._commands[command.command_id] = (
@@ -582,7 +584,8 @@ class MemoryJournal:
             self._terminal_commands.add(payload.command_id)
             self._dispatch_eligibility.pop(payload.command_id, None)
         elif isinstance(payload, DecisionCancelled):
-            self._decision_consumptions[payload.trigger_event_id] = event.event_id
+            for input_id in payload.trigger_event_ids:
+                self._decision_consumptions[input_id] = event.event_id
             self._clear_session_step_claim(event.session_id)
         elif isinstance(payload, StepContinuationCancelled):
             self._cancelled_step_continuations[payload.step_event_id] = event.event_id
@@ -596,7 +599,7 @@ class MemoryJournal:
             step = payload.step
             if step.step_id in self._step_ids:
                 raise ValueError(f"duplicate step id: {step.step_id}")
-            if step.trigger_event_id in self._decision_consumptions:
+            if any(item in self._decision_consumptions for item in step.trigger_event_ids):
                 raise ValueError(
                     f"decision event consumed twice: {step.trigger_event_id}"
                 )
@@ -631,12 +634,13 @@ class MemoryJournal:
             ):
                 raise ValueError(f"attempt already terminal: {payload.attempt_id}")
         elif isinstance(payload, DecisionCancelled):
-            trigger = self._event_ids.get(payload.trigger_event_id)
-            if trigger is None or trigger.session_id != event.session_id:
-                raise KeyError(payload.trigger_event_id)
+            for input_id in payload.trigger_event_ids:
+                trigger = self._event_ids.get(input_id)
+                if trigger is None or trigger.session_id != event.session_id:
+                    raise KeyError(input_id)
             if event.causation_id != payload.trigger_event_id:
                 raise ValueError("decision cancellation causation mismatch")
-            if payload.trigger_event_id in self._decision_consumptions:
+            if any(item in self._decision_consumptions for item in payload.trigger_event_ids):
                 raise ValueError(
                     f"decision event consumed twice: {payload.trigger_event_id}"
                 )
@@ -679,14 +683,14 @@ class MemoryJournal:
         request = lease.request
         if (
             draft.session_id != request.session_id
-            or step.trigger_event_id != request.trigger_event_id
+            or step.trigger_event_ids != request.trigger_event_ids
             or step.decision_cursor != request.decision_cursor
             or step.basis_state_version != request.basis_state_version
             or step.observed_journal_position != request.observed_journal_position
             or draft.causation_id != request.trigger_event_id
         ):
             raise ValueError("step does not match its claim")
-        if request.trigger_event_id in self._decision_consumptions:
+        if any(item in self._decision_consumptions for item in request.trigger_event_ids):
             raise LeaseLostError(lease.token)
 
     @staticmethod

@@ -253,9 +253,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             result = await send_message(self.transport, "Lin", reply.command_id, {"recipient": "Ada", "text": "收到"})
             self.assertEqual(result["code"], "ORIGIN_LIMIT_REACHED")
             await AgentRuntime(self.journal("Third"), None, {}).receive_user_message("Third", "问问 Ada", delivery_id="human")
-            # Third first answers Ada's task message, then the human message.
-            fresh, = await decide("Third", lambda _: ModelDecision(content="你好"), lambda _: ModelDecision(content="稍后"),
-                                  lambda _: ModelDecision(
+            # The human input overtakes Ada's pending message and has its own budget.
+            fresh, = await decide("Third", lambda _: ModelDecision(
                 command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", "Ada"), ("text", "在吗"))),)))
             result = await send_message(self.transport, "Third", fresh.command_id, {"recipient": "Ada", "text": "在吗"})
             self.assertEqual(result["code"], "DELIVERED")
