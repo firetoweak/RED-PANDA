@@ -174,8 +174,11 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             reference = result["data"]["message_id"]
         binding = message_bindings(self.transport, self.journal("Lin"))[SEND_MESSAGE]
         args = {"recipient": "Ada", "text": "继续", "reply_to": reference}
+        # The Command waits for authorization, so only this test runs the handler; a background
+        # dispatch would race it and still be writing Lin's Journal when the test ends.
         runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker((lambda _: ModelDecision(
-            command_requests=(InvokeTool(SEND_MESSAGE, tuple(args.items())),)),)), {SEND_MESSAGE: binding})
+            command_requests=(InvokeTool(SEND_MESSAGE, tuple(args.items())),)),)),
+            {SEND_MESSAGE: ToolBinding(binding.handler, requires_authorization=True)})
         await runtime.receive_user_message("Lin", "继续", delivery_id="limit")
         advanced = await runtime.advance("Lin")
         context = AttemptContext("Lin", advanced.step.commands[0].command_id, "attempt-limit", 1)
