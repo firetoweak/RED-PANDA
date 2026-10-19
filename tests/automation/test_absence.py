@@ -60,6 +60,17 @@ class AbsenceDecisionTest(unittest.TestCase):
             self.assertEqual(by_id[running_id], ACTIVE)
             self.assertEqual(by_id[human["data"]["routine_id"]], PAUSED_BY_USER)
 
+    def test_restart_drops_live_connections_and_keeps_last_seen(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "routines.sqlite"
+            store = RoutineStore(path)
+            store.note_connected(NOW)
+            self.assertEqual(store.presence(), (NOW, 1))
+            restarted = RoutineStore(path)
+            seen, connections = restarted.presence()
+            self.assertEqual(seen, NOW)
+            self.assertEqual(connections, 0)
+
 
 class AbsenceReviewTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

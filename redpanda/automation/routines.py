@@ -183,6 +183,7 @@ class RoutineStore:
                     connections INTEGER NOT NULL
                 );
                 INSERT OR IGNORE INTO web_presence VALUES (1, NULL, 0);
+                UPDATE web_presence SET connections = 0 WHERE id = 1;
                 PRAGMA user_version = 2;
                 """
             )
