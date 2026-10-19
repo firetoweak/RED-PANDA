@@ -10,6 +10,7 @@ const STATE_LABEL: Record<Routine["state"], string> = {
   active: "运行中",
   paused: "Agent 暂停",
   paused_by_user: "人暂停",
+  paused_unwatched: "无人查看已暂停",
 };
 
 /** 这个 Agent 的例行任务。人可以暂停、恢复或取消；人暂停的只有人能恢复。 */

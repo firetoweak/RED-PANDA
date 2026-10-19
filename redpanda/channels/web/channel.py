@@ -47,11 +47,13 @@ class WebChannel:
     def connect(self) -> WebConnection:
         connection = WebConnection(f"connection-{uuid4().hex}")
         self._connections.add(connection.connection_id)
+        self._sessions.note_web_connected()
         return connection
 
     async def disconnect(self, connection: WebConnection) -> None:
         self._connections.remove(connection.connection_id)
         await self._sessions.release(connection.owner)
+        self._sessions.note_web_disconnected()
 
     async def list_agents(self):
         return await self._queries.list_agents()
@@ -64,6 +66,12 @@ class WebChannel:
 
     async def list_inbox(self):
         return await self._queries.list_inbox()
+
+    async def answer_absence(self, connection_id: str, session_id: str, action: str):
+        self._require_connection(connection_id)
+        if action not in {"continue", "stop"}:
+            raise WebInputInvalid("action 只能是 continue 或 stop。")
+        await self._sessions.answer_absence(session_id, action)
 
     async def list_groups(self):
         return [{"group_id": group.group_id, "workspace_id": group.workspace_id,

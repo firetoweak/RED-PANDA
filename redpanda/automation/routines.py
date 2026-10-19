@@ -29,7 +29,9 @@ MAX_NAME_CHARS = 80
 MAX_INTENT_CHARS = 4000
 _EVERY = re.compile(r"^@every\s+(\d+)([mhd])$")
 _UNITS = {"m": "minutes", "h": "hours", "d": "days"}
-ACTIVE, PAUSED, PAUSED_BY_USER, DELETED = "active", "paused", "paused_by_user", "deleted"
+ACTIVE, PAUSED, PAUSED_BY_USER, PAUSED_UNWATCHED, DELETED = (
+    "active", "paused", "paused_by_user", "paused_unwatched", "deleted",
+)
 
 
 class RoutineError(ValueError):
@@ -113,8 +115,9 @@ class RoutineStore:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = FULL")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise ValueError(f"unsupported routine schema version: {version}")
+            states = f"'{ACTIVE}', '{PAUSED}', '{PAUSED_BY_USER}', '{PAUSED_UNWATCHED}', '{DELETED}'"
             connection.executescript(
                 f"""
                 CREATE TABLE IF NOT EXISTS routines (
@@ -123,8 +126,7 @@ class RoutineStore:
                     name TEXT NOT NULL,
                     intent TEXT NOT NULL,
                     schedule TEXT NOT NULL,
-                    state TEXT NOT NULL CHECK (state IN
-                        ('{ACTIVE}', '{PAUSED}', '{PAUSED_BY_USER}', '{DELETED}')),
+                    state TEXT NOT NULL CHECK (state IN ({states})),
                     revision INTEGER NOT NULL,
                     next_due TEXT,
                     last_fired_at TEXT
@@ -141,7 +143,47 @@ class RoutineStore:
                     fired_at TEXT NOT NULL,
                     delivered_at TEXT
                 );
-                PRAGMA user_version = 1;
+                """
+            )
+            if version < 2:
+                defined = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE name = 'routines'",
+                ).fetchone()[0]
+                if PAUSED_UNWATCHED not in defined:
+                    connection.executescript(
+                        f"""
+                        CREATE TABLE routines_next (
+                            routine_id TEXT PRIMARY KEY,
+                            session_id TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            intent TEXT NOT NULL,
+                            schedule TEXT NOT NULL,
+                            state TEXT NOT NULL CHECK (state IN ({states})),
+                            revision INTEGER NOT NULL,
+                            next_due TEXT,
+                            last_fired_at TEXT
+                        );
+                        INSERT INTO routines_next SELECT * FROM routines;
+                        DROP TABLE routines;
+                        ALTER TABLE routines_next RENAME TO routines;
+                        """
+                    )
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS absence_watch (
+                    session_id TEXT PRIMARY KEY,
+                    phase TEXT NOT NULL CHECK (phase IN ('asked', 'paused')),
+                    asked_at TEXT NOT NULL,
+                    paused_ids TEXT NOT NULL,
+                    fact_recorded INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS web_presence (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    last_seen TEXT,
+                    connections INTEGER NOT NULL
+                );
+                INSERT OR IGNORE INTO web_presence VALUES (1, NULL, 0);
+                PRAGMA user_version = 2;
                 """
             )
             connection.commit()
@@ -207,6 +249,10 @@ class RoutineStore:
             row = self._owned(connection, session_id, routine_id)
             if row["state"] == PAUSED_BY_USER:
                 raise RoutineError("PAUSED_BY_USER", "这个例行任务被人暂停了，只能由人恢复或删除。")
+            if row["state"] == PAUSED_UNWATCHED:
+                raise RoutineError(
+                    "PAUSED_UNWATCHED", "这个例行任务因无人查看被暂停，只能由人恢复或删除。",
+                )
             self._write_state(connection, row, state)
             if state == DELETED:
                 return {"ok": True, "code": "ROUTINE_DELETED", "data": {"routine_id": routine_id}}
@@ -312,6 +358,138 @@ class RoutineStore:
                     (datetime.now(timezone.utc).isoformat(), fire_id),
                 )
 
+    def presence(self) -> tuple[datetime | None, int]:
+        with closing(self._connect()) as connection:
+            row = connection.execute("SELECT last_seen, connections FROM web_presence WHERE id = 1").fetchone()
+        return _utc(row["last_seen"]), row["connections"]
+
+    def note_connected(self, now: datetime) -> None:
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute(
+                    "UPDATE web_presence SET connections = connections + 1, last_seen = ? WHERE id = 1",
+                    (now.isoformat(),),
+                )
+
+    def note_disconnected(self, now: datetime) -> None:
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE web_presence SET
+                        connections = MAX(connections - 1, 0),
+                        last_seen = CASE WHEN connections - 1 <= 0 THEN ? ELSE last_seen END
+                    WHERE id = 1
+                    """,
+                    (now.isoformat(),),
+                )
+
+    def watches(self) -> tuple[AbsenceWatch, ...]:
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                "SELECT * FROM absence_watch ORDER BY session_id",
+            ).fetchall()
+        return tuple(_watch_from_row(row) for row in rows)
+
+    def watch(self, session_id: str) -> AbsenceWatch | None:
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT * FROM absence_watch WHERE session_id = ?", (session_id,),
+            ).fetchone()
+        return None if row is None else _watch_from_row(row)
+
+    def ask_absence(self, session_id: str, now: datetime) -> AbsenceWatch:
+        """Open the inbox question once; a repeat keeps the original time."""
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "INSERT OR IGNORE INTO absence_watch VALUES (?, 'asked', ?, '[]', 0)",
+                    (session_id, now.isoformat()),
+                )
+                row = connection.execute(
+                    "SELECT * FROM absence_watch WHERE session_id = ?", (session_id,),
+                ).fetchone()
+        return _watch_from_row(row)
+
+    def pause_for_absence(self, session_id: str) -> AbsenceWatch:
+        """Pause routines that are still running. A second call does not pause new ones."""
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                current = connection.execute(
+                    "SELECT * FROM absence_watch WHERE session_id = ?", (session_id,),
+                ).fetchone()
+                if current is not None and current["phase"] == "paused":
+                    return _watch_from_row(current)
+                active = connection.execute(
+                    "SELECT routine_id FROM routines WHERE session_id = ? AND state = ? ORDER BY routine_id",
+                    (session_id, ACTIVE),
+                ).fetchall()
+                for row in active:
+                    connection.execute(
+                        "UPDATE routines SET state = ?, next_due = NULL WHERE routine_id = ?",
+                        (PAUSED_UNWATCHED, row["routine_id"]),
+                    )
+                ids = [row["routine_id"] for row in active]
+                asked_at = current["asked_at"] if current is not None else datetime.now(timezone.utc).isoformat()
+                connection.execute(
+                    """
+                    INSERT INTO absence_watch (session_id, phase, asked_at, paused_ids, fact_recorded)
+                    VALUES (?, 'paused', ?, ?, 0)
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        phase = 'paused', paused_ids = excluded.paused_ids, fact_recorded = 0
+                    """,
+                    (session_id, asked_at, json.dumps(ids)),
+                )
+                row = connection.execute(
+                    "SELECT * FROM absence_watch WHERE session_id = ?", (session_id,),
+                ).fetchone()
+        return _watch_from_row(row)
+
+    def mark_absence_told(self, session_id: str) -> None:
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute(
+                    "UPDATE absence_watch SET fact_recorded = 1 WHERE session_id = ? AND phase = 'paused'",
+                    (session_id,),
+                )
+
+    def resume_absence(self, session_id: str, now: datetime) -> tuple[str, ...]:
+        """Restore only routines this pause still holds, then clear the question."""
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                current = connection.execute(
+                    "SELECT * FROM absence_watch WHERE session_id = ?", (session_id,),
+                ).fetchone()
+                if current is None:
+                    return ()
+                restored: list[str] = []
+                for routine_id in json.loads(current["paused_ids"]):
+                    row = connection.execute(
+                        "SELECT * FROM routines WHERE routine_id = ? AND state = ?",
+                        (routine_id, PAUSED_UNWATCHED),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    connection.execute(
+                        "UPDATE routines SET state = ?, next_due = ? WHERE routine_id = ?",
+                        (ACTIVE, next_run(row["schedule"], now).isoformat(), routine_id),
+                    )
+                    restored.append(routine_id)
+                connection.execute("DELETE FROM absence_watch WHERE session_id = ?", (session_id,))
+        return tuple(restored)
+
+
+@dataclass(frozen=True, slots=True)
+class AbsenceWatch:
+    session_id: str
+    phase: str
+    asked_at: datetime
+    paused_ids: tuple[str, ...]
+    fact_recorded: bool
+
 
 class RoutineClock:
     def __init__(self, store: RoutineStore) -> None:
@@ -367,6 +545,13 @@ def _local(value: datetime) -> str:
 def _from_row(row) -> Routine:
     return Routine(row["routine_id"], row["session_id"], row["name"], row["intent"], row["schedule"],
                    row["state"], row["revision"], _utc(row["next_due"]), _utc(row["last_fired_at"]))
+
+
+def _watch_from_row(row) -> AbsenceWatch:
+    return AbsenceWatch(
+        row["session_id"], row["phase"], _utc(row["asked_at"]),
+        tuple(json.loads(row["paused_ids"])), bool(row["fact_recorded"]),
+    )
 
 
 def _fire_from_row(row) -> RoutineFire:

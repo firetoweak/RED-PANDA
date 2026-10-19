@@ -162,6 +162,15 @@ class _Sessions:
     async def release(self, owner):
         self.calls.append(("release", owner))
 
+    def note_web_connected(self):
+        self.calls.append(("note_web_connected",))
+
+    def note_web_disconnected(self):
+        self.calls.append(("note_web_disconnected",))
+
+    async def answer_absence(self, session_id, action):
+        self.calls.append(("answer_absence", session_id, action))
+
     async def view(self, session_id):
         self.calls.append(("view", session_id))
         return SessionView(
