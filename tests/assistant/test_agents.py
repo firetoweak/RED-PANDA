@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from redpanda.assistant.agent_messages import MESSAGE_USER
 from redpanda.assistant.agents import (
-    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, PrivateMessage, Speaker, fact_arguments,
+    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
 )
 from redpanda.assistant.compact.core import window_preamble
