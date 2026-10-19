@@ -163,10 +163,10 @@ class _Sessions:
         self.calls.append(("release", owner))
 
     def note_web_connected(self):
-        self.calls.append(("note_web_connected",))
+        return None
 
     def note_web_disconnected(self):
-        self.calls.append(("note_web_disconnected",))
+        return None
 
     async def answer_absence(self, session_id, action):
         self.calls.append(("answer_absence", session_id, action))
