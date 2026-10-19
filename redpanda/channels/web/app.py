@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 from anyio import CancelScope
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -28,6 +29,7 @@ from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
+from redpanda.automation.routines import RoutineNotFound
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.bootstrap import bootstrap_assistant
@@ -126,6 +128,10 @@ class CreateGroupRequest(ConnectionRequest):
 class GroupMessageRequest(ConnectionRequest):
     text: str
     mention: list[str] = Field(default_factory=list)
+
+
+class RoutineStateRequest(ConnectionRequest):
+    state: Literal["active", "paused_by_user", "deleted"]
 
 
 class InputRequest(BaseModel):
@@ -297,6 +303,10 @@ def create_web_app(
     async def group_not_found(_request: Request, _error: GroupNotFound):
         return JSONResponse(status_code=404, content={"detail": "群不存在"})
 
+    @app.exception_handler(RoutineNotFound)
+    async def routine_not_found(_request: Request, _error: RoutineNotFound):
+        return JSONResponse(status_code=404, content={"detail": "这个 Agent 没有这项例行任务，可能已被删除。"})
+
     @app.exception_handler(AgentNotFound)
     async def agent_not_found(_request: Request, error: AgentNotFound):
         return JSONResponse(status_code=404, content={"detail": f"同项目中没有这位 Agent：{error}"})
@@ -408,6 +418,14 @@ def create_web_app(
     @app.get("/api/sessions/{session_id}")
     async def conversation(session_id: str, request: Request):
         return await _channel(request).conversation(session_id)
+
+    @app.get("/api/sessions/{session_id}/routines")
+    async def routines(session_id: str, request: Request):
+        return _channel(request).routines(session_id)
+
+    @app.put("/api/sessions/{session_id}/routines/{routine_id}/state")
+    async def set_routine_state(session_id: str, routine_id: str, body: RoutineStateRequest, request: Request):
+        return await _channel(request).set_routine_state(body.connection_id, session_id, routine_id, body.state)
 
     @app.get("/api/sessions/{session_id}/changes")
     async def file_changes(session_id: str, request: Request, path: str | None = None,

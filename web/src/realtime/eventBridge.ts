@@ -81,6 +81,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     dispatch(
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
+        { type: "Routines", id: payload.session_id },
       ]),
     );
   });
@@ -128,6 +129,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       previewStarted({
         sessionId: payload.session_id,
         outputId: payload.output_id,
+        audience: payload.audience,
       }),
     );
     // Tool finish can precede Outcome commit. The next decision observes committed
@@ -163,6 +165,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       thinkingStarted({
         sessionId: payload.session_id,
         outputId: payload.output_id,
+        audience: payload.audience,
       }),
     );
   });
@@ -202,6 +205,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         sessionId: payload.session_id,
         outputId: payload.output_id,
         text: payload.text,
+        audience: payload.audience,
       }),
     );
     dispatch(

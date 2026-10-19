@@ -127,6 +127,25 @@ export const directorySelectionSchema = z
 
 export type DirectorySelection = z.infer<typeof directorySelectionSchema>;
 
+// "log" marks an Agent's work log: closing text of a turn the person did not start.
+export const audienceSchema = z.enum(["user", "log"]);
+
+export type Audience = z.infer<typeof audienceSchema>;
+
+export const routineSchema = z
+  .object({
+    routine_id: z.string().min(1),
+    name: z.string().min(1),
+    intent: z.string().min(1),
+    schedule: z.string().min(1),
+    state: z.enum(["active", "paused", "paused_by_user"]),
+    next_run: z.string().datetime({ offset: true }).nullable(),
+    last_run: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+
+export type Routine = z.infer<typeof routineSchema>;
+
 export const toolStatusSchema = z.enum([
   "queued",
   "running",
@@ -188,8 +207,7 @@ export const conversationViewSchema = z
             thinking: z.string().min(1).nullable(),
             tools: z.array(toolItemSchema),
             occurred_at: z.string().datetime({ offset: true }),
-            // "log" marks an Agent's work log: closing text of a turn the person did not start.
-            audience: z.enum(["user", "log"]),
+            audience: audienceSchema,
           })
           .strict(),
       ]),
@@ -246,6 +264,7 @@ export const previewStartedEventSchema = z
   .object({
     session_id: z.string().min(1),
     output_id: z.string().min(1),
+    audience: audienceSchema,
   })
   .strict();
 
@@ -273,6 +292,7 @@ export const outputFinalEventSchema = z
     session_id: z.string().min(1),
     output_id: z.string().min(1),
     text: z.string().min(1),
+    audience: audienceSchema,
   })
   .strict();
 

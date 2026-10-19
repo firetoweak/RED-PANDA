@@ -52,6 +52,8 @@ import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
+import { WorkLog } from "./WorkLog";
+import { RoutineList } from "./RoutineList";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
@@ -147,6 +149,7 @@ export function Conversation() {
     runtime?.committedThinking ?? {},
     runtime?.activeThinking ?? null,
     runtime?.activity ?? null,
+    runtime?.audiences ?? {},
   );
   const turns = timelineTurns(items);
   const running = runtime?.activity === "running";
@@ -225,6 +228,63 @@ export function Conversation() {
               const reply = turnReply(turn, settled);
               const elapsedMs = turnElapsedMs(turn, settled);
               const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
+              const plan = completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />;
+              const body = (
+                <>
+                  <TurnTiming
+                    startedAt={turn.user?.occurredAt ?? null}
+                    running={latest && running && connectionId !== null}
+                    elapsedMs={elapsedMs}
+                  />
+                  {turn.process.length === 0 ? null : (
+                    <ExecutionProcess
+                      authorizationDisabled={connectionId === null}
+                      complete={settled}
+                      onAuthorize={authorize}
+                      steps={turn.process}
+                      onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
+                    />
+                  )}
+                  {thinking === null ? null : (
+                    <ThinkingBlock
+                      streaming={thinking.thinkingPending && !settled}
+                      text={thinking.thinking}
+                    />
+                  )}
+                  {turnNeedsThinkingHint(turn, {
+                    latest,
+                    running,
+                    settled,
+                  }) ? (
+                    <RunningHint label="思考中" />
+                  ) : reply !== null ? (
+                    <Box
+                      component="article"
+                      className="message message-assistant"
+                      key={reply.key}
+                    >
+                      <Group align="flex-start" gap="sm" wrap="nowrap">
+                        <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
+                        <Stack className="assistant-reply" gap={6}>
+                          <MarkdownMessage
+                            content={reply.text}
+                            streaming={reply.streaming}
+                          />
+                          {settled ? (
+                            <TurnEndActions
+                              occurredAt={turn.final?.occurredAt ?? null}
+                              replyText={reply.text}
+                            />
+                          ) : null}
+                        </Stack>
+                      </Group>
+                    </Box>
+                  ) : turnNeedsSilentEnd(turn, settled) &&
+                    !(latest && notice !== null) ? (
+                    <SilentEndHint />
+                  ) : null}
+                </>
+              );
               return (
               <Stack gap="lg" key={turn.key}>
                 {turn.user === null ? null : (
@@ -238,58 +298,7 @@ export function Conversation() {
                     />
                   </Box>
                 )}
-                <TurnTiming
-                  startedAt={turn.user?.occurredAt ?? null}
-                  running={latest && running && connectionId !== null}
-                  elapsedMs={elapsedMs}
-                />
-                {turn.process.length === 0 ? null : (
-                  <ExecutionProcess
-                    authorizationDisabled={connectionId === null}
-                    complete={settled}
-                    onAuthorize={authorize}
-                    steps={turn.process}
-                    onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
-                  />
-                )}
-                {thinking === null ? null : (
-                  <ThinkingBlock
-                    streaming={thinking.thinkingPending && !settled}
-                    text={thinking.thinking}
-                  />
-                )}
-                {turnNeedsThinkingHint(turn, {
-                  latest,
-                  running,
-                  settled,
-                }) ? (
-                  <RunningHint label="思考中" />
-                ) : reply !== null ? (
-                  <Box
-                    component="article"
-                    className="message message-assistant"
-                    key={reply.key}
-                  >
-                    <Group align="flex-start" gap="sm" wrap="nowrap">
-                      <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
-                      <Stack className="assistant-reply" gap={6}>
-                        <MarkdownMessage
-                          content={reply.text}
-                          streaming={reply.streaming}
-                        />
-                        {settled ? (
-                          <TurnEndActions
-                            occurredAt={turn.final?.occurredAt ?? null}
-                            replyText={reply.text}
-                          />
-                        ) : null}
-                      </Stack>
-                    </Group>
-                  </Box>
-                ) : turnNeedsSilentEnd(turn, settled) &&
-                  !(latest && notice !== null) ? (
-                  <SilentEndHint />
-                ) : null}
+                {turn.log ? <WorkLog turn={turn} settled={settled}>{body}{plan}</WorkLog> : body}
                 {latest && notice !== null ? (
                   <ControlNotice message={notice} />
                 ) : null}
@@ -313,7 +322,7 @@ export function Conversation() {
                     )
                   ))
                   : null}
-                {completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />}
+                {turn.log ? null : plan}
               </Stack>
               );
           }}
@@ -356,6 +365,7 @@ export function Conversation() {
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
+        <RoutineList sessionId={sessionId} connectionId={connectionId} />
         {compactPhase !== "failed" ? null : (
           <Alert
             className="composer-error"

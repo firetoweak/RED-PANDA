@@ -1,5 +1,7 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
+import type { Audience } from "../api/contracts";
+
 export type SessionActivity = "running" | "idle";
 
 export type ActivePreview = {
@@ -23,6 +25,8 @@ export type SessionRuntime = {
   unread: number;
   committed: Record<string, string>;
   committedThinking: Record<string, string>;
+  // Who each live output is for, as the server said when it started or was delivered.
+  audiences: Record<string, Audience>;
   tools: Record<string, LiveTool>;
   controlNotice: string | null;
   conversationStatus: {
@@ -58,6 +62,7 @@ function runtimeOf(state: RuntimeState, sessionId: string): SessionRuntime {
     unread: 0,
     committed: {},
     committedThinking: {},
+    audiences: {},
     tools: {},
     controlNotice: null,
     conversationStatus: null,
@@ -100,6 +105,7 @@ const runtimeSlice = createSlice({
       session.activeThinking = null;
       session.committed = {};
       session.committedThinking = {};
+      session.audiences = {};
       session.tools = {};
       session.controlNotice = null;
       session.conversationStatus = null;
@@ -134,12 +140,11 @@ const runtimeSlice = createSlice({
     },
     previewStarted(
       state,
-      action: PayloadAction<{ sessionId: string; outputId: string }>,
+      action: PayloadAction<{ sessionId: string; outputId: string; audience: Audience }>,
     ) {
-      runtimeOf(state, action.payload.sessionId).activePreview = {
-        outputId: action.payload.outputId,
-        text: "",
-      };
+      const session = runtimeOf(state, action.payload.sessionId);
+      session.activePreview = { outputId: action.payload.outputId, text: "" };
+      session.audiences[action.payload.outputId] = action.payload.audience;
     },
     previewDelta(
       state,
@@ -165,12 +170,11 @@ const runtimeSlice = createSlice({
     },
     thinkingStarted(
       state,
-      action: PayloadAction<{ sessionId: string; outputId: string }>,
+      action: PayloadAction<{ sessionId: string; outputId: string; audience: Audience }>,
     ) {
-      runtimeOf(state, action.payload.sessionId).activeThinking = {
-        outputId: action.payload.outputId,
-        text: "",
-      };
+      const session = runtimeOf(state, action.payload.sessionId);
+      session.activeThinking = { outputId: action.payload.outputId, text: "" };
+      session.audiences[action.payload.outputId] = action.payload.audience;
     },
     thinkingDelta(
       state,
@@ -201,14 +205,16 @@ const runtimeSlice = createSlice({
     },
     outputFinal(
       state,
-      action: PayloadAction<{ sessionId: string; outputId: string; text: string }>,
+      action: PayloadAction<{ sessionId: string; outputId: string; text: string; audience: Audience }>,
     ) {
       const session = runtimeOf(state, action.payload.sessionId);
       session.committed[action.payload.outputId] = action.payload.text;
+      session.audiences[action.payload.outputId] = action.payload.audience;
       if (session.activePreview?.outputId === action.payload.outputId) {
         session.activePreview = null;
       }
-      if (state.viewingSessionId !== action.payload.sessionId) {
+      // A work log entry is not a reply to the person, so it never asks for attention.
+      if (action.payload.audience === "user" && state.viewingSessionId !== action.payload.sessionId) {
         session.unread += 1;
       }
     },

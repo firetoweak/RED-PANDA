@@ -45,9 +45,9 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   };
   store.dispatch(sessionActivity({ sessionId: "child", activity: "running" }));
   store.dispatch(toolProgress({ sessionId: "child", commandId: "cmd", name: "read_file", status: "running" }));
-  store.dispatch(previewStarted({ sessionId: "child", outputId: "live" }));
+  store.dispatch(previewStarted({ sessionId: "child", outputId: "live", audience: "user" }));
   store.dispatch(previewDelta({ sessionId: "child", outputId: "live", text: "正在输出" }));
-  store.dispatch(thinkingStarted({ sessionId: "child", outputId: "live" }));
+  store.dispatch(thinkingStarted({ sessionId: "child", outputId: "live", audience: "user" }));
   store.dispatch(thinkingDelta({ sessionId: "child", outputId: "live", text: "实时思考" }));
   const onClose = vi.fn();
   const show = (commandId: string) => <Provider store={store}><MantineProvider>

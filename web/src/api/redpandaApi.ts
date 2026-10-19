@@ -17,6 +17,7 @@ import {
   modelTestResultSchema,
   sessionModelSchema,
   inboxItemSchema,
+  routineSchema,
   subagentObservationSchema,
   workspaceSchema,
   type AgentRosterEntry,
@@ -29,6 +30,7 @@ import {
   type ModelTestResult,
   type SessionModel,
   type InboxItem,
+  type Routine,
   type SubagentObservation,
   type Workspace,
 } from "./contracts";
@@ -120,7 +122,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -225,6 +227,25 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => groupViewSchema.parse(value),
       invalidatesTags: ["Groups", "Agents"],
+    }),
+    getRoutines: build.query<Routine[], string>({
+      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/routines`,
+      transformResponse: (value: unknown) => routineSchema.array().parse(value),
+      providesTags: (_result, _error, id) => [{ type: "Routines", id }],
+    }),
+    setRoutineState: build.mutation<
+      Routine[],
+      SelectSession & { routineId: string; state: "active" | "paused_by_user" | "deleted" }
+    >({
+      query: ({ connectionId, sessionId, routineId, state }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/routines/${encodeURIComponent(routineId)}/state`,
+        method: "PUT",
+        body: { connection_id: connectionId, state },
+      }),
+      transformResponse: (value: unknown) => routineSchema.array().parse(value),
+      transformErrorResponse: (response) => response.status === 404 || response.status === 409
+        ? apiErrorDetail(response.data) ?? response : response,
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "Routines", id: sessionId }],
     }),
     getInbox: build.query<InboxItem[], void>({
       query: () => "/inbox",
@@ -438,6 +459,8 @@ export const redpandaApi = createApi({
 });
 
 export const {
+  useGetRoutinesQuery,
+  useSetRoutineStateMutation,
   useGetFileChangesQuery,
   useGetFileDiffQuery,
   useGetModelSettingsQuery,

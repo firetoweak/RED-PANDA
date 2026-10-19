@@ -92,6 +92,19 @@ class WebChannel:
         await self._sessions.agent_groups.stop(group_id)
         return await self._sessions.agent_groups.view(group_id)
 
+    def routines(self, session_id: str):
+        return [{
+            "routine_id": routine.routine_id, "name": routine.name, "intent": routine.intent,
+            "schedule": routine.schedule, "state": routine.state,
+            "next_run": None if routine.next_due is None else routine.next_due.isoformat(),
+            "last_run": None if routine.last_fired_at is None else routine.last_fired_at.isoformat(),
+        } for routine in self._sessions.list_routines(session_id)]
+
+    async def set_routine_state(self, connection_id: str, session_id: str, routine_id: str, state: str):
+        self._require_connection(connection_id)
+        await self._sessions.set_routine_state_by_user(session_id, routine_id, state)
+        return self.routines(session_id)
+
     async def conversation(self, session_id: str):
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")

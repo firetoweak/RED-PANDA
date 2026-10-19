@@ -27,7 +27,7 @@ beforeEach(() => {
 it("打开长会话只挂载末尾附近的轮次，不挂载整段历史", async () => {
   const dockRef = createRef<HTMLDivElement>();
   const turns: TimelineTurn[] = Array.from({ length: 200 }, (_, index) => ({
-    key: `turn-${index}`, user: null, process: [], active: null, final: null,
+    key: `turn-${index}`, log: false, user: null, process: [], active: null, final: null,
   }));
   const { container } = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 200 }}>
@@ -53,7 +53,7 @@ it("输入区滚轮转给聊天，长文本能自行滚动时保留原生滚动"
   const { getByTestId } = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 200 }}>
       <ConversationTimeline
-        turns={[{ key: "turn", user: null, process: [], active: null, final: null }]}
+        turns={[{ key: "turn", log: false, user: null, process: [], active: null, final: null }]}
         listRef={createRef<VirtuosoHandle>()}
         wheelAreaRef={dockRef}
         following={false}

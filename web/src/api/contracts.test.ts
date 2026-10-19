@@ -158,6 +158,7 @@ describe("outputFinalEventSchema", () => {
       session_id: "session-1",
       output_id: "user-event",
       text: "world",
+      audience: "user",
     });
     expect(parsed.output_id).toBe("user-event");
   });
