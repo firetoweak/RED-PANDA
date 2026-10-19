@@ -9,7 +9,7 @@
 - `reconnect`：断线期间侧栏底部显示 `正在连接…`，输入框禁用且占位文字为 `正在连接…`；恢复后侧栏显示 `已连接`。
 - `multi-tab`：多个标签页同时连接，都能看到同一会话的更新。
 - `disconnect-release`：连接断开只释放该连接的会话选择，空闲的 Worker 会被停掉；运行中的回合不会被取消。
-- `file-changes-refresh`：会话变更面板复用 `connected`（含重连）、`session_activity`、`tool_progress` 的 `settled` 状态，合并短时间内通知后重新查询；没有独立的变更 SSE 事件。
+- `file-changes-refresh`：`文件改动` 复用 `connected`（含重连）、`session_activity`、`tool_progress` 的 `settled` 状态，合并短时间内通知后重新查询；没有独立的变更 SSE 事件。
 
 ## How to get to it (user POV)
 
@@ -22,7 +22,7 @@
 - **多标签页**：A 页发消息，B 页同会话无刷新出现同样回复；侧栏状态同步。
   - (d) 写接口传断开前的旧 `connection_id` → 409，`detail` 为 `Web 连接已失效，请重新连接页面。`，不应 500。JSON 写接口传空 `connection_id` 会先被请求模型（`min_length=1`）拦下返回 422；另一条 409 文案 `Web 连接无效，请重新连接页面。` 只在未经该校验的入口出现（如 `POST .../attachments` 的 multipart 表单字段 `connection_id` 为空），可用它探测。
 - **断线重连**：停掉服务（或断开网络）后，(b) 侧栏底部变 `正在连接…`，输入框禁用、占位 `正在连接…`；恢复后变 `已连接`，输入框可用，(a) 页面内容与 `GET /api/sessions/<id>` 一致。
-- **变更同步**：A、B 页打开同一会话，B 页展开 `会话变更`；A 页让模型新建 `verify_refresh.txt`，写入一行 `hello`。工具完成后，B 页无手动刷新出现文件和新增行数，点击文件能看到新行号与正文；用 `GET /api/sessions/<id>/changes` 复核。工具失败也会触发刷新，不能按失败状态断言没有文件效果。重连后应重新查询；另一会话的文件操作也可能改变当前会话成果，所以刷新不只针对事件所属会话。细节见 [session-file-changes.md](./session-file-changes.md)。
+- **变更同步**：A、B 页打开同一会话，B 页打开 `文件改动`；A 页让模型新建 `verify_refresh.txt`，写入一行 `hello`。工具完成后，B 页无手动刷新出现文件和新增行数，点击文件能看到新行号与正文；用 `GET /api/sessions/<id>/changes` 复核。工具失败也会触发刷新，不能按失败状态断言没有文件效果。重连后应重新查询；另一会话的文件操作也可能改变当前会话成果，所以刷新不只针对事件所属会话。细节见 [session-file-changes.md](./session-file-changes.md)。
 - **断开释放**：让模型跑 `sleep 30 && echo DONE > done.txt`，运行中关闭所有标签页。(c) 回合不被取消：30 秒后 `done.txt` 出现，重新打开页面后该调用为成功、回合正常结束。(a) 会话空闲后，其 Worker 进程退出（进程查询见 crash-recovery）。(b) 服务日志无未处理异常。
 
 ## Gotchas
