@@ -75,7 +75,7 @@ export function visibleTimeline(
       text: item.text,
       pending: false,
       audience: item.audience,
-      files: item.files,
+      files: item.files ?? [],
       tools: item.tools.map((tool) => {
         const live = tools[tool.command_id];
         const status =

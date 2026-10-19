@@ -95,7 +95,7 @@ export function turnReply(
   return {
     key: step.key,
     text: step.text ?? "",
-    files: step.files,
+    files: step.files ?? [],
     streaming: !settled && turn.active !== null,
   };
 }
