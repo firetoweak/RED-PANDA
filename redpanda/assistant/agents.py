@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from redpanda.assistant.workspaces import bound_workspace_id
 from redpanda.runtime import (
-    AttemptOrphaned, CommandOutcomeReceived, CommandRejected, DomainFactCommitted, StepContinuationCancelled, replay,
+    AttemptOrphaned, CommandOutcomeReceived, CommandRejected, DomainFactCommitted, replay,
 )
 from redpanda.runtime.json_values import thaw_value
 
@@ -246,7 +246,8 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
         return {"agent": fact.name, "direction": fact.direction}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
-            "轮到你回应这条群消息。你在群里发言或这次处理结束后，下一位成员才会被叫到；"
+            "轮到你回应这条群消息；回应它的发言请用 reply_to 引用这条消息。"
+            "你在群里发言或这次处理结束后，下一位成员才会被叫到；"
             "需要较长时间的工作，可以先发言再继续。")}
     if isinstance(fact, GroupCreated):
         return {"group": fact.group, "members": fact.members, "notice": (
@@ -267,54 +268,16 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     return shown
 
 
-def _round_trigger(events, command_id: str):
-    """The fact that started the round of work in which this command was issued.
-
-    A fact arriving while Commands run waits for them, and the Step it wakes
-    also carries their results. That Step continues their round: the report of
-    a long run belongs to the work that started it, not to the fact that woke
-    the Step.
-    """
+def message_origin(events, command_id: str) -> str:
+    """Follow the issuing Step's trigger back to the non-Agent fact that drove it."""
     session_id = events[0].session_id
     state = replay(session_id, events).state
     issued = {item.command.command_id: item.issued_by_event_id for item in state.commands}
-    steps = {item.committed_event_id: item for item in state.steps}
-    by_cursor = {item.step.decision_cursor: item for item in state.steps}
+    triggers = {item.committed_event_id: item.step.trigger_event_id for item in state.steps}
     by_id = {event.event_id: event for event in events}
-    cancelled = {event.payload.step_event_id for event in events
-                 if isinstance(event.payload, StepContinuationCancelled)}
-
-    def waited_for(step, trigger, previous) -> bool:
-        """Whether ``trigger`` waited for ``previous``'s Commands, whose results ``step`` then saw."""
-        if previous is None or previous.committed_event_id in cancelled:
-            return False
-        return any(item.command.decision_on_outcome
-                   and (result := item.canonical_outcome_event_id or item.authorization_rejected_by_event_id)
-                   and trigger.sequence < by_id[result].sequence <= step.step.observed_journal_position
-                   for item in previous.commands)
-
-    step = steps[issued[command_id]]
-    while True:
-        trigger = by_id[step.step.trigger_event_id]
-        if isinstance(trigger.payload, (CommandOutcomeReceived, CommandRejected, AttemptOrphaned)):
-            step = steps[issued[trigger.payload.command_id]]
-        elif waited_for(step, trigger, previous := by_cursor.get(step.step.decision_cursor - 1)):
-            step = previous
-        else:
-            return trigger
-
-
-def answered_attention(events, command_id: str) -> str | None:
-    """The group message this command's round was asked to answer, if a group call started it."""
-    payload = _round_trigger(events, command_id).payload
-    if isinstance(payload, DomainFactCommitted) and payload.fact_type == GROUP_ATTENTION:
-        return parse_agent_fact(payload).message_id
-    return None
-
-
-def message_origin(events, command_id: str) -> str:
-    """Follow the issuing Step's trigger back to the non-Agent fact that drove it."""
-    trigger = _round_trigger(events, command_id)
+    trigger = by_id[triggers[issued[command_id]]]
+    while isinstance(trigger.payload, (CommandOutcomeReceived, CommandRejected, AttemptOrphaned)):
+        trigger = by_id[triggers[issued[trigger.payload.command_id]]]
     payload = trigger.payload
     if isinstance(payload, DomainFactCommitted) and payload.fact_type == PRIVATE_MESSAGE:
         return parse_agent_fact(payload).origin

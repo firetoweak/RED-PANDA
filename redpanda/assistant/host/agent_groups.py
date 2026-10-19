@@ -59,9 +59,9 @@ class _Call:
 class _Drive:
     """Who the Host calls in one group, until a person speaks there again or stops it.
 
-    A speech answering a call continues that call's discussion. Any other speech
-    opens a discussion of its own, with its own round and reply budget, and joins
-    the queue instead of replacing it.
+    A speech that quotes a message its sender was called to answer continues that
+    call's discussion. Any other speech opens a discussion of its own, with its own
+    round and reply budget, and joins the queue instead of replacing it.
     """
 
     group: GroupRecord
@@ -245,12 +245,13 @@ class AgentGroups:
             del drive.waiting[name]
             self._changed(drive.group.group_id)
 
-    async def send(self, session_id: str, arguments: dict, origin: str, answers: str | None, admit):
+    async def send(self, session_id: str, arguments: dict, origin: str, admit):
         """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new.
 
-        ``answers`` is the group message whose call started the work this speech
-        comes from. Only the first such speech answers that call; speeches made
-        after it, or from other work, open discussions of their own.
+        The speech answers a call only when its ``reply_to`` quotes the message the
+        sender was called to answer and that call is still open; each call is
+        answered once. Which message a speech answers is the model's statement and
+        is never inferred from what started its work.
         """
         sender = await self.host.agents.by_session(session_id)
         group = next((group for group in await self.list(sender.workspace_id)
@@ -284,7 +285,7 @@ class AgentGroups:
             drive = self._drives.get(group.group_id)
             if drive is None or drive.stopped.is_set():
                 drive = self._replace_drive(group)
-            answered = drive.answering.get((sender.name, answers))
+            answered = drive.answering.get((sender.name, arguments["reply_to"]))
             if answered is not None and drive.replies[answered.opener] >= MAX_GROUP_REPLIES:
                 return {"ok": False, "code": "GROUP_LIMIT_REACHED",
                         "error": "这次群讨论的回复已达上限；需要某位同事接着处理时可以私信他。"}
@@ -293,9 +294,10 @@ class AgentGroups:
                                    mentioned_agents=mention, origin=origin)
             await self._publish(group, message)
             if answered is not None:
-                del drive.answering[sender.name, answers]
-                if sender.name in drive.waiting:
-                    drive.waiting[sender.name].set()
+                del drive.answering[sender.name, arguments["reply_to"]]
+            # Any speech from a member being called ends the Host's wait for it.
+            if sender.name in drive.waiting:
+                drive.waiting[sender.name].set()
             if origin in self._stopped_origins.get(group.group_id, ()):
                 return self._delivered(group, identity, False, True)
             drive.origins.add(origin)

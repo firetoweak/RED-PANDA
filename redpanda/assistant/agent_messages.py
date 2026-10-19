@@ -152,7 +152,7 @@ MESSAGE_SCHEMAS = [
                 "mention": {"type": "array", "items": {"type": "string", "minLength": 1},
                             "description": "要点名回应的成员名字；省略或为空时叫全体成员。"},
                 "reply_to": {"type": ["string", "null"], "minLength": 1,
-                             "description": "要回复的群消息的 message_id；可省略。"},
+                             "description": "要回复的群消息的 message_id；回应轮到你的消息时引用它，一条发言只引用一条；可省略。"},
             },
             "required": ["group", "text"],
             "additionalProperties": False,
