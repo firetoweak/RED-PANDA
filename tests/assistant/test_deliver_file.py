@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from redpanda.assistant.agent_messages import MESSAGE_USER
-from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -56,3 +56,16 @@ class DeliverFileTest(unittest.IsolatedAsyncioTestCase):
                 "output_id": "out-2", "text": "不行", "path": path,
             })
             self.assertFalse(refused["ok"], path)
+
+    async def test_unreadable_file_is_a_known_error_and_does_not_escape(self):
+        from redpanda.assistant.file_attachments import FileAttachmentStore
+
+        agent = await self.host.create_agent(name="Ada", workspace_id=self.workspace.workspace_id)
+        agent.worktree.mkdir(parents=True, exist_ok=True)
+        (agent.worktree / "noread.txt").write_bytes(b"x")
+        for error in (PermissionError(13, "denied"), AttachmentRejected("附件名称必须是有效的单个文件名")):
+            with patch.object(FileAttachmentStore, "save_stream", side_effect=error):
+                refused = await self.host._route(MESSAGE_USER, agent.session_id, {
+                    "output_id": "out-locked", "text": "带上", "path": "noread.txt",
+                })
+            self.assertEqual(refused["code"], "FILE_UNREADABLE")

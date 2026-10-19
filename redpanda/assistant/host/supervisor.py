@@ -27,7 +27,7 @@ from redpanda.automation.once import (
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
-from redpanda.assistant.attachments import AttachmentGateway
+from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
 from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
@@ -285,8 +285,11 @@ class HostSupervisor:
         target = (root / relative).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             return {"ok": False, "code": "FILE_NOT_FOUND", "error": "工作区里没有这个文件。"}
-        with target.open("rb") as stream:
-            saved = AttachmentGateway(self.store.root).for_session(session_id).save_file_stream(stream, target.name)
+        try:
+            with target.open("rb") as stream:
+                saved = AttachmentGateway(self.store.root).for_session(session_id).save_file_stream(stream, target.name)
+        except (OSError, AttachmentRejected):
+            return {"ok": False, "code": "FILE_UNREADABLE", "error": "这个文件无法读取，或名称不能作为附件。"}
         return {"attachment_id": saved.attachment_id, "name": saved.name, "size": saved.size}
 
     async def _route(self, operation, session_id, arguments, *, worker=None):

@@ -242,6 +242,7 @@ export function Conversation() {
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
                       complete={settled}
+                      sessionId={sessionId}
                       onAuthorize={authorize}
                       steps={turn.process}
                       onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}

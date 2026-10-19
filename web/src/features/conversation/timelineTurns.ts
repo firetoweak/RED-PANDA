@@ -20,6 +20,11 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
       turns.push(current);
       continue;
     }
+    if (item.files.length > 0) {
+      turns.push({ key: item.key, log: item.audience === "log", user: null, steps: [item] });
+      current = null;
+      continue;
+    }
     const log = item.audience === "log";
     if (current === null || current.log !== log) {
       current = { key: item.key, log, user: null, steps: [] };
