@@ -27,6 +27,7 @@ from redpanda.automation.once import (
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
+from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
@@ -273,6 +274,21 @@ class HostSupervisor:
             return None
         return GitWorkspace(self.agent_worktrees.child(parent.workspace_id, session_id).path, parent.name)
 
+    async def _copy_worktree_file(self, session_id: str, relative: str) -> dict:
+        """Snapshot one worktree file into the session attachments the person can download."""
+        if type(relative) is not str or not relative.strip() or Path(relative).is_absolute() or ".." in Path(relative).parts:
+            return {"ok": False, "code": "INVALID_PATH", "error": "path 必须是工作区内的相对路径。"}
+        workspace = await self._git_workspace(session_id)
+        if workspace is None:
+            return {"ok": False, "code": "FILE_REQUIRES_AGENT", "error": "只有 Agent 能把工作区文件交给人。"}
+        root = workspace.worktree.resolve()
+        target = (root / relative).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            return {"ok": False, "code": "FILE_NOT_FOUND", "error": "工作区里没有这个文件。"}
+        with target.open("rb") as stream:
+            saved = AttachmentGateway(self.store.root).for_session(session_id).save_file_stream(stream, target.name)
+        return {"attachment_id": saved.attachment_id, "name": saved.name, "size": saved.size}
+
     async def _route(self, operation, session_id, arguments, *, worker=None):
         if operation == "agent_child_review":
             parent = await self.agents.by_session(session_id)
@@ -291,9 +307,15 @@ class HostSupervisor:
         if operation == DECLARE_DIRECTION:
             return await self.agent_messages.declare(session_id, arguments)
         if operation == MESSAGE_USER:
+            attachment = None
+            if arguments.get("path") is not None:
+                copied = await self._copy_worktree_file(session_id, arguments["path"])
+                if copied.get("ok") is False:
+                    return copied
+                attachment = copied
             if self.sink is not None:
                 await _emit(self.sink(session_id, arguments["output_id"], arguments["text"], "user"))
-            return None
+            return None if attachment is None else {"attachment": attachment}
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":

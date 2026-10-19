@@ -83,7 +83,7 @@ export function turnIsSettled(
 export function turnReply(
   turn: TimelineTurn,
   settled: boolean,
-): { key: string; text: string; streaming: boolean } | null {
+): { key: string; text: string; streaming: boolean; files: VisibleStep["files"] } | null {
   const step = turn.final ?? turn.active;
   if (step === null) {
     return null;
@@ -95,6 +95,7 @@ export function turnReply(
   return {
     key: step.key,
     text: step.text ?? "",
+    files: step.files,
     streaming: !settled && turn.active !== null,
   };
 }

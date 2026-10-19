@@ -35,6 +35,7 @@ export type VisibleStep = {
   pending: boolean;
   tools: VisibleTool[];
   audience: Audience;
+  files: { attachment_id: string; name: string; size: number }[];
 };
 
 export type VisibleItem = VisibleUser | VisibleStep;
@@ -74,6 +75,7 @@ export function visibleTimeline(
       text: item.text,
       pending: false,
       audience: item.audience,
+      files: item.files,
       tools: item.tools.map((tool) => {
         const live = tools[tool.command_id];
         const status =
@@ -108,6 +110,7 @@ export function visibleTimeline(
       text,
       pending: true,
       tools: [],
+      files: [],
       audience: audiences[outputId],
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
@@ -126,6 +129,7 @@ export function visibleTimeline(
       text: preview.text,
       pending: true,
       tools: [],
+      files: [],
       audience: audiences[preview.outputId],
       ...resolveThinking(preview.outputId, null, committedThinking, liveThinking),
     });
@@ -146,6 +150,7 @@ export function visibleTimeline(
       text: null,
       pending: true,
       tools: [],
+      files: [],
       audience: audiences[outputId],
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
