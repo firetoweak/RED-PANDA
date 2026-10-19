@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
+from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
@@ -211,11 +212,14 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_default_prompt_names_only_real_tools_and_fields(self):
-        for prompt in (DEFAULT_ASSISTANT_PROMPT, CODING_BOT_PROMPT):
+        # Colleague and person messaging tools are assembled only for long-lived Agents.
+        agent_tools = {schema["function"]["name"] for schema in MESSAGE_SCHEMAS}
+        for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (CODING_BOT_PROMPT, agent_tools)):
             unknown = (
                 _ascii_tokens(prompt)
                 - PROSE_VOCABULARY
                 - self._known_names("vocabulary")
+                - extra
             )
             self.assertEqual(
                 unknown,

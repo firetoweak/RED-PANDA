@@ -141,9 +141,17 @@ def assistant_prompt(*, agent_branch: bool = False) -> str:
         "- 不擅自提交或推送代码、重写 Git 历史，或执行用户未要求的破坏性操作。"
     )
     return "\n\n".join((
-        _ASSISTANT_PROMPT.format(git_rules=git_rules), CODING_WORK_PROMPT,
-        TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
+        _ASSISTANT_PROMPT.format(git_rules=git_rules), *((AUDIENCE_PROMPT,) if agent_branch else ()),
+        CODING_WORK_PROMPT, TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
     ))
+
+
+AUDIENCE_PROMPT = """
+你的回复给谁：
+- 一轮工作由人的消息开始时，这一轮最后的回复直接给人；其中你委派的子任务交回、你安排的一次性提醒到点，都算这一轮的延续。
+- 一轮工作由同事私信、群里轮到你回应或例行任务到点开始时，你的回复只留作你的工作记录，人不会收到也不会被提醒。对同事说话用 send_message，在群里说话用 send_group_message。
+- 需要让人知道时用 message_user：汇报结论、请人判断或授权、报告阻塞。没有值得人知道的内容就不要发。
+""".strip()
 
 
 DEFAULT_ASSISTANT_PROMPT = assistant_prompt()

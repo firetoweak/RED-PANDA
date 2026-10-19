@@ -15,6 +15,7 @@ from redpanda.runtime import (
 
 SEND_MESSAGE = "send_message"
 LIST_COLLEAGUES = "list_colleagues"
+MESSAGE_USER = "message_user"
 DECLARE_DIRECTION = "declare_direction"
 SEND_GROUP_MESSAGE = "send_group_message"
 # Starting values to tune against real collaboration. All are deterministic
@@ -77,6 +78,16 @@ class DirectionArguments(BaseModel):
 
 
 MESSAGE_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": MESSAGE_USER,
+        "description": (
+            "给人发一条消息：显示在你和人的对话里，并提醒人查看。用在人需要知道的时候——"
+            "汇报结论、请人判断或授权、报告阻塞。没有值得人知道的内容就不要发。"
+        ),
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "minLength": 1, "description": "发给人的消息正文。"},
+        }, "required": ["text"], "additionalProperties": False},
+    }},
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
         "description": (
@@ -205,8 +216,16 @@ def message_bindings(transport, journal):
                                                                  "delivery_id": delivery_id})
         return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": declaration.direction}}
 
+    async def message_user(context, arguments):
+        text = arguments.get("text")
+        if set(arguments) != {"text"} or type(text) is not str or not text.strip():
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "message_user 需要非空的 text。"}
+        await transport(MESSAGE_USER, context.session_id, {"output_id": context.command_id, "text": text})
+        return {"ok": True, "code": "MESSAGE_SENT"}
+
     return {SEND_MESSAGE: sender(SEND_MESSAGE), SEND_GROUP_MESSAGE: sender(SEND_GROUP_MESSAGE),
-            LIST_COLLEAGUES: ToolBinding(colleagues), DECLARE_DIRECTION: ToolBinding(declare)}
+            LIST_COLLEAGUES: ToolBinding(colleagues), DECLARE_DIRECTION: ToolBinding(declare),
+            MESSAGE_USER: ToolBinding(message_user)}
 
 
 async def recover_message_attempts(journal, session_id, transport):

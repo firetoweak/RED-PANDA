@@ -188,6 +188,8 @@ export const conversationViewSchema = z
             thinking: z.string().min(1).nullable(),
             tools: z.array(toolItemSchema),
             occurred_at: z.string().datetime({ offset: true }),
+            // "log" marks an Agent's work log: closing text of a turn the person did not start.
+            audience: z.enum(["user", "log"]),
           })
           .strict(),
       ]),
