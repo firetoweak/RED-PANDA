@@ -4,10 +4,12 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, ty
 
 const WIDTH_KEY = "redpanda.contentPageWidth";
 const MIN_WIDTH = 320;
+const MIN_CONVERSATION_WIDTH = 480;
+const DEFAULT_WIDTH = 640;
 
 function readWidth() {
-  const value = Number(window.localStorage.getItem(WIDTH_KEY) ?? 960);
-  return Number.isFinite(value) && value >= MIN_WIDTH ? value : 960;
+  const value = Number(window.localStorage.getItem(WIDTH_KEY) ?? DEFAULT_WIDTH);
+  return Number.isFinite(value) && value >= MIN_WIDTH ? value : DEFAULT_WIDTH;
 }
 
 export function ContentPage({ title, onClose, children }: {
@@ -22,7 +24,7 @@ export function ContentPage({ title, onClose, children }: {
 
   useEffect(() => {
     const parent = panelRef.current!.parentElement!;
-    const updateMaxWidth = () => setMaxWidth(Math.max(MIN_WIDTH, parent.getBoundingClientRect().width - MIN_WIDTH));
+    const updateMaxWidth = () => setMaxWidth(Math.max(MIN_WIDTH, parent.getBoundingClientRect().width - MIN_CONVERSATION_WIDTH));
     updateMaxWidth();
     const observer = new ResizeObserver(updateMaxWidth);
     observer.observe(parent);
@@ -33,7 +35,7 @@ export function ContentPage({ title, onClose, children }: {
   }, []);
 
   function changeWidth(next: number) {
-    const available = Math.max(MIN_WIDTH, panelRef.current!.parentElement!.getBoundingClientRect().width - MIN_WIDTH);
+    const available = Math.max(MIN_WIDTH, panelRef.current!.parentElement!.getBoundingClientRect().width - MIN_CONVERSATION_WIDTH);
     widthRef.current = Math.max(MIN_WIDTH, Math.min(available, next));
     setWidth(widthRef.current);
   }

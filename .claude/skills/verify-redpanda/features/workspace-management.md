@@ -8,7 +8,7 @@
 - `pick-directory`：`选择文件夹` 按钮调用 `POST /api/workspaces/select-directory`，由服务端弹本机系统对话框（标题 `选择工作区文件夹`）。这是 human-in-the-loop：人不选就一直等，不设超时，不算挂起问题。选中后填入目录，名称为空时用目录名补上。失败提示 `选择失败`/`文件夹选择失败，请查看服务端错误。`。
 - `rename`：工作区标题右侧 `<名称> 工作区操作`（右键标题同样打开）→ `重命名工作区` → 弹窗 `重命名工作区`、字段 `名称`（说明 `只修改显示名称，工作区目录保持不变。`）、按钮 `取消`/`保存` → `PATCH /api/workspaces/{id}`。失败提示 `重命名失败`/`未能保存名称，请重试。`。
 - `remove`：同一菜单 `移除工作区` → 弹窗 `移除工作区`（说明工作区目录不会被删除，绑在上面的 Agent 不再列出，工作树和分支留在项目里，再次添加同一目录不会认回这些 Agent）→ `取消`/`移除` → `DELETE /api/workspaces/{id}`（204）。只从 `workspaces.json` 摘掉登记。失败提示 `移除失败`/`未能移除工作区，请重试。`。
-- `list`：`GET /api/workspaces`，侧栏按工作区分组列 Agent；组标题上有 `在 <名称> 新建 Agent`（提示 `在此项目新建 Agent`）。
+- `list`：`GET /api/workspaces`，侧栏按工作区分组列 Agent；组标题上有 `在 <名称> 新建 Agent`（提示 `在此项目新建 Agent`）。工作台也按项目展示卡片；项目名称打开 `/workspaces/:workspaceId`，只显示该项目的 Agent 和群聊。
 - `registry-load`：`workspaces.json` 只在服务启动时读一次（`bootstrap.py` 的 `WorkspaceRegistry.load`）。
 
 ## How to get to it (user POV)

@@ -72,16 +72,19 @@ export function ExecutionProcess({
   onAuthorize,
   onObserveSubagent,
 }: ExecutionProcessProps) {
-  const [opened, setOpened] = useState(!complete);
+  const needsAction = steps.some((step) => step.tools.some((tool) => tool.status === "awaiting_authorization"));
+  const [opened, setOpened] = useState(needsAction);
   const running = steps.some(stepStatusIsRunning);
   const toolCount = steps.reduce((count, step) => count + step.tools.length, 0);
   const subagentTasks = steps.flatMap((step) => step.tools.filter((tool) => tool.name === "delegate"));
 
   useEffect(() => {
-    if (complete) {
+    if (needsAction) {
+      setOpened(true);
+    } else if (complete) {
       setOpened(false);
     }
-  }, [complete]);
+  }, [complete, needsAction]);
 
   return (
     <Paper className="execution-process" radius="md" withBorder>

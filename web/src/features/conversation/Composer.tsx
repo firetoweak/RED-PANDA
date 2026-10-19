@@ -491,8 +491,8 @@ export function Composer({
           onChange={(event) => setText(event.currentTarget.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={disabled ? "正在连接…" : "输入消息，Enter 发送，可拖入文件或粘贴图片"}
-          minRows={2}
+          placeholder={disabled ? "正在连接…" : "描述你想完成的事，或拖入文件…"}
+          minRows={1}
           maxRows={7}
           variant="unstyled"
           disabled={disabled}
@@ -565,6 +565,7 @@ export function Composer({
             <span style={{ display: "inline-flex" }}>
               <Switch
                 aria-label="自动放行写文件等工具"
+                label="自动放行"
                 checked={autoAuthorize}
                 disabled={autoAuthorizeBusy || connectionId === null}
                 onChange={(event) => onToggleAutoAuthorize(event.currentTarget.checked)}
@@ -601,6 +602,7 @@ export function Composer({
         </Group>
       </Group>
     </Paper>
+    <Text className="composer-help">Enter 发送 · Shift + Enter 换行 · 请核对 Agent 的结果与文件改动</Text>
     </>
   );
 }

@@ -22,7 +22,7 @@ function step(key: string, text: string, files: VisibleStep["files"] = []): Visi
   };
 }
 
-it("带附件的消息单独成气泡，执行过程里展开后也能下载", () => {
+it("带附件的消息单独成气泡，执行过程里展开后也能下载", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const turns = timelineTurns([
     step("file", "证据在这", [file]),
@@ -42,7 +42,8 @@ it("带附件的消息单独成气泡，执行过程里展开后也能下载", (
       />
     </MantineProvider>,
   );
-  fireEvent.click(screen.getByRole("button", { name: /证据在这/ }));
+  fireEvent.click(screen.getByRole("button", { name: /执行过程/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /证据在这/ }));
   expect(screen.getByRole("link", { name: "evidence.txt", hidden: true }).getAttribute("href"))
     .toContain(encodeURIComponent(file.attachment_id));
 });

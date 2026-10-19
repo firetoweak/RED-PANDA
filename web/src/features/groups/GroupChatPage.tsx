@@ -1,19 +1,22 @@
 import {
-  Alert, Badge, Button, Group, MultiSelect, Paper, ScrollArea, Stack, Text, Textarea, Tooltip,
+  ActionIcon, Alert, Badge, Group, ScrollArea, Text, Tooltip,
 } from "@mantine/core";
-import { IconSend } from "@tabler/icons-react";
-import { useState } from "react";
+import { IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import type { GroupMessage } from "../../api/contracts";
 import {
   useGetAgentsQuery,
   useGetGroupQuery,
+  useGetWorkspacesQuery,
   usePostGroupMessageMutation,
 } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
+import { AgentStatus } from "../sessions/AgentStatus";
+import { GroupComposer } from "./GroupComposer";
 
 function GroupMessageRow({ message, sessionOf }: {
   message: GroupMessage;
@@ -22,41 +25,52 @@ function GroupMessageRow({ message, sessionOf }: {
   const time = formatMessageTime(message.occurred_at);
   const session = message.sender === null ? undefined : sessionOf(message.sender);
   return (
-    <Paper className={message.sender === null ? "group-message is-human" : "group-message"}
-      p="sm" radius="md" withBorder>
-      <Group gap="xs" justify="space-between" wrap="nowrap">
-        <Group gap={6} wrap="nowrap">
-          {message.sender === null ? (
-            <Text fw={600} fz={13}>你</Text>
-          ) : session === undefined ? (
-            <Text fw={600} fz={13}>{message.sender}</Text>
-          ) : (
-            <Text component={Link} fw={600} fz={13} to={`/sessions/${encodeURIComponent(session)}`}>
-              {message.sender}
-            </Text>
-          )}
-          {message.mentioned_agents.map((name) => (
-            <Badge key={name} size="xs" variant="light">@{name}</Badge>
-          ))}
-        </Group>
+    <article className={message.sender === null ? "group-message is-human" : "group-message"}
+      aria-label={`${message.sender ?? "你"}的群消息`}>
+      <Group className="group-message-meta" gap={6}>
+        {message.sender === null ? (
+          <Text fw={600} fz={13}>你</Text>
+        ) : session === undefined ? (
+          <Text fw={600} fz={13}>{message.sender}</Text>
+        ) : (
+          <Text component={Link} fw={600} fz={13} to={`/sessions/${encodeURIComponent(session)}`}>
+            {message.sender}
+          </Text>
+        )}
         <Tooltip label={time.full} openDelay={400}>
           <Text c="dimmed" fz={11}>{time.short}</Text>
         </Tooltip>
       </Group>
-      <MarkdownMessage content={message.text} streaming={false} />
-    </Paper>
+      <div className="group-message-bubble">
+        {message.mentioned_agents.length === 0 ? null : <Group gap={4} mb={6}>
+          {message.mentioned_agents.map((name) => <Badge key={name} size="xs" color="gray" variant="light">@{name}</Badge>)}
+        </Group>}
+        <MarkdownMessage content={message.text} streaming={false} />
+      </div>
+    </article>
   );
 }
 
 export function GroupChatPage() {
   const groupId = useParams().groupId!;
+  return <GroupConversation key={groupId} groupId={groupId} />;
+}
+
+function GroupConversation({ groupId }: { groupId: string; }) {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: group, error: loadError } = useGetGroupQuery(groupId);
   const { data: agents = [] } = useGetAgentsQuery();
+  const { data: workspaces = [] } = useGetWorkspacesQuery();
   const [postMessage, posting] = usePostGroupMessageMutation();
-  const [text, setText] = useState("");
-  const [mention, setMention] = useState<string[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
+  const [detailsOpened, setDetailsOpened] = useState(true);
+  const viewport = useRef<HTMLDivElement>(null);
+  const followMessages = useRef(true);
+
+  useEffect(() => {
+    const element = viewport.current;
+    if (element !== null && followMessages.current) element.scrollTop = element.scrollHeight;
+  }, [group?.messages.length, group?.calling.join(",")]);
 
   if (loadError !== undefined) {
     return <Text c="dimmed" p="lg">这个群不存在或已无法读取。</Text>;
@@ -64,89 +78,105 @@ export function GroupChatPage() {
   if (group === undefined) {
     return null;
   }
-  const sessionOf = (name: string) => agents.find(
+  const memberOf = (name: string) => agents.find(
     (agent) => agent.workspace_id === group.workspace_id && agent.name === name,
-  )?.session_id;
-  const canSend = connectionId !== null && text.trim() !== "" && !posting.isLoading;
+  );
+  const sessionOf = (name: string) => memberOf(name)?.session_id;
+  const workspace = workspaces.find((item) => item.workspace_id === group.workspace_id);
 
-  async function send() {
-    if (!canSend || connectionId === null) {
-      return;
+  async function send(text: string, mention: string[]) {
+    if (connectionId === null || posting.isLoading) {
+      return false;
     }
     setFailure(null);
     try {
       await postMessage({ connectionId, groupId, text, mention }).unwrap();
-      setText("");
-      setMention([]);
+      followMessages.current = true;
+      const element = viewport.current;
+      if (element !== null) element.scrollTop = element.scrollHeight;
+      return true;
     } catch (cause) {
       setFailure(typeof cause === "string" ? cause : "发送没有完成");
+      return false;
     }
   }
 
   return (
-    <Stack className="group-chat" gap="sm" h="100%" maw={860} mx="auto" p="lg">
-      <Stack gap={2}>
-        <Text fw={700} size="lg">{group.name}</Text>
-        <Group gap={4}>
-          {group.members.map((name) => {
-            const session = sessionOf(name);
-            return session === undefined ? (
-              <Badge key={name} color="gray" size="sm" variant="light">{name}</Badge>
-            ) : (
-              <Badge key={name} color="gray" component={Link} size="sm"
-                style={{ cursor: "pointer" }} to={`/sessions/${encodeURIComponent(session)}`} variant="light">
-                {name}
-              </Badge>
+    <div className="session-page group-chat">
+      <div className="session-main">
+        <header className="page-header session-header">
+          <Group gap={10} wrap="nowrap" className="session-header-identity">
+            <span className="agent-avatar agent-avatar-small"><IconUsersGroup size={18} /></span>
+            <div className="session-header-name">
+              <Text fw={600} size="sm" truncate>{group.name}</Text>
+              <Text c="dimmed" fz={11}>{group.members.length} 位成员 · 群聊</Text>
+            </div>
+          </Group>
+          <Tooltip label={detailsOpened ? "收起群资料" : "显示群资料"}>
+            <ActionIcon className="agent-details-toggle" aria-label={detailsOpened ? "收起群资料" : "显示群资料"}
+              aria-expanded={detailsOpened} onClick={() => setDetailsOpened((opened) => !opened)} variant="subtle" color="gray">
+              {detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}
+            </ActionIcon>
+          </Tooltip>
+        </header>
+        <ScrollArea className="group-chat-scroll" viewportRef={viewport} type="hover"
+          onScrollPositionChange={({ y }) => {
+            const element = viewport.current;
+            if (element !== null) followMessages.current = element.scrollHeight - element.clientHeight - y < 80;
+          }}>
+          <div className="group-transcript">
+            {group.messages.length === 0 ? (
+              <div className="group-chat-empty">
+                <span className="agent-avatar agent-details-avatar"><IconUsersGroup size={30} /></span>
+                <Text fw={500} size="lg">和 {group.members.join("、")} 一起开始</Text>
+                <Text c="dimmed" size="sm">在这里分配任务、同步进展，或点名请某位成员回应。</Text>
+              </div>
+            ) : group.messages.map((message) => (
+              <GroupMessageRow key={message.message_id} message={message} sessionOf={sessionOf} />
+            ))}
+          </div>
+        </ScrollArea>
+        <div className="group-composer-dock">
+          <div className="group-composer-status" aria-live="polite">
+            {group.calling.length === 0 ? null : (
+              <Text c="dimmed" fz={12}>正在等 {group.calling.join("、")} 回应…</Text>
+            )}
+          </div>
+          {failure === null ? null : <Alert color="red">{failure}</Alert>}
+          <GroupComposer groupName={group.name} members={group.members} connected={connectionId !== null}
+            posting={posting.isLoading} onSend={send} />
+          <div className="composer-help">Enter 发送 · Shift+Enter 换行 · 不点名则通知全体成员</div>
+        </div>
+      </div>
+      {!detailsOpened ? null : <aside className="agent-details" aria-label="群资料">
+        <div className="agent-details-profile">
+          <span className="agent-avatar agent-details-avatar"><IconUsersGroup size={30} /></span>
+          <Text fw={600} size="md">{group.name}</Text>
+          <Text c="dimmed" fz={12}>{group.members.length} 位成员</Text>
+        </div>
+        {workspace === undefined ? null : <div className="agent-details-section">
+          <Text className="agent-details-label" size="xs" c="dimmed">所在项目</Text>
+          <Link className="agent-details-project" to={`/workspaces/${encodeURIComponent(workspace.workspace_id)}`}>
+            <IconFolder size={16} /><span>{workspace.name}</span>
+          </Link>
+        </div>}
+        <div className="agent-details-section">
+          <Text className="agent-details-label" size="xs" c="dimmed">群成员</Text>
+          <div className="group-member-list">{group.members.map((name) => {
+            const agent = memberOf(name);
+            const identity = <>
+              <span className="agent-avatar">{name.slice(0, 1)}</span>
+              <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text>
+                <Text fz={11} c="dimmed" lineClamp={2}>{agent?.direction ?? "尚未设置负责方向"}</Text></div>
+              {agent === undefined ? null : <AgentStatus agent={agent} compact />}
+            </>;
+            return agent === undefined ? <div className="group-member" key={name}>{identity}</div> : (
+              <Link className="group-member" key={name} aria-label={`查看 ${name} 的会话`}
+                to={`/sessions/${encodeURIComponent(agent.session_id)}`}>{identity}</Link>
             );
-          })}
-        </Group>
-      </Stack>
-      <ScrollArea className="group-chat-scroll" style={{ flex: 1 }} type="hover">
-        <Stack gap="xs">
-          {group.messages.length === 0 ? (
-            <Text c="dimmed" fz={13}>还没有人发言。</Text>
-          ) : group.messages.map((message) => (
-            <GroupMessageRow key={message.message_id} message={message} sessionOf={sessionOf} />
-          ))}
-        </Stack>
-      </ScrollArea>
-      {group.calling.length === 0 ? null : (
-        <Text c="dimmed" fz={12}>正在等 {group.calling.join("、")} 回应…</Text>
-      )}
-      {failure === null ? null : <Alert color="red">{failure}</Alert>}
-      <Stack gap={6}>
-        <MultiSelect
-          aria-label="点名"
-          clearable
-          data={group.members}
-          onChange={setMention}
-          placeholder={mention.length === 0 ? "不点名则叫全体成员" : undefined}
-          size="xs"
-          value={mention}
-        />
-        <Group align="flex-end" gap="xs" wrap="nowrap">
-          <Textarea
-            aria-label="群消息"
-            autosize
-            maxRows={8}
-            minRows={2}
-            onChange={(event) => setText(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            placeholder="在群里说点什么（Ctrl+Enter 发送）"
-            style={{ flex: 1 }}
-            value={text}
-          />
-          <Button aria-label="发送到群" disabled={!canSend} loading={posting.isLoading}
-            onClick={() => void send()}>
-            <IconSend size={16} />
-          </Button>
-        </Group>
-      </Stack>
-    </Stack>
+          })}</div>
+        </div>
+      </aside>}
+    </div>
   );
 }

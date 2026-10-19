@@ -4,10 +4,10 @@
 
 ## Sub-features
 
-- `home-empty`：`/` 与 `/workspaces/:workspaceId` 由 `AgentHome` 处理，不自动新建会话。一个项目都没有时主区域显示欢迎图、文字 `先选择一个文件夹作为工作区，小熊猫会在这里与你处理文件和任务。` 和按钮 `创建工作区`。已有项目时文字是 `从左侧选择一个 Agent，或在项目里新建一个。`
+- `home-empty`：`/` 与 `/workspaces/:workspaceId` 由 `AgentHome` 处理，不自动新建会话。没有项目时工作台显示 `从一个项目开始` 和按钮 `创建工作区`；已有项目时展示 Agent 卡片、负责方向、状态与新建入口。
 - `open-agent`：按 session-sidebar 创建一个 Agent 后进入 `/sessions/<id>`。不再有草稿行或 `new agent` 标题。
-- `send-message`：在 `消息` 输入框（占位 `输入消息，Enter 发送，可拖入文件或粘贴图片`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`。
-- `reply-render`：回复以 Markdown 渲染（`MarkdownMessage.tsx`），可 `复制回复`；思考内容折叠块标题为 `思考`（`ThinkingBlock.tsx`）；尚无正文时运行提示为 `思考中`（`Conversation.tsx` 的 `RunningHint`、`stepHeading.ts`）。
+- `send-message`：在 `消息` 输入框（占位 `描述你想完成的事，或拖入文件…`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`；底部显示 Enter 发送、Shift + Enter 换行提示。
+- `reply-render`：回复以 Markdown 气泡渲染（`MarkdownMessage.tsx`），Agent 身份显示在会话顶部和右侧资料栏，不在每条回复中重复；悬停回复或键盘聚焦操作区可 `复制回复` 并查看时间与耗时。普通问答气泡分别靠右、靠左，直接间隔 8。思考与执行过程入口在回复之后，默认折叠，思考流式输出时也不自动展开；需要授权时展开执行过程；尚无正文时运行提示为 `思考中`。
 - `windowed-history`：长会话只渲染阅读位置附近的轮次，向上滚动查看早期记录，`跳到最新` 恢复跟随输出。
 - `spa-fallback`：未知前端路径回 `index.html`（`app.py` 的 `/{path:path}`）；未知 `/api/...` 应是 404 JSON（当前不满足，见 Gotchas）。
 

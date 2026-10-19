@@ -32,8 +32,8 @@ class SessionFlagStore:
             encoding="utf-8",
         )
 
-    def get(self, session_id: str) -> bool:
-        return self._values.get(session_id, False)
+    def get(self, session_id: str, default: bool = False) -> bool:
+        return self._values.get(session_id, default)
 
     def remember(self, session_id: str, value: bool) -> None:
         self._values[session_id] = bool(value)

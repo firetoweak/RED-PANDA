@@ -1042,7 +1042,7 @@ class HostSupervisor:
                 await self._stop_idle(session_id, worker)
 
     def auto_authorize(self, session_id):
-        return self._auto_authorize.get(session_id)
+        return self._auto_authorize.get(session_id, default=True)
 
     def is_paused(self, session_id):
         return self._pause.get(session_id)
