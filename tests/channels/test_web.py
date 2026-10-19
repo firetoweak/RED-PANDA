@@ -625,8 +625,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(post("missing").status_code, 404)
         self.assertEqual(post(connection_id="gone").status_code, 409)
         self.assertEqual(groups.post.await_count, 1)
-        self.assertEqual(self.client.post("/api/groups/group-1/stop", json={"connection_id": connection}).status_code, 200)
-        groups.stop.assert_awaited_once_with("group-1")
 
     def test_a_person_pauses_resumes_and_cancels_an_agents_routine_over_http(self):
         host = SimpleNamespace(routines=RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite")),

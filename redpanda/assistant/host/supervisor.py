@@ -1306,17 +1306,6 @@ class HostSupervisor:
         async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
             return await self._cancel_turn(session_id, "用户中断父会话")
 
-    async def interrupt_for_group(self, session_id):
-        """A stopped group discussion interrupts its called member without parking it.
-
-        The member stays reachable: later messages wake it as usual, and whatever
-        the interruption left to decide is decided now.
-        """
-        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
-            await self._cancel_turn(session_id, "群讨论已被停止")
-            self._pause.set(session_id, False)
-            return await self._select_view(session_id)
-
     async def _cancel_turn(self, session_id, reason):
         # Child return is a new external fact, even when it races with reclaim.
         # Keep the stopped parent paused until an explicit continuation/input.

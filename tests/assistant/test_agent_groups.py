@@ -23,6 +23,8 @@ from tests.assistant.test_runner import ScriptedDecisionMaker
 
 
 MEMBERS = ("Ada", "Lin", "Third")
+# A scripted speech quoting the message its speaker was last called to answer.
+ANSWER = object()
 
 
 class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
@@ -55,12 +57,10 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.speeches = {}
         self.work = []
         for target, mock in (("request", AsyncMock(side_effect=deliver)),
-                             ("wait_quiescent", AsyncMock(side_effect=self.turn)),
-                             ("interrupt_for_group", AsyncMock())):
+                             ("wait_quiescent", AsyncMock(side_effect=self.turn))):
             patcher = patch.object(self.host, target, mock)
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.interrupt = self.host.interrupt_for_group
 
     async def asyncTearDown(self):
         await self.host.close()
@@ -75,6 +75,10 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
 
     async def speak(self, name, *speeches):
         """The called member decides on its attention and sends each speech."""
+        if any(speech.get("reply_to") is ANSWER for speech in speeches):
+            called = parse_agent_fact((await self.facts(name, GROUP_ATTENTION))[-1]).message_id
+            speeches = tuple({**speech, "reply_to": called} if speech.get("reply_to") is ANSWER else speech
+                             for speech in speeches)
         runtime = AgentRuntime(self.journal(name), ScriptedDecisionMaker((lambda _: ModelDecision(command_requests=tuple(
             InvokeTool(SEND_GROUP_MESSAGE, tuple(speech.items())) for speech in speeches)),)),
             {SEND_GROUP_MESSAGE: ToolBinding(AsyncMock(return_value={"ok": True}))})
@@ -108,9 +112,14 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                                                    members=list(members))
 
     async def settled(self, group):
-        while self.host.agent_groups._drives[group.group_id].running:
-            await asyncio.sleep(0.01)
-        await asyncio.gather(*self.work)
+        # A speech finishing after its call ended can start the drive again.
+        while True:
+            while self.host.agent_groups._drives[group.group_id].running:
+                await asyncio.sleep(0.01)
+            count = len(self.work)
+            await asyncio.gather(*self.work)
+            if not self.host.agent_groups._drives[group.group_id].running and len(self.work) == count:
+                return
 
     async def test_creation_checks_members_and_tells_only_them(self):
         notified = AsyncMock()
@@ -148,7 +157,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_speeches_open_rounds_until_silence_or_the_round_limit(self):
         group = await self.group()
-        self.speeches = {name: (lambda name=name: [{"group": "开发组", "text": f"{name} 收到"}]) for name in MEMBERS}
+        self.speeches = {name: (lambda name=name: [{"group": "开发组", "text": f"{name} 收到", "reply_to": ANSWER}]) for name in MEMBERS}
         await self.host.agent_groups.post(group.group_id, "大家各说一句", [])
         await self.settled(group)
         # Three rounds, every member called and speaking each round.
@@ -164,21 +173,99 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         await self.settled(group)
         self.assertEqual(self.calls, list(MEMBERS))
 
-    async def test_round_and_drive_limits_return_known_results(self):
+    async def test_reply_limit_returns_a_known_result(self):
         group = await self.group(("Ada", "Lin"))
-        speech = {"group": "开发组", "text": "补充", "mention": ["Lin"]}
-        ada = iter(([speech] * 4,))
-        lin = iter(([{"group": "开发组", "text": "收到"}, {"group": "开发组", "text": "再补充"}],))
+        ada = iter(([{"group": "开发组", "text": "补充", "mention": ["Lin"], "reply_to": ANSWER}],
+                    [{"group": "开发组", "text": "再补充", "mention": ["Lin"], "reply_to": ANSWER}]))
+        lin = iter(([{"group": "开发组", "text": "收到", "mention": ["Ada"], "reply_to": ANSWER}],))
         self.speeches = {"Ada": lambda: next(ada, []), "Lin": lambda: next(lin, [])}
-        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_REPLIES", 4):
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_REPLIES", 2):
             await self.host.agent_groups.post(group.group_id, "Ada 先说", ["Ada"])
             await self.settled(group)
-        # Ada's first speech ends her turn, so round two (Lin) starts while she keeps speaking:
-        # her later speeches count in round two, where the per-round cap stops the fourth.
         self.assertEqual([[result["code"] for result in work.result()] for work in self.work],
-                         [["DELIVERED", "DELIVERED", "DELIVERED", "SPEECH_LIMIT_REACHED"],
-                          ["DELIVERED", "GROUP_LIMIT_REACHED"]])
-        self.assertEqual(self.calls, ["Ada", "Lin", "Lin", "Ada"])
+                         [["DELIVERED"], ["DELIVERED"], ["GROUP_LIMIT_REACHED"]])
+        self.assertEqual(self.calls, ["Ada", "Lin", "Ada"])
+        self.assertEqual(len(await self.host.agent_groups.messages(group.group_id)), 3)
+
+    async def test_a_later_speech_calls_whom_it_names_after_its_discussion_ran_out(self):
+        # A tester acknowledges the call, keeps working, then reports to the coordinator.
+        group = await self.group()
+        lin = iter(([{"group": "开发组", "text": "开工", "reply_to": ANSWER},
+                     {"group": "开发组", "text": "报告：通过", "mention": ["Ada"]}],))
+        self.speeches = {"Lin": lambda: next(lin, [])}
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+            await self.host.agent_groups.post(group.group_id, "Lin 去跑测试", ["Lin"])
+            await self.settled(group)
+        acknowledged, reported = self.work[0].result()
+        self.assertIn("轮数上限", acknowledged["data"]["notice"])
+        self.assertIn("依次回应", reported["data"]["notice"])
+        self.assertEqual(self.calls, ["Lin", "Ada"])
+
+    async def say(self, name, text, *, origin, reply_to=None, mention=()):
+        """A speech straight from a member's own work, bypassing how its source is derived."""
+        async def admit(_group):
+            return None
+        return await self.host.agent_groups.send(name, {
+            "group": "开发组", "text": text, "mention": list(mention), "reply_to": reply_to,
+            "message_id": f"{name}-{text}"}, origin, admit)
+
+    async def test_a_busy_member_blocks_no_one_and_its_unquoting_report_calls_whom_it_names(self):
+        group = await self.group()
+        task = await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
+        await self.settled(group)
+        self.calls.clear()
+        # Lin is still running #A when Third's own question calls Lin and then Ada.
+        busy = patch.object(self.host, "activity", side_effect=lambda session_id:
+                            "running" if session_id == "Lin" else "idle")
+        with busy:
+            await self.say("Third", "谁有空", origin="routine", mention=["Lin", "Ada"])
+            await self.settled(group)
+            self.assertEqual(self.calls, ["Ada"])
+            self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 2)
+            # Lin finishes #A and reports without quoting Third's call: a speech of its own.
+            report = await self.say("Lin", "#A 报告", origin=task.message_id, mention=["Third"])
+            await self.settled(group)
+        self.assertIn("依次回应", report["data"]["notice"])
+        self.assertEqual(self.calls, ["Ada", "Third"])
+
+    async def test_a_speech_answers_a_call_only_by_quoting_it_and_only_once(self):
+        group = await self.group()
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+            asked = await self.host.agent_groups.post(group.group_id, "Lin 看看", ["Lin"])
+            await self.settled(group)
+            other = await self.say("Third", "顺便一提", origin="routine", mention=["Ada"])
+            await self.settled(group)
+            self.calls.clear()
+            # Quoting a message Lin was not called to answer is a plain quote.
+            quoted = await self.say("Lin", "引用", origin=asked.message_id, reply_to=other["data"]["message_id"],
+                                    mention=["Ada"])
+            answered = await self.say("Lin", "回应", origin=asked.message_id, reply_to=asked.message_id,
+                                      mention=["Ada"])
+            again = await self.say("Lin", "再回应", origin=asked.message_id, reply_to=asked.message_id,
+                                   mention=["Third"])
+            await self.settled(group)
+        self.assertIn("依次回应", quoted["data"]["notice"])
+        self.assertIn("轮数上限", answered["data"]["notice"])
+        self.assertIn("依次回应", again["data"]["notice"])
+        self.assertEqual(self.calls, ["Ada", "Third"])
+
+    async def test_another_speech_joins_the_queue_without_dropping_it(self):
+        group = await self.group()
+        release = asyncio.Event()
+
+        async def slow(session_id):
+            self.calls.append(session_id)
+            if session_id == "Ada":
+                await release.wait()
+
+        self.host.wait_quiescent.side_effect = slow
+        await self.host.agent_groups.post(group.group_id, "大家看看", [])
+        while self.calls != ["Ada"]:
+            await asyncio.sleep(0.01)
+        await self.say("Third", "顺便说一句", origin="routine", mention=["Ada"])
+        release.set()
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada", "Lin", "Third", "Ada"])
 
     async def test_observers_hear_when_the_drive_ends(self):
         group = await self.group(("Ada", "Lin"))
@@ -186,32 +273,14 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
 
         async def changed(group_id):
             view = await self.host.agent_groups.view(group_id)
-            seen.append((view["active"], view["calling"], len(view["messages"])))
+            seen.append((view["calling"], len(view["messages"])))
 
         self.host.group_changed_sink = changed
         await self.host.agent_groups.post(group.group_id, "大家好", [])
         await self.settled(group)
         await asyncio.gather(*self.host.watchers)
         # The last notice comes after the drive ended, so a page reading it is never left "calling".
-        self.assertEqual(seen[-1], (False, [], 1))
-
-    async def test_stop_interrupts_the_called_member_and_calls_no_one_else(self):
-        group = await self.group()
-
-        called = asyncio.Event()
-
-        async def busy(session_id):
-            self.calls.append(session_id)
-            called.set()
-            await asyncio.Event().wait()
-
-        self.host.wait_quiescent.side_effect = busy
-        await self.host.agent_groups.post(group.group_id, "大家看看", [])
-        await called.wait()
-        await self.host.agent_groups.stop(group.group_id)
-        await self.settled(group)
-        self.assertEqual(self.calls, ["Ada"])
-        self.interrupt.assert_awaited_once_with("Ada")
+        self.assertEqual(seen[-1], ([], 1))
 
     async def test_agent_speech_is_idempotent_and_checks_its_addressing(self):
         group = await self.group(("Ada", "Lin"))

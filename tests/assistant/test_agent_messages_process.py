@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from functools import partial
 import json
+import re
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -39,8 +40,10 @@ class MessagingLlm(ProcessLlm):
         text = json.dumps(messages, ensure_ascii=False)
         called = {call["function"]["name"] for message in messages for call in message.get("tool_calls", ())}
         calls = ()
-        if "轮到你回应这条群消息" in json.dumps(messages[-1], ensure_ascii=False):
-            calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps({"group": "开发组", "text": "收到"})),)
+        if "轮到你回应这条群消息" in (last := str(messages[-1]["content"])):
+            called_for = re.search(r'"message_id": "([^"]+)"', last).group(1)
+            calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps(
+                {"group": "开发组", "text": "收到", "reply_to": called_for})),)
         elif "SEND_TO_LIN" in text:
             if "list_colleagues" not in called:
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)

@@ -246,7 +246,8 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
         return {"agent": fact.name, "direction": fact.direction}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
-            "轮到你回应这条群消息。你在群里发言或这次处理结束后，下一位成员才会被叫到；"
+            "轮到你回应这条群消息；回应它的发言请用 reply_to 引用这条消息。"
+            "你在群里发言或这次处理结束后，下一位成员才会被叫到；"
             "需要较长时间的工作，可以先发言再继续。")}
     if isinstance(fact, GroupCreated):
         return {"group": fact.group, "members": fact.members, "notice": (

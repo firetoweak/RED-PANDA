@@ -62,7 +62,7 @@
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总命令授权与控制提案 | 未跑 |
-| group-chat | [group-chat.md](./group-chat.md) | `新建群聊`、`/groups/:groupId`、人发言与 `点名`、依次叫醒、`停止本轮` | 部分（2026-10-18 Windows；建群对话框与点名走不到，成员发言跳过） |
+| group-chat | [group-chat.md](./group-chat.md) | `新建群聊`、`/groups/:groupId`、人发言与 `点名`、依次叫醒 | 部分（2026-10-18 Windows；建群对话框与点名走不到，成员发言跳过） |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | `read_file`/`apply_patch`/`execute_command` 等文件与命令工具；非零退出 `COMMAND_EXIT_NONZERO` | 通过（2026-10-16，pr25-verify：coding + EXIT_NONZERO/COMPLETED） |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent 会话输入框上方 Git 差异摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
@@ -106,7 +106,7 @@
 | `GET /api/sessions/{id}` | web-session-chat、work-log（步骤项 `audience`） |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
-| `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages`、`POST /api/groups/{group_id}/stop` | group-chat |
+| `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages` | group-chat |
 | `GET /api/sessions/{id}/changes`（仅 Agent 与其委派任务；摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
 | `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |

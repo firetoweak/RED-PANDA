@@ -133,7 +133,6 @@ export type GroupMessage = z.infer<typeof groupMessageSchema>;
 export const groupViewSchema = groupSummarySchema
   .extend({
     calling: z.array(z.string().min(1)),
-    active: z.boolean(),
     messages: z.array(groupMessageSchema),
   })
   .strict();
