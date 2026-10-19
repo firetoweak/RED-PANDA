@@ -16,7 +16,7 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.workspaces import bound_workspace_id
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
+from redpanda.runtime import AgentRuntime, DecisionCancelled, DomainFactCommitted, SqliteJournal, replay
 
 
 class GroupNameTaken(ValueError):
@@ -218,16 +218,16 @@ class AgentGroups:
         if self.host.is_paused(agent.session_id):
             return
         drive.answering[name, call.message_id] = call
+        delivery_id = f"attention:{drive.group.group_id}:{call.message_id}:{name}"
         attention = fact_arguments(GroupAttention(group=drive.group.name, message_id=call.message_id),
-                                   delivery_id=f"attention:{drive.group.group_id}:{call.message_id}:{name}")
-        if self.host.activity(agent.session_id) == "running":
-            # A member busy with other work answers once it gets to the call; nobody waits behind it.
-            await self.host.request("fact", agent.session_id, attention)
-            return
+                                   delivery_id=delivery_id)
         spoke = drive.waiting[name] = asyncio.Event()
         self._changed(drive.group.group_id)
         try:
             await self.host.request("fact", agent.session_id, attention)
+            if await self._behind_running_commands(agent.session_id, delivery_id):
+                # The member answers once its running commands finish; nobody waits behind it.
+                return
             waits = [asyncio.create_task(self.host.wait_quiescent(agent.session_id)),
                      asyncio.create_task(spoke.wait()), asyncio.create_task(drive.replaced.wait())]
             done, pending = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
@@ -239,6 +239,21 @@ class AgentGroups:
         finally:
             del drive.waiting[name]
             self._changed(drive.group.group_id)
+
+    async def _behind_running_commands(self, session_id: str, delivery_id: str) -> bool:
+        """Whether a delivered call must wait for commands the member is already running.
+
+        Read from the member's Journal, not from whether its Worker is up: a Worker
+        started just to accept a group message is not busy.
+        """
+        events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+        state = replay(session_id, events).state
+        attention = next(event.event_id for event in events
+                         if event.delivery is not None and event.delivery.delivery_id == delivery_id)
+        handled = {step.step.trigger_event_id for step in state.steps} | {
+            event.payload.trigger_event_id for event in events if isinstance(event.payload, DecisionCancelled)}
+        # Pending with nothing ready to decide: it is queued behind running commands.
+        return state.next_trigger_event_id is None and attention not in handled
 
     async def send(self, session_id: str, arguments: dict, origin: str, admit):
         """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new.

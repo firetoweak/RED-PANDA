@@ -209,24 +209,85 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
             "group": "开发组", "text": text, "mention": list(mention), "reply_to": reply_to,
             "message_id": f"{name}-{text}"}, origin, admit)
 
+    async def running(self, name):
+        """The member decides on what it has pending and starts a command that runs until released."""
+        finished = asyncio.Event()
+
+        async def run(_context, _arguments):
+            await finished.wait()
+            return {"ok": True}
+
+        runtime = AgentRuntime(self.journal(name), ScriptedDecisionMaker(
+            (lambda _: ModelDecision(command_requests=(InvokeTool("run_command"),)),)),
+            {"run_command": ToolBinding(run)})
+        self.assertIsNotNone((await runtime.advance(name)).step)
+        await runtime.dispatcher.start_pending(name)
+
+        async def finish():
+            finished.set()
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
+
+        self.addAsyncCleanup(finish)
+        return finish
+
     async def test_a_busy_member_blocks_no_one_and_its_unquoting_report_calls_whom_it_names(self):
         group = await self.group()
         task = await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
         await self.settled(group)
+        # Lin takes up #A and is still running it when Third's own question calls Lin and then Ada.
+        await self.running("Lin")
         self.calls.clear()
-        # Lin is still running #A when Third's own question calls Lin and then Ada.
-        busy = patch.object(self.host, "activity", side_effect=lambda session_id:
-                            "running" if session_id == "Lin" else "idle")
-        with busy:
-            await self.say("Third", "谁有空", origin="routine", mention=["Lin", "Ada"])
-            await self.settled(group)
-            self.assertEqual(self.calls, ["Ada"])
-            self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 2)
-            # Lin finishes #A and reports without quoting Third's call: a speech of its own.
-            report = await self.say("Lin", "#A 报告", origin=task.message_id, mention=["Third"])
-            await self.settled(group)
+        await self.say("Third", "谁有空", origin="routine", mention=["Lin", "Ada"])
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada"])
+        self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 2)
+        # Lin finishes #A and reports without quoting Third's call: a speech of its own.
+        report = await self.say("Lin", "#A 报告", origin=task.message_id, mention=["Third"])
+        await self.settled(group)
         self.assertIn("依次回应", report["data"]["notice"])
         self.assertEqual(self.calls, ["Ada", "Third"])
+
+    async def test_an_idle_member_is_waited_for_even_while_its_worker_reports_running(self):
+        # A Worker started just to take in a group message reports running for a moment.
+        group = await self.group()
+        release = asyncio.Event()
+
+        async def slow(session_id):
+            self.calls.append(session_id)
+            if session_id == "Ada":
+                await release.wait()
+
+        self.host.wait_quiescent.side_effect = slow
+        with patch.object(self.host, "activity", return_value="running"):
+            await self.host.agent_groups.post(group.group_id, "大家看看", [])
+            for _ in range(20):
+                await asyncio.sleep(0)
+            self.assertEqual(self.host.agent_groups._drives[group.group_id].waiting.keys(), {"Ada"})
+            release.set()
+            await self.settled(group)
+        self.assertEqual(self.calls, list(MEMBERS))
+
+    async def test_a_persons_new_message_replaces_the_discussion_in_progress(self):
+        group = await self.group()
+        release = asyncio.Event()
+
+        async def slow(session_id):
+            self.calls.append(session_id)
+            if session_id == "Ada":
+                await release.wait()
+
+        self.host.wait_quiescent.side_effect = slow
+        old = await self.host.agent_groups.post(group.group_id, "大家看看", [])
+        while self.calls != ["Ada"]:
+            await asyncio.sleep(0.01)
+        await self.host.agent_groups.post(group.group_id, "先别管了，Third 看这个", ["Third"])
+        release.set()
+        await self.settled(group)
+        # Lin was never called for the replaced message; the new one calls only Third.
+        self.assertEqual(self.calls, ["Ada", "Third"])
+        lin_called_for = [parse_agent_fact(fact).message_id for fact in await self.facts("Lin", GROUP_ATTENTION)]
+        self.assertNotIn(old.message_id, lin_called_for)
 
     async def test_a_speech_answers_a_call_only_by_quoting_it_and_only_once(self):
         group = await self.group()
