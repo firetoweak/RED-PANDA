@@ -1,7 +1,7 @@
 import {
   Alert, Badge, Button, Group, MultiSelect, Paper, ScrollArea, Stack, Text, Textarea, Tooltip,
 } from "@mantine/core";
-import { IconPlayerStop, IconSend } from "@tabler/icons-react";
+import { IconSend } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -10,7 +10,6 @@ import {
   useGetAgentsQuery,
   useGetGroupQuery,
   usePostGroupMessageMutation,
-  useStopGroupMutation,
 } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
@@ -55,7 +54,6 @@ export function GroupChatPage() {
   const { data: group, error: loadError } = useGetGroupQuery(groupId);
   const { data: agents = [] } = useGetAgentsQuery();
   const [postMessage, posting] = usePostGroupMessageMutation();
-  const [stopGroup, stopping] = useStopGroupMutation();
   const [text, setText] = useState("");
   const [mention, setMention] = useState<string[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
@@ -85,34 +83,24 @@ export function GroupChatPage() {
     }
   }
 
-  async function stop() {
-    if (connectionId === null) {
-      return;
-    }
-    setFailure(null);
-    try {
-      await stopGroup({ connectionId, groupId }).unwrap();
-    } catch {
-      setFailure("停止没有完成");
-    }
-  }
-
   return (
     <Stack className="group-chat" gap="sm" h="100%" maw={860} mx="auto" p="lg">
-      <Group justify="space-between" wrap="nowrap">
-        <Stack gap={2}>
-          <Text fw={700} size="lg">{group.name}</Text>
-          <Group gap={4}>
-            {group.members.map((name) => (
+      <Stack gap={2}>
+        <Text fw={700} size="lg">{group.name}</Text>
+        <Group gap={4}>
+          {group.members.map((name) => {
+            const session = sessionOf(name);
+            return session === undefined ? (
               <Badge key={name} color="gray" size="sm" variant="light">{name}</Badge>
-            ))}
-          </Group>
-        </Stack>
-        <Button color="gray" disabled={!group.active || connectionId === null} loading={stopping.isLoading}
-          leftSection={<IconPlayerStop size={15} />} onClick={() => void stop()} size="compact-sm" variant="light">
-          停止本轮
-        </Button>
-      </Group>
+            ) : (
+              <Badge key={name} color="gray" component={Link} size="sm"
+                style={{ cursor: "pointer" }} to={`/sessions/${encodeURIComponent(session)}`} variant="light">
+                {name}
+              </Badge>
+            );
+          })}
+        </Group>
+      </Stack>
       <ScrollArea className="group-chat-scroll" style={{ flex: 1 }} type="hover">
         <Stack gap="xs">
           {group.messages.length === 0 ? (

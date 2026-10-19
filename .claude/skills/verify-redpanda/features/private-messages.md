@@ -42,5 +42,4 @@ Agent 用 `send_message` 按同项目同事的名字发私信。参数是 `recip
 ## Gotchas
 
 - 私信只装配给有长期身份的 Agent。普通会话、子 Agent 没有 `send_message`。
-- 人暂停和群里的 `停止本轮` 不是一回事：后者不把成员置为暂停，之后的私信仍会叫醒它。见 [group-chat.md](./group-chat.md)。
 - 上限数字是起步值：回复链 10 跳，同一源头 20 条。未 live 跑过。

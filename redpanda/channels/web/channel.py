@@ -95,11 +95,6 @@ class WebChannel:
         await self._sessions.agent_groups.post(group_id, content, mention)
         return await self._sessions.agent_groups.view(group_id)
 
-    async def stop_group(self, connection_id: str, group_id: str):
-        self._require_connection(connection_id)
-        await self._sessions.agent_groups.stop(group_id)
-        return await self._sessions.agent_groups.view(group_id)
-
     def routines(self, session_id: str):
         return [{
             "routine_id": routine.routine_id, "name": routine.name, "intent": routine.intent,

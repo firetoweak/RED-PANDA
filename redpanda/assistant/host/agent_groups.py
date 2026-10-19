@@ -57,7 +57,7 @@ class _Call:
 
 @dataclass(eq=False)
 class _Drive:
-    """Who the Host calls in one group, until a person speaks there again or stops it.
+    """Who the Host calls in one group, until a person speaks there again.
 
     A speech that quotes a message its sender was called to answer continues that
     call's discussion. Any other speech opens a discussion of its own, with its own
@@ -65,13 +65,13 @@ class _Drive:
     """
 
     group: GroupRecord
-    origins: set[str] = field(default_factory=set)
     replies: Counter = field(default_factory=Counter)
     pending: dict[str, _Call] = field(default_factory=dict)
     # Calls not yet answered, by member and the message it was asked to answer.
     answering: dict[tuple[str, str], _Call] = field(default_factory=dict)
     waiting: dict[str, asyncio.Event] = field(default_factory=dict)
-    stopped: asyncio.Event = field(default_factory=asyncio.Event)
+    # Set when a person's new message replaces this drive.
+    replaced: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False
 
     def queue(self, speaker: str | None, mentioned: list[str], call: _Call) -> bool:
@@ -90,8 +90,6 @@ class AgentGroups:
         self._creation_lock = asyncio.Lock()
         self._group_locks: dict[str, asyncio.Lock] = {}
         self._drives: dict[str, _Drive] = {}
-        # A person's stop silences what those discussions go on to say, not unrelated later work.
-        self._stopped_origins: dict[str, set[str]] = {}
 
     def _journal(self, group_id):
         return SqliteJournal(self.store.require(group_id))
@@ -121,11 +119,9 @@ class AgentGroups:
         group = await self.get(group_id)
         events = await self._journal(group_id).snapshot(group_id)
         drive = self._drives.get(group_id)
-        active = drive is not None and drive.running and not drive.stopped.is_set()
         return {
             "group_id": group.group_id, "workspace_id": group.workspace_id, "name": group.name,
-            "members": group.members, "calling": list(drive.waiting) if active else [],
-            "active": active,
+            "members": group.members, "calling": list(drive.waiting) if drive is not None and drive.running else [],
             "messages": [
                 {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
                  "mentioned_agents": fact.mentioned_agents, "reply_to": fact.reply_to,
@@ -186,7 +182,6 @@ class AgentGroups:
         async with self._group_locks.setdefault(group_id, asyncio.Lock()):
             await self._publish(group, message)
             drive = self._replace_drive(group)
-            drive.origins.add(message.message_id)
             drive.queue(None, mention, _Call(message.message_id, message.message_id, 1))
             self._schedule(drive)
         return message
@@ -194,22 +189,22 @@ class AgentGroups:
     def _replace_drive(self, group: GroupRecord) -> _Drive:
         previous = self._drives.get(group.group_id)
         if previous is not None:
-            previous.stopped.set()
+            previous.replaced.set()
         drive = _Drive(group)
         self._drives[group.group_id] = drive
         return drive
 
     def _schedule(self, drive: _Drive) -> None:
-        if drive.pending and not drive.stopped.is_set() and not drive.running:
+        if drive.pending and not drive.replaced.is_set() and not drive.running:
             drive.running = True
             self.host._track(drive.group.group_id, asyncio.create_task(self._run(drive)))
 
     async def _run(self, drive: _Drive) -> None:
         try:
-            while drive.pending and not drive.stopped.is_set():
+            while drive.pending and not drive.replaced.is_set():
                 calls, drive.pending = drive.pending, {}
                 for name, call in calls.items():
-                    if drive.stopped.is_set() or self.host.closed:
+                    if drive.replaced.is_set() or self.host.closed:
                         return
                     await self._call(drive, name, call)
         finally:
@@ -234,7 +229,7 @@ class AgentGroups:
         try:
             await self.host.request("fact", agent.session_id, attention)
             waits = [asyncio.create_task(self.host.wait_quiescent(agent.session_id)),
-                     asyncio.create_task(spoke.wait()), asyncio.create_task(drive.stopped.wait())]
+                     asyncio.create_task(spoke.wait()), asyncio.create_task(drive.replaced.wait())]
             done, pending = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
@@ -273,9 +268,7 @@ class AgentGroups:
                         or existing.reply_to != arguments["reply_to"]):
                     raise ValueError("persisted group message conflicts with its sending Command")
                 await self._publish(group, existing)
-                drive = self._drives.get(group.group_id)
-                return self._delivered(group, identity, drive is not None and not drive.stopped.is_set(),
-                                       origin in self._stopped_origins.get(group.group_id, ()))
+                return self._delivered(group, identity, group.group_id in self._drives)
             if arguments["reply_to"] is not None and all(
                     message.message_id != arguments["reply_to"] for message in messages):
                 return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是这个群里的消息。"}
@@ -283,7 +276,7 @@ class AgentGroups:
             if refused is not None:
                 return refused
             drive = self._drives.get(group.group_id)
-            if drive is None or drive.stopped.is_set():
+            if drive is None:
                 drive = self._replace_drive(group)
             answered = drive.answering.get((sender.name, arguments["reply_to"]))
             if answered is not None and drive.replies[answered.opener] >= MAX_GROUP_REPLIES:
@@ -298,9 +291,6 @@ class AgentGroups:
             # Any speech from a member being called ends the Host's wait for it.
             if sender.name in drive.waiting:
                 drive.waiting[sender.name].set()
-            if origin in self._stopped_origins.get(group.group_id, ()):
-                return self._delivered(group, identity, False, True)
-            drive.origins.add(origin)
             if answered is None:
                 calls = drive.queue(sender.name, mention, _Call(identity, identity, 1))
             else:
@@ -309,24 +299,8 @@ class AgentGroups:
             self._schedule(drive)
             return self._delivered(group, identity, calls)
 
-    def _delivered(self, group, identity, calls, stopped=False):
-        if calls:
-            notice = "已送达；被叫到的成员会依次回应，不等待回复。"
-        elif stopped:
-            notice = "已送达；这次群讨论已被人停止，不会再叫成员回应。"
-        else:
-            notice = "已送达；这次群讨论已达轮数上限，不会再叫成员回应；需要某位同事接着处理时可以私信他。"
+    def _delivered(self, group, identity, calls):
+        notice = ("已送达；被叫到的成员会依次回应，不等待回复。" if calls else
+                  "已送达；这次群讨论已达轮数上限，不会再叫成员回应；需要某位同事接着处理时可以私信他。")
         return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity, "group": group.name,
                 "notice": notice}}
-
-    async def stop(self, group_id: str) -> None:
-        """Stop scheduling and interrupt members currently called; completed work stays."""
-        drive = self._drives.get(group_id)
-        if drive is None:
-            return
-        # Read who is being called before stopping releases their waits.
-        called = list(drive.waiting)
-        drive.stopped.set()
-        self._stopped_origins.setdefault(group_id, set()).update(drive.origins)
-        sessions = [(await self.host.agents.resolve(drive.group.workspace_id, name)).session_id for name in called]
-        await asyncio.gather(*(self.host.interrupt_for_group(session_id) for session_id in sessions))

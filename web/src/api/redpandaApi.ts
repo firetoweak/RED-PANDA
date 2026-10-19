@@ -219,15 +219,6 @@ export const redpandaApi = createApi({
         ? apiErrorDetail(response.data) ?? response : response,
       invalidatesTags: ["Groups"],
     }),
-    stopGroup: build.mutation<GroupView, { connectionId: string; groupId: string }>({
-      query: ({ connectionId, groupId }) => ({
-        url: `/groups/${encodeURIComponent(groupId)}/stop`,
-        method: "POST",
-        body: { connection_id: connectionId },
-      }),
-      transformResponse: (value: unknown) => groupViewSchema.parse(value),
-      invalidatesTags: ["Groups", "Agents"],
-    }),
     getRoutines: build.query<Routine[], string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/routines`,
       transformResponse: (value: unknown) => routineSchema.array().parse(value),
@@ -490,7 +481,6 @@ export const {
   useGetGroupQuery,
   useCreateGroupMutation,
   usePostGroupMessageMutation,
-  useStopGroupMutation,
   useGetWorkspacesQuery,
   useGetConversationQuery,
   useObserveSubagentQuery,

@@ -57,12 +57,10 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.speeches = {}
         self.work = []
         for target, mock in (("request", AsyncMock(side_effect=deliver)),
-                             ("wait_quiescent", AsyncMock(side_effect=self.turn)),
-                             ("interrupt_for_group", AsyncMock())):
+                             ("wait_quiescent", AsyncMock(side_effect=self.turn))):
             patcher = patch.object(self.host, target, mock)
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.interrupt = self.host.interrupt_for_group
 
     async def asyncTearDown(self):
         await self.host.close()
@@ -269,61 +267,20 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         await self.settled(group)
         self.assertEqual(self.calls, ["Ada", "Lin", "Third", "Ada"])
 
-    async def test_after_a_stop_that_discussion_calls_no_one_but_other_work_still_does(self):
-        group = await self.group()
-        called = asyncio.Event()
-
-        async def busy(session_id):
-            self.calls.append(session_id)
-            called.set()
-            await asyncio.Event().wait()
-
-        self.host.wait_quiescent.side_effect = busy
-        task = await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
-        await called.wait()
-        await self.host.agent_groups.stop(group.group_id)
-        await self.settled(group)
-        self.host.wait_quiescent.side_effect = self.turn
-        late = await self.say("Lin", "#A 报告", origin=task.message_id, mention=["Ada"])
-        await self.settled(group)
-        self.assertIn("已被人停止", late["data"]["notice"])
-        other = await self.say("Third", "新问题", origin="routine", mention=["Ada"])
-        await self.settled(group)
-        self.assertIn("依次回应", other["data"]["notice"])
-        self.assertEqual(self.calls, ["Lin", "Ada"])
-
     async def test_observers_hear_when_the_drive_ends(self):
         group = await self.group(("Ada", "Lin"))
         seen = []
 
         async def changed(group_id):
             view = await self.host.agent_groups.view(group_id)
-            seen.append((view["active"], view["calling"], len(view["messages"])))
+            seen.append((view["calling"], len(view["messages"])))
 
         self.host.group_changed_sink = changed
         await self.host.agent_groups.post(group.group_id, "大家好", [])
         await self.settled(group)
         await asyncio.gather(*self.host.watchers)
         # The last notice comes after the drive ended, so a page reading it is never left "calling".
-        self.assertEqual(seen[-1], (False, [], 1))
-
-    async def test_stop_interrupts_the_called_member_and_calls_no_one_else(self):
-        group = await self.group()
-
-        called = asyncio.Event()
-
-        async def busy(session_id):
-            self.calls.append(session_id)
-            called.set()
-            await asyncio.Event().wait()
-
-        self.host.wait_quiescent.side_effect = busy
-        await self.host.agent_groups.post(group.group_id, "大家看看", [])
-        await called.wait()
-        await self.host.agent_groups.stop(group.group_id)
-        await self.settled(group)
-        self.assertEqual(self.calls, ["Ada"])
-        self.interrupt.assert_awaited_once_with("Ada")
+        self.assertEqual(seen[-1], ([], 1))
 
     async def test_agent_speech_is_idempotent_and_checks_its_addressing(self):
         group = await self.group(("Ada", "Lin"))
