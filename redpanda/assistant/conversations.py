@@ -14,6 +14,7 @@ from redpanda.assistant.file_attachments import FileAttachment, is_file_attachme
 from redpanda.assistant.agent_messages import MESSAGE_USER
 from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
+from redpanda.runtime.json_values import thaw_value
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
@@ -459,6 +460,12 @@ def project_conversation(
             if effect.name == DELIVER_TOOL_NAME:
                 continue
             if effect.name == MESSAGE_USER:
+                if not _message_sent(command_state):
+                    # A rejected or unfinished call reached nobody; it stays a tool record.
+                    status, error = _tool_status(command_state)
+                    tools.append(ToolItem(command_state.command.command_id, effect.name, status, error,
+                                          effect.argument_dict()))
+                    continue
                 messages.append(StepItem(
                     "step", f"{payload.step.step_id}:{command_state.command.command_id}",
                     command_state.command.command_id, effect.argument_dict()["text"], (),
@@ -522,6 +529,12 @@ def _indeterminate_error(value: object) -> str | None:
     if type(error) is not str or not error:
         raise ValueError("结果不确定的 outcome 必须带 error")
     return error
+
+
+def _message_sent(state: CommandState) -> bool:
+    outcome = state.outcome
+    return (outcome is not None and outcome.status is OutcomeStatus.SUCCEEDED
+            and thaw_value(outcome.value).get("code") == "MESSAGE_SENT")
 
 
 def _tool_status(
