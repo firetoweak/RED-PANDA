@@ -7,7 +7,7 @@ from tests.benchmarks.context_cache_live import build_variants
 
 def manifest(position: int, content: str) -> dict[str, object]:
     return {
-        "schema": "decision-replay-manifest/v1",
+        "schema": "decision-replay-manifest/v2",
         "decision_basis": {
             "observed_journal_position": position,
             "decision_cursor": position,

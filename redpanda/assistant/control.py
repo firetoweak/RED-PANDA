@@ -149,7 +149,7 @@ class ControlProjection:
 @dataclass(frozen=True, slots=True)
 class _DecisionKey:
     session_id: str
-    trigger_event_id: str
+    trigger_event_ids: tuple[str, ...]
     decision_cursor: int
     basis_state_version: str
 
@@ -452,7 +452,7 @@ class AssistantControlPlane:
             raise ControlArgumentsError(exc.details) from exc
         key = _DecisionKey(
             frame.state.session_id,
-            frame.trigger_event.event_id,
+            frame.trigger_event_ids,
             frame.decision_cursor,
             frame.basis_state_version,
         )
@@ -472,7 +472,7 @@ class AssistantControlPlane:
             return None
         expected = _DecisionKey(
             frame.state.session_id,
-            frame.trigger_event.event_id,
+            frame.trigger_event_ids,
             frame.decision_cursor,
             frame.basis_state_version,
         )

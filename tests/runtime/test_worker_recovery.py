@@ -180,7 +180,7 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
                     ).next_decision
                     request = StepClaimRequest(
                         "session",
-                        frame.trigger_event.event_id,
+                        (frame.trigger_event.event_id,),
                         frame.decision_cursor,
                         frame.basis_state_version,
                         frame.observed_journal_position,

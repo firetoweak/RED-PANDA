@@ -35,10 +35,10 @@ from redpanda.runtime.model import (
 )
 
 
-EVENT_SCHEMA_VERSION = 5
+EVENT_SCHEMA_VERSION = 6
 DELIVERY_FINGERPRINT_VERSION = 3
-STATE_CODEC_VERSION = 6
-STATE_PROJECTION_VERSION = "canonical-state-v7"
+STATE_CODEC_VERSION = 7
+STATE_PROJECTION_VERSION = "canonical-state-v8"
 
 _USER_MESSAGE = "user.message.received"
 _STEP_COMMITTED = "step.committed"
@@ -137,7 +137,7 @@ def _decision_from_data(data: dict[str, object]) -> ModelDecision:
 def _step_to_data(step: Step) -> dict[str, object]:
     return {
         "step_id": step.step_id,
-        "trigger_event_id": step.trigger_event_id,
+        "trigger_event_ids": list(step.trigger_event_ids),
         "decision_cursor": step.decision_cursor,
         "basis_state_version": step.basis_state_version,
         "observed_journal_position": step.observed_journal_position,
@@ -149,13 +149,19 @@ def _step_to_data(step: Step) -> dict[str, object]:
 def _step_from_data(data: dict[str, object]) -> Step:
     return Step(
         step_id=data["step_id"],
-        trigger_event_id=data["trigger_event_id"],
+        trigger_event_ids=_event_ids_from_data(data["trigger_event_ids"]),
         decision_cursor=data["decision_cursor"],
         basis_state_version=data["basis_state_version"],
         observed_journal_position=data["observed_journal_position"],
         decision=_decision_from_data(data["decision"]),
         commands=tuple(_command_from_data(command) for command in data["commands"]),
     )
+
+
+def _event_ids_from_data(data: object) -> tuple[str, ...]:
+    if type(data) is not list:
+        raise TypeError("decision input event ids must be a list")
+    return tuple(data)
 
 
 def _step_state_to_data(state: StepState) -> dict[str, object]:
@@ -214,7 +220,7 @@ def encode_payload(payload: EventPayload) -> tuple[str, str]:
         data = {"command_id": payload.command_id, "attempt_id": payload.attempt_id}
     elif isinstance(payload, DecisionCancelled):
         kind = _DECISION_CANCELLED
-        data = {"trigger_event_id": payload.trigger_event_id}
+        data = {"trigger_event_ids": list(payload.trigger_event_ids)}
     elif isinstance(payload, StepContinuationCancelled):
         kind = _STEP_CONTINUATION_CANCELLED
         data = {"step_event_id": payload.step_event_id}
@@ -260,7 +266,7 @@ def decode_payload(
     if kind == _ATTEMPT_ORPHANED:
         return AttemptOrphaned(data["command_id"], data["attempt_id"])
     if kind == _DECISION_CANCELLED:
-        return DecisionCancelled(data["trigger_event_id"])
+        return DecisionCancelled(_event_ids_from_data(data["trigger_event_ids"]))
     if kind == _STEP_CONTINUATION_CANCELLED:
         return StepContinuationCancelled(data["step_event_id"])
     if kind == _DOMAIN_FACT_COMMITTED:
@@ -357,7 +363,7 @@ def encode_state(state: CanonicalState) -> str:
                     _command_state_to_data(command) for command in state.commands
                 ],
                 "steps": [_step_state_to_data(step) for step in state.steps],
-                "next_trigger_event_id": state.next_trigger_event_id,
+                "next_trigger_event_ids": list(state.next_trigger_event_ids),
                 "waiting_command_ids": list(state.waiting_command_ids),
                 "waiting_for": list(state.waiting_for),
             },
@@ -385,7 +391,7 @@ def decode_state(state_json: str) -> CanonicalState:
             _command_state_from_data(command) for command in data["commands"]
         ),
         steps=tuple(_step_state_from_data(step) for step in data["steps"]),
-        next_trigger_event_id=data["next_trigger_event_id"],
+        next_trigger_event_ids=_event_ids_from_data(data["next_trigger_event_ids"]),
         waiting_command_ids=tuple(data["waiting_command_ids"]),
         waiting_for=tuple(data["waiting_for"]),
     )

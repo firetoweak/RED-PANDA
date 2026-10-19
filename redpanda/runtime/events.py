@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TypeAlias
 
-from redpanda.runtime.model import CommandOutcome, Step, freeze_value
+from redpanda.runtime.model import CommandOutcome, Step, freeze_value, _require_event_ids
 
 
 def _require_str_tuple(value: object, name: str) -> None:
@@ -191,10 +191,14 @@ class AttemptOrphaned:
 
 @dataclass(frozen=True, slots=True)
 class DecisionCancelled:
-    trigger_event_id: str
+    trigger_event_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        _require_str(self.trigger_event_id, "cancelled decision trigger")
+        _require_event_ids(self.trigger_event_ids)
+
+    @property
+    def trigger_event_id(self) -> str:
+        return self.trigger_event_ids[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,7 +257,7 @@ class EventDraft:
     occurred_at: datetime
     causation_id: str | None = None
     correlation_id: str | None = None
-    schema_version: int = 5
+    schema_version: int = 6
     artifact_refs: tuple[str, ...] = ()
     delivery: DeliveryIdentity | None = None
 

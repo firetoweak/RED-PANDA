@@ -154,9 +154,9 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
                         seq for seq, message in zip(prepared.source_sequences, prepared.messages)
                         if message["content"] == "two"
                     ], [later.sequence])
-                self.assertNotIn("three", str(project_chat_messages(events, model.frames[1].state)))
+                self.assertIn("three", str(project_chat_messages(events, model.frames[1].state)))
 
-    async def test_queued_messages_keep_each_reply_with_its_trigger(self):
+    async def test_queued_messages_precede_their_shared_reply(self):
         model = ScriptedDecisionMaker((
             lambda _: ModelDecision(content="first reply"),
             lambda _: ModelDecision(content="second reply"),
@@ -173,8 +173,30 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([
             (message["role"], message["content"])
             for message in prepared.messages if message["role"] != "system"
-        ], [("user", "one"), ("assistant", "first reply"),
-            ("user", "two"), ("assistant", "second reply")])
+        ], [("user", "one"), ("user", "two"), ("assistant", "first reply")])
+
+    async def test_overtaken_request_keeps_committed_reply_order(self):
+        model = ScriptedDecisionMaker((
+            lambda _: ModelDecision(content="human reply"),
+            lambda _: ModelDecision(content="peer reply"),
+        ))
+        runtime = AgentRuntime(MemoryJournal(), model, {}, SequentialIds())
+        await runtime.receive_domain_fact(
+            self.SESSION, "peer.request", {}, delivery_id="peer", source="peer",
+            requests_decision=True,
+        )
+        await runtime.receive_user_message(self.SESSION, "one", delivery_id="one")
+        await runtime.receive_user_message(self.SESSION, "two", delivery_id="two")
+        await runtime.advance(self.SESSION)
+        await runtime.advance(self.SESSION)
+        events = await runtime.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events, StateProjector().project_visible(self.SESSION, events), self.SESSION,
+        )
+        self.assertEqual([
+            message["content"] for message in prepared.messages
+            if message["role"] == "assistant"
+        ], ["human reply", "peer reply"])
 
     async def test_error_or_unknown_result_is_not_age_dehydrated(self):
         for ok in (False, None):

@@ -127,7 +127,7 @@ class StepRunner:
         command_tuple = tuple(commands)
         step = Step(
             step_id=self._id_factory("step"),
-            trigger_event_id=frame.trigger_event.event_id,
+            trigger_event_ids=frame.trigger_event_ids,
             decision_cursor=frame.decision_cursor,
             basis_state_version=frame.basis_state_version,
             observed_journal_position=frame.observed_journal_position,

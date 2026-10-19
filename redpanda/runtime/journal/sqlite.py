@@ -101,7 +101,7 @@ WHERE delivery_source IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS step_claims (
     session_id TEXT PRIMARY KEY REFERENCES sessions(session_id),
-    trigger_event_id TEXT NOT NULL UNIQUE REFERENCES events(event_id),
+    trigger_event_ids_json TEXT NOT NULL,
     decision_cursor INTEGER NOT NULL,
     basis_state_version TEXT NOT NULL,
     observed_journal_position INTEGER NOT NULL,
@@ -114,8 +114,8 @@ CREATE TABLE IF NOT EXISTS step_claims (
 CREATE TABLE IF NOT EXISTS decision_consumptions (
     trigger_event_id TEXT PRIMARY KEY REFERENCES events(event_id),
     session_id TEXT NOT NULL REFERENCES sessions(session_id),
-    result_event_id TEXT NOT NULL UNIQUE REFERENCES events(event_id),
-    step_id TEXT UNIQUE
+    result_event_id TEXT NOT NULL REFERENCES events(event_id),
+    step_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS cancelled_step_continuations (
@@ -821,13 +821,13 @@ class SqliteJournal:
         owner_id: str,
         lease_seconds: float,
     ) -> StepLease | None:
-        trigger = connection.execute(
-            "SELECT session_id FROM events WHERE event_id = ?",
-            (request.trigger_event_id,),
-        ).fetchone()
-        if trigger is None or trigger["session_id"] != request.session_id:
-            raise KeyError(request.trigger_event_id)
-        if self._decision_consumed_tx(connection, request.trigger_event_id):
+        for input_id in request.trigger_event_ids:
+            trigger = connection.execute(
+                "SELECT session_id FROM events WHERE event_id = ?", (input_id,),
+            ).fetchone()
+            if trigger is None or trigger["session_id"] != request.session_id:
+                raise KeyError(input_id)
+        if self._decision_consumed_tx(connection, request.trigger_event_ids):
             return None
 
         current = connection.execute(
@@ -847,7 +847,7 @@ class SqliteJournal:
                 """
                 INSERT INTO step_claims(
                     session_id,
-                    trigger_event_id,
+                    trigger_event_ids_json,
                     decision_cursor,
                     basis_state_version,
                     observed_journal_position,
@@ -859,7 +859,7 @@ class SqliteJournal:
                 """,
                 (
                     request.session_id,
-                    request.trigger_event_id,
+                    json.dumps(request.trigger_event_ids),
                     request.decision_cursor,
                     request.basis_state_version,
                     request.observed_journal_position,
@@ -873,7 +873,7 @@ class SqliteJournal:
             connection.execute(
                 """
                 UPDATE step_claims SET
-                    trigger_event_id = ?,
+                    trigger_event_ids_json = ?,
                     decision_cursor = ?,
                     basis_state_version = ?,
                     observed_journal_position = ?,
@@ -884,7 +884,7 @@ class SqliteJournal:
                 WHERE session_id = ?
                 """,
                 (
-                    request.trigger_event_id,
+                    json.dumps(request.trigger_event_ids),
                     request.decision_cursor,
                     request.basis_state_version,
                     request.observed_journal_position,
@@ -935,7 +935,7 @@ class SqliteJournal:
             """
             UPDATE step_claims SET expires_at = ?
             WHERE session_id = ?
-                AND trigger_event_id = ?
+                AND trigger_event_ids_json = ?
                 AND decision_cursor = ?
                 AND basis_state_version = ?
                 AND observed_journal_position = ?
@@ -946,7 +946,7 @@ class SqliteJournal:
             (
                 now + lease_seconds,
                 lease.request.session_id,
-                lease.request.trigger_event_id,
+                json.dumps(lease.request.trigger_event_ids),
                 lease.request.decision_cursor,
                 lease.request.basis_state_version,
                 lease.request.observed_journal_position,
@@ -999,7 +999,7 @@ class SqliteJournal:
         ):
             raise LeaseLostError(lease.token)
         self._validate_step_draft(lease.request, draft)
-        if self._decision_consumed_tx(connection, lease.request.trigger_event_id):
+        if self._decision_consumed_tx(connection, lease.request.trigger_event_ids):
             raise LeaseLostError(lease.token)
 
         event = self._append_tx(connection, draft).event
@@ -1042,7 +1042,7 @@ class SqliteJournal:
             if consumption is None or consumption["result_event_id"] != event.event_id:
                 return None
             return event
-        if self._decision_consumed_tx(connection, payload.trigger_event_id):
+        if self._decision_consumed_tx(connection, payload.trigger_event_ids):
             return None
         return self._append_tx(connection, draft).event
 
@@ -1269,18 +1269,19 @@ class SqliteJournal:
         payload = event.payload
         if isinstance(payload, StepCommitted):
             step = payload.step
-            connection.execute(
+            # 多条消费记录可以指向一个 Step，但不同 Step 不能复用身份。
+            if connection.execute(
+                "SELECT 1 FROM decision_consumptions WHERE step_id = ?", (step.step_id,),
+            ).fetchone() is not None:
+                raise ValueError(f"duplicate step id: {step.step_id}")
+            connection.executemany(
                 """
                 INSERT INTO decision_consumptions(
                     trigger_event_id, session_id, result_event_id, step_id
                 ) VALUES (?, ?, ?, ?)
                 """,
-                (
-                    step.trigger_event_id,
-                    event.session_id,
-                    event.event_id,
-                    step.step_id,
-                ),
+                [(input_id, event.session_id, event.event_id, step.step_id)
+                 for input_id in step.trigger_event_ids],
             )
             for command in step.commands:
                 connection.execute(
@@ -1399,33 +1400,25 @@ class SqliteJournal:
                     payload.attempt_id,
                 )
         elif isinstance(payload, DecisionCancelled):
-            trigger = connection.execute(
-                "SELECT session_id FROM events WHERE event_id = ?",
-                (payload.trigger_event_id,),
-            ).fetchone()
-            if trigger is None or trigger["session_id"] != event.session_id:
-                raise KeyError(payload.trigger_event_id)
+            for input_id in payload.trigger_event_ids:
+                trigger = connection.execute(
+                    "SELECT session_id FROM events WHERE event_id = ?", (input_id,),
+                ).fetchone()
+                if trigger is None or trigger["session_id"] != event.session_id:
+                    raise KeyError(input_id)
             if event.causation_id != payload.trigger_event_id:
                 raise ValueError("decision cancellation causation mismatch")
-            if self._decision_consumed_tx(
-                connection,
-                payload.trigger_event_id,
-            ):
-                raise ValueError(
-                    f"decision event consumed twice: {payload.trigger_event_id}"
-                )
-            connection.execute(
+            if self._decision_consumed_tx(connection, payload.trigger_event_ids):
+                raise ValueError(f"decision event consumed twice: {payload.trigger_event_ids}")
+            connection.executemany(
                 """
                 INSERT INTO decision_consumptions(
                     trigger_event_id, session_id, result_event_id, step_id
                 ) VALUES (?, ?, ?, NULL)
                 """,
-                (payload.trigger_event_id, event.session_id, event.event_id),
+                [(input_id, event.session_id, event.event_id) for input_id in payload.trigger_event_ids],
             )
-            connection.execute(
-                "DELETE FROM step_claims WHERE session_id = ?",
-                (event.session_id,),
-            )
+            connection.execute("DELETE FROM step_claims WHERE session_id = ?", (event.session_id,))
         elif isinstance(payload, StepContinuationCancelled):
             step = connection.execute(
                 "SELECT session_id, event_type FROM events WHERE event_id = ?",
@@ -1451,12 +1444,11 @@ class SqliteJournal:
     def _decision_consumed_tx(
         self,
         connection: sqlite3.Connection,
-        trigger_event_id: str,
+        input_ids: tuple[str, ...],
     ) -> bool:
-        return connection.execute(
-            "SELECT 1 FROM decision_consumptions WHERE trigger_event_id = ?",
-            (trigger_event_id,),
-        ).fetchone() is not None
+        return any(connection.execute(
+            "SELECT 1 FROM decision_consumptions WHERE trigger_event_id = ?", (input_id,),
+        ).fetchone() is not None for input_id in input_ids)
 
     @staticmethod
     def _clear_attempt_claims_tx(
@@ -1551,7 +1543,7 @@ class SqliteJournal:
         step = payload.step
         if (
             draft.session_id != request.session_id
-            or step.trigger_event_id != request.trigger_event_id
+            or step.trigger_event_ids != request.trigger_event_ids
             or step.decision_cursor != request.decision_cursor
             or step.basis_state_version != request.basis_state_version
             or step.observed_journal_position != request.observed_journal_position
@@ -1563,7 +1555,7 @@ class SqliteJournal:
     def _request_from_row(row: sqlite3.Row) -> StepClaimRequest:
         return StepClaimRequest(
             session_id=row["session_id"],
-            trigger_event_id=row["trigger_event_id"],
+            trigger_event_ids=tuple(json.loads(row["trigger_event_ids_json"])),
             decision_cursor=row["decision_cursor"],
             basis_state_version=row["basis_state_version"],
             observed_journal_position=row["observed_journal_position"],

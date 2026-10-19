@@ -14,7 +14,7 @@ import tiktoken
 from redpanda.paths import runtime_data_root
 
 
-MANIFEST_SCHEMA = "decision-replay-manifest/v1"
+MANIFEST_SCHEMA = "decision-replay-manifest/v2"
 
 
 @dataclass(frozen=True, slots=True)

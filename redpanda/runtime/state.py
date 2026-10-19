@@ -33,11 +33,19 @@ from redpanda.runtime.model import (
 
 @dataclass(frozen=True, slots=True)
 class DecisionFrame:
-    trigger_event: Event
+    trigger_events: tuple[Event, ...]
     state: DecisionState
     decision_cursor: int
     basis_state_version: str
     observed_journal_position: int
+
+    @property
+    def trigger_event(self) -> Event:
+        return self.trigger_events[0]
+
+    @property
+    def trigger_event_ids(self) -> tuple[str, ...]:
+        return tuple(event.event_id for event in self.trigger_events)
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,22 +326,13 @@ class StateProjector:
         events: tuple[Event, ...],
     ) -> RuntimeProjection:
         self._validate_session(session_id, events)
-        step_events = self._index_step_events(events)
-        cancellation_events = self._index_cancellation_events(events)
-        continuation_cancellations = self._index_continuation_cancellations(events)
-        duplicate_consumptions = set(step_events) & set(cancellation_events)
-        if duplicate_consumptions:
-            raise ValueError(
-                "decision event consumed twice: "
-                f"{sorted(duplicate_consumptions)[0]}"
-            )
+        self._validate_consumptions(events)
         event_sequences = {event.event_id: event.sequence for event in events}
+        continuation_cancellations = self._index_continuation_cancellations(events)
         issuing_observed = {
             event.event_id: event.payload.step.observed_journal_position
-            for event in events
-            if isinstance(event.payload, StepCommitted)
+            for event in events if isinstance(event.payload, StepCommitted)
         }
-
         operational = _StateBuilder(session_id)
         for event in events:
             if isinstance(event.payload, StepCommitted):
@@ -341,113 +340,77 @@ class StateProjector:
             else:
                 operational.apply_regular(event)
 
+        # 按实际提交顺序回放决策；输入集合是事实，不重跑今天的选取政策。
         decision = _StateBuilder(session_id)
         consumed: list[str] = []
-        applied_step_event_ids: set[str] = set()
-        applied_cancellation_event_ids: set[str] = set()
-        next_trigger: Event | None = None
-
+        cursor = 0
         for event in events:
-            if isinstance(event.payload, StepCommitted):
-                continue
-            if event.event_id in decision.visible_event_ids:
-                continue
-            decision.apply_regular(event)
-            cancellation_event = cancellation_events.get(event.event_id)
-            if cancellation_event is not None:
-                decision.apply_regular(cancellation_event)
-                consumed.append(event.event_id)
-                applied_cancellation_event_ids.add(cancellation_event.event_id)
-                continue
-            step_event = step_events.get(event.event_id)
-            if step_event is not None:
-                step = step_event.payload.step
-                if _is_external_decision_fact(event.payload):
-                    self._include_waited_follow_up_events(
-                        decision,
-                        events,
-                        event,
-                        operational,
-                        until_sequence=step.observed_journal_position,
-                    )
-                expected_cursor = len(consumed) + 1
-                if step.decision_cursor != expected_cursor:
+            payload = event.payload
+            if isinstance(payload, StepCommitted):
+                step = payload.step
+                minimum_observed = max(
+                    event_sequences[item]
+                    for item in (*step.trigger_event_ids, *decision.visible_event_ids)
+                )
+                if not minimum_observed <= step.observed_journal_position < event.sequence:
+                    raise ValueError(f"step observed position mismatch: {step.step_id}")
+                self._include_frame_events(
+                    decision, events, (), step.observed_journal_position,
+                )
+                self._include_frame_events(
+                    decision, events, step.trigger_event_ids, step.observed_journal_position,
+                )
+                if step.decision_cursor != cursor + 1:
                     raise ValueError(f"step decision cursor mismatch: {step.step_id}")
-                minimum_observed_position = max(
-                    event_sequences[event_id]
-                    for event_id in decision.visible_event_ids
+                decision.apply_step(event, expected_basis_state_version=decision.version())
+                consumed.extend(step.trigger_event_ids)
+                cursor += 1
+            elif isinstance(payload, DecisionCancelled):
+                self._include_frame_events(decision, events, (), event.sequence - 1)
+                self._include_frame_events(
+                    decision, events, payload.trigger_event_ids, event.sequence - 1,
                 )
-                if not (
-                    minimum_observed_position
-                    <= step.observed_journal_position
-                    < step_event.sequence
-                ):
-                    raise ValueError(
-                        f"step observed position mismatch: {step.step_id}"
-                    )
-                decision.apply_step(
-                    step_event,
-                    expected_basis_state_version=decision.version(),
-                )
-                consumed.append(event.event_id)
-                applied_step_event_ids.add(step_event.event_id)
-                continue
-            if not self._requires_decision(
-                event,
-                decision,
-                operational,
-                events,
-                issuing_observed,
-                continuation_cancellations,
-            ):
-                continue
-            if _is_external_decision_fact(event.payload) and (
-                self._blocked_by_in_flight(
-                    event,
-                    operational,
-                    issuing_observed,
-                )
-            ):
-                break
-            next_trigger = event
-            if _is_external_decision_fact(event.payload):
-                self._include_waited_follow_up_events(
-                    decision,
-                    events,
-                    event,
-                    operational,
-                    until_sequence=events[-1].sequence,
-                )
-            break
+                decision.apply_regular(event)
+                consumed.extend(payload.trigger_event_ids)
+                cursor += 1
 
-        unapplied = {
-            event.event_id for event in step_events.values()
-        } - applied_step_event_ids
-        if unapplied:
-            raise ValueError(
-                f"step commits cross an unconsumed decision event: {sorted(unapplied)}"
-            )
-        unapplied_cancellations = {
-            event.event_id for event in cancellation_events.values()
-        } - applied_cancellation_event_ids
-        if unapplied_cancellations:
-            raise ValueError(
-                "cancellations cross an unconsumed decision event: "
-                f"{sorted(unapplied_cancellations)}"
-            )
-
-        decision_state = decision.decision_state(tuple(consumed))
         journal_position = events[-1].sequence if events else 0
+        self._include_frame_events(decision, events, (), journal_position)
+        consumed_ids = set(consumed)
+        pending = tuple(
+            event for event in events
+            if event.event_id not in consumed_ids
+            and isinstance(event.payload, UserMessageReceived)
+        )
+        if not pending:
+            pending = next((
+                (event,) for event in events
+                if event.event_id not in consumed_ids
+                and self._requires_decision(
+                    event, decision, operational, events,
+                    issuing_observed, continuation_cancellations,
+                )
+            ), ())
+        # 先确定整批，再判断阻塞；不能只把更正之前的旧指令交出去。
+        if any(
+            _is_external_decision_fact(event.payload)
+            and self._blocked_by_in_flight(event, operational, issuing_observed)
+            for event in pending
+        ):
+            pending = ()
+        if pending:
+            self._include_frame_events(
+                decision, events, tuple(event.event_id for event in pending), journal_position,
+            )
+        decision_state = decision.decision_state(tuple(consumed))
         next_frame = (
             DecisionFrame(
-                trigger_event=next_trigger,
+                trigger_events=pending,
                 state=decision_state,
-                decision_cursor=len(consumed) + 1,
+                decision_cursor=cursor + 1,
                 basis_state_version=decision_state.version,
                 observed_journal_position=journal_position,
-            )
-            if next_trigger is not None
-            else None
+            ) if pending else None
         )
         command_states = tuple(operational.commands.values())
         unauthorized_pending = tuple(
@@ -481,7 +444,7 @@ class StateProjector:
         state = CanonicalState(
             session_id=session_id,
             journal_position=journal_position,
-            decision_cursor=len(consumed),
+            decision_cursor=cursor,
             status=(
                 RuntimeStatus.RUNNABLE
                 if next_frame is not None
@@ -489,9 +452,7 @@ class StateProjector:
             ),
             commands=command_states,
             steps=decision.step_states(operational.commands),
-            next_trigger_event_id=(
-                next_trigger.event_id if next_trigger is not None else None
-            ),
+            next_trigger_event_ids=tuple(event.event_id for event in pending),
             waiting_command_ids=waiting_command_ids,
             waiting_for=waiting_for,
         )
@@ -541,52 +502,32 @@ class StateProjector:
             event_ids.add(event.event_id)
 
     @staticmethod
-    def _index_step_events(events: tuple[Event, ...]) -> dict[str, Event]:
+    def _validate_consumptions(events: tuple[Event, ...]) -> None:
         events_by_id = {event.event_id: event for event in events}
-        result: dict[str, Event] = {}
+        consumed: set[str] = set()
         for event in events:
             payload = event.payload
-            if not isinstance(payload, StepCommitted):
+            if isinstance(payload, StepCommitted):
+                input_ids = payload.step.trigger_event_ids
+            elif isinstance(payload, DecisionCancelled):
+                input_ids = payload.trigger_event_ids
+            else:
                 continue
-            trigger_id = payload.step.trigger_event_id
-            trigger = events_by_id.get(trigger_id)
-            if trigger is None:
-                raise ValueError(f"step trigger does not exist: {trigger_id}")
-            if trigger.sequence >= event.sequence:
-                raise ValueError(f"step precedes its trigger: {payload.step.step_id}")
-            if event.causation_id != trigger_id:
-                raise ValueError(f"step causation mismatch: {payload.step.step_id}")
-            if trigger_id in result:
-                raise ValueError(f"decision event consumed twice: {trigger_id}")
-            result[trigger_id] = event
-        return result
-
-    @staticmethod
-    def _index_cancellation_events(events: tuple[Event, ...]) -> dict[str, Event]:
-        events_by_id = {event.event_id: event for event in events}
-        result: dict[str, Event] = {}
-        for event in events:
-            payload = event.payload
-            if not isinstance(payload, DecisionCancelled):
-                continue
-            trigger_id = payload.trigger_event_id
-            trigger = events_by_id.get(trigger_id)
-            if trigger is None:
-                raise ValueError(
-                    f"cancelled decision trigger does not exist: {trigger_id}"
-                )
-            if trigger.sequence >= event.sequence:
-                raise ValueError(
-                    f"decision cancellation precedes its trigger: {event.event_id}"
-                )
-            if event.causation_id != trigger_id:
-                raise ValueError(
-                    f"decision cancellation causation mismatch: {event.event_id}"
-                )
-            if trigger_id in result:
-                raise ValueError(f"decision event consumed twice: {trigger_id}")
-            result[trigger_id] = event
-        return result
+            if event.causation_id != input_ids[0]:
+                raise ValueError(f"decision causation mismatch: {event.event_id}")
+            previous_sequence = 0
+            for input_id in input_ids:
+                trigger = events_by_id.get(input_id)
+                if trigger is None:
+                    raise ValueError(f"decision trigger does not exist: {input_id}")
+                if not previous_sequence < trigger.sequence < event.sequence:
+                    raise ValueError(f"decision input order mismatch: {event.event_id}")
+                previous_sequence = trigger.sequence
+                if len(input_ids) > 1 and not isinstance(trigger.payload, UserMessageReceived):
+                    raise ValueError("only user inputs may be batched")
+                if input_id in consumed:
+                    raise ValueError(f"decision event consumed twice: {input_id}")
+                consumed.add(input_id)
 
     @staticmethod
     def _index_continuation_cancellations(
@@ -655,6 +596,20 @@ class StateProjector:
             and _parallel_decision_group_closed(state, command_state)
         ):
             return False
+        # 一组并行命令只有最后收齐的事实取得续步权，不能每个结果各续一次。
+        for later in events:
+            if later.sequence <= event.sequence:
+                continue
+            fact = later.payload
+            if not isinstance(fact, (CommandOutcomeReceived, AttemptOrphaned)):
+                continue
+            sibling = operational.commands[fact.command_id]
+            if (sibling.issued_by_event_id == command_state.issued_by_event_id
+                    and sibling.command.decision_on_outcome
+                    and (later.event_id == sibling.canonical_outcome_event_id
+                         or isinstance(fact, AttemptOrphaned)
+                         and sibling.phase is CommandPhase.UNKNOWN)):
+                return False
         observed = issuing_observed[command_state.issued_by_event_id]
         return not any(
             _is_external_decision_fact(item.payload) and item.sequence > observed
@@ -692,29 +647,30 @@ class StateProjector:
         return False
 
     @staticmethod
-    def _include_waited_follow_up_events(
+    def _include_frame_events(
         decision: _StateBuilder,
         events: tuple[Event, ...],
-        trigger: Event,
-        operational: _StateBuilder,
+        input_ids: tuple[str, ...],
         until_sequence: int,
     ) -> None:
-        past_trigger = False
+        selected = set(input_ids)
         for event in events:
-            if event.event_id == trigger.event_id:
-                past_trigger = True
-                continue
-            if not past_trigger:
-                continue
             if event.sequence > until_sequence:
-                return
+                break
             if event.event_id in decision.visible_event_ids:
                 continue
-            if not _is_waited_follow_up(event, decision):
+            payload = event.payload
+            if isinstance(payload, (StepCommitted, DecisionCancelled)):
                 continue
+            if _is_external_decision_fact(payload):
+                if event.event_id not in selected:
+                    continue
+            elif isinstance(payload, (CommandAuthorized, DispatchAttemptStarted,
+                                      CommandOutcomeReceived, AttemptOrphaned, CommandRejected)):
+                if not (_is_waited_follow_up(event, decision)
+                        or isinstance(payload, CommandRejected) and payload.command_id in decision.commands):
+                    continue
             decision.apply_regular(event)
-            if _waited_batch_complete(decision, operational):
-                return
 
 
 def _is_waited_follow_up(
@@ -735,18 +691,6 @@ def _is_waited_follow_up(
     ):
         return payload.command_id in decision.commands
     return False
-
-
-def _waited_batch_complete(
-    decision: _StateBuilder,
-    operational: _StateBuilder,
-) -> bool:
-    for command_id, frozen in decision.commands.items():
-        if not operational.commands[command_id].attempts:
-            continue
-        if not _settled(frozen):
-            return False
-    return True
 
 
 def _parallel_decision_group_closed(

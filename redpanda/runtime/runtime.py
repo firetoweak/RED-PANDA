@@ -17,6 +17,7 @@ from redpanda.runtime.events import (
     EventDraft,
     DeliveryIdentity,
     StepContinuationCancelled,
+    StepCommitted,
     UserMessageReceived,
 )
 from redpanda.runtime.journal.api import Journal, LeaseLostError, StepClaimRequest
@@ -37,7 +38,7 @@ class AdvanceResult:
 
 @dataclass(slots=True)
 class _ActiveDecision:
-    trigger_event_id: str
+    trigger_event_ids: tuple[str, ...]
     cancel_requested: asyncio.Event = field(default_factory=asyncio.Event)
     finished: asyncio.Event = field(default_factory=asyncio.Event)
     cancellation: Event | None = None
@@ -198,6 +199,7 @@ class AgentRuntime:
         """
 
         recorded: list[Event] = []
+        committed_inputs: tuple[str, ...] | None = None
         while True:
             active = self._active_decisions.get(session_id)
             if active is not None:
@@ -205,9 +207,9 @@ class AgentRuntime:
                     EventDraft(
                         event_id=self._id_factory("event"),
                         session_id=session_id,
-                        payload=DecisionCancelled(active.trigger_event_id),
+                        payload=DecisionCancelled(active.trigger_event_ids),
                         occurred_at=datetime.now(timezone.utc),
-                        causation_id=active.trigger_event_id,
+                        causation_id=active.trigger_event_ids[0],
                     )
                 )
                 active.cancellation = cancellation
@@ -215,12 +217,30 @@ class AgentRuntime:
                 await active.finished.wait()
                 if cancellation is not None:
                     return (*recorded, cancellation)
-                continue
+                committed_inputs = active.trigger_event_ids
 
             # 与 advance 共用推进锁：已提交 Step 的命令此时都已派发、登记为可打断，
             # 调用方随后的打断才能送达它们。
             async with self._step_locks.setdefault(session_id, asyncio.Lock()):
                 events = await self._journal.snapshot(session_id)
+                if committed_inputs is not None:
+                    settled = next(
+                        event for event in events
+                        if (isinstance(event.payload, StepCommitted)
+                            and event.payload.step.trigger_event_ids == committed_inputs)
+                        or (isinstance(event.payload, DecisionCancelled)
+                            and event.payload.trigger_event_ids == committed_inputs)
+                    )
+                    if isinstance(settled.payload, DecisionCancelled):
+                        return tuple(recorded)
+                    cancellation = await self._journal.cancel_continuation(
+                        EventDraft(
+                            event_id=self._id_factory("event"), session_id=session_id,
+                            payload=StepContinuationCancelled(settled.event_id),
+                            occurred_at=datetime.now(timezone.utc), causation_id=settled.event_id,
+                        )
+                    )
+                    return (*recorded, cancellation) if cancellation is not None else tuple(recorded)
                 projection = self.projector.project(session_id, events)
                 frame = projection.next_decision
                 if frame is not None:
@@ -228,7 +248,7 @@ class AgentRuntime:
                         EventDraft(
                             event_id=self._id_factory("event"),
                             session_id=session_id,
-                            payload=DecisionCancelled(frame.trigger_event.event_id),
+                            payload=DecisionCancelled(frame.trigger_event_ids),
                             occurred_at=datetime.now(timezone.utc),
                             causation_id=frame.trigger_event.event_id,
                         )
@@ -265,7 +285,7 @@ class AgentRuntime:
                         cancellations.append(cancellation)
                 if cancellations:
                     recorded.extend(cancellations)
-                    continue
+                    return tuple(recorded)
                 if not step_event_ids:
                     return tuple(recorded)
 
@@ -318,7 +338,7 @@ class AgentRuntime:
                 return AdvanceResult(None, dispatch.status)
             request = StepClaimRequest(
                 session_id=session_id,
-                trigger_event_id=frame.trigger_event.event_id,
+                trigger_event_ids=frame.trigger_event_ids,
                 decision_cursor=frame.decision_cursor,
                 basis_state_version=frame.basis_state_version,
                 observed_journal_position=frame.observed_journal_position,
@@ -331,7 +351,7 @@ class AgentRuntime:
             )
             if lease is None:
                 return AdvanceResult(None, RuntimeStatus.RUNNABLE)
-            active = _ActiveDecision(frame.trigger_event.event_id)
+            active = _ActiveDecision(frame.trigger_event_ids)
             if session_id in self._active_decisions:
                 raise RuntimeError(f"decision already active: {session_id}")
             self._active_decisions[session_id] = active

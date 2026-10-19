@@ -9,6 +9,7 @@ from redpanda.runtime.events import (
 )
 from redpanda.runtime.model import (
     CanonicalState,
+    _require_event_ids,
 )
 
 
@@ -43,7 +44,7 @@ class AppendResult:
 @dataclass(frozen=True, slots=True)
 class StepClaimRequest:
     session_id: str
-    trigger_event_id: str
+    trigger_event_ids: tuple[str, ...]
     decision_cursor: int
     basis_state_version: str
     observed_journal_position: int
@@ -51,11 +52,11 @@ class StepClaimRequest:
     def __post_init__(self) -> None:
         for label, value in (
             ("session id", self.session_id),
-            ("trigger event id", self.trigger_event_id),
             ("basis state version", self.basis_state_version),
         ):
             if type(value) is not str or not value:
                 raise ValueError(f"{label} must be a non-empty str")
+        _require_event_ids(self.trigger_event_ids)
         if type(self.decision_cursor) is not int or self.decision_cursor < 1:
             raise ValueError("decision cursor must be positive")
         if (
@@ -63,6 +64,10 @@ class StepClaimRequest:
             or self.observed_journal_position < 1
         ):
             raise ValueError("observed journal position must be positive")
+
+    @property
+    def trigger_event_id(self) -> str:
+        return self.trigger_event_ids[0]
 
 
 @dataclass(frozen=True, slots=True)

@@ -192,7 +192,7 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kinds.count("CommandOutcomeReceived"), 1)
         await scheduler.close()
 
-    async def test_two_later_user_messages_first_step_still_sees_waited_outcomes(self):
+    async def test_two_later_user_messages_are_consumed_with_waited_outcomes(self):
         tool = RecordingTool("work")
         model = _work_then("first later", "second later")
         runtime = runtime_for(tool, model)
@@ -214,12 +214,13 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         outcome_ids = _outcome_ids(await runtime.snapshot("session"), command_id)
         self.assertEqual(len(outcome_ids), 1)
         self.assertTrue(outcome_ids <= visible)
-        self.assertNotIn(later.event_id, visible)
+        self.assertIn(later.event_id, visible)
         self.assertIsNotNone(model.frames[1].state.command(command_id).outcome)
 
-        await runtime.advance("session")
-        self.assertEqual(model.frames[2].trigger_event.payload.content, "do this instead")
-        self.assertEqual(len(model.frames), 3)
+        self.assertEqual(model.frames[1].state.user_messages, ("go", "stop", "do this instead"))
+        self.assertEqual((await runtime.state("session")).decision_cursor, 2)
+        self.assertIsNone((await runtime.advance("session")).step)
+        self.assertEqual(len(model.frames), 2)
 
     async def test_second_burst_fact_sees_first_fact_step_outcomes(self):
         """一批外部事实里，为前一条提交的 Step 也要带着自己的命令终局出现。
@@ -289,7 +290,7 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(model.frames[1].trigger_event.payload.content, "wait")
         self.assertEqual(len(model.frames), 2)
 
-    async def test_queued_user_messages_keep_order_without_suppressing_outcome_group(
+    async def test_queued_user_batch_keeps_order_and_has_one_outcome_continuation(
         self,
     ):
         tool = RecordingTool("work")
@@ -309,8 +310,9 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
             for frame in model.frames
             if isinstance(frame.trigger_event.payload, UserMessageReceived)
         ]
-        self.assertEqual(messages, ["one", "two"])
-        self.assertEqual(len(model.frames), 3)
+        self.assertEqual(messages, ["one"])
+        self.assertEqual(model.frames[0].state.user_messages, ("one", "two"))
+        self.assertEqual(len(model.frames), 2)
         await scheduler.close()
 
     async def test_user_message_during_thinking_runs_same_step_commands_only(self):

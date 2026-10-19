@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from functools import partial
 import json
-import re
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
@@ -40,10 +39,18 @@ class MessagingLlm(ProcessLlm):
         text = json.dumps(messages, ensure_ascii=False)
         called = {call["function"]["name"] for message in messages for call in message.get("tool_calls", ())}
         calls = ()
-        if "轮到你回应这条群消息" in (last := str(messages[-1]["content"])):
-            called_for = re.search(r'"message_id": "([^"]+)"', last).group(1)
+        attention = None
+        # A passive group speech can follow the call before the decision freezes.
+        # Answer calls since our last response, even when they are not the last message.
+        for message in reversed(messages):
+            if message["role"] == "assistant":
+                break
+            if "轮到你回应这条群消息" in str(message.get("content")):
+                attention = json.loads(message["content"])["data"]
+                break
+        if attention is not None:
             calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps(
-                {"group": "开发组", "text": "收到", "reply_to": called_for})),)
+                {"group": attention["group"], "text": "收到", "reply_to": attention["message_id"]})),)
         elif "SEND_TO_LIN" in text:
             if "list_colleagues" not in called:
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
@@ -119,7 +126,12 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         group = await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name="开发组",
                                                     members=["Ada", "Lin"])
         await self.host.agent_groups.post(group.group_id, "大家同步一下进度", [])
-        await asyncio.wait_for(until(lambda: not self.host.agent_groups._drives[group.group_id].running), 60)
+        # Busy members can speak after the drive temporarily runs out of queued calls.
+        # Wait for the expected public replies, not that intermediate scheduler state.
+        async with asyncio.timeout(60):
+            while len(await self.host.agent_groups.messages(group.group_id)) < 7:
+                await asyncio.sleep(0.02)
+            await until(lambda: not self.host.agent_groups._drives[group.group_id].running)
         for agent in (self.ada, self.lin):
             await self.settled(agent)
         speakers = [message.sender.name for message in await self.host.agent_groups.messages(group.group_id)]
