@@ -40,6 +40,10 @@ class RoutineError(ValueError):
         self.code = code
 
 
+class RoutineNotFound(LookupError):
+    """The person asked about a routine this Agent does not have (or no longer has)."""
+
+
 @dataclass(frozen=True, slots=True)
 class Routine:
     routine_id: str
@@ -218,7 +222,7 @@ class RoutineStore:
                     "SELECT * FROM routines WHERE routine_id = ? AND state != ?", (routine_id, DELETED),
                 ).fetchone()
                 if row is None:
-                    raise LookupError(routine_id)
+                    raise RoutineNotFound(routine_id)
                 self._write_state(connection, row, state)
                 return None if state == DELETED else self._routine(connection, routine_id)
 

@@ -138,11 +138,11 @@ async def _run_interval(
     await asyncio.wait_for(connected.wait(), timeout=5)
     await asyncio.sleep(0.05)
 
-    await hub.preview("measure", "started", "output-1", None)
+    await hub.preview("measure", "started", "output-1", None, "user")
     for index in range(count):
         text = "字"
         emits.append((time.perf_counter(), "preview.delta", len(text)))
-        await hub.preview("measure", "delta", "output-1", text)
+        await hub.preview("measure", "delta", "output-1", text, "user")
         if interval_ms:
             await asyncio.sleep(interval_ms / 1000)
     await asyncio.sleep(0.2)

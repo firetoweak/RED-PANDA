@@ -4,6 +4,7 @@ import asyncio
 import json
 import unittest
 from datetime import datetime, timezone
+from functools import partial
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -17,6 +18,8 @@ from PIL import Image
 from redpanda.assistant.attachments import AttachmentGateway
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.automation.routines import RoutineClock, RoutineStore
 from redpanda.assistant.agents import AgentCreated, AgentRecord
 from redpanda.assistant.conversations import (
     AgentRosterEntry,
@@ -615,6 +618,30 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(groups.post.await_count, 1)
         self.assertEqual(self.client.post("/api/groups/group-1/stop", json={"connection_id": connection}).status_code, 200)
         groups.stop.assert_awaited_once_with("group-1")
+
+    def test_a_person_pauses_resumes_and_cancels_an_agents_routine_over_http(self):
+        host = SimpleNamespace(routines=RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite")),
+                               _emit_schedule_changed=AsyncMock())
+        self.sessions.list_routines = partial(HostSupervisor.list_routines, host)
+        self.sessions.set_routine_state_by_user = partial(HostSupervisor.set_routine_state_by_user, host)
+        routine_id = host.routines.store.save("cmd-routine", "session-old", routine_id=None, name="检查 PR",
+                                              intent="看看有没有新评审。", schedule="@every 10m")["data"]["routine_id"]
+        url = f"/api/sessions/session-old/routines/{routine_id}/state"
+        put = lambda state, connection_id=self.connection.connection_id: self.client.put(
+            url, json={"connection_id": connection_id, "state": state})
+
+        listed, = self.client.get("/api/sessions/session-old/routines").json()
+        self.assertEqual((listed["name"], listed["schedule"], listed["state"]), ("检查 PR", "@every 10m", "active"))
+        self.assertIsNotNone(listed["next_run"])
+        paused, = put("paused_by_user").json()
+        self.assertEqual((paused["state"], paused["next_run"]), ("paused_by_user", None))
+        host._emit_schedule_changed.assert_awaited_with("session-old")
+        self.assertEqual(put("active").json()[0]["state"], "active")
+        self.assertEqual(put("paused").status_code, 422)
+        self.assertEqual(put("deleted", connection_id="gone").status_code, 409)
+        self.assertEqual(put("deleted").json(), [])
+        self.assertEqual(put("active").status_code, 404)
+        self.assertEqual(self.client.get("/api/sessions/session-old/routines").json(), [])
 
     def test_agent_roster_accepts_a_name_and_project_only(self):
         self.assertEqual(self.client.get("/api/agents").json(), [])

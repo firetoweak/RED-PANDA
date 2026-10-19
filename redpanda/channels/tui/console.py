@@ -90,6 +90,7 @@ class _StreamingConsoleOutput:
         phase: str,
         output_id: str,
         text: str | None,
+        _audience: str,
     ) -> None:
         key = (session_id, output_id)
         if phase == "started":
@@ -106,7 +107,7 @@ class _StreamingConsoleOutput:
             raise ValueError(f"unknown preview phase: {phase}")
         self._invalidate()
 
-    def deliver(self, session_id: str, output_id: str, text: str) -> None:
+    def deliver(self, session_id: str, output_id: str, text: str, _audience: str) -> None:
         self._previews.pop((session_id, output_id), None)
         self._invalidate()
         self._write(f"\n助手：{text}")

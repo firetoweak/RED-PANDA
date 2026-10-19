@@ -271,7 +271,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.host = self.new_host()
 
     def new_host(self):
-        def deliver(session_id, output_id, text):
+        def deliver(session_id, output_id, text, _audience):
             self.output.append((session_id, text))
             self.output_ids.append(output_id)
             self.delivery_order.append(("final", session_id, output_id, text))
@@ -423,8 +423,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                         if value[0] == CHILD and value[1] == "delta"]
         child_thought, = [value for value in thoughts
                           if value[0] == CHILD and value[1] == "delta"]
-        self.assertEqual(child_delta[2:], (child_final[1], "child progress"))
-        self.assertEqual(child_thought[2:], (child_final[1], "child reasoning"))
+        self.assertEqual(child_delta[2:4], (child_final[1], "child progress"))
+        self.assertEqual(child_thought[2:4], (child_final[1], "child reasoning"))
         self.assertTrue(self.host.failures.empty())
 
     async def test_worker_exit_closes_generation_preview_tools_and_activity(self):

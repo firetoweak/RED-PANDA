@@ -21,7 +21,7 @@ import reducer, {
 
 describe("runtimeSlice", () => {
   it("appends preview deltas and commits final text on the same output identity", () => {
-    let state = reducer(undefined, previewStarted({ sessionId: "s1", outputId: "out" }));
+    let state = reducer(undefined, previewStarted({ sessionId: "s1", outputId: "out", audience: "user" }));
     state = reducer(
       state,
       previewDelta({ sessionId: "s1", outputId: "out", text: "你" }),
@@ -34,7 +34,7 @@ describe("runtimeSlice", () => {
 
     state = reducer(
       state,
-      outputFinal({ sessionId: "s1", outputId: "out", text: "你好" }),
+      outputFinal({ sessionId: "s1", outputId: "out", text: "你好", audience: "user" }),
     );
     expect(state.sessions.s1.activePreview).toBeNull();
     expect(state.sessions.s1.committed.out).toBe("你好");
@@ -44,7 +44,7 @@ describe("runtimeSlice", () => {
   it("streams thinking separately from assistant preview text", () => {
     let state = reducer(
       undefined,
-      thinkingStarted({ sessionId: "s1", outputId: "out" }),
+      thinkingStarted({ sessionId: "s1", outputId: "out", audience: "user" }),
     );
     state = reducer(
       state,
@@ -64,11 +64,11 @@ describe("runtimeSlice", () => {
   it("does not treat preview or thinking as an idle activity overlay", () => {
     let state = reducer(
       undefined,
-      thinkingStarted({ sessionId: "s1", outputId: "out" }),
+      thinkingStarted({ sessionId: "s1", outputId: "out", audience: "user" }),
     );
     expect(state.sessions.s1.activity).toBeNull();
 
-    state = reducer(state, previewStarted({ sessionId: "s1", outputId: "out" }));
+    state = reducer(state, previewStarted({ sessionId: "s1", outputId: "out", audience: "user" }));
     expect(state.sessions.s1.activity).toBeNull();
 
     state = reducer(
@@ -83,14 +83,14 @@ describe("runtimeSlice", () => {
     state = reducer(state, sessionActivity({ sessionId: "s1", activity: "running" }));
     state = reducer(
       state,
-      outputFinal({ sessionId: "s1", outputId: "out", text: "在看" }),
+      outputFinal({ sessionId: "s1", outputId: "out", text: "在看", audience: "user" }),
     );
     expect(state.sessions.s1.unread).toBe(0);
 
     state = reducer(state, viewing("s2"));
     state = reducer(
       state,
-      outputFinal({ sessionId: "s1", outputId: "out-2", text: "离开后" }),
+      outputFinal({ sessionId: "s1", outputId: "out-2", text: "离开后", audience: "user" }),
     );
     expect(state.sessions.s1.unread).toBe(1);
     expect(state.sessions.s2.unread).toBe(0);
@@ -215,8 +215,8 @@ describe("runtimeSlice", () => {
   });
 
   it("clears live output so a truncated edit does not keep later previews", () => {
-    let state = reducer(undefined, previewStarted({ sessionId: "s1", outputId: "out" }));
-    state = reducer(state, outputFinal({ sessionId: "s1", outputId: "out", text: "old" }));
+    let state = reducer(undefined, previewStarted({ sessionId: "s1", outputId: "out", audience: "user" }));
+    state = reducer(state, outputFinal({ sessionId: "s1", outputId: "out", text: "old", audience: "user" }));
     state = reducer(state, clearLiveOutput("s1"));
     expect(state.sessions.s1.activePreview).toBeNull();
     expect(state.sessions.s1.committed).toEqual({});

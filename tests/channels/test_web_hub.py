@@ -15,43 +15,43 @@ class WebEventHubTest(unittest.IsolatedAsyncioTestCase):
         second = self.hub.subscribe()
 
         await self.hub.session_activity("session-a", "running")
-        await self.hub.output_final("session-b", "out-1", "done")
+        await self.hub.output_final("session-b", "out-1", "done", "user")
 
         self.assertEqual((await first.get()).data["session_id"], "session-a")
         self.assertEqual((await first.get()).name, "output_final")
         self.assertEqual((await second.get()).name, "session_activity")
         self.hub.unsubscribe(first)
         self.hub.unsubscribe(second)
-        await self.hub.output_final("session-b", "out-2", "still-ok")
+        await self.hub.output_final("session-b", "out-2", "still-ok", "user")
 
     async def test_keeps_one_preview_per_session_and_clears_it_on_final(self):
         queue = self.hub.subscribe()
 
-        await self.hub.preview("session-a", "started", "out-1", None)
-        await self.hub.preview("session-a", "delta", "out-1", "你")
-        await self.hub.preview("session-a", "delta", "out-1", "好")
+        await self.hub.preview("session-a", "started", "out-1", None, "user")
+        await self.hub.preview("session-a", "delta", "out-1", "你", "user")
+        await self.hub.preview("session-a", "delta", "out-1", "好", "user")
         with self.assertRaises(RuntimeError):
-            await self.hub.preview("session-a", "delta", "out-other", "x")
-        await self.hub.output_final("session-a", "out-1", "你好")
+            await self.hub.preview("session-a", "delta", "out-other", "x", "user")
+        await self.hub.output_final("session-a", "out-1", "你好", "user")
 
         names = [(await queue.get()).name for _ in range(4)]
         self.assertEqual(
             names,
             ["preview.started", "preview.delta", "preview.delta", "output_final"],
         )
-        await self.hub.preview("session-a", "started", "out-2", None)
-        await self.hub.preview("session-a", "delta", "out-2", "x")
+        await self.hub.preview("session-a", "started", "out-2", None, "user")
+        await self.hub.preview("session-a", "delta", "out-2", "x", "user")
         self.hub.unsubscribe(queue)
 
     async def test_new_connection_receives_live_prefix_before_later_deltas(self):
         await self.hub.session_activity("child", "running")
         await self.hub.tool_progress("child", "start", "cmd", "read_file", None)
-        await self.hub.preview("child", "started", "out", None)
-        await self.hub.preview("child", "delta", "out", "前半段")
-        await self.hub.thinking("child", "started", "out", None)
-        await self.hub.thinking("child", "delta", "out", "思考前半段")
+        await self.hub.preview("child", "started", "out", None, "user")
+        await self.hub.preview("child", "delta", "out", "前半段", "user")
+        await self.hub.thinking("child", "started", "out", None, "user")
+        await self.hub.thinking("child", "delta", "out", "思考前半段", "user")
         queue = self.hub.subscribe()
-        await self.hub.preview("child", "delta", "out", "后半段")
+        await self.hub.preview("child", "delta", "out", "后半段", "user")
         events = [queue.get_nowait() for _ in range(queue.qsize())]
         self.assertEqual([item.name for item in events], [
             "session_activity", "tool_progress", "preview.started", "preview.delta",
@@ -59,18 +59,18 @@ class WebEventHubTest(unittest.IsolatedAsyncioTestCase):
         ])
         self.assertEqual("".join(item.data["text"] for item in events if item.name == "preview.delta"), "前半段后半段")
         self.hub.unsubscribe(queue)
-        await self.hub.output_final("child", "out", "前半段后半段")
-        await self.hub.thinking("child", "finished", "out", None)
+        await self.hub.output_final("child", "out", "前半段后半段", "user")
+        await self.hub.thinking("child", "finished", "out", None, "user")
         await self.hub.session_activity("child", "idle")
         self.assertTrue(self.hub.subscribe().empty())
 
     async def test_final_of_a_superseded_output_still_lands(self):
         queue = self.hub.subscribe()
 
-        await self.hub.preview("session-a", "started", "out-1", None)
-        await self.hub.preview("session-a", "started", "out-2", None)
-        await self.hub.output_final("session-a", "out-1", "旧的")
-        await self.hub.preview("session-a", "delta", "out-2", "新的")
+        await self.hub.preview("session-a", "started", "out-1", None, "user")
+        await self.hub.preview("session-a", "started", "out-2", None, "user")
+        await self.hub.output_final("session-a", "out-1", "旧的", "user")
+        await self.hub.preview("session-a", "delta", "out-2", "新的", "user")
 
         names = [(await queue.get()).name for _ in range(4)]
         self.assertEqual(
@@ -125,11 +125,11 @@ class WebEventHubTest(unittest.IsolatedAsyncioTestCase):
     async def test_thinking_is_a_separate_stream_from_preview(self):
         queue = self.hub.subscribe()
 
-        await self.hub.thinking("session-a", "started", "out-1", None)
-        await self.hub.thinking("session-a", "delta", "out-1", "想")
-        await self.hub.preview("session-a", "started", "out-1", None)
-        await self.hub.preview("session-a", "delta", "out-1", "答")
-        await self.hub.thinking("session-a", "finished", "out-1", None)
+        await self.hub.thinking("session-a", "started", "out-1", None, "user")
+        await self.hub.thinking("session-a", "delta", "out-1", "想", "user")
+        await self.hub.preview("session-a", "started", "out-1", None, "user")
+        await self.hub.preview("session-a", "delta", "out-1", "答", "user")
+        await self.hub.thinking("session-a", "finished", "out-1", None, "user")
 
         names = [(await queue.get()).name for _ in range(5)]
         self.assertEqual(

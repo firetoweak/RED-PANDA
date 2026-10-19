@@ -24,6 +24,7 @@
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
+| 例行任务 | `$REDPANDA_HOME/state/routines.sqlite` |
 | 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<项目>/`（`integration`、`<Agent>`、`children/<子>`） |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 
@@ -48,7 +49,7 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（23 个）
+## 功能列表（25 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
@@ -67,6 +68,8 @@
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
+| routines | [routines.md](./routines.md) | 会话页输入框上方 `例行任务`：`暂停 <名字>`、`恢复 <名字>`、`取消 <名字>` → `确认取消 <名字>`；人暂停后 Agent 不能恢复 | 部分（2026-10-19 Windows；列表与按钮、人暂停后 Agent 不能恢复通过，未等真实触发） |
+| work-log | [work-log.md](./work-log.md) | 同事私信、群、例行任务开始的一轮折叠为 `工作记录 …` 一行（实时同样折叠）；`message_user` 照常显示 | 部分（2026-10-19 Windows；私信触发与实时通过，群与例行任务触发未观察） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏 Agent 名册 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
@@ -93,11 +96,12 @@
 
 | 接口 | 条目 |
 |---|---|
-| `GET /api/events` | realtime-events |
+| `GET /api/events` | realtime-events、work-log（`preview.started`/`thinking.started`/`output_final` 的 `audience`） |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar |
-| `GET /api/sessions/{id}` | web-session-chat |
+| `GET /api/sessions/{id}` | web-session-chat、work-log（步骤项 `audience`） |
+| `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages`、`POST /api/groups/{group_id}/stop` | group-chat |
 | `GET /api/sessions/{id}/changes`（仅 Agent 与其委派任务；摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
@@ -121,7 +125,9 @@
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
 | `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
+| `save_routine` `set_routine_state` `list_routines` | `redpanda/automation/routine_tool.py` | routines |
 | `send_group_message`（`send_message` `list_colleagues` `declare_direction` 暂无独立条目） | `redpanda/assistant/agent_messages.py` | group-chat |
+| `message_user`，以及 `send_message` 触发的工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
 

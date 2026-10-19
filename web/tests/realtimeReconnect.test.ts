@@ -21,9 +21,9 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   const id = { session_id: "child", output_id: "output" };
   emit("connected", { connection_id: "first" });
   emit("session_activity", { session_id: "child", activity: "running" });
-  emit("preview.started", id);
+  emit("preview.started", { ...id, audience: "user" });
   emit("preview.delta", { ...id, text: "旧片段" });
-  emit("thinking.started", id);
+  emit("thinking.started", { ...id, audience: "user" });
   emit("thinking.delta", { ...id, text: "旧思考" });
   emit("error");
   expect(store.getState().runtime.sessions.child.activePreview).toBeNull();
@@ -31,10 +31,10 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   expect(store.getState().runtime.sessions.child.activity).toBeNull();
   emit("connected", { connection_id: "second" });
   emit("session_activity", { session_id: "child", activity: "running" });
-  emit("preview.started", id);
+  emit("preview.started", { ...id, audience: "user" });
   emit("preview.delta", { ...id, text: "补齐前缀" });
   emit("preview.delta", { ...id, text: "后续" });
-  emit("output_final", { ...id, text: "补齐前缀后续" });
+  emit("output_final", { ...id, text: "补齐前缀后续", audience: "user" });
   expect(store.getState().runtime.sessions.child.committed.output).toBe("补齐前缀后续");
   expect(store.getState().runtime.sessions.child.activePreview).toBeNull();
   close();

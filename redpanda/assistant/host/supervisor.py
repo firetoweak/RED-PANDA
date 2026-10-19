@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from redpanda.automation.routine_tool import LIST_ROUTINES, SAVE_ROUTINE, SET_ROUTINE_STATE
-from redpanda.automation.routines import ROUTINE_DUE, RoutineClock, RoutineFire, RoutineStore
+from redpanda.automation.routines import ROUTINE_DUE, RoutineClock, RoutineFire, RoutineNotFound, RoutineStore
 from redpanda.automation.once import (
     SOURCE as AUTOMATION_SOURCE,
     TIME_REACHED,
@@ -24,7 +24,7 @@ from redpanda.automation.once import (
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
-from redpanda.assistant.delivery import emit_delivery
+from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
@@ -81,6 +81,13 @@ class Worker:
     active_preview: str | None = None
     active_thinking: str | None = None
     live_tools: dict[str, str] = field(default_factory=dict)
+    # Who each output of this generation is for, read from the Journal once per output.
+    audiences: dict[str, Audience] = field(default_factory=dict)
+
+
+async def _emit(emitted) -> None:
+    if isawaitable(emitted):
+        await emitted
 
 
 async def _settle(awaitable):
@@ -279,7 +286,7 @@ class HostSupervisor:
             return await self.agent_messages.declare(session_id, arguments)
         if operation == MESSAGE_USER:
             if self.sink is not None:
-                await emit_delivery(self.sink, session_id, arguments["output_id"], arguments["text"])
+                await _emit(self.sink(session_id, arguments["output_id"], arguments["text"], "user"))
             return None
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
@@ -382,7 +389,8 @@ class HostSupervisor:
                 return None
             sink = self.sink if operation == "output" else self.subagent_output_sink
             if sink is not None:
-                await emit_delivery(sink, session_id, arguments["output_id"], arguments["text"])
+                audience = await self._audience(worker, session_id, arguments["output_id"])
+                await _emit(sink(session_id, arguments["output_id"], arguments["text"], audience))
             if worker is not None and worker.active_preview == arguments["output_id"]:
                 worker.active_preview = None
             return None
@@ -494,11 +502,21 @@ class HostSupervisor:
         """The app's pause, resume and cancel buttons; an Agent cannot undo a person's pause."""
         routine = next((item for item in self.routines.store.list(session_id) if item.routine_id == routine_id), None)
         if routine is None:
-            raise LookupError(routine_id)
+            raise RoutineNotFound(routine_id)
         updated = self.routines.store.set_state_by_user(routine_id, state)
         self.routines.changed.set()
         await self._emit_schedule_changed(session_id)
         return updated
+
+    async def _audience(self, worker: Worker, session_id: str, output_id: str) -> Audience:
+        """Who a Step's text is for; ``output_id`` is the Step's trigger, already in the Journal."""
+        if output_id not in worker.audiences:
+            if await self.agents.by_session(session_id) is None:
+                worker.audiences[output_id] = "user"
+            else:
+                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+                worker.audiences[output_id] = audiences(events)(output_id)
+        return worker.audiences[output_id]
 
     async def _emit_schedule_changed(self, session_id: str) -> None:
         if self.schedule_changed_sink is None:
@@ -601,9 +619,8 @@ class HostSupervisor:
                     self.preview_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    emitted = self.preview_sink(*values)
-                    if isawaitable(emitted):
-                        await emitted
+                    audience = await self._audience(worker, values[0], output_id)
+                    await _emit(self.preview_sink(*values, audience))
             elif kind == "thinking":
                 if is_subagent and self.subagent_output_sink is None:
                     return
@@ -616,9 +633,8 @@ class HostSupervisor:
                     self.thinking_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    emitted = self.thinking_sink(*values)
-                    if isawaitable(emitted):
-                        await emitted
+                    audience = await self._audience(worker, values[0], output_id)
+                    await _emit(self.thinking_sink(*values, audience))
             elif kind == "session_failed":
                 await self._emit_session_failed(*values)
             elif kind == "idle":
@@ -804,15 +820,13 @@ class HostSupervisor:
         output_id = worker.active_preview
         worker.active_preview = None
         if output_id is not None and self.preview_sink is not None:
-            emitted = self.preview_sink(session_id, "aborted", output_id, None)
-            if isawaitable(emitted):
-                await emitted
+            await _emit(self.preview_sink(session_id, "aborted", output_id, None,
+                                          await self._audience(worker, session_id, output_id)))
         thinking_id = worker.active_thinking
         worker.active_thinking = None
         if thinking_id is not None and self.thinking_sink is not None:
-            emitted = self.thinking_sink(session_id, "aborted", thinking_id, None)
-            if isawaitable(emitted):
-                await emitted
+            await _emit(self.thinking_sink(session_id, "aborted", thinking_id, None,
+                                           await self._audience(worker, session_id, thinking_id)))
         live_tools = tuple(worker.live_tools.items())
         worker.live_tools.clear()
         if self.tool_progress_sink is not None:

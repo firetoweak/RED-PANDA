@@ -15,7 +15,6 @@ from redpanda.assistant.host.process_env import install_host_environment
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.conversations import AssistantQueries
-from redpanda.assistant.delivery import DeliverySink, PreviewSink
 from redpanda.config import AppConfig, assistant_config_from_app, load_app_config, config_path, write_json
 from redpanda.model_settings import ModelSettings
 from redpanda.llm.connections import ModelConnections
@@ -55,7 +54,7 @@ class BootstrappedAssistant:
 
 @asynccontextmanager
 async def bootstrap_assistant(
-    sink: DeliverySink,
+    sink,
     *,
     app_config: AppConfig | None = None,
     workspace_path: Path | None = None,
@@ -64,7 +63,7 @@ async def bootstrap_assistant(
     conversation_status_sink=None,
     tool_progress_sink=None,
     authorization_required_sink=None,
-    preview_sink: PreviewSink | None = None,
+    preview_sink=None,
     thinking_sink=None,
     subagent_output_sink=None,
     session_activity_sink=None,
@@ -74,7 +73,9 @@ async def bootstrap_assistant(
     command_environment: dict[str, str] | None = None,
     fresh_sessions: bool = False,
 ) -> AsyncIterator[BootstrappedAssistant]:
-    """``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。
+    """Host 调 Channel 的正文与预览端口时，末尾多带这段文字是给人（``"user"``）还是工作记录（``"log"``）。
+
+    ``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。
 
     长期 Agent 的会话与工作树也在这些状态里；数据根里已有 Agent 时拒绝清空。
     """
