@@ -1,4 +1,5 @@
 """Host shutdown must stop command writers and must not repeat unknown work."""
+import asyncio
 import json
 import os
 import shlex
@@ -42,8 +43,11 @@ def gone(pid):
 
 
 @pytest.mark.parametrize("shutdown", ["close", "kill"])
-def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_unknown_command(tmp_path, shutdown):
+@pytest.mark.parametrize("background", [False, True], ids=["foreground", "background"])
+def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_command(tmp_path, shutdown, background):
     root = Path(__file__).resolve().parents[2]
+    if background:
+        (tmp_path / "background-mode").touch()
     writer = (
         "import os,time;from pathlib import Path;"
         "Path('writer-pid').write_text(str(os.getpid()));"
@@ -79,6 +83,8 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_unknown_command(
         host = start()
         try:
             until(lambda: (tmp_path / "writes").exists() and (tmp_path / "ready").exists())
+            if background:
+                until(lambda: (tmp_path / "handoff").exists())
             pids = [int((tmp_path / name).read_text()) for name in ("command-pid", "writer-pid")]
             stop(host, shutdown)
             until(lambda: all(gone(pid) for pid in pids))
@@ -86,12 +92,24 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_unknown_command(
             for _ in range(2):
                 host = start()
                 until(lambda: (tmp_path / "ready").exists())
-                assert json.loads((tmp_path / "ready").read_text())["paused"] is True
+                assert json.loads((tmp_path / "ready").read_text())["paused"] is (not background)
+                if background:
+                    until(lambda: len((tmp_path / "model-calls").read_text().splitlines()) == 3)
                 time.sleep(.2)
-                assert (tmp_path / "model-calls").read_text().splitlines() == ["call"]
+                assert (tmp_path / "model-calls").read_text().splitlines() == ["call"] * (3 if background else 1)
                 assert (tmp_path / "runs").read_text().splitlines() == ["run"]
                 assert (tmp_path / "writes").read_bytes() == writes
                 stop(host, "close")
+            if background:
+                from redpanda.assistant.host.session_store import SessionStore
+                from redpanda.runtime import DomainFactCommitted, SqliteJournal
+                from redpanda.paths import RedPandaHome
+                store = SessionStore(RedPandaHome(tmp_path / "home").runtime_sessions_root)
+                events = asyncio.run(SqliteJournal(store.require("session")).snapshot("session"))
+                facts = [event for event in events if isinstance(event.payload, DomainFactCommitted)
+                         and event.payload.fact_type == "background_command_finished"]
+                assert len(facts) == 1
+                assert facts[0].payload.data["state"] == ("stopped" if shutdown == "close" else "unknown")
         finally:
             if host.poll() is None:
                 host.kill()

@@ -60,7 +60,7 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
 
         coerced = await executor.execute(
             "strict_command",
-            '{"command":"ok","timeout_seconds":"5"}',
+            '{"command":"ok","wait_seconds":"5"}',
         )
         extra = await executor.execute(
             "strict_command",
@@ -69,7 +69,7 @@ class ToolContractBoundaryTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(coerced["code"], "VALIDATION_ERROR")
         self.assertEqual(extra["code"], "VALIDATION_ERROR")
-        for bad in ({"timeout_seconds": 301},):
+        for bad in ({"wait_seconds": 31},):
             with self.subTest(bad=bad), self.assertRaises(ValidationError):
                 CommandInput.model_validate({"command": "ok", **bad})
 
@@ -168,7 +168,7 @@ def _read_write_binding(root: Path, environment_id: str) -> FileAccess:
 class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
     async def test_missing_shell_maps_to_shell_not_found(self):
         class MissingShellRunner:
-            async def run(self, command, cwd, timeout_seconds):
+            async def run(self, command, cwd, wait_seconds):
                 raise ShellNotFoundError("bash", "/bin/bash")
 
         with tempfile.TemporaryDirectory() as directory:
@@ -187,7 +187,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self, exit_code):
                 self.exit_code = exit_code
 
-            async def run(self, command, cwd, timeout_seconds, **kwargs):
+            async def run(self, command, cwd, wait_seconds, **kwargs):
                 empty = CapturedOutput("", 0, False, 0)
                 return CommandResult(self.exit_code, empty, empty, 1, False)
 
@@ -205,7 +205,7 @@ class ExecuteCommandContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_executor_error_passes_through(self):
         class BrokenRunner:
-            async def run(self, command, cwd, timeout_seconds):
+            async def run(self, command, cwd, wait_seconds):
                 raise RuntimeError("internal executor bug")
 
         with tempfile.TemporaryDirectory() as directory:
@@ -526,7 +526,7 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
             permission_binding=PermissionBinding((('project', FilesystemPermission.READ_WRITE),)),
             cwd=self.workspace_root,
         )
-        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL)
+        self.commands = CommandEnvironment(runner, "powershell", POWERSHELL, background_supported=False)
         registry = ToolRegistry()
         registry.register(
             create_command_execution_spec(
@@ -622,18 +622,3 @@ class ExecuteCommandToolTest(unittest.IsolatedAsyncioTestCase):
         result = await self.execute({"command": "  "})
 
         self.assertEqual(result["code"], "EMPTY_COMMAND")
-
-    async def test_timeout_is_a_tool_failure_with_partial_output(self):
-        result = await self.execute({
-            "command": (
-                '[Console]::Out.WriteLine("started"); '
-                "Start-Sleep -Seconds 5"
-            ),
-            "timeout_seconds": 2,
-        })
-
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["code"], "COMMAND_TIMEOUT")
-        self.assertTrue(result["data"]["timed_out"])
-        self.assertIn("started", result["data"]["stdout"]["content"])
-        self.assertIn("可能已部分执行", result["error"])

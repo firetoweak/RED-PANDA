@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from redpanda.assistant.tool_results import runtime_tool_result
-from redpanda.execution.api import ProcessControl
+from redpanda.execution.api import CommandControl
 from redpanda.execution.local.provider import create_local_command_environment
 from redpanda.filesystem import FileAccess
 from redpanda.filesystem.registry import WorkspaceRecord, workspace_view
@@ -20,7 +21,9 @@ from redpanda.filesystem.workspace import (
 from redpanda.runtime.model import AuthorizationPolicy, rejected_tool_arguments
 from redpanda.tools.builtin import (
     CommandInterrupts,
-    create_process_specs,
+    command_result,
+    current_command_id,
+    create_command_specs,
     create_subagent_workspace_specs,
     create_workspace_tool_specs,
 )
@@ -81,7 +84,7 @@ async def build_builtin_tools(
     colleague_root: Path | None = None,
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
-    processes: ProcessControl | None = None,
+    commands: CommandControl | None = None,
 ) -> BuiltinToolRunner:
     view = workspace_view(workspace)
     read_only = set()
@@ -99,7 +102,12 @@ async def build_builtin_tools(
             RootBinding("colleague_worktrees", WorkspaceScope.COLLEAGUES, colleague_root),
         ))
         read_only.add("colleague_worktrees")
-    commands = create_local_command_environment(command_environment)
+    environment = None
+    if commands is not None:
+        environment = replace(create_local_command_environment(command_environment),
+                              command_executor=commands, background_supported=True)
+    elif sys.platform == "darwin":
+        environment = create_local_command_environment(command_environment)
     binding = FileAccess(
         environment_id="local",
         workspace_view=view,
@@ -118,12 +126,12 @@ async def build_builtin_tools(
         )
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
-    for spec in create_workspace_tool_specs(binding, commands, interrupts):
+    for spec in create_workspace_tool_specs(binding, environment, interrupts):
         if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
             spec = replace(spec, requires_authorization=False)
         registry.register(spec)
-    if processes is not None:
-        for spec in create_process_specs(binding, processes):
+    if commands is not None:
+        for spec in create_command_specs(commands):
             registry.register(spec)
     return BuiltinToolRunner(
         schemas=tuple(registry.get_tools()),
@@ -149,3 +157,5 @@ def subagent_review_tools(operation):
         bindings[spec.name] = ToolBinding(handler, requires_authorization=spec.requires_authorization)
     return ([spec.to_openai_tool() for spec in specs], bindings,
             frozenset(spec.name for spec in specs if spec.exclusive_batch))
+
+__all__ = ["build_builtin_tools", "BuiltinToolRunner", "subagent_review_tools", "command_result", "current_command_id"]

@@ -6,6 +6,12 @@ from pathlib import Path
 import subprocess
 import unittest
 from tempfile import TemporaryDirectory
+from functools import partial
+
+from redpanda.assistant.host.session_store import SessionStore
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.filesystem.registry import WorkspaceRegistry
+from tests.fixtures.session_worker import config_for
 
 import pytest
 
@@ -18,6 +24,10 @@ from tests.fixtures.memory_journal import MemoryJournal
 from redpanda.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
+
+
+async def no_host_settings(operation, *args):
+    return "continue" if operation == "compact_boundary" else None
 
 
 class CapturingLlm:
@@ -39,7 +49,7 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                 AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=llm),
                 lambda *_: None, MemoryJournal(), session_id="agent",
                 workspace=workspace_record(workspace), home=home,
-                agent_branch=True, scheduler_factory=SettlingScheduler,
+                agent_branch=True, scheduler_factory=SettlingScheduler, session_transport=no_host_settings,
             )
             try:
                 context = AttemptContext("agent", "write", "attempt-write", 1)
@@ -87,11 +97,16 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
             git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
             worktree = root / "agent"
             git("worktree", "add", "-b", "agent", str(worktree))
+            home = RedPandaHome(root / "home")
+            store = SessionStore(home.runtime_sessions_root)
+            registered = WorkspaceRegistry.load(home.workspaces_path).register_path(worktree)
+            host = HostSupervisor(store, partial(config_for, worktree), home, None, llm=CapturingLlm())
+            await host.create("agent", registered.workspace_id)
             assembly = await build_assistant_assembly(
                 AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=CapturingLlm()),
                 lambda *_: None, MemoryJournal(), session_id="agent",
-                workspace=workspace_record(worktree), home=RedPandaHome(root / "home"),
-                agent_branch=True,
+                workspace=workspace_record(worktree), home=home,
+                agent_branch=True, session_transport=host._route,
             )
             try:
                 command = ("Set-Content -LiteralPath note.txt -Value command; (Get-Location).Path"
@@ -105,3 +120,4 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(git("status", "--porcelain").stdout, b"")
             finally:
                 await assembly.scheduler.close()
+                await host.close()

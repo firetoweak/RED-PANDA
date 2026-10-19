@@ -13,6 +13,11 @@ _current: ContextVar[asyncio.Event | None] = ContextVar(
     "command_interrupt",
     default=None,
 )
+_identity: ContextVar[str] = ContextVar("command_identity")
+
+
+def current_command_id() -> str:
+    return _identity.get()
 
 
 class LiveCommand:
@@ -105,6 +110,7 @@ async def run_interruptible(
         attempt_id=attempt_id,
     )
     token = _current.set(event)
+    identity_token = _identity.set(command_id)
     try:
         result = await execute()
     except BaseException as exc:
@@ -115,3 +121,4 @@ async def run_interruptible(
         return result
     finally:
         _current.reset(token)
+        _identity.reset(identity_token)

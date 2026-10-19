@@ -429,6 +429,14 @@ def create_web_app(
     async def routines(session_id: str, request: Request):
         return _channel(request).routines(session_id)
 
+    @app.get("/api/sessions/{session_id}/commands")
+    async def commands(session_id: str, request: Request):
+        return await _channel(request).commands(session_id)
+
+    @app.post("/api/sessions/{session_id}/commands/{command_id}/stop")
+    async def stop_command(session_id: str, command_id: str, body: ConnectionRequest, request: Request):
+        return await _channel(request).stop_command(body.connection_id, session_id, command_id)
+
     @app.put("/api/sessions/{session_id}/routines/{routine_id}/state")
     async def set_routine_state(session_id: str, routine_id: str, body: RoutineStateRequest, request: Request):
         return await _channel(request).set_routine_state(body.connection_id, session_id, routine_id, body.state)

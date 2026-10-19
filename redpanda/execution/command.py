@@ -99,6 +99,7 @@ class CommandResult:
     timed_out: bool
     io_errors: tuple[str, ...] = ()
     interrupted: bool = False
+    background: dict[str, object] | None = None
 
 
 class ShellNotFoundError(FileNotFoundError):
@@ -119,7 +120,7 @@ class CommandExecutor(Protocol):
         self,
         command: str,
         cwd: Path,
-        timeout_seconds: int,
+        timeout_seconds: int | None,
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
@@ -128,7 +129,7 @@ class CommandExecutor(Protocol):
 
 async def wait_process(
     proc: asyncio.subprocess.Process,
-    timeout_seconds: float,
+    timeout_seconds: float | None,
     interrupt: asyncio.Event | None,
 ) -> str:
     """等待进程退出、超时，或打断。进程已经退出时，已知结果优先于打断。"""

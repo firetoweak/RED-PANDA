@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.host.process_port import WorkerProcessPort
+from redpanda.assistant.host.command_port import WorkerCommandPort
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.execution.processes import ProcessManager
+from redpanda.execution.processes import CommandManager
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.paths import RedPandaHome
 from tests.fixtures.session_worker import ProcessLlm, config_for
@@ -37,10 +37,10 @@ async def until(predicate):
 
 def test_owned_process_output_exit_and_session_isolation(tmp_path):
     async def scenario():
-        manager = ProcessManager(tmp_path / "logs", os.environ)
+        manager = CommandManager(tmp_path / "logs", os.environ)
         try:
-            entry = await manager.start("a", shell(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"), tmp_path)
-            identity = entry["process_id"]
+            entry = await manager.execute("a", "writer", shell(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"), tmp_path, 0)
+            identity = entry["command_id"]
             async def ready():
                 result = await manager.read("a", identity, 0, 0)
                 return "READY" in result["stdout"]["content"]
@@ -53,11 +53,20 @@ def test_owned_process_output_exit_and_session_isolation(tmp_path):
             assert stopped["state"] == "stopped"
             assert (await manager.read("a", identity, 0, 0))["stdout"]["content"].strip() == "READY"
             assert await manager.stop("a", identity) == stopped
-            exited = await manager.start("a", shell(sys.executable, "-c", "import sys;sys.exit(23)") + ("; exit $LASTEXITCODE" if os.name == "nt" else ""), tmp_path)
+            exited = await manager.execute("a", "exit", shell(sys.executable, "-c", "import sys;print('HEAD'+'汉'*12000+'TAIL');sys.exit(23)") + ("; exit $LASTEXITCODE" if os.name == "nt" else ""), tmp_path, 0)
             async def finished():
-                return (await manager.read("a", exited["process_id"], 0, 0))["state"] == "exited"
+                return (await manager.read("a", exited["command_id"], 0, 0))["state"] == "completed"
             await until(finished)
             assert (await manager.list("a"))[-1]["exit_code"] == 23
+            result = await manager.wait("a", exited["command_id"])
+            assert result["stdout"]["truncated"]
+            assert "HEAD" not in result["stdout"]["content"]
+            assert result["stdout"]["content"].rstrip().endswith("TAIL")
+            page = await manager.read("a", exited["command_id"], 0, 0)
+            assert page["stdout"]["has_more"]
+            following = await manager.read("a", exited["command_id"], page["stdout"]["next_offset"], 0)
+            assert following["stdout"]["content"].startswith("汉")
+            assert "�" not in following["stdout"]["content"]
         finally:
             await manager.close()
     asyncio.run(scenario())
@@ -65,35 +74,35 @@ def test_owned_process_output_exit_and_session_isolation(tmp_path):
 
 def test_descendant_outlives_shell_until_owner_stops_job(tmp_path):
     async def scenario():
-        manager = ProcessManager(tmp_path / "logs", os.environ)
+        manager = CommandManager(tmp_path / "logs", os.environ)
         try:
             code = (
                 "import subprocess,sys;subprocess.Popen([sys.executable,'-u','-c',"
                 "\"import time;from pathlib import Path;Path('child-ready').touch();time.sleep(60)\"],"
                 "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)"
             )
-            entry = await manager.start("a", shell(sys.executable, "-c", code), tmp_path)
+            entry = await manager.execute("a", "tree", shell(sys.executable, "-c", code), tmp_path, 0)
             async def ready():
                 if os.name == "nt":
                     from redpanda.execution.process_win import wait_object
-                    exited = wait_object(manager._processes[entry["process_id"]].running.info.process, 0) == 0
+                    exited = wait_object(manager._commands[entry["command_id"]].running.info.process, 0) == 0
                 else:
-                    from redpanda.execution.process_posix import _stat_fields
-                    fields = _stat_fields(entry["pid"])
-                    exited = fields is not None and fields[0] == "Z"
+                    owned = manager._commands[entry["command_id"]]
+                    async with owned.lock:
+                        exited = await asyncio.to_thread(owned.running.poll, leader_only=True) is not None
                 return (tmp_path / "child-ready").exists() and exited
             await until(ready)
             assert (await manager.list("a"))[0]["state"] == "running"
             await manager.close()
             assert (await manager.list("a"))[0]["state"] == "stopped"
             with pytest.raises(RuntimeError, match="closed"):
-                await manager.start("a", "echo x", tmp_path)
+                await manager.execute("a", "cancelled", "echo x", tmp_path, 0)
         finally:
             await manager.close()
     asyncio.run(scenario())
 
 
-def test_cancelled_start_reclaims_the_created_job(tmp_path):
+def test_cancelled_worker_leaves_created_command_queryable(tmp_path):
     import threading
     if os.name == "nt":
         from redpanda.execution.process_win import Running
@@ -102,7 +111,7 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
         from redpanda.execution.process_linux import Running
         module = "redpanda.execution.process_linux"
     async def scenario():
-        manager = ProcessManager(tmp_path / "logs", os.environ)
+        manager = CommandManager(tmp_path / "logs", os.environ)
         spawned, release = threading.Event(), threading.Event()
         processes = []
         def held_spawn(*args):
@@ -113,7 +122,7 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
             return running
         try:
             with patch(module + ".Running", held_spawn):
-                pending = asyncio.create_task(manager.start("a", "Start-Sleep -Seconds 60" if os.name == "nt" else "sleep 60", tmp_path))
+                pending = asyncio.create_task(manager.execute("a", "cancelled", "Start-Sleep -Seconds 60" if os.name == "nt" else "sleep 60", tmp_path, 0))
                 async def created():
                     return spawned.is_set()
                 try:
@@ -123,20 +132,19 @@ def test_cancelled_start_reclaims_the_created_job(tmp_path):
                     release.set()
                 with pytest.raises(asyncio.CancelledError):
                     await pending
-            if os.name == "nt":
-                assert processes[0].job is None
-                assert processes[0].info.process is None
-            else:
-                assert processes[0]._closed
-                assert processes[0]._owner.returncode == 0
-            assert await manager.list("a") == []
+            # A dead Worker does not revoke Host ownership or relaunch the command.
+            result = await manager.lookup("a", "cancelled")
+            assert result["state"] == "running"
+            await manager.stop("a", result["command_id"])
+            assert (await manager.lookup("a", result["command_id"]))["state"] == "stopped"
         finally:
             release.set()
             await manager.close()
     asyncio.run(scenario())
 
 
-def test_host_port_survives_worker_retirement(tmp_path):
+@pytest.mark.parametrize("completion", ["stop", "exit"])
+def test_host_port_survives_worker_retirement(tmp_path, completion):
     from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
     async def scenario():
         root = tmp_path / "project"; root.mkdir()
@@ -149,13 +157,13 @@ def test_host_port_survives_worker_retirement(tmp_path):
             async def chat(self, messages, model, **kwargs):
                 results = [message for message in messages if message["role"] == "tool"]
                 if not results:
-                    response = LLMResponse(content="", calls=(ToolCall("start", "start_process", json.dumps({
-                        "command": shell(sys.executable, "-u", "-c", "import time;print('READY');time.sleep(60)"),
+                    response = LLMResponse(content="", calls=(ToolCall("start", "execute_command", json.dumps({
+                        "command": shell(sys.executable, "-u", "-c", "import time;from pathlib import Path;print('READY');\nwhile not Path('finish').exists(): time.sleep(.05)"), "wait_seconds": 0,
                     })),))
                 else:
                     result = json.loads(results[-1]["content"])
-                    assert result["code"] == "PROCESS_STARTED", result
-                    started.append(result["data"])
+                    assert result["code"] == "COMMAND_BACKGROUND", result
+                    started.append(result["data"]["background"])
                     response = LLMResponse(content="done")
                 return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
         host = HostSupervisor(store, partial(config_for, root), home,
@@ -165,12 +173,42 @@ def test_host_port_survives_worker_retirement(tmp_path):
             await host.set_auto_authorize("a", True)
             await host.accept_input("a", "finish", delivery_id="one")
             async def retired():
-                return bool(output) and not host.workers and not host.watchers
+                return bool(output) and not host.workers
             await until(retired)
             entry = started[0]
-            replacement_port = WorkerProcessPort(host._route, "a")
-            assert (await replacement_port.list())[0]["process_id"] == entry["process_id"]
-            assert (await replacement_port.read(entry["process_id"], 0, 0))["state"] == "running"
+            replacement_port = WorkerCommandPort(host._route, "a")
+            assert (await replacement_port.list())[0]["command_id"] == entry["command_id"]
+            assert (await replacement_port.read(entry["command_id"], 0, 0))["state"] == "running"
+            previous = len(output)
+            await host.receive_user_message("a", "new request while command is running", delivery_id="two")
+            async def responsive():
+                return len(output) > previous and not host.workers
+            await until(responsive)
+            assert (await replacement_port.read(entry["command_id"], 0, 0))["state"] == "running"
+            # Pausing the Agent does not revoke an already acknowledged background command.
+            await host.cancel_turn("a")
+            assert (await replacement_port.read(entry["command_id"], 0, 0))["state"] == "running"
+            before = len(output)
+            if completion == "stop":
+                await replacement_port.stop(entry["command_id"])
+            else:
+                (root / "finish").touch()
+            from redpanda.runtime import DomainFactCommitted, SqliteJournal
+            journal = SqliteJournal(store.require("a"))
+            async def notified():
+                events = await journal.snapshot("a")
+                return any(isinstance(event.payload, DomainFactCommitted)
+                           and event.payload.fact_type == "background_command_finished" for event in events)
+            await until(notified)
+            assert len(output) == before
+            await host.retry("a")
+            async def reported():
+                return len(output) > before
+            await until(reported)
+            await host.wait_quiescent("a")
+            events = await journal.snapshot("a")
+            assert len([event for event in events if isinstance(event.payload, DomainFactCommitted)
+                        and event.payload.fact_type == "background_command_finished"]) == 1
         finally:
             await host.close()
     asyncio.run(scenario())
@@ -204,12 +242,12 @@ def test_host_server_observes_file_edits(tmp_path, launcher):
             async def tool(name, arguments, identity):
                 return await assembly.bindings[name].handler(AttemptContext("a", identity, identity, 1), arguments)
             command = shell(node, "server.cjs") if launcher == "node" else shell(npm, "run", "dev")
-            result = await tool("start_process", {"command": command}, "start")
-            assert result["code"] == "PROCESS_STARTED", result
-            identity = result["data"]["process_id"]
+            result = await tool("execute_command", {"command": command, "wait_seconds": 0}, "start")
+            assert result["code"] == "COMMAND_BACKGROUND", result
+            identity = result["data"]["background"]["command_id"]
             ready = []
             async def listening():
-                output = await tool("read_process", {"process_id": identity}, "read")
+                output = await tool("read_command", {"command_id": identity}, "read")
                 for line in output["data"]["stdout"]["content"].splitlines():
                     if line.startswith('{"pid":'):
                         ready.append(json.loads(line))
@@ -232,18 +270,18 @@ def test_host_server_observes_file_edits(tmp_path, launcher):
                 await until(predicate)
             await observes("BASE")
             result = await tool("execute_command", {
-                "command": "Start-Sleep -Seconds 10" if os.name == "nt" else "sleep 10", "timeout_seconds": 1,
+                "command": "Start-Sleep -Seconds 10" if os.name == "nt" else "sleep 10", "wait_seconds": 1,
             }, "foreground-timeout")
-            assert result["code"] == "COMMAND_TIMEOUT", result
+            assert result["code"] == "COMMAND_BACKGROUND", result
             await observes("BASE")
             for old, new, command_id in (("BASE", "ONE1", "first"), ("ONE1", "TWO2", "second")):
                 result = await tool("apply_patch", {"path": "value.txt", "old_block": old, "new_block": new}, command_id)
                 assert result["ok"], result
                 await observes(new)
-            state = await tool("read_process", {"process_id": identity}, "read-final")
+            state = await tool("read_command", {"command_id": identity}, "read-final")
             assert state["data"]["state"] == "running"
             assert "RELOAD" in state["data"]["stdout"]["content"]
-            result = await tool("stop_process", {"process_id": identity}, "stop")
+            result = await tool("stop_command", {"command_id": identity}, "stop")
             assert result["data"]["state"] == "stopped"
             with pytest.raises(OSError):
                 await asyncio.to_thread(request)

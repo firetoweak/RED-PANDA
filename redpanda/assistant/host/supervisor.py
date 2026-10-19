@@ -62,8 +62,7 @@ from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
 from redpanda.execution.local.windows_job import WindowsJob
-from redpanda.execution.processes import ProcessManager
-from redpanda.execution.command import CommandStartError, ShellNotFoundError
+from redpanda.assistant.host.commands import CommandHost
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.config import write_json
 
@@ -179,8 +178,7 @@ class HostSupervisor:
         self.closed = False
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
-        self.processes = (ProcessManager(home.state_root / "processes", self.command_environment)
-                          if sys.platform in {"win32", "linux"} else None)
+        self.commands = CommandHost(self) if sys.platform in {"win32", "linux"} else None
         self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
         self._pause = SessionFlagStore(store.root, "paused.json")
         self.automation = OneShotClock(
@@ -213,6 +211,7 @@ class HostSupervisor:
         """
 
         unfinished = []
+        command_sessions = []
         joining = []
         agent_births = {}
         for path in self.store.journals():
@@ -221,6 +220,7 @@ class HostSupervisor:
             if not self.is_paused(session_id):
                 await journal.prepare_recovery(session_id)
             events = await journal.snapshot(session_id)
+            command_sessions.append((session_id, events))
             if project_parent(events) is not None:
                 continue
             state = replay(session_id, events).state
@@ -235,7 +235,7 @@ class HostSupervisor:
             observed = max((step.step.observed_journal_position for step in state.steps), default=0)
             unknown = {command.command.command_id for command in state.commands
                        if command.phase is CommandPhase.UNKNOWN
-                       and command.command.effect.name in {"execute_command", "start_process"}}
+                       and command.command.effect.name in {"execute_command"}}
             if any(isinstance(event.payload, AttemptOrphaned)
                    and event.payload.command_id in unknown and event.sequence > observed for event in events):
                 # An unknown execution may already have produced side effects.
@@ -247,6 +247,9 @@ class HostSupervisor:
                 continue
             if session_view(state).should_wake:
                 unfinished.append(session_id)
+        if self.commands is not None:
+            for session_id, events in command_sessions:
+                await self.commands.restore(session_id, events)
         for agent in joining:
             pending = self.store.require(agent.session_id).parent / "agent-creation.json"
             if not pending.exists():
@@ -326,27 +329,10 @@ class HostSupervisor:
                 async with self._landing_locks.setdefault(agent.workspace_id, asyncio.Lock()):
                     result = await _settle(asyncio.to_thread(self.agent_worktrees.land, agent))
             return asdict(result)
-        if operation in {"process_start", "process_read", "process_stop", "process_list"}:
-            self.store.require(session_id)
-            if self.processes is None:
-                raise RuntimeError("Persistent processes require Windows or Linux")
-            if operation == "process_start":
-                if self.closed:
-                    raise RuntimeError("Cannot start process for a closed owner")
-                try:
-                    process = await self.processes.start(session_id, arguments["command"], Path(arguments["cwd"]))
-                except ShellNotFoundError as exc:
-                    return {"ok": False, "code": "SHELL_NOT_FOUND", "shell": exc.shell_name,
-                            "executable": exc.executable}
-                except CommandStartError as exc:
-                    return {"ok": False, "code": "COMMAND_START_FAILED", "error": str(exc)}
-                return {"ok": True, "process": process}
-            if operation == "process_read":
-                return await self.processes.read(session_id, arguments["process_id"],
-                                                 arguments["stdout_offset"], arguments["stderr_offset"])
-            if operation == "process_stop":
-                return await self.processes.stop(session_id, arguments["process_id"])
-            return await self.processes.list(session_id)
+        if operation in {"command_execute", "command_query", "command_read", "command_stop", "command_list", "command_interrupt"}:
+            if self.commands is None:
+                raise RuntimeError("Background commands require Windows or Linux")
+            return await self.commands.route(operation, session_id, arguments)
         if operation == "model_settings":
             if self.models is not None:
                 return self.models.for_decision(session_id, apply=arguments["apply"])
@@ -1277,6 +1263,14 @@ class HostSupervisor:
             dict(command_id=command_id, approved=approved),
         )
 
+    async def list_commands(self, session_id):
+        self.store.require(session_id)
+        return [] if self.commands is None else await self.commands.manager.list(session_id)
+
+    async def stop_command(self, session_id, command_id):
+        self.store.require(session_id)
+        return None if self.commands is None else await self.commands.manager.stop(session_id, command_id)
+
     async def resolve_authorizations(self, session_id, *, approved):
         await self.compact.application(
             "resolve_authorizations", session_id, dict(approved=approved)
@@ -1388,9 +1382,9 @@ class HostSupervisor:
         for worker in workers:
             if worker.process.is_alive():
                 worker.process.terminate()
+        if self.commands is not None:
+            await self.commands.close()
         await asyncio.gather(*self.watchers, return_exceptions=True)
-        if self.processes is not None:
-            await self.processes.close()
         if self.job is not None:
             self.job.close()
             self.job = None

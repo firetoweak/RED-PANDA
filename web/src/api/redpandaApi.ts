@@ -9,6 +9,8 @@ import {
 } from "../realtime/runtimeSlice";
 import {
   agentRosterEntrySchema,
+  backgroundCommandSchema,
+  type BackgroundCommand,
   conversationViewSchema,
   directorySelectionSchema,
   groupSummarySchema,
@@ -218,6 +220,17 @@ export const redpandaApi = createApi({
       transformErrorResponse: (response) => response.status === 422 || response.status === 404
         ? apiErrorDetail(response.data) ?? response : response,
       invalidatesTags: ["Groups"],
+    }),
+    getBackgroundCommands: build.query<BackgroundCommand[], string>({
+      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/commands`,
+      transformResponse: (value: unknown) => backgroundCommandSchema.array().parse(value),
+    }),
+    stopBackgroundCommand: build.mutation<BackgroundCommand, SelectSession & { commandId: string }>({
+      query: ({ sessionId, connectionId, commandId }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/stop`,
+        method: "POST", body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => backgroundCommandSchema.parse(value),
     }),
     getRoutines: build.query<Routine[], string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/routines`,
@@ -459,6 +472,8 @@ export const redpandaApi = createApi({
 });
 
 export const {
+  useGetBackgroundCommandsQuery,
+  useStopBackgroundCommandMutation,
   useGetRoutinesQuery,
   useSetRoutineStateMutation,
   useGetFileChangesQuery,

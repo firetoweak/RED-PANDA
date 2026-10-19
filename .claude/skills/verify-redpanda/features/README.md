@@ -104,6 +104,7 @@
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
 | `GET /api/sessions/{id}` | web-session-chat、work-log（步骤项 `audience`） |
+| `GET /api/sessions/{id}/commands`、`POST /api/sessions/{id}/commands/{command_id}/stop` | tool-coding-round |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages` | group-chat |
@@ -126,7 +127,7 @@
 | `read_image` | `redpanda/assistant/attachments.py` | composer-attachments |
 | `update_plan` | `redpanda/assistant/work_plan.py` | work-plan |
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |
-| `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
+| `read_command` `stop_command` `list_commands`（后台命令，Linux/Windows） | `redpanda/tools/builtin/background_commands.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `save_routine` `set_routine_state` `list_routines` | `redpanda/automation/routine_tool.py` | routines |
 | `list_colleagues` `declare_direction` | `redpanda/assistant/agent_messages.py` | colleague-tools |

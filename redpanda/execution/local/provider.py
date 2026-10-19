@@ -32,4 +32,5 @@ def create_local_command_environment(
         runner,
         shell_name="powershell" if os.name == "nt" else "bash",
         shell_path=runner.executable,
+        background_supported=False,
     )
