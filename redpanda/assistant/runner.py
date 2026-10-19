@@ -12,6 +12,7 @@ from redpanda.assistant.catalog import CapabilityCatalog
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcome,
+    CommandPhase,
     DispatchAttemptStarted,
     OutcomeStatus,
     RuntimeStatus,
@@ -134,6 +135,9 @@ class SessionScheduler:
         if advance.step is None and advance.status is not RuntimeStatus.RUNNABLE:
             await self._preview.abort(session_id)
             await self._preview.abort_thinking(session_id)
+        # 自动放行在 Step 提交后立即生效：同一时刻到达的新事实会让会话继续决策，
+        # 那次决策不能把已放行的命令看成还在等人授权。
+        await self._auto_grant(session_id)
         runnable = advance.status is RuntimeStatus.RUNNABLE
         # Control 请求随 Step 提交；这里从 Journal 恢复，而不是依赖本轮内存。
         outcome = await self._control.prepare_pending(
@@ -153,6 +157,25 @@ class SessionScheduler:
             await self._quiesced(session_id)
         return runnable
 
+    async def _auto_grant(self, session_id: str) -> None:
+        if self.auto_authorize is None:
+            return
+        enabled = self.auto_authorize(session_id)
+        if isinstance(enabled, Awaitable):
+            enabled = await enabled
+        if not enabled:
+            return
+        state = await self._runtime.state(session_id)
+        for command_state in state.commands:
+            if (
+                command_state.phase is CommandPhase.PENDING
+                and command_state.dispatch_eligible_by_event_id is None
+                and command_state.authorization_rejected_by_event_id is None
+            ):
+                await self._runtime.grant_command(
+                    session_id, command_state.command.command_id
+                )
+
     async def _emit_session_failed(self, session_id: str, message: str) -> None:
         if self._session_failed is None:
             return
@@ -163,25 +186,11 @@ class SessionScheduler:
     async def _quiesced(self, session_id: str) -> None:
         """本次推进没有留下待办。订阅者自己判断这是否算一件事做完了。"""
 
-        if (
-            self.auto_authorize is None
-            and self.authorization_required is None
-            and self._on_quiesced is None
-        ):
+        if self.authorization_required is None and self._on_quiesced is None:
             return
         state = await self._runtime.state(session_id)
         pending = pending_authorization_ids(state)
         if pending:
-            should_auto = False
-            if self.auto_authorize is not None:
-                should_auto = self.auto_authorize(session_id)
-                if isinstance(should_auto, Awaitable):
-                    should_auto = await should_auto
-            if should_auto:
-                for command_id in pending:
-                    await self._runtime.grant_command(session_id, command_id)
-                await self.wake(session_id)
-                return
             if self.authorization_required is not None:
                 by_id = {
                     command_state.command.command_id: command_state
