@@ -7,6 +7,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+from redpanda.assistant.agent_messages import MESSAGE_USER
 from redpanda.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, PrivateMessage, Speaker, fact_arguments,
     identity_for_model, project_agent,
@@ -202,23 +203,20 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             "command_id": "cmd-resume", "routine_id": routine.routine_id, "state": "active"})
         self.assertEqual(refused["code"], "PAUSED_BY_USER")
 
-    async def test_live_output_says_whether_it_is_for_the_person_or_the_work_log(self):
+    async def test_live_closing_text_is_the_work_log_and_only_message_user_reaches_the_person(self):
         agent = await self.create()
         journal = SqliteJournal(self.store.require(agent.session_id))
-        runtime = AgentRuntime(journal, None, {})
-        await runtime.receive_user_message(agent.session_id, "你好", delivery_id="hi")
-        await runtime.receive_domain_fact(agent.session_id, **fact_arguments(PrivateMessage(
-            message_id="m-1", sender=Speaker(kind="agent", name="Lin"), recipient=agent.name,
-            thread_id="m-1", hop=0, reply_to=None, text="看一下", origin="o-1"), delivery_id="m-1"))
-        *_, from_person, from_colleague = await journal.snapshot(agent.session_id)
+        await AgentRuntime(journal, None, {}).receive_user_message(agent.session_id, "你好", delivery_id="hi")
+        *_, from_person = await journal.snapshot(agent.session_id)
         self.host.sink = Mock()
         worker = Worker(process=None, peer=None)
-        for trigger in (from_person, from_colleague):
-            await self.host._route("output", agent.session_id,
-                                   {"output_id": trigger.event_id, "text": "收尾"}, worker=worker)
+        await self.host._route("output", agent.session_id,
+                               {"output_id": from_person.event_id, "text": "收尾"}, worker=worker)
+        await self.host._route(MESSAGE_USER, agent.session_id,
+                               {"output_id": "message", "text": "结论"}, worker=worker)
         self.assertEqual([call.args for call in self.host.sink.call_args_list], [
-            (agent.session_id, from_person.event_id, "收尾", "user"),
-            (agent.session_id, from_colleague.event_id, "收尾", "log"),
+            (agent.session_id, from_person.event_id, "收尾", "log"),
+            (agent.session_id, "message", "结论", "user"),
         ])
 
     async def test_new_context_window_restates_identity_before_the_handoff(self):
