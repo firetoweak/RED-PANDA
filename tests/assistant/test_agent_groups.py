@@ -228,6 +228,40 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         again = await self.say("Third", "又一个问题", origin="routine", answers=None, mention=["Lin"])
         self.assertIn("依次回应", again["data"]["notice"])
 
+    async def test_a_report_after_a_long_run_belongs_to_the_run_not_to_a_call_that_came_meanwhile(self):
+        group = await self.group()
+        lin = iter(([{"group": "开发组", "text": "开工"}],))
+        self.speeches = {"Lin": lambda: next(lin, [])}
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+            await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
+            await self.settled(group)
+            # Lin starts a long run after acknowledging #A.
+            finished = asyncio.Event()
+
+            async def run(_context, _arguments):
+                await finished.wait()
+                return {"ok": True}
+
+            runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker(
+                (lambda _: ModelDecision(command_requests=(InvokeTool("run_command"),)),)),
+                {"run_command": ToolBinding(run)})
+            await runtime.advance("Lin")
+            await runtime.dispatcher.start_pending("Lin")
+            # Another discussion calls Lin while the run is still going.
+            with patch.object(self.host, "activity", side_effect=lambda session_id:
+                              "running" if session_id == "Lin" else "idle"):
+                await self.say("Third", "#B 开工", origin="routine", answers=None, mention=["Lin"])
+                await self.settled(group)
+            finished.set()
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
+            self.calls.clear()
+            # The Step that sees the run's result also sees the call; its report still opens a discussion.
+            [report] = await self.speak("Lin", {"group": "开发组", "text": "#A 报告", "mention": ["Ada"]})
+            await self.settled(group)
+        self.assertIn("依次回应", report["data"]["notice"])
+        self.assertEqual(self.calls, ["Ada"])
+
     async def test_another_speech_joins_the_queue_without_dropping_it(self):
         group = await self.group()
         release = asyncio.Event()
