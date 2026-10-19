@@ -57,7 +57,7 @@
 
 ## Gotchas
 
-- Web 会话即名册里的 Agent，任务根是它自己的 worktree（`$REDPANDA_HOME/state/coding_bot/<项目>/<Agent>/`），不是 `$SCRATCH_WORKSPACE` 本身；判据里的「磁盘文件」读 Agent 工作树。Agent 通过命令主动暂存/提交、落地与同步（`land_branch`、`sync_branch`），Step 收口不自动暂存或提交。
+- Web 会话即名册里的 Agent，任务根是它自己的 worktree（`$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/<sha256(session_id) 前 20 位>/`），不是 `$SCRATCH_WORKSPACE` 本身；判据里的「磁盘文件」读 Agent 工作树。Agent 通过命令主动暂存/提交。落地与同步（`land_branch`、`sync_branch`）见 [land-and-sync.md](./land-and-sync.md)。Step 收口不自动暂存或提交。
 
 - 非零退出不是工具失败：`ok` 仍为 true，`code` 为 `COMMAND_EXIT_NONZERO`（不是 `COMMAND_COMPLETED`）；模型应读 hint/stderr，不要把非零当作成功。
 - `ok:null` 的结果（`COMMAND_INTERRUPTED`、`COMMAND_CONSTRAINT_FAILED`）在时间线是「中断」，不是「失败」；不要按失败判。
@@ -72,7 +72,7 @@
 ### Live status
 
 - 2026-10-18 改写：文件回退移除后，删除 `file_access`/`workspace_effect`、`get_changes`、`COMMAND_CONSTRAINT_FAILED` 与原生依赖相关判据；命令一律授权。未 live 复跑。
-- 2026-10-18 源码核对（未 live）：补充 `execute_command` 其余结果码、`file_access`、`GLOB_NOT_FOUND`、`CHANGES_READ_FAILED`、`VALIDATION_ERROR`、进程工具结果码与平台范围、项目说明 `CLAUDE.md` 回退；均未驱动验证。
+- 2026-10-18 源码核对（未 live）：补充 `execute_command` 其余结果码、`GLOB_NOT_FOUND`、`VALIDATION_ERROR`、进程工具结果码与平台范围、项目说明在 `AGENTS.md` 不可读时改读 `CLAUDE.md`；均未驱动验证。`file_access` 与 `get_changes` 已不在判据里。
 - 2026-10-16（pr25-verify merge @e701ef5，Web+DeepSeek）：coding-tools 通过；`bash -c 'exit 2'` → `COMMAND_EXIT_NONZERO` ok=true exit_code=2；`printf ok` → `COMMAND_COMPLETED` exit_code=0
 - 2026-10-16（main@e191eab，仅 API，界面未验证）：`read_file`→`apply_patch`→`execute_command` 落盘；`start_process`/`read_process`/`list_processes`/`stop_process` 全部成功，停止后端口释放
 - 通过（2026-10-12，main@1a4790a）

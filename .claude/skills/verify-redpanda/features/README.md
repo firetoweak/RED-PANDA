@@ -20,12 +20,12 @@
 | 默认模型与候选模型 | `$REDPANDA_HOME/config.json` |
 | 供应商连接（含密钥） | `$REDPANDA_HOME/connections.json` |
 | 工作区登记 | `$REDPANDA_HOME/workspaces.json` |
-| 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/` |
+| 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/<sha256(session_id)>/journal.sqlite` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 例行任务 | `$REDPANDA_HOME/state/routines.sqlite` |
-| 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<项目>/`（`integration`、`<Agent>`、`children/<子>`） |
+| 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`<sha256(session_id) 前 20 位>`、`children/<sha256(子会话) 前 20 位>` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 
 ## 判据写法约定
@@ -49,13 +49,16 @@
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（25 个）
+## 功能列表（27 个）
 
 | id | 文件 | 一句话 | live 验证状态 |
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 草稿会话 → 发消息 | 部分（2026-10-12，修复后；错误码与失败再试已修，UI 待复跑） |
 | workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 部分（2026-10-16，main@e191eab；API 通过，UI 未验） |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | Agent 名册、新建与切换 Agent、状态徽标 | 部分（2026-10-12，main@1a4790a） |
+| colleague-tools | [colleague-tools.md](./colleague-tools.md) | `list_colleagues`、`declare_direction`；侧栏显示最新方向；同事加入与方向事实不请求决策 | 未跑 |
+| private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | 未跑 |
+| land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | 未跑 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 部分（2026-10-12，修复后；任意路径入口已删，上传下载通过，UI 待复跑） |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 输入框上方待处理条（`待处理`）、批准/拒绝、`自动放行写文件等工具`、控制确认 | 部分（2026-10-12，修复后；重复授权 500 已修，UI 待复跑） |
 | inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总命令授权与控制提案 | 未跑 |
@@ -64,7 +67,7 @@
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent 会话输入框上方 Git 差异摘要 → 内容页 `文件改动` → 带行号 diff、分页与刷新 | 阻塞（2026-10-13，当前工作区；源码已核对，隔离实例启动被自动审批拒绝，UI 未验） |
 | run-control | [run-control.md](./run-control.md) | `停止`/`继续`、失败后 `再试`、运行中暂存（`立即发送`/`退回编辑栏`） | 部分（r2；停止语义 20bf829 新改，待 UI 复跑） |
 | subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent`（Agent 分支委派） | 通过（2026-10-12，main@1a4790a） |
-| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/新会话/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
+| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | 部分（2026-10-12，修复后；多项进行中与中断保留为设计行为，UI 待复跑） |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 通过（2026-10-12，main@1a4790a；只经 API 核对，UI 未验） |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
@@ -99,7 +102,7 @@
 | `GET /api/events` | realtime-events、work-log（`preview.started`/`thinking.started`/`output_final` 的 `audience`） |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
-| `GET /api/agents`、`POST /api/agents` | session-sidebar |
+| `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
 | `GET /api/sessions/{id}` | web-session-chat、work-log（步骤项 `audience`） |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
@@ -126,8 +129,11 @@
 | `start_process` `read_process` `stop_process` `list_processes`（会话持续进程，Linux/Windows） | `redpanda/tools/builtin/process_management.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `save_routine` `set_routine_state` `list_routines` | `redpanda/automation/routine_tool.py` | routines |
-| `send_group_message`（`send_message` `list_colleagues` `declare_direction` 暂无独立条目） | `redpanda/assistant/agent_messages.py` | group-chat |
-| `message_user`，以及 `send_message` 触发的工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
+| `list_colleagues` `declare_direction` | `redpanda/assistant/agent_messages.py` | colleague-tools |
+| `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
+| `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
+| `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |
+| `message_user`，以及同事、群、例行任务开始的一轮折叠为工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
 
@@ -184,7 +190,6 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 - web-session-chat：静态兜底路由不排除 `api/`，未知 `GET /api/...` 返回 200 + `index.html`；同一路由允许 `..` 跳出 `web/dist` 读取任意文件（安全问题，另行修复）。
 - tool-authorization：`/control` 决定冲突与无待确认请求没有异常处理器，返回 500 而非 409。
 - crash-recovery：同一 `delivery_id` 改文本重放可能使 Worker 失败（500 + `session_failed`），待 live 确认。
-- file-rewind：从某步重开失败时前端没有错误提示。
 - workspace-management：空名称创建工作区可能 500（界面已拦）。
 - extensions：`/mcp help` 列出 `/mcp reload`，实际没有该子命令。另记一项待定：终端 `/mcp upsert` 不经过模型路径上的 Shell 解释器拦截，是否应拦截由产品决定。
 - composer-attachments：隐藏的文件 `input` 没有任何入口触发。
@@ -195,16 +200,18 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 
 | 结果 | 功能 |
 |---|---|
-| 通过 | web-session-chat、tool-authorization、session-file-changes、agent-workspace-restore、file-rewind、rewind-edge-cases（人机混合同长）、edit-and-branch、run-control、subagents、subagents-parallel（并行派发）、scheduling、model-settings、session-sidebar、realtime-events、work-plan、work-plan-and-usage、setup-and-sandbox-install（Windows） |
+| 通过 | web-session-chat、tool-authorization、session-file-changes、run-control、subagents、subagents-parallel（并行派发）、scheduling、model-settings、session-sidebar、realtime-events、work-plan、work-plan-and-usage |
 | 失败（产品缺口） | tool-coding-round（Windows 退出码折叠为 1）、crash-recovery（Worker 崩溃后会话永久卡死） |
 | 走不到 | workspace-management（重命名/移除）、layout-appearance（外观菜单）、composer-attachments、extensions、console-chat——中途浏览器面板隐藏后 `requestAnimationFrame`/`ResizeObserver` 不触发（实测 0 次），弹窗、菜单与虚拟时间线无法渲染；console-chat 需要交互终端 |
 
-本轮 live 新发现的产品缺口（已写入对应文件 `Gotchas`）：Windows 命令退出码折叠为 1；Worker 崩溃后会话永久卡死；自动放行批准后 `等待授权` 弹窗不关闭（已随待处理条消除）；回滚后第一条消息改写 409 且显示内部英文错误；文件属性行显示 Python `None`；会话页高频轮询 `/model` 与 `/model-settings`。地图漂移已按实测修正：停止命令后不出现 `继续`（run-control）、SSE keep-alive 实际为 `: ping`（realtime-events）。
+当时记为通过、现已从地图删除：agent-workspace-restore、file-rewind、rewind-edge-cases、edit-and-branch。setup-and-sandbox-install 已改为 setup-and-launch。
+
+本轮 live 新发现的产品缺口（已写入对应文件 `Gotchas`）：Windows 命令退出码折叠为 1；Worker 崩溃后会话永久卡死；自动放行批准后 `等待授权` 弹窗不关闭（已随待处理条消除）；会话页高频轮询 `/model` 与 `/model-settings`。地图漂移已按实测修正：停止命令后不出现 `继续`（run-control）、SSE keep-alive 实际为 `: ping`（realtime-events）。
 
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。
-- 会话变更面板只对 Agent 与其委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
+- `文件改动` 只对 Agent 与其委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
 - 工作计划由模型制定和控制，没有完整状态机。
 - `select-directory` 是 human-in-the-loop，人不选就一直等。
 - 停止：只有一个 `停止`；一次性写入写完再停，长命令杀进程组，中断调用标 unknown 并给模型简短提示，`继续` 不自动重跑。
