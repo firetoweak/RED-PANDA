@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from datetime import timedelta
+from unittest.mock import patch
 
 from redpanda.automation.routines import (
     ACTIVE, PAUSED, PAUSED_BY_USER, RoutineStore,
@@ -67,3 +69,20 @@ class RoutineStoreTest(unittest.TestCase):
         self.assertIsNotNone(resumed.next_due)
         self.assertEqual(self.store.set_state("cmd-4", "agent", routine_id, "deleted")["code"], "ROUTINE_DELETED")
         self.assertEqual(self.store.list("agent"), ())
+
+    def test_every_keeps_its_phase_when_waking_late_and_skips_missed_slots(self):
+        self.save(schedule="@every 5m")
+        routine, = self.store.list("agent")
+        anchor = routine.next_due
+        for lateness, intervals in ((timedelta(milliseconds=7), 1),
+                                    (timedelta(minutes=12, milliseconds=13), 3)):
+            with patch("redpanda.automation.routines.datetime") as clock:
+                clock.now.return_value = routine.next_due + lateness
+                # Stored values still decode through the real datetime type.
+                from datetime import datetime
+                clock.fromisoformat = datetime.fromisoformat
+                self.store.fire(routine)
+            advanced, = self.store.list("agent")
+            self.assertEqual(advanced.next_due, routine.next_due + intervals * timedelta(minutes=5))
+            self.assertEqual((advanced.next_due - anchor) % timedelta(minutes=5), timedelta())
+            routine = advanced

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from redpanda.config import write_json
 from redpanda.model_settings import ModelSettings, ModelConfigurationError, ModelInUseError
@@ -33,6 +34,16 @@ class ModelSettingsTest(unittest.TestCase):
         self.assertEqual(reloaded.selected("old"), PRO["model"])
         self.assertEqual(reloaded.selected("branch"), PRO["model"])
         self.assertEqual(reloaded.selected("new"), FLASH["model"])
+
+    def test_retrying_initialization_after_a_write_failure_persists_once_and_preserves_selection(self):
+        with (patch("redpanda.model_settings.write_json", side_effect=PermissionError("locked")),
+              self.assertRaises(PermissionError)):
+            self.models.initialize_session("recovering")
+        self.models.initialize_session("recovering")
+        self.models.select("recovering", FLASH["model"])
+        self.models.initialize_session("recovering")
+        reloaded = ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
+        self.assertEqual(reloaded.selected("recovering"), FLASH["model"])
 
     def test_selection_applies_at_next_decision_with_its_threshold(self):
         self.models.initialize_session("session")

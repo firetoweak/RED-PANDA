@@ -89,16 +89,75 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.store.journals(), ())
             self.request.assert_not_awaited()
 
-    async def test_a_name_stays_taken_when_creation_fails_after_the_identity_is_durable(self):
+    async def test_retry_finishes_creation_after_model_initialization_failed(self):
+        colleague = await self.create("Ada")
+        self.request.reset_mock()
         with patch.object(self.host, "models", SimpleNamespace(
                 require_default_ready=lambda: None,
                 initialize_session=Mock(side_effect=PermissionError("models.json is locked")))):
             with self.assertRaises(PermissionError):
                 await self.create()
+        self.request.assert_not_awaited()
+        rebuilt = AgentRoster(SessionStore(self.store.root))
+        entries = await rebuilt.list(self.workspace.workspace_id)
+        self.assertEqual(len(entries), 2)
+        agent = await rebuilt.resolve(self.workspace.workspace_id, "小熊猫")
+        self.assertEqual(await self.create(), agent)
+        sent = [(sid, args["fact_type"]) for _, sid, args in
+                (call.args for call in self.request.await_args_list)]
+        self.assertEqual(sent, [(colleague.session_id, COLLEAGUE_JOINED), (agent.session_id, AGENT_CREATED)])
+        self.assertFalse((self.store.require(agent.session_id).parent / "agent-creation.json").exists())
         with self.assertRaises(AgentNameTaken):
             await self.create()
-        rebuilt = AgentRoster(SessionStore(self.store.root))
-        self.assertEqual(len(await rebuilt.list(self.workspace.workspace_id)), 1)
+
+    async def test_restart_finishes_a_partial_join_without_notifying_later_colleagues(self):
+        first = await self.create("Ada")
+        with (patch.object(self.host.agent_messages, "joined", side_effect=OSError("delivery failed")),
+              self.assertRaises(OSError)):
+            await self.create("Lin")
+        partial = await self.host.agents.resolve(self.workspace.workspace_id, "Lin")
+        later = await self.create("Kai")
+        # Simulate a restart with fresh indexes, and a legacy partial creation without a marker.
+        (self.store.require(partial.session_id).parent / "agent-creation.json").unlink()
+        self.host.agents = AgentRoster(SessionStore(self.store.root))
+        self.request.reset_mock()
+        with patch.object(self.host, "resume", AsyncMock()):
+            await self.host.resume_unfinished_sessions()
+        joined = [(sid, args["data"]["name"]) for _, sid, args in
+                  (call.args for call in self.request.await_args_list)
+                  if args["fact_type"] == COLLEAGUE_JOINED]
+        self.assertIn((first.session_id, "Lin"), joined)
+        self.assertNotIn((later.session_id, "Lin"), joined)
+        self.assertIn(partial.session_id, [call.args[1] for call in self.request.await_args_list
+                                         if call.args[2]["fact_type"] == AGENT_CREATED])
+
+    async def test_restart_redelivers_partially_sent_join_notifications_without_duplicates(self):
+        first = await self.create("Ada")
+        second = await self.create("Kai")
+
+        async def accept(_operation, session_id, arguments):
+            runtime = AgentRuntime(SqliteJournal(self.store.require(session_id)), None, {})
+            await runtime.receive_domain_fact(session_id, **arguments)
+
+        async def lost_ack(*args):
+            await accept(*args)
+            raise OSError("notification was committed but its acknowledgement was lost")
+
+        self.request.side_effect = lost_ack
+        with self.assertRaises(OSError):
+            await self.create("Lin")
+        partial = await self.host.agents.resolve(self.workspace.workspace_id, "Lin")
+        self.host.agents = AgentRoster(SessionStore(self.store.root))
+        self.request.side_effect = accept
+        with patch.object(self.host, "resume", AsyncMock()):
+            await self.host.resume_unfinished_sessions()
+        for colleague in (first, second):
+            events = await SqliteJournal(self.store.require(colleague.session_id)).snapshot(colleague.session_id)
+            from redpanda.runtime import DomainFactCommitted
+            notices = [event for event in events if isinstance(event.payload, DomainFactCommitted)
+                       and event.payload.fact_type == COLLEAGUE_JOINED and event.payload.data["name"] == "Lin"]
+            self.assertEqual(len(notices), 1)
+        self.assertFalse((self.store.require(partial.session_id).parent / "agent-creation.json").exists())
 
     async def test_identity_and_latest_direction_rebuild_from_journals(self):
         agent = await self.create()
