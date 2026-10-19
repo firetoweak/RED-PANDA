@@ -21,7 +21,9 @@ from redpanda.channels.web.channel import WebChannel
 @pytest.mark.process
 def test_sigterm_shutdown_of_an_open_sse_has_no_cancelled_error_traceback(caplog):
     async def scenario():
-        channel = WebChannel(SimpleNamespace(release=AsyncMock()), None)
+        channel = WebChannel(SimpleNamespace(
+            release=AsyncMock(), note_web_connected=Mock(), note_web_disconnected=Mock(),
+        ), None)
         app = create_web_app(channel=channel)
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))

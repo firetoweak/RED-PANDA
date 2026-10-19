@@ -31,6 +31,7 @@ from redpanda.runtime import (
     DomainFactCommitted,
     Event,
     OutcomeStatus,
+    RuntimeStatus,
     SqliteJournal,
     StepCommitted,
     StepState,
@@ -88,7 +89,39 @@ class ControlInboxItem:
     risk: str
 
 
-InboxItem = AuthorizationInboxItem | ControlInboxItem
+@dataclass(frozen=True, slots=True)
+class LimitInboxItem:
+    """A hop or origin limit the person has not answered in this session yet."""
+
+    kind: Literal["limit"]
+    session_id: str
+    workspace_id: str
+    label: str
+    event_id: str
+    recipient: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class PausedInboxItem:
+    kind: Literal["paused"]
+    session_id: str
+    workspace_id: str
+    label: str
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
+class AbsenceInboxItem:
+    kind: Literal["absence"]
+    session_id: str
+    workspace_id: str
+    label: str
+    phase: Literal["asked", "paused"]
+    summary: str
+
+
+InboxItem = AuthorizationInboxItem | ControlInboxItem | LimitInboxItem | PausedInboxItem | AbsenceInboxItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +259,7 @@ class AssistantQueries:
 
     async def list_inbox(self) -> tuple[InboxItem, ...]:
         items: list[InboxItem] = []
+        watches = {item.session_id: item for item in self._sessions.absence_watches()}
         for path in self._store.journals():
             journal = SqliteJournal(path)
             session_id = await journal.session_identity()
@@ -233,17 +267,32 @@ class AssistantQueries:
             agent = project_agent(events)
             if agent is None or not self._sessions.workspaces.contains(agent.workspace_id):
                 continue
-            view = session_view(
-                replay(session_id, events).state,
-                control_approval=pending_approval_view(events),
-            )
-            if not view.pending_authorization_commands and view.control_approval is None:
-                continue
-            items.extend(project_inbox_items(
-                session_id=session_id, workspace_id=agent.workspace_id, label=agent.name,
-                authorizations=view.pending_authorization_commands,
-                control=view.control_approval,
+            state = replay(session_id, events).state
+            view = session_view(state, control_approval=pending_approval_view(events))
+            if view.pending_authorization_commands or view.control_approval is not None:
+                items.extend(project_inbox_items(
+                    session_id=session_id, workspace_id=agent.workspace_id, label=agent.name,
+                    authorizations=view.pending_authorization_commands,
+                    control=view.control_approval,
+                ))
+            items.extend(project_limit_items(
+                session_id=session_id, workspace_id=agent.workspace_id, label=agent.name, events=events,
             ))
+            if self._sessions.is_paused(session_id) and state.status is RuntimeStatus.RUNNABLE:
+                items.append(PausedInboxItem(
+                    "paused", session_id, agent.workspace_id, agent.name,
+                    "已暂停，有未处理的消息。继续后才会处理。",
+                ))
+            watch = watches.get(session_id)
+            if watch is not None:
+                summary = (
+                    "你离开后，未读汇报和例行任务触发都到了门槛。要让例行任务继续吗？"
+                    if watch.phase == "asked" else
+                    "无人查看，已暂停当时仍在运行的例行任务。恢复只恢复这些。"
+                )
+                items.append(AbsenceInboxItem(
+                    "absence", session_id, agent.workspace_id, agent.name, watch.phase, summary,
+                ))
         return tuple(sorted(items, key=_inbox_sort_key))
 
     async def conversation(
@@ -406,8 +455,35 @@ def project_inbox_items(
     return tuple(items)
 
 
+def project_limit_items(*, session_id: str, workspace_id: str, label: str, events) -> tuple[LimitInboxItem, ...]:
+    """A later user message means the person has taken up the limit report."""
+    last_user = max(
+        (event.sequence for event in events if isinstance(event.payload, UserMessageReceived)),
+        default=-1,
+    )
+    items = []
+    for event in events:
+        payload = event.payload
+        if (not isinstance(payload, DomainFactCommitted)
+                or payload.fact_type != COMMUNICATION_LIMIT_REACHED
+                or event.sequence < last_user):
+            continue
+        notice = parse_agent_fact(payload)
+        items.append(LimitInboxItem(
+            "limit", session_id, workspace_id, label, event.event_id, notice.recipient, notice.text,
+        ))
+    return tuple(items)
+
+
 def _inbox_sort_key(item: InboxItem) -> tuple:
-    identity = item.command_id if item.kind == "authorization" else item.request_id
+    if item.kind == "authorization":
+        identity = item.command_id
+    elif item.kind == "control":
+        identity = item.request_id
+    elif item.kind == "limit":
+        identity = item.event_id
+    else:
+        identity = item.session_id
     return (item.label, item.session_id, item.kind, identity)
 
 

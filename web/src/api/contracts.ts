@@ -37,6 +37,30 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
     summary: z.string().min(1),
     risk: z.string().min(1),
   }).strict(),
+  z.object({
+    kind: z.literal("limit"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    event_id: z.string().min(1),
+    recipient: z.string().min(1),
+    text: z.string().min(1),
+  }).strict(),
+  z.object({
+    kind: z.literal("paused"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    summary: z.string().min(1),
+  }).strict(),
+  z.object({
+    kind: z.literal("absence"),
+    session_id: z.string().min(1),
+    workspace_id: z.string().min(1),
+    label: z.string().min(1),
+    phase: z.enum(["asked", "paused"]),
+    summary: z.string().min(1),
+  }).strict(),
 ]);
 
 export type InboxItem = z.infer<typeof inboxItemSchema>;
@@ -138,7 +162,7 @@ export const routineSchema = z
     name: z.string().min(1),
     intent: z.string().min(1),
     schedule: z.string().min(1),
-    state: z.enum(["active", "paused", "paused_by_user"]),
+    state: z.enum(["active", "paused", "paused_by_user", "paused_unwatched"]),
     next_run: z.string().datetime({ offset: true }).nullable(),
     last_run: z.string().datetime({ offset: true }).nullable(),
   })

@@ -22,6 +22,7 @@ GROUP_CREATED = "coding_bot.group_created"
 DIRECTION_DECLARED = "coding_bot.direction_declared"
 COLLEAGUE_JOINED = "coding_bot.colleague_joined"
 COMMUNICATION_LIMIT_REACHED = "coding_bot.communication_limit_reached"
+ROUTINES_UNWATCHED = "coding_bot.routines_unwatched"
 SOURCE = "coding_bot"
 
 Text = Annotated[str, Field(min_length=1)]
@@ -128,6 +129,14 @@ class CommunicationLimitReached(_Fact):
     text: Text
 
 
+class RoutinesUnwatched(_Fact):
+    """The person was away, so the Host paused or restored this Agent's routines."""
+
+    action: Literal["paused", "resumed"]
+    routine_ids: list[str]
+    text: Text
+
+
 _FACTS = {
     AGENT_CREATED: (AgentCreated, True),
     PRIVATE_MESSAGE: (PrivateMessage, True),
@@ -137,6 +146,7 @@ _FACTS = {
     DIRECTION_DECLARED: (DirectionDeclared, False),
     COLLEAGUE_JOINED: (ColleagueJoined, False),
     COMMUNICATION_LIMIT_REACHED: (CommunicationLimitReached, False),
+    ROUTINES_UNWATCHED: (RoutinesUnwatched, False),
 }
 AGENT_FACT_TYPES = frozenset(_FACTS)
 
@@ -244,6 +254,8 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
             "用 send_group_message 在群里发言。")}
     if isinstance(fact, CommunicationLimitReached):
         return {"recipient": fact.recipient, "text": fact.text}
+    if isinstance(fact, RoutinesUnwatched):
+        return {"action": fact.action, "routine_ids": fact.routine_ids, "text": fact.text}
     shown = {"message_id": fact.message_id, "sender": fact.sender.model_dump(),
              "reply_to": fact.reply_to, "text": fact.text}
     if isinstance(fact, PrivateMessage):

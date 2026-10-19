@@ -252,6 +252,14 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) => inboxItemSchema.array().parse(value),
       providesTags: ["Inbox"],
     }),
+    answerAbsence: build.mutation<unknown, { connectionId: string; sessionId: string; action: "continue" | "stop" }>({
+      query: ({ connectionId, sessionId, action }) => ({
+        url: "/inbox/absence",
+        method: "POST",
+        body: { connection_id: connectionId, session_id: sessionId, action },
+      }),
+      invalidatesTags: ["Inbox", "Routines"],
+    }),
     createAgent: build.mutation<
       AgentRosterEntry,
       { connectionId: string; workspaceId: string; name: string }
@@ -450,6 +458,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      invalidatesTags: ["Inbox"],
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
         putConversation(dispatch, getState, arg.sessionId, data);
@@ -476,6 +485,7 @@ export const {
   useGetAgentsQuery,
   useCreateAgentMutation,
   useGetInboxQuery,
+  useAnswerAbsenceMutation,
   useGetGroupsQuery,
   useGetGroupQuery,
   useCreateGroupMutation,

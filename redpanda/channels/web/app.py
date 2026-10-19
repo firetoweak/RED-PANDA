@@ -81,6 +81,11 @@ class ConnectionRequest(BaseModel):
     connection_id: str = Field(min_length=1)
 
 
+class AbsenceAnswer(ConnectionRequest):
+    session_id: str = Field(min_length=1)
+    action: Literal["continue", "stop"]
+
+
 class ModelSettingsRequest(ConnectionRequest):
     config: dict
 
@@ -414,6 +419,11 @@ def create_web_app(
     @app.get("/api/inbox")
     async def inbox(request: Request):
         return await _channel(request).list_inbox()
+
+    @app.post("/api/inbox/absence")
+    async def answer_absence(body: AbsenceAnswer, request: Request):
+        await _channel(request).answer_absence(body.connection_id, body.session_id, body.action)
+        return {"ok": True}
 
     @app.get("/api/sessions/{session_id}")
     async def conversation(session_id: str, request: Request):

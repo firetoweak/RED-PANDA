@@ -4,7 +4,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { InboxItem } from "../../api/contracts";
-import { useAuthorizeCommandMutation, useGetInboxQuery, useResolveControlMutation } from "../../api/redpandaApi";
+import {
+  useAnswerAbsenceMutation, useAuthorizeCommandMutation, useGetInboxQuery,
+  useResolveControlMutation, useRetryTurnMutation,
+} from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 
 function argumentSummary(args: Record<string, unknown>): string | null {
@@ -16,11 +19,13 @@ function argumentSummary(args: Record<string, unknown>): string | null {
   return typeof first === "string" ? first.split("\n")[0] : null;
 }
 
-function InboxRow({ item, disabled, onAuthorize, onControl }: {
+function InboxRow({ item, disabled, onAuthorize, onControl, onRetry, onAbsence }: {
   item: InboxItem;
   disabled: boolean;
   onAuthorize: (sessionId: string, commandId: string, approved: boolean) => void;
   onControl: (sessionId: string, requestId: string, approved: boolean) => void;
+  onRetry: (sessionId: string) => void;
+  onAbsence: (sessionId: string, action: "continue" | "stop") => void;
 }) {
   const [opened, setOpened] = useState(false);
   return (
@@ -59,7 +64,7 @@ function InboxRow({ item, disabled, onAuthorize, onControl }: {
               </Text>
             ) : null}
           </Stack>
-        ) : (
+        ) : item.kind === "control" ? (
           <Stack gap={4}>
             <Text className="pre-wrap" fz={13}>{item.summary}</Text>
             <Text c="dimmed" className="pre-wrap" fz={12}>风险：{item.risk}</Text>
@@ -74,6 +79,33 @@ function InboxRow({ item, disabled, onAuthorize, onControl }: {
               </Button>
             </Group>
           </Stack>
+        ) : item.kind === "limit" ? (
+          <Text className="pre-wrap" fz={13}>与 {item.recipient} 的交流已达上限。{item.text}</Text>
+        ) : item.kind === "paused" ? (
+          <Group justify="space-between" wrap="nowrap" gap="xs">
+            <Text className="pre-wrap" fz={13}>{item.summary}</Text>
+            <Button aria-label={`继续 ${item.label}`} disabled={disabled}
+              onClick={() => onRetry(item.session_id)} size="compact-sm" variant="light">
+              继续
+            </Button>
+          </Group>
+        ) : (
+          <Stack gap={4}>
+            <Text className="pre-wrap" fz={13}>{item.summary}</Text>
+            <Group justify="flex-end" gap="xs">
+              {item.phase === "asked" ? (
+                <Button aria-label={`停下 ${item.label} 的例行任务`} color="gray" disabled={disabled}
+                  onClick={() => onAbsence(item.session_id, "stop")} size="compact-sm" variant="light">
+                  停下
+                </Button>
+              ) : null}
+              <Button aria-label={`${item.phase === "asked" ? "继续" : "恢复"} ${item.label} 的例行任务`}
+                color="ember" disabled={disabled}
+                onClick={() => onAbsence(item.session_id, "continue")} size="compact-sm" variant="light">
+                {item.phase === "asked" ? "继续" : "恢复"}
+              </Button>
+            </Group>
+          </Stack>
         )}
       </Stack>
     </Paper>
@@ -85,8 +117,11 @@ export function InboxPage() {
   const { data: items = [] } = useGetInboxQuery();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
   const [resolveControl, resolving] = useResolveControlMutation();
+  const [retryTurn, retrying] = useRetryTurnMutation();
+  const [answerAbsence, answering] = useAnswerAbsenceMutation();
   const [failure, setFailure] = useState<string | null>(null);
-  const disabled = connectionId === null || authorizing.isLoading || resolving.isLoading;
+  const disabled = connectionId === null || authorizing.isLoading || resolving.isLoading
+    || retrying.isLoading || answering.isLoading;
 
   async function authorize(sessionId: string, commandId: string, approved: boolean) {
     if (connectionId === null) {
@@ -112,6 +147,30 @@ export function InboxPage() {
     }
   }
 
+  async function retry(sessionId: string) {
+    if (connectionId === null) {
+      return;
+    }
+    setFailure(null);
+    try {
+      await retryTurn({ connectionId, sessionId }).unwrap();
+    } catch {
+      setFailure("操作没有完成");
+    }
+  }
+
+  async function absence(sessionId: string, action: "continue" | "stop") {
+    if (connectionId === null) {
+      return;
+    }
+    setFailure(null);
+    try {
+      await answerAbsence({ connectionId, sessionId, action }).unwrap();
+    } catch {
+      setFailure("操作没有完成");
+    }
+  }
+
   return (
     <Stack gap="md" maw={720} mx="auto" p="lg">
       <Text fw={700} size="lg">待处理</Text>
@@ -120,11 +179,16 @@ export function InboxPage() {
         <Text c="dimmed">没有待处理事项</Text>
       ) : items.map((item) => (
         <InboxRow
-          key={item.kind === "authorization" ? `authorization:${item.command_id}` : `control:${item.request_id}`}
+          key={item.kind === "authorization" ? `authorization:${item.command_id}`
+            : item.kind === "control" ? `control:${item.request_id}`
+            : item.kind === "limit" ? `limit:${item.event_id}`
+            : `${item.kind}:${item.session_id}`}
           disabled={disabled}
           item={item}
           onAuthorize={authorize}
           onControl={control}
+          onRetry={retry}
+          onAbsence={absence}
         />
       ))}
     </Stack>

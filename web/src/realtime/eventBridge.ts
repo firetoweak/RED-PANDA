@@ -82,6 +82,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       redpandaApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         { type: "Routines", id: payload.session_id },
+        "Inbox",
       ]),
     );
   });

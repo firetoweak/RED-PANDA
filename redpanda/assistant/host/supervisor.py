@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from redpanda.automation.routine_tool import LIST_ROUTINES, SAVE_ROUTINE, SET_ROUTINE_STATE
+from redpanda.automation.absence import (
+    ABSENCE_REVIEW_SECONDS, AWAY_BEFORE_ASK, PAUSED_TEXT, RESUMED_TEXT, counts_since, next_absence_action,
+)
 from redpanda.automation.routines import ROUTINE_DUE, RoutineClock, RoutineFire, RoutineNotFound, RoutineStore
 from redpanda.automation.once import (
     SOURCE as AUTOMATION_SOURCE,
@@ -28,8 +31,10 @@ from redpanda.assistant.audience import Audience, audiences
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.agents import AGENT_CREATED, AgentCreated, AgentRecord, fact_arguments, project_agent
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
+from redpanda.assistant.agents import (
+    AGENT_CREATED, AgentCreated, AgentRecord, RoutinesUnwatched, fact_arguments, project_agent,
+)
+from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
 from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
@@ -54,7 +59,7 @@ from redpanda.assistant.subagent.subagent import (
 from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
-from redpanda.runtime import SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
+from redpanda.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
 from redpanda.execution.local.windows_job import WindowsJob
 from redpanda.execution.processes import ProcessManager
 from redpanda.execution.command import CommandStartError, ShellNotFoundError
@@ -184,6 +189,7 @@ class HostSupervisor:
         self._automation_task: asyncio.Task[None] | None = None
         self.routines = RoutineClock(RoutineStore(home.state_root / "routines.sqlite"))
         self._routine_task: asyncio.Task[None] | None = None
+        self._absence_task: asyncio.Task[None] | None = None
         self.workspaces = (
             workspaces
             if workspaces is not None
@@ -475,6 +481,9 @@ class HostSupervisor:
             self.routines.run(self._deliver_routine, self._emit_schedule_changed),
             name="assistant-routine-clock",
         )
+        self._absence_task = group.create_task(
+            self._review_absence_loop(), name="assistant-absence-review",
+        )
 
     async def _deliver_routine(self, fire: RoutineFire) -> None:
         try:
@@ -507,6 +516,86 @@ class HostSupervisor:
         self.routines.changed.set()
         await self._emit_schedule_changed(session_id)
         return updated
+
+    def note_web_connected(self) -> None:
+        self.routines.store.note_connected(datetime.now(timezone.utc))
+
+    def note_web_disconnected(self) -> None:
+        self.routines.store.note_disconnected(datetime.now(timezone.utc))
+
+    def absence_watches(self):
+        return self.routines.store.watches()
+
+    async def answer_absence(self, session_id: str, action: str) -> None:
+        """The person's inbox choice. Continue restores only this pause's routines."""
+        if await self.agents.by_session(session_id) is None:
+            raise AgentNotFound(session_id)
+        now = datetime.now(timezone.utc)
+        if action == "stop":
+            watch = self.routines.store.pause_for_absence(session_id)
+            await self._tell_absence(session_id, "paused", watch.paused_ids, watch.asked_at)
+            self.routines.store.mark_absence_told(session_id)
+        elif action == "continue":
+            restored = self.routines.store.resume_absence(session_id, now)
+            if restored:
+                await self._tell_absence(session_id, "resumed", restored, now)
+        else:
+            raise ValueError(action)
+        self.routines.changed.set()
+        await self._emit_schedule_changed(session_id)
+
+    async def review_absence(self, now: datetime | None = None) -> None:
+        """One pass: finish an untold pause, then ask or pause while the person is away."""
+        now = now or datetime.now(timezone.utc)
+        store = self.routines.store
+        for watch in store.watches():
+            if watch.phase == "paused" and not watch.fact_recorded:
+                await self._tell_absence(watch.session_id, "paused", watch.paused_ids, watch.asked_at)
+                store.mark_absence_told(watch.session_id)
+                await self._emit_schedule_changed(watch.session_id)
+        last_seen, connections = store.presence()
+        if connections > 0 or (last_seen is not None and now - last_seen < AWAY_BEFORE_ASK):
+            return
+        for watch in store.watches():
+            if next_absence_action(
+                present=False, now=now, last_seen=last_seen, watch=watch, reports=0, triggers=0,
+            ) == "pause":
+                paused = store.pause_for_absence(watch.session_id)
+                await self._tell_absence(watch.session_id, "paused", paused.paused_ids, paused.asked_at)
+                store.mark_absence_told(watch.session_id)
+                await self._emit_schedule_changed(watch.session_id)
+        watched = {item.session_id for item in store.watches()}
+        for entry in await self.agents.list():
+            session_id = entry.agent.session_id
+            if session_id in watched:
+                continue
+            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+            reports, triggers = counts_since(session_id, events, last_seen)
+            if next_absence_action(
+                present=False, now=now, last_seen=last_seen, watch=None,
+                reports=reports, triggers=triggers,
+            ) != "ask":
+                continue
+            store.ask_absence(session_id, now)
+            await self._emit_schedule_changed(session_id)
+
+    async def _review_absence_loop(self) -> None:
+        while True:
+            await asyncio.sleep(ABSENCE_REVIEW_SECONDS)
+            if self.closed:
+                return
+            await self.review_absence()
+
+    async def _tell_absence(self, session_id: str, action: str, routine_ids, asked_at: datetime) -> None:
+        """Record the result on the Agent's timeline without starting a turn."""
+        text = PAUSED_TEXT if action == "paused" else RESUMED_TEXT
+        identity = asked_at.isoformat()
+        await AgentRuntime(SqliteJournal(self.store.require(session_id)), None, {}).receive_domain_fact(
+            session_id, **fact_arguments(
+                RoutinesUnwatched(action=action, routine_ids=list(routine_ids), text=text),
+                delivery_id=f"absence:{session_id}:{action}:{identity}",
+            ),
+        )
 
     async def _audience(self, worker: Worker, session_id: str, output_id: str) -> Audience:
         """Who a Step's text is for; ``output_id`` is the Step's trigger, already in the Journal."""
@@ -1283,7 +1372,7 @@ class HostSupervisor:
         return await self.failures.get()
 
     async def close(self):
-        for task in (self._automation_task, self._routine_task):
+        for task in (self._automation_task, self._routine_task, self._absence_task):
             if task is not None:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)

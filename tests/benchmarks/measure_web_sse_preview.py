@@ -19,6 +19,12 @@ from redpanda.channels.web.hub import WebEventHub
 
 
 class _Sessions:
+    def note_web_connected(self) -> None:
+        return None
+
+    def note_web_disconnected(self) -> None:
+        return None
+
     async def release(self, owner) -> None:
         del owner
 

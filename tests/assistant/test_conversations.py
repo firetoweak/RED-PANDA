@@ -335,6 +335,9 @@ class Idle:
     def next_scheduled_check(self, session_id):
         return None
 
+    def absence_watches(self):
+        return ()
+
     async def view(self, session_id):
         raise AssertionError("读会话不得唤醒 Worker")
 
@@ -532,6 +535,57 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inbox[0].arguments, {"path": "note.txt"})
         self.assertEqual(inbox[1].summary, "删除工作区")
         self.assertEqual(inbox[1].risk, "high")
+
+    async def test_inbox_reports_an_unanswered_limit_and_a_paused_runnable_agent(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        from redpanda.assistant.agent_messages import LIMIT_NOTICE
+        from redpanda.assistant.agents import AGENT_CREATED, CommunicationLimitReached, fact_arguments
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.runtime import DomainFactCommitted, SqliteJournal, UserMessageReceived
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+
+        class Sessions(Idle):
+            def is_paused(self, session_id):
+                return session_id == "paused"
+
+        with TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory))
+            queries = AssistantQueries(store, Sessions())
+            for session_id, name in (("limited", "上限熊猫"), ("paused", "暂停熊猫")):
+                await store.create(session_id, workspace_id="workspace-1")
+                await SqliteJournal(store.require(session_id)).accept_delivery(EventDraft(
+                    event_id=f"created-{session_id}", session_id=session_id,
+                    payload=DomainFactCommitted(
+                        AGENT_CREATED, {"name": name, "workspace_id": "workspace-1",
+                                        "worktree": directory, "branch": "agent/x"},
+                        requests_decision=True),
+                    occurred_at=datetime(2026, 10, 19, tzinfo=timezone.utc),
+                    delivery=DeliveryIdentity("coding_bot", f"created-{session_id}"),
+                ))
+            journal = SqliteJournal(store.require("limited"))
+            await journal.accept_delivery(EventDraft(
+                event_id="limit-1", session_id="limited",
+                payload=DomainFactCommitted(
+                    **{key: fact_arguments(
+                        CommunicationLimitReached(recipient="Lin", text=LIMIT_NOTICE), delivery_id="limit-1",
+                    )[key] for key in ("fact_type", "data", "requests_decision")}),
+                occurred_at=datetime(2026, 10, 19, 1, tzinfo=timezone.utc),
+                delivery=DeliveryIdentity("coding_bot", "limit-1"),
+            ))
+            await SqliteJournal(store.require("paused")).accept_delivery(EventDraft(
+                event_id="user-paused", session_id="paused",
+                payload=UserMessageReceived("还有事"),
+                occurred_at=datetime(2026, 10, 19, 1, tzinfo=timezone.utc),
+                delivery=DeliveryIdentity("web", "user-paused"),
+            ))
+            inbox = await queries.list_inbox()
+
+        kinds = [(item.kind, item.label) for item in inbox]
+        self.assertEqual(kinds, [("limit", "上限熊猫"), ("paused", "暂停熊猫")])
+        self.assertEqual(inbox[0].recipient, "Lin")
 
     async def test_conversation_projects_control_approval_from_journal(self):
         from pathlib import Path
