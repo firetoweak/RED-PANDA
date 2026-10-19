@@ -6,7 +6,7 @@ from hashlib import sha256
 
 from redpanda.assistant.agent_messages import LIMIT_NOTICE, MAX_MESSAGE_HOPS, MAX_MESSAGES_PER_ORIGIN
 from redpanda.assistant.agents import (
-    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, message_origin,
+    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, answered_attention, fact_arguments, message_origin,
     parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_agent_roster_entry
@@ -133,12 +133,14 @@ class AgentMessages:
         sender = await self.host.agents.by_session(session_id)
         if sender is None:
             raise ValueError("group speaker requires a Coding Bot identity")
-        origin = await self._origin(session_id, arguments["command_id"])
+        events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+        origin = message_origin(events, arguments["command_id"])
+        answers = answered_attention(events, arguments["command_id"])
         identity = message_identity(session_id, arguments["command_id"])
         async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
             result = await self.host.agent_groups.send(
                 session_id, {**arguments, "message_id": identity},
-                origin, self._admission(sender.workspace_id, origin))
+                origin, answers, self._admission(sender.workspace_id, origin))
             if result["code"] == "DELIVERED":
                 await self.origins.record(sender.workspace_id, origin, identity)
             return result

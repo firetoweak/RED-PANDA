@@ -197,6 +197,78 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("依次回应", reported["data"]["notice"])
         self.assertEqual(self.calls, ["Lin", "Ada"])
 
+    async def say(self, name, text, *, origin, answers, mention=()):
+        """A speech straight from a member's own work, bypassing how its source is derived."""
+        async def admit(_group):
+            return None
+        return await self.host.agent_groups.send(name, {
+            "group": "开发组", "text": text, "mention": list(mention), "reply_to": None,
+            "message_id": f"{name}-{text}"}, origin, answers, admit)
+
+    async def test_a_member_called_while_busy_neither_blocks_others_nor_answers_with_other_work(self):
+        group = await self.group()
+        task = await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
+        await self.settled(group)
+        self.calls.clear()
+        # Lin is still running #A when Third's own question calls Lin and then Ada.
+        busy = patch.object(self.host, "activity", side_effect=lambda session_id:
+                            "running" if session_id == "Lin" else "idle")
+        with busy:
+            await self.say("Third", "谁有空", origin="routine", answers=None, mention=["Lin", "Ada"])
+            await self.settled(group)
+            self.assertEqual(self.calls, ["Ada"])
+            self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 2)
+            report = await self.say("Lin", "#A 报告", origin=task.message_id, answers=task.message_id,
+                                    mention=["Third"])
+            await self.settled(group)
+        self.assertIn("依次回应", report["data"]["notice"])
+        self.assertEqual(self.calls, ["Ada", "Third"])
+        # Third's call is still outstanding, so Lin's next speech there continues that discussion;
+        # work from #A opens one of its own instead.
+        again = await self.say("Third", "又一个问题", origin="routine", answers=None, mention=["Lin"])
+        self.assertIn("依次回应", again["data"]["notice"])
+
+    async def test_another_speech_joins_the_queue_without_dropping_it(self):
+        group = await self.group()
+        release = asyncio.Event()
+
+        async def slow(session_id):
+            self.calls.append(session_id)
+            if session_id == "Ada":
+                await release.wait()
+
+        self.host.wait_quiescent.side_effect = slow
+        await self.host.agent_groups.post(group.group_id, "大家看看", [])
+        while self.calls != ["Ada"]:
+            await asyncio.sleep(0.01)
+        await self.say("Third", "顺便说一句", origin="routine", answers=None, mention=["Ada"])
+        release.set()
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada", "Lin", "Third", "Ada"])
+
+    async def test_after_a_stop_that_discussion_calls_no_one_but_other_work_still_does(self):
+        group = await self.group()
+        called = asyncio.Event()
+
+        async def busy(session_id):
+            self.calls.append(session_id)
+            called.set()
+            await asyncio.Event().wait()
+
+        self.host.wait_quiescent.side_effect = busy
+        task = await self.host.agent_groups.post(group.group_id, "Lin 去跑 #A", ["Lin"])
+        await called.wait()
+        await self.host.agent_groups.stop(group.group_id)
+        await self.settled(group)
+        self.host.wait_quiescent.side_effect = self.turn
+        late = await self.say("Lin", "#A 报告", origin=task.message_id, answers=task.message_id, mention=["Ada"])
+        await self.settled(group)
+        self.assertIn("已被人停止", late["data"]["notice"])
+        other = await self.say("Third", "新问题", origin="routine", answers=None, mention=["Ada"])
+        await self.settled(group)
+        self.assertIn("依次回应", other["data"]["notice"])
+        self.assertEqual(self.calls, ["Lin", "Ada"])
+
     async def test_observers_hear_when_the_drive_ends(self):
         group = await self.group(("Ada", "Lin"))
         seen = []

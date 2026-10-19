@@ -267,8 +267,8 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     return shown
 
 
-def message_origin(events, command_id: str) -> str:
-    """Follow the issuing Step's trigger back to the non-Agent fact that drove it."""
+def _round_trigger(events, command_id: str):
+    """The fact that started the round of work in which this command was issued."""
     session_id = events[0].session_id
     state = replay(session_id, events).state
     issued = {item.command.command_id: item.issued_by_event_id for item in state.commands}
@@ -277,6 +277,20 @@ def message_origin(events, command_id: str) -> str:
     trigger = by_id[triggers[issued[command_id]]]
     while isinstance(trigger.payload, (CommandOutcomeReceived, CommandRejected, AttemptOrphaned)):
         trigger = by_id[triggers[issued[trigger.payload.command_id]]]
+    return trigger
+
+
+def answered_attention(events, command_id: str) -> str | None:
+    """The group message this command's round was asked to answer, if a group call started it."""
+    payload = _round_trigger(events, command_id).payload
+    if isinstance(payload, DomainFactCommitted) and payload.fact_type == GROUP_ATTENTION:
+        return parse_agent_fact(payload).message_id
+    return None
+
+
+def message_origin(events, command_id: str) -> str:
+    """Follow the issuing Step's trigger back to the non-Agent fact that drove it."""
+    trigger = _round_trigger(events, command_id)
     payload = trigger.payload
     if isinstance(payload, DomainFactCommitted) and payload.fact_type == PRIVATE_MESSAGE:
         return parse_agent_fact(payload).origin
