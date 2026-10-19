@@ -28,7 +28,7 @@ from redpanda.assistant.control import pending_approval_view, project_control_me
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
-from redpanda.assistant.audience import Audience, audiences
+from redpanda.assistant.audience import Audience
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
@@ -88,7 +88,6 @@ class Worker:
     active_thinking: str | None = None
     live_tools: dict[str, str] = field(default_factory=dict)
     # Who each output of this generation is for, read from the Journal once per output.
-    audiences: dict[str, Audience] = field(default_factory=dict)
 
 
 async def _emit(emitted) -> None:
@@ -420,7 +419,7 @@ class HostSupervisor:
                 return None
             sink = self.sink if operation == "output" else self.subagent_output_sink
             if sink is not None:
-                audience = await self._audience(worker, session_id, arguments["output_id"])
+                audience = await self._audience(session_id)
                 await _emit(sink(session_id, arguments["output_id"], arguments["text"], audience))
             if worker is not None and worker.active_preview == arguments["output_id"]:
                 worker.active_preview = None
@@ -622,15 +621,9 @@ class HostSupervisor:
             ),
         )
 
-    async def _audience(self, worker: Worker, session_id: str, output_id: str) -> Audience:
-        """Who a Step's text is for; ``output_id`` is the Step's trigger, already in the Journal."""
-        if output_id not in worker.audiences:
-            if await self.agents.by_session(session_id) is None:
-                worker.audiences[output_id] = "user"
-            else:
-                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-                worker.audiences[output_id] = audiences(events)(output_id)
-        return worker.audiences[output_id]
+    async def _audience(self, session_id: str) -> Audience:
+        """A long-lived Agent's closing text is its work log; it reaches the person through message_user."""
+        return "user" if await self.agents.by_session(session_id) is None else "log"
 
     async def _emit_schedule_changed(self, session_id: str) -> None:
         if self.schedule_changed_sink is None:
@@ -733,7 +726,7 @@ class HostSupervisor:
                     self.preview_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    audience = await self._audience(worker, values[0], output_id)
+                    audience = await self._audience(values[0])
                     await _emit(self.preview_sink(*values, audience))
             elif kind == "thinking":
                 if is_subagent and self.subagent_output_sink is None:
@@ -747,7 +740,7 @@ class HostSupervisor:
                     self.thinking_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    audience = await self._audience(worker, values[0], output_id)
+                    audience = await self._audience(values[0])
                     await _emit(self.thinking_sink(*values, audience))
             elif kind == "session_failed":
                 await self._emit_session_failed(*values)
@@ -935,12 +928,12 @@ class HostSupervisor:
         worker.active_preview = None
         if output_id is not None and self.preview_sink is not None:
             await _emit(self.preview_sink(session_id, "aborted", output_id, None,
-                                          await self._audience(worker, session_id, output_id)))
+                                          await self._audience(session_id)))
         thinking_id = worker.active_thinking
         worker.active_thinking = None
         if thinking_id is not None and self.thinking_sink is not None:
             await _emit(self.thinking_sink(session_id, "aborted", thinking_id, None,
-                                           await self._audience(worker, session_id, thinking_id)))
+                                           await self._audience(session_id)))
         live_tools = tuple(worker.live_tools.items())
         worker.live_tools.clear()
         if self.tool_progress_sink is not None:

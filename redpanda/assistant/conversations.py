@@ -12,7 +12,7 @@ from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from redpanda.assistant.agent_messages import MESSAGE_USER
-from redpanda.assistant.audience import Audience, audiences
+from redpanda.assistant.audience import Audience, audience
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.runtime.json_values import thaw_value
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
@@ -509,7 +509,7 @@ def project_conversation(
     attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
-    audience_of = audiences(events)
+    closing_audience = audience(events)
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -580,7 +580,7 @@ def project_conversation(
                     tuple(tools),
                     event.occurred_at,
                     thinking,
-                    audience_of(payload.step.trigger_event_id),
+                    closing_audience,
                 )
             )
         items.extend(messages)

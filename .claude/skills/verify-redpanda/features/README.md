@@ -72,7 +72,7 @@
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
 | routines | [routines.md](./routines.md) | 会话页输入框上方 `例行任务`：`暂停 <名字>`、`恢复 <名字>`、`取消 <名字>` → `确认取消 <名字>`；人暂停后 Agent 不能恢复 | 部分（2026-10-19 Windows；列表与按钮、人暂停后 Agent 不能恢复通过，未等真实触发） |
-| work-log | [work-log.md](./work-log.md) | 同事私信、群、例行任务开始的一轮折叠为 `工作记录 …` 一行（实时同样折叠）；`message_user` 照常显示 | 部分（2026-10-19 Windows；私信触发与实时通过，群与例行任务触发未观察） |
+| work-log | [work-log.md](./work-log.md) | 长期 Agent 每一轮的结尾折叠为 `工作记录 …` 一行（实时同样折叠）；人只看到 `message_user` 发出的回复 | 部分（2026-10-19 Windows；私信触发与实时通过，群与例行任务触发未观察） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏 Agent 名册 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
@@ -133,7 +133,7 @@
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |
-| `message_user`，以及同事、群、例行任务开始的一轮折叠为工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
+| `message_user`，以及长期 Agent 每一轮的结尾折叠为工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
 
