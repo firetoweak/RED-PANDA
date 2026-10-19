@@ -2,10 +2,17 @@ import asyncio
 from pathlib import Path
 from unittest.mock import patch
 import threading
+import stat
+from types import SimpleNamespace
 
 import pytest
 
 from redpanda.filesystem import read_text, replace_text, write_text
+from redpanda.filesystem.workspace import (
+    FileAccess, PermissionBinding, RootBinding, WorkspaceScope, WorkspaceViewSnapshot,
+)
+from redpanda.tools.builtin.file_manage import create_file_manage_specs
+from redpanda.tools.builtin.file_write import create_file_write_specs
 
 
 @pytest.mark.parametrize("source", [b"left\nTARGET\nright\n", b"left\r\nTARGET\r\nright\r\n",
@@ -61,4 +68,37 @@ def test_slow_file_read_does_not_block_other_async_work(tmp_path):
             finally:
                 release.set()
                 assert (await task)["content"] == "hello\n"
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("tool", ["write_file", "apply_patch", "replace_all"])
+@pytest.mark.parametrize("privileged", [False, True])
+def test_full_access_still_respects_a_file_made_read_only_before_approval(tmp_path, tool, privileged):
+    async def scenario():
+        path = tmp_path / "file"
+        path.write_bytes(b"TARGET\n")
+        mode = path.stat().st_mode
+        view = WorkspaceViewSnapshot((RootBinding("host", WorkspaceScope.HOST, tmp_path),))
+        binding = FileAccess("test", view, PermissionBinding.read_write(view), tmp_path)
+        specs = create_file_manage_specs(binding) + create_file_write_specs(binding)
+        spec = next(item for item in specs if item.name == tool)
+        arguments = {"path": str(path), "content": "new", "overwrite": True} if tool == "write_file" else {
+            "path": str(path), "old_block": "TARGET", "new_block": "new"}
+        assert spec.requires_authorization(arguments) is True
+        original_open = Path.open
+
+        def privileged_open(target, mode="r", *args, **kwargs):
+            # Model a privileged OS account that can write despite read-only mode bits.
+            if privileged and target == path and any(flag in mode for flag in ("w", "a", "+")):
+                target.chmod(target.stat().st_mode | stat.S_IWUSR)
+            return original_open(target, mode, *args, **kwargs)
+
+        try:
+            path.chmod(mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+            with patch.object(Path, "open", privileged_open):
+                result = await spec.handler(SimpleNamespace(**arguments))
+            assert not result["ok"]
+            assert path.read_bytes() == b"TARGET\n"
+        finally:
+            path.chmod(mode)
     asyncio.run(scenario())

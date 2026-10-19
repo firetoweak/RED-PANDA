@@ -46,6 +46,20 @@ from redpanda.filesystem.registry import (
 SSE_KEEPALIVE_SECONDS = 15
 
 
+class EventStreamCancellation:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except asyncio.CancelledError:
+            # Shutdown can cancel either the sender or the disconnect listener.
+            if scope["type"] == "http" and scope["path"] == "/api/events":
+                return
+            raise
+
+
 async def report_worker_failures(host: HostSupervisor, events: WebEventHub) -> None:
     """Worker 进程失败不是 Command outcome，Host 只把它放进队列等人来取。"""
 
@@ -226,6 +240,14 @@ def create_web_app(
                 await asyncio.gather(failures, return_exceptions=True)
 
     app = FastAPI(lifespan=lifespan)
+    app.add_middleware(EventStreamCancellation)
+
+    @app.exception_handler(Exception)
+    async def internal_error(_request: Request, _error: Exception):
+        # Starlette still re-raises to the server logger, preserving the diagnostic traceback.
+        return JSONResponse(status_code=500, content={
+            "detail": "服务处理请求时发生内部错误，请稍后重试；若持续失败，请查看服务日志。",
+        })
 
     @app.exception_handler(WebConnectionInactive)
     async def inactive_connection(_request: Request, error: WebConnectionInactive):

@@ -45,9 +45,12 @@ class ModelSettings:
             raise ModelConfigurationError(str(error)) from error
 
     def initialize_session(self, session_id: str, *, parent: str | None = None):
-        self._selected[session_id] = (self.selected(parent) if parent is not None
-                                      else self.config().default_model)
-        write_json(self._selection_path, self._selected)
+        if session_id in self._selected:
+            return
+        selected = {**self._selected, session_id: (self.selected(parent) if parent is not None
+                                                  else self.config().default_model)}
+        write_json(self._selection_path, selected)
+        self._selected = selected
 
     def selected(self, session_id: str) -> str | None:
         return self._selected[session_id]

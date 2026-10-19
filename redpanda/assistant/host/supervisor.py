@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
 import os
+import json
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ from redpanda.assistant.delivery import emit_delivery
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.agents import AgentCreated, AgentRecord, fact_arguments
+from redpanda.assistant.agents import AGENT_CREATED, AgentCreated, AgentRecord, fact_arguments, project_agent
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
 from redpanda.assistant.agent_git import GitWorkspace
@@ -58,6 +59,7 @@ from redpanda.execution.local.windows_job import WindowsJob
 from redpanda.execution.processes import ProcessManager
 from redpanda.execution.command import CommandStartError, ShellNotFoundError
 from redpanda.filesystem.registry import WorkspaceRegistry
+from redpanda.config import write_json
 
 
 @dataclass
@@ -198,16 +200,25 @@ class HostSupervisor:
         """
 
         unfinished = []
+        joining = []
+        agent_births = {}
         for path in self.store.journals():
             journal = SqliteJournal(path)
             session_id = await journal.session_identity()
-            if self.is_paused(session_id):
-                continue
-            await journal.prepare_recovery(session_id)
+            if not self.is_paused(session_id):
+                await journal.prepare_recovery(session_id)
             events = await journal.snapshot(session_id)
             if project_parent(events) is not None:
                 continue
             state = replay(session_id, events).state
+            agent = project_agent(events)
+            if agent is not None:
+                born = next(event.occurred_at for event in events
+                            if isinstance(event.payload, DomainFactCommitted)
+                            and event.payload.fact_type == AGENT_CREATED)
+                agent_births[session_id] = (agent, born)
+            if self.is_paused(session_id):
+                continue
             observed = max((step.step.observed_journal_position for step in state.steps), default=0)
             unknown = {command.command.command_id for command in state.commands
                        if command.phase is CommandPhase.UNKNOWN
@@ -218,8 +229,20 @@ class HostSupervisor:
                 # Persist the stop before any Worker or external wake can advance it.
                 self._pause.set(session_id, True)
                 continue
+            if agent is not None and ((path.parent / "agent-creation.json").exists() or not state.steps):
+                joining.append(agent)
+                continue
             if session_view(state).should_wake:
                 unfinished.append(session_id)
+        for agent in joining:
+            pending = self.store.require(agent.session_id).parent / "agent-creation.json"
+            if not pending.exists():
+                # Repair Agents created before creation recovery was recorded explicitly.
+                born = agent_births[agent.session_id][1]
+                colleagues = [sid for sid, (other, time) in agent_births.items()
+                              if other.workspace_id == agent.workspace_id and time < born]
+                write_json(pending, {"colleagues": colleagues})
+            await self._finish_agent_creation(agent)
         for session_id in unfinished:
             await self.resume(session_id)
 
@@ -330,7 +353,7 @@ class HostSupervisor:
             await self._emit_schedule_changed(session_id)
             return {
                 "schedule_id": schedule.schedule_id,
-                "due_at": schedule.due_at.isoformat(),
+                "due_at": schedule.due_at.astimezone().isoformat(),
                 "purpose": schedule.purpose,
             }
         if operation == "llm_chat":
@@ -979,17 +1002,23 @@ class HostSupervisor:
         identity = AgentCreated(name=name, workspace_id=workspace_id,
                                 worktree=str(worktree.path), branch=worktree.branch)
         async with self._agent_creation_lock:
-            if any(entry.agent.name == name for entry in await self.agents.list(workspace_id)):
-                raise AgentNameTaken(f"项目内已有 Agent：{name}")
+            for entry in await self.agents.list(workspace_id):
+                if entry.agent.name == name:
+                    pending = self.store.require(entry.agent.session_id).parent / "agent-creation.json"
+                    if pending.exists():
+                        return await _settle(self._finish_agent_creation(entry.agent))
+                    raise AgentNameTaken(f"项目内已有 Agent：{name}")
             # A cancelled request must not leave a worktree without its identity fact.
             return await _settle(self._create_agent(project, session_id, identity))
 
     async def _create_agent(self, project, session_id, identity) -> AgentRecord:
+        colleagues = tuple(entry.agent.session_id for entry in await self.agents.list(project.workspace_id))
         worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)
         try:
             await self.store.create(
                 session_id, workspace_id=project.workspace_id,
                 initial_fact=fact_arguments(identity, delivery_id="created"),
+                agent_colleagues=colleagues,
             )
         except BaseException as error:
             try:
@@ -1001,12 +1030,19 @@ class HostSupervisor:
         # The identity is durable now; the roster must know it before anything else can fail,
         # or a retry would publish a second Agent under the same name.
         await self.agents.add(agent)
+        return await self._finish_agent_creation(agent)
+
+    async def _finish_agent_creation(self, agent: AgentRecord) -> AgentRecord:
+        session_id, identity = agent.session_id, agent.identity
+        pending = self.store.require(session_id).parent / "agent-creation.json"
+        colleagues = json.loads(pending.read_text(encoding="utf-8"))["colleagues"]
         if self.models is not None:
             self.models.initialize_session(session_id)
         # Colleagues learn of the join before anything the new Agent does;
         # replaying its creation fact then starts the Worker for its first decision.
-        await self.agent_messages.joined(agent)
+        await self.agent_messages.joined(agent, colleagues)
         await self.request("fact", session_id, fact_arguments(identity, delivery_id="created"))
+        pending.unlink()
         return agent
 
     async def select(self, owner, session_id):

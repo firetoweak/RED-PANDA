@@ -289,9 +289,13 @@ class RoutineStore:
                 )
                 # The clock may wake a moment early; never schedule the slot just fired again.
                 after = max(now, routine.next_due)
+                next_due = next_run(routine.schedule, after)
+                if _EVERY.match(routine.schedule) is not None:
+                    interval = next_run(routine.schedule, routine.next_due) - routine.next_due
+                    next_due = routine.next_due + ((after - routine.next_due) // interval + 1) * interval
                 connection.execute(
                     "UPDATE routines SET next_due = ?, last_fired_at = ? WHERE routine_id = ?",
-                    (next_run(routine.schedule, after).isoformat(), now.isoformat(), routine.routine_id),
+                    (next_due.isoformat(), now.isoformat(), routine.routine_id),
                 )
         return RoutineFire(fire_id, routine.routine_id, routine.session_id, routine.name, routine.intent,
                            routine.next_due, now)

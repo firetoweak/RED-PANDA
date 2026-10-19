@@ -288,6 +288,37 @@ class WebFirstSliceTest(unittest.TestCase):
                 "model": self.models.config().default_model,
             })
 
+    def test_internal_failure_returns_a_readable_500_without_exposing_traceback(self):
+        self.model_llm.chat.side_effect = RuntimeError("private internal failure")
+        with TestClient(self.client.app, raise_server_exceptions=False) as client:
+            response = client.post("/api/model-settings/test", json={
+                "connection_id": self.connection.connection_id,
+                "model": self.models.config().default_model,
+            })
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("服务处理请求", response.json()["detail"])
+        self.assertNotIn("private internal failure", response.text)
+
+    def test_cancelling_the_event_stream_finishes_and_releases_the_connection(self):
+        async def scenario():
+            app = self.client.app
+            app.state.channel = self.channel
+            app.state.hub = self.hub
+            endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", None) == "/api/events")
+            request = SimpleNamespace(app=app, is_disconnected=AsyncMock(return_value=False))
+            stream = endpoint(request)
+            connected = await anext(stream)
+            connection_id = connected.data["connection_id"]
+            pending = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0)
+            pending.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await pending
+            with self.assertRaises(web_app.WebConnectionInactive):
+                self.channel._require_connection(connection_id)
+            self.assertEqual(self.hub._queues, set())
+        asyncio.run(scenario())
+
     def test_model_connection_does_not_downgrade_corrupt_persisted_config(self):
         self.models.path.write_text("{", encoding="utf-8")
         with self.assertRaises(json.JSONDecodeError):

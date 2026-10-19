@@ -119,6 +119,25 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
                          {str((await self.host.agents.resolve(self.workspace.workspace_id, name)).worktree)
                           for name in ("Lin", "Third")})
 
+    async def test_colleague_status_follows_host_facts_without_internal_identifiers(self):
+        runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker((lambda _: ModelDecision(
+            command_requests=(InvokeTool("write_file", (("path", "a.txt"),)),)),)),
+            {"write_file": ToolBinding(AsyncMock(), requires_authorization=True)})
+        await runtime.advance("Lin")
+
+        async def statuses():
+            colleagues = (await self.transport(LIST_COLLEAGUES, "Ada", {}))["data"]["colleagues"]
+            for entry in colleagues:
+                self.assertEqual(set(entry), {"name", "direction", "worktree", "status", "since"})
+                last = (await self.journal(entry["name"]).snapshot(entry["name"]))[-1]
+                self.assertEqual(entry["since"], last.occurred_at.astimezone().isoformat(timespec="minutes"))
+            return {entry["name"]: entry["status"] for entry in colleagues}
+
+        self.assertEqual(await statuses(), {"Lin": "awaiting_authorization", "Third": "idle"})
+        self.host._pause.set("Third", True)
+        with patch.object(self.host, "activity", lambda session_id: "running" if session_id == "Lin" else "idle"):
+            self.assertEqual(await statuses(), {"Lin": "working", "Third": "paused"})
+
     async def test_declared_direction_is_own_roster_entry_and_reaches_colleagues(self):
         binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]
         for extra in ({"name": "Lin"}, {"direction": " "}):
