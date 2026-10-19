@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from redpanda.assistant.agent_messages import (
-    MAX_GROUP_REPLIES, MAX_GROUP_ROUNDS, MAX_SPEECHES_PER_ROUND,
+    MAX_GROUP_REPLIES, MAX_GROUP_ROUNDS,
 )
 from redpanda.assistant.agents import (
     GROUP_CREATED, GROUP_MESSAGE, GroupAttention, GroupCreated, GroupMessage, Speaker,
@@ -46,27 +46,39 @@ def _targets(group: GroupRecord, speaker: str | None, mentioned: list[str]) -> l
     return [name for name in (mentioned or group.members) if name != speaker]
 
 
+@dataclass(frozen=True, slots=True)
+class _Call:
+    """A member asked to answer a message, in a given round of the discussion that message belongs to."""
+
+    message_id: str
+    opener: str
+    round: int
+
+
 @dataclass(eq=False)
 class _Drive:
-    """Rounds driven by one origin. Only the latest origin in a group schedules."""
+    """Who the Host calls in one group, until a person speaks there again or stops it.
+
+    A speech answering a call continues that call's discussion. Any other speech
+    opens a discussion of its own, with its own round and reply budget, and joins
+    the queue instead of replacing it.
+    """
 
     group: GroupRecord
-    origin: str
-    rounds: int = 0
-    replies: int = 0
-    spoken: Counter = field(default_factory=Counter)
-    pending: dict[str, str] = field(default_factory=dict)
+    replies: Counter = field(default_factory=Counter)
+    pending: dict[str, _Call] = field(default_factory=dict)
+    answering: dict[str, _Call] = field(default_factory=dict)
     waiting: dict[str, asyncio.Event] = field(default_factory=dict)
     stopped: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False
 
-    def queue(self, speaker: str | None, mentioned: list[str], message_id: str) -> None:
+    def queue(self, speaker: str | None, mentioned: list[str], call: _Call) -> bool:
+        """Queue whoever this speech calls; False when its discussion has no round left."""
+        if call.round > MAX_GROUP_ROUNDS:
+            return False
         for name in _targets(self.group, speaker, mentioned):
-            self.pending.setdefault(name, message_id)
-
-    @property
-    def exhausted(self) -> bool:
-        return self.rounds >= MAX_GROUP_ROUNDS
+            self.pending.setdefault(name, call)
+        return True
 
 
 class AgentGroups:
@@ -169,44 +181,44 @@ class AgentGroups:
                                reply_to=None, text=text, group=group.name, mentioned_agents=mention, origin=None)
         async with self._group_locks.setdefault(group_id, asyncio.Lock()):
             await self._publish(group, message)
-            drive = self._replace_drive(group, message.message_id)
-            drive.queue(None, mention, message.message_id)
+            drive = self._replace_drive(group)
+            drive.queue(None, mention, _Call(message.message_id, message.message_id, 1))
             self._schedule(drive)
         return message
 
-    def _replace_drive(self, group: GroupRecord, origin: str) -> _Drive:
+    def _replace_drive(self, group: GroupRecord) -> _Drive:
         previous = self._drives.get(group.group_id)
         if previous is not None:
             previous.stopped.set()
-        drive = _Drive(group, origin)
+        drive = _Drive(group)
         self._drives[group.group_id] = drive
         return drive
 
     def _schedule(self, drive: _Drive) -> None:
-        if drive.pending and not drive.exhausted and not drive.stopped.is_set() and not drive.running:
+        if drive.pending and not drive.stopped.is_set() and not drive.running:
             drive.running = True
             self.host._track(drive.group.group_id, asyncio.create_task(self._run(drive)))
 
     async def _run(self, drive: _Drive) -> None:
         try:
-            while drive.pending and not drive.exhausted and not drive.stopped.is_set():
+            while drive.pending and not drive.stopped.is_set():
                 calls, drive.pending = drive.pending, {}
-                drive.rounds += 1
-                drive.spoken = Counter()
-                for name, message_id in calls.items():
+                for name, call in calls.items():
                     if drive.stopped.is_set() or self.host.closed:
                         return
-                    await self._call(drive, name, message_id)
+                    await self._call(drive, name, call)
         finally:
             # Cleared before any await so a speech arriving now starts a new run.
             drive.running = False
             self._changed(drive.group.group_id)
 
-    async def _call(self, drive: _Drive, name: str, message_id: str) -> None:
+    async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
         agent = await self.host.agents.resolve(drive.group.workspace_id, name)
         if self.host.is_paused(agent.session_id):
             return
+        message_id = call.message_id
+        drive.answering[name] = call
         spoke = drive.waiting[name] = asyncio.Event()
         self._changed(drive.group.group_id)
         try:
@@ -222,11 +234,16 @@ class AgentGroups:
             for task in done:
                 task.result()
         finally:
+            drive.answering.pop(name, None)
             del drive.waiting[name]
             self._changed(drive.group.group_id)
 
     async def send(self, session_id: str, arguments: dict, origin: str, admit):
-        """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new."""
+        """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new.
+
+        Only the first speech of a called turn answers the call; speeches made after
+        it, such as a report once later work finishes, open discussions of their own.
+        """
         sender = await self.host.agents.by_session(session_id)
         group = next((group for group in await self.list(sender.workspace_id)
                       if group.name == arguments["group"]), None)
@@ -247,7 +264,8 @@ class AgentGroups:
                         or existing.reply_to != arguments["reply_to"]):
                     raise ValueError("persisted group message conflicts with its sending Command")
                 await self._publish(group, existing)
-                return self._delivered(group, identity, self._drives.get(group.group_id))
+                drive = self._drives.get(group.group_id)
+                return self._delivered(group, identity, drive is not None and not drive.stopped.is_set())
             if arguments["reply_to"] is not None and all(
                     message.message_id != arguments["reply_to"] for message in messages):
                 return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是这个群里的消息。"}
@@ -255,32 +273,30 @@ class AgentGroups:
             if refused is not None:
                 return refused
             drive = self._drives.get(group.group_id)
-            if drive is not None and drive.origin == origin:
-                if drive.replies >= MAX_GROUP_REPLIES:
-                    return {"ok": False, "code": "GROUP_LIMIT_REACHED",
-                            "error": "这次群讨论的回复已达上限，等人在群里发言后再继续。"}
-                if drive.spoken[sender.name] >= MAX_SPEECHES_PER_ROUND:
-                    return {"ok": False, "code": "SPEECH_LIMIT_REACHED",
-                            "error": "你在这一轮的发言已达上限，等下一轮或人在群里发言后再继续。"}
-            else:
-                drive = self._replace_drive(group, origin)
+            if drive is None or drive.stopped.is_set():
+                drive = self._replace_drive(group)
+            answered = drive.answering.get(sender.name)
+            if answered is not None and drive.replies[answered.opener] >= MAX_GROUP_REPLIES:
+                return {"ok": False, "code": "GROUP_LIMIT_REACHED",
+                        "error": "这次群讨论的回复已达上限；需要某位同事接着处理时可以私信他。"}
             message = GroupMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
                                    reply_to=arguments["reply_to"], text=arguments["text"], group=group.name,
                                    mentioned_agents=mention, origin=origin)
             await self._publish(group, message)
-            drive.replies += 1
-            drive.spoken[sender.name] += 1
-            drive.queue(sender.name, mention, identity)
-            if sender.name in drive.waiting:
+            if answered is None:
+                calls = drive.queue(sender.name, mention, _Call(identity, identity, 1))
+            else:
+                del drive.answering[sender.name]
+                drive.replies[answered.opener] += 1
+                calls = drive.queue(sender.name, mention, _Call(identity, answered.opener, answered.round + 1))
                 drive.waiting[sender.name].set()
             self._schedule(drive)
-            return self._delivered(group, identity, drive)
+            return self._delivered(group, identity, calls)
 
-    def _delivered(self, group, identity, drive):
-        stalled = drive is None or drive.exhausted or drive.stopped.is_set()
+    def _delivered(self, group, identity, calls):
         return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity, "group": group.name,
-                "notice": "已送达；这次群讨论已达轮数上限或已被停止，不会再叫成员回应，等人在群里发言后再继续。"
-                if stalled else "已送达；被叫到的成员会依次回应，不等待回复。"}}
+                "notice": "已送达；被叫到的成员会依次回应，不等待回复。" if calls else
+                "已送达；这次群讨论已达轮数上限，不会再叫成员回应；需要某位同事接着处理时可以私信他。"}}
 
     async def stop(self, group_id: str) -> None:
         """Stop scheduling and interrupt members currently called; completed work stays."""

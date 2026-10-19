@@ -108,9 +108,14 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                                                    members=list(members))
 
     async def settled(self, group):
-        while self.host.agent_groups._drives[group.group_id].running:
-            await asyncio.sleep(0.01)
-        await asyncio.gather(*self.work)
+        # A speech finishing after its call ended can start the drive again.
+        while True:
+            while self.host.agent_groups._drives[group.group_id].running:
+                await asyncio.sleep(0.01)
+            count = len(self.work)
+            await asyncio.gather(*self.work)
+            if not self.host.agent_groups._drives[group.group_id].running and len(self.work) == count:
+                return
 
     async def test_creation_checks_members_and_tells_only_them(self):
         notified = AsyncMock()
@@ -164,21 +169,33 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         await self.settled(group)
         self.assertEqual(self.calls, list(MEMBERS))
 
-    async def test_round_and_drive_limits_return_known_results(self):
+    async def test_reply_limit_returns_a_known_result(self):
         group = await self.group(("Ada", "Lin"))
-        speech = {"group": "开发组", "text": "补充", "mention": ["Lin"]}
-        ada = iter(([speech] * 4,))
-        lin = iter(([{"group": "开发组", "text": "收到"}, {"group": "开发组", "text": "再补充"}],))
+        ada = iter(([{"group": "开发组", "text": "补充", "mention": ["Lin"]}],
+                    [{"group": "开发组", "text": "再补充", "mention": ["Lin"]}]))
+        lin = iter(([{"group": "开发组", "text": "收到", "mention": ["Ada"]}],))
         self.speeches = {"Ada": lambda: next(ada, []), "Lin": lambda: next(lin, [])}
-        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_REPLIES", 4):
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_REPLIES", 2):
             await self.host.agent_groups.post(group.group_id, "Ada 先说", ["Ada"])
             await self.settled(group)
-        # Ada's first speech ends her turn, so round two (Lin) starts while she keeps speaking:
-        # her later speeches count in round two, where the per-round cap stops the fourth.
         self.assertEqual([[result["code"] for result in work.result()] for work in self.work],
-                         [["DELIVERED", "DELIVERED", "DELIVERED", "SPEECH_LIMIT_REACHED"],
-                          ["DELIVERED", "GROUP_LIMIT_REACHED"]])
-        self.assertEqual(self.calls, ["Ada", "Lin", "Lin", "Ada"])
+                         [["DELIVERED"], ["DELIVERED"], ["GROUP_LIMIT_REACHED"]])
+        self.assertEqual(self.calls, ["Ada", "Lin", "Ada"])
+        self.assertEqual(len(await self.host.agent_groups.messages(group.group_id)), 3)
+
+    async def test_a_later_speech_calls_whom_it_names_after_its_discussion_ran_out(self):
+        # A tester acknowledges the call, keeps working, then reports to the coordinator.
+        group = await self.group()
+        lin = iter(([{"group": "开发组", "text": "开工"},
+                     {"group": "开发组", "text": "报告：通过", "mention": ["Ada"]}],))
+        self.speeches = {"Lin": lambda: next(lin, [])}
+        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+            await self.host.agent_groups.post(group.group_id, "Lin 去跑测试", ["Lin"])
+            await self.settled(group)
+        acknowledged, reported = self.work[0].result()
+        self.assertIn("轮数上限", acknowledged["data"]["notice"])
+        self.assertIn("依次回应", reported["data"]["notice"])
+        self.assertEqual(self.calls, ["Lin", "Ada"])
 
     async def test_observers_hear_when_the_drive_ends(self):
         group = await self.group(("Ada", "Lin"))

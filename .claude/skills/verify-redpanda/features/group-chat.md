@@ -36,7 +36,8 @@
   - (a) 每位成员被叫到后用 `send_group_message` 发言，群记录里出现以 Agent 名署名的消息；整轮无人发言或达到轮数上限后 `active` 为 false。
   - (b) 成员的会话里能看到 `send_group_message` 工具调用；群页随工具完成刷新。
   - (c) 一位成员发言后 Host 就叫下一位，不等它把剩下的活干完。
-  - (d) 超出每轮或每次讨论的上限时，工具结果为 `SPEECH_LIMIT_REACHED` / `GROUP_LIMIT_REACHED`，群记录不增加。
+  - (d) 超出每次讨论的回复上限时，工具结果为 `GROUP_LIMIT_REACHED`，群记录不增加；轮数用完的发言照常送达，结果提示不再叫人。
+  - (e) 成员被叫到后先发一条回执、继续工作、再发一条点名报告：报告会叫醒被点名的人，即使那次讨论的轮数已用完。
 - **群级停止**：在 `正在等 … 回应…` 显示时点 `停止本轮`。
   - (a) `GET /api/groups/<id>` 的 `active` 为 false、`calling` 为 `[]`。
   - (b) `POST /api/groups/<id>/stop` 200；被叫成员当前这一轮被打断，但不进入暂停（会话 `paused=false`），之后给它发私信会照常叫醒它。
