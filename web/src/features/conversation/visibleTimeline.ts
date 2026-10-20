@@ -1,4 +1,4 @@
-import type { Audience, ConversationView, ToolStatus } from "../../api/contracts";
+import type { ConversationView, ToolStatus } from "../../api/contracts";
 import type {
   ActivePreview,
   LiveTool,
@@ -34,7 +34,6 @@ export type VisibleStep = {
   thinkingPending: boolean;
   pending: boolean;
   tools: VisibleTool[];
-  audience: Audience;
   files: { attachment_id: string; name: string; size: number }[];
 };
 
@@ -48,7 +47,6 @@ export function visibleTimeline(
   committedThinking: Record<string, string> = {},
   liveThinking: ActivePreview | null = null,
   activity: SessionActivity | null = null,
-  audiences: Record<string, Audience> = {},
 ): VisibleItem[] {
   const journalOutputIds = new Set(
     conversation.items
@@ -74,7 +72,6 @@ export function visibleTimeline(
       stepId: item.step_id,
       text: item.text,
       pending: false,
-      audience: item.audience,
       files: item.files ?? [],
       tools: item.tools.map((tool) => {
         const live = tools[tool.command_id];
@@ -111,7 +108,6 @@ export function visibleTimeline(
       pending: true,
       tools: [],
       files: [],
-      audience: audiences[outputId],
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
   }
@@ -130,7 +126,6 @@ export function visibleTimeline(
       pending: true,
       tools: [],
       files: [],
-      audience: audiences[preview.outputId],
       ...resolveThinking(preview.outputId, null, committedThinking, liveThinking),
     });
   }
@@ -151,7 +146,6 @@ export function visibleTimeline(
       pending: true,
       tools: [],
       files: [],
-      audience: audiences[outputId],
       ...resolveThinking(outputId, null, committedThinking, liveThinking),
     });
   }

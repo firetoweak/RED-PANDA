@@ -25,6 +25,6 @@
 ## Gotchas
 
 - 最短间隔 5 分钟，等一次真实触发至少要 5 分钟，放在一轮验证的最后做；只验列表与按钮时不必等触发。
-- 例行任务到点开始的一轮是工作记录，会折叠显示，见 work-log。
+- 例行任务到点开始的一轮普通回复直接给人看，见 reply-delivery。
 - `Agent 暂停`（`paused`）是 Agent 自己停的，人可以恢复；`人暂停` 只能由人恢复。
 - 历史 live 状态：部分（2026-10-19 Windows 隔离实例 + deepseek-flash，Playwright 驱动）：Agent 用 `save_routine` 建一项后列表出现；`暂停 检查 PR` → `paused_by_user`、`next_run=null`；Agent 再调 `set_routine_state` 得到 `PAUSED_BY_USER`；`恢复 检查 PR` → `active` 并重排下一次；`取消` → `确认取消` 后接口返回 `[]`、整行消失；SSE `schedule_changed` 随每次变化到达。未等到真实触发。

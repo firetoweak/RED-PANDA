@@ -18,18 +18,23 @@ function step(key: string, text: string, files: VisibleStep["files"] = []): Visi
   return {
     key, kind: "step", outputId: key, occurredAt: "2026-10-19T00:00:00+00:00",
     stepId: key, text, thinking: null, thinkingPending: false, pending: false,
-    tools: [], audience: "user", files,
+    tools: [], files,
   };
 }
 
 it("带附件的消息单独成气泡，执行过程里展开后也能下载", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const turns = timelineTurns([
+    { ...step("send", ""), text: null, tools: [{
+      commandId: "send", name: "send_file", status: "succeeded", error: null,
+      arguments: { text: "证据在这", path: "evidence.txt" },
+    }] },
     step("file", "证据在这", [file]),
     step("close", "说完了"),
   ]);
   expect(turns.map((turn) => turn.final?.text)).toEqual(["证据在这", "说完了"]);
   expect(turns[0].final?.files).toEqual([file]);
+  expect(turns[0].process).toHaveLength(1);
 
   render(
     <MantineProvider>

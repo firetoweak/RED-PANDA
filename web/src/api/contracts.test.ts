@@ -38,7 +38,7 @@ describe("conversationViewSchema", () => {
           images: [], files: [],
         },
         {
-          kind: "step", audience: "user",
+          kind: "step",
           step_id: "step-event",
           output_id: "user-event",
           text: "world",
@@ -62,7 +62,7 @@ describe("conversationViewSchema", () => {
     });
 
     expect(parsed.items[1]).toMatchObject({
-      kind: "step", audience: "user",
+      kind: "step",
       step_id: "step-event",
       output_id: "user-event",
     });
@@ -131,7 +131,7 @@ describe("conversation thinking field", () => {
       revision: 1,
       items: [
         {
-          kind: "step", audience: "user",
+          kind: "step",
           step_id: "step-event",
           output_id: "user-event",
           text: "world",
@@ -158,7 +158,7 @@ describe("outputFinalEventSchema", () => {
       session_id: "session-1",
       output_id: "user-event",
       text: "world",
-      audience: "user",
+
     });
     expect(parsed.output_id).toBe("user-event");
   });
@@ -191,7 +191,7 @@ describe("toolProgressEventSchema", () => {
       revision: 1,
       items: [
         {
-          kind: "step", audience: "user",
+          kind: "step",
           step_id: "step-event",
           output_id: "user-event",
           text: null,
@@ -225,7 +225,7 @@ describe("toolProgressEventSchema", () => {
       revision: 1,
       items: [
         {
-          kind: "step", audience: "user",
+          kind: "step",
           step_id: "step-event",
           output_id: "user-event",
           text: null,

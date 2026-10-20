@@ -150,10 +150,6 @@ export const directorySelectionSchema = z
 
 export type DirectorySelection = z.infer<typeof directorySelectionSchema>;
 
-// "log" marks an Agent's work log: closing text of a turn the person did not start.
-export const audienceSchema = z.enum(["user", "log"]);
-
-export type Audience = z.infer<typeof audienceSchema>;
 
 export const routineSchema = z
   .object({
@@ -230,7 +226,6 @@ export const conversationViewSchema = z
             thinking: z.string().min(1).nullable(),
             tools: z.array(toolItemSchema),
             occurred_at: z.string().datetime({ offset: true }),
-            audience: audienceSchema,
             files: z.array(z.object({
               attachment_id: z.string().regex(/^file:[0-9a-f]{32}$/),
               name: z.string().min(1),
@@ -292,7 +287,6 @@ export const previewStartedEventSchema = z
   .object({
     session_id: z.string().min(1),
     output_id: z.string().min(1),
-    audience: audienceSchema,
   })
   .strict();
 
@@ -320,7 +314,6 @@ export const outputFinalEventSchema = z
     session_id: z.string().min(1),
     output_id: z.string().min(1),
     text: z.string().min(1),
-    audience: audienceSchema,
   })
   .strict();
 

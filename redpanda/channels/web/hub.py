@@ -13,7 +13,6 @@ class WebEvent:
 @dataclass(slots=True)
 class _Preview:
     output_id: str
-    audience: str
     text: str = ""
 
 
@@ -40,7 +39,7 @@ class WebEventHub:
         for stream, previews in (("preview", self._previews), ("thinking", self._thoughts)):
             for session_id, preview in previews.items():
                 identity = {"session_id": session_id, "output_id": preview.output_id}
-                queue.put_nowait(WebEvent(f"{stream}.started", {**identity, "audience": preview.audience}))
+                queue.put_nowait(WebEvent(f"{stream}.started", identity))
                 if preview.text:
                     queue.put_nowait(WebEvent(f"{stream}.delta", {**identity, "text": preview.text}))
         return queue
@@ -54,13 +53,12 @@ class WebEventHub:
         phase: str,
         output_id: str,
         text: str | None,
-        audience: str,
     ) -> None:
         if phase == "started":
-            self._previews[session_id] = _Preview(output_id, audience)
+            self._previews[session_id] = _Preview(output_id)
             await self._broadcast(
                 "preview.started",
-                {"session_id": session_id, "output_id": output_id, "audience": audience},
+                {"session_id": session_id, "output_id": output_id},
             )
             return
         if phase == "delta":
@@ -98,13 +96,12 @@ class WebEventHub:
         phase: str,
         output_id: str,
         text: str | None,
-        audience: str,
     ) -> None:
         if phase == "started":
-            self._thoughts[session_id] = _Preview(output_id, audience)
+            self._thoughts[session_id] = _Preview(output_id)
             await self._broadcast(
                 "thinking.started",
-                {"session_id": session_id, "output_id": output_id, "audience": audience},
+                {"session_id": session_id, "output_id": output_id},
             )
             return
         if phase == "delta":
@@ -136,7 +133,7 @@ class WebEventHub:
             return
         raise ValueError(f"unknown thinking phase: {phase}")
 
-    async def output_final(self, session_id: str, output_id: str, text: str, audience: str) -> None:
+    async def output_final(self, session_id: str, output_id: str, text: str) -> None:
         preview = self._previews.get(session_id)
         if preview is not None and preview.output_id == output_id:
             del self._previews[session_id]
@@ -146,7 +143,6 @@ class WebEventHub:
                 "session_id": session_id,
                 "output_id": output_id,
                 "text": text,
-                "audience": audience,
             },
         )
 

@@ -25,7 +25,6 @@ export function SubagentPanel({ parentSessionId, commandId }: {
   const items = conversation == null ? [] : visibleTimeline(
     conversation, runtime?.committed ?? {}, runtime?.activePreview ?? null, runtime?.tools ?? {},
     runtime?.committedThinking ?? {}, runtime?.activeThinking ?? null, runtime?.activity ?? null,
-    runtime?.audiences ?? {},
   );
   const label = result !== null
     ? result.cancelled ? "已收回" : result.failure !== null ? "执行失败" : result.reported ? "已交回" : "已结束，未报告"

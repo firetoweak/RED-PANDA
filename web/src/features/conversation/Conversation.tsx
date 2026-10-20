@@ -54,7 +54,6 @@ import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
-import { WorkLog } from "./WorkLog";
 import { BackgroundCommands } from "./BackgroundCommands";
 import { RoutineList } from "./RoutineList";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
@@ -152,7 +151,6 @@ export function Conversation({ agentName }: { agentName?: string }) {
     runtime?.committedThinking ?? {},
     runtime?.activeThinking ?? null,
     runtime?.activity ?? null,
-    runtime?.audiences ?? {},
   );
   const turns = timelineTurns(items);
   const running = runtime?.activity === "running";
@@ -313,7 +311,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
                     />
                   </Box>
                 )}
-                {turn.log ? <WorkLog turn={turn} settled={settled}>{body}{plan}</WorkLog> : body}
+                {body}
                 {latest && notice !== null ? (
                   <ControlNotice message={notice} />
                 ) : null}
@@ -337,7 +335,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
                     )
                   ))
                   : null}
-                {turn.log ? null : plan}
+                {plan}
               </Stack>
               );
           }}

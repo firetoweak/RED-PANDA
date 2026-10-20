@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from functools import partial
 import json
 from pathlib import Path
@@ -16,6 +17,7 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.automation.routines import RoutineFire
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
@@ -122,7 +124,26 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), steps[agent.session_id])
         self.assertTrue(self.host.failures.empty())
 
+    async def test_plain_user_and_routine_replies_reach_person_without_waking_colleague(self):
+        outputs = []
+        self.host.sink = lambda *args: outputs.append(args)
+        before = await self.events(self.lin)
+        await self.host.receive_user_message(self.ada.session_id, "只回复 done", delivery_id="plain")
+        await self.settled(self.ada)
+        now = datetime.now(timezone.utc)
+        await self.host._deliver_routine(RoutineFire(
+            fire_id="routine-fire", routine_id="routine", session_id=self.ada.session_id,
+            name="检查", intent="报告状态", planned_at=now, fired_at=now))
+        await self.settled(self.ada)
+        self.assertEqual([args[2] for args in outputs], ["done", "done"])
+        self.assertTrue(all(args[0] == self.ada.session_id for args in outputs))
+        self.assertEqual(await self.events(self.lin), before)
+        self.assertNotIn(self.lin.session_id, self.host.workers)
+        self.assertTrue(self.host.failures.empty())
+
     async def test_group_members_are_called_in_turn_and_speak_through_their_tool(self):
+        outputs = []
+        self.host.sink = lambda *args: outputs.append(args)
         group = await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name="开发组",
                                                     members=["Ada", "Lin"])
         await self.host.agent_groups.post(group.group_id, "大家同步一下进度", [])
@@ -138,6 +159,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         # Every speech without a mention calls the other member, until the round limit.
         self.assertEqual(speakers[0], None)
         self.assertEqual(sorted(speakers[1:]), ["Ada"] * 3 + ["Lin"] * 3)
+        self.assertTrue(any(args[2] == "done" for args in outputs))
         for agent in (self.ada, self.lin):
             attentions = [e for e in await self.events(agent) if isinstance(e.payload, DomainFactCommitted)
                           and e.payload.fact_type == GROUP_ATTENTION]
@@ -172,6 +194,8 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_offline_recipient_is_started_and_can_observe_attributed_message(self):
+        outputs = []
+        self.host.sink = lambda *args: outputs.append(args)
         self.assertNotIn(self.lin.session_id, self.host.workers)
         await self.host.receive_user_message(self.ada.session_id, "SEND_TO_LIN", delivery_id="send")
         await self.settled(self.ada)
@@ -182,6 +206,9 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messages[0].sender.name, "Ada")
         self.assertTrue(any(isinstance(e.payload, StepCommitted) for e in await self.events(self.lin)))
         self.assertTrue(any("请核对接口" in json.dumps(r["messages"], ensure_ascii=False) for r in self.llm.requests))
+        self.assertTrue(any(args[0] == self.lin.session_id and args[2] == "done" for args in outputs))
+        self.assertFalse(any(isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == PRIVATE_MESSAGE
+                             for e in await self.events(self.ada)))
         self.assertTrue(self.host.failures.empty())
 
     async def test_real_sender_crash_recovers_one_delivery_and_a_known_original_outcome(self):

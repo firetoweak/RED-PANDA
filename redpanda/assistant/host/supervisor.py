@@ -28,7 +28,6 @@ from redpanda.assistant.control import pending_approval_view, project_control_me
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.compact.host import CompactHost
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
-from redpanda.assistant.audience import Audience
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
@@ -41,7 +40,7 @@ from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
 from redpanda.assistant.host.agent_groups import AgentGroups
 from redpanda.assistant.agent_messages import (
-    DECLARE_DIRECTION, LIST_COLLEAGUES, MESSAGE_USER, SEND_GROUP_MESSAGE, SEND_MESSAGE,
+    DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_FILE, SEND_GROUP_MESSAGE, SEND_MESSAGE,
 )
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
@@ -311,16 +310,13 @@ class HostSupervisor:
             return await self.agent_messages.send_group(session_id, arguments)
         if operation == DECLARE_DIRECTION:
             return await self.agent_messages.declare(session_id, arguments)
-        if operation == MESSAGE_USER:
-            attachment = None
-            if arguments.get("path") is not None:
-                copied = await self._copy_worktree_file(session_id, arguments["path"])
-                if copied.get("ok") is False:
-                    return copied
-                attachment = copied
+        if operation == SEND_FILE:
+            attachment = await self._copy_worktree_file(session_id, arguments["path"])
+            if attachment.get("ok") is False:
+                return attachment
             if self.sink is not None:
-                await _emit(self.sink(session_id, arguments["output_id"], arguments["text"], "user"))
-            return None if attachment is None else {"attachment": attachment}
+                await _emit(self.sink(session_id, arguments["output_id"], arguments["text"]))
+            return {"attachment": attachment}
         if operation in {"agent_land", "agent_sync"}:
             agent = await self.agents.by_session(session_id)
             if operation == "agent_sync":
@@ -405,8 +401,7 @@ class HostSupervisor:
                 return None
             sink = self.sink if operation == "output" else self.subagent_output_sink
             if sink is not None:
-                audience = await self._audience(session_id)
-                await _emit(sink(session_id, arguments["output_id"], arguments["text"], audience))
+                await _emit(sink(session_id, arguments["output_id"], arguments["text"]))
             if worker is not None and worker.active_preview == arguments["output_id"]:
                 worker.active_preview = None
             return None
@@ -607,10 +602,6 @@ class HostSupervisor:
             ),
         )
 
-    async def _audience(self, session_id: str) -> Audience:
-        """A long-lived Agent's closing text is its work log; it reaches the person through message_user."""
-        return "user" if await self.agents.by_session(session_id) is None else "log"
-
     async def _emit_schedule_changed(self, session_id: str) -> None:
         if self.schedule_changed_sink is None:
             return
@@ -712,8 +703,7 @@ class HostSupervisor:
                     self.preview_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    audience = await self._audience(values[0])
-                    await _emit(self.preview_sink(*values, audience))
+                    await _emit(self.preview_sink(*values))
             elif kind == "thinking":
                 if is_subagent and self.subagent_output_sink is None:
                     return
@@ -726,8 +716,7 @@ class HostSupervisor:
                     self.thinking_sink is not None
                     and self.compact.store.reader_job(session_id) is None
                 ):
-                    audience = await self._audience(values[0])
-                    await _emit(self.thinking_sink(*values, audience))
+                    await _emit(self.thinking_sink(*values))
             elif kind == "session_failed":
                 await self._emit_session_failed(*values)
             elif kind == "idle":
@@ -913,13 +902,11 @@ class HostSupervisor:
         output_id = worker.active_preview
         worker.active_preview = None
         if output_id is not None and self.preview_sink is not None:
-            await _emit(self.preview_sink(session_id, "aborted", output_id, None,
-                                          await self._audience(session_id)))
+            await _emit(self.preview_sink(session_id, "aborted", output_id, None))
         thinking_id = worker.active_thinking
         worker.active_thinking = None
         if thinking_id is not None and self.thinking_sink is not None:
-            await _emit(self.thinking_sink(session_id, "aborted", thinking_id, None,
-                                           await self._audience(session_id)))
+            await _emit(self.thinking_sink(session_id, "aborted", thinking_id, None))
         live_tools = tuple(worker.live_tools.items())
         worker.live_tools.clear()
         if self.tool_progress_sink is not None:

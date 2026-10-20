@@ -72,7 +72,7 @@
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | 通过（2026-10-12，main@1a4790a） |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 通过（2026-10-12，main@1a4790a；重启后持久性未测） |
 | routines | [routines.md](./routines.md) | 会话页输入框上方 `例行任务`：`暂停 <名字>`、`恢复 <名字>`、`取消 <名字>` → `确认取消 <名字>`；人暂停后 Agent 不能恢复 | 部分（2026-10-19 Windows；列表与按钮、人暂停后 Agent 不能恢复通过，未等真实触发） |
-| work-log | [work-log.md](./work-log.md) | 长期 Agent 每一轮的结尾折叠为 `工作记录 …` 一行（实时同样折叠）；人只看到 `message_user` 发出的回复 | 部分（2026-10-19 Windows；私信触发与实时通过，群与例行任务触发未观察） |
+| reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 部分（2026-10-20 Windows + deepseek-flash：普通问答、文件交付、私信触发与刷新通过；群与例行任务触发经进程测试，未 live 驱动） |
 | extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 未跑（2026-10-12，main@1a4790a；本轮时间不足） |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | 部分（2026-10-12，修复后；失效连接 409，断线重连未测） |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | `外观`、侧栏宽度、窄屏 Agent 名册 | 未跑（2026-10-12，main@1a4790a；纯界面，UI 未验） |
@@ -99,11 +99,11 @@
 
 | 接口 | 条目 |
 |---|---|
-| `GET /api/events` | realtime-events、work-log（`preview.started`/`thinking.started`/`output_final` 的 `audience`） |
+| `GET /api/events` | realtime-events、reply-delivery（流式预览与最终回复） |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
-| `GET /api/sessions/{id}` | web-session-chat、work-log（步骤项 `audience`） |
+| `GET /api/sessions/{id}` | web-session-chat、reply-delivery（普通回复与文件附件） |
 | `GET /api/sessions/{id}/commands`、`POST /api/sessions/{id}/commands/{command_id}/stop` | tool-coding-round |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
@@ -134,7 +134,7 @@
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |
-| `message_user`，以及长期 Agent 每一轮的结尾折叠为工作记录 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/audience.py` | work-log |
+| `send_file`，以及长期 Agent 的普通回复直接给人看 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/conversations.py` | reply-delivery |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
 | `deliver`、`read_content` | `redpanda/assistant/delivery.py`、`content.py` | **未单独覆盖**：内部投递/读取附件内容，经 composer-attachments 与 web-session-chat 间接走到 |
 
