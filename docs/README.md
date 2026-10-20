@@ -1,6 +1,6 @@
 # RED PANDA 文档
 
-RED PANDA 是面向开发者的 coding bot：几个长期在线的 coding Agent 各自一条 Git 分支，在同一项目上理解、修改、执行和验证代码，通过私信与群聊协作，人在环内设定目标、授权并决定合入。方向与阶段见 [Coding Bot](架构/CodingBot/方向.md)。源码安装与日常启动从[快速开始](../README.md#快速开始)进入。
+RED PANDA 以长期 Bot 协作为核心，方向是以编码为主的泛用 Bot：Agent 以名字为身份，通过私信与群聊协作，人设定目标、授权并调整方向。编码是优先做好的主要场景，讨论想法、分析资料与推敲方案同样属于协作。身份与交流解除项目绑定的方向已确认、尚未实施，见[后续方向](架构/CodingBot/方向.md)；当前项目与工作树边界见 [Coding Bot 总览](架构/CodingBot/总览.md)。源码安装与日常启动从[快速开始](../README.md#快速开始)进入。
 
 当前系统按 **Session / Event / State / Step / Command** 运行。
 
