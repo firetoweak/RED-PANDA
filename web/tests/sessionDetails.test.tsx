@@ -22,10 +22,14 @@ vi.mock("../src/api/redpandaApi", () => ({
     { group_id: "back", name: "接口讨论", members: ["Lin"] },
     { group_id: "other", name: "跨项目讨论", members: ["Ada"] },
   ] }),
+  useGetRoutinesQuery: (sessionId: string) => ({ currentData: sessionId !== "ada" ? [] : [
+    { routine_id: "r-pr", name: "检查 PR", intent: "看评审", schedule: "@every 10m", state: "active", next_run: null, last_run: null },
+  ] }),
+  useSetRoutineStateMutation: () => [() => undefined, { isLoading: false }],
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 Agent", () => {
+it("资料默认隐藏，点击页头名字打开和收起，资料与例行任务跟随当前 Agent", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
@@ -41,6 +45,7 @@ it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 
   expect(details.getByText("Alpha")).toBeInTheDocument();
   expect(details.getByRole("link", { name: "界面讨论" })).toHaveAttribute("href", "/groups/front");
   expect(details.getByText("跨项目讨论")).toBeInTheDocument();
+  expect(details.getByText("检查 PR")).toBeInTheDocument();
   fireEvent.click(header.getByRole("button", { name: "Ada" }));
   expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   expect(screen.getByText("对话内容")).toBeInTheDocument();
@@ -51,4 +56,21 @@ it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 
   expect(next.getByText("Beta")).toBeInTheDocument();
   expect(next.queryByText("前端体验")).not.toBeInTheDocument();
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
+  expect(next.getByText("无例行任务")).toBeInTheDocument();
+});
+
+it("窄屏从页头打开资料后仍能访问例行任务，并能关闭回到对话", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  const store = configureStore({ reducer: { runtime: runtimeReducer } });
+  render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
+    <Routes><Route path="/sessions/:sessionId" element={<SessionConversation />} /></Routes>
+  </MemoryRouter></MantineProvider></Provider>);
+  fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "Ada" }));
+  const details = within(screen.getByRole("dialog", { name: "Agent 资料" }));
+  expect(details.getByRole("button", { name: "查看 检查 PR" })).toBeVisible();
+  expect(details.getByRole("switch", { name: "暂停 检查 PR" })).toBeVisible();
+  expect(details.getByRole("button", { name: "删除 检查 PR" })).toBeVisible();
+  fireEvent.click(details.getByRole("button", { name: "关闭 Agent 资料" }));
+  expect(screen.queryByRole("dialog", { name: "Agent 资料" })).not.toBeInTheDocument();
+  expect(screen.getByText("对话内容")).toBeVisible();
 });

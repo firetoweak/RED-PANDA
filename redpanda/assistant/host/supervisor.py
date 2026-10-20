@@ -513,8 +513,11 @@ class HostSupervisor:
     def list_routines(self, session_id: str):
         return self.routines.store.list(session_id)
 
+    def routine_fires(self, session_id: str, routine_id: str):
+        return self.routines.store.fires(session_id, routine_id)
+
     async def set_routine_state_by_user(self, session_id: str, routine_id: str, state: str):
-        """The app's pause, resume and cancel buttons; an Agent cannot undo a person's pause."""
+        """The app's pause, resume and delete buttons; an Agent cannot undo a person's pause."""
         routine = next((item for item in self.routines.store.list(session_id) if item.routine_id == routine_id), None)
         if routine is None:
             raise RoutineNotFound(routine_id)

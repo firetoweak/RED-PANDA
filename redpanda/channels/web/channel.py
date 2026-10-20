@@ -12,6 +12,7 @@ from redpanda.assistant.attachments import (
     is_valid_attachment_id,
 )
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
+from redpanda.automation.once import SOURCE as AUTOMATION_SOURCE
 from redpanda.channels.web.directory_picker import select_file
 
 
@@ -102,6 +103,20 @@ class WebChannel:
             "next_run": None if routine.next_due is None else routine.next_due.isoformat(),
             "last_run": None if routine.last_fired_at is None else routine.last_fired_at.isoformat(),
         } for routine in self._sessions.list_routines(session_id)]
+
+    async def routine_fires(self, session_id: str, routine_id: str):
+        fires = self._sessions.routine_fires(session_id, routine_id)
+        delivered = tuple(fire.fire_id for fire in fires if fire.delivered_at is not None)
+        anchors = {} if not delivered else await self._queries.delivery_output_ids(
+            session_id, AUTOMATION_SOURCE, delivered,
+        )
+        return [{
+            "fire_id": fire.fire_id,
+            "planned_at": fire.planned_at.isoformat(),
+            "fired_at": fire.fired_at.isoformat(),
+            "delivered_at": None if fire.delivered_at is None else fire.delivered_at.isoformat(),
+            "output_id": anchors.get(fire.fire_id),
+        } for fire in fires]
 
     async def commands(self, session_id: str):
         return await self._sessions.list_commands(session_id)

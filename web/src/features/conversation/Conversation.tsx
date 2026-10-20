@@ -56,7 +56,6 @@ import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
 import { BackgroundCommands } from "./BackgroundCommands";
-import { RoutineList } from "./RoutineList";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
@@ -69,11 +68,16 @@ import {
   type TimelineTurn,
 } from "./timelineTurns";
 import { ConversationTimeline } from "./ConversationTimeline";
+import { registerTimelineFocus } from "./timelineFocus";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
 
 type OpenPage = { kind: "changes" } | { kind: "subagent"; commandId: string }
   | { kind: "error"; title: string; message: string };
+
+function turnHasOutput(turn: TimelineTurn, outputId: string): boolean {
+  return [turn.active, turn.final, ...turn.process].some((step) => step?.outputId === outputId);
+}
 
 export function Conversation({ agentName }: { agentName?: string }) {
   const dispatch = useAppDispatch();
@@ -89,7 +93,9 @@ export function Conversation({ agentName }: { agentName?: string }) {
   });
   const timelineRef = useRef<VirtuosoHandle>(null);
   const wheelAreaRef = useRef<HTMLDivElement>(null);
+  const focusRef = useRef<(outputId: string) => void>(() => {});
   const [following, setFollowing] = useState(true);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [selectSession] = useSelectSessionMutation();
   const [sendInput, sending] = useSendInputMutation();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
@@ -104,6 +110,14 @@ export function Conversation({ agentName }: { agentName?: string }) {
       dispatch(viewing(null));
     };
   }, [dispatch, sessionId]);
+
+  useEffect(() => registerTimelineFocus((outputId) => focusRef.current(outputId)), []);
+
+  useEffect(() => {
+    if (highlightedKey === null) return;
+    const timer = window.setTimeout(() => setHighlightedKey(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [highlightedKey]);
 
   useEffect(() => {
     if (connectionId === null || routeSessionId === undefined) {
@@ -154,6 +168,13 @@ export function Conversation({ agentName }: { agentName?: string }) {
     runtime?.activity ?? null,
   );
   const turns = timelineTurns(items);
+  focusRef.current = (outputId: string) => {
+    const index = turns.findIndex((turn) => turnHasOutput(turn, outputId));
+    if (index < 0) return;
+    setFollowing(false);
+    setHighlightedKey(turns[index].key);
+    timelineRef.current?.scrollToIndex({ index, align: "center" });
+  };
   const running = runtime?.activity === "running";
   const lastError = running ? null : runtime?.lastError ?? conversation.session.last_error;
   const compactPhase =
@@ -299,7 +320,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
                 </>
               );
               return (
-              <Stack className="conversation-turn" gap={8} key={turn.key}>
+              <Stack className={turn.key === highlightedKey ? "conversation-turn is-focused" : "conversation-turn"} gap={8} key={turn.key}>
                 {turn.user === null ? null : (
                   <Box component="article" className="message message-user">
                     <UserMessage
@@ -380,7 +401,6 @@ export function Conversation({ agentName }: { agentName?: string }) {
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
         <BackgroundCommands sessionId={sessionId} connectionId={connectionId} />
-        <RoutineList sessionId={sessionId} connectionId={connectionId} />
         {compactPhase !== "failed" ? null : (
           <Alert
             className="composer-error"
