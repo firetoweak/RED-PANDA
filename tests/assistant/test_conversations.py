@@ -473,7 +473,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                     AGENT_CREATED,
                     {
                         "name": "安静熊猫",
-                        "directory": str(Path(directory)),
+                        "directory": str(Path(directory).resolve()),
                     },
                     requests_decision=True,
                 ),
@@ -488,7 +488,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                     AGENT_CREATED,
                     {
                         "name": "验证熊猫",
-                        "directory": str(Path(directory)),
+                        "directory": str(Path(directory).resolve()),
                     },
                     requests_decision=True,
                 ),
@@ -555,7 +555,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                 await SqliteJournal(store.require(session_id)).accept_delivery(EventDraft(
                     event_id=f"created-{session_id}", session_id=session_id,
                     payload=DomainFactCommitted(
-                        AGENT_CREATED, {"name": name, "directory": str(Path(directory))},
+                        AGENT_CREATED, {"name": name, "directory": str(Path(directory).resolve())},
                         requests_decision=True),
                     occurred_at=datetime(2026, 10, 19, tzinfo=timezone.utc),
                     delivery=DeliveryIdentity("coding_bot", f"created-{session_id}"),
