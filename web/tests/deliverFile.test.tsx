@@ -40,7 +40,6 @@ it("带附件的消息单独成气泡，执行过程里展开后也能下载", a
     <MantineProvider>
       <ExecutionProcess
         authorizationDisabled={false}
-        complete={false}
         onAuthorize={() => {}}
         sessionId="ada"
         steps={[step("file", "证据在这", [file])]}

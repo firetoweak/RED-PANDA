@@ -1,5 +1,5 @@
-import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
-import { IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
+import { Group, Text, UnstyledButton } from "@mantine/core";
+import { IconFolder, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
@@ -12,7 +12,7 @@ export function SessionConversation() {
   const { data: agents = [] } = useGetAgentsQuery();
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const { data: groups = [] } = useGetGroupsQuery();
-  const [detailsOpened, setDetailsOpened] = useState(true);
+  const [detailsOpened, setDetailsOpened] = useState(false);
   const agent = agents.find((item) => item.session_id === sessionId);
   const workspace = workspaces.find((item) => item.workspace_id === agent?.workspace_id);
   const agentGroups = groups.filter((group) => group.workspace_id === agent?.workspace_id && group.members.includes(agent?.name ?? ""));
@@ -20,7 +20,9 @@ export function SessionConversation() {
     <div className="session-page">
       <div className="session-main">
       <header className="page-header session-header">
-        <Group gap={10} wrap="nowrap" className="session-header-identity">
+        <Group component={UnstyledButton} gap={10} wrap="nowrap" className="session-header-identity"
+          aria-label={agent?.name ?? "Agent"} aria-expanded={detailsOpened}
+          onClick={() => setDetailsOpened((opened) => !opened)}>
           <span className="agent-avatar agent-avatar-small">{agent?.name.slice(0, 1) ?? "A"}</span>
           <div className="session-header-name"><Text fw={600} size="sm" truncate>{agent?.name ?? "Agent"}</Text>
             <Text c="dimmed" fz={11} truncate>{agent?.direction ?? "一起理解、修改和验证代码"}</Text></div>
@@ -28,12 +30,6 @@ export function SessionConversation() {
         </Group>
         {workspace === undefined ? null : <Link className="session-project-link" to={`/workspaces/${encodeURIComponent(workspace.workspace_id)}`}>
           <IconFolder size={15} /><span>{workspace.name}</span></Link>}
-        <Tooltip label={detailsOpened ? "收起 Agent 资料" : "显示 Agent 资料"}>
-          <ActionIcon className="agent-details-toggle" aria-label={detailsOpened ? "收起 Agent 资料" : "显示 Agent 资料"}
-            aria-expanded={detailsOpened} onClick={() => setDetailsOpened((opened) => !opened)} variant="subtle" color="gray">
-            {detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}
-          </ActionIcon>
-        </Tooltip>
       </header>
       <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} /></div>
       </div>
