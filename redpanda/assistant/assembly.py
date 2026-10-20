@@ -22,7 +22,7 @@ from redpanda.assistant.delivery import (
     PreviewEmitter,
     deliver_binding,
 )
-from redpanda.assistant.context.prompt import BOT_PROMPT, CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
+from redpanda.assistant.context.prompt import BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from redpanda.assistant.host.command_port import WorkerCommandPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
@@ -198,7 +198,7 @@ async def build_assistant_assembly(
         settings,
     )
     skill_tools = SkillToolAdapter(skills, gateway, settings,
-                                  project_root=workspace.task_root if agent is None or agent.project is not None else None)
+                                  project_root=workspace.task_root)
     cli_tools = CliToolAdapter(cli, gateway, settings)
     subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch)
     if task is not None:
@@ -298,13 +298,12 @@ async def build_assistant_assembly(
         journal,
         config.llm,
         config.model_name,
-        system_prompt=CODING_BOT_PROMPT if agent_branch else BOT_PROMPT if agent is not None else DEFAULT_ASSISTANT_PROMPT,
+        system_prompt=BOT_PROMPT if agent is not None else DEFAULT_ASSISTANT_PROMPT,
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
             own_copy=agent_branch, delegated=task is not None,
             personal_directory=None if agent is None else agent.directory,
         ),
-        project_root=workspace.task_root if agent is None or agent.project is not None else None,
         surface=surface,
         skill_tools=skill_tools,
         cli_tools=cli_tools,

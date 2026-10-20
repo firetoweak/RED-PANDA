@@ -63,3 +63,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：从项目菜单建群，Ada 与 Lin 通过 send_group_message 真实回复 GROUP_OK，群页实时更新；点名、暂停跳过与调度替换沿用历史证据。
 
 2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。
+
+- 2026-10-20 编码 Skill 增量：两位 Bot 在群中按本次任务完成文件路径交接与同事目录只读核对，未执行 Git；其中一位此前已经加载 Git Skill，仍遵循这次文件流程。出现多余的确认回复，未调整群调度。证据 `.tools/verify-coding-skill/evidence/group-file-handoff/`；未重验所有点名与调度边界。

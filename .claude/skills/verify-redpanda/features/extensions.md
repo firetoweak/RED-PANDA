@@ -4,6 +4,8 @@
 
 ## Sub-features
 
+- `bundled-skills`：空数据根无需安装即可在能力目录发现 `builtin:coding` 与 `builtin:git-collaboration`，正文经 `load_skill` 读取，不注入系统提示，也不作为用户安装记录。工作目录的 `.claude/skills/` 在无 Git、无登记项目的 Bot 中同样可发现为 `project:` Skill。验证时让普通 Bot 按目录自定义 Skill 交付文件，并核对调用与真实文件。
+
 - `load`：`load_management_tools`、`load_toolset`、`load_skill`、`read_skill_resource`、`load_cli`。
 - `inspect`：`list_mcp_servers`、`test_mcp_server`、`list_installed_skills`、`test_installed_skill`、`list_installed_clis`、`inspect_cli`、`test_cli`。
 - `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 在输入框上方的待处理条（区域 `待处理`）列出该请求，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
@@ -53,3 +55,5 @@
 - 历史验证：2026-10-12（main@1a4790a）未跑。2026-10-18 按源码改写，未 live 复跑。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实加载 MCP/Skill/CLI 管理工具并列空目录；propose_cli_install 登记本机 git 的控制提案和页面确认通过。Skill/MCP 安装与取消路径未覆盖。
+
+- 2026-10-20 编码 Skill 增量：隔离空安装登记可发现内置编码与 Git Skill；真实无 Git Bot 从个人目录发现 project:file-handoff，并与 builtin:coding 分别加载后交付文件。普通讨论未加载编码 Skill。证据 `.tools/verify-coding-skill/evidence/no-git-coding/`；未重验外部包安装、更新与取消。
