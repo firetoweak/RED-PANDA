@@ -50,6 +50,7 @@ import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatMessageTime } from "./messageTime";
 import { PendingActions } from "./PendingActions";
+import { SessionAttention } from "./SessionAttention";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
@@ -357,6 +358,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
         )}
         <Box>
           <Box className="composer-column">
+            {agentName === undefined ? null : <SessionAttention key={sessionId} sessionId={sessionId} connectionId={connectionId} />}
             <PendingActions
               authorizations={conversation.session.pending_authorization_commands}
               control={conversation.session.control_approval}

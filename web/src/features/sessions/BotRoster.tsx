@@ -28,9 +28,10 @@ function deserializeOrganization(value: string | undefined): Organization {
 }
 
 /** 分组只整理当前浏览器的名册，不改变身份或群成员。 */
-export function BotRoster({ agents, chats, sessionId, groupId, searching, onOpen }: {
+export function BotRoster({ agents, chats, attentionSessionIds, sessionId, groupId, searching, onOpen }: {
   agents: AgentRosterEntry[];
   chats: GroupSummary[];
+  attentionSessionIds: ReadonlySet<string>;
   sessionId?: string;
   groupId?: string;
   searching: boolean;
@@ -111,7 +112,7 @@ export function BotRoster({ agents, chats, sessionId, groupId, searching, onOpen
         {sectionAgents.map((agent) => renderRow(`agent:${agent.session_id}`, agent.name, agent.session_id === sessionId,
           `/sessions/${encodeURIComponent(agent.session_id)}`, <Tooltip label={agent.direction ?? agent.name} openDelay={700} position="right">
             <Group gap={10} wrap="nowrap">
-              <span className="sidebar-agent-avatar"><span className="agent-avatar agent-avatar-small" aria-hidden="true">{agent.name.slice(0, 1)}</span><AgentStatus agent={agent} compact /></span>
+              <span className="sidebar-agent-avatar"><span className="agent-avatar agent-avatar-small" aria-hidden="true">{agent.name.slice(0, 1)}</span><AgentStatus agent={agent} compact attention={attentionSessionIds.has(agent.session_id)} /></span>
               <Stack className="sidebar-agent-identity" gap={2}>
                 <Text className="session-title" fz={13} truncate>{agent.name}</Text>
                 <Text c="dimmed" fz={11} truncate>{agent.direction ?? "打开对话，开始协作"}</Text>

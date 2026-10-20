@@ -90,7 +90,7 @@ body {
 
 .app-navbar { background: var(--rp-sidebar); }
 
-.sidebar-brand { padding-bottom: 12px; }
+.sidebar-brand { display: block; width: 100%; padding-bottom: 12px; border-radius: 8px; }
 .brand-mark, .assistant-mark { display: block; object-fit: contain; flex-shrink: 0; image-rendering: pixelated; }
 .brand-name { letter-spacing: 0.04em; white-space: nowrap; }
 .sidebar-footer { padding-top: 12px; border-top: 1px solid var(--rp-border); }
@@ -162,9 +162,6 @@ body {
 .agent-card-add { align-items: center; justify-content: center; gap: 12px; border-style: dashed; background: transparent; color: var(--mantine-color-dimmed); font-family: inherit; font-size: 13px; cursor: pointer; }
 .agent-card-add-hint { font-size: 11px; opacity: 0.75; }
 .agent-card-add:disabled { opacity: 0.45; cursor: default; }
-.home-inbox { display: flex; align-items: center; gap: 14px; margin-bottom: 30px; padding: 16px 20px; border: 1px solid var(--rp-border-strong); border-radius: 12px; color: var(--mantine-color-text); text-decoration: none; font-size: 13px; background: var(--rp-accent-fill); }
-.home-inbox > span { flex: 1; }
-.home-inbox > span > span { display: block; margin-top: 4px; }
 .home-groups { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .home-groups a { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--rp-border); border-radius: 8px; color: inherit; text-decoration: none; font-size: 12px; }
 .home-groups a:hover { background: var(--rp-hover); }
@@ -179,7 +176,7 @@ body {
 .session-page-body { flex: 1; min-height: 0; }
 .composer-help { width: min(var(--rp-conversation-width), 100%); margin: 8px auto 0; text-align: center; font-size: 10px; color: var(--mantine-color-dimmed); }
 .composer button[type="submit"]:not(:disabled) { background: var(--mantine-color-text); color: var(--rp-canvas); }
-.agent-card:focus-visible, .home-groups a:focus-visible, .home-inbox:focus-visible, .session-project-link:focus-visible { outline: 2px solid var(--rp-accent-ring); outline-offset: 3px; }
+.agent-card:focus-visible, .home-groups a:focus-visible, .session-project-link:focus-visible { outline: 2px solid var(--rp-accent-ring); outline-offset: 3px; }
 
 @media (max-width: 48em) {
   .page-header { min-height: 64px; padding: 12px 16px 12px 60px; gap: 8px; }
@@ -668,10 +665,6 @@ a.group-member:hover { background: var(--rp-hover); }
 a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
 .group-member-identity { flex: 1; min-width: 0; }
 .group-member-identity > p + p { margin-top: 3px; }
-.inbox-page { height: 100%; overflow-y: auto; }
-.inbox-heading { min-height: 44px; border-bottom: 1px solid var(--rp-border); padding-bottom: 16px; }
-.inbox-empty { display: grid; justify-items: center; gap: 14px; padding: 100px 16px; text-align: center; }
-.inbox-empty > svg { color: #72aa89; }
 
 @media (prefers-reduced-motion: reduce) {
   .activity-dot-running::before { animation: none; }
@@ -679,7 +672,6 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
 }
 
 @media (max-width: 48em) {
-  .inbox-page { padding-top: 70px; }
   .assistant-reply { padding: 10px 12px; }
   .message-assistant > .mantine-Group-root { gap: 7px; }
   .message-assistant .agent-avatar-small { width: 24px; height: 24px; font-size: 11px; }

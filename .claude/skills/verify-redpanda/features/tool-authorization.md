@@ -1,6 +1,6 @@
 # 工具授权
 
-同一批待授权调用和控制请求也汇总在侧栏 `待处理` 打开的 `/inbox`（见 [inbox.md](./inbox.md)）；会话内的待处理条仍然保留。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
+待授权调用和控制请求在所属 Bot 头像旁提示，进入它的对话后在待处理条操作（见 [inbox.md](./inbox.md)）；没有独立的待处理汇总页。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
 
 ## Sub-features
 

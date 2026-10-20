@@ -31,7 +31,7 @@ function agent(partial: Partial<AgentRosterEntry> & Pick<AgentRosterEntry, "sess
 
 const queries = vi.hoisted(() => ({
   agents: [] as AgentRosterEntry[],
-  inbox: [] as { kind: "authorization"; label: string }[],
+  inbox: [] as { kind: "authorization"; label: string; session_id: string }[],
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
@@ -196,14 +196,19 @@ it("点 Agent 打开它的会话", () => {
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
 });
 
-it("待处理按钮显示收件箱条数并进入收件箱", () => {
-  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
-  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
-  queries.inbox = [{ kind: "authorization", label: "验证熊猫" }, { kind: "authorization", label: "验证熊猫" }];
-  renderSidebar("/");
+it("品牌返回首页，待处理只提示所属 Bot，不占独立导航", () => {
+  browserStubs();
+  queries.agents = [agent({ session_id: "ada", name: "Ada" }), agent({ session_id: "lin", name: "Lin" })];
+  queries.groups = [];
+  queries.inbox = [{ kind: "authorization", label: "Ada", session_id: "ada" }];
+  renderSidebar("/sessions/ada");
 
-  fireEvent.click(screen.getByRole("button", { name: "待处理 · 2" }));
-  expect(screen.getByTestId("current-path")).toHaveTextContent("/inbox");
+  expect(screen.queryByRole("button", { name: "工作台" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^待处理/ })).not.toBeInTheDocument();
+  expect(within(screen.getByRole("button", { name: "Ada", exact: true })).getByLabelText("空闲 · 需要你处理")).toHaveClass("activity-dot-attention");
+  expect(within(screen.getByRole("button", { name: "Lin", exact: true })).getByLabelText("空闲")).toHaveClass("activity-dot-idle");
+  fireEvent.click(screen.getByRole("button", { name: "RED PANDA 首页" }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent(/^\/$/);
 });
 
 it("群聊直接列在名册中，成员可选任意 Bot", async () => {

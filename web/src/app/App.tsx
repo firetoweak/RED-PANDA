@@ -14,7 +14,6 @@ import {
 } from "./sidebarWidth";
 import { SessionConversation } from "../features/conversation/SessionConversation";
 import { GroupChatPage } from "../features/groups/GroupChatPage";
-import { InboxPage } from "../features/inbox/InboxPage";
 import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
 import { AgentHome } from "../features/sessions/AgentHome";
 import { AgentSidebar } from "../features/sessions/AgentSidebar";
@@ -109,7 +108,6 @@ export function App() {
         <Routes>
           <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<AgentHome />} />
-          <Route path="/inbox" element={<InboxPage />} />
           <Route path="/groups/:groupId" element={<GroupChatPage />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />
         </Routes>

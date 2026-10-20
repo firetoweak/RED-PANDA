@@ -68,7 +68,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；其余见条目 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 红色 PNG 经真实粘贴、发送、预览和 GET 下载通过，下载与原件逐字节相同；其余见条目 |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 新 Agent 默认自动放行；其余见条目 |
-| inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总授权、控制、交流超限、暂停消息与无人查看询问 | 真实 write_file 授权项、独立数字徽标、完整参数展开、允许后空收件箱通过；其余见条目 |
+| inbox | [inbox.md](./inbox.md) | Bot 旁提示 → 对应对话处理授权、控制、交流超限、暂停消息与无人查看询问 | 入口精简增量：真实 write_file、Bot 提醒、会话参数展开与批准后清除通过；其余与旧版历史见条目 |
 | group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 无项目建群，Ada 与 Lin 通过 send_group_message 真实发言，群页实时更新；其余见条目 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；其余见条目 |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 从摘要打开文件改动，note.txt 的 verify→edited、行号和禁用分页与 GET 一致；其余见条目 |
@@ -96,8 +96,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 |---|---|
 | `/` → `AgentHome` | session-sidebar、web-session-chat |
 | `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
-| `/sessions/:sessionId` → `SessionConversation` | web-session-chat 及所有会话类条目 |
-| `/inbox` → `InboxPage` | inbox |
+| `/sessions/:sessionId` → `SessionConversation` | web-session-chat、inbox 及所有会话类条目 |
 | `/groups/:groupId` → `GroupChatPage` | group-chat |
 | `/settings/models` → `ModelSettingsPage` | model-settings |
 | 未知前端路径回落 `index.html`（`app.py` 的 `_FrontendFiles`）；未知 API 保持 404 | web-session-chat |
