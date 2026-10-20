@@ -51,3 +51,5 @@
 - 已知产品缺口（2026-10-18 源码核对）：`/mcp help` 列出 `/mcp reload`，但分发里没有 `reload` 分支，输入后得到 `未知 /mcp 子命令: reload`。正确预期是帮助里列出的子命令都能执行；验证时记为失败而不是跳过。
 - github/url 来源需要网络，离线时只验 local。
 - 历史验证：2026-10-12（main@1a4790a）未跑。2026-10-18 按源码改写，未 live 复跑。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实加载 MCP/Skill/CLI 管理工具并列空目录；propose_cli_install 登记本机 git 的控制提案和页面确认通过。Skill/MCP 安装与取消路径未覆盖。

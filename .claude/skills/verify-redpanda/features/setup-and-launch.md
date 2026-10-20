@@ -7,7 +7,7 @@
 - `setup`：`sh scripts/setup.sh`（Windows 为 `scripts/setup.ps1`）先装固定版本 uv、下载 `.python-version` 指定的 Python、建 `redpanda-env`，再跑 `python -m scripts.setup` 四步：
   - `[1/4] 准备应用命令行工具`：PATH 上缺失的工具（Node 还要求版本受支持且有 npm）装进 `.tools/runtime/`：Node `24.22.0`、rg `14.1.1`、fd `10.2.0`，Windows 另有 MinGit；Linux 缺 `git` 时经系统包管理器安装。不安装驱动或其他系统组件。
   - `[2/4] 安装 Python 依赖`、`[3/4] 安装前端依赖并构建网页`（`npm ci` + build）、`[4/4] 初始化配置`（`python -m redpanda.initialize`，带 `--configure` 时进向导）。
-  - 成功末行 `运行环境准备完成。使用 scripts/start.ps1 或 scripts/start.sh 启动，在网页侧栏配置模型。`；任一子命令失败打印 `准备未完成（命令退出码 N）。请处理上方错误后重新执行。`。非 Linux 跑 `setup.sh` 打印 `RED PANDA supports Windows x64 and Linux x64. Use setup.ps1 on Windows.` 退出 1。
+  - 成功末行 `运行环境准备完成。使用 scripts/start.ps1 或 scripts/start.sh 启动，在网页侧栏配置模型。`；子命令失败打印 `准备未完成（命令退出码 N）。请处理上方错误后重新执行。`；下载、校验或文件操作错误打印 `准备未完成：<具体原因>` 并退出 1。非 Linux 跑 `setup.sh` 打印 `RED PANDA supports Windows x64 and Linux x64. Use setup.ps1 on Windows.` 退出 1。
 - `setup-flags`：`setup.py` 只有 `--configure`（安装后在终端配模型；默认在网页配）与 `--check`。`--check` 先把 `.tools/runtime/` 下已有工具加到本进程 PATH 前面，再查 Git/rg/fd/Node/npm，Node 须 22.x（≥22.13）或 24.x；不通过时打印 `系统依赖未就绪：` 加各项（如 `Node.js 版本不支持；请使用 22.x（至少 22.13）或 24.x，或重新运行准备命令自动安装。`）退出 1，通过时打印 `系统依赖检查通过。`。
 - `start`：`sh scripts/start.sh` → `scripts.launch` → `web_chat.py`。
 - `initialize`：`python -m redpanda.initialize --configure`（交互添加/修改默认模型）、`--if-needed`（缺默认模型或连接时进入向导）；两者互斥。
@@ -22,7 +22,7 @@
 在一次性目录（新 clone + 临时 `REDPANDA_HOME`）里做，避免破坏现有环境。
 
 - **setup**：
-  - (a) `redpanda-env/bin/python --version`（Windows `redpanda-env\Scripts\python.exe`）与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`、`workspaces.json`；PATH 缺工具时 `.tools/runtime/` 下出现对应版本。
+  - (a) `redpanda-env/bin/python --version`（Windows `redpanda-env\Scripts\python.exe`）与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`；空 home 初始化后没有 `workspaces.json`，首次登记工作区后才产生；PATH 缺工具时 `.tools/runtime/` 下出现对应版本。
   - (b) 依次打印 `[1/4]`…`[4/4]` 与成功末行，退出码 0。
   - (c) 已有的 `config.json`、`connections.json` 不被覆盖（先写入标记内容再跑一次，逐字节比较）。
   - (d) 从 PATH 去掉 `rg` 再跑 **不会**报错：`[1/4]` 把 rg `14.1.1` 装进 `.tools/runtime/` 后继续。要看到失败路径，用下载失败（断网且 `.tools/runtime/` 缺工具）→ `[1/4]` 失败并以 `准备未完成…` 结束，不进入 `[2/4]`。
@@ -44,4 +44,7 @@
 - `setup.ps1` 需 Windows 机器。
 - Linux 自动安装 `git` 会调用 `apt-get`/`dnf`，可能要 sudo 密码；无人值守环境提前装好。
 - 2026-10-18 改写：准备流程从五步改为四步，不再下载原生运行包、不装驱动；旧的构建与运行包条目已删除。未 live 复跑。
+- 2026-10-20 Windows 隔离 worktree：`setup.ps1` 四步完成，项目 Python 3.13.15、前端构建及 `python -m scripts.setup --check` 退出 0；空 home 仅有配置与数据目录，未登记前没有 `workspaces.json`。Web 启动结果见下方维护实测；交互向导与 Linux 分支未覆盖。
 - 历史验证：2026-10-12（main@1a4790a）与 2026-10-16（main@e191eab）验证了当时的五步准备流程；`setup.py --check` 在 Node 20.19 上按预期报版本不支持。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Windows setup 四步、setup --check、隔离 Web 启动与 Doctor 全部通过，浏览器首页可用；启动与 Doctor 分开执行成功。Linux、交互模型向导及 start/dev 包装入口未覆盖。

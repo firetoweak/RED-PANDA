@@ -11,7 +11,7 @@
 - `isolation`：子 Agent 从 Agent 分支上已提交的工作切出自己的分支，改动写在 `$REDPANDA_HOME/state/coding_bot/<项目>/children/<子>`，看不到 Agent 未提交的修改，也不动 Agent 工作树。
 - `compare-merge`：`compare_subagent` 先列文件再给 diff；`merge_subagent` 不需要授权、必须单独调用，把子分支合进 Agent 自己的分支；冲突返回 `MERGE_CONFLICT`，Agent 分支不变。
 - `reclaim`：`reclaim` 结果码 `RECLAIMED`/`ALREADY_RECLAIMED`/`UNKNOWN_CHILD`/`RECLAIM_NOT_ALLOWED`。
-- `sidebar-wait`：主会话侧栏显示 `等待子 Agent`。
+- `sidebar-wait`：有活跃子任务时，主会话侧栏状态圆点为 `干活`；等待提示 `子 Agent 执行中` 显示在主会话正文中。
 
 ## How to get to it (user POV)
 
@@ -45,3 +45,5 @@
 - `已派出` 只表示 `delegate` 调用本身成功（子已开工），不表示子任务完成；完成看内容页状态和 `交回结论`。
 - 内容页与 `文件改动`、错误详情共用同一个右侧页面，一次只开一个。
 - 历史 live 状态：通过（2026-10-12，main@1a4790a，当时界面为独立的「子 Agent 观察面板」）。2026-10-18 按源码改写为 `子 Agent` 内容页与新状态/结果码，未重新 live 验证。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；收回、冲突、子失败未重验。
