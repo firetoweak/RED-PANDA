@@ -1,6 +1,6 @@
 # 普通回复与文件交付
 
-长期 Agent 的普通回复直接给人看，无论由人、同事、群消息还是例行任务开始。实时与历史都使用普通回复，不折叠成工作记录。对同事和群发言仍需显式工具，普通结尾不自动回复唤醒者。来源：`assistant/conversations.py`、`assistant/host/supervisor.py`、`channels/web/hub.py`、`web/src/features/conversation/`。
+长期 Agent 的普通回复直接给人看，无论由人、同事、群消息还是例行任务开始。实时与历史都使用普通回复，不折叠成工作记录。对同事和群发言仍需显式工具，普通结尾不自动回复唤醒者。来源：`redpanda/assistant/conversations.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/channels/web/hub.py`、`web/src/features/conversation/`。
 
 ## Sub-features
 
@@ -29,3 +29,5 @@
 - 原工作记录折叠的旧验证记录不代表当前规则通过；本轮证据另存本地验证目录。
 
 2026-10-20 Windows 隔离实例 + deepseek-flash：PING 开场、后续普通问答、send_file 附件及刷新后保留、Lin 私信触发 Ada 的 PEER_OK 均通过；Journal 核对只有 Lin → Ada 一条私信，无自动回发。附件接口下载内容与工作区文件一致；浏览器下载事件捕获超时，未用该事件确认本机下载。流式与未读由前端回归验证，群与例行任务触发由进程测试验证，未等待真实定时触发。证据留在本地 .tools/verification/reply-delivery-20261020。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：普通结束正文、私信触发 PRIVATE_RECEIVED、定时触发 WOKE_UP 实时与刷新历史一致；后台启动也直接普通回复。send_file 和正常例行触发未重验。

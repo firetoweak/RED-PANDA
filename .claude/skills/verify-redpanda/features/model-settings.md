@@ -1,6 +1,6 @@
 # 模型配置
 
-`/settings/models` 页面管理候选模型、默认模型、推理程度与 compact 阈值，可测试连接；会话内可切换模型。来源：`web/src/features/models/ModelSettingsPage.tsx`、`ModelTestButton.tsx`、`web/src/features/conversation/ModelSelector.tsx`、`redpanda/model_settings.py`、`redpanda/config.py`（候选与默认的形状校验）、`redpanda/llm/config.py`（`ModelConfig`、初始 `connections.json`）、`thinllm/providers.py`（`PROVIDERS`）、`redpanda/assistant/model_connection.py`、`app.py` 的 `/api/model-settings*` 与 `/api/sessions/{id}/model`，说明文档 `docs/模型配置.md`。
+`/settings/models` 页面管理候选模型、默认模型、推理程度与 compact 阈值，可测试连接；会话内可切换模型。来源：`web/src/features/models/ModelSettingsPage.tsx`、`ModelTestButton.tsx`、`web/src/features/models/ModelSelector.tsx`、`redpanda/model_settings.py`、`redpanda/config.py`（候选与默认的形状校验）、`redpanda/llm/config.py`（`ModelConfig`、初始 `connections.json`）、`thinllm/providers.py`（`PROVIDERS`）、`redpanda/assistant/model_connection.py`、`redpanda/channels/web/app.py` 的 `/api/model-settings*` 与 `/api/sessions/{id}/model`，说明文档 `docs/模型配置.md`。
 
 ## Sub-features
 
@@ -36,7 +36,7 @@
   - (c) 未保存的新模型或供应商未配置时按钮禁用，`请先保存模型` / `请先填写供应商连接配置` 只是悬停 `title`，不会显示为结果。
   - (d) 直接 POST 一个不在候选里的模型 → 400 `模型不在候选列表中：<model>`；请求本身失败时按钮下显示 `测试请求失败：…`。
 - **会话切换模型**：在会话里点 `切换会话模型：…` 换成另一候选。
-  - (a) `runtime_sessions/models.json` 中该会话记录为新模型；`GET /api/sessions/<id>/model` 的 `selected` 为新模型，`pending` 为 true，下一次决策后 `effective` 等于 `selected`、`pending` 变 false。
+  - (a) `runtime_sessions/models.json` 中该会话记录为新模型；`GET /api/sessions/<id>/model` 的 `selected.model` 为新模型名，`selected` / `effective` 是完整模型配置对象而非字符串。参数尚未应用时 `pending` 为 true，下一次决策后 `effective` 等于 `selected`、`pending` 变 false。
   - (b) 按钮文字变为新模型名（不带 provider）。
   - (c) 其他会话与默认模型不变。
   - (d) 供应商未配置的候选在菜单里禁用；直接 PUT 它 → 400 `<provider> 尚未配置 <field>`；PUT 不在候选里的模型 → 400 `模型不在候选列表中：<model>`。
@@ -44,7 +44,9 @@
 ## Gotchas
 
 - 设置 `REDPANDA_CONFIG` 环境变量会让 `config.json` 指向别处（`redpanda/config.py`），验证时确认未设置。
-- `测试` 需要网络与真实 key，`live_model_ready` 为 false 时只验错误路径。
+- `测试` 需要可用连接，`live_model_ready` 为 false 时跳过 `测试` 与发送，只验证配置编辑和禁用状态。
 - `推理程度` 只对 `stepfun/step-5-preview` 开放；其他模型该列显示 `—`，服务端对其他模型传 `reasoning_effort` 直接拒绝。
 - 页面每 5 秒轮询 `GET /api/model-settings`；草稿与旧的已保存配置一致时会被新数据覆盖，有未保存修改时保留草稿。
 - 历史验证：2026-10-12（main@1a4790a）通过。2026-10-18 按源码改写按钮文案、徽标与错误路径，未 live 复跑。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；删除默认与会话换模型未重验。

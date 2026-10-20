@@ -4,10 +4,10 @@
 
 源码事实（判据以此为准，2026-10-18 核对）：
 - **进程结构**：Web 进程内的 `HostSupervisor`（`redpanda/assistant/host/supervisor.py`）为每个会话用 `multiprocessing` spawn 起 Worker 子进程（命令行含 `spawn_main`）；Worker 在父进程退出后自行退出（`worker.py` 的 `parent_process().join()`）。Worker 失败经 `report_worker_failures`（`redpanda/channels/web/app.py`）发 SSE `session_failed`，文案 `Session 进程失败：...`，同一文案也记为该会话的 `last_error`。
-- **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；人停止过的保持 paused。前台命令或持续进程启动已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起。
+- **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；人停止过的保持 paused。`execute_command` 已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起。
 - **执行一半的工具**：journal 已记 attempt 但无结果的命令处于 `CommandPhase.UNKNOWN`（`redpanda/runtime/state.py`）。新 Worker 接管或 Web 启动时，`SqliteJournal.prepare_recovery` 为每个未完成 attempt 追加 `command.attempt.orphaned`（不是 Outcome，状态仍 unknown）；之后新消息不再被它挡住，`再试`/`继续` 会让模型看到 `NO_RESULT_YET` 并续步。给模型的投影 `NO_RESULT_YET`（`redpanda/assistant/context/projection.py`）：error「该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具=<name>）。」，hint「先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。」。Web 中该调用状态 `unknown`、徽标 `中断`，错误文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`（`redpanda/assistant/conversations.py` 的 `UNKNOWN_TOOL_ERROR`）。**不会自动重试**。子 Agent 同理（`record_interrupted_return`）。
 - **待授权**：未授权的命令投影为 `AWAITING_AUTHORIZATION`，「尚未执行」。对已处理的命令再授权/拒绝 → `AuthorizationConflict`「该操作已处理或当前不可授权：<command_id>」→ HTTP 409。
-- **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`。
+- **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`redpanda/runtime/journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件，不同内容抛 `DeliveryConflictError`。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：超时为 `connect=10, read=60, write=30, pool=10` 秒。408/425/429/500/502/503/504 与 `httpx.TransportError`（含 `ReadTimeout`、`ConnectTimeout`、连接被拒）→ `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次（共 4 次尝试）；收到任何一行后就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `模型响应不符合约定`；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。
 - **失败可见与再试**：已识别的模型失败只停该会话，SSE `session_failed` 与 `last_error` 文案均为 `运行失败：<原因>`（`redpanda/assistant/runner.py`）；界面横幅 `执行已停止。运行失败：…`，按钮 `查看详情`、`再试`。`last_error` 只在 Web 进程内存里，刷新页面仍在，重启 Web 后消失。`再试` 沿用原待处理输入，不新增用户消息、不重复已完成工具。
 - **定时任务**：`redpanda/automation/recovery.py` 只补全重启前处于 UNKNOWN 的 `schedule_once`/`cancel_schedule` 调用；定时本身的持久与触发见 scheduling。
@@ -50,7 +50,7 @@
 - **断网**：
   - 连接被拒（base URL 指向不监听的端口）：(b) 约 3.5 秒（0.5+1+2 秒重试等待）后横幅 `执行已停止。运行失败：模型服务暂时不可用：... transport failed`。
   - 丢包（`iptables -j DROP` 等，连接不上也不回绝）：(b) 约 4×10 + 3.5 ≈ 43.5 秒后出现同类失败。
-  - (a) journal 有失败事实，没有半条助手消息。(c) 用户消息只有一条。(d) 恢复网络后点 `再试` → 同一触发重跑，`GET` 里该用户消息仍只有一条。
+  - (a) SSE 与会话 `last_error` 报告失败，journal 保留原用户输入且没有最终助手消息；模型失败状态本身不写入 journal。(c) 用户消息只有一条。(d) 恢复网络后点 `再试` → 同一触发重跑，`GET` 里该用户消息仍只有一条。
 - **429 / 5xx（流开始前）**：假服务前两次 429、第三次正常 → (a) 回合成功，只有一条助手回复。四次都 429 → (b) `运行失败：模型服务暂时不可用：<provider> 429: ...`。
 - **流中断**：假服务先发几个 `data:` 块再断开、不发 `[DONE]` → (b) `模型响应不符合约定：model stream ended without the [DONE] marker` 或传输错误，**不重试**。(a) 已流出的预览文字不作为最终回复写入 journal（SSE `preview.aborted`）。
 - **超时**：
@@ -73,3 +73,5 @@
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
 - 历史 live 状态：部分（2026-10-12，修复后）：模型失败可见与再试经隔离 API 注入认证失败验证（`.tools/verification/fixapi-20261012/`），kill -9 后工具不重复执行通过；真实 UI、真实供应商 429 未验。2026-10-18 按源码改写，未重新 live 验证；同日删除随文件服务移除的沙箱进程与挂载清理条目。
 - 已知产品缺口（2026-10-18 Windows live）：命令运行中只杀会话 Worker 后，`last_error`、`unknown` 与新文案、无孤儿进程、文件未写出都符合；但会话随后永久卡死——`再试` 返回 200 而 `should_wake=false` 无动作，新消息只记 `user.message.received` 不产生回合，重启 Web 后也不自动 paused、不出现 `继续`。journal 末尾是没有 outcome 的 `command.attempt.started`。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：隔离连接临时无效 key 后出现认证失败、查看详情和再试；恢复连接并点再试得到 AUTH_RECOVERY_OK，GET 只有一条原用户输入，错误清除。杀 Web/Worker、去重冲突、429/超时矩阵未重验，历史 Worker 卡死问题未确认已修。

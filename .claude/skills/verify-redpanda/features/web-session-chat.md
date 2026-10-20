@@ -9,7 +9,7 @@
 - `send-message`：在 `消息` 输入框（占位 `描述你想完成的事，或拖入文件…`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`；底部显示 Enter 发送、Shift + Enter 换行提示。
 - `reply-render`：回复以 Markdown 气泡渲染（`MarkdownMessage.tsx`），Agent 身份显示在会话顶部和右侧资料栏，不在每条回复中重复；悬停回复或键盘聚焦操作区可 `复制回复` 并查看时间与耗时。普通问答气泡分别靠右、靠左，直接间隔 8。思考与执行过程入口在回复之后，默认折叠，思考流式输出时也不自动展开；需要授权时展开执行过程；尚无正文时运行提示为 `思考中`。
 - `windowed-history`：长会话只渲染阅读位置附近的轮次，向上滚动查看早期记录，`跳到最新` 恢复跟随输出。
-- `spa-fallback`：未知前端路径回 `index.html`（`app.py` 的 `/{path:path}`）；未知 `/api/...` 应是 404 JSON（当前不满足，见 Gotchas）。
+- `spa-fallback`：未知前端路径回 `index.html`（`app.py` 的 `_FrontendFiles` 静态挂载）；未知 `/api/...` 保持 404 JSON，静态文件读取限制在构建目录内。
 
 ## How to get to it (user POV)
 
@@ -32,7 +32,7 @@
 - **SPA 回落**：
   - (a)(b) `curl -i $REDPANDA_VERIFY_URL/whatever/deep` 返回 200 且是 `index.html`。
   - (c) 已知 `/api/...` 路由行为不受回落影响（例如 `GET /api/workspaces` 仍是 JSON）。
-  - (d) `curl -i $REDPANDA_VERIFY_URL/api/不存在` 应返回 404 JSON，而不是 `index.html`（当前源码不满足，见 Gotchas）。
+  - (d) `curl -i $REDPANDA_VERIFY_URL/api/不存在` 返回 404 JSON，而不是 `index.html`。用 `curl --path-as-is` 探测 `..` 或其编码变体，不应读到构建目录外预置的哨兵文件；只记录是否泄露，不保存无关文件内容。
 - **长会话滚动**：准备隔离的多轮历史，打开会话后查看最近回复，再向上滚动到早期记录，最后点 `跳到最新`。
   - (a) `GET /api/sessions/<id>` 仍含完整历史；页面只挂载阅读位置附近的轮次，浏览后挂载数量不会随累计读过的历史增长。
   - (b) 早期记录能显示，离开底部后出现 `跳到最新`，点击后回到最后一轮。
@@ -43,10 +43,11 @@
 ## Gotchas
 
 - 首页不再自动建会话。Agent 在 `POST /api/agents` 成功时就进入 `GET /api/agents`，不必等第一条用户消息。不要把欢迎页上没有聊天记录误判为没创建。
-- `live_model_ready` 为 false 时只验到发首条消息、journal 出现用户消息为止。
+- `live_model_ready` 为 false 时跳过发送与工具步骤，只验证无模型也可到达的页面入口；不要提交首条消息。
 - `--workspace` 启动会预先登记工作区，跳过空首页路径；验证时不要用。
 - `web/dist` 不存在时 `/` 不会有页面，只有 API。
-- 已知产品缺口（2026-10-18 源码核对）：`app.py` 的 `@app.get("/{path:path}")` 不排除 `api/` 前缀，未知 `GET /api/...` 返回 200 + `index.html`，不是 404 JSON。判据保持 404 JSON 的预期。
-- 已知产品缺口（2026-10-18 源码核对，安全）：同一回落路由把原始请求路径直接拼到静态目录上再判断 `is_file()`，不做规范化或目录约束，带 `..` 段的请求可以逃出 `web/dist` 读取其他文件。修复另行跟踪；验证时只记录现象，不在证据里保存读出的文件内容。
+- 历史产品缺口（2026-10-18 源码核对）：旧回落路由吞掉未知 API，并缺少静态目录约束。2026-10-20 源码核对：已改用 `_FrontendFiles(StaticFiles)`；`tests/channels/test_web.py` 的未知 API 与目录边界契约通过。当前版本尚待隔离 Web live 复验，不把测试结果记为 UI 通过。
 - 历史 live 记录：部分（2026-10-12，修复后）：空消息 422、失效连接 409、模型失败可见与再试（隔离 API 通过）；页面观感待人工复跑。长会话滚动通过（2026-10-15）：隔离实例使用 200 轮合成历史和本地模拟流式服务，验证窗口挂载、早期记录、阅读锚点、流式跟随、上滑解除跟随与跳到最新；不代表真实模型调用已验证。2026-10-18 的修订只做源码核对，未 live 复跑。
-- 观察（2026-10-18 Windows live）：停留在会话页时，前端以每秒数次的频率轮询 `GET /api/sessions/<id>/model` 与 `GET /api/model-settings`（浏览器网络记录）。
+- 历史观察（2026-10-18 Windows live）：模型接口曾每秒请求数次；当前 `Composer.tsx` 设置 `/model` 每 2 秒、`/model-settings` 每 5 秒轮询，当前频率尚未 live 复测。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：页面创建 Agent、真实用户输入、普通回复及刷新通过；长历史、错误输入与静态边界未重验。

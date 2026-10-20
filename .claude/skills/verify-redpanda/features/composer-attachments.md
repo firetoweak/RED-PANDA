@@ -16,9 +16,9 @@
 
 ## Driving it with the browser
 
-- **图片**：上传一张 1×1 PNG 并发送 `图里是什么颜色？`。
+- **图片**：准备一张有效 PNG 并发送 `图里是什么颜色？`。可在本轮临时目录用 Pillow 生成 64×64 红图，再用 `Image.open(path).verify()` 校验；不要照抄未经校验的 base64。上传/下载判据核对实际宽高和字节，模型识色另记观察。
   - (a) `$REDPANDA_HOME/runtime_sessions/<sha256(会话 id)>/.attachments/<64位十六进制>` 出现该图片；`GET .../attachments/<id>` 返回同字节、`Content-Type: image/png`，不带 `Content-Disposition` 文件名。
-  - (b) 上传 201，响应 `width`/`height` 为 1，`name` 为原文件名。
+  - (b) 上传 201，响应 `width`/`height` 与原图一致，`name` 为原文件名。
   - (c) 工作区目录不出现该图片。
   - (d) 上传超过 20 MiB（`MAX_SOURCE_BYTES` = 20971520）的图片 → 400，`detail` 形如 `图片字节数 20971521 超过上限 20971520`（服务端只读到上限加一字节）；图片块显示 `上传失败` 遮罩，`重试` 的 `title` 是该 `detail`；`.attachments/` 下不留半截文件。只有响应里没有 `detail` 时界面才显示兜底文字 `上传失败，请重试或移除`。
 - **普通文件**：拖入 `a.txt`。
@@ -44,3 +44,5 @@
 - `本机文件` 只是等待选择期间占位块的名字，不是按钮；按钮名称是 `Add attachment`。
 - 已知产品缺口（2026-10-18 源码核对）：`Composer.tsx` 里有一个 `<input type="file" hidden multiple>`，但没有任何控件触发它，是死入口；浏览器原生选文件不可达，拖入与粘贴才是浏览器侧上传入口。
 - 历史 live 记录：通过（r2）：上传/下载正常，坏 connection 409，`from-path` 已 405；回滚后附件同会话 API 仍 200 但 Web 不显示——不算问题；跨会话 404 通过。2026-10-18 的修订只做源码核对，未 live 复跑。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：有效 64×64 红色 PNG 经真实粘贴、发送、预览和 GET 下载通过，下载与原件逐字节相同；模型把红色说成白色，单记为识图观察。原先一次测试 PNG 的校验和错误已排除；本机选择、普通文件和跨会话边界未重验。

@@ -1,6 +1,6 @@
 # 会话文件变更审阅
 
-Agent 会话（名册里的会话）及其委派子任务在输入框上方显示尚未落地 / 尚未合入的 Git 差异；点击摘要在右侧打开标题为 `文件改动` 的内容页（`ContentPage`，不是抽屉），选择文件查看旧、新行号和文本差异。其他会话没有变化查看，接口返回 503。来源：`web/src/features/conversation/FileChangesPanel.tsx`、`Conversation.tsx`、`ContentPage.tsx`、`web/src/api/fileChanges.ts`、`redpandaApi.ts`、`web/src/realtime/eventBridge.ts`、`redpanda/assistant/conversations.py`（`file_changes`）、`redpanda/assistant/agent_git.py`（`review`）、`redpanda/channels/web/app.py`。
+Agent 会话（名册里的会话）在输入框上方显示尚未落地的 Git 差异；点击摘要在右侧打开标题为 `文件改动` 的内容页（`ContentPage`，不是抽屉），选择文件查看旧、新行号和文本差异。接口也支持委派子任务，但其观察页尚无独立差异入口。其他会话没有变化查看，接口返回 503。来源：`web/src/features/conversation/FileChangesPanel.tsx`、`Conversation.tsx`、`ContentPage.tsx`、`web/src/api/fileChanges.ts`、`redpandaApi.ts`、`web/src/realtime/eventBridge.ts`、`redpanda/assistant/conversations.py`（`file_changes`）、`redpanda/assistant/agent_git.py`（`review`）、`redpanda/channels/web/app.py`。
 
 ## Sub-features
 
@@ -10,13 +10,13 @@ Agent 会话（名册里的会话）及其委派子任务在输入框上方显�
 - `line-diff`：差异区 aria-label `<path> 的差异`；展示旧、新行号、`+`/`−` 和正文。Git 差异整体视为该 Agent 的工作，不区分会话外修改；二进制文件只列变化，显示「二进制或非 UTF-8 内容，无法显示文本差异。」；权限变化单独一行（`权限：<旧> → <新>`）。
 - `pagination`：每页 200 个展示行（含 hunk 标题与上下文），`上一页`/`第 N 页`/`下一页`，首页 `上一页` 禁用、`next_offset=null` 时 `下一页` 禁用；分页不改变完整差异的统计。文件 revision（由两端对象身份算出）变化时差异区重建，回到第一页。
 - `refresh`：SSE 事件触发 `FileChanges` 缓存失效后自动刷新（`eventBridge.ts`）；两个 `刷新文件变更` 图标按钮手动刷新；差异读取失败时 Alert 内的 `刷新列表` 同时刷新摘要和该文件差异。
-- `scope`：Agent 的变化是它工作树当前状态（含已提交、未提交与未跟踪，不含被忽略文件）相对它与集成分支分叉点的差异，`land_branch` 后清空；委派子任务的变化以父 Agent 的分支为基准，`merge_subagent` 后清空。查询借临时索引收集未跟踪文件，不改动 Agent 自己的索引与 `git status`。
+- `scope`：Agent 的变化是它工作树当前状态（含已提交、未提交与未跟踪，不含被忽略文件）相对它与集成分支分叉点的差异；已提交并成功 `land_branch` 的成果不再显示，未提交残留仍显示。委派子任务的只读接口以父 Agent 的分支为基准，`merge_subagent` 后已合入成果不再显示。查询借临时索引收集未跟踪文件，不改动 Agent 自己的索引与 `git status`。
 
 ## How to get to it (user POV)
 
 - 从名册打开一个 Agent 会话，在输入框上方找到 `N 个文件已更改`，点击后打开 `文件改动` 内容页；默认已选中第一个文件，可在 `改动文件 · N` 列表里点其他文件。
 - 无变更时仍有 `0 个文件已更改` 入口，内容页显示 `当前没有保留的会话变更。`。
-- 委派子任务的变化在内容页 `子 Agent` 的观察面板里查看（见 [subagents.md](./subagents.md)）。
+- 打开内容页 `子 Agent` 可观察任务过程与交回结论（见 [subagents.md](./subagents.md)），当前没有子任务的文件差异入口。只读 changes 接口能核对子任务差异，但不能替代这个 UI 入口的验证。
 - 先按 `../SKILL.md` 检查隔离实例。通过编码回合准备变更时 `live_model_ready` 必须为 true；不满足就记录未能准备真实成果，不用直接 POST 或伪造会话冒充页面证明。
 
 ## Driving it with the browser
@@ -50,8 +50,9 @@ Agent 会话（名册里的会话）及其委派子任务在输入框上方显�
 - 同步进来的同事成果已在集成分支上，不出现在差异里；被忽略的文件不出现。
 - 外部编辑没有自动监听，需手动刷新。
 - 本入口只读，不提供接受、撤销或回退按钮；撤销由 Agent 或人用 Git 完成。
-
-### Live status
+- 已实测确认的入口缺口（2026-10-20）：`SubagentPanel.tsx` 没有接入文件差异，不能按旧地图声称子任务观察页可查看差异。
 
 - 2026-10-18 改写：文件回退移除后，本条只验证 Agent 与其委派任务的 Git 差异；旧的会话操作证据、`get_changes` 与来源标记判据已删除。未 live 复跑。
 - 2026-10-18 源码核对（未 live）：修正入口名为 `文件改动` 内容页、刷新控件为两个同名 `刷新文件变更`、状态字母 A/D/M、默认选中第一个文件、分页控件与各错误文案。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：从摘要打开文件改动，note.txt 的 verify→edited、行号和禁用分页与 GET 一致；子 Agent 观察页实测没有差异入口。大文件分页与版本冲突未重验。
