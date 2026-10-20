@@ -17,7 +17,7 @@ vi.mock("../src/api/redpandaApi", () => ({
   useGetGroupQuery: () => ({ data: api.group, error: undefined }),
   useGetWorkspacesQuery: () => ({ data: [{ workspace_id: "workspace", name: "当前项目", task_root: "/project" }] }),
   useGetAgentsQuery: () => ({ data: [{
-    session_id: "other-ada", workspace_id: "other", name: "Ada", direction: "其他项目", activity: "idle", status: "idle",
+    session_id: "other-ada", workspace_id: "other", name: "Other", direction: "其他项目", activity: "idle", status: "idle",
   }, {
     session_id: "agent-ada", workspace_id: "workspace", name: "Ada", direction: null, activity: "idle", status: "idle",
   }] }),
@@ -26,7 +26,7 @@ vi.mock("../src/api/redpandaApi", () => ({
 
 function group(partial: Partial<GroupView>): GroupView {
   return {
-    group_id: "group-1", workspace_id: "workspace", name: "开发组", members: ["Ada", "Lin"],
+    group_id: "group-1", name: "开发组", members: ["Ada", "Lin"],
     calling: [], messages: [], ...partial,
   };
 }
@@ -71,7 +71,7 @@ it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
   const details = within(screen.getByRole("complementary", { name: "群资料" }));
   expect(details.getByRole("link", { name: "查看 Ada 的会话" })).toHaveAttribute("href", "/sessions/agent-ada");
   expect(details.queryByText("其他项目")).not.toBeInTheDocument();
-  expect(details.getByRole("link", { name: "当前项目" })).toHaveAttribute("href", "/workspaces/workspace");
+  expect(details.queryByText("当前项目")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起群资料" }));
   expect(screen.queryByRole("complementary", { name: "群资料" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "显示群资料" }));

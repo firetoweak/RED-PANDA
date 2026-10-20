@@ -15,7 +15,7 @@ export function SessionConversation() {
   const [detailsOpened, setDetailsOpened] = useState(false);
   const agent = agents.find((item) => item.session_id === sessionId);
   const workspace = workspaces.find((item) => item.workspace_id === agent?.workspace_id);
-  const agentGroups = groups.filter((group) => group.workspace_id === agent?.workspace_id && group.members.includes(agent?.name ?? ""));
+  const agentGroups = groups.filter((group) => group.members.includes(agent?.name ?? ""));
   return (
     <div className="session-page">
       <div className="session-main">
@@ -25,11 +25,11 @@ export function SessionConversation() {
           onClick={() => setDetailsOpened((opened) => !opened)}>
           <span className="agent-avatar agent-avatar-small">{agent?.name.slice(0, 1) ?? "A"}</span>
           <div className="session-header-name"><Text fw={600} size="sm" truncate>{agent?.name ?? "Agent"}</Text>
-            <Text c="dimmed" fz={11} truncate>{agent?.direction ?? "一起理解、修改和验证代码"}</Text></div>
+            <Text c="dimmed" fz={11} truncate>{agent?.direction ?? "一起交流想法、处理任务"}</Text></div>
           {agent === undefined ? null : <AgentStatus agent={agent} />}
         </Group>
-        {workspace === undefined ? null : <Link className="session-project-link" to={`/workspaces/${encodeURIComponent(workspace.workspace_id)}`}>
-          <IconFolder size={15} /><span>{workspace.name}</span></Link>}
+        {workspace === undefined ? null : <span className="session-project-link">
+          <IconFolder size={15} /><span>{workspace.name}</span></span>}
       </header>
       <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} /></div>
       </div>
@@ -46,9 +46,9 @@ export function SessionConversation() {
           </div>
           {workspace === undefined ? null : <div className="agent-details-section">
             <Text className="agent-details-label" size="xs" c="dimmed">所在项目</Text>
-            <Link className="agent-details-project" to={`/workspaces/${encodeURIComponent(workspace.workspace_id)}`}>
+            <div className="agent-details-project">
               <IconFolder size={16} /><span>{workspace.name}</span>
-            </Link>
+            </div>
             <Text className="agent-details-path" size="xs" c="dimmed">{workspace.task_root}</Text>
           </div>}
           {agentGroups.length === 0 ? null : <div className="agent-details-section">

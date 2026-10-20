@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from functools import partial
 import json
 from pathlib import Path
-import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -18,7 +17,6 @@ from redpanda.assistant.agents import (
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.automation.routines import RoutineFire
-from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, replay
@@ -73,16 +71,10 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.root = Path(self.directory.name).resolve()
         self.home = RedPandaHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
-        project = self.root / "project"
-        project.mkdir()
-        (project / "note.txt").write_text("initial")
-        for args in (("init",), ("add", "."), ("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")):
-            subprocess.run(["git", "-C", str(project), *args], check=True, capture_output=True)
-        self.workspace = WorkspaceRegistry.load(self.home.workspaces_path).register_path(project)
         self.llm = MessagingLlm(self.root)
         self.host = self.new_host()
-        self.ada = await self.host.create_agent(name="Ada", workspace_id=self.workspace.workspace_id)
-        self.lin = await self.host.create_agent(name="Lin", workspace_id=self.workspace.workspace_id)
+        self.ada = await self.host.create_agent(name="Ada")
+        self.lin = await self.host.create_agent(name="Lin")
         # Creation wakes each Agent once; tests start from settled, offline Agents.
         for agent in (self.ada, self.lin):
             await self.settled(agent)
@@ -106,11 +98,11 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         steps = {agent.session_id: sum(isinstance(e.payload, StepCommitted) for e in await self.events(agent))
                  for agent in (self.ada, self.lin)}
         self.assertTrue(all(steps.values()))
-        kai = await self.host.create_agent(name="Kai", workspace_id=self.workspace.workspace_id)
+        kai = await self.host.create_agent(name="Kai")
         await self.settled(kai)
         for agent in (self.ada, self.lin):
             await self.settled(agent)
-        self.assertTrue(any("你刚加入这个项目" in json.dumps(r["messages"], ensure_ascii=False)
+        self.assertTrue(any("你刚成为一位长期 Bot" in json.dumps(r["messages"], ensure_ascii=False)
                             and "Kai" in json.dumps(r["messages"], ensure_ascii=False) for r in self.llm.requests))
         roster = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
         self.assertEqual(roster, {"Ada": None, "Kai": "负责命令执行", "Lin": None})
@@ -144,7 +136,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
     async def test_group_members_are_called_in_turn_and_speak_through_their_tool(self):
         outputs = []
         self.host.sink = lambda *args: outputs.append(args)
-        group = await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name="开发组",
+        group = await self.host.agent_groups.create(name="开发组",
                                                     members=["Ada", "Lin"])
         await self.host.agent_groups.post(group.group_id, "大家同步一下进度", [])
         # Busy members can speak after the drive temporarily runs out of queued calls.
@@ -190,7 +182,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(isinstance(e.payload, StepCommitted) for e in await self.events(self.lin)))
         for request in self.llm.requests:
             self.assertNotIn(self.ada.session_id, json.dumps(request["messages"]))
-            self.assertNotIn(self.workspace.workspace_id, json.dumps(request["messages"]))
+            self.assertNotIn("land_branch", {tool["function"]["name"] for tool in request["tools"]})
         self.assertTrue(self.host.failures.empty())
 
     async def test_offline_recipient_is_started_and_can_observe_attributed_message(self):
@@ -217,7 +209,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
                 await self.host.close()
                 # Each crash exercises a fresh sender with a fresh Command.
                 self.host = self.new_host(when)
-                sender = await self.host.create_agent(name=f"Sender-{when}", workspace_id=self.workspace.workspace_id)
+                sender = await self.host.create_agent(name=f"Sender-{when}")
                 await self.host.receive_user_message(sender.session_id, "SEND_TO_LIN", delivery_id="send")
                 failure = await asyncio.wait_for(self.host.wait_failure(), 30)
                 self.assertEqual(failure.session_id, sender.session_id)

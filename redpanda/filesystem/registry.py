@@ -15,6 +15,7 @@ from pathlib import Path
 import uuid
 
 from redpanda.filesystem.workspace import (
+    FileWorkspace,
     EnvironmentInputError,
     RootBinding,
     WorkspaceScope,
@@ -238,7 +239,7 @@ class WorkspaceRegistry:
         self.save()
 
 
-def workspace_view(record: WorkspaceRecord) -> WorkspaceViewSnapshot:
+def workspace_view(record: WorkspaceRecord | FileWorkspace) -> WorkspaceViewSnapshot:
     """把一个工作区记录转成文件工具的 Workspace View。"""
     roots = [
         RootBinding(

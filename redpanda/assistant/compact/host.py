@@ -17,6 +17,7 @@ from redpanda.assistant.compact.core import (
 from redpanda.assistant.compact.store import CompactStore
 from redpanda.assistant.subagent.subagent import project_parent, project_returned
 from redpanda.runtime import SqliteJournal
+from redpanda.assistant.workspaces import bound_workspace_id, bound_directory
 
 
 def seed_fact(kind, data, *, continuing):
@@ -112,9 +113,10 @@ class CompactHost:
         )
         fact = seed_fact(TASK, data, continuing=True)
         if not self.host.store.path(reader).parent.exists():
+            source_events = await SqliteJournal(self.host.store.require(job["source"])).snapshot(job["source"])
             await self.host.store.create(
                 reader,
-                workspace_id=await self.host.bound_workspace_id(job["source"]),
+                workspace_id=bound_workspace_id(source_events), directory=bound_directory(source_events),
                 initial_fact=fact,
             )
         else:

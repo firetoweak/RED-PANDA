@@ -417,7 +417,9 @@ export function Conversation({ agentName }: { agentName?: string }) {
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
                 : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")} />
         ) : null}
-        <FileChangesSummary sessionId={sessionId} onOpen={() => setOpenPage({ kind: "changes" })} />
+        {conversation.workspace_id === null ? null : (
+          <FileChangesSummary sessionId={sessionId} onOpen={() => setOpenPage({ kind: "changes" })} />
+        )}
         <Composer
           sessionId={sessionId}
           workspaceId={conversation.workspace_id}

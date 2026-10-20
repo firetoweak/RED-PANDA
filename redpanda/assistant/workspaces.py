@@ -1,19 +1,35 @@
-"""会话与工作区的绑定。
-
-工作区描述任务文件范围：一条会话只属于一个工作区，落进去即固定。绑定是会话
-创建时写进日志的一条领域事实，此后只读——没有第二处事实源。
-"""
+"""Session file roots: a Bot's own directory or a TUI's registered workspace."""
 
 from __future__ import annotations
 
 from redpanda.runtime import DomainFactCommitted, Event
 from redpanda.filesystem.registry import WorkspaceRecord, WorkspaceRegistry
+from redpanda.filesystem.workspace import FileWorkspace
+from pathlib import Path
 
 SESSION_WORKSPACE_FACT = "session.workspace"
+SESSION_DIRECTORY_FACT = "session.directory"
+
+
+def directory_binding(directory: Path) -> DomainFactCommitted:
+    return DomainFactCommitted(SESSION_DIRECTORY_FACT, {"directory": str(directory.resolve())}, requests_decision=False)
+
+
+def bound_directory(events: tuple[Event, ...]) -> Path | None:
+    for event in events:
+        payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == SESSION_DIRECTORY_FACT:
+            if set(payload.data) != {"directory"} or payload.requests_decision:
+                raise ValueError("invalid session directory fact")
+            value = payload.data["directory"]
+            if type(value) is not str or not Path(value).is_absolute():
+                raise ValueError("session directory must be an absolute path")
+            return Path(value)
+    return None
 
 
 class UnboundSessionError(ValueError):
-    """会话没有工作区归属：存量会话按归档处理，不参与运行与展示。"""
+    """A running Session has no file root."""
 
     code = "unbound_session"
 
@@ -47,7 +63,10 @@ def bound_workspace(
     session_id: str,
     events: tuple[Event, ...],
     workspaces: WorkspaceRegistry,
-) -> WorkspaceRecord:
+) -> WorkspaceRecord | FileWorkspace:
+    directory = bound_directory(events)
+    if directory is not None:
+        return FileWorkspace(directory)
     workspace_id = bound_workspace_id(events)
     if workspace_id is None:
         raise UnboundSessionError(session_id)

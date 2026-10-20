@@ -36,6 +36,7 @@ def project_instructions_prompt(workspace_root: Path) -> str:
 
 def environment_prompt(
     workspace_root: Path, *, full_access: bool, own_copy: bool, delegated: bool = False,
+    personal_directory: Path | None = None,
 ) -> str:
     """会话绑定工作区后不变，因此能留在稳定前缀里；不放日期这类会漂移的信息。"""
     system = platform.system()
@@ -45,7 +46,7 @@ def environment_prompt(
     access = (
         "文件工具还可以访问本机其他位置，绝对路径按本机规则写。"
         if full_access
-        else "文件工具只能访问工作区内的文件。"
+        else "文件工具可以读写当前目录，其他可访问目录以工具返回为准。"
     )
     file_rules = (
         "文件工具直接作用于这份副本的真实目录，当前不提供文件回退；交回后由父 Agent 比较并合入。"
@@ -59,6 +60,8 @@ def environment_prompt(
         "<environment>",
         f"系统：{system}",
         workspace,
+        *((f"个人工作目录：{personal_directory}（可读写，用来保存资料和笔记）",)
+          if personal_directory is not None and personal_directory != workspace_root else ()),
         f"相对路径从工作区开始；{access}",
         file_rules,
         "命令不提供进程、系统或网络隔离，可以访问本机其他位置；不能假定有沙箱。",
@@ -97,7 +100,7 @@ CODING_WORK_PROMPT = """
 
 
 _ASSISTANT_PROMPT = """
-你是 RED PANDA，一个面向开发者的 coding agent，围绕代码工作区完成项目理解、代码修改、命令执行和结果验证。理解用户目标，利用上下文和可用工具推进任务，并以实际结果和验证依据作答。
+你是 RED PANDA，理解用户目标，利用上下文和可用工具推进任务，并以实际结果和验证依据作答。
 
 执行：
 - 能通过上下文或工具取得的信息，不要猜测，也不要要求用户重复提供。只有缺失信息无法取得且会实质改变结果时，才向用户澄清。
@@ -130,7 +133,7 @@ _ASSISTANT_PROMPT = """
 """.strip()
 
 
-def assistant_prompt(*, agent_branch: bool = False) -> str:
+def assistant_prompt(*, agent_branch: bool = False, long_lived: bool = False, coding: bool = True) -> str:
     git_rules = (
         "- 你维护自己的工作分支。在修改代码的任务中，根据任务进展主动核对、暂存和提交自己的修改，由你选择提交时机、范围和说明，通过现有命令能力执行 Git；只读任务不暂存或提交，用户要求不提交时遵守。\n"
         "- 修改任务收尾前，核对自己的相关修改是否已提交；未提交时执行提交，成功后再报告完成。用户要求不提交时按要求完成；任务或提交受阻时说明未完成的部分与未提交的原因。没有文件变化时无需创建空提交。\n"
@@ -141,8 +144,9 @@ def assistant_prompt(*, agent_branch: bool = False) -> str:
         "- 不擅自提交或推送代码、重写 Git 历史，或执行用户未要求的破坏性操作。"
     )
     return "\n\n".join((
-        _ASSISTANT_PROMPT.format(git_rules=git_rules), *((AUDIENCE_PROMPT,) if agent_branch else ()),
-        CODING_WORK_PROMPT, TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
+        _ASSISTANT_PROMPT.format(git_rules=git_rules if coding else ""),
+        *((AUDIENCE_PROMPT,) if agent_branch or long_lived else ()),
+        *((CODING_WORK_PROMPT,) if coding else ()), TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
     ))
 
 
@@ -156,6 +160,7 @@ AUDIENCE_PROMPT = """
 
 DEFAULT_ASSISTANT_PROMPT = assistant_prompt()
 CODING_BOT_PROMPT = assistant_prompt(agent_branch=True)
+BOT_PROMPT = assistant_prompt(long_lived=True, coding=False)
 
 
 def _subagent_prompt(workspace: str) -> str:

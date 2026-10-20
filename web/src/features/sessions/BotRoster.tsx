@@ -27,10 +27,8 @@ function deserializeOrganization(value: string | undefined): Organization {
   }
 }
 
-/** 分组只整理当前浏览器的名册，不改变工作区归属或群成员。 */
-export function WorkspaceRoster({ workspaceId, workspaceName, agents, chats, sessionId, groupId, searching, onOpen }: {
-  workspaceId: string;
-  workspaceName: string;
+/** 分组只整理当前浏览器的名册，不改变身份或群成员。 */
+export function BotRoster({ agents, chats, sessionId, groupId, searching, onOpen }: {
   agents: AgentRosterEntry[];
   chats: GroupSummary[];
   sessionId?: string;
@@ -39,7 +37,7 @@ export function WorkspaceRoster({ workspaceId, workspaceName, agents, chats, ses
   onOpen: (path: string) => void;
 }) {
   const [organization, setOrganization] = useLocalStorage<Organization>({
-    key: `redpanda.sidebarGroups.${workspaceId}`,
+    key: "redpanda.sidebarGroups",
     defaultValue: EMPTY_ORGANIZATION,
     getInitialValueInEffect: false,
     deserialize: deserializeOrganization,
@@ -91,7 +89,7 @@ export function WorkspaceRoster({ workspaceId, workspaceName, agents, chats, ses
     if (searching && count === 0) return null;
     const name = section?.name ?? "未分组";
     const collapsed = !searching && (section?.collapsed ?? organization.ungroupedCollapsed);
-    return <section key={section?.id ?? "ungrouped"} className="roster-section" aria-label={`${workspaceName} 的分组 ${name}`}>
+    return <section key={section?.id ?? "ungrouped"} className="roster-section" aria-label={`名册的分组 ${name}`}>
       <Group className="roster-section-header" gap={2} wrap="nowrap">
         <UnstyledButton className="roster-section-toggle" aria-label={`分组 ${name}`} aria-expanded={!collapsed}
           onClick={() => setOrganization((current) => section === null
@@ -132,7 +130,7 @@ export function WorkspaceRoster({ workspaceId, workspaceName, agents, chats, ses
   return <div className="workspace-sessions">
     <Group className="roster-sections-toolbar" justify="space-between" wrap="nowrap">
       <Text c="dimmed" fz={10}>分组</Text>
-      <Tooltip label="新建分组" openDelay={400}><ActionIcon aria-label={`在 ${workspaceName} 新建分组`} size="xs" variant="subtle" color="gray"
+      <Tooltip label="新建分组" openDelay={400}><ActionIcon aria-label="新建分组" size="xs" variant="subtle" color="gray"
         onClick={() => setEditing({ id: null, name: "" })}><IconFolderPlus size={13} /></ActionIcon></Tooltip>
     </Group>
     {organization.sections.map(renderSection)}

@@ -22,7 +22,7 @@ from redpanda.assistant.context.projection import (
 )
 from redpanda.assistant.control import project_pending_approval
 from redpanda.assistant.subagent.subagent import project_parent, project_returned
-from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
+from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT, SESSION_DIRECTORY_FACT
 from redpanda.llm.api import InvalidLLMResponse
 from redpanda.runtime import DomainFactCommitted, StepCommitted, ToolBinding, RuntimeStatus
 from redpanda.runtime.state import StateProjector
@@ -133,7 +133,7 @@ def compact_seed(events):
         len(seeds) != 1
         or len(events) < 2
         or not isinstance(events[0].payload, DomainFactCommitted)
-        or events[0].payload.fact_type != SESSION_WORKSPACE_FACT
+        or events[0].payload.fact_type not in {SESSION_WORKSPACE_FACT, SESSION_DIRECTORY_FACT}
         or events[1].payload is not seeds[0]
     ):
         raise ValueError("compact task must follow the unique workspace binding")

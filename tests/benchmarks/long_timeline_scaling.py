@@ -37,8 +37,8 @@ async def build(root: Path, agents: int, events: int, extra: int) -> SessionStor
     for name in names:
         worktree = root / name
         worktree.mkdir()
-        await store.create(name, workspace_id="project", initial_fact=fact_arguments(
-            AgentCreated(name=name, workspace_id="project", worktree=str(worktree), branch=name),
+        await store.create(name, directory=worktree, initial_fact=fact_arguments(
+            AgentCreated(name=name, directory=str(worktree)),
             delivery_id="created"))
         runtime = AgentRuntime(SqliteJournal(store.require(name)), None, {})
         for index in range(events):
@@ -80,8 +80,8 @@ async def main(agents: int, events: int, extra: int, runs: int) -> None:
 
         await timed("roster index build (once per Host start)", 1, lambda: roster.list("project"))
         await timed("roster list", runs, lambda: roster.list("project"))
-        await timed("origin index build (once per Host start)", 1, lambda: origins.count("project", "origin-7"))
-        await timed("origin admission (one Agent message)", runs, lambda: origins.count("project", "origin-7"))
+        await timed("origin index build (once per Host start)", 1, lambda: origins.count("origin-7"))
+        await timed("origin admission (one Agent message)", runs, lambda: origins.count("origin-7"))
         await timed("one timeline snapshot + replay (one decision)", runs, decision_replay)
 
 

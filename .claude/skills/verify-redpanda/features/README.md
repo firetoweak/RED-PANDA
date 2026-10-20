@@ -8,6 +8,8 @@
 
 ## 基线前置条件
 
+Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新为无项目可用。以下表格中的维护记录仍是此前基线；当前增量的真实模型验证范围见各条目，未重新执行全部 27 项 UI 审计。
+
 - 按 `../SKILL.md` 启动一个隔离实例：地址 `$REDPANDA_VERIFY_URL`，数据目录 `$REDPANDA_HOME`，临时工作区 `$SCRATCH_WORKSPACE`（内含 `note.txt`，内容为一行 `verify`）。
 - 第一次点击前 `doctor.py` 必须对该 pid 和 home 返回 0。
 - 视口至少 1280×800，侧栏才在屏幕上（窄屏时侧栏收在 `打开 Agent 名册` 后面）。
@@ -21,12 +23,13 @@
 |---|---|
 | 默认模型与候选模型 | `$REDPANDA_HOME/config.json` |
 | 供应商连接（含密钥） | `$REDPANDA_HOME/connections.json` |
-| 工作区登记 | `$REDPANDA_HOME/workspaces.json` |
+| 可选代码项目登记 | `$REDPANDA_HOME/workspaces.json` |
 | 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/<sha256(session_id)>/journal.sqlite` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 例行任务 | `$REDPANDA_HOME/state/routines.sqlite` |
+| Bot 个人目录 | `$REDPANDA_HOME/state/bots/<sha256(session_id) 前 20 位>/` |
 | 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`<sha256(session_id) 前 20 位>`、`children/<sha256(子会话) 前 20 位>` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 
@@ -56,15 +59,15 @@
 | id | 文件 | 一句话 | 本轮 live 覆盖（非全部子功能） |
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 页面创建 Agent、真实用户输入、普通回复及刷新通过；其余见条目 |
-| workspace-management | [workspace-management.md](./workspace-management.md) | `新建工作区`、目录选择、路径冲突、`重命名工作区`/`移除工作区` | 从空首页创建临时 Git 工作区通过，侧栏与 GET 登记一致；其余见条目 |
-| session-sidebar | [session-sidebar.md](./session-sidebar.md) | Agent 名册、项目内创建、搜索、Bot/群聊分组与状态圆点 | 页面创建 Ada、Lin、Mo、切换与方向/状态对照 GET 通过；其余见条目 |
+| workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 旧登记路径通过；当前界面变更与未重验范围见条目 |
+| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目创建与方向/状态对照 GET 通过；其余见条目 |
 | colleague-tools | [colleague-tools.md](./colleague-tools.md) | `list_colleagues`、`declare_direction`；侧栏显示最新方向；同事加入与方向事实不请求决策 | declare_direction 和 list_colleagues 真实调用通过，侧栏显示最新方向；其余见条目 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | Lin 向 Ada 的 send_message 送达，Ada 无新用户输入即普通回复 PRIVATE_RECEIVED；其余见条目 |
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；其余见条目 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 红色 PNG 经真实粘贴、发送、预览和 GET 下载通过，下载与原件逐字节相同；其余见条目 |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 新 Agent 默认自动放行；其余见条目 |
 | inbox | [inbox.md](./inbox.md) | 侧栏 `待处理` → `/inbox`，汇总授权、控制、交流超限、暂停消息与无人查看询问 | 真实 write_file 授权项、独立数字徽标、完整参数展开、允许后空收件箱通过；其余见条目 |
-| group-chat | [group-chat.md](./group-chat.md) | `新建群聊`、群资料与成员跳转、人发言与 `点名` | 从项目菜单建群，Ada 与 Lin 通过 send_group_message 真实回复 GROUP_OK，群页实时更新；其余见条目 |
+| group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 无项目建群，Ada 与 Lin 通过 send_group_message 真实发言，群页实时更新；其余见条目 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；其余见条目 |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 从摘要打开文件改动，note.txt 的 verify→edited、行号和禁用分页与 GET 一致；其余见条目 |
 | run-control | [run-control.md](./run-control.md) | 前台停止/继续、失败再试、排队消息；后台命令单独停止 | 20 秒前台命令中点停止，COMMAND_INTERRUPTED、paused=true，late.txt 未生成；其余见条目 |

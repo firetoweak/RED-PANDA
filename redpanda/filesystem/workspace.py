@@ -5,6 +5,13 @@ from enum import Enum
 from pathlib import Path
 
 
+@dataclass(frozen=True)
+class FileWorkspace:
+    """A task's file directory and access, independent of a registered project."""
+    task_root: Path
+    full_access: bool = False
+
+
 class EnvironmentInputError(ValueError):
     code = "ENVIRONMENT_INPUT_ERROR"
 

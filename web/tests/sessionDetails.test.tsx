@@ -18,9 +18,9 @@ vi.mock("../src/api/redpandaApi", () => ({
     { workspace_id: "beta", name: "Beta", task_root: "C:/beta" },
   ] }),
   useGetGroupsQuery: () => ({ data: [
-    { workspace_id: "alpha", group_id: "front", name: "界面讨论", members: ["Ada"] },
-    { workspace_id: "beta", group_id: "back", name: "接口讨论", members: ["Lin"] },
-    { workspace_id: "beta", group_id: "other", name: "另一个项目的同名成员", members: ["Ada"] },
+    { group_id: "front", name: "界面讨论", members: ["Ada"] },
+    { group_id: "back", name: "接口讨论", members: ["Lin"] },
+    { group_id: "other", name: "跨项目讨论", members: ["Ada"] },
   ] }),
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -38,9 +38,9 @@ it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 
   fireEvent.click(header.getByRole("button", { name: "Ada" }));
   const details = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(details.getByText("前端体验")).toBeInTheDocument();
-  expect(details.getByRole("link", { name: "Alpha" })).toHaveAttribute("href", "/workspaces/alpha");
+  expect(details.getByText("Alpha")).toBeInTheDocument();
   expect(details.getByRole("link", { name: "界面讨论" })).toHaveAttribute("href", "/groups/front");
-  expect(details.queryByText("另一个项目的同名成员")).not.toBeInTheDocument();
+  expect(details.getByText("跨项目讨论")).toBeInTheDocument();
   fireEvent.click(header.getByRole("button", { name: "Ada" }));
   expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   expect(screen.getByText("对话内容")).toBeInTheDocument();
@@ -48,7 +48,7 @@ it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 
   fireEvent.click(screen.getByRole("link", { name: "切换到 Lin" }));
   const next = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(next.getByText("接口验证")).toBeInTheDocument();
-  expect(next.getByRole("link", { name: "Beta" })).toHaveAttribute("href", "/workspaces/beta");
+  expect(next.getByText("Beta")).toBeInTheDocument();
   expect(next.queryByText("前端体验")).not.toBeInTheDocument();
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
 });

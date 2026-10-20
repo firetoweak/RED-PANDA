@@ -34,38 +34,38 @@ class OriginUsage:
 
     def __init__(self, host):
         self.host = host
-        self._used: dict[tuple[str, str], set[str]] | None = None
+        self._used: dict[str, set[str]] | None = None
         self._loading = asyncio.Lock()
 
     async def _index(self):
         async with self._loading:
             if self._used is None:
-                used: dict[tuple[str, str], set[str]] = {}
+                used: dict[str, set[str]] = {}
                 for entry in await self.host.agents.list():
                     events = await SqliteJournal(self.host.store.require(entry.agent.session_id)).snapshot(
                         entry.agent.session_id)
                     for event in events:
                         if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
                             fact = parse_agent_fact(event.payload)
-                            used.setdefault((entry.agent.workspace_id, fact.origin), set()).add(fact.message_id)
+                            used.setdefault(fact.origin, set()).add(fact.message_id)
                 for group in await self.host.agent_groups.list():
                     for message in await self.host.agent_groups.messages(group.group_id):
                         if message.origin is not None:
-                            used.setdefault((group.workspace_id, message.origin), set()).add(message.message_id)
+                            used.setdefault(message.origin, set()).add(message.message_id)
                 self._used = used
             return self._used
 
-    async def count(self, workspace_id: str, origin: str) -> int:
-        return len((await self._index()).get((workspace_id, origin), ()))
+    async def count(self, origin: str) -> int:
+        return len((await self._index()).get(origin, ()))
 
-    async def record(self, workspace_id: str, origin: str, message_id: str) -> None:
-        (await self._index()).setdefault((workspace_id, origin), set()).add(message_id)
+    async def record(self, origin: str, message_id: str) -> None:
+        (await self._index()).setdefault(origin, set()).add(message_id)
 
 
 class AgentMessages:
     def __init__(self, host):
         self.host = host
-        self._project_locks: dict[str, asyncio.Lock] = {}
+        self._sending = asyncio.Lock()
         self.origins = OriginUsage(host)
 
     async def colleagues(self, session_id):
@@ -73,7 +73,7 @@ class AgentMessages:
         if sender is None:
             raise ValueError("colleague query requires a Coding Bot identity")
         return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [
-            await self._colleague(entry) for entry in await self.host.agents.list(sender.workspace_id)
+            await self._colleague(entry) for entry in await self.host.agents.list()
             if entry.agent.session_id != session_id]}}
 
     async def _colleague(self, entry):
@@ -94,7 +94,7 @@ class AgentMessages:
         """Roster changes reach colleagues as facts that do not request a decision."""
         await asyncio.gather(*(
             self.host.request("fact", entry.agent.session_id, fact_arguments(fact, delivery_id=delivery_id))
-            for entry in await self.host.agents.list(sender.workspace_id)
+            for entry in await self.host.agents.list()
             if entry.agent.session_id != sender.session_id))
 
     async def joined(self, agent, colleagues):
@@ -120,10 +120,10 @@ class AgentMessages:
         events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
         return message_origin(events, command_id)
 
-    def _admission(self, workspace_id, origin):
+    def _admission(self, origin):
         """One human message (or other non-Agent fact) drives a bounded number of Agent messages."""
         async def admit(recipient):
-            if await self.origins.count(workspace_id, origin) >= MAX_MESSAGES_PER_ORIGIN:
+            if await self.origins.count(origin) >= MAX_MESSAGES_PER_ORIGIN:
                 return {"ok": False, "code": "ORIGIN_LIMIT_REACHED", "data": {"recipient": recipient},
                         "error": LIMIT_NOTICE}
             return None
@@ -135,19 +135,19 @@ class AgentMessages:
             raise ValueError("group speaker requires a Coding Bot identity")
         origin = await self._origin(session_id, arguments["command_id"])
         identity = message_identity(session_id, arguments["command_id"])
-        async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
+        async with self._sending:
             result = await self.host.agent_groups.send(
                 session_id, {**arguments, "message_id": identity},
-                origin, self._admission(sender.workspace_id, origin))
+                origin, self._admission(origin))
             if result["code"] == "DELIVERED":
-                await self.origins.record(sender.workspace_id, origin, identity)
+                await self.origins.record(origin, identity)
             return result
 
     async def send(self, session_id, arguments):
         sender = await self.host.agents.by_session(session_id)
         if sender is None:
             raise ValueError("message sender requires a Coding Bot identity")
-        async with self._project_locks.setdefault(sender.workspace_id, asyncio.Lock()):
+        async with self._sending:
             return await self._send(sender, session_id, arguments)
 
     async def _send(self, sender, session_id, arguments):
@@ -155,11 +155,9 @@ class AgentMessages:
         if name == sender.name:
             return {"ok": False, "code": "SELF_MESSAGE", "error": "不能给自己发私信。"}
         try:
-            recipient = await self.host.agents.resolve(sender.workspace_id, name)
+            recipient = await self.host.agents.resolve(name)
         except AgentNotFound:
-            other_project = any(entry.agent.name == name for entry in await self.host.agents.list())
-            return {"ok": False, "code": "DIFFERENT_PROJECT" if other_project else "RECIPIENT_NOT_FOUND",
-                    "error": "收件人不在同一个项目。" if other_project else "同项目中没有这位同事。"}
+            return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "没有这位同事。"}
         identity = message_identity(session_id, arguments["command_id"])
         received = await self._messages(recipient.session_id)
         existing = next(((event, fact) for event, fact in received if fact.message_id == identity), None)
@@ -169,7 +167,7 @@ class AgentMessages:
                     or fact.text != arguments["text"] or fact.reply_to != arguments["reply_to"]
                     or event.delivery.source != "coding_bot" or event.delivery.delivery_id != identity):
                 raise ValueError("persisted message conflicts with its sending Command")
-            await self.origins.record(sender.workspace_id, fact.origin, identity)
+            await self.origins.record(fact.origin, identity)
             return self._delivered(recipient, identity)
         reply_to = arguments["reply_to"]
         previous = None
@@ -184,14 +182,14 @@ class AgentMessages:
         if hop > MAX_MESSAGE_HOPS:
             return {"ok": False, "code": "HOP_LIMIT_REACHED", "data": {"recipient": name}, "error": LIMIT_NOTICE}
         origin = await self._origin(session_id, arguments["command_id"])
-        refused = await self._admission(sender.workspace_id, origin)(name)
+        refused = await self._admission(origin)(name)
         if refused is not None:
             return refused
         message = PrivateMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
             recipient=name, text=arguments["text"], reply_to=reply_to,
             thread_id=identity if previous is None else previous.thread_id, hop=hop, origin=origin)
         await self.host.request("fact", recipient.session_id, fact_arguments(message, delivery_id=identity))
-        await self.origins.record(sender.workspace_id, origin, identity)
+        await self.origins.record(origin, identity)
         return self._delivered(recipient, identity)
 
     def _delivered(self, recipient, identity):

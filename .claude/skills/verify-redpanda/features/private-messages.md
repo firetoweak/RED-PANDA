@@ -1,12 +1,12 @@
 # 私信
 
-Agent 用 `send_message` 按同项目同事的名字发私信。参数是 `recipient`、`text`，回复已有交流时加 `reply_to`。发送成功只表示已经进入对方时间线，不等待回复；对方离线时会拉起它的 Worker。人的 `停止` 不能被私信解开：消息仍接纳，但不产生新的 Step，要等人点 `继续`。来源：`redpanda/assistant/agent_messages.py`、`redpanda/assistant/host/agent_messages.py`、`redpanda/assistant/agents.py`。普通回复展示见 [reply-delivery.md](./reply-delivery.md)。
+Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 `recipient`、`text`，回复已有交流时加 `reply_to`。发送成功只表示已经进入对方时间线，不等待回复；对方离线时会拉起它的 Worker。人的 `停止` 不能被私信解开：消息仍接纳，但不产生新的 Step，要等人点 `继续`。来源：`redpanda/assistant/agent_messages.py`、`redpanda/assistant/host/agent_messages.py`、`redpanda/assistant/agents.py`。普通回复展示见 [reply-delivery.md](./reply-delivery.md)。
 
 ## Sub-features
 
 - `deliver`：送达后对方 journal 有 `coding_bot.private_message`，并因此开始一轮决策。
 - `paused`：收件人 `session.paused` 为 true 时仍送达，结果说明对方暂停。
-- `reject`：发给自己、同项目没有这个名字、人在别的项目、引用不属于这两人，都是已知失败。
+- `reject`：发给自己、名册中没有这个名字、人在别的项目、引用不属于这两人，都是已知失败。
 - `limit`：显式回复链超过 10 跳，或同一源头驱动的 Agent 消息超过 20 条，拒绝发送，并在发送方与人的这一轮里写明已达上限。
 
 ## How to get to it (user POV)
@@ -28,8 +28,8 @@ Agent 用 `send_message` 按同项目同事的名字发私信。参数是 `recip
   - (b) `Lin` 保持 `继续`，侧栏不出现新的未读回复。
   - (c) `paused` 仍为 true；暂停且有待处理输入的 Agent 会在 `GET /api/inbox` 出现 `kind: paused`，由人点 `继续` 才推进。不是单独的私信列表。
   - (d) 点 `继续` 之后，`Lin` 才处理这句，并出现直接给人看的普通回复。
-- **拒绝**：分别请 `Ada` 发给自己、发给所有项目都不存在的名字、发给仅存在于另一个项目的名字，以及用一个不属于这两人的 `reply_to`。
-  - (a) 四次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `DIFFERENT_PROJECT` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`同项目中没有这位同事。`、`收件人不在同一个项目。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `coding_bot.private_message`。
+- **拒绝**：分别请 `Ada` 发给自己、发给名册不存在的名字，以及用一个不属于这两人的 `reply_to`。关联不同代码项目的 Bot 可以正常互发私信。
+  - (a) 三次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`没有这位同事。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `coding_bot.private_message`。
   - (b) 工具卡仍是 `send_message`，徽标 `完成`。
   - (c) 已有的私信和两边的暂停状态不变。
   - (d) 空白 `recipient` 或 `text` → `INVALID_ARGUMENT`，同样不投递。
@@ -46,3 +46,5 @@ Agent 用 `send_message` 按同项目同事的名字发私信。参数是 `recip
 - 历史 live：2026-10-20 Lin → Ada 私信送达、触发 Ada 普通回复，且无自动私信回发，证据见 [reply-delivery.md](./reply-delivery.md)。暂停、拒绝与交流上限尚未 live 重验。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Lin 向 Ada 的 send_message 送达，Ada 无新用户输入即普通回复 PRIVATE_RECEIVED。Mo 给已暂停的 Ada 发私信，结果 paused=true，Ada 保持暂停且收件箱出现 paused 提示；人继续后才回复 PAUSED_RECEIVED。拒绝与交流上限未重验。
+
+2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。

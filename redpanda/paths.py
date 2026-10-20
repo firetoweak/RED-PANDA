@@ -56,6 +56,10 @@ class RedPandaHome:
         return self.root / "state"
 
     @property
+    def agent_directories_root(self) -> Path:
+        return self.state_root / "bots"
+
+    @property
     def agent_worktrees_root(self) -> Path:
         """长期 Agent 的 Git 工作树；只有创建过 Agent 的数据根才有。"""
         return self.state_root / "coding_bot"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import asdict, dataclass, field, replace
 from inspect import isawaitable
 import multiprocessing
@@ -32,7 +33,7 @@ from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.agents import (
-    AGENT_CREATED, AgentCreated, AgentRecord, RoutinesUnwatched, fact_arguments, project_agent,
+    AGENT_CREATED, AgentCreated, AgentRecord, ProjectAttached, RoutinesUnwatched, fact_arguments, project_agent,
 )
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees
@@ -56,7 +57,7 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.assistant.workspaces import UnboundSessionError, bound_workspace_id
+from redpanda.assistant.workspaces import bound_workspace_id, bound_workspace, bound_directory
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
@@ -255,7 +256,7 @@ class HostSupervisor:
                 # Repair Agents created before creation recovery was recorded explicitly.
                 born = agent_births[agent.session_id][1]
                 colleagues = [sid for sid, (other, time) in agent_births.items()
-                              if other.workspace_id == agent.workspace_id and time < born]
+                              if time < born]
                 write_json(pending, {"colleagues": colleagues})
             await self._finish_agent_creation(agent)
         for session_id in unfinished:
@@ -268,10 +269,10 @@ class HostSupervisor:
     async def _git_workspace(self, session_id) -> GitWorkspace | None:
         """Agents and the tasks they delegate run directly in their own Git worktrees."""
         agent = await self.agents.by_session(session_id)
-        if agent is not None:
-            return GitWorkspace(agent.worktree, agent.name)
+        if agent is not None and agent.project is not None:
+            return GitWorkspace(agent.worktree, agent.name, self.workspaces.get(agent.workspace_id).full_access)
         parent = await self._parent_agent(session_id)
-        if parent is None:
+        if parent is None or parent.project is None:
             return None
         return GitWorkspace(self.agent_worktrees.child(parent.workspace_id, session_id).path, parent.name)
 
@@ -279,10 +280,10 @@ class HostSupervisor:
         """Snapshot one worktree file into the session attachments the person can download."""
         if type(relative) is not str or not relative.strip() or Path(relative).is_absolute() or ".." in Path(relative).parts:
             return {"ok": False, "code": "INVALID_PATH", "error": "path 必须是工作区内的相对路径。"}
-        workspace = await self._git_workspace(session_id)
-        if workspace is None:
+        agent = await self.agents.by_session(session_id)
+        if agent is None:
             return {"ok": False, "code": "FILE_REQUIRES_AGENT", "error": "只有 Agent 能把工作区文件交给人。"}
-        root = workspace.worktree.resolve()
+        root = agent.worktree.resolve()
         target = (root / relative).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             return {"ok": False, "code": "FILE_NOT_FOUND", "error": "工作区里没有这个文件。"}
@@ -408,14 +409,13 @@ class HostSupervisor:
         if operation == "create_child":
             initial_fact = dict(arguments)
             expected_task = task_from_arguments(session_id, initial_fact)
-            child_workspace_id = await self.bound_workspace_id(
-                expected_task.parent_session_id
-            )
+            parent_events = await SqliteJournal(self.store.require(expected_task.parent_session_id)).snapshot(expected_task.parent_session_id)
+            child_workspace_id = bound_workspace_id(parent_events)
+            child_directory = bound_directory(parent_events)
             async with self.locks.setdefault(session_id, asyncio.Lock()):
-                parent_workspace = self.workspaces.get(child_workspace_id)
+                parent_workspace = bound_workspace(expected_task.parent_session_id, parent_events, self.workspaces)
                 conflict_child_id = None
                 if expected_task.resolve_conflicts_of is not None:
-                    parent_events = await SqliteJournal(self.store.require(expected_task.parent_session_id)).snapshot(expected_task.parent_session_id)
                     source = next((item for item in project_delegate_intents(parent_events)
                                    if item.command_id == expected_task.resolve_conflicts_of), None)
                     if source is None:
@@ -427,13 +427,14 @@ class HostSupervisor:
                     conflict_child_id = source.child_session_id
                 parent_agent = await self.agents.by_session(expected_task.parent_session_id)
                 # A plain session's delegated task only reads the parent's own directory.
-                if parent_agent is not None:
+                if parent_agent is not None and parent_agent.project is not None:
+                    parent_workspace = self.workspaces.get(parent_agent.workspace_id)
                     await _settle(asyncio.to_thread(self.agent_worktrees.create_child, parent_workspace,
                                                     parent_agent, session_id, conflict_child_id))
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
-                        workspace_id=child_workspace_id,
+                        workspace_id=child_workspace_id, directory=child_directory,
                         initial_fact=initial_fact,
                     )
                     if self.models is not None:
@@ -446,7 +447,7 @@ class HostSupervisor:
                         raise ValueError(
                             "existing child Session does not match delegate intent"
                         )
-                    if bound_workspace_id(events) != child_workspace_id:
+                    if bound_workspace_id(events) != child_workspace_id or bound_directory(events) != child_directory:
                         raise ValueError(
                             "existing child Session workspace does not match parent"
                         )
@@ -1067,16 +1068,6 @@ class HostSupervisor:
         if isawaitable(emitted):
             await emitted
 
-    async def bound_workspace_id(self, session_id: str) -> str:
-        """ä¼è¯èªå·±çå½å±ï¼æ´¾çå­ä¼è¯ä¸åç¼© reader é½ç»§æ¿å®ã"""
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(
-            session_id
-        )
-        workspace_id = bound_workspace_id(events)
-        if workspace_id is None:
-            raise UnboundSessionError(session_id)
-        return workspace_id
-
     async def create(self, session_id, workspace_id):
         async with self.locks.setdefault(session_id, asyncio.Lock()):
             self.workspaces.get(workspace_id)
@@ -1085,42 +1076,51 @@ class HostSupervisor:
                 self.models.initialize_session(session_id)
 
     async def create_agent(
-        self, *, name: str, workspace_id: str,
+        self, *, name: str, workspace_id: str | None = None,
     ) -> AgentRecord:
-        """Create a project-owned Git worktree before publishing the Agent fact."""
-        project = self.workspaces.get(workspace_id)
+        """Create a persistent Bot directory, optionally preparing a coding project."""
+        project = None if workspace_id is None else self.workspaces.get(workspace_id)
         if self.models is not None:
             self.models.require_default_ready()
         session_id = f"agent-{uuid4().hex}"
-        worktree = self.agent_worktrees.agent(workspace_id, session_id)
-        identity = AgentCreated(name=name, workspace_id=workspace_id,
-                                worktree=str(worktree.path), branch=worktree.branch)
+        directory = self.home.agent_directories_root / hashlib.sha256(session_id.encode()).hexdigest()[:20]
+        identity = AgentCreated(name=name, directory=str(directory))
         async with self._agent_creation_lock:
-            for entry in await self.agents.list(workspace_id):
+            for entry in await self.agents.list():
                 if entry.agent.name == name:
                     pending = self.store.require(entry.agent.session_id).parent / "agent-creation.json"
                     if pending.exists():
                         return await _settle(self._finish_agent_creation(entry.agent))
-                    raise AgentNameTaken(f"项目内已有 Agent：{name}")
+                    raise AgentNameTaken(f"已有 Agent：{name}")
             # A cancelled request must not leave a worktree without its identity fact.
             return await _settle(self._create_agent(project, session_id, identity))
 
     async def _create_agent(self, project, session_id, identity) -> AgentRecord:
-        colleagues = tuple(entry.agent.session_id for entry in await self.agents.list(project.workspace_id))
-        worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)
+        colleagues = tuple(entry.agent.session_id for entry in await self.agents.list())
+        directory = Path(identity.directory)
+        directory.mkdir(parents=True)
+        worktree = None
+        attachment = None
         try:
+            if project is not None:
+                worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)
+                attachment = ProjectAttached(workspace_id=project.workspace_id,
+                                             worktree=str(worktree.path), branch=worktree.branch)
             await self.store.create(
-                session_id, workspace_id=project.workspace_id,
+                session_id, directory=directory,
                 initial_fact=fact_arguments(identity, delivery_id="created"),
+                additional_facts=(() if attachment is None else (fact_arguments(attachment, delivery_id="project"),)),
                 agent_colleagues=colleagues,
             )
         except BaseException as error:
             try:
-                await asyncio.to_thread(self.agent_worktrees.remove, project, worktree)
+                if worktree is not None:
+                    await asyncio.to_thread(self.agent_worktrees.remove, project, worktree)
+                directory.rmdir()
             except BaseException as cleanup_error:
                 raise BaseExceptionGroup("Agent registration and worktree cleanup failed", [error, cleanup_error]) from None
             raise
-        agent = AgentRecord(session_id, identity)
+        agent = AgentRecord(session_id, identity, attachment)
         # The identity is durable now; the roster must know it before anything else can fail,
         # or a retry would publish a second Agent under the same name.
         await self.agents.add(agent)

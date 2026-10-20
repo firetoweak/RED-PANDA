@@ -133,12 +133,7 @@ class _Sessions:
         self.queries.created = (name, workspace_id)
         return AgentRecord(
             "agent-new",
-            AgentCreated(
-                name=name,
-                workspace_id=workspace_id,
-                worktree=str((Path.cwd() / "agent-worktree").resolve()),
-                branch="redpanda/hidden/one",
-            ),
+            AgentCreated(name=name, directory=str((Path.cwd() / "agent-worktree").resolve())),
         )
 
     async def select(self, owner, session_id):
@@ -587,9 +582,9 @@ class WebFirstSliceTest(unittest.TestCase):
         )
 
     def test_group_endpoints_check_human_input_and_map_known_failures(self):
-        record = GroupRecord("group-1", "workspace-old", GroupCreated(group="开发组", members=["Ada", "Lin"]))
+        record = GroupRecord("group-1", GroupCreated(group="开发组", members=["Ada", "Lin"]))
 
-        async def create(*, workspace_id, name, members):
+        async def create(*, name, members):
             if name == "taken":
                 raise GroupNameTaken(f"项目内已有群：{name}")
             if "Nobody" in members:
@@ -607,8 +602,8 @@ class WebFirstSliceTest(unittest.TestCase):
             view=AsyncMock(return_value={"group_id": "group-1", "messages": []}))
         connection = self.connection.connection_id
         self.assertEqual(self.client.get("/api/groups").json(), [{
-            "group_id": "group-1", "workspace_id": "workspace-old", "name": "开发组", "members": ["Ada", "Lin"]}])
-        create_body = {"connection_id": connection, "workspace_id": "workspace-old", "name": "开发组"}
+            "group_id": "group-1", "name": "开发组", "members": ["Ada", "Lin"]}])
+        create_body = {"connection_id": connection, "name": "开发组"}
         self.assertEqual(self.client.post("/api/groups", json={**create_body, "members": ["Ada", "Lin"]}).status_code, 201)
         for members in (["Ada"], ["Ada", "Ada"], [f"m{index}" for index in range(7)]):
             self.assertEqual(self.client.post("/api/groups", json={**create_body, "members": members}).status_code, 422)

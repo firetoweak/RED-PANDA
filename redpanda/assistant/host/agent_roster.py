@@ -44,9 +44,9 @@ class AgentRoster:
                     agent = project_agent(events)
                     if agent is None:
                         continue
-                    key = (agent.workspace_id, agent.name)
+                    key = agent.name
                     if key in names:
-                        raise ValueError("duplicate Agent name in persisted project roster")
+                        raise ValueError("duplicate Agent name in persisted roster")
                     names.add(key)
                     entries[session_id] = AgentView(agent, project_direction(events, agent))
                 self._entries = entries
@@ -64,10 +64,10 @@ class AgentRoster:
     async def list(self, workspace_id: str | None = None) -> tuple[AgentView, ...]:
         entries = [entry for entry in (await self._index()).values()
                    if workspace_id is None or entry.agent.workspace_id == workspace_id]
-        return tuple(sorted(entries, key=lambda entry: (entry.agent.workspace_id, entry.agent.name)))
+        return tuple(sorted(entries, key=lambda entry: entry.agent.name))
 
-    async def resolve(self, workspace_id: str, name: str) -> AgentRecord:
-        for entry in await self.list(workspace_id):
+    async def resolve(self, name: str) -> AgentRecord:
+        for entry in await self.list():
             if entry.agent.name == name:
                 return entry.agent
         raise AgentNotFound(name)

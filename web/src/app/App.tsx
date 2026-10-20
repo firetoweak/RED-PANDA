@@ -109,7 +109,6 @@ export function App() {
         <Routes>
           <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<AgentHome />} />
-          <Route path="/workspaces/:workspaceId" element={<AgentHome />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/groups/:groupId" element={<GroupChatPage />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />

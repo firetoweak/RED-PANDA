@@ -13,8 +13,8 @@ type CreateWorkspaceModalProps = {
 };
 
 /**
- * 工作区只能由用户显式建：一个名字 + 一个已存在的目录。
- * 目录不存在、或已被别的工作区占用时，后端会拒绝（这里只说清两种原因）。
+ * 代码项目只能由用户显式建：一个名字 + 一个已存在的目录。
+ * 目录不存在、或已被别的代码项目占用时，后端会拒绝（这里只说清两种原因）。
  */
 export function CreateWorkspaceModal({
   opened,
@@ -42,7 +42,7 @@ export function CreateWorkspaceModal({
     <Modal
       onClose={close}
       opened={opened}
-      title="新建工作区"
+      title="添加代码项目"
       closeOnClickOutside={!isSelecting}
       closeOnEscape={!isSelecting}
       withCloseButton={!isSelecting}
@@ -61,7 +61,7 @@ export function CreateWorkspaceModal({
             disabled={isSelecting || isLoading}
             label="目录"
             onChange={(event) => setTaskRoot(event.currentTarget.value)}
-            placeholder="请选择工作区文件夹"
+            placeholder="请选择代码项目文件夹"
             style={{ flex: 1, minWidth: 0 }}
             value={taskRoot}
           />
@@ -96,7 +96,7 @@ export function CreateWorkspaceModal({
         ) : null}
         {isError ? (
           <Alert color="red" title="创建失败">
-            目录不存在，或者已经被另一个工作区占用。
+            目录不存在，或者已经被另一个代码项目占用。
           </Alert>
         ) : null}
         <Button

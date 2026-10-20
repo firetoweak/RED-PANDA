@@ -73,7 +73,7 @@ class AgentWorktrees:
         """
         integration = self.integration(agent.workspace_id)
         return self.git.merge(
-            integration.path, self.git.oid(integration.path, f"refs/heads/{agent.identity.branch}"),
+            integration.path, self.git.oid(integration.path, f"refs/heads/{agent.project.branch}"),
             author=agent.name, message=f"合入 {agent.name} 的工作", keep_conflict=False,
         )
 
@@ -98,7 +98,7 @@ class AgentWorktrees:
         if self._has_branch(project.task_root, child.branch):
             self._validate(project.task_root, child)
         else:
-            self._add(project.task_root, child, parent.identity.branch)
+            self._add(project.task_root, child, parent.project.branch)
         if conflict_source is not None and not self.git.merging(child.path):
             source = self.child(parent.workspace_id, conflict_source)
             result = self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
@@ -131,7 +131,7 @@ class AgentWorktrees:
     def compare_child(self, parent: AgentRecord, child_session_id: str,
                       paths: tuple[str, ...], offset: int) -> dict:
         child = self.child(parent.workspace_id, child_session_id)
-        return self.git.compare(parent.worktree, f"refs/heads/{parent.identity.branch}",
+        return self.git.compare(parent.worktree, f"refs/heads/{parent.project.branch}",
                                 f"refs/heads/{child.branch}", paths, offset=offset)
 
     def merge_child(self, parent: AgentRecord, child_session_id: str) -> tuple[MergeResult, tuple[str, ...]]:

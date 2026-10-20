@@ -191,16 +191,16 @@ export const redpandaApi = createApi({
     }),
     createGroup: build.mutation<
       GroupView,
-      { connectionId: string; workspaceId: string; name: string; members: string[] }
+      { connectionId: string; name: string; members: string[] }
     >({
-      query: ({ connectionId, workspaceId, name, members }) => ({
+      query: ({ connectionId, name, members }) => ({
         url: "/groups",
         method: "POST",
-        body: { connection_id: connectionId, workspace_id: workspaceId, name, members },
+        body: { connection_id: connectionId, name, members },
       }),
       transformResponse: (value: unknown) => groupViewSchema.parse(value),
       transformErrorResponse: (response) => {
-        if (response.status !== 409 && response.status !== 422 && response.status !== 404) {
+        if (response.status !== 400 && response.status !== 409 && response.status !== 422 && response.status !== 404) {
           return response;
         }
         return apiErrorDetail(response.data) ?? response;
@@ -266,7 +266,7 @@ export const redpandaApi = createApi({
     }),
     createAgent: build.mutation<
       AgentRosterEntry,
-      { connectionId: string; workspaceId: string; name: string }
+      { connectionId: string; workspaceId: string | null; name: string }
     >({
       query: ({ connectionId, workspaceId, name }) => ({
         url: "/agents",
@@ -275,7 +275,7 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
       transformErrorResponse: (response) => {
-        if (response.status !== 409 && response.status !== 422 && response.status !== 404) {
+        if (response.status !== 400 && response.status !== 409 && response.status !== 422 && response.status !== 404) {
           return response;
         }
         return apiErrorDetail(response.data) ?? response;

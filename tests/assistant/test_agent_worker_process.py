@@ -131,21 +131,21 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual((worktree / "note.txt").read_text(), f"WRITE_AGENT_{index}")
                         self.assertEqual((worktree / "command.txt").read_text().strip(), "command-ok")
                         # Completing write and reply Steps must not stage or commit.
-                        self.assertEqual(git("rev-parse", agent.identity.branch).stdout, base)
-                        self.assertEqual(await current.bound_workspace_id(agent.session_id), workspace.workspace_id)
+                        self.assertEqual(git("rev-parse", agent.project.branch).stdout, base)
+                        self.assertEqual(agent.workspace_id, workspace.workspace_id)
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
                     await current.receive_user_message(agents[0].session_id, "FINISH_AGENT", delivery_id="finish")
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
-                    committed = git("rev-parse", agents[0].identity.branch).stdout
+                    committed = git("rev-parse", agents[0].project.branch).stdout
                     self.assertNotEqual(committed, base)
                     self.assertEqual(git("show", "-s", "--format=%an%n%ae%n%cn%n%ce",
-                                         agents[0].identity.branch).stdout.decode().splitlines(),
+                                         agents[0].project.branch).stdout.decode().splitlines(),
                                      ["同事0", "bot@redpanda.local", "同事0", "bot@redpanda.local"])
-                    self.assertEqual(git("show", f"{agents[0].identity.branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
+                    self.assertEqual(git("show", f"{agents[0].project.branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
                     self.assertEqual(git("diff", "--name-only", base.decode().strip(),
-                                         agents[0].identity.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
-                    self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
+                                         agents[0].project.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
+                    self.assertEqual(git("rev-parse", agents[1].project.branch).stdout, base)
                     await current.receive_user_message(agents[0].session_id, "LAND_AGENT", delivery_id="land")
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
                     integration = current.agent_worktrees.integration(workspace.workspace_id)
@@ -153,7 +153,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual((integration.path / "note.txt").read_text(), "WRITE_AGENT_0")
                     await current.close()
                     current = host()
-                    recovered = await current.agents.resolve(workspace.workspace_id, "同事0")
+                    recovered = await current.agents.resolve("同事0")
                     self.assertEqual(recovered, agents[0])
                     await current.select("new-page", recovered.session_id)
                     await current.receive_user_message(recovered.session_id, "READ_AGENT", delivery_id="read")
@@ -195,11 +195,59 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
-                    self.assertEqual(git("rev-parse", agents[0].identity.branch).stdout, committed)
-                    self.assertEqual(git("rev-parse", agents[1].identity.branch).stdout, base)
+                    self.assertEqual(git("rev-parse", agents[0].project.branch).stdout, committed)
+                    self.assertEqual(git("rev-parse", agents[1].project.branch).stdout, base)
                     self.assertEqual((project / "note.txt").read_text(), "human-uncommitted")
                     self.assertEqual(git("status", "--porcelain").stdout, original_status)
                     self.assertEqual((project / ".git" / "config").read_bytes(), repository_config)
                     self.assertEqual(global_config.read_bytes(), original_global_config)
                 finally:
                     await current.close()
+
+
+    async def test_bot_directory_survives_host_restart_and_compaction_without_project(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            home = RedPandaHome(root / "home")
+            store = SessionStore(home.runtime_sessions_root)
+            llm = WorktreeLlm(root)
+
+            def host():
+                return HostSupervisor(store, partial(config_for, root), home, None, llm=llm)
+
+            current = host()
+            try:
+                agent = await current.create_agent(name="Notes")
+                self.assertIsNone(agent.project)
+                self.assertEqual(WorkspaceRegistry.load(home.workspaces_path).workspaces, ())
+                await current.select("page", agent.session_id)
+                await current.set_auto_authorize(agent.session_id, True)
+                await current.receive_user_message(agent.session_id, "WRITE_AGENT_0", delivery_id="write")
+                await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
+                self.assertEqual((agent.directory / "note.txt").read_text(), "WRITE_AGENT_0")
+                self.assertEqual((agent.directory / "command.txt").read_text().strip(), "command-ok")
+                await current.close()
+                current = host()
+                self.assertEqual(await current.agents.resolve("Notes"), agent)
+                await current.select("page", agent.session_id)
+                snapshot = await current.request("compact_snapshot", agent.session_id, {})
+                job = current.compact.store.start(agent.session_id, snapshot)
+                await current.compact.ensure_reader(job)
+                async with asyncio.timeout(30):
+                    while current.conversation_status(agent.session_id).compact_count != 1:
+                        await asyncio.sleep(0.02)
+                llm.read_release.set()
+                await current.receive_user_message(agent.session_id, "READ_AGENT", delivery_id="read")
+                await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
+                events = await SqliteJournal(store.require(agent.session_id)).snapshot(agent.session_id)
+                commands = replay(agent.session_id, events).state.commands
+                result = next(c.outcome for c in commands if c.command.effect.name == "read_file")
+                self.assertEqual(thaw_value(result.value)["code"], "FILE_READ")
+                self.assertEqual(list(home.agent_worktrees_root.iterdir()), [])
+                for request in llm.requests:
+                    names = {tool["function"]["name"] for tool in request["tools"]}
+                    self.assertIn("list_colleagues", names)
+                    self.assertNotIn("land_branch", names)
+                self.assertTrue(current.failures.empty())
+            finally:
+                await current.close()

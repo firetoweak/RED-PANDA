@@ -94,16 +94,16 @@ function browserStubs() {
 
 afterEach(() => {
   cleanup(); queries.inbox = []; vi.unstubAllGlobals();
-  Object.keys(window.localStorage).filter((key) => key.startsWith("redpanda.sidebarGroups.")).forEach((key) => window.localStorage.removeItem(key));
+  Object.keys(window.localStorage).filter((key) => key.startsWith("redpanda.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
 });
 
 it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不删除条目", async () => {
   browserStubs();
   queries.workspaces = [workspace("organize", "项目")];
   queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" })];
-  queries.groups = [{ group_id: "chat", workspace_id: "organize", name: "开发群", members: ["Ada", "Lin"] }];
+  queries.groups = [{ group_id: "chat", name: "开发群", members: ["Ada", "Lin"] }];
   renderSidebar("/sessions/ada");
-  fireEvent.click(screen.getByRole("button", { name: "在 项目 新建分组" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建分组" }));
   fireEvent.change(screen.getByLabelText("分组名称"), { target: { value: "研发" } });
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -112,7 +112,7 @@ it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不
   fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "移动 群聊 开发群 到分组" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
-  const section = screen.getByRole("region", { name: "项目 的分组 研发" });
+  const section = screen.getByRole("region", { name: "名册的分组 研发" });
   expect(within(section).getByRole("button", { name: "Ada", exact: true })).toHaveAttribute("aria-current", "page");
   fireEvent.click(within(section).getByRole("button", { name: "群聊 开发群", exact: true }));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/chat");
@@ -128,43 +128,27 @@ it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不
   await waitFor(() => expect(screen.getByRole("button", { name: "分组 开发", exact: true })).toBeInTheDocument());
   fireEvent.click(screen.getByRole("button", { name: "开发 分组操作" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "删除分组" }));
-  const ungrouped = screen.getByRole("region", { name: "项目 的分组 未分组" });
+  const ungrouped = screen.getByRole("region", { name: "名册的分组 未分组" });
   expect(await within(ungrouped).findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
   expect(within(ungrouped).getByRole("button", { name: "群聊 开发群", exact: true })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "分组 开发", exact: true })).not.toBeInTheDocument();
 });
 
-it("分组偏好按工作区隔离，搜索展开但不改写折叠偏好", async () => {
+it("名册分组覆盖所有 Bot，搜索展开但不改写折叠偏好", async () => {
   browserStubs();
   queries.workspaces = [workspace("organize", "项目"), workspace("other", "别处")];
   queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" }), agent({ session_id: "lin", name: "Lin", workspace_id: "other" })];
   queries.groups = [];
   const stored = { sections: [{ id: "dev", name: "研发", collapsed: true }], assignments: { "agent:ada": "dev" }, ungroupedCollapsed: false };
-  window.localStorage.setItem("redpanda.sidebarGroups.organize", JSON.stringify(stored));
+  window.localStorage.setItem("redpanda.sidebarGroups", JSON.stringify(stored));
   renderSidebar("/");
-  expect(within(screen.getByRole("region", { name: "别处 的分组 未分组" })).getByRole("button", { name: "Lin", exact: true })).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Agent、群聊或工作区" }), { target: { value: "Ada" } });
+  expect(within(screen.getByRole("region", { name: "名册的分组 未分组" })).getByRole("button", { name: "Lin", exact: true })).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Bot 或群聊" }), { target: { value: "Ada" } });
   expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "true");
   expect(await screen.findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
-  expect(JSON.parse(window.localStorage.getItem("redpanda.sidebarGroups.organize")!).sections[0].collapsed).toBe(true);
+  expect(JSON.parse(window.localStorage.getItem("redpanda.sidebarGroups")!).sections[0].collapsed).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
   expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "false");
-});
-
-it("搜索能展开已折叠项目中的匹配项，清除后恢复原来的折叠偏好", async () => {
-  browserStubs();
-  queries.workspaces = [workspace("search-project", "项目")];
-  queries.agents = [agent({ session_id: "ada", workspace_id: "search-project", name: "Ada", direction: "前端界面" })];
-  queries.groups = [];
-  window.localStorage.setItem("redpanda.collapsedWorkspaces", JSON.stringify({ "search-project": true }));
-  renderSidebar("/");
-  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "false");
-  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Agent、群聊或工作区" }), { target: { value: "前端" } });
-  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "true");
-  expect(await screen.findByRole("button", { name: "Ada" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
-  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "false");
-  window.localStorage.removeItem("redpanda.collapsedWorkspaces");
 });
 
 it("名册用干活、等授权、等人回话和空闲标出状态，运行中的活动盖过空闲", () => {
@@ -203,104 +187,6 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   expect(screen.getByText("前端")).toBeInTheDocument();
 });
 
-it("移除工作区要先确认：取消不碰接口，确认才带上工作区 id", async () => {
-  browserStubs();
-  queries.deleteWorkspace.mockClear();
-  queries.workspaces = [workspace("workspace", "工作区")];
-  queries.agents = [];
-  renderSidebar("/");
-
-  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
-  expect(screen.getByRole("dialog", { name: "移除工作区" })).toBeInTheDocument();
-  expect(screen.getByText(/绑在它上面的 Agent 也不再列出/)).toBeInTheDocument();
-  expect(screen.getByText(/不会把这些 Agent 认回来/)).toBeInTheDocument();
-  expect(screen.queryByText(/它下面的会话/)).not.toBeInTheDocument();
-  expect(queries.deleteWorkspace).not.toHaveBeenCalled();
-
-  fireEvent.click(screen.getByRole("button", { name: "取消" }));
-  await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "移除" })).toBeNull(),
-  );
-  expect(queries.deleteWorkspace).not.toHaveBeenCalled();
-
-  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
-  fireEvent.click(screen.getByRole("button", { name: "移除" }));
-  await waitFor(() =>
-    expect(queries.deleteWorkspace).toHaveBeenCalledWith({
-      workspaceId: "workspace",
-    }),
-  );
-  await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "移除" })).toBeNull(),
-  );
-});
-
-it("移除正在聊天的工作区后，离开到剩下的工作区", async () => {
-  browserStubs();
-  queries.deleteWorkspace.mockClear();
-  queries.workspaces = [workspace("workspace-a", "旧项目"), workspace("workspace-b", "新项目")];
-  queries.agents = [agent({
-    session_id: "agent-1", workspace_id: "workspace-a", name: "小熊猫",
-  })];
-  renderSidebar("/sessions/agent-1");
-  expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
-
-  fireEvent.click(screen.getByLabelText("旧项目 工作区操作"));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "移除工作区" }));
-  fireEvent.click(screen.getByRole("button", { name: "移除" }));
-
-  await waitFor(() =>
-    expect(queries.deleteWorkspace).toHaveBeenCalledWith({
-      workspaceId: "workspace-a",
-    }),
-  );
-  await waitFor(() =>
-    expect(screen.getByTestId("current-path")).toHaveTextContent("/workspaces/workspace-b"),
-  );
-});
-
-it("右键和省略号打开同一组工作区操作，右键不改变折叠状态", async () => {
-  browserStubs();
-  queries.workspaces = [workspace("workspace", "项目")];
-  queries.agents = [];
-  renderSidebar("/");
-
-  const toggle = screen.getByRole("button", { name: "项目" });
-  const expanded = toggle.getAttribute("aria-expanded");
-  fireEvent.contextMenu(toggle);
-  expect(await screen.findByRole("menuitem", { name: "重命名工作区" })).toBeInTheDocument();
-  expect(screen.queryByRole("menuitem", { name: "归档所有会话" })).not.toBeInTheDocument();
-  expect(screen.getByRole("menuitem", { name: "移除工作区" })).toBeInTheDocument();
-  expect(toggle).toHaveAttribute("aria-expanded", expanded);
-
-  fireEvent.keyDown(screen.getByRole("menuitem", { name: "重命名工作区" }), { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-  fireEvent.click(screen.getByLabelText("项目 工作区操作"));
-  expect(await screen.findByRole("menuitem", { name: "重命名工作区" })).toBeInTheDocument();
-});
-
-it("重命名回填当前名称，拒绝空白并只提交显示名称", async () => {
-  browserStubs();
-  queries.renameWorkspace.mockClear();
-  queries.workspaces = [workspace("workspace", "旧名称")];
-  queries.agents = [];
-  renderSidebar("/");
-
-  fireEvent.contextMenu(screen.getByRole("button", { name: "旧名称" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "重命名工作区" }));
-  expect(await screen.findByRole("textbox", { name: /名称/ })).toHaveValue("旧名称");
-  fireEvent.change(screen.getByRole("textbox", { name: /名称/ }), { target: { value: "   " } });
-  expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-  fireEvent.change(screen.getByRole("textbox", { name: /名称/ }), { target: { value: " 新名称 " } });
-  fireEvent.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(queries.renameWorkspace).toHaveBeenCalledWith({
-    workspaceId: "workspace", name: "新名称",
-  }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-});
-
 it("点 Agent 打开它的会话", () => {
   browserStubs();
   queries.workspaces = [workspace("workspace", "项目")];
@@ -320,7 +206,7 @@ it("待处理按钮显示收件箱条数并进入收件箱", () => {
   expect(screen.getByTestId("current-path")).toHaveTextContent("/inbox");
 });
 
-it("群聊列在所属项目下：点开进入群，新建群只能从同项目 Agent 里选成员", async () => {
+it("群聊直接列在名册中，成员可选任意 Bot", async () => {
   browserStubs();
   queries.workspaces = [workspace("workspace", "工作区"), workspace("other", "别处")];
   queries.agents = [
@@ -328,18 +214,17 @@ it("群聊列在所属项目下：点开进入群，新建群只能从同项目 
     agent({ session_id: "l", name: "Lin" }),
     agent({ session_id: "x", name: "外人", workspace_id: "other" }),
   ];
-  queries.groups = [{ group_id: "group-1", workspace_id: "workspace", name: "开发组", members: ["Ada", "Lin"] }];
+  queries.groups = [{ group_id: "group-1", name: "开发组", members: ["Ada", "Lin"] }];
   renderSidebar("/");
 
   fireEvent.click(screen.getByLabelText("群聊 开发组"));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/group-1");
 
-  fireEvent.click(screen.getByLabelText("工作区 工作区操作"));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "新建群聊" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建群聊" }));
   const dialog = screen.getByRole("dialog", { name: "新建群聊" });
   fireEvent.change(screen.getByLabelText("群名"), { target: { value: "评审组" } });
   fireEvent.click(screen.getByRole("combobox", { name: "成员" }));
-  expect(screen.queryByRole("option", { name: "外人" })).not.toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "外人" })).toBeInTheDocument();
   const create = screen.getByRole("button", { name: "创建" });
   fireEvent.click(await screen.findByRole("option", { name: "Ada" }));
   expect(create).toBeDisabled();
@@ -347,7 +232,7 @@ it("群聊列在所属项目下：点开进入群，新建群只能从同项目 
   fireEvent.click(await screen.findByRole("option", { name: "Lin" }));
   fireEvent.click(create);
   await waitFor(() => expect(queries.createGroup).toHaveBeenCalledWith({
-    connectionId: "connection", workspaceId: "workspace", name: "评审组", members: ["Ada", "Lin"],
+    connectionId: "connection", name: "评审组", members: ["Ada", "Lin"],
   }));
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/group-new"));
   expect(dialog).not.toBeInTheDocument();

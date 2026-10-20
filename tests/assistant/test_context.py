@@ -599,8 +599,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         }, "source": "assistant.control", "delivery_id": "control", "requests_decision": True}
             for kind in (CONTROL_CONCLUDED, CONTROL_REJECTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
                          CONTROL_PREPARATION_FAILED)]
-        facts.append(fact_arguments(AgentCreated(name="Ada", workspace_id="workspace-test",
-                                                worktree=str(Path.cwd()), branch="ada"), delivery_id="created"))
+        facts.append(fact_arguments(AgentCreated(name="Ada", directory=str(Path.cwd())), delivery_id="created"))
         for fact in facts:
             with self.subTest(fact=fact["fact_type"]):
                 async def ping(_context, _arguments):

@@ -1,7 +1,7 @@
 import {
   ActionIcon, Alert, Badge, Group, ScrollArea, Text, Tooltip,
 } from "@mantine/core";
-import { IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
+import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -9,7 +9,6 @@ import type { GroupMessage } from "../../api/contracts";
 import {
   useGetAgentsQuery,
   useGetGroupQuery,
-  useGetWorkspacesQuery,
   usePostGroupMessageMutation,
 } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
@@ -60,7 +59,6 @@ function GroupConversation({ groupId }: { groupId: string; }) {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: group, error: loadError } = useGetGroupQuery(groupId);
   const { data: agents = [] } = useGetAgentsQuery();
-  const { data: workspaces = [] } = useGetWorkspacesQuery();
   const [postMessage, posting] = usePostGroupMessageMutation();
   const [failure, setFailure] = useState<string | null>(null);
   const [detailsOpened, setDetailsOpened] = useState(true);
@@ -79,10 +77,10 @@ function GroupConversation({ groupId }: { groupId: string; }) {
     return null;
   }
   const memberOf = (name: string) => agents.find(
-    (agent) => agent.workspace_id === group.workspace_id && agent.name === name,
+    (agent) => agent.name === name,
   );
   const sessionOf = (name: string) => memberOf(name)?.session_id;
-  const workspace = workspaces.find((item) => item.workspace_id === group.workspace_id);
+
 
   async function send(text: string, mention: string[]) {
     if (connectionId === null || posting.isLoading) {
@@ -154,12 +152,6 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           <Text fw={600} size="md">{group.name}</Text>
           <Text c="dimmed" fz={12}>{group.members.length} 位成员</Text>
         </div>
-        {workspace === undefined ? null : <div className="agent-details-section">
-          <Text className="agent-details-label" size="xs" c="dimmed">所在项目</Text>
-          <Link className="agent-details-project" to={`/workspaces/${encodeURIComponent(workspace.workspace_id)}`}>
-            <IconFolder size={16} /><span>{workspace.name}</span>
-          </Link>
-        </div>}
         <div className="agent-details-section">
           <Text className="agent-details-label" size="xs" c="dimmed">群成员</Text>
           <div className="group-member-list">{group.members.map((name) => {
