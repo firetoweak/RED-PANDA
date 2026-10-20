@@ -58,7 +58,7 @@ class WebChannel:
     async def list_agents(self):
         return await self._queries.list_agents()
 
-    async def create_agent(self, connection_id: str, workspace_id: str, name: str):
+    async def create_agent(self, connection_id: str, workspace_id: str | None, name: str):
         connection = self._require_connection(connection_id)
         record = await self._sessions.create_agent(name=name, workspace_id=workspace_id)
         await self._sessions.select(connection.owner, record.session_id)
@@ -74,16 +74,16 @@ class WebChannel:
         await self._sessions.answer_absence(session_id, action)
 
     async def list_groups(self):
-        return [{"group_id": group.group_id, "workspace_id": group.workspace_id,
+        return [{"group_id": group.group_id,
                  "name": group.name, "members": group.members}
                 for group in await self._sessions.agent_groups.list()]
 
     async def group(self, group_id: str):
         return await self._sessions.agent_groups.view(group_id)
 
-    async def create_group(self, connection_id: str, workspace_id: str, name: str, members: list[str]):
+    async def create_group(self, connection_id: str, name: str, members: list[str]):
         self._require_connection(connection_id)
-        group = await self._sessions.agent_groups.create(workspace_id=workspace_id, name=name, members=members)
+        group = await self._sessions.agent_groups.create(name=name, members=members)
         return await self._sessions.agent_groups.view(group.group_id)
 
     async def post_group_message(self, connection_id: str, group_id: str, text: str, mention: list[str]):

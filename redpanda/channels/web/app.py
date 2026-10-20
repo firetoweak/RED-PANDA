@@ -100,7 +100,7 @@ class ModelTestRequest(ConnectionRequest):
 
 
 class CreateAgentRequest(ConnectionRequest):
-    workspace_id: str = Field(min_length=1)
+    workspace_id: str | None = Field(default=None, min_length=1)
     name: str = Field(min_length=1)
 
     @field_validator("name")
@@ -112,7 +112,6 @@ class CreateAgentRequest(ConnectionRequest):
 
 
 class CreateGroupRequest(ConnectionRequest):
-    workspace_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     members: list[str] = Field(min_length=2, max_length=6)
 
@@ -407,7 +406,7 @@ def create_web_app(
 
     @app.post("/api/groups", status_code=201)
     async def create_group(body: CreateGroupRequest, request: Request):
-        return await _channel(request).create_group(body.connection_id, body.workspace_id, body.name, body.members)
+        return await _channel(request).create_group(body.connection_id, body.name, body.members)
 
     @app.get("/api/groups/{group_id}")
     async def group(group_id: str, request: Request):

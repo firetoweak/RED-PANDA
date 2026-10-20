@@ -15,7 +15,7 @@ from redpanda.assistant.commands import COMMAND_FINISHED
 from redpanda.assistant.agents import (
     AGENT_FACT_TYPES, GROUP_MESSAGE, PRIVATE_MESSAGE, agent_fact_for_model,
 )
-from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
+from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT, SESSION_DIRECTORY_FACT
 from redpanda.assistant.artifacts import (
     ArtifactGateway,
     ArtifactStore,
@@ -56,6 +56,7 @@ DEFAULT_MAX_TOOL_IMAGES = 5
 
 _INTERNAL_FACT_TYPES = frozenset({
     SESSION_WORKSPACE_FACT,
+    SESSION_DIRECTORY_FACT,
     "compact.task", "compact.handoff_created", "compact.window_rolled_over",
 })
 _IMAGE_EVICTED_HINT = "\n图片已移出上下文；需要重新查看时用上面的 id 调用 read_image。"

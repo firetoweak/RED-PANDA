@@ -21,12 +21,13 @@
 |---|---|
 | 默认模型与候选模型 | `$REDPANDA_HOME/config.json` |
 | 供应商连接（含密钥） | `$REDPANDA_HOME/connections.json` |
-| 工作区登记 | `$REDPANDA_HOME/workspaces.json` |
+| 可选代码项目登记 | `$REDPANDA_HOME/workspaces.json` |
 | 会话运行数据（journal、附件） | `$REDPANDA_HOME/runtime_sessions/<sha256(session_id)>/journal.sqlite` |
 | 每会话模型选择 | `$REDPANDA_HOME/runtime_sessions/models.json` |
 | 自动放行开关（重启后保留） | `$REDPANDA_HOME/runtime_sessions/auto_authorize.json` |
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 例行任务 | `$REDPANDA_HOME/state/routines.sqlite` |
+| Bot 个人目录 | `$REDPANDA_HOME/state/bots/<sha256(session_id) 前 20 位>/` |
 | 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`<sha256(session_id) 前 20 位>`、`children/<sha256(子会话) 前 20 位>` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 

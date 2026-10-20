@@ -20,7 +20,7 @@ vi.mock("../src/api/redpandaApi", () => ({
   useGetGroupsQuery: () => ({ data: [
     { workspace_id: "alpha", group_id: "front", name: "界面讨论", members: ["Ada"] },
     { workspace_id: "beta", group_id: "back", name: "接口讨论", members: ["Lin"] },
-    { workspace_id: "beta", group_id: "other", name: "另一个项目的同名成员", members: ["Ada"] },
+    { workspace_id: "beta", group_id: "other", name: "跨项目讨论", members: ["Ada"] },
   ] }),
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -34,9 +34,9 @@ it("右侧资料跟随当前 Agent，按项目和成员筛选群聊，收起后�
   </MemoryRouter></MantineProvider></Provider>);
   const details = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(details.getByText("前端体验")).toBeInTheDocument();
-  expect(details.getByRole("link", { name: "Alpha" })).toHaveAttribute("href", "/workspaces/alpha");
+  expect(details.getByText("Alpha")).toBeInTheDocument();
   expect(details.getByRole("link", { name: "界面讨论" })).toHaveAttribute("href", "/groups/front");
-  expect(details.queryByText("另一个项目的同名成员")).not.toBeInTheDocument();
+  expect(details.getByText("跨项目讨论")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起 Agent 资料" }));
   expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   expect(screen.getByText("对话内容")).toBeInTheDocument();
@@ -44,7 +44,7 @@ it("右侧资料跟随当前 Agent，按项目和成员筛选群聊，收起后�
   fireEvent.click(screen.getByRole("link", { name: "切换到 Lin" }));
   const next = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(next.getByText("接口验证")).toBeInTheDocument();
-  expect(next.getByRole("link", { name: "Beta" })).toHaveAttribute("href", "/workspaces/beta");
+  expect(next.getByText("Beta")).toBeInTheDocument();
   expect(next.queryByText("前端体验")).not.toBeInTheDocument();
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
 });

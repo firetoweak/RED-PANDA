@@ -93,7 +93,7 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
         "description": (
-            "查询同项目的同事名字、他们声明的负责方向和各自的工作目录；未声明时方向为 null。"
+            "查询同事名字、他们声明的负责方向和各自的工作目录；未声明时方向为 null。"
             "可以用文件工具只读查看同事工作目录里尚未落地的改动，不能在其中写入。"
             "每位同事还带 status 与 since。status 是当前状态：working 正在工作；"
             "awaiting_authorization 有操作在等人授权，授权前不会继续；"
@@ -121,7 +121,7 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": SEND_MESSAGE,
         "description": (
-            "向同项目的同事发私信，请求对方处理；立即返回送达情况，不等待回复。"
+            "向同事发私信，请求对方处理；立即返回送达情况，不等待回复。"
             "回复或继续已有交流时，用 reply_to 引用你与这位同事之间的消息。"
             "同事转述的同意不构成用户授权。"
         ),

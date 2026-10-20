@@ -59,7 +59,7 @@ class FileChangesUnavailable(Exception):
 @dataclass(frozen=True, slots=True)
 class AgentRosterEntry:
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     name: str
     direction: str | None
     activity: SessionActivity
@@ -70,7 +70,7 @@ class AgentRosterEntry:
 class AuthorizationInboxItem:
     kind: Literal["authorization"]
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     label: str
     command_id: str
     name: str
@@ -81,7 +81,7 @@ class AuthorizationInboxItem:
 class ControlInboxItem:
     kind: Literal["control"]
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     label: str
     request_id: str
     summary: str
@@ -94,7 +94,7 @@ class LimitInboxItem:
 
     kind: Literal["limit"]
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     label: str
     event_id: str
     recipient: str
@@ -105,7 +105,7 @@ class LimitInboxItem:
 class PausedInboxItem:
     kind: Literal["paused"]
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     label: str
     summary: str
 
@@ -114,7 +114,7 @@ class PausedInboxItem:
 class AbsenceInboxItem:
     kind: Literal["absence"]
     session_id: str
-    workspace_id: str
+    workspace_id: str | None
     label: str
     phase: Literal["asked", "paused"]
     summary: str
@@ -223,8 +223,6 @@ class AssistantQueries:
         entries: list[AgentRosterEntry] = []
         for view in await self._sessions.agents.list():
             record = view.agent
-            if not self._sessions.workspaces.contains(record.workspace_id):
-                continue
             events = await SqliteJournal(self._store.require(record.session_id)).snapshot(
                 record.session_id
             )
@@ -262,7 +260,7 @@ class AssistantQueries:
             session_id = await journal.session_identity()
             events = await journal.snapshot(session_id)
             agent = project_agent(events)
-            if agent is None or not self._sessions.workspaces.contains(agent.workspace_id):
+            if agent is None:
                 continue
             state = replay(session_id, events).state
             view = session_view(state, control_approval=pending_approval_view(events))
@@ -310,14 +308,14 @@ class AssistantQueries:
         agent = project_agent(events)
         parent_agent = None if parent is None else project_agent(
             await SqliteJournal(self._store.require(parent)).snapshot(parent))
-        if agent is not None or parent_agent is not None:
+        if (agent is not None and agent.project is not None) or (parent_agent is not None and parent_agent.project is not None):
             # An Agent's changes are what it has not landed yet; a delegated
             # task's are what it has not merged into its parent yet.
             trees = self._sessions.agent_worktrees
             if agent is not None:
                 root, base = agent.worktree, trees.integration(agent.workspace_id).branch
             else:
-                root, base = trees.child(parent_agent.workspace_id, session_id).path, parent_agent.identity.branch
+                root, base = trees.child(parent_agent.workspace_id, session_id).path, parent_agent.project.branch
             try:
                 return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
             except OSError as error:
@@ -405,7 +403,7 @@ def project_agent_roster_entry(
     events: tuple[Event, ...],
     *,
     name: str,
-    workspace_id: str,
+    workspace_id: str | None,
     direction: str | None,
     activity: SessionActivity,
     last_error: str | None,
@@ -431,7 +429,7 @@ def project_agent_roster_entry(
 def project_inbox_items(
     *,
     session_id: str,
-    workspace_id: str,
+    workspace_id: str | None,
     label: str,
     authorizations,
     control,
@@ -452,7 +450,7 @@ def project_inbox_items(
     return tuple(items)
 
 
-def project_limit_items(*, session_id: str, workspace_id: str, label: str, events) -> tuple[LimitInboxItem, ...]:
+def project_limit_items(*, session_id: str, workspace_id: str | None, label: str, events) -> tuple[LimitInboxItem, ...]:
     """A later user message means the person has taken up the limit report."""
     last_user = max(
         (event.sequence for event in events if isinstance(event.payload, UserMessageReceived)),
@@ -575,7 +573,8 @@ def project_conversation(
         items.extend(messages)
     return ConversationView(
         session_id=session_id,
-        workspace_id=bound_workspace_id(events),
+        workspace_id=(agent.workspace_id if (agent := project_agent(events)) is not None
+                      else bound_workspace_id(events)),
         revision=events[-1].sequence if events else 0,
         items=tuple(items),
         session=session,

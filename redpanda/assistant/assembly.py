@@ -22,8 +22,7 @@ from redpanda.assistant.delivery import (
     PreviewEmitter,
     deliver_binding,
 )
-from redpanda.assistant.context.prompt import CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
-from redpanda.assistant.host.agent_worktrees import project_worktrees
+from redpanda.assistant.context.prompt import BOT_PROMPT, CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from redpanda.assistant.host.command_port import WorkerCommandPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
@@ -57,6 +56,7 @@ from redpanda.automation.tool import (
 )
 from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
 from redpanda.filesystem.registry import WorkspaceRecord
+from redpanda.filesystem.workspace import FileWorkspace
 from redpanda.assistant.cli import CliToolAdapter
 from redpanda.assistant.mcp import McpToolsetAdapter
 from redpanda.assistant.management import (
@@ -97,7 +97,7 @@ async def build_assistant_assembly(
     journal,
     *,
     session_id: str,
-    workspace: WorkspaceRecord,
+    workspace: WorkspaceRecord | FileWorkspace,
     command_environment: Mapping[str, str] | None = None,
     context_usage_sink: Callable[[str, int, int], None] | None = None,
     subagent_activity_sink: Callable[[str, bool], None] | None = None,
@@ -123,7 +123,8 @@ async def build_assistant_assembly(
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
-        colleague_root=project_worktrees(home, agent.workspace_id) if colleague_schemas else None,
+        personal_root=None if agent is None else agent.directory,
+        colleague_roots=(home.agent_directories_root, home.agent_worktrees_root) if colleague_schemas else (),
         command_environment=command_environment,
         commands=(WorkerCommandPort(session_transport, session_id)
                    if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),
@@ -196,7 +197,8 @@ async def build_assistant_assembly(
         gateway,
         settings,
     )
-    skill_tools = SkillToolAdapter(skills, gateway, settings, project_root=workspace.task_root)
+    skill_tools = SkillToolAdapter(skills, gateway, settings,
+                                  project_root=workspace.task_root if agent is None or agent.project is not None else None)
     cli_tools = CliToolAdapter(cli, gateway, settings)
     subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch)
     if task is not None:
@@ -296,12 +298,13 @@ async def build_assistant_assembly(
         journal,
         config.llm,
         config.model_name,
-        system_prompt=CODING_BOT_PROMPT if agent_branch else DEFAULT_ASSISTANT_PROMPT,
+        system_prompt=CODING_BOT_PROMPT if agent_branch else BOT_PROMPT if agent is not None else DEFAULT_ASSISTANT_PROMPT,
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
             own_copy=agent_branch, delegated=task is not None,
+            personal_directory=None if agent is None else agent.directory,
         ),
-        project_root=workspace.task_root,
+        project_root=workspace.task_root if agent is None or agent.project is not None else None,
         surface=surface,
         skill_tools=skill_tools,
         cli_tools=cli_tools,

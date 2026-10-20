@@ -22,7 +22,7 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("authorization"),
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),
     command_id: z.string().min(1),
     name: z.string().min(1),
@@ -31,7 +31,7 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("control"),
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),
     request_id: z.string().min(1),
     summary: z.string().min(1),
@@ -40,7 +40,7 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("limit"),
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),
     event_id: z.string().min(1),
     recipient: z.string().min(1),
@@ -49,14 +49,14 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("paused"),
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),
     summary: z.string().min(1),
   }).strict(),
   z.object({
     kind: z.literal("absence"),
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),
     phase: z.enum(["asked", "paused"]),
     summary: z.string().min(1),
@@ -84,7 +84,7 @@ const sessionViewSchema = z
 export const agentRosterEntrySchema = z
   .object({
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1),
+    workspace_id: z.string().min(1).nullable(),
     name: z.string().min(1),
     direction: z.string().min(1).nullable(),
     activity: z.enum(["running", "idle"]),
@@ -109,7 +109,6 @@ export type Workspace = z.infer<typeof workspaceSchema>;
 export const groupSummarySchema = z
   .object({
     group_id: z.string().min(1),
-    workspace_id: z.string().min(1),
     name: z.string().min(1),
     members: z.array(z.string().min(1)),
   })

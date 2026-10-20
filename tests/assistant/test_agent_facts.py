@@ -81,8 +81,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
 
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):
         with TemporaryDirectory() as directory:
-            creation = AgentCreated(name="Ada", workspace_id="workspace-internal",
-                                    worktree=str(Path(directory).resolve()), branch="internal-branch")
+            creation = AgentCreated(name="Ada", directory=str(Path(directory).resolve()))
             arguments = fact_arguments(creation, delivery_id="created")
             self.assertTrue(arguments["requests_decision"])
             payload = DomainFactCommitted(arguments["fact_type"], arguments["data"], True)
@@ -105,9 +104,8 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
 
     def test_persisted_fact_schema_rejects_missing_fields_coercion_and_extra_fields(self):
         with TemporaryDirectory() as directory:
-            valid = AgentCreated(name="Ada", workspace_id="workspace-1",
-                                 worktree=str(Path(directory).resolve()), branch="agent").model_dump()
-            for data in ({key: value for key, value in valid.items() if key != "branch"},
+            valid = AgentCreated(name="Ada", directory=str(Path(directory).resolve())).model_dump()
+            for data in ({key: value for key, value in valid.items() if key != "directory"},
                          {**valid, "name": 42}, {**valid, "mode": "managed"}):
                 with self.subTest(data=data), self.assertRaises(ValidationError):
                     parse_agent_fact(DomainFactCommitted(AGENT_CREATED, data, True))

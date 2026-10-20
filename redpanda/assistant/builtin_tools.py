@@ -12,6 +12,7 @@ from redpanda.execution.local.provider import create_local_command_environment
 from redpanda.filesystem import FileAccess
 from redpanda.filesystem.registry import WorkspaceRecord, workspace_view
 from redpanda.filesystem.workspace import (
+    FileWorkspace,
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
@@ -78,10 +79,11 @@ class BuiltinToolRunner:
 
 
 async def build_builtin_tools(
-    workspace: WorkspaceRecord,
+    workspace: WorkspaceRecord | FileWorkspace,
     *,
     materials_root: Path | None = None,
-    colleague_root: Path | None = None,
+    personal_root: Path | None = None,
+    colleague_roots: tuple[Path, ...] = (),
     isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
     commands: CommandControl | None = None,
@@ -95,13 +97,16 @@ async def build_builtin_tools(
             RootBinding("session_materials", WorkspaceScope.MATERIALS, materials_root),
         ))
         read_only.add("session_materials")
-    if colleague_root is not None:
-        # The Agent's own worktree is a deeper root inside this one and stays writable.
+    if personal_root is not None and personal_root != workspace.task_root:
+        view = WorkspaceViewSnapshot((*view.roots, RootBinding("personal_directory", WorkspaceScope.TASK, personal_root)))
+    for index, root in enumerate(colleague_roots):
+        # The Bot's own directories are deeper writable roots.
+        root.mkdir(parents=True, exist_ok=True)
         view = WorkspaceViewSnapshot((
             *view.roots,
-            RootBinding("colleague_worktrees", WorkspaceScope.COLLEAGUES, colleague_root),
+            RootBinding(f"colleague_worktrees_{index}", WorkspaceScope.COLLEAGUES, root),
         ))
-        read_only.add("colleague_worktrees")
+        read_only.add(f"colleague_worktrees_{index}")
     environment = None
     if commands is not None:
         environment = replace(create_local_command_environment(command_environment),

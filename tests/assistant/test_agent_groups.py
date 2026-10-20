@@ -42,9 +42,8 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.workspace, self.other = registry.register_path(project), registry.register_path(other)
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None, workspaces=registry)
         for name, workspace in (*((name, self.workspace) for name in MEMBERS), ("Elsewhere", self.other)):
-            await self.store.create(name, workspace_id=workspace.workspace_id, initial_fact=fact_arguments(
-                AgentCreated(name=name, workspace_id=workspace.workspace_id,
-                             worktree=str(project), branch=f"agent/{name}"), delivery_id="created"))
+            await self.store.create(name, directory=project, initial_fact=fact_arguments(
+                AgentCreated(name=name, directory=str(project)), delivery_id="created"))
             # Each Agent has already introduced itself; later decisions answer group facts.
             await AgentRuntime(self.journal(name), ScriptedDecisionMaker((lambda _: ModelDecision(content="你好"),)),
                                {}).advance(name)
@@ -108,7 +107,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         return await work
 
     async def group(self, members=MEMBERS, name="开发组"):
-        return await self.host.agent_groups.create(workspace_id=self.workspace.workspace_id, name=name,
+        return await self.host.agent_groups.create(name=name,
                                                    members=list(members))
 
     async def settled(self, group):
@@ -134,7 +133,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(parse_agent_fact((await self.facts("Ada", GROUP_CREATED))[0]).members, ["Ada", "Lin"])
         with self.assertRaises(GroupNameTaken):
             await self.group(("Ada", "Third"))
-        for members, error in ((("Ada", "Nobody"), AgentNotFound), (("Ada", "Elsewhere"), AgentNotFound),
+        for members, error in ((("Ada", "Nobody"), AgentNotFound),
                                (("Ada",), ValidationError), (("Ada", "Ada"), ValidationError)):
             with self.assertRaises(error):
                 await self.group(members, name=f"组-{members}")

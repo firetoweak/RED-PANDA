@@ -5,7 +5,7 @@ description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace,
 
 # Verify RED PANDA
 
-Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are roster Agents: each works in its own Git worktree under `$REDPANDA_HOME/state/coding_bot/`, so a workspace used for Agents must be a Git repository with a first commit. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
+Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are persistent Bots with their own ordinary directories under `$REDPANDA_HOME/state/bots/`. Create and chat without registering a project. Optionally associate a code project at creation; only that path needs a Git repository with a first commit and prepares a Git worktree under `$REDPANDA_HOME/state/coding_bot/`. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
 
 UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开 Agent 名册`.
 

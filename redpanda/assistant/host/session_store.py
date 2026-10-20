@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.assistant.workspaces import workspace_binding
+from redpanda.assistant.workspaces import workspace_binding, directory_binding
 from redpanda.runtime import SqliteJournal
 from redpanda.runtime.events import (
     DeliveryIdentity,
@@ -59,10 +59,14 @@ class SessionStore:
         self,
         session_id: str,
         *,
-        workspace_id: str,
+        workspace_id: str | None = None,
+        directory: Path | None = None,
         initial_fact: dict | None = None,
+        additional_facts: tuple[dict, ...] = (),
         agent_colleagues: tuple[str, ...] | None = None,
     ) -> None:
+        if workspace_id is not None and directory is not None:
+            raise ValueError("Session binds either a project or a directory")
         path = self.path(session_id)
         if path.parent.exists():
             raise ValueError(f"Session 已存在: {session_id}")
@@ -70,16 +74,18 @@ class SessionStore:
         staging.mkdir()
         journal = SqliteJournal(staging / "journal.sqlite")
         await journal.create_session(session_id)
-        await journal.accept_delivery(
-            EventDraft(
-                event_id=f"event_{uuid4().hex}",
-                session_id=session_id,
-                payload=workspace_binding(workspace_id),
-                occurred_at=datetime.now(timezone.utc),
-                delivery=DeliveryIdentity("workspace", uuid4().hex),
+        if workspace_id is not None or directory is not None:
+            await journal.accept_delivery(
+                EventDraft(
+                    event_id=f"event_{uuid4().hex}",
+                    session_id=session_id,
+                    payload=directory_binding(directory) if directory is not None else workspace_binding(workspace_id),
+                    occurred_at=datetime.now(timezone.utc),
+                    delivery=DeliveryIdentity("workspace", uuid4().hex),
+                )
             )
-        )
-        if initial_fact is not None:
+        facts = (() if initial_fact is None else (initial_fact,)) + additional_facts
+        for initial_fact in facts:
             await journal.accept_delivery(
                 EventDraft(
                     event_id=f"event_{uuid4().hex}",

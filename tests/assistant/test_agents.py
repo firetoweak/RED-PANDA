@@ -54,19 +54,19 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             name=name, workspace_id=(workspace or self.workspace).workspace_id,
         )
 
-    async def test_names_are_unique_per_project_even_for_concurrent_creation(self):
+    async def test_names_are_unique_across_projects_even_for_concurrent_creation(self):
         outcomes = await asyncio.gather(self.create(), self.create(), return_exceptions=True)
         self.assertEqual(sum(isinstance(result, AgentNameTaken) for result in outcomes), 1)
         self.assertEqual(len(self.store.journals()), 1)
         other_project = self.root / "other"
         other_project.mkdir()
         other = self.registry.register_path(other_project)
-        second = await self.create(workspace=other)
-        first = await self.host.agents.resolve(self.workspace.workspace_id, "小熊猫")
-        self.assertNotEqual(first.session_id, second.session_id)
-        self.assertEqual(await self.host.agents.resolve(other.workspace_id, "小熊猫"), second)
+        with self.assertRaises(AgentNameTaken):
+            await self.create(workspace=other)
+        first = await self.host.agents.resolve("小熊猫")
+        self.assertEqual(first.workspace_id, self.workspace.workspace_id)
         with self.assertRaises(AgentNotFound):
-            await self.host.agents.resolve(other.workspace_id, "unknown")
+            await self.host.agents.resolve("unknown")
 
     async def test_creation_wakes_the_new_agent_and_tells_existing_colleagues(self):
         first = await self.create("Ada")
@@ -101,7 +101,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         rebuilt = AgentRoster(SessionStore(self.store.root))
         entries = await rebuilt.list(self.workspace.workspace_id)
         self.assertEqual(len(entries), 2)
-        agent = await rebuilt.resolve(self.workspace.workspace_id, "小熊猫")
+        agent = await rebuilt.resolve("小熊猫")
         self.assertEqual(await self.create(), agent)
         sent = [(sid, args["fact_type"]) for _, sid, args in
                 (call.args for call in self.request.await_args_list)]
@@ -115,7 +115,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         with (patch.object(self.host.agent_messages, "joined", side_effect=OSError("delivery failed")),
               self.assertRaises(OSError)):
             await self.create("Lin")
-        partial = await self.host.agents.resolve(self.workspace.workspace_id, "Lin")
+        partial = await self.host.agents.resolve("Lin")
         later = await self.create("Kai")
         # Simulate a restart with fresh indexes, and a legacy partial creation without a marker.
         (self.store.require(partial.session_id).parent / "agent-creation.json").unlink()
@@ -146,7 +146,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.request.side_effect = lost_ack
         with self.assertRaises(OSError):
             await self.create("Lin")
-        partial = await self.host.agents.resolve(self.workspace.workspace_id, "Lin")
+        partial = await self.host.agents.resolve("Lin")
         self.host.agents = AgentRoster(SessionStore(self.store.root))
         self.request.side_effect = accept
         with patch.object(self.host, "resume", AsyncMock()):
@@ -235,5 +235,5 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         window = window_preamble("HANDOFF", 7, None, identity)
         self.assertIn(agent.name, window[0]["content"])
         self.assertIn("HANDOFF", window[1]["content"])
-        for internal in (agent.session_id, agent.workspace_id, agent.identity.branch):
+        for internal in (agent.session_id, agent.workspace_id, agent.project.branch):
             self.assertNotIn(internal, window[0]["content"])

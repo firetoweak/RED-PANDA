@@ -22,6 +22,7 @@ class GitWorkspace:
     """A real worktree a Session runs in directly, and whose Git identity it uses."""
     worktree: Path
     author: str
+    full_access: bool = False
 
 
 @dataclass(frozen=True, slots=True)

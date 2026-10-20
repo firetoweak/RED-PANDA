@@ -72,7 +72,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         integration = self.host.agent_worktrees.integration(self.workspace.workspace_id)
         self.assertEqual((first.worktree / "note.txt").read_text(), "initial\n")
         self.assertFalse((first.worktree / "untracked.txt").exists())
-        self.assertEqual(git(first.worktree, "symbolic-ref", "--short", "HEAD"), first.identity.branch)
+        self.assertEqual(git(first.worktree, "symbolic-ref", "--short", "HEAD"), first.project.branch)
         (integration.path / "shared.txt").write_text("integrated\n", encoding="utf-8")
         git(integration.path, "add", "shared.txt")
         git(integration.path, "commit", "-m", "advance integration")
@@ -85,7 +85,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((second.worktree / "shared.txt").read_text(), "integrated\n")
         self.assertFalse((second.worktree / "private.txt").exists())
         self.assertEqual((first.worktree / "private.txt").read_text(), "agent dirty\n")
-        self.assertEqual(await self.host.agents.resolve(self.workspace.workspace_id, first.name), first)
+        self.assertEqual(await self.host.agents.resolve(first.name), first)
         self.assertEqual(self.registry.workspaces, (self.workspace,))
         after = (git(self.project, "status", "--porcelain=v1"),
                  git(self.project, "diff", "--cached"), git(self.project, "rev-parse", "HEAD"))
@@ -219,9 +219,9 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
             release.set()
             with self.assertRaises(asyncio.CancelledError):
                 await creation
-        agent = await self.host.agents.resolve(self.workspace.workspace_id, "小熊猫")
+        agent = await self.host.agents.resolve("小熊猫")
         self.assertTrue(agent.worktree.is_dir())
-        self.assertEqual(git(agent.worktree, "symbolic-ref", "--short", "HEAD"), agent.identity.branch)
+        self.assertEqual(git(agent.worktree, "symbolic-ref", "--short", "HEAD"), agent.project.branch)
 
     async def test_repository_hooks_and_inherited_git_environment_cannot_redirect_creation(self):
         hook = self.project / ".git" / "hooks" / "post-checkout"

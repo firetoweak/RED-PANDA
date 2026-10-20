@@ -19,17 +19,16 @@ export function CreateAgentModal({
   const [createAgent, { isLoading, reset }] = useCreateAgentMutation();
   const [error, setError] = useState<string | null>(null);
   const projectId = selectedId;
-  const fallbackId = workspaces[0]?.workspace_id ?? null;
-  const canSubmit = connectionId !== null && projectId !== null && name.trim() !== "";
+  const canSubmit = connectionId !== null && name.trim() !== "";
 
   useEffect(() => {
     if (!opened) {
       return;
     }
-    setSelectedId(workspaceId ?? fallbackId);
+    setSelectedId(workspaceId);
     setName("");
     setError(null);
-  }, [opened, workspaceId, fallbackId]);
+  }, [opened, workspaceId]);
 
   function close() {
     setName("");
@@ -39,7 +38,7 @@ export function CreateAgentModal({
   }
 
   async function submit() {
-    if (connectionId === null || projectId === null || name.trim() === "") {
+    if (connectionId === null || name.trim() === "") {
       return;
     }
     setError(null);
@@ -57,23 +56,23 @@ export function CreateAgentModal({
   }
 
   return (
-    <Modal onClose={close} opened={opened} title="新建 Agent">
+    <Modal onClose={close} opened={opened} title="新建 Bot">
       <Stack gap="sm">
-        {workspaces.length > 1 ? (
+        {workspaces.length > 0 ? (
           <Select
-            label="项目"
+            label="代码项目（可选）" placeholder="不关联项目" clearable
             data={workspaces.map((workspace) => ({
               value: workspace.workspace_id,
               label: workspace.name,
             }))}
             value={selectedId}
             onChange={setSelectedId}
-            allowDeselect={false}
+            allowDeselect
           />
         ) : null}
         <TextInput
           label="名字"
-          description="项目内唯一，区分大小写，不能带首尾空白"
+          description="名字唯一，区分大小写，不能带首尾空白；自动准备独立工作目录"
           value={name}
           onChange={(event) => setName(event.currentTarget.value)}
           onKeyDown={(event) => {

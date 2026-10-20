@@ -466,16 +466,14 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             store = SessionStore(Path(directory))
             queries = AssistantQueries(store, Idle())
             for session_id in ("quiet", "named", "old"):
-                await store.create(session_id, workspace_id="workspace-1")
+                await store.create(session_id, directory=Path(directory))
             await wake(
                 store, "quiet",
                 DomainFactCommitted(
                     AGENT_CREATED,
                     {
                         "name": "安静熊猫",
-                        "workspace_id": "workspace-1",
-                        "worktree": str(Path(directory)),
-                        "branch": "agent/quiet",
+                        "directory": str(Path(directory)),
                     },
                     requests_decision=True,
                 ),
@@ -490,9 +488,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                     AGENT_CREATED,
                     {
                         "name": "验证熊猫",
-                        "workspace_id": "workspace-1",
-                        "worktree": str(Path(directory)),
-                        "branch": "agent/verify",
+                        "directory": str(Path(directory)),
                     },
                     requests_decision=True,
                 ),
@@ -555,12 +551,11 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             store = SessionStore(Path(directory))
             queries = AssistantQueries(store, Sessions())
             for session_id, name in (("limited", "上限熊猫"), ("paused", "暂停熊猫")):
-                await store.create(session_id, workspace_id="workspace-1")
+                await store.create(session_id, directory=Path(directory))
                 await SqliteJournal(store.require(session_id)).accept_delivery(EventDraft(
                     event_id=f"created-{session_id}", session_id=session_id,
                     payload=DomainFactCommitted(
-                        AGENT_CREATED, {"name": name, "workspace_id": "workspace-1",
-                                        "worktree": directory, "branch": "agent/x"},
+                        AGENT_CREATED, {"name": name, "directory": str(Path(directory))},
                         requests_decision=True),
                     occurred_at=datetime(2026, 10, 19, tzinfo=timezone.utc),
                     delivery=DeliveryIdentity("coding_bot", f"created-{session_id}"),

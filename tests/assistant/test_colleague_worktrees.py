@@ -10,6 +10,7 @@ from redpanda.assistant.builtin_tools import build_builtin_tools
 from redpanda.assistant.context.projection import ModelContextSettings
 from redpanda.assistant.decision import bind_executor_tools
 from redpanda.filesystem.registry import WorkspaceRecord
+from redpanda.filesystem.workspace import FileWorkspace
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
@@ -31,7 +32,7 @@ class ColleagueWorktreeAccessTest(unittest.IsolatedAsyncioTestCase):
             target = colleague / "note.txt"
             target.write_text("original", encoding="utf-8")
             runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", own, False, "2026-10-19"), colleague_root=project,
+                WorkspaceRecord("workspace-test", "test", own, False, "2026-10-19"), colleague_roots=(project,),
             )
             bindings = bind_executor_tools(runner, MemoryArtifactGateway(), ModelContextSettings())
             for name, extra in (
@@ -72,7 +73,7 @@ class ColleagueWorktreeAccessTest(unittest.IsolatedAsyncioTestCase):
             colleague.mkdir()
             other = Path(directory) / "other-project" / "agent" / "note.txt"
             runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", own, True, "2026-10-19"), colleague_root=project,
+                WorkspaceRecord("workspace-test", "test", own, True, "2026-10-19"), colleague_roots=(project,),
             )
             denied = await runner.execute("write_file", {"path": str(colleague / "note.txt"), "content": "mine"})
             self.assertEqual(denied["code"], "ENVIRONMENT_PERMISSION_DENIED")
@@ -83,14 +84,15 @@ class ColleagueWorktreeAccessTest(unittest.IsolatedAsyncioTestCase):
     async def test_colleague_worktrees_are_readable_and_own_worktree_stays_writable(self):
         with TemporaryDirectory() as directory:
             project = Path(directory) / "project"
-            own, colleague = project / "ada", project / "lin"
+            personal = Path(directory) / "bots"
+            own, colleague = personal / "ada", project / "lin"
             own.mkdir(parents=True)
+            runner = await build_builtin_tools(
+                FileWorkspace(own), colleague_roots=(personal, project),
+            )
+            # A code colleague created after this Bot started is immediately readable.
             colleague.mkdir()
             (colleague / "draft.py").write_text("half done", encoding="utf-8")
-            runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", own, False, "2026-10-19"),
-                colleague_root=project,
-            )
 
             read = await runner.execute("read_file", {"path": str(colleague / "draft.py")})
             self.assertTrue(read["ok"])

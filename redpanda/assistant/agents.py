@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from redpanda.assistant.workspaces import bound_workspace_id
+from redpanda.assistant.workspaces import bound_directory
 from redpanda.runtime import (
     AttemptOrphaned, CommandOutcomeReceived, CommandRejected, DomainFactCommitted, replay,
 )
@@ -15,6 +15,7 @@ from redpanda.runtime.json_values import thaw_value
 
 
 AGENT_CREATED = "coding_bot.agent_created"
+PROJECT_ATTACHED = "coding_bot.project_attached"
 PRIVATE_MESSAGE = "coding_bot.private_message"
 GROUP_MESSAGE = "coding_bot.group_message"
 GROUP_ATTENTION = "coding_bot.group_attention"
@@ -41,9 +42,7 @@ class _Fact(BaseModel):
 
 class AgentCreated(_Fact):
     name: Text
-    workspace_id: Text
-    worktree: Text
-    branch: Text
+    directory: Text
 
     @field_validator("name")
     @classmethod
@@ -51,6 +50,19 @@ class AgentCreated(_Fact):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+    @field_validator("directory")
+    @classmethod
+    def absolute_directory(cls, value):
+        if not Path(value).is_absolute():
+            raise ValueError("Agent directory 必须是绝对路径")
+        return value
+
+
+class ProjectAttached(_Fact):
+    workspace_id: Text
+    worktree: Text
+    branch: Text
 
     @field_validator("worktree")
     @classmethod
@@ -139,6 +151,7 @@ class RoutinesUnwatched(_Fact):
 
 _FACTS = {
     AGENT_CREATED: (AgentCreated, True),
+    PROJECT_ATTACHED: (ProjectAttached, False),
     PRIVATE_MESSAGE: (PrivateMessage, True),
     GROUP_MESSAGE: (GroupMessage, False),
     GROUP_ATTENTION: (GroupAttention, True),
@@ -172,30 +185,42 @@ def parse_agent_fact(payload: DomainFactCommitted) -> _Fact:
 class AgentRecord:
     session_id: str
     identity: AgentCreated
+    project: ProjectAttached | None = None
 
     @property
     def name(self) -> str:
         return self.identity.name
 
     @property
-    def workspace_id(self) -> str:
-        return self.identity.workspace_id
+    def workspace_id(self) -> str | None:
+        return None if self.project is None else self.project.workspace_id
+
+    @property
+    def directory(self) -> Path:
+        return Path(self.identity.directory)
 
     @property
     def worktree(self) -> Path:
-        return Path(self.identity.worktree)
+        return self.directory if self.project is None else Path(self.project.worktree)
 
 
 def project_agent(events) -> AgentRecord | None:
     creation = None
+    project = None
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_CREATED:
             if creation is not None:
                 raise ValueError("Agent has more than one creation fact")
             creation = AgentRecord(event.session_id, parse_agent_fact(payload))
-    if creation is not None and creation.workspace_id != bound_workspace_id(events):
-        raise ValueError("Agent project differs from Session workspace binding")
+        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_ATTACHED:
+            if project is not None:
+                raise ValueError("Agent has more than one project attachment")
+            project = parse_agent_fact(payload)
+    if creation is not None:
+        if creation.directory != bound_directory(events):
+            raise ValueError("Agent directory differs from Session directory binding")
+        creation = AgentRecord(creation.session_id, creation.identity, project)
     return creation
 
 
@@ -238,10 +263,12 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     fact = parse_agent_fact(payload)
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
-            "你刚加入这个项目。先了解项目，用 list_colleagues 查看同事的负责方向，"
+            "你刚成为一位长期 Bot。用 list_colleagues 查看同事的负责方向，"
             "再直接向人提议你打算负责什么；人认可或修正后，用 declare_direction 记下。")}
+    if isinstance(fact, ProjectAttached):
+        return {"directory": fact.worktree, "notice": "你已关联一个代码项目，在这份独立工作树里处理代码。"}
     if isinstance(fact, ColleagueJoined):
-        return {"colleague": fact.name, "notice": "这位同事刚加入项目，还没有声明负责方向。"}
+        return {"colleague": fact.name, "notice": "这位同事刚加入，还没有声明负责方向。"}
     if isinstance(fact, DirectionDeclared):
         return {"agent": fact.name, "direction": fact.direction}
     if isinstance(fact, GroupAttention):

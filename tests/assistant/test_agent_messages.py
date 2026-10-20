@@ -39,9 +39,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None, workspaces=registry)
         for session_id, workspace in (("Ada", self.workspace), ("Lin", self.workspace),
                                       ("Third", self.workspace), ("Elsewhere", self.other)):
-            await self.store.create(session_id, workspace_id=workspace.workspace_id, initial_fact=fact_arguments(
-                AgentCreated(name=session_id, workspace_id=workspace.workspace_id,
-                             worktree=str(project), branch=f"agent/{session_id}"), delivery_id="created"))
+            await self.store.create(session_id, directory=project, initial_fact=fact_arguments(
+                AgentCreated(name=session_id, directory=str(project)), delivery_id="created"))
 
         async def deliver(operation, session_id, arguments):
             self.assertEqual(operation, "fact")
@@ -104,8 +103,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
                                {"recipient": "Lin", "text": "different"})
 
     async def test_known_address_errors_and_same_pair_reply_validation(self):
-        for name, code in (("Nobody", "RECIPIENT_NOT_FOUND"), ("Ada", "SELF_MESSAGE"),
-                           ("Elsewhere", "DIFFERENT_PROJECT")):
+        for name, code in (("Nobody", "RECIPIENT_NOT_FOUND"), ("Ada", "SELF_MESSAGE")):
             self.assertEqual((await self.send(recipient=name))["code"], code)
         foreign = await self.send("Third", "Lin", "foreign")
         for reference in ("missing", foreign["data"]["message_id"]):
@@ -114,10 +112,11 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         colleagues = await self.transport(LIST_COLLEAGUES, "Ada", {})
         self.assertEqual([{key: entry[key] for key in ("name", "direction")}
                           for entry in colleagues["data"]["colleagues"]],
-                         [{"name": "Lin", "direction": None}, {"name": "Third", "direction": None}])
+                         [{"name": "Elsewhere", "direction": None}, {"name": "Lin", "direction": None},
+                          {"name": "Third", "direction": None}])
         self.assertEqual({entry["worktree"] for entry in colleagues["data"]["colleagues"]},
-                         {str((await self.host.agents.resolve(self.workspace.workspace_id, name)).worktree)
-                          for name in ("Lin", "Third")})
+                         {str((await self.host.agents.resolve(name)).worktree)
+                          for name in ("Elsewhere", "Lin", "Third")})
 
     async def test_colleague_status_follows_host_facts_without_internal_identifiers(self):
         runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker((lambda _: ModelDecision(
@@ -133,10 +132,10 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(entry["since"], last.occurred_at.astimezone().isoformat(timespec="minutes"))
             return {entry["name"]: entry["status"] for entry in colleagues}
 
-        self.assertEqual(await statuses(), {"Lin": "awaiting_authorization", "Third": "idle"})
+        self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "awaiting_authorization", "Third": "idle"})
         self.host._pause.set("Third", True)
         with patch.object(self.host, "activity", lambda session_id: "running" if session_id == "Lin" else "idle"):
-            self.assertEqual(await statuses(), {"Lin": "working", "Third": "paused"})
+            self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "working", "Third": "paused"})
 
     async def test_declared_direction_is_own_roster_entry_and_reaches_colleagues(self):
         binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]
@@ -152,7 +151,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         colleagues = await self.transport(LIST_COLLEAGUES, "Lin", {})
         self.assertIn({"name": "Ada", "direction": "负责second"},
                       [{key: entry[key] for key in ("name", "direction")} for entry in colleagues["data"]["colleagues"]])
-        for session_id, count in (("Ada", 2), ("Lin", 2), ("Third", 2), ("Elsewhere", 0)):
+        for session_id, count in (("Ada", 2), ("Lin", 2), ("Third", 2), ("Elsewhere", 2)):
             received = [event for event in await self.journal(session_id).snapshot(session_id)
                         if isinstance(event.payload, DomainFactCommitted)
                         and event.payload.fact_type == DIRECTION_DECLARED]
@@ -199,9 +198,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
     async def test_narrow_recovery_resolves_original_command_with_or_without_prior_delivery(self):
         for delivered in (True, False):
             session_id = f"Sender-{delivered}"
-            identity = AgentCreated(name=session_id, workspace_id=self.workspace.workspace_id,
-                                    worktree=str(self.root), branch="sender")
-            await self.store.create(session_id, workspace_id=self.workspace.workspace_id,
+            identity = AgentCreated(name=session_id, directory=str(self.root))
+            await self.store.create(session_id, directory=self.root,
                                     initial_fact=fact_arguments(identity, delivery_id="created"))
             await self.host.agents.add(AgentRecord(session_id, identity))
             entered = asyncio.Event()

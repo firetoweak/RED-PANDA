@@ -1,10 +1,10 @@
 # Web 会话与聊天
 
-从空首页登记项目，在名册里新建一个 Agent，再在它的会话里发一条消息并看到回复。入口 `web_chat.py`，路由见 `web/src/app/App.tsx`，接口见 `redpanda/channels/web/app.py`、`redpanda/channels/web/channel.py`。创建 Agent 见 [session-sidebar.md](./session-sidebar.md)。
+从空首页直接新建一位 Bot，再在它的会话里发一条消息并看到回复。入口 `web_chat.py`，路由见 `web/src/app/App.tsx`，接口见 `redpanda/channels/web/app.py`、`redpanda/channels/web/channel.py`。创建 Agent 见 [session-sidebar.md](./session-sidebar.md)。
 
 ## Sub-features
 
-- `home-empty`：`/` 与 `/workspaces/:workspaceId` 由 `AgentHome` 处理，不自动新建会话。没有项目时工作台显示 `从一个项目开始` 和按钮 `创建工作区`；已有项目时展示 Agent 卡片、负责方向、状态与新建入口。
+- `home-empty`：`/` 由 `AgentHome` 处理，不自动新建会话。没有 Bot 时显示 `创建第一位 Bot` 和 `创建 Bot`；已有 Bot 时展示全部 Bot 卡片、方向、状态与群聊。代码项目为可选关联。
 - `open-agent`：按 session-sidebar 创建一个 Agent 后进入 `/sessions/<id>`。不再有草稿行或 `new agent` 标题。
 - `send-message`：在 `消息` 输入框（占位 `描述你想完成的事，或拖入文件…`）回车或点 `发送`，走 `POST /api/sessions/{id}/inputs`；底部显示 Enter 发送、Shift + Enter 换行提示。
 - `reply-render`：回复以 Markdown 气泡渲染（`MarkdownMessage.tsx`），Agent 身份显示在会话顶部和右侧资料栏，不在每条回复中重复；悬停回复或键盘聚焦操作区可 `复制回复` 并查看时间与耗时。普通问答气泡分别靠右、靠左，直接间隔 8。思考与执行过程入口在回复之后，默认折叠，思考流式输出时也不自动展开；需要授权时展开执行过程；尚无正文时运行提示为 `思考中`。
@@ -13,13 +13,13 @@
 
 ## How to get to it (user POV)
 
-- 打开 `$REDPANDA_VERIFY_URL/`，没有工作区时点主区域 `创建工作区`（或侧栏 `新建工作区`）建一个指向 `$SCRATCH_WORKSPACE` 的工作区（见 workspace-management）。`$SCRATCH_WORKSPACE` 须已是带首个提交的 Git 仓库。
+- 打开 `$REDPANDA_VERIFY_URL/`，点 `创建 Bot`，无需登记项目或准备 Git 仓库。关联代码项目是单独的可选路径，见 workspace-management。
 - 按 session-sidebar 新建 Agent，进入 `/sessions/<id>` 后在底部输入框打字发送。
 
 ## Driving it with the browser
 
-- **打开 Agent（发消息之前）**：工作区建好后按 session-sidebar 创建一个 Agent，不要先发消息。
-  - (a) 地址栏变为 `/sessions/<id>`；`GET /api/sessions/<id>` 返回 200，`workspace_id` 等于刚建的工作区；`$REDPANDA_HOME/runtime_sessions/` 下多出一个以该会话 id 的 sha256 命名、内含 `journal.sqlite` 的目录；`GET /api/agents` 里有它。
+- **打开 Agent（发消息之前）**：按 session-sidebar 直接创建一个 Bot，不要先发消息。
+  - (a) 地址栏变为 `/sessions/<id>`；`GET /api/sessions/<id>` 返回 200，`workspace_id` 为 null（未关联项目时）；`$REDPANDA_HOME/runtime_sessions/` 下多出一个以该会话 id 的 sha256 命名、内含 `journal.sqlite` 的目录；`GET /api/agents` 里有它。
   - (b) `POST /api/agents` 返回 201，且发生在任何 `POST .../inputs` 之前；侧栏出现这个名字。刷新 `/` 停在欢迎页，不会再新建会话。
   - (c) `$SCRATCH_WORKSPACE/note.txt` 仍是 `verify`。
   - (d) 错误路径：打开 `/sessions/session-不存在` → 页面显示 `这个会话不存在。请从左侧新建或选择会话。`，`GET /api/sessions/session-不存在` 返回 404。
@@ -51,3 +51,5 @@
 - 历史观察（2026-10-18 Windows live）：模型接口曾每秒请求数次；当前 `Composer.tsx` 设置 `/model` 每 2 秒、`/model-settings` 每 5 秒轮询，当前频率尚未 live 复测。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：页面创建 Agent、真实用户输入、普通回复及刷新通过；长历史、错误输入与静态边界未重验。
+
+2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。

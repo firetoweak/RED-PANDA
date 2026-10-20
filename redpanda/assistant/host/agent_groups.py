@@ -15,7 +15,6 @@ from redpanda.assistant.agents import (
     fact_arguments, parse_agent_fact,
 )
 from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.workspaces import bound_workspace_id
 from redpanda.runtime import AgentRuntime, DecisionCancelled, DomainFactCommitted, SqliteJournal, replay
 
 
@@ -30,7 +29,6 @@ class GroupNotFound(LookupError):
 @dataclass(frozen=True, slots=True)
 class GroupRecord:
     group_id: str
-    workspace_id: str
     created: GroupCreated
 
     @property
@@ -94,7 +92,7 @@ class AgentGroups:
     def _journal(self, group_id):
         return SqliteJournal(self.store.require(group_id))
 
-    async def list(self, workspace_id: str | None = None) -> tuple[GroupRecord, ...]:
+    async def list(self) -> tuple[GroupRecord, ...]:
         groups = []
         for path in self.store.journals():
             journal = SqliteJournal(path)
@@ -103,10 +101,9 @@ class AgentGroups:
             created, = (parse_agent_fact(event.payload) for event in events
                         if isinstance(event.payload, DomainFactCommitted)
                         and event.payload.fact_type == GROUP_CREATED)
-            record = GroupRecord(group_id, bound_workspace_id(events), created)
-            if workspace_id is None or record.workspace_id == workspace_id:
-                groups.append(record)
-        return tuple(sorted(groups, key=lambda group: (group.workspace_id, group.name)))
+            record = GroupRecord(group_id, created)
+            groups.append(record)
+        return tuple(sorted(groups, key=lambda group: group.name))
 
     async def get(self, group_id: str) -> GroupRecord:
         for group in await self.list():
@@ -120,7 +117,7 @@ class AgentGroups:
         events = await self._journal(group_id).snapshot(group_id)
         drive = self._drives.get(group_id)
         return {
-            "group_id": group.group_id, "workspace_id": group.workspace_id, "name": group.name,
+            "group_id": group.group_id, "name": group.name,
             "members": group.members, "calling": list(drive.waiting) if drive is not None and drive.running else [],
             "messages": [
                 {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
@@ -136,28 +133,27 @@ class AgentGroups:
         return [parse_agent_fact(event.payload) for event in await self._journal(group_id).snapshot(group_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE]
 
-    async def create(self, *, workspace_id: str, name: str, members: list[str]) -> GroupRecord:
-        self.host.workspaces.get(workspace_id)
+    async def create(self, *, name: str, members: list[str]) -> GroupRecord:
         created = GroupCreated(group=name, members=members)
-        agents = [await self.host.agents.resolve(workspace_id, member) for member in created.members]
+        agents = [await self.host.agents.resolve(member) for member in created.members]
         group_id = f"group-{uuid4().hex}"
         async with self._creation_lock:
-            if any(group.name == name for group in await self.list(workspace_id)):
-                raise GroupNameTaken(f"项目内已有群：{name}")
-            await self.store.create(group_id, workspace_id=workspace_id,
+            if any(group.name == name for group in await self.list()):
+                raise GroupNameTaken(f"已有群：{name}")
+            await self.store.create(group_id,
                                     initial_fact=fact_arguments(created, delivery_id="created"))
         await asyncio.gather(*(
             self.host.request("fact", agent.session_id, fact_arguments(created, delivery_id=f"joined:{group_id}"))
             for agent in agents))
         # Other pages list groups too; a new group is a change they must hear about.
         self._changed(group_id)
-        return GroupRecord(group_id, workspace_id, created)
+        return GroupRecord(group_id, created)
 
     async def _publish(self, group: GroupRecord, message: GroupMessage) -> None:
         """The group record is the source; member timelines receive copies without deciding."""
         arguments = fact_arguments(message, delivery_id=message.message_id)
         await AgentRuntime(self._journal(group.group_id), None, {}).receive_domain_fact(group.group_id, **arguments)
-        recipients = [await self.host.agents.resolve(group.workspace_id, name)
+        recipients = [await self.host.agents.resolve(name)
                       for name in group.members if name != message.sender.name]
         await asyncio.gather(*(self.host.request("fact", agent.session_id, arguments) for agent in recipients))
         self._changed(group.group_id)
@@ -214,7 +210,7 @@ class AgentGroups:
 
     async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
-        agent = await self.host.agents.resolve(drive.group.workspace_id, name)
+        agent = await self.host.agents.resolve(name)
         if self.host.is_paused(agent.session_id):
             return
         drive.answering[name, call.message_id] = call
@@ -264,10 +260,10 @@ class AgentGroups:
         is never inferred from what started its work.
         """
         sender = await self.host.agents.by_session(session_id)
-        group = next((group for group in await self.list(sender.workspace_id)
+        group = next((group for group in await self.list()
                       if group.name == arguments["group"]), None)
         if group is None:
-            return {"ok": False, "code": "GROUP_NOT_FOUND", "error": "同项目中没有这个群。"}
+            return {"ok": False, "code": "GROUP_NOT_FOUND", "error": "没有这个群。"}
         if sender.name not in group.members:
             return {"ok": False, "code": "NOT_A_MEMBER", "error": "你不在这个群里。"}
         mention = arguments["mention"]
