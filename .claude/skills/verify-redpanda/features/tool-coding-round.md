@@ -9,7 +9,7 @@
 - `command-errors`：`execute_command` 的其他结果码（`command_execution.py`）：
   - `ok:false`：`EMPTY_COMMAND`（「command 不能为空」）、`CWD_NOT_FOUND`（「工作目录不存在: …」）、`CWD_NOT_A_DIRECTORY`（「工作目录不是目录: …」）、`SHELL_NOT_FOUND`（带 `shell`、`executable`）、`COMMAND_START_FAILED`、`COMMAND_IO_FAILED`（「命令管道 I/O 失败，采集结果可能不完整」）。
   - `ok:null`（结果不确定，工具状态投影为 `unknown`/「中断」）：`COMMAND_INTERRUPTED`（「命令被用户停止，可能已部分执行。」）。
-- `command-authorization`：Windows/Linux 顶层会话的 `execute_command` 参数为 `cwd`、`command`、`wait_seconds`；不支持后台的平台使用 `cwd`、`command` 并等待结束。每次调用都需要授权（自动放行开启时被自动批准）；工具描述写明直接作用于真实目录、不提供回退，用 `git diff` / `git show` 核对改动。
+- `command-authorization`：Windows/Linux 顶层会话的 `execute_command` 参数为 `cwd`、`command`、`wait_seconds`；不支持后台的平台使用 `cwd`、`command` 并等待结束。每次调用都需要授权（自动放行开启时被自动批准）；工具描述写明直接作用于真实目录、不提供回退，按实际结果核对影响；Git 核对方法由适用 Skill 提供。
 - `search-tools`：`glob`、`grep` 在工作区内查找；`glob` 依赖 `fd`/`fdfind`，找不到时返回 `GLOB_NOT_FOUND`（「未找到 fd」）。
 - `write-tools`：`write_file`（新建/覆盖）、`replace_all`（全量替换）。
 - `referenced-content`：`read_content` 读取工具结果或历史检索返回的真实 `reference`；可按 `offset`/`limit` 连续读取，或用 `query` 查找字面关键词，按 `next_offset` 续读。来源 `redpanda/assistant/content.py`。
@@ -17,7 +17,8 @@
 - `session-review-entry`：Agent 会话输入框上方的 Git 差异摘要与 `文件改动` 内容页，独立验证见 [session-file-changes.md](./session-file-changes.md)。
 - `background-commands`：`execute_command(wait_seconds=0)` 立即转后台，等待到点未结束同样返回 `COMMAND_BACKGROUND`；完成事实 `background_command_finished` 只接纳一次并唤醒 Agent。`read_command` / `list_commands` / `stop_command` 查看与停止；成功码 `COMMAND_READ`、`COMMANDS_LISTED`、`COMMAND_STOPPED`，未知身份 `COMMAND_NOT_FOUND`。Windows/Linux 顶层会话注册，子 Agent 不提供；macOS 只有等待结束的前台命令。会话页的 `后台命令 · N 项运行中` 可展开查看状态、时长，`停止命令` 只终止这一条，不暂停整个 Agent。
 - `file-side-effect`：改动真实落盘到 Agent 工作树（见 Gotchas），人自己的 `$SCRATCH_WORKSPACE` 不变。
-- `project-instructions`：每次决策重读工作区根目录的项目说明（`redpanda/assistant/context/prompt.py`）：优先 `AGENTS.md`；`AGENTS.md` 不存在或读不了时改读 `CLAUDE.md`；两者都读不了则无此块。读到的文件去掉首尾空白后为空 → 不加块，也**不**回退到 `CLAUDE.md`。内容作为 `<project_instructions>` 块拼在系统提示末尾，块内写明来源文件名；超 16000 字符截断并提示用 `read_file` 读完整文件。判据：在 `AGENTS.md` 写一条约定（如回答末尾加固定词），模型下一轮遵守。
+- `coding-skill`：通用系统提示不含编码与 Git 工作流正文；能力目录提供 `builtin:coding` 与 `builtin:git-collaboration`，模型按任务用 `load_skill` 读取。无 Git 的 Bot 目录也能编码、验证并交付文件；用户指定的 Skill 与流程优先。
+- `project-instructions`：项目与普通目录统一由模型在文件工作前用 `read_file` 读取根目录 `AGENTS.md`，没有时读 `CLAUDE.md`，并按需读取相关目录约定和任务文档。全文不再逐轮注入系统提示；约定更新或上下文缺失时重新读取。判据是在约定中指向独立需求文档与验证命令，模型实际读取并执行，而非只看回复是否带固定词。
 
 `live_model_ready` 为 true 才跑本条。
 
@@ -71,7 +72,7 @@ Windows 将第三条命令换成 `Write-Output edited`；不要在 PowerShell �
 - 后台命令工具在 macOS 不注册，前台调用等待到结束。
 - `pytest -m process` 走的是同一批工具但不经 Web，只能记为进程测试。
 - 模型可能拒绝或换工具；通过条件是三个工具名按顺序出现且 `note.txt` 为 `edited`。
-- 项目说明只认工作区根目录；`AGENTS.md` 存在但为空时不会改读 `CLAUDE.md`，验证回退时要先删除（或使其不可读）`AGENTS.md`。
+- 约定文件通过普通文件工具读取；不能再用“下一轮系统提示自动包含新内容”作为判据。检查实际读取结果与后续任务行为。
 
 - 2026-10-20（Windows Web + DeepSeek，隔离实例，普通回复改版前）：`wait_seconds=0` 接管后，命令仍运行时新消息得到回复，页面计时 0.8 秒；页面停止后状态 stopped，并主动报告。`wait_seconds=1` 的 5 秒命令自动转后台，自然完成后报告 exit_code=0 和完整短输出。Journal 确认两条接管分别只有一条完成事实，无重跑。Linux、macOS 未经 Web 实测；当时漏发交付工具的问题已随普通回复直接展示改版移除，当前回复规则见 reply-delivery。
 - 2026-10-18 改写：文件回退移除后，删除 `file_access`/`workspace_effect`、`get_changes`、`COMMAND_CONSTRAINT_FAILED` 与原生依赖相关判据；命令一律授权。未 live 复跑。
@@ -83,3 +84,5 @@ Windows 将第三条命令换成 `Write-Output edited`；不要在 PowerShell �
 - 历史产品缺口（2026-10-18 Windows live）：原生非零退出码被折叠成 1。2026-10-20 源码核对：`redpanda/execution/local/powershell.py` 已传递原生 `$LASTEXITCODE`，`tests/tools/test_command_execution.py` 的退出码对照通过；下方维护实测确认 Web 路径返回 2，不再豁免具体退出码判据。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；原生 cmd /c exit 2 得到 COMMAND_EXIT_NONZERO、exit_code=2、ok=true。后续子任务审阅真实使用 find_history/read_content；后台接管、运行中新消息回复、自然完成通过，未穷尽错误码。
+
+- 2026-10-20 编码 Skill 增量：隔离 Web + deepseek-flash，普通讨论未加载编码 Skill；无 Git Bot 按需加载 builtin:coding 和 project:file-handoff，读取 AGENTS.md 与独立需求文档、修复函数、执行 unittest（2 个通过）、生成交接文件，用户原文件保留且无 Git 操作。项目 Bot 在实施任务与集成任务中分别加载编码、Git Skill；首轮提议未修改文件。证据 `.tools/verify-coding-skill/evidence/`。未复验所有命令错误码、压缩后重读与子任务实机路径。

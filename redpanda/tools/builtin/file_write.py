@@ -18,7 +18,7 @@ REPLACE_ALL_DESCRIPTION = """
 用途：把单个文本文件中所有精确匹配的 old_block 批量替换为 new_block。
 何时使用：明确希望统一术语、名称或固定字符串的全部出现位置时使用；只改一个位置用 apply_patch，不确定影响范围时先用 grep。
 关键限制：会修改全部精确匹配，且不支持模糊匹配。
-失败/截断后：OLD_BLOCK_NOT_FOUND 后用 grep/read_file 获取最新原文和数量，再决定是否重试；结果不截断，成功后用当前可用的差异查询工具或 git diff 核对实际改动，也可读回内容验证。
+失败/截断后：OLD_BLOCK_NOT_FOUND 后用 grep/read_file 获取最新原文和数量，再决定是否重试；结果不截断，成功后读回内容或用可靠的比较结果核对实际改动。
 """.strip()
 
 

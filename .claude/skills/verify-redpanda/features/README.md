@@ -8,6 +8,8 @@
 
 ## 基线前置条件
 
+编码 Skill 增量：编码方法与 Git 协作分别按需加载，普通目录支持自定义 Skill；验证见 tool-coding-round 与 extensions，既有记录不代表全部重验。
+
 Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新为无项目可用。以下表格中的维护记录仍是此前基线；当前增量的真实模型验证范围见各条目，未重新执行全部 27 项 UI 审计。
 
 - 按 `../SKILL.md` 启动一个隔离实例：地址 `$REDPANDA_VERIFY_URL`，数据目录 `$REDPANDA_HOME`，临时工作区 `$SCRATCH_WORKSPACE`（内含 `note.txt`，内容为一行 `verify`）。
