@@ -56,7 +56,6 @@ import { ThinkingBlock } from "./ThinkingBlock";
 import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
 import { BackgroundCommands } from "./BackgroundCommands";
-import { RoutineList } from "./RoutineList";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
@@ -380,7 +379,6 @@ export function Conversation({ agentName }: { agentName?: string }) {
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
         <BackgroundCommands sessionId={sessionId} connectionId={connectionId} />
-        <RoutineList sessionId={sessionId} connectionId={connectionId} />
         {compactPhase !== "failed" ? null : (
           <Alert
             className="composer-error"

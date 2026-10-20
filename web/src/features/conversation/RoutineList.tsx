@@ -1,5 +1,4 @@
-import { Badge, Button, Group, Paper, Stack, Text, UnstyledButton } from "@mantine/core";
-import { IconChevronDown, IconChevronRight, IconRepeat } from "@tabler/icons-react";
+import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 
 import type { Routine } from "../../api/contracts";
@@ -13,34 +12,20 @@ const STATE_LABEL: Record<Routine["state"], string> = {
   paused_unwatched: "无人查看已暂停",
 };
 
-/** 这个 Agent 的例行任务。人可以暂停、恢复或取消；人暂停的只有人能恢复。 */
+/** Agent 资料里的例行任务。人可以暂停、恢复或取消；人暂停的只有人能恢复。 */
 export function RoutineList({ sessionId, connectionId }: { sessionId: string; connectionId: string | null }) {
   const routines = useGetRoutinesQuery(sessionId).currentData ?? [];
-  const [opened, setOpened] = useState(false);
-  if (routines.length === 0) {
-    return null;
-  }
-  const paused = routines.filter((routine) => routine.state !== "active").length;
   return (
-    <Paper className="routine-list" radius="md" withBorder>
-      <UnstyledButton aria-expanded={opened} className="routine-list-toggle" onClick={() => setOpened((value) => !value)}>
-        <Group gap={8} wrap="nowrap">
-          {opened ? <IconChevronDown size={15} /> : <IconChevronRight size={15} />}
-          <IconRepeat size={15} />
-          <Text fw={600} size="sm">例行任务</Text>
-          <Text c="dimmed" fz={11}>
-            {routines.length} 项{paused === 0 ? "" : ` · ${paused} 项暂停`}
-          </Text>
-        </Group>
-      </UnstyledButton>
-      {opened ? (
-        <Stack className="routine-list-body" gap={6}>
+    <div className="agent-details-section">
+      <Text className="agent-details-label" size="xs" c="dimmed">例行任务</Text>
+      {routines.length === 0 ? <Text size="sm" c="dimmed">无例行任务</Text> : (
+        <Stack gap={10}>
           {routines.map((routine) => (
             <RoutineRow key={routine.routine_id} routine={routine} sessionId={sessionId} connectionId={connectionId} />
           ))}
         </Stack>
-      ) : null}
-    </Paper>
+      )}
+    </div>
   );
 }
 

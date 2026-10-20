@@ -44,8 +44,7 @@ it("暂停、恢复与二次确认后的取消都按例行任务调用设置状�
       <RoutineList sessionId="agent" connectionId="connection" />
     </MantineProvider></Provider>,
   );
-  fireEvent.click(await screen.findByRole("button", { name: /例行任务/ }));
-  expect(screen.getByText("人暂停")).toBeInTheDocument();
+  expect(await screen.findByText("人暂停")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "恢复 检查 PR" })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "暂停 检查 PR" }));

@@ -3,15 +3,18 @@ import { IconFolder, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
+import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 
 import { Conversation } from "./Conversation";
+import { RoutineList } from "./RoutineList";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
   const { data: agents = [] } = useGetAgentsQuery();
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const { data: groups = [] } = useGetGroupsQuery();
+  const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const [detailsOpened, setDetailsOpened] = useState(false);
   const agent = agents.find((item) => item.session_id === sessionId);
   const workspace = workspaces.find((item) => item.workspace_id === agent?.workspace_id);
@@ -57,6 +60,7 @@ export function SessionConversation() {
               <IconUsersGroup size={16} /><span>{group.name}</span>
             </Link>)}
           </div>}
+          <RoutineList sessionId={agent.session_id} connectionId={connectionId} />
         </aside>
       )}
     </div>
