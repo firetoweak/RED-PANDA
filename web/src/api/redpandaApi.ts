@@ -19,6 +19,7 @@ import {
   modelTestResultSchema,
   sessionModelSchema,
   inboxItemSchema,
+  routineFireSchema,
   routineSchema,
   subagentObservationSchema,
   workspaceSchema,
@@ -33,6 +34,7 @@ import {
   type SessionModel,
   type InboxItem,
   type Routine,
+  type RoutineFire,
   type SubagentObservation,
   type Workspace,
 } from "./contracts";
@@ -236,6 +238,12 @@ export const redpandaApi = createApi({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/routines`,
       transformResponse: (value: unknown) => routineSchema.array().parse(value),
       providesTags: (_result, _error, id) => [{ type: "Routines", id }],
+    }),
+    getRoutineFires: build.query<RoutineFire[], { sessionId: string; routineId: string }>({
+      query: ({ sessionId, routineId }) =>
+        `/sessions/${encodeURIComponent(sessionId)}/routines/${encodeURIComponent(routineId)}/fires`,
+      transformResponse: (value: unknown) => routineFireSchema.array().parse(value),
+      providesTags: (_result, _error, { sessionId }) => [{ type: "Routines", id: sessionId }],
     }),
     setRoutineState: build.mutation<
       Routine[],
@@ -475,6 +483,7 @@ export const {
   useGetBackgroundCommandsQuery,
   useStopBackgroundCommandMutation,
   useGetRoutinesQuery,
+  useGetRoutineFiresQuery,
   useSetRoutineStateMutation,
   useGetFileChangesQuery,
   useGetFileDiffQuery,

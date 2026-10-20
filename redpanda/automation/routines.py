@@ -79,6 +79,7 @@ class RoutineFire:
     intent: str
     planned_at: datetime
     fired_at: datetime
+    delivered_at: datetime | None = None
 
 
 def next_run(schedule: str, after: datetime) -> datetime:
@@ -303,6 +304,23 @@ class RoutineStore:
         with closing(self._connect()) as connection:
             rows = connection.execute(sql + " ORDER BY name, routine_id", values).fetchall()
         return tuple(_from_row(row) for row in rows)
+
+    def fires(self, session_id: str, routine_id: str) -> tuple[RoutineFire, ...]:
+        """This Agent's recorded runs, newest first. A deleted routine is gone."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT state FROM routines WHERE routine_id = ? AND session_id = ?",
+                (routine_id, session_id),
+            ).fetchone()
+            if row is None or row["state"] == DELETED:
+                raise RoutineNotFound(routine_id)
+            rows = connection.execute(
+                "SELECT f.*, r.session_id, r.name, r.intent FROM routine_fires AS f "
+                "JOIN routines AS r USING (routine_id) WHERE f.routine_id = ? "
+                "ORDER BY f.fired_at DESC, f.fire_id DESC",
+                (routine_id,),
+            ).fetchall()
+        return tuple(_fire_from_row(row) for row in rows)
 
     def undelivered(self) -> RoutineFire | None:
         with closing(self._connect()) as connection:
@@ -556,5 +574,7 @@ def _watch_from_row(row) -> AbsenceWatch:
 
 
 def _fire_from_row(row) -> RoutineFire:
-    return RoutineFire(row["fire_id"], row["routine_id"], row["session_id"], row["name"], row["intent"],
-                       _utc(row["planned_at"]), _utc(row["fired_at"]))
+    return RoutineFire(
+        row["fire_id"], row["routine_id"], row["session_id"], row["name"], row["intent"],
+        _utc(row["planned_at"]), _utc(row["fired_at"]), _utc(row["delivered_at"]),
+    )

@@ -128,6 +128,19 @@ body {
 .agent-details-project svg { flex-shrink: 0; color: var(--mantine-color-dimmed); }
 .agent-details-project:hover { color: var(--rp-accent-text); }
 .agent-details-path { margin-top: 8px; overflow-wrap: anywhere; }
+.routine-row { position: relative; padding: 8px 0; border-top: 1px solid var(--rp-border); }
+.routine-row:first-child { border-top: 0; }
+.routine-open { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.routine-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding-right: 36px; }
+.routine-name { min-width: 0; }
+.routine-open:hover .routine-name { color: var(--rp-accent-text); }
+.routine-row > .routine-switch { position: absolute; top: 10px; right: 0; z-index: 1; }
+.routine-toolbar { display: flex; justify-content: flex-end; margin-top: 4px; }
+.routine-detail { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.routine-back { padding-inline: 0; }
+.routine-intent { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.routine-fire { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding-top: 8px; border-top: 1px solid var(--rp-border); }
+.conversation-turn.is-focused { margin-inline: -8px; padding: 8px; border-radius: 12px; box-shadow: inset 3px 0 0 var(--mantine-color-ember-5); background: color-mix(in srgb, var(--mantine-color-ember-5) 14%, transparent); }
 .session-page:has(.content-page) > .agent-details { display: none; }
 .session-page:has(.content-page) .agent-details-toggle { display: none; }
 .session-page:has(.agent-details) .composer-workspace { display: none; }

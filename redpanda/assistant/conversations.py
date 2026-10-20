@@ -290,6 +290,22 @@ class AssistantQueries:
                 ))
         return tuple(sorted(items, key=_inbox_sort_key))
 
+    async def delivery_output_ids(
+        self, session_id: str, source: str, delivery_ids: tuple[str, ...],
+    ) -> dict[str, str]:
+        """Journal event id for each delivery. A step started by that event uses the same id."""
+        if not delivery_ids:
+            return {}
+        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
+        wanted = set(delivery_ids)
+        found: dict[str, str] = {}
+        for event in events:
+            delivery = event.delivery
+            if delivery is None or delivery.source != source or delivery.delivery_id not in wanted:
+                continue
+            found[delivery.delivery_id] = event.event_id
+        return found
+
     async def conversation(
         self,
         session_id: str,
