@@ -622,6 +622,67 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(post(connection_id="gone").status_code, 409)
         self.assertEqual(groups.post.await_count, 1)
 
+    def test_routine_fires_are_newest_first_and_point_at_the_delivered_fact(self):
+        from redpanda.assistant.conversations import AssistantQueries
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.automation.once import SOURCE as AUTOMATION_SOURCE
+        from redpanda.automation.routines import ROUTINE_DUE
+        from redpanda.runtime import DomainFactCommitted, SqliteJournal
+        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+
+        clock = RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite"))
+        host = SimpleNamespace(routines=clock)
+        self.sessions.routine_fires = partial(HostSupervisor.routine_fires, host)
+        saved = clock.store.save(
+            "cmd-routine", "session-old", routine_id=None, name="检查 PR",
+            intent="看看有没有新评审。", schedule="@every 10m",
+        )
+        routine_id = saved["data"]["routine_id"]
+        with patch("redpanda.automation.routines.datetime") as frozen:
+            frozen.fromisoformat = datetime.fromisoformat
+            frozen.now.return_value = datetime(2026, 10, 20, 10, 0, tzinfo=timezone.utc)
+            first = clock.store.fire(clock.store.list("session-old")[0])
+            clock.store.delivered(first.fire_id)
+            frozen.now.return_value = datetime(2026, 10, 20, 10, 10, tzinfo=timezone.utc)
+            second = clock.store.fire(clock.store.list("session-old")[0])
+
+        async def record():
+            store = SessionStore(Path(self._directory.name) / "sessions")
+            await store.create("session-old")
+            await SqliteJournal(store.require("session-old")).accept_delivery(EventDraft(
+                event_id="routine-due-1",
+                session_id="session-old",
+                payload=DomainFactCommitted(ROUTINE_DUE, {
+                    "routine_id": routine_id,
+                    "name": "检查 PR",
+                    "intent": "看看有没有新评审。",
+                    "planned_at": first.planned_at.isoformat(),
+                    "fired_at": first.fired_at.isoformat(),
+                }, True),
+                occurred_at=datetime(2026, 10, 20, 10, 0, tzinfo=timezone.utc),
+                delivery=DeliveryIdentity(AUTOMATION_SOURCE, first.fire_id),
+            ))
+            return store
+
+        store = asyncio.run(record())
+        channel = WebChannel(self.sessions, AssistantQueries(store, self.sessions),
+                             AttachmentGateway(Path(self._directory.name)))
+        with TestClient(create_web_app(
+            channel, self.hub, workspaces=self.workspaces, models=self.models, model_llm=self.model_llm,
+        )) as client:
+            body = client.get(f"/api/sessions/session-old/routines/{routine_id}/fires").json()
+            missing = client.get("/api/sessions/session-old/routines/missing/fires")
+            other = client.get(f"/api/sessions/elsewhere/routines/{routine_id}/fires")
+        self.assertEqual([item["fire_id"] for item in body], [second.fire_id, first.fire_id])
+        self.assertGreater(body[0]["fired_at"], body[1]["fired_at"])
+        self.assertIsNone(body[0]["delivered_at"])
+        self.assertIsNone(body[0]["output_id"])
+        self.assertEqual(body[1]["output_id"], "routine-due-1")
+        self.assertIsNotNone(body[1]["delivered_at"])
+        self.assertEqual(body[1]["planned_at"], first.planned_at.isoformat())
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(other.status_code, 404)
+
     def test_a_person_pauses_resumes_and_cancels_an_agents_routine_over_http(self):
         host = SimpleNamespace(routines=RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite")),
                                _emit_schedule_changed=AsyncMock())

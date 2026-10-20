@@ -433,6 +433,10 @@ def create_web_app(
     async def routines(session_id: str, request: Request):
         return _channel(request).routines(session_id)
 
+    @app.get("/api/sessions/{session_id}/routines/{routine_id}/fires")
+    async def routine_fires(session_id: str, routine_id: str, request: Request):
+        return await _channel(request).routine_fires(session_id, routine_id)
+
     @app.get("/api/sessions/{session_id}/commands")
     async def commands(session_id: str, request: Request):
         return await _channel(request).commands(session_id)

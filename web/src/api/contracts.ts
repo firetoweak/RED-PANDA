@@ -164,6 +164,18 @@ export const routineSchema = z
 
 export type Routine = z.infer<typeof routineSchema>;
 
+export const routineFireSchema = z
+  .object({
+    fire_id: z.string().min(1),
+    planned_at: z.string().datetime({ offset: true }),
+    fired_at: z.string().datetime({ offset: true }),
+    delivered_at: z.string().datetime({ offset: true }).nullable(),
+    output_id: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export type RoutineFire = z.infer<typeof routineFireSchema>;
+
 export const toolStatusSchema = z.enum([
   "queued",
   "running",
