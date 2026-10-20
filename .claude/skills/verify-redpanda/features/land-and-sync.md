@@ -53,4 +53,6 @@
 - 两个工具都必须单独调用。同一步里还有别的工具时，这一步不会落地或同步，Git 状态保持调用前的样子。
 - 带参数调用的结果是 `INVALID_ARGUMENT`，错误为 `land_branch 不接受参数` 或 `sync_branch 不接受参数`。
 - Git 的其他失败（例如 `index.lock`、文件被占用）是 `LAND_FAILED` 或 `SYNC_FAILED`，`data.git` 为 Git 原文。不要把这类失败说成「文件会被覆盖」。
-- 落地不经人批准。未 live 跑过。
+- 落地不经人批准。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；Mo 单独 sync_branch 得到 SYNC_UNCHANGED。向旧分支同步新成果、冲突和阻挡未覆盖。

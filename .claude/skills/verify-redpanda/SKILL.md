@@ -91,7 +91,7 @@ Run this before the first click, after any surprising failure, and before claimi
 
 Any Python 3.11+ can run it; the script uses only the standard library. Exit 0 means the pid is alive, the process is `web_chat.py` with this `REDPANDA_HOME` (on Windows the process environment is not readable: the command line is checked, and the home is checked only through `connections_path`), `GET /` contains `<title>RED PANDA</title>`, `GET /api/workspaces` is a list, `GET /api/model-settings` points `connections_path` at `$REDPANDA_HOME/connections.json` and does not echo credentials, and `GET /api/events` emits `connected`. The JSON also reports `live_model_ready`.
 
-`live_model_ready` is false when the default model's provider is `待配置`. That means the connection file has no usable setting for that provider. It does not mean the key is valid when true. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; do not treat those badges as permission to send on a DeepSeek default. **Skip chat send, the 测试 button, and coding tool rounds when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
+`live_model_ready` is false when no default model is selected or its provider has no usable connection setting. True does not mean the key is valid. vLLM and Ollama can still report configured with an empty key, because a base URL is enough; another provider's configured badge does not establish readiness for the default model. **Skip chat send, the 测试 button, and coding tool rounds when `live_model_ready` is false.** Say so in the proof note. Do not type a message anyway.
 
 Add `--require-model` only when the feature you are about to drive cannot be skipped. `python -m pytest -m process` is a separate contract check, not a substitute for Web entries.
 
@@ -114,9 +114,9 @@ The conversation timeline is a virtual list (react-virtuoso) and dialogs and men
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
 
-For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. Only Agents and their delegated tasks have this panel; other sessions get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
+For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. The read-only API also accepts delegated tasks, but their observation page currently has no file-diff entry; other session types get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
 
-Colleague tools, private messages, landing and sync, and group chat are `features/colleague-tools.md`, `features/private-messages.md`, `features/land-and-sync.md`, and `features/group-chat.md`. Drive them from the page those files name. Do not add hop-limit reports or a paused Agent's unhandled messages to the inbox map; that inbox behavior is not in the product yet.
+Colleague tools, private messages, landing and sync, and group chat are `features/colleague-tools.md`, `features/private-messages.md`, `features/land-and-sync.md`, and `features/group-chat.md`. Drive them from the page those files name. The inbox also shows communication-limit reports, paused Agents with unhandled messages, and unattended-routine prompts; verify these through `features/inbox.md` and `features/routines.md`.
 
 Wait until the sidebar text is `已连接`. `正在连接…` means the event stream is not up; run Doctor again instead of typing.
 

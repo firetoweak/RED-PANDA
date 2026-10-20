@@ -14,7 +14,7 @@
 - `group-collapse`：点项目标题折叠/展开；折叠记在 `localStorage` 的 `redpanda.collapsedWorkspaces`。在折叠的项目里新建会先展开。
 - `custom-sections`：工作区内 `在 <名称> 新建分组` 建立分类；Bot 和群聊行的右键或 `移动 <名字> 到分组` 菜单可移入已有分类、放回 `未分组`，或新建分类并自动归入。点 `分组 <名称>` 折叠/展开，标题显示条目数。`<名称> 分组操作` 可重命名或删除；删除只把条目放回未分组，不移除 Agent 或群聊。名称不能为空、不能与同工作区分组重复，`未分组` 为保留名称。
 - `section-preferences`：分类、归属和折叠保存在当前浏览器 `redpanda.sidebarGroups.<workspace_id>`，按工作区隔离；同源标签页同步，不写入项目或群成员。搜索临时展开匹配分组，清空后恢复保存的折叠状态。
-- `home`：`/` 与 `/workspaces/:workspaceId` 不自动建会话。没有项目时主区域是欢迎图和 `创建工作区`；已有项目时文字是 `从左侧选择一个 Agent，或在项目里新建一个。`
+- `home`：`/` 与 `/workspaces/:workspaceId` 不自动建会话。没有项目时主区域显示 `从一个项目开始` 和 `创建工作区`；已有项目时展示 Agent 卡片，说明为 `选择一位 Agent 继续对话，或为项目添加一位新伙伴。`；空项目可点 `创建第一位 Agent`。
 
 ## How to get to it (user POV)
 
@@ -44,3 +44,5 @@
 2026-10-20 增量验收：移除侧栏全局创建入口，保留工作区内创建。Chrome 实测工作区加号可打开新建 Agent 表单（未提交创建）；12 项相关测试及构建通过。证据 `.tools/verification/workspace-create-entry/`。
 
 2026-10-20 自定义分组增量验收：Chrome 1366×956，创建分类、右键移动 Ada、把群聊放入同组、为 Lin 新建另一分类并自动归入、折叠刷新、搜索与清空、重命名、删除后 Lin 回到未分组均通过。145 项前端测试及构建通过；跨工作区隔离有组件测试，跨标签页同步本轮未实测。证据 `.tools/verification/sidebar-sections/`，按用户要求保留 8765 服务。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：页面创建 Ada、Lin、Mo、切换与方向/状态对照 GET 通过；搜索、自定义分组和折叠沿用历史证据。

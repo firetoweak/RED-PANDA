@@ -66,3 +66,5 @@
 - 需要 `live_model_ready`。
 - 成功条件：计划由模型制定和控制，没有完整状态机。双 `in_progress`、停止后仍是 `in_progress`、倒退都不算问题；只看计划能创建、更新、显示，运行状态单独显示。
 - 历史验证：r2 按新条件通过（cancel 后第 1 步仍 `in_progress`、可双 `in_progress`，均为设计行为）；UI 截图里计划与运行状态分开显示未验。2026-10-18 按源码改写文案与上下文判据，未 live 复跑。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：update_plan 建两步计划，API 留有进行中和全部完成两版；页面已完成计划 2/2 可展开。结束、compact、停止与子计划回收未重验。

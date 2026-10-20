@@ -23,12 +23,12 @@
   - (c) 刷新页面后已结束轮次的 `耗时` 不变（由事件时间算出，不是前端计时）。
   - (d) 点 `停止` 后计时必须停住：不再显示 `正在执行 · `；本轮没有带时间的最终步骤时（`turnElapsedMs` 为 `null`）整行不显示，而不是显示随墙钟增长的值。
 - **上下文用量**：
-  - (a) 发送一轮后 `GET /api/sessions/<id>` 的 `context_input_tokens` 非空，且随轮次增加。
+  - (a) 发送一轮后 `GET /api/sessions/<id>` 的 `context_input_tokens` 与当前窗口最近一次模型输入用量一致；不是累计计数，不要求随轮次单调增加。
   - (b) 用量环 `aria-label` 为 `N% 已用 · <context_input_tokens 格式化> / <阈值格式化> tokens`，N = round(已用/阈值×100)。
   - (c) 换会话模型后上限随 `GET /api/sessions/<id>/model` 的 `effective`（缺失时 `selected`）的 `compact_threshold_tokens` 变化。
   - (d) 新会话还没有模型回复时 → `暂无本窗口用量 · — / <阈值> tokens`。
-- **compact**：把当前模型的 `compact 触发值（输入 tokens）` 调到很小（如 2000）并 `保存配置`，连续发几轮长消息。
-  - (a) `GET /api/sessions/<id>` 的 `compact_count` 递增，`compact_phase` 经 `running` 到 `ready`；journal 中有 fact `compact.window_rolled_over`。
+- **compact**：把当前模型的 `compact 触发值（输入 tokens）` 调到很小（如 2000），先点 `加入待保存配置` 再 `保存配置`，连续发几轮长消息。
+  - (a) `GET /api/sessions/<id>` 的 `compact_count` 递增，journal 中有 fact `compact.window_rolled_over`；`compact_phase` 可短暂经过 `running`、`ready`，完成后回到 `null`，不要求最终保持 `ready`。
   - (b) compact 成功没有任何提示；刚滚到新窗口时 `context_input_tokens` 为 `null`，用量环先显示 `暂无本窗口用量 · — / 2K tokens`，下一次回复后才有新窗口的数值（低于 compact 前）。
   - (c) 之前的用户消息在界面上仍可见。
   - (d) compact 失败时 `compact_phase` 为 `failed`，输入区出现红色提示 `上下文整理失败。窗口仍超预算时会话无法继续推进。`。问模型最初说过的暗号 → 它应能经 `find_history` 答出；答不出记为问题。
@@ -39,3 +39,5 @@
 - 阈值字段不接受 0、负数和小数；表单校验见 model-settings。
 - 没有「compact 成功」提示，判据只能看 `compact_count`、`compact_phase` 和 journal fact。
 - 历史验证：2026-10-12（main@1a4790a）只经 API 核对通过，UI 未验。2026-10-18 按源码改写耗时、用量环与 compact 判据，未 live 复跑。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实回合的上下文用量与耗时可见，API context_input_tokens 有值；compact 阶段和计数未触发，不能据此标为通过。

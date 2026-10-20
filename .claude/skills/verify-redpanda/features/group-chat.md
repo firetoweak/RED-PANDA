@@ -1,6 +1,6 @@
 # 群聊
 
-项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群消息正文输入 `@` 或点 `点名成员`，选择成员完成点名，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。群里没有强制停止；需要中断某位成员时，从右侧成员链接进入其会话，点 `停止`。来源：`web/src/features/groups/`、`AgentSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
+项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的侧栏名册中（`群聊 <群名>`），可与 Bot 一起按本地分组整理，点开是 `/groups/:groupId`。人在群消息正文输入 `@` 或点 `点名成员`，选择成员完成点名，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。群里没有强制停止；需要中断某位成员时，从右侧成员链接进入其会话，点 `停止`。来源：`web/src/features/groups/`、`AgentSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
 
 ## Sub-features
 
@@ -59,3 +59,5 @@
 - 2026-10-20 Windows Chrome 隔离实例，Doctor `live_model_ready=true`：从项目菜单建群、全体发言（Ada 与 Lin 真模型回复）、点名 Lin 并收到其单独回复、资料收放、成员跳转与返回通过。1920×1080、1440×900、1280×800 桌面布局无页面横向溢出，输入区留在底部。证据 `.tools/verification/group-layout/`；本轮未重验跳过暂停成员与进行中新消息替换；群级停止已随最新主线移除。
 - 2026-10-20 正文 @ 增量验收：Chrome 1440×900，输入 @ 出现两名成员，方向键 + Enter 仅补全；小写 `@lin` 正文发送后，GET 中 `mentioned_agents=["Lin"]`，Lin 真模型独立回复。输入 `@ad` 过滤、鼠标补全 Ada、删除后取消收件人通过。证据 `.tools/verification/group-mentions/`。143 项前端测试及构建通过；按用户要求保留 8765 服务用于手动试用。
 - 2026-10-18 Windows live（隐藏面板，`live_model_ready` false，默认模型指向不存在的 Ollama）：侧栏群行、发言、依次叫醒（Kai 失败跳过后叫 Mo）、`停止本轮`（后已撤掉）通过；建群对话框与 `点名` 下拉走不到，改经 `POST /api/groups` 建群；成员发言跳过。同轮发现：没有默认模型时新建 Agent 返回 500（首轮唤醒在 Worker 里抛出模型未配置），另行修复。
+
+- 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：从项目菜单建群，Ada 与 Lin 通过 send_group_message 真实回复 GROUP_OK，群页实时更新；点名、暂停跳过与调度替换沿用历史证据。
