@@ -45,6 +45,21 @@ from tests.session_scheduler import SettlingScheduler, settle_session
 
 
 class ArtifactBoundaryTest(unittest.TestCase):
+    def test_externalizing_background_output_keeps_its_addressable_handoff(self):
+        reference = {"command_id": "background-identity", "pid": 123, "cwd": "/project",
+                     "started_at": "2026-10-20T00:00:00+00:00"}
+        with TemporaryDirectory() as directory:
+            store = FileArtifactStore(Path(directory))
+            payload = {"ok": True, "code": "COMMAND_BACKGROUND", "error": None,
+                       "hint": "完成时会通知", "data": {"stdout": "x" * 10000, "background": reference}}
+            externalized, artifact_id = externalize_payload(payload, store, max_chars=500, preview_chars=50)
+            self.assertIsNotNone(artifact_id)
+            self.assertEqual(externalized["data"]["background"], reference)
+            self.assertEqual(externalized["code"], "COMMAND_BACKGROUND")
+            # A subsequent projection/dehydration must retain the same handoff too.
+            again, _ = externalize_payload(externalized, store, max_chars=200, preview_chars=10)
+            self.assertEqual(again["data"]["background"], reference)
+
     def test_file_store_rejects_artifact_path_traversal(self):
         with TemporaryDirectory() as directory:
             root = Path(directory) / "artifacts"

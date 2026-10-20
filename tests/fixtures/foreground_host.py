@@ -23,9 +23,13 @@ class RepeatingCommandLlm:
     async def chat(self, messages, model, **kwargs):
         with (self.root / "model-calls").open("a") as stream:
             stream.write("call\n")
+        background = (self.root / "background-mode").exists()
+        if background and any(message["role"] == "tool" for message in messages):
+            (self.root / "handoff").touch()
+            return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=10, output_tokens=5))
         command = (self.root / "command").read_text(encoding="utf-8")
         return LLMCallResult(LLMResponse(calls=(ToolCall(
-            "repeat", "execute_command", json.dumps({"command": command, "timeout_seconds": 120}),
+            "repeat", "execute_command", json.dumps({"command": command, "wait_seconds": 0 if background else 30}),
         ),)), LLMUsage(input_tokens=10, output_tokens=5))
 
 

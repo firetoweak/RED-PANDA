@@ -103,6 +103,16 @@ class WebChannel:
             "last_run": None if routine.last_fired_at is None else routine.last_fired_at.isoformat(),
         } for routine in self._sessions.list_routines(session_id)]
 
+    async def commands(self, session_id: str):
+        return await self._sessions.list_commands(session_id)
+
+    async def stop_command(self, connection_id: str, session_id: str, command_id: str):
+        self._require_connection(connection_id)
+        result = await self._sessions.stop_command(session_id, command_id)
+        if result is None:
+            raise WebInputInvalid("本会话没有该命令。")
+        return result
+
     async def set_routine_state(self, connection_id: str, session_id: str, routine_id: str, state: str):
         self._require_connection(connection_id)
         await self._sessions.set_routine_state_by_user(session_id, routine_id, state)

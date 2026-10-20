@@ -108,7 +108,7 @@ class BashCommandRunner:
         self,
         command: str,
         cwd: Path,
-        timeout_seconds: int,
+        timeout_seconds: int | None,
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:

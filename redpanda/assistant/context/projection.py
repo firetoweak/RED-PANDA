@@ -11,6 +11,7 @@ import json
 from redpanda.assistant.content import READ_CONTENT, CONTENT_HINT
 from redpanda.automation.routines import ROUTINE_DUE
 from redpanda.automation.once import TIME_REACHED
+from redpanda.assistant.commands import COMMAND_FINISHED
 from redpanda.assistant.agents import (
     AGENT_FACT_TYPES, GROUP_MESSAGE, PRIVATE_MESSAGE, agent_fact_for_model,
 )
@@ -291,6 +292,9 @@ def _translate_visible_events(
                 shown_data["notice"] = (
                     "你自己的例行任务到点了，这不是人的新消息。按 intent 去做；没有值得汇报的变化时，"
                     "用一句话说明即可。需要调整时用 save_routine 改写，或用 set_routine_state 暂停或删除。")
+            elif payload.fact_type == COMMAND_FINISHED:
+                shown_data["notice"] = shown_data.get("notice", "你此前启动的后台命令已结束，这不是人的新消息。")
+                shown_data["next_action"] = "根据退出状态和输出继续工作；需要完整输出时用 read_command，汇报对象由你选择。"
             elif payload.fact_type == TASK_FACT:
                 shown_data = {
                     key: shown_data[key] for key in ("task", "resolve_conflicts_of")
@@ -511,7 +515,7 @@ def _is_externalized_meta(value: object) -> bool:
 def _journaled_externalized_meta(value: object) -> dict[str, object] | None:
     if (
         not isinstance(value, dict)
-        or set(value) != {"externalized", "reference", "size_chars", "preview"}
+        or set(value) - {"background"} != {"externalized", "reference", "size_chars", "preview"}
         or value["externalized"] is not True
     ):
         return None
@@ -558,6 +562,9 @@ def _stub_content(
     }
     if outcome.get("images"):
         stub["images"] = outcome["images"]
+    if outcome["code"] == "COMMAND_BACKGROUND":
+        # The handoff stays addressable when output is externalized or dehydrated.
+        stub["data"]["background"] = outcome["data"]["background"]
     return json.dumps(stub, ensure_ascii=False, separators=(",", ":"))
 
 

@@ -418,3 +418,10 @@ export type SessionModel = z.infer<typeof sessionModelSchema>;
 export type AuthorizationRequiredEvent = z.infer<
   typeof authorizationRequiredEventSchema
 >;
+
+export const backgroundCommandSchema = z.object({
+  command_id: z.string(), pid: z.number().int().nullable(), command: z.string(), cwd: z.string(),
+  started_at: z.string(), state: z.enum(["running", "completed", "stopped", "unknown"]),
+  exit_code: z.number().int().nullable(), duration_ms: z.number().int(),
+});
+export type BackgroundCommand = z.infer<typeof backgroundCommandSchema>;

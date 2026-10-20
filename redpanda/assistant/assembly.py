@@ -24,7 +24,7 @@ from redpanda.assistant.delivery import (
 )
 from redpanda.assistant.context.prompt import CODING_BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from redpanda.assistant.host.agent_worktrees import project_worktrees
-from redpanda.assistant.host.process_port import WorkerProcessPort
+from redpanda.assistant.host.command_port import WorkerCommandPort
 from redpanda.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
@@ -125,7 +125,7 @@ async def build_assistant_assembly(
         workspace, materials_root=attachments.files.materials, isolated=task is not None,
         colleague_root=project_worktrees(home, agent.workspace_id) if colleague_schemas else None,
         command_environment=command_environment,
-        processes=(WorkerProcessPort(session_transport, session_id)
+        commands=(WorkerCommandPort(session_transport, session_id)
                    if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
@@ -289,7 +289,8 @@ async def build_assistant_assembly(
         **subagents.bindings(),
         **compact_context.bindings(),
     }
-    bindings["execute_command"] = with_command_interrupts(bindings["execute_command"], command_interrupts)
+    if "execute_command" in bindings:
+        bindings["execute_command"] = with_command_interrupts(bindings["execute_command"], command_interrupts)
     bindings = _with_tool_progress(bindings, tool_progress_sink)
     decision = JournalBackedLlmDecisionMaker(
         journal,

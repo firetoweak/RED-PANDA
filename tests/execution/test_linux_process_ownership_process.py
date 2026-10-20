@@ -11,7 +11,7 @@ import textwrap
 
 import pytest
 
-from redpanda.execution.processes import ProcessManager
+from redpanda.execution.processes import CommandManager
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform != "linux", reason="Linux ownership")]
 
@@ -33,20 +33,20 @@ def detached_code(marker):
 
 def test_detached_children_are_reaped_without_killing_other_tasks(tmp_path):
     async def scenario():
-        manager = ProcessManager(tmp_path / "logs", os.environ)
+        manager = CommandManager(tmp_path / "logs", os.environ)
         try:
             detached = tmp_path / "detached"
-            first = await manager.start("a", command(detached_code(detached)), tmp_path)
-            second = await manager.start("b", command("import time;print('SECOND');time.sleep(60)"), tmp_path)
+            first = await manager.execute("a", 'cmd-39', command(detached_code(detached)), tmp_path, 0)
+            second = await manager.execute("b", 'cmd-40', command("import time;print('SECOND');time.sleep(60)"), tmp_path, 0)
             async def ready():
-                return detached.exists() and "SECOND" in (await manager.read("b", second["process_id"], 0, 0))["stdout"]["content"]
+                return detached.exists() and "SECOND" in (await manager.read("b", second["command_id"], 0, 0))["stdout"]["content"]
             await until(ready)
             escaped_pid = int(detached.read_text())
-            assert (await manager.read("a", first["process_id"], 0, 0))["state"] == "running"
-            assert (await manager.stop("a", first["process_id"]))["state"] == "stopped"
+            assert (await manager.read("a", first["command_id"], 0, 0))["state"] == "running"
+            assert (await manager.stop("a", first["command_id"]))["state"] == "stopped"
             assert not Path("/proc", str(escaped_pid)).exists()
-            assert (await manager.read("b", second["process_id"], 0, 0))["state"] == "running"
-            assert "SECOND" in (await manager.read("b", second["process_id"], 0, 0))["stdout"]["content"]
+            assert (await manager.read("b", second["command_id"], 0, 0))["state"] == "running"
+            assert "SECOND" in (await manager.read("b", second["command_id"], 0, 0))["stdout"]["content"]
             await manager.close()
             assert not Path("/proc", str(second["pid"])).exists()
         finally:
@@ -61,12 +61,12 @@ def test_host_kill_closes_control_pipes_and_reclaims_each_tree(tmp_path, kill_gr
         import asyncio,json,os,sys
         from pathlib import Path
         sys.path.insert(0,{str(root)!r})
-        from redpanda.execution.processes import ProcessManager
+        from redpanda.execution.processes import CommandManager
         async def main():
-            manager=ProcessManager(Path('logs'),os.environ)
+            manager=CommandManager(Path('logs'),os.environ)
             entries=[]
             for name in ('one','two'):
-                entries.append(await manager.start(name,{command(detached_code('REPLACE'))!r}.replace('REPLACE',name),Path.cwd()))
+                entries.append(await manager.execute(name,name,{command(detached_code('REPLACE'))!r}.replace('REPLACE',name),Path.cwd(),0))
             Path('ready').write_text(json.dumps(entries))
             await asyncio.Event().wait()
         asyncio.run(main())

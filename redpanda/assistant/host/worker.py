@@ -11,6 +11,7 @@ from redpanda.automation.recovery import recover_schedule_attempts
 from redpanda.automation.routine_tool import recover_routine_attempts
 from redpanda.assistant.agent_git import identity as git_identity
 from redpanda.assistant.agent_messages import recover_message_attempts
+from redpanda.assistant.commands import recover_command_attempts
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure
 from redpanda.assistant.host.llm_port import WorkerLlmPort
@@ -201,6 +202,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
             # Rebuild only this Session. An explicit resume separately resumes its children.
             from redpanda.assistant.runner import resume_session
 
+            await recover_command_attempts(journal, session_id, peer.request)
             await recover_schedule_attempts(journal, session_id, peer.request)
             await recover_routine_attempts(journal, session_id, peer.request)
             await resume_session(
