@@ -1,6 +1,6 @@
 import { Collapse, Group, Loader, Paper, Text, UnstyledButton } from "@mantine/core";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
-import { memo, useEffect, useState } from "react";
+import { memo, useState } from "react";
 
 export const ThinkingBlock = memo(function ThinkingBlock({
   text,
@@ -9,11 +9,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   text: string;
   streaming: boolean;
 }) {
-  const [opened, setOpened] = useState(streaming);
-
-  useEffect(() => {
-    setOpened(streaming);
-  }, [streaming]);
+  const [opened, setOpened] = useState(false);
 
   return (
     <Paper className="thinking-block" radius="md" withBorder>

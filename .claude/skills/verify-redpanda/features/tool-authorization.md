@@ -6,7 +6,7 @@
 
 - `pending`：需要授权的工具调用在步骤卡片上显示徽标 `待授权`，卡片内有 `允许`/`拒绝`；同时输入框上方出现区域 `待处理`（标题 `待处理 · N 项`），每项为 `<工具名> · <参数摘要>`，按钮 `允许 <工具名>`/`拒绝 <工具名>`（可见文字 `允许`/`拒绝`），点 `查看 <工具名> 的参数` 展开参数 JSON。待处理条只读服务端 `session.pending_authorization_commands`，与步骤卡片同源；SSE 发 `authorization_required`；侧栏该会话活动点为 `需要操作`。
 - `approve` / `reject`：`POST .../commands/{command_id}/authorize`（`approved` 为 true/false）。批准后执行，徽标变 `运行中` 再到 `完成`；拒绝后徽标 `已拒绝`，不执行。
-- `auto-authorize`：输入框下方开关 `自动放行写文件等工具` → `POST .../auto-authorize`（`enabled`）。按会话持久化在 `$REDPANDA_HOME/runtime_sessions/auto_authorize.json`，重启后仍生效；打开的瞬间会把该会话当前所有待授权调用一并批准。
+- `auto-authorize`：当前实验阶段，未设置过的会话默认开启工具自动放行。输入框下方开关可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST .../auto-authorize`（`enabled`）。显式关闭仍按会话持久化在 `$REDPANDA_HOME/runtime_sessions/auto_authorize.json`，重启后保持关闭；打开的瞬间会把该会话当前所有待授权调用一并批准。控制提案仍使用独立确认流程，授权交互后续单独设计。
 - `control-confirm`：模型发起的控制请求作为一项出现在待处理条里，显示摘要与 `风险：…`，按钮 `取消`/`确认`；对话上下文保持可见。读 `session.control_approval`；`POST .../control` 带 `request_id`、`approved`。
 
 ## How to get to it (user POV)
@@ -51,3 +51,5 @@
 - 已知产品缺口（2026-10-18 源码核对）：`/control` 的冲突（`ControlDecisionConflict`，继承 `ValueError`，`redpanda/assistant/control.py`）以及「当前没有待确认的控制操作」（`NoPendingControlApproval`）在 `app.py` 都没有异常处理器，预计返回 500 而不是 409。判据保持 409 的预期。
 - 2026-10-18 改写：命令放行名单删除，命令一律授权，`merge_subagent` 不再需要授权。未 live 复跑。
 - 历史 live 记录：2026-10-16（main@e191eab，仅 API，界面未验证）：`write_file` 待授权 → 拒绝 200、文件未建、重复拒绝 409、无目标 404；批准后落盘；`rm -f` 进入待授权；`touch` 不需授权。部分（2026-10-12，修复后）：重复授权/无目标返回 500 已修（目标不存在 404、重复授权/拒绝 409；自动化 + 隔离 API 通过）。2026-10-18 Windows live（弹窗版本）发现：待授权时打开自动放行后 `等待授权` 弹窗残留——随弹窗改为待处理条已消除。同日 Windows live（deepseek-flash，待处理条版本）：待授权 → 拒绝 / 允许、待授权时打开自动放行、控制确认取消与确认均通过；页面无弹窗。
+
+- 2026-10-20 PC live：新 Agent 默认自动放行，命令与文件修改无需逐条批准；显式关闭的持久化有测试覆盖，控制提案未重验。

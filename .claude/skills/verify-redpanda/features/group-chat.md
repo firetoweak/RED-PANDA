@@ -1,12 +1,14 @@
 # 群聊
 
-项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群里发言，可用 `点名` 选成员，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。群里没有强制停止，刹车是在某位成员的会话点 `停止`；群页成员徽标链到各自的会话。来源：`web/src/features/groups/`、`AgentSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
+项目的工作区操作菜单 `新建群聊` 选 2 到 6 个同项目 Agent 建群；群列在该项目的 Agent 下面（`群聊 <群名>`），点开是 `/groups/:groupId`。人在群消息正文输入 `@` 或点 `点名成员`，选择成员完成点名，不点名叫全体；Host 依次叫醒被点到的成员，成员用 `send_group_message` 发言或这次处理结束即算完成，然后叫下一位。群里没有强制停止；需要中断某位成员时，从右侧成员链接进入其会话，点 `停止`。来源：`web/src/features/groups/`、`AgentSidebar.tsx`、`WorkspaceHeader.tsx`、`redpanda/channels/web/app.py`（`/api/groups*`）、`redpanda/assistant/host/agent_groups.py`。
 
 ## Sub-features
 
 - `create`：`新建群聊` 对话框，`群名` 与 `成员`（只列同项目 Agent，少于 2 个时 `创建` 不可用）；创建后进入群页。
-- `record`：群页列出发言；人的发言署名 `你`，Agent 的署名链到它的会话；点名显示为 `@名字` 徽标。
-- `post`：`群消息` 输入框 + `发送到群`（Ctrl+Enter 也可）；`点名` 为空时叫全体成员。
+- `record`：桌面三栏（左侧名册、中间群聊、右侧群资料）。人的消息靠右、Agent 消息靠左，保留发送者与时间；Agent 署名链到同项目对应会话，点名显示为 `@名字` 徽标。
+- `details`：右侧 `群资料` 显示所在项目、成员方向与状态；`查看 <名字> 的会话` 跳转成员会话，`收起群资料` / `显示群资料` 控制资料栏。
+- `post`：底部 `群消息` 输入框 + `发送到群`，Enter 发送、Shift+Enter 换行，输入法选词时 Enter 不发送。
+- `mention`：正文输入 `@` 弹出 `点名候选`，按名字过滤；方向键选择，Enter / Tab 补全，Escape 收起，也可点选。正文中的完整成员名（忽略大小写）决定收件人，支持多人、中文、空格与符号名，邮箱不作为点名；删除正文中的名字即取消对应收件人。输入区显示 `发送给 @名字`，没有点名则显示 `未点名 · 通知全体`。
 - `calling`：Host 正在等某个成员时显示 `正在等 <名字> 回应…`。
 - `skip-paused`：被人 `停止` 因而暂停的成员直接跳过，不进入 `calling`，也不收到 `coding_bot.group_attention`。
 - `supersede`：调度进行中再发一条人的消息，会换成新的一串；还没叫到的成员不再为旧消息被叫。
@@ -28,7 +30,7 @@
   - (d) 同项目同名再建 → 409 `项目内已有群：…`；只选一个成员 → `创建` 不可用（直接 POST 为 422）；成员不在本项目 → 404 `同项目中没有这位 Agent：…`。
 - **人发言与依次叫醒**：在 `群消息` 输入后点 `发送到群`。
   - (a) `GET /api/groups/<id>` 的 `messages` 末尾是 `sender: null` 的这条；`calling` 依次出现被叫成员；成员 journal 里先有 `coding_bot.group_message`（不触发决策），被叫到时才有 `coding_bot.group_attention`。
-  - (b) 页面出现 `你` 署名的消息，输入框清空，随后显示 `正在等 <名字> 回应…`。
+  - (b) 页面出现 `你` 署名的消息，输入框清空，随后显示 `正在等 <名字> 回应…`。点名时先输入 `@`，在 `点名候选` 中选人，确认输入区显示对应收件人；候选展开时 Enter 仅补全，不发送。也可直接键入完整 `@名字` 和正文。
   - (c) 发言者以外的成员各收到一份发言；未点名的成员在点名发言里不会被叫。
   - (d) 空白内容 → 422 `消息内容不能为空。`；点名非本群成员（直接 POST）→ 422 `只能点名这个群里的成员。`；不存在的群 → 404 `群不存在`。
 - **成员发言与轮次**（需要 `live_model_ready`）：不点名发一条让大家各说一句。
@@ -53,5 +55,7 @@
 
 - 调度状态只在内存：Web 服务重启后不恢复中断的轮次。
 - 群名项目内唯一；第一版不能改成员或删群。
-- 菜单、对话框与 `点名` 下拉依赖 `requestAnimationFrame`，浏览器面板隐藏时打不开，记为走不到。
-- 2026-10-18 Windows live（隐藏面板，`live_model_ready` false，默认模型指向不存在的 Ollama）：侧栏群行、发言、依次叫醒（Kai 失败跳过后叫 Mo）、`停止本轮`（已撤掉）通过；建群对话框与 `点名` 下拉走不到，改经 `POST /api/groups` 建群；成员发言跳过。同轮发现：没有默认模型时新建 Agent 返回 500（首轮唤醒在 Worker 里抛出模型未配置），另行修复。
+- 菜单、对话框依赖 `requestAnimationFrame`，浏览器面板隐藏时打不开，记为走不到。
+- 2026-10-20 Windows Chrome 隔离实例，Doctor `live_model_ready=true`：从项目菜单建群、全体发言（Ada 与 Lin 真模型回复）、点名 Lin 并收到其单独回复、资料收放、成员跳转与返回通过。1920×1080、1440×900、1280×800 桌面布局无页面横向溢出，输入区留在底部。证据 `.tools/verification/group-layout/`；本轮未重验跳过暂停成员与进行中新消息替换；群级停止已随最新主线移除。
+- 2026-10-20 正文 @ 增量验收：Chrome 1440×900，输入 @ 出现两名成员，方向键 + Enter 仅补全；小写 `@lin` 正文发送后，GET 中 `mentioned_agents=["Lin"]`，Lin 真模型独立回复。输入 `@ad` 过滤、鼠标补全 Ada、删除后取消收件人通过。证据 `.tools/verification/group-mentions/`。143 项前端测试及构建通过；按用户要求保留 8765 服务用于手动试用。
+- 2026-10-18 Windows live（隐藏面板，`live_model_ready` false，默认模型指向不存在的 Ollama）：侧栏群行、发言、依次叫醒（Kai 失败跳过后叫 Mo）、`停止本轮`（后已撤掉）通过；建群对话框与 `点名` 下拉走不到，改经 `POST /api/groups` 建群；成员发言跳过。同轮发现：没有默认模型时新建 Agent 返回 500（首轮唤醒在 Worker 里抛出模型未配置），另行修复。

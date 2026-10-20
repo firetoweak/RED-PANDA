@@ -111,6 +111,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         sid = "authorization-restart"
         await self.host.create(sid, self.workspace.workspace_id)
+        # This scenario exercises manual rejection, including its policy after restart.
+        await self.host.set_auto_authorize(sid, False)
         journal = SqliteJournal(self.store.require(sid))
         runtime = AgentRuntime(
             journal,
@@ -129,6 +131,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         channel = WebChannel(self.host, AssistantQueries(self.store, self.host))
         connection = channel.connect()
         recovered = await channel.select(connection.connection_id, sid)
+        self.assertFalse(recovered.session.auto_authorize)
         self.assertEqual(recovered.session.pending_authorization_ids, (command_id,))
         resolved = await channel.authorize_command(connection.connection_id, sid, command_id, False)
         self.assertEqual(resolved.session.pending_authorization_ids, ())

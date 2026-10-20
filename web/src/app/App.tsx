@@ -76,7 +76,7 @@ export function App() {
       padding={0}
       transitionDuration={resizingSidebar ? 0 : 180}
     >
-      <AppShell.Navbar className="app-navbar" p="md">
+      <AppShell.Navbar className="app-navbar" p={12}>
         <AgentSidebar onNavigate={closeNavigation} />
         <div
           aria-label="调节侧栏宽度"

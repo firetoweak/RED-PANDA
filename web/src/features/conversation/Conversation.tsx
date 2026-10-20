@@ -75,7 +75,7 @@ import { SubagentPanel } from "./SubagentPanel";
 type OpenPage = { kind: "changes" } | { kind: "subagent"; commandId: string }
   | { kind: "error"; title: string; message: string };
 
-export function Conversation() {
+export function Conversation({ agentName }: { agentName?: string }) {
   const dispatch = useAppDispatch();
   const { sessionId: routeSessionId } = useParams();
   const routeId = routeSessionId ?? "";
@@ -234,41 +234,24 @@ export function Conversation() {
               const plan = completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />;
               const body = (
                 <>
-                  <TurnTiming
+                  {latest && running ? <TurnTiming
                     startedAt={turn.user?.occurredAt ?? null}
                     running={latest && running && connectionId !== null}
                     elapsedMs={elapsedMs}
-                  />
-                  {turn.process.length === 0 ? null : (
-                    <ExecutionProcess
-                      authorizationDisabled={connectionId === null}
-                      complete={settled}
-                      sessionId={sessionId}
-                      onAuthorize={authorize}
-                      steps={turn.process}
-                      onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
-                    />
-                  )}
-                  {thinking === null ? null : (
-                    <ThinkingBlock
-                      streaming={thinking.thinkingPending && !settled}
-                      text={thinking.thinking}
-                    />
-                  )}
+                  /> : null}
                   {turnNeedsThinkingHint(turn, {
                     latest,
                     running,
                     settled,
                   }) ? (
-                    <RunningHint label="思考中" />
+                    <RunningHint label="思考中" agentName={agentName} />
                   ) : reply !== null ? (
                     <Box
                       component="article"
                       className="message message-assistant"
+                      aria-label={`${agentName ?? "RED PANDA"} 的回复`}
                       key={reply.key}
                     >
-                      <Group align="flex-start" gap="sm" wrap="nowrap">
-                        <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
                         <Stack className="assistant-reply" gap={6}>
                           <MarkdownMessage
                             content={reply.text}
@@ -286,23 +269,39 @@ export function Conversation() {
                               ))}
                             </Group>
                           )}
+                        </Stack>
                           {settled ? (
                             <TurnEndActions
+                              elapsedMs={elapsedMs}
                               occurredAt={turn.final?.occurredAt ?? null}
                               replyText={reply.text}
                             />
                           ) : null}
-                        </Stack>
-                      </Group>
                     </Box>
                   ) : turnNeedsSilentEnd(turn, settled) &&
                     !(latest && notice !== null) ? (
                     <SilentEndHint />
                   ) : null}
+                  {turn.process.length === 0 ? null : (
+                    <ExecutionProcess
+                      authorizationDisabled={connectionId === null}
+                      complete={settled}
+                      sessionId={sessionId}
+                      onAuthorize={authorize}
+                      steps={turn.process}
+                      onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
+                    />
+                  )}
+                  {thinking === null ? null : (
+                    <ThinkingBlock
+                      streaming={thinking.thinkingPending && !settled}
+                      text={thinking.thinking}
+                    />
+                  )}
                 </>
               );
               return (
-              <Stack gap="lg" key={turn.key}>
+              <Stack className="conversation-turn" gap={8} key={turn.key}>
                 {turn.user === null ? null : (
                   <Box component="article" className="message message-user">
                     <UserMessage
@@ -472,11 +471,17 @@ export function Conversation() {
   );
 }
 
-function RunningHint({ label }: { label: string }) {
+function AssistantAvatar({ name }: { name?: string }) {
+  return name === undefined
+    ? <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
+    : <span className="agent-avatar agent-avatar-small" aria-hidden="true">{name.slice(0, 1)}</span>;
+}
+
+function RunningHint({ label, agentName }: { label: string; agentName?: string }) {
   return (
     <Box component="article" className="message message-assistant">
       <Group align="center" gap="sm" wrap="nowrap">
-        <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
+        <AssistantAvatar name={agentName} />
         <Group gap={8} wrap="nowrap">
           <Loader color="ember" size={12} />
           <Text c="dimmed" size="sm">
@@ -491,14 +496,16 @@ function RunningHint({ label }: { label: string }) {
 function TurnEndActions({
   replyText,
   occurredAt,
+  elapsedMs,
 }: {
   replyText: string | null;
   occurredAt: string | null;
+  elapsedMs: number | null;
 }) {
   const [copied, setCopied] = useState(false);
   const time = occurredAt === null ? null : formatMessageTime(occurredAt);
   return (
-    <Group className="turn-end-actions" gap={4} justify="flex-start">
+    <Group className="turn-end-actions" gap={4} justify="flex-start" wrap="nowrap">
       {replyText === null ? null : (
         <ActionIcon
           aria-label="复制回复"
@@ -520,6 +527,7 @@ function TurnEndActions({
           {time.short}
         </Text>
       )}
+      <TurnTiming startedAt={null} running={false} elapsedMs={elapsedMs} />
     </Group>
   );
 }

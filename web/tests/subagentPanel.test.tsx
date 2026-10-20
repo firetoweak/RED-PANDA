@@ -59,6 +59,8 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   expect(query.read).toHaveBeenLastCalledWith({ parentSessionId: "parent", commandId: "delegate" });
   expect(screen.getByRole("button", { name: /1.*已提交过程/ })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /2.*正在输出/ })).toBeInTheDocument();
+  expect(screen.queryByText("实时思考")).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "思考" }).at(-1)!);
   expect(screen.getByText("实时思考")).toBeInTheDocument();
   expect(screen.queryByLabelText("从这一步之后重开")).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();

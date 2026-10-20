@@ -12,10 +12,22 @@ from redpanda.assistant.session_metadata import SessionFlagStore
 
 
 class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
+    def test_new_session_auto_authorizes_and_explicit_opt_out_survives_reload(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            host = object.__new__(HostSupervisor)
+            host._auto_authorize = SessionFlagStore(root, "auto_authorize.json")
+            self.assertTrue(host.auto_authorize("new"))
+            host._auto_authorize.set("new", False)
+            host._auto_authorize = SessionFlagStore(root, "auto_authorize.json")
+            self.assertFalse(host.auto_authorize("new"))
+            self.assertTrue(host.auto_authorize("another"))
+
     async def test_worker_policy_comes_only_from_session_store(self):
         host = object.__new__(HostSupervisor)
         host._auto_authorize = SessionFlagStore(None, "auto_authorize.json")
         host._auto_authorize.remember("enabled", True)
+        host._auto_authorize.remember("disabled", False)
         host.selections = {
             "tui": "enabled",
             "web": "disabled",

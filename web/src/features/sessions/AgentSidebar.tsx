@@ -9,22 +9,22 @@ import {
   Skeleton,
   Stack,
   Text,
+  TextInput,
   Tooltip,
-  UnstyledButton,
 } from "@mantine/core";
 import {
   IconFolderPlus,
-  IconMessageCircle,
-  IconPlus,
+  IconLayoutDashboard,
+  IconInbox,
+  IconSearch,
+  IconX,
   IconAdjustments,
-  IconAlertCircle,
-  IconUsersGroup,
 } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 
-import type { AgentRosterEntry, Workspace } from "../../api/contracts";
+import type { Workspace } from "../../api/contracts";
 import {
   useGetAgentsQuery,
   useGetGroupsQuery,
@@ -40,6 +40,7 @@ import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import { RemoveWorkspaceModal } from "./RemoveWorkspaceModal";
 import { RenameWorkspaceModal } from "./RenameWorkspaceModal";
 import { WorkspaceHeader } from "./WorkspaceHeader";
+import { WorkspaceRoster } from "./WorkspaceRoster";
 import {
   readCollapsedWorkspaces,
   writeCollapsedWorkspaces,
@@ -49,13 +50,6 @@ type AgentSidebarProps = {
   onNavigate: () => void;
 };
 
-const STATUS_LABEL = {
-  working: "干活",
-  authorization: "等授权",
-  waiting: "等人回话",
-  idle: "空闲",
-} as const;
-
 export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
@@ -64,6 +58,8 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
     .workspaceId;
   const modelSettingsActive = useMatch("/settings/models") !== null;
   const inboxActive = useMatch("/inbox") !== null;
+  const homeActive = useMatch("/") !== null || routeWorkspaceId !== undefined;
+  const [search, setSearch] = useState("");
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: agents = [], isLoading } = useGetAgentsQuery();
   const { data: inbox = [] } = useGetInboxQuery();
@@ -94,11 +90,19 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
     agents: agents.filter((agent) => agent.workspace_id === workspace.workspace_id),
     chats: chatGroups.filter((chat) => chat.workspace_id === workspace.workspace_id),
   }));
+  const query = search.trim().toLocaleLowerCase();
+  const filteredGroups = groups.map((workspace) => {
+    if (workspace.name.toLocaleLowerCase().includes(query)) return workspace;
+    return { ...workspace,
+      agents: workspace.agents.filter((agent) => `${agent.name} ${agent.direction ?? ""}`.toLocaleLowerCase().includes(query)),
+      chats: workspace.chats.filter((chat) => chat.name.toLocaleLowerCase().includes(query)),
+    };
+  }).filter((workspace) => query === "" || workspace.name.toLocaleLowerCase().includes(query)
+    || workspace.agents.length > 0 || workspace.chats.length > 0);
   const currentWorkspaceId = agents.find(
     (agent) => agent.session_id === sessionId,
   )?.workspace_id ?? chatGroups.find((chat) => chat.group_id === groupId)?.workspace_id
     ?? routeWorkspaceId ?? null;
-  const canCreateAgent = connectionId !== null && workspaces.length > 0;
 
   function toggleWorkspace(workspaceId: string) {
     setCollapsedWorkspaces((current) => {
@@ -134,48 +138,44 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
   }
 
   return (
-    <Stack h="100%" gap="md">
+    <Stack h="100%" gap="md" className="sidebar-content">
       <AppShell.Section>
         <Group className="sidebar-brand" gap="sm" px={6} py={4} wrap="nowrap">
-          <img className="brand-mark" src={redPandaMark} alt="" width={40} height={40} />
+          <img className="brand-mark" src={redPandaMark} alt="" width={32} height={32} />
           <Box>
             <Text className="brand-name" fw={700} lh={1.15} size="sm">
               RED PANDA
             </Text>
             <Text c="dimmed" fz={11}>
-              你的个人助手
+              你的编码协作伙伴
             </Text>
           </Box>
         </Group>
       </AppShell.Section>
 
       <AppShell.Section>
+        <Button fullWidth className={homeActive ? "sidebar-nav is-active" : "sidebar-nav"}
+          justify="flex-start" leftSection={<IconLayoutDashboard size={17} />}
+          color="gray" variant="subtle" onClick={() => { navigate("/"); onNavigate(); }}>工作台</Button>
         <Button
+          className={inboxActive ? "sidebar-nav is-active" : "sidebar-nav"}
+          aria-label={inbox.length === 0 ? "待处理" : `待处理 · ${inbox.length}`}
           fullWidth
           justify="flex-start"
-          leftSection={<IconPlus size={17} />}
-          disabled={!canCreateAgent}
-          onClick={() => {
-            const target = currentWorkspaceId ?? workspaces[0]?.workspace_id;
-            if (target !== undefined) {
-              openCreate(target);
-            }
-          }}
-          radius="md"
-          variant="light"
-        >
-          新建 Agent
-        </Button>
-        <Button
-          fullWidth
-          justify="flex-start"
-          mt={8}
+          leftSection={<IconInbox size={17} />}
+          rightSection={inbox.length === 0 ? undefined : <span className="sidebar-count" aria-hidden="true">{inbox.length}</span>}
+          mt={3}
           onClick={() => { navigate("/inbox"); onNavigate(); }}
           radius="md"
-          variant={inboxActive ? "filled" : "subtle"}
+          color="gray"
+          variant="subtle"
         >
-          {inbox.length === 0 ? "待处理" : `待处理 · ${inbox.length}`}
+          待处理
         </Button>
+        <TextInput aria-label="搜索 Agent、群聊或工作区" className="sidebar-search" mt="md" size="xs"
+          leftSection={<IconSearch size={14} />} placeholder="搜索 Agent 或项目" value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+          rightSection={search === "" ? undefined : <ActionIcon aria-label="清除搜索" size="xs" color="gray" variant="subtle" onClick={() => setSearch("")}><IconX size={12} /></ActionIcon>} />
       </AppShell.Section>
 
       <AppShell.Section grow className="session-section">
@@ -261,8 +261,9 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
                 workspace={renamingWorkspace}
               />
             )}
-            {groups.map((workspace) => {
-              const collapsed = collapsedWorkspaces[workspace.id] === true;
+            {query !== "" && filteredGroups.length === 0 ? <Text c="dimmed" size="xs" p="sm">没有找到匹配的 Agent、群聊或工作区</Text> : null}
+            {filteredGroups.map((workspace) => {
+              const collapsed = query === "" && collapsedWorkspaces[workspace.id] === true;
               return (
                 <Box
                   className={
@@ -284,42 +285,9 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
                     onRemove={() => setRemovingWorkspace(workspaceRecords.get(workspace.id)!)}
                   />
                   <Collapse expanded={!collapsed}>
-                    <Stack className="workspace-sessions" gap={3}>
-                      {workspace.agents.length === 0 ? (
-                        <Text c="dimmed" fz={12} px={8} py={4}>
-                          还没有 Agent
-                        </Text>
-                      ) : workspace.agents.map((agent) => (
-                        <AgentRow
-                          key={agent.session_id}
-                          active={agent.session_id === sessionId}
-                          agent={agent}
-                          onOpen={() => {
-                            navigate(
-                              `/sessions/${encodeURIComponent(agent.session_id)}`,
-                            );
-                            onNavigate();
-                          }}
-                        />
-                      ))}
-                      {workspace.chats.map((chat) => (
-                        <UnstyledButton
-                          key={chat.group_id}
-                          aria-current={chat.group_id === groupId ? "page" : undefined}
-                          aria-label={`群聊 ${chat.name}`}
-                          className={chat.group_id === groupId ? "session-row is-active" : "session-row"}
-                          onClick={() => {
-                            navigate(`/groups/${encodeURIComponent(chat.group_id)}`);
-                            onNavigate();
-                          }}
-                        >
-                          <Group gap={6} wrap="nowrap">
-                            <IconUsersGroup size={14} />
-                            <Text className="session-title" fz={13} truncate>{chat.name}</Text>
-                          </Group>
-                        </UnstyledButton>
-                      ))}
-                    </Stack>
+                    <WorkspaceRoster workspaceId={workspace.id} workspaceName={workspace.name}
+                      agents={workspace.agents} chats={workspace.chats} sessionId={sessionId} groupId={groupId}
+                      searching={query !== ""} onOpen={(path) => { navigate(path); onNavigate(); }} />
                   </Collapse>
                 </Box>
               );
@@ -340,68 +308,12 @@ export function AgentSidebar({ onNavigate }: AgentSidebarProps) {
           <ColorSchemeSwitcher />
         </Group>
         <Group gap="xs" px={8} py={4}>
-          <IconMessageCircle size={14} />
+          <span className={connectionId === null ? "connection-indicator" : "connection-indicator is-connected"} />
           <Text c={connectionId === null ? "orange" : "dimmed"} fz={11}>
             {connectionId === null ? "正在连接…" : "已连接"}
           </Text>
         </Group>
       </AppShell.Section>
     </Stack>
-  );
-}
-
-function AgentRow({
-  agent,
-  active,
-  onOpen,
-}: {
-  agent: AgentRosterEntry;
-  active: boolean;
-  onOpen: () => void;
-}) {
-  const live = useAppSelector(
-    (state) => state.runtime.sessions[agent.session_id]?.activity,
-  );
-  const status = agent.status === "authorization" ? "authorization"
-    : live === "running" ? "working"
-    : agent.status;
-  const label = STATUS_LABEL[status];
-  const dot = status === "authorization" ? "attention"
-    : status === "working" ? "running" : "idle";
-
-  return (
-    <Group
-      className={active ? "session-row is-active" : "session-row"}
-      gap={6}
-      wrap="nowrap"
-    >
-      <Tooltip label={label} openDelay={400} position="right">
-        <span
-          className={`activity-dot activity-dot-${dot}`}
-          aria-label={label}
-        >
-          {status === "authorization" ? <IconAlertCircle size={13} /> : null}
-        </span>
-      </Tooltip>
-      <UnstyledButton
-        aria-current={active ? "page" : undefined}
-        aria-label={agent.name}
-        className="session-row-main"
-        onClick={onOpen}
-      >
-        <Tooltip label={agent.direction ?? agent.name} openDelay={700} position="right">
-          <Stack gap={0}>
-            <Text className="session-title" fz={13} truncate>
-              {agent.name}
-            </Text>
-            {agent.direction === null ? null : (
-              <Text c="dimmed" fz={11} truncate>
-                {agent.direction}
-              </Text>
-            )}
-          </Stack>
-        </Tooltip>
-      </UnstyledButton>
-    </Group>
   );
 }

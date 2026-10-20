@@ -1,5 +1,5 @@
 import { Button, Group, Paper, Stack, Text, UnstyledButton } from "@mantine/core";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconInbox, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -172,11 +172,12 @@ export function InboxPage() {
   }
 
   return (
-    <Stack gap="md" maw={720} mx="auto" p="lg">
-      <Text fw={700} size="lg">待处理</Text>
+    <Stack className="inbox-page" gap="md" maw={800} mx="auto" p="lg">
+      <Group className="inbox-heading" gap={10}><IconInbox size={21} /><Text fw={600} size="lg">待处理</Text></Group>
       {failure === null ? null : <Text c="red" size="sm">{failure}</Text>}
       {items.length === 0 ? (
-        <Text c="dimmed">没有待处理事项</Text>
+        <div className="inbox-empty"><IconCheck size={26} stroke={1.4} /><Text fw={500}>没有待处理事项</Text>
+          <Text c="dimmed" size="sm">需要你授权或回复时，会出现在这里。</Text></div>
       ) : items.map((item) => (
         <InboxRow
           key={item.kind === "authorization" ? `authorization:${item.command_id}`

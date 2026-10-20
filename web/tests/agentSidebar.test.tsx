@@ -1,6 +1,6 @@
 import { AppShell, MantineProvider, Text } from "@mantine/core";
 import { configureStore } from "@reduxjs/toolkit";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
@@ -92,7 +92,80 @@ function browserStubs() {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
 }
 
-afterEach(() => { cleanup(); queries.inbox = []; vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup(); queries.inbox = []; vi.unstubAllGlobals();
+  Object.keys(window.localStorage).filter((key) => key.startsWith("redpanda.sidebarGroups.")).forEach((key) => window.localStorage.removeItem(key));
+});
+
+it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不删除条目", async () => {
+  browserStubs();
+  queries.workspaces = [workspace("organize", "项目")];
+  queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" })];
+  queries.groups = [{ group_id: "chat", workspace_id: "organize", name: "开发群", members: ["Ada", "Lin"] }];
+  renderSidebar("/sessions/ada");
+  fireEvent.click(screen.getByRole("button", { name: "在 项目 新建分组" }));
+  fireEvent.change(screen.getByLabelText("分组名称"), { target: { value: "研发" } });
+  fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Ada", exact: true }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "移动 群聊 开发群 到分组" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
+  const section = screen.getByRole("region", { name: "项目 的分组 研发" });
+  expect(within(section).getByRole("button", { name: "Ada", exact: true })).toHaveAttribute("aria-current", "page");
+  fireEvent.click(within(section).getByRole("button", { name: "群聊 开发群", exact: true }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/chat");
+  fireEvent.click(screen.getByRole("button", { name: "分组 研发", exact: true }));
+  expect(screen.getByRole("button", { name: "分组 研发", exact: true })).toHaveAttribute("aria-expanded", "false");
+  cleanup();
+  renderSidebar("/groups/chat");
+  expect(screen.getByRole("button", { name: "分组 研发", exact: true })).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(screen.getByRole("button", { name: "研发 分组操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "重命名分组" }));
+  fireEvent.change(screen.getByLabelText("分组名称"), { target: { value: "开发" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存", exact: true }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "分组 开发", exact: true })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "开发 分组操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "删除分组" }));
+  const ungrouped = screen.getByRole("region", { name: "项目 的分组 未分组" });
+  expect(await within(ungrouped).findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
+  expect(within(ungrouped).getByRole("button", { name: "群聊 开发群", exact: true })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "分组 开发", exact: true })).not.toBeInTheDocument();
+});
+
+it("分组偏好按工作区隔离，搜索展开但不改写折叠偏好", async () => {
+  browserStubs();
+  queries.workspaces = [workspace("organize", "项目"), workspace("other", "别处")];
+  queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" }), agent({ session_id: "lin", name: "Lin", workspace_id: "other" })];
+  queries.groups = [];
+  const stored = { sections: [{ id: "dev", name: "研发", collapsed: true }], assignments: { "agent:ada": "dev" }, ungroupedCollapsed: false };
+  window.localStorage.setItem("redpanda.sidebarGroups.organize", JSON.stringify(stored));
+  renderSidebar("/");
+  expect(within(screen.getByRole("region", { name: "别处 的分组 未分组" })).getByRole("button", { name: "Lin", exact: true })).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Agent、群聊或工作区" }), { target: { value: "Ada" } });
+  expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "true");
+  expect(await screen.findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
+  expect(JSON.parse(window.localStorage.getItem("redpanda.sidebarGroups.organize")!).sections[0].collapsed).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+  expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "false");
+});
+
+it("搜索能展开已折叠项目中的匹配项，清除后恢复原来的折叠偏好", async () => {
+  browserStubs();
+  queries.workspaces = [workspace("search-project", "项目")];
+  queries.agents = [agent({ session_id: "ada", workspace_id: "search-project", name: "Ada", direction: "前端界面" })];
+  queries.groups = [];
+  window.localStorage.setItem("redpanda.collapsedWorkspaces", JSON.stringify({ "search-project": true }));
+  renderSidebar("/");
+  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "false");
+  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Agent、群聊或工作区" }), { target: { value: "前端" } });
+  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "true");
+  expect(await screen.findByRole("button", { name: "Ada" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+  expect(screen.getByRole("button", { name: "项目" })).toHaveAttribute("aria-expanded", "false");
+  window.localStorage.removeItem("redpanda.collapsedWorkspaces");
+});
 
 it("名册用干活、等授权、等人回话和空闲标出状态，运行中的活动盖过空闲", () => {
   browserStubs();
