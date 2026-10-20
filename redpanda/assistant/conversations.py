@@ -11,8 +11,7 @@ from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_f
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
-from redpanda.assistant.agent_messages import MESSAGE_USER
-from redpanda.assistant.audience import Audience, audience
+from redpanda.assistant.agent_messages import SEND_FILE
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.runtime.json_values import thaw_value
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
@@ -145,8 +144,6 @@ class ToolItem:
 
 @dataclass(frozen=True, slots=True)
 class StepItem:
-    """``audience`` says whether the text is a reply to the person or the Agent's work log."""
-
     kind: Literal["step"]
     step_id: str
     output_id: str
@@ -154,7 +151,6 @@ class StepItem:
     tools: tuple[ToolItem, ...]
     occurred_at: datetime
     thinking: str | None = None
-    audience: Audience = "user"
     files: tuple[FileAttachment, ...] = ()
 
 
@@ -488,15 +484,10 @@ def _inbox_sort_key(item: InboxItem) -> tuple:
     return (item.label, item.session_id, item.kind, identity)
 
 
-def _message_files(command_state, attachments: AttachmentStore | None) -> tuple[FileAttachment, ...]:
-    outcome = command_state.outcome
-    if outcome is None or not isinstance(outcome.value, Mapping):
-        return ()
-    data = outcome.value.get("data")
-    attachment = data.get("attachment") if isinstance(data, Mapping) else None
-    attachment_id = attachment.get("attachment_id") if isinstance(attachment, Mapping) else None
-    if attachments is None or not is_file_attachment_id(attachment_id):
-        return ()
+def _delivered_files(command_state, attachments: AttachmentStore | None) -> tuple[FileAttachment, ...]:
+    if attachments is None:
+        raise ValueError("文件交付必须装配 Session 附件存储")
+    attachment_id = thaw_value(command_state.outcome.value)["data"]["attachment"]["attachment_id"]
     return (attachments.files.describe(attachment_id),)
 
 
@@ -509,7 +500,6 @@ def project_conversation(
     attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
-    closing_audience = audience(events)
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -548,8 +538,8 @@ def project_conversation(
             effect = command_state.command.effect
             if effect.name == DELIVER_TOOL_NAME:
                 continue
-            if effect.name == MESSAGE_USER:
-                if not _message_sent(command_state):
+            if effect.name == SEND_FILE:
+                if not _file_sent(command_state):
                     # A rejected or unfinished call reached nobody; it stays a tool record.
                     status, error = _tool_status(command_state)
                     tools.append(ToolItem(command_state.command.command_id, effect.name, status, error,
@@ -558,7 +548,7 @@ def project_conversation(
                 messages.append(StepItem(
                     "step", f"{payload.step.step_id}:{command_state.command.command_id}",
                     command_state.command.command_id, effect.argument_dict()["text"], (),
-                    event.occurred_at, files=_message_files(command_state, attachments)))
+                    event.occurred_at, files=_delivered_files(command_state, attachments)))
                 continue
             status, error = _tool_status(command_state)
             tools.append(
@@ -580,7 +570,6 @@ def project_conversation(
                     tuple(tools),
                     event.occurred_at,
                     thinking,
-                    closing_audience,
                 )
             )
         items.extend(messages)
@@ -620,10 +609,10 @@ def _indeterminate_error(value: object) -> str | None:
     return error
 
 
-def _message_sent(state: CommandState) -> bool:
+def _file_sent(state: CommandState) -> bool:
     outcome = state.outcome
     return (outcome is not None and outcome.status is OutcomeStatus.SUCCEEDED
-            and thaw_value(outcome.value).get("code") == "MESSAGE_SENT")
+            and thaw_value(outcome.value).get("code") == "FILE_SENT")
 
 
 def _tool_status(

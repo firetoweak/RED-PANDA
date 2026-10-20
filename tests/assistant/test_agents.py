@@ -7,7 +7,6 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from redpanda.assistant.agent_messages import MESSAGE_USER
 from redpanda.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
@@ -203,21 +202,21 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             "command_id": "cmd-resume", "routine_id": routine.routine_id, "state": "active"})
         self.assertEqual(refused["code"], "PAUSED_BY_USER")
 
-    async def test_live_closing_text_is_the_work_log_and_only_message_user_reaches_the_person(self):
+    async def test_live_closing_text_reaches_the_person_without_messaging_colleagues(self):
         agent = await self.create()
+        await self.create("Lin")
         journal = SqliteJournal(self.store.require(agent.session_id))
         await AgentRuntime(journal, None, {}).receive_user_message(agent.session_id, "你好", delivery_id="hi")
         *_, from_person = await journal.snapshot(agent.session_id)
         self.host.sink = Mock()
+        self.request.reset_mock()
         worker = Worker(process=None, peer=None)
         await self.host._route("output", agent.session_id,
                                {"output_id": from_person.event_id, "text": "收尾"}, worker=worker)
-        await self.host._route(MESSAGE_USER, agent.session_id,
-                               {"output_id": "message", "text": "结论"}, worker=worker)
         self.assertEqual([call.args for call in self.host.sink.call_args_list], [
-            (agent.session_id, from_person.event_id, "收尾", "log"),
-            (agent.session_id, "message", "结论", "user"),
+            (agent.session_id, from_person.event_id, "收尾"),
         ])
+        self.request.assert_not_awaited()
 
     async def test_new_context_window_restates_identity_before_the_handoff(self):
         agent = await self.create()

@@ -239,7 +239,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
             "你刚加入这个项目。先了解项目，用 list_colleagues 查看同事的负责方向，"
-            "再用 message_user 向人提议你打算负责什么；人认可或修正后，用 declare_direction 记下。")}
+            "再直接向人提议你打算负责什么；人认可或修正后，用 declare_direction 记下。")}
     if isinstance(fact, ColleagueJoined):
         return {"colleague": fact.name, "notice": "这位同事刚加入项目，还没有声明负责方向。"}
     if isinstance(fact, DirectionDeclared):

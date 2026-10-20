@@ -15,7 +15,7 @@ from redpanda.runtime import (
 
 SEND_MESSAGE = "send_message"
 LIST_COLLEAGUES = "list_colleagues"
-MESSAGE_USER = "message_user"
+SEND_FILE = "send_file"
 DECLARE_DIRECTION = "declare_direction"
 SEND_GROUP_MESSAGE = "send_group_message"
 # Starting values to tune against real collaboration. All are deterministic
@@ -78,18 +78,17 @@ class DirectionArguments(BaseModel):
 
 MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
-        "name": MESSAGE_USER,
+        "name": SEND_FILE,
         "description": (
-            "给人发一条消息：显示在你和人的对话里，并提醒人查看。人只看得到你用它发的话；用在人需要知道的时候——"
-            "回答人的问题、汇报结论、请人判断或授权、报告阻塞。没有值得人知道的内容就不要发。"
-            "人要看证据时，用 path 带上你工作区里的一个文件；文件会跟这条消息一起交给人。"
+            "把工作区内一个文件的副本交给人，在对话里提供下载，并附上 text 说明。"
+            "普通回答和汇报直接回复，不需要调用此工具。"
             "同事之间不要用它传文件，对方直接读你的工作目录。"
         ),
         "parameters": {"type": "object", "properties": {
             "text": {"type": "string", "minLength": 1, "description": "发给人的消息正文。"},
             "path": {"type": "string", "minLength": 1,
-                     "description": "可选。工作区内的相对路径，把这个文件的一份副本交给人。"},
-        }, "required": ["text"], "additionalProperties": False},
+                     "description": "工作区内的相对路径，把这个文件的一份副本交给人。"},
+        }, "required": ["text", "path"], "additionalProperties": False},
     }},
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
@@ -219,26 +218,23 @@ def message_bindings(transport, journal):
                                                                  "delivery_id": delivery_id})
         return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": declaration.direction}}
 
-    async def message_user(context, arguments):
+    async def send_file(context, arguments):
         text = arguments.get("text")
         path = arguments.get("path")
         if set(arguments) - {"text", "path"} or type(text) is not str or not text.strip():
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "message_user 需要非空的 text。"}
-        if path is not None and (type(path) is not str or not path.strip()):
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "send_file 需要非空的 text。"}
+        if type(path) is not str or not path.strip():
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "path 必须是工作区内的相对路径。"}
-        delivered = await transport(MESSAGE_USER, context.session_id, {
+        delivered = await transport(SEND_FILE, context.session_id, {
             "output_id": context.command_id, "text": text, "path": path,
         })
-        if isinstance(delivered, dict) and delivered.get("ok") is False:
+        if delivered.get("ok") is False:
             return delivered
-        data = {}
-        if isinstance(delivered, dict) and delivered.get("attachment") is not None:
-            data["attachment"] = delivered["attachment"]
-        return {"ok": True, "code": "MESSAGE_SENT", "data": data}
+        return {"ok": True, "code": "FILE_SENT", "data": {"attachment": delivered["attachment"]}}
 
     return {SEND_MESSAGE: sender(SEND_MESSAGE), SEND_GROUP_MESSAGE: sender(SEND_GROUP_MESSAGE),
             LIST_COLLEAGUES: ToolBinding(colleagues), DECLARE_DIRECTION: ToolBinding(declare),
-            MESSAGE_USER: ToolBinding(message_user)}
+            SEND_FILE: ToolBinding(send_file)}
 
 
 async def recover_message_attempts(journal, session_id, transport):

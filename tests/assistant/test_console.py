@@ -79,15 +79,15 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             written.append,
         )
 
-        output.preview("session-1", "started", "output-1", None, "user")
+        output.preview("session-1", "started", "output-1", None)
         self.assertEqual(output.render(), "思考中")
-        output.preview("session-1", "delta", "output-1", "你", "user")
-        output.preview("session-1", "delta", "output-1", "好", "user")
+        output.preview("session-1", "delta", "output-1", "你")
+        output.preview("session-1", "delta", "output-1", "好")
 
         self.assertEqual(output.render(), "助手：你好")
         self.assertEqual(written, [])
 
-        output.deliver("session-1", "output-1", "你好", "user")
+        output.deliver("session-1", "output-1", "你好")
 
         self.assertEqual(output.render(), "")
         self.assertEqual(written, ["\n助手：你好"])
@@ -98,10 +98,10 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
 
         written = []
         output = _StreamingConsoleOutput(lambda: None, written.append)
-        output.preview("session-1", "started", "output-1", None, "user")
-        output.preview("session-1", "delta", "output-1", "部分内容", "user")
+        output.preview("session-1", "started", "output-1", None)
+        output.preview("session-1", "delta", "output-1", "部分内容")
 
-        output.preview("session-1", "aborted", "output-1", None, "user")
+        output.preview("session-1", "aborted", "output-1", None)
 
         self.assertEqual(output.render(), "")
         self.assertEqual(

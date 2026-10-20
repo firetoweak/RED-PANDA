@@ -9,11 +9,16 @@ from unittest.mock import AsyncMock, patch
 from redpanda.assistant.agents import ROUTINES_UNWATCHED
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.automation.absence import ASK_GRACE, UNREAD_REPORTS, next_absence_action
-from redpanda.automation.routines import ACTIVE, PAUSED_BY_USER, PAUSED_UNWATCHED, RoutineStore
+from redpanda.assistant.agent_messages import SEND_FILE
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME
+from redpanda.automation.absence import ASK_GRACE, UNREAD_REPORTS, counts_since, next_absence_action
+from redpanda.automation.routines import ACTIVE, PAUSED_BY_USER, PAUSED_UNWATCHED, ROUTINE_DUE, RoutineStore
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import DomainFactCommitted, SqliteJournal
+from redpanda.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
+from tests.assistant.test_runner import ScriptedDecisionMaker
+from tests.fixtures.memory_journal import MemoryJournal
+from tests.session_scheduler import settle_session
 
 
 NOW = datetime(2026, 10, 19, tzinfo=timezone.utc)
@@ -73,6 +78,26 @@ class AbsenceDecisionTest(unittest.TestCase):
 
 
 class AbsenceReviewTest(unittest.IsolatedAsyncioTestCase):
+    async def test_counts_successful_replies_and_files_after_last_view(self):
+        journal = MemoryJournal()
+        results = ["已交付", {"ok": True, "code": "FILE_SENT"}, {"ok": False, "code": "FILE_UNREADABLE"}]
+        handler = AsyncMock(side_effect=results)
+        names = (DELIVER_TOOL_NAME, SEND_FILE, SEND_FILE)
+        runtime = AgentRuntime(journal, ScriptedDecisionMaker(tuple(
+            lambda _, name=name: ModelDecision(command_requests=(InvokeTool(name, ()),))
+            for name in names
+        )), {name: ToolBinding(handler, decision_on_outcome=False) for name in names})
+        for index in range(3):
+            await runtime.receive_domain_fact(
+                "ada", fact_type=ROUTINE_DUE, data={}, source="routine", requests_decision=True,
+                delivery_id=f"routine-{index}")
+            await settle_session(runtime, "ada")
+            if index == 0:
+                first_delivery = (await journal.snapshot("ada"))[-1].occurred_at
+        events = await journal.snapshot("ada")
+        self.assertEqual(counts_since("ada", events, None), (2, 3))
+        self.assertEqual(counts_since("ada", events, first_delivery), (1, 2))
+
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         root = Path(self.directory.name).resolve()

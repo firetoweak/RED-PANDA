@@ -10,9 +10,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
-from redpanda.assistant.agent_messages import MESSAGE_USER
+from redpanda.assistant.agent_messages import SEND_FILE
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.automation.routines import ROUTINE_DUE, AbsenceWatch
-from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, replay
+from redpanda.runtime import CommandOutcomeReceived, DomainFactCommitted, OutcomeStatus, replay
 
 
 # Starting values, tuned the same way as hop and origin limits.
@@ -52,11 +53,11 @@ def next_absence_action(
 
 
 def counts_since(session_id: str, events, since: datetime | None) -> tuple[int, int]:
-    """Unread ``message_user`` results and routine fires strictly after ``since``."""
-    sent = {
-        command.command.command_id
+    """Successful reply/file deliveries and routine fires strictly after ``since``."""
+    deliveries = {
+        command.command.command_id: command.command.effect.name
         for command in replay(session_id, events).state.commands
-        if command.command.effect.name == MESSAGE_USER
+        if command.command.effect.name in {DELIVER_TOOL_NAME, SEND_FILE}
     }
     reports = triggers = 0
     for event in events:
@@ -65,8 +66,10 @@ def counts_since(session_id: str, events, since: datetime | None) -> tuple[int, 
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == ROUTINE_DUE:
             triggers += 1
-        elif isinstance(payload, CommandOutcomeReceived) and payload.command_id in sent:
+        elif (isinstance(payload, CommandOutcomeReceived) and payload.command_id in deliveries
+              and payload.outcome.status is OutcomeStatus.SUCCEEDED):
             value = payload.outcome.value
-            if isinstance(value, Mapping) and value.get("code") == "MESSAGE_SENT":
+            if (deliveries[payload.command_id] == DELIVER_TOOL_NAME
+                    or isinstance(value, Mapping) and value.get("code") == "FILE_SENT"):
                 reports += 1
     return reports, triggers

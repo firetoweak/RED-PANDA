@@ -2,8 +2,6 @@ import type { VisibleItem, VisibleStep, VisibleUser } from "./visibleTimeline";
 
 export type TimelineTurn = {
   key: string;
-  // A run of the Agent's own work (a colleague, a group or a routine started it): shown as one work log entry.
-  log: boolean;
   user: VisibleUser | null;
   process: VisibleStep[];
   active: VisibleStep | null;
@@ -11,35 +9,29 @@ export type TimelineTurn = {
 };
 
 export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
-  const turns: Array<{ key: string; log: boolean; user: VisibleUser | null; steps: VisibleStep[] }> = [];
+  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[] }> = [];
   let current: (typeof turns)[number] | null = null;
 
   for (const item of items) {
     if (item.kind === "user") {
-      current = { key: item.key, log: false, user: item, steps: [] };
+      current = { key: item.key, user: item, steps: [] };
       turns.push(current);
       continue;
     }
-    if (item.files.length > 0) {
-      turns.push({ key: item.key, log: item.audience === "log", user: null, steps: [item] });
-      current = null;
-      continue;
-    }
-    const log = item.audience === "log";
-    if (current === null || current.log !== log) {
-      current = { key: item.key, log, user: null, steps: [] };
+    const previous = current?.steps.at(-1);
+    if (current === null || (previous !== undefined && isFinal(previous))) {
+      current = { key: item.key, user: null, steps: [] };
       turns.push(current);
     }
     current.steps.push(item);
   }
 
-  return turns.map(({ key, log, user, steps }) => {
+  return turns.map(({ key, user, steps }) => {
     const candidate = steps.at(-1);
     const active = candidate?.pending === true ? candidate : null;
     const final = candidate !== undefined && isFinal(candidate) ? candidate : null;
     return {
       key,
-      log,
       user,
       process: active === null && final === null ? steps : steps.slice(0, -1),
       active,

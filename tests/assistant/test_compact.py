@@ -51,7 +51,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
             self.store,
             partial(config_for, self.root),
             self.home,
-            lambda sid, _output_id, text, _audience: self.outputs.append((sid, text)),
+            lambda sid, _output_id, text: self.outputs.append((sid, text)),
             llm=CompactLlm(self.root),
         )
 

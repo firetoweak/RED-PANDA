@@ -271,7 +271,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.host = self.new_host()
 
     def new_host(self):
-        def deliver(session_id, output_id, text, _audience):
+        def deliver(session_id, output_id, text):
             self.output.append((session_id, text))
             self.output_ids.append(output_id)
             self.delivery_order.append(("final", session_id, output_id, text))

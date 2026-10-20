@@ -73,7 +73,7 @@ async def bootstrap_assistant(
     command_environment: dict[str, str] | None = None,
     fresh_sessions: bool = False,
 ) -> AsyncIterator[BootstrappedAssistant]:
-    """Host 调 Channel 的正文与预览端口时，末尾多带这段文字是给人（``"user"``）还是工作记录（``"log"``）。
+    """Host 将普通回复与实时预览交给 Channel，不根据唤醒来源向同事或群转发。
 
     ``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。
 

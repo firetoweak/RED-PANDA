@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { configureStore } from "@reduxjs/toolkit";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -14,7 +14,7 @@ import runtimeReducer, {
   connected, outputFinal, previewDelta, previewStarted, sessionActivity, viewing,
 } from "../src/realtime/runtimeSlice";
 
-// Markdown rendering, the editor and virtualization are outside the work log contract.
+// Markdown rendering, the editor and virtualization are outside the reply delivery contract.
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <span>{content}</span>,
 }));
@@ -30,7 +30,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("工作记录收成一行，展开才见全文；实时到来的工作记录同样不当作回复，也不算未读", async () => {
+it("同事和例行任务触发的普通回复直接可见，流式与历史一致并计入未读", async () => {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const NativeRequest = Request;
@@ -49,14 +49,14 @@ it("工作记录收成一行，展开才见全文；实时到来的工作记录�
     },
     items: [
       { kind: "user", message_id: "hi", text: "你好", occurred_at: "2026-10-19T00:00:00Z", images: [], files: [] },
-      { kind: "step", audience: "user", step_id: "s1", output_id: "hi", text: "回给人", thinking: null,
+      { kind: "step", step_id: "s1", output_id: "hi", text: "回给人", thinking: null,
         occurred_at: "2026-10-19T00:00:01Z", tools: [] },
-      { kind: "step", audience: "log", step_id: "s2", output_id: "colleague", text: "先看看 Lin 说的文件", thinking: null,
+      { kind: "step", step_id: "s2", output_id: "colleague", text: "先看看 Lin 说的文件", thinking: null,
         occurred_at: "2026-10-19T00:01:00Z", tools: [{ command_id: "read", name: "read_file", status: "succeeded",
           error: null, arguments: { path: "a.md" } }] },
-      { kind: "step", audience: "log", step_id: "s3", output_id: "read", text: "已回复 Lin\n\n细节：文件没问题", thinking: null,
+      { kind: "step", step_id: "s3", output_id: "read", text: "已回复 Lin\n\n细节：文件没问题", thinking: null,
         occurred_at: "2026-10-19T00:01:05Z", tools: [] },
-      { kind: "step", audience: "user", step_id: "s3:tell", output_id: "tell", text: "结论给你", thinking: null,
+      { kind: "step", step_id: "s3:tell", output_id: "tell", text: "结论给你", thinking: null,
         occurred_at: "2026-10-19T00:01:05Z", tools: [] },
     ],
   };
@@ -77,26 +77,22 @@ it("工作记录收成一行，展开才见全文；实时到来的工作记录�
 
   expect(await screen.findByText("回给人")).toBeInTheDocument();
   expect(screen.getByText("结论给你")).toBeInTheDocument();
-  const entry = screen.getByRole("button", { name: /工作记录.*已回复 Lin/ });
-  expect(entry).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByText(/细节：文件没问题/)).toBeNull();
-  fireEvent.click(entry);
-  expect(screen.getByText(/细节：文件没问题/)).toBeInTheDocument();
+  expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: /工作记录/ })).toBeNull();
 
-  // Elsewhere, a routine wakes the Agent: its live output is a work log too.
+  // A routine reply uses the same visible output and unread contract.
   act(() => {
     store.dispatch(viewing(null));
     store.dispatch(sessionActivity({ sessionId: "agent", activity: "running" }));
-    store.dispatch(previewStarted({ sessionId: "agent", outputId: "routine", audience: "log" }));
+    store.dispatch(previewStarted({ sessionId: "agent", outputId: "routine" }));
     store.dispatch(previewDelta({ sessionId: "agent", outputId: "routine", text: "例行检查中\n\n正文还在写" }));
   });
-  expect(screen.getByRole("button", { name: /工作记录.*例行检查中/ })).toHaveAttribute("aria-expanded", "false");
-  expect(screen.queryByText(/正文还在写/)).toBeNull();
+  expect(screen.getByText(/正文还在写/)).toBeVisible();
   act(() => {
-    store.dispatch(outputFinal({ sessionId: "agent", outputId: "routine", text: "例行检查中\n\n正文写完了", audience: "log" }));
+    store.dispatch(outputFinal({ sessionId: "agent", outputId: "routine", text: "例行检查中\n\n正文写完了" }));
   });
-  expect(store.getState().runtime.sessions.agent.unread).toBe(0);
-  expect(screen.queryByText(/正文写完了/)).toBeNull();
+  expect(store.getState().runtime.sessions.agent.unread).toBe(1);
+  expect(screen.getByText(/正文写完了/)).toBeVisible();
   cleanup();
   store.dispatch(redpandaApi.util.resetApiState());
 });

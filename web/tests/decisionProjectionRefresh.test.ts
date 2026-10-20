@@ -18,7 +18,7 @@ it("refreshes committed projections when the next model call starts, before any 
   const close = openEventBridge(dispatch as AppDispatch);
   try {
     listeners.get("preview.started")!(new MessageEvent("preview.started", {
-      data: JSON.stringify({ session_id: "s", output_id: "decision", audience: "user" }),
+      data: JSON.stringify({ session_id: "s", output_id: "decision" }),
     }));
     expect(dispatch.mock.calls.map(([action]) => action)).toContainEqual(
       redpandaApi.util.invalidateTags([{ type: "Conversation", id: "s" }]),
