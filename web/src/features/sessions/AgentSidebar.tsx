@@ -1,5 +1,5 @@
-import { ActionIcon, AppShell, Button, Group, ScrollArea, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { IconX, IconAdjustments, IconInbox, IconLayoutDashboard, IconPlus, IconSearch, IconUsersGroup } from "@tabler/icons-react";
+import { ActionIcon, AppShell, Button, Group, ScrollArea, Stack, Text, TextInput, Tooltip, UnstyledButton } from "@mantine/core";
+import { IconX, IconAdjustments, IconPlus, IconSearch, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetInboxQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
@@ -26,9 +26,9 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
   const open = (path: string) => { navigate(path); onNavigate(); };
   return <Stack h="100%" gap="md" className="sidebar-content">
     <AppShell.Section>
-      <Group className="sidebar-brand" gap="sm" px={6} py={4}><img src={redPandaMark} alt="" width={32} height={32} /><Text fw={700}>RED PANDA</Text></Group>
-      <Button fullWidth justify="flex-start" variant="subtle" color="gray" leftSection={<IconLayoutDashboard size={17} />} onClick={() => open("/")}>工作台</Button>
-      <Button fullWidth justify="flex-start" variant="subtle" color="gray" leftSection={<IconInbox size={17} />} aria-label={inbox.length === 0 ? "待处理" : `待处理 · ${inbox.length}`} onClick={() => open("/inbox")}>待处理{inbox.length === 0 ? "" : ` · ${inbox.length}`}</Button>
+      <UnstyledButton className="sidebar-brand" aria-label="RED PANDA 首页" onClick={() => open("/")}>
+        <Group gap="sm" px={6} py={4}><img src={redPandaMark} alt="" width={32} height={32} /><Text fw={700}>RED PANDA</Text></Group>
+      </UnstyledButton>
       <TextInput aria-label="搜索 Bot 或群聊" placeholder="搜索 Bot 或群聊" value={search} mt="sm" size="xs" leftSection={<IconSearch size={14} />} rightSection={search === "" ? null : <ActionIcon aria-label="清除搜索" size="xs" onClick={() => setSearch("")}><IconX size={12} /></ActionIcon>} onChange={(event) => setSearch(event.currentTarget.value)} />
     </AppShell.Section>
     <AppShell.Section grow className="session-section">
@@ -36,7 +36,7 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
         <Tooltip label="新建 Bot"><ActionIcon aria-label="新建 Bot" variant="subtle" disabled={connectionId === null} onClick={() => setCreating(true)}><IconPlus size={16} /></ActionIcon></Tooltip>
         <Tooltip label="新建群聊"><ActionIcon aria-label="新建群聊" variant="subtle" disabled={connectionId === null || agents.length < 2} onClick={() => setGroupCreating(true)}><IconUsersGroup size={16} /></ActionIcon></Tooltip>
       </Group></Group>
-      <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => `${agent.name} ${agent.direction ?? ""}`.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => chat.name.toLocaleLowerCase().includes(query))} sessionId={sessionId} groupId={groupId} searching={query !== ""} onOpen={open} /></ScrollArea>
+      <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => `${agent.name} ${agent.direction ?? ""}`.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== ""} onOpen={open} /></ScrollArea>
     </AppShell.Section>
     <AppShell.Section className="sidebar-footer"><Group gap={8}><Button variant="subtle" leftSection={<IconAdjustments size={17} />} onClick={() => open("/settings/models")}>模型配置</Button><ColorSchemeSwitcher /></Group><Text size="xs" c="dimmed" px={8}>{connectionId === null ? "正在连接…" : "已连接"}</Text></AppShell.Section>
     <CreateAgentModal opened={creating} workspaceId={null} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); open(`/sessions/${encodeURIComponent(id)}`); }} />
