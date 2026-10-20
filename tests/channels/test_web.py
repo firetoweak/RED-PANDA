@@ -38,6 +38,7 @@ from redpanda.model_settings import ModelSettings
 from redpanda.config import write_json
 from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
+from redpanda.assistant.inputs import InputConflict
 from redpanda.assistant.sessions import SessionView
 from redpanda.channels.web import app as web_app
 from redpanda.channels.web.app import create_web_app, report_worker_failures
@@ -774,6 +775,16 @@ class WebFirstSliceTest(unittest.TestCase):
         with patch.object(self.sessions, "resolve_authorization", side_effect=ValueError("broken contract")), self.assertRaisesRegex(ValueError, "broken contract"):
             self.client.post("/api/sessions/session-old/commands/cmd-1/authorize",
                 json={"connection_id": self.connection.connection_id, "approved": True})
+
+    def test_conflicting_input_is_409_but_unknown_input_failure_propagates(self):
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "input-1", "text": "hello"}
+        message = "该消息编号已用于不同内容，请重新发送消息。"
+        with patch.object(self.sessions, "accept_input", side_effect=InputConflict(message)):
+            response = self.client.post("/api/sessions/session-old/inputs", json=body)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": message})
+        with patch.object(self.sessions, "accept_input", side_effect=ValueError("broken contract")), self.assertRaisesRegex(ValueError, "broken contract"):
+            self.client.post("/api/sessions/session-old/inputs", json=body)
 
     def test_directory_picker_only_converts_known_desktop_unavailability(self):
         with patch.object(

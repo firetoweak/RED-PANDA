@@ -32,6 +32,7 @@ from redpanda.assistant.model_connection import check_model_connection
 from redpanda.automation.routines import RoutineNotFound
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
+from redpanda.assistant.inputs import InputConflict
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.channels.web.channel import WebChannel, WebConnectionInactive, WebInputInvalid
 from redpanda.channels.web.directory_picker import (
@@ -267,6 +268,10 @@ def create_web_app(
     @app.exception_handler(WebInputInvalid)
     async def invalid_input(_request: Request, error: WebInputInvalid):
         return JSONResponse(status_code=422, content={"detail": str(error)})
+
+    @app.exception_handler(InputConflict)
+    async def input_conflict(_request: Request, error: InputConflict):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
 
     @app.exception_handler(AuthorizationTargetNotFound)
     async def authorization_missing(_request: Request, error: AuthorizationTargetNotFound):

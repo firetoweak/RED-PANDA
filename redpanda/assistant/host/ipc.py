@@ -12,14 +12,21 @@ from redpanda.assistant.authorization import (
     AuthorizationConflict,
     AuthorizationTargetNotFound,
 )
+from redpanda.assistant.inputs import InputConflict
 
 
-_AUTHORIZATION_ERRORS = {
+_REQUEST_ERRORS = {
     "authorization_target_not_found": AuthorizationTargetNotFound,
     "authorization_conflict": AuthorizationConflict,
+    "input_conflict": InputConflict,
 }
-_AUTHORIZATION_ERROR_CODES = {
-    error_type: code for code, error_type in _AUTHORIZATION_ERRORS.items()
+_REQUEST_ERROR_CODES = {
+    error_type: code for code, error_type in _REQUEST_ERRORS.items()
+}
+_REQUEST_ERROR_OPERATIONS = {
+    AuthorizationTargetNotFound: {"resolve_authorization", "resolve_authorizations"},
+    AuthorizationConflict: {"resolve_authorization", "resolve_authorizations"},
+    InputConflict: {"accept_input", "receive_user_message"},
 }
 
 
@@ -102,14 +109,11 @@ class PipePeer:
         try:
             result = await self.handler(operation, session_id, arguments)
             await self.send(("response", request_id, result))
-        except (AuthorizationTargetNotFound, AuthorizationConflict) as error:
-            if (
-                operation not in {"resolve_authorization", "resolve_authorizations"}
-                or type(error) not in _AUTHORIZATION_ERROR_CODES
-            ):
+        except (AuthorizationTargetNotFound, AuthorizationConflict, InputConflict) as error:
+            if operation not in _REQUEST_ERROR_OPERATIONS.get(type(error), ()):
                 raise
-            code = _AUTHORIZATION_ERROR_CODES[type(error)]
-            await self.send(("authorization_error", request_id, code, str(error)))
+            code = _REQUEST_ERROR_CODES[type(error)]
+            await self.send(("request_error", request_id, code, str(error)))
         except asyncio.CancelledError:
             return
         finally:
@@ -173,9 +177,9 @@ class PipePeer:
                 future = self.pending.get(request_id)
                 if future is not None and not future.done():
                     future.set_result(result)
-            elif kind == "authorization_error":
+            elif kind == "request_error":
                 request_id, code, message = payload
-                error_type = _AUTHORIZATION_ERRORS[code]
+                error_type = _REQUEST_ERRORS[code]
                 future = self.pending.get(request_id)
                 if future is not None and not future.done():
                     future.set_exception(error_type(message))
