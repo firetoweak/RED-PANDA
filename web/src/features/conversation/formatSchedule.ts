@@ -32,11 +32,11 @@ export function formatSchedule(schedule: string): string {
     if (time !== null) return `每周${WEEKDAYS[day === 7 ? 0 : day]} ${time}`;
   }
   const minutes = /^\*\/(\d+) \* \* \* \*$/.exec(text);
-  if (minutes !== null && Number(minutes[1]) > 0) {
+  if (minutes !== null && 60 % Number(minutes[1]) === 0) {
     return `每 ${minutes[1]} 分钟`;
   }
   const hours = /^0 \*\/(\d+) \* \* \*$/.exec(text);
-  if (hours !== null && Number(hours[1]) > 0) {
+  if (hours !== null && 24 % Number(hours[1]) === 0) {
     return `每 ${hours[1]} 小时`;
   }
   const monthly = /^(\d{1,2}) (\d{1,2}) (\d{1,2}) \* \*$/.exec(text);

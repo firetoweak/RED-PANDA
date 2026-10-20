@@ -58,3 +58,19 @@ it("资料默认隐藏，点击页头名字打开和收起，资料与例行任�
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
   expect(next.getByText("无例行任务")).toBeInTheDocument();
 });
+
+it("窄屏从页头打开资料后仍能访问例行任务，并能关闭回到对话", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  const store = configureStore({ reducer: { runtime: runtimeReducer } });
+  render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
+    <Routes><Route path="/sessions/:sessionId" element={<SessionConversation />} /></Routes>
+  </MemoryRouter></MantineProvider></Provider>);
+  fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "Ada" }));
+  const details = within(screen.getByRole("dialog", { name: "Agent 资料" }));
+  expect(details.getByRole("button", { name: "查看 检查 PR" })).toBeVisible();
+  expect(details.getByRole("switch", { name: "暂停 检查 PR" })).toBeVisible();
+  expect(details.getByRole("button", { name: "删除 检查 PR" })).toBeVisible();
+  fireEvent.click(details.getByRole("button", { name: "关闭 Agent 资料" }));
+  expect(screen.queryByRole("dialog", { name: "Agent 资料" })).not.toBeInTheDocument();
+  expect(screen.getByText("对话内容")).toBeVisible();
+});

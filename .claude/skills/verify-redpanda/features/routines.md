@@ -17,7 +17,7 @@
 ## How to get to it (user POV)
 
 - 打开一个 Agent 的会话，发 `请用 save_routine 建一个例行任务，名字「检查 PR」，每 10 分钟一次（@every 10m），intent 写「看看有没有新评审」，然后回复 SAVED。`
-- 回复后点页头名字打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。
+- 回复后点页头名字打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。桌面是资料侧栏；1024px 及以下是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
 - 要看执行记录，需要至少一次触发。最短间隔 5 分钟；也可以直接往 `routine_fires` 写入一条已触发的记录，并在该会话 Journal 里写下对应的 `automation.routine_due`（投递身份与 `fire_id` 相同），再补上由它开始的一轮回复。
 
 ## Driving it with the browser
@@ -27,6 +27,7 @@
 - **删除**：点 `删除 检查 PR`，再点 `确认删除 检查 PR`。(a) `GET .../routines` 不再含这一项，sqlite 行 `state=deleted`。(b) 列表为空时这一节显示 `无例行任务`。(c) 点 `保留` 不发请求、状态不变。(d) 对已删除的一项 `PUT /api/sessions/<id>/routines/<routine_id>/state`（错误路径探测）→ 404 并带原因；`state` 传 `paused` → 422；失效的 `connection_id` → 409。
 - **详情与执行记录**：点 `查看 检查 PR`。(a) 看到意图全文；时间安排是 `每 10 分钟`，旁边仍有原文 `@every 10m`。(b) `GET /api/sessions/<id>/routines/<routine_id>/fires` 与页面顺序一致，新的在前；每条有 `planned_at`、`fired_at`，送达过的有 `delivered_at`，没送达的是 null。(c) 不存在或已删除的例行任务返回 404。(d) `返回例行任务` 回到列表。
 - **跳到时间线**：对一条 `delivered_at` 非空、且对话里已有 `output_id` 与之相同的 step 的记录，点 `在时间线中查看 <触发时间>`。(a) 接口该条的 `output_id` 等于那一步的 `output_id`。(b) 时间线滚到这一轮并短暂高亮，能看到 Bot 当时的回复。(c) `delivered_at` 为 null，或回复还没出现时，没有这个按钮。
+- **窄屏与时间表**：1000×800 和 390×844 打开资料抽屉，核对例行任务入口仍可操作。`*/40 * * * *`、`0 */5 * * *` 跨小时或跨日不等间隔，应保留原文；`*/15 * * * *`、`0 */6 * * *` 才能读为每 15 分钟、每 6 小时。`@every 40m` 仍读为每 40 分钟。抽屉中点执行记录跳转后，抽屉关闭且原回复可见。
 - **无人查看暂停**：复用 inbox 的 absence 场景，满足离开时间、未读回复和例行触发门槛后等待询问及暂停。(a) 接口状态为 `paused_unwatched`、`next_run=null`。(b) 列表显示 `无人查看已暂停`，有 `恢复 <名字>` 和删除入口。(c) Agent 尝试恢复或删除得到 `PAUSED_UNWATCHED`，状态不变；人恢复后重新排下一次。(d) 未满足门槛时不把这一状态记为已验证。
 
 ## Gotchas

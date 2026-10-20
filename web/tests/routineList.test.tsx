@@ -46,7 +46,7 @@ const conversation = {
   work_plan_updates: [], context_input_tokens: null,
 };
 
-function renderList() {
+function renderList(onOpenTimeline?: () => void) {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const NativeRequest = Request;
   vi.stubGlobal("Request", class extends NativeRequest {
@@ -71,7 +71,7 @@ function renderList() {
   });
   render(
     <Provider store={store}><MantineProvider env="test">
-      <RoutineList sessionId="agent" connectionId="connection" />
+      <RoutineList sessionId="agent" connectionId="connection" onOpenTimeline={onOpenTimeline} />
     </MantineProvider></Provider>,
   );
   return { changes, store };
@@ -109,7 +109,7 @@ it("列表用可读安排显示上次和下次，暂停、恢复与二次确认�
 it("点开例行任务能看到完整意图和倒序的执行记录，已出现在时间线上的一次可以跳过去", async () => {
   const jumped: string[] = [];
   const unregister = registerTimelineFocus((outputId) => { jumped.push(outputId); });
-  const { store } = renderList();
+  const { store } = renderList(() => { jumped.push("open-timeline"); });
   fireEvent.click(await screen.findByRole("button", { name: "查看 检查 PR" }));
   expect(await screen.findByText("看评审")).toBeInTheDocument();
   expect(screen.getByText("每 10 分钟")).toBeInTheDocument();
@@ -120,7 +120,7 @@ it("点开例行任务能看到完整意图和倒序的执行记录，已出现�
   const jump = await screen.findByRole("button", { name: /在时间线中查看/ });
   expect(screen.getAllByRole("button", { name: /在时间线中查看/ })).toHaveLength(1);
   fireEvent.click(jump);
-  expect(jumped).toEqual(["event-2"]);
+  expect(jumped).toEqual(["open-timeline", "event-2"]);
   fireEvent.click(screen.getByRole("button", { name: "返回例行任务" }));
   expect(screen.getByText("每 10 分钟")).toBeInTheDocument();
   unregister();

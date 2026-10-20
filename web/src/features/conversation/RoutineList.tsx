@@ -20,7 +20,11 @@ const STATE_LABEL: Record<Routine["state"], string> = {
 };
 
 /** Agent 资料里的例行任务。人可以暂停、恢复或删除；人暂停的只有人能恢复。 */
-export function RoutineList({ sessionId, connectionId }: { sessionId: string; connectionId: string | null }) {
+export function RoutineList({ sessionId, connectionId, onOpenTimeline }: {
+  sessionId: string;
+  connectionId: string | null;
+  onOpenTimeline?: () => void;
+}) {
   const routines = useGetRoutinesQuery(sessionId).currentData ?? [];
   const [openedId, setOpenedId] = useState<string | null>(null);
   const opened = routines.find((item) => item.routine_id === openedId) ?? null;
@@ -49,6 +53,7 @@ export function RoutineList({ sessionId, connectionId }: { sessionId: string; co
           sessionId={sessionId}
           connectionId={connectionId}
           onBack={() => setOpenedId(null)}
+          onOpenTimeline={onOpenTimeline}
         />
       )}
     </div>
@@ -160,11 +165,12 @@ function RoutineRow({ routine, sessionId, connectionId, onOpen }: {
   );
 }
 
-function RoutineDetail({ routine, sessionId, connectionId, onBack }: {
+function RoutineDetail({ routine, sessionId, connectionId, onBack, onOpenTimeline }: {
   routine: Routine;
   sessionId: string;
   connectionId: string | null;
   onBack: () => void;
+  onOpenTimeline?: () => void;
 }) {
   const controls = useRoutineControls(sessionId, connectionId, routine);
   const fires = useGetRoutineFiresQuery({ sessionId, routineId: routine.routine_id });
@@ -207,13 +213,18 @@ function RoutineDetail({ routine, sessionId, connectionId, onBack }: {
         : records === undefined ? null
         : records.length === 0 ? <Text size="sm" c="dimmed">还没有执行过</Text>
         : records.map((fire) => (
-          <FireRow key={fire.fire_id} fire={fire} linked={fire.output_id !== null && outputs.has(fire.output_id)} />
+          <FireRow key={fire.fire_id} fire={fire} linked={fire.output_id !== null && outputs.has(fire.output_id)}
+            onOpenTimeline={onOpenTimeline} />
         ))}
     </div>
   );
 }
 
-function FireRow({ fire, linked }: { fire: RoutineFire; linked: boolean }) {
+function FireRow({ fire, linked, onOpenTimeline }: {
+  fire: RoutineFire;
+  linked: boolean;
+  onOpenTimeline?: () => void;
+}) {
   const planned = formatMessageTime(fire.planned_at);
   const fired = formatMessageTime(fire.fired_at);
   const delivered = fire.delivered_at !== null;
@@ -225,7 +236,10 @@ function FireRow({ fire, linked }: { fire: RoutineFire; linked: boolean }) {
       {outputId === null ? null : (
         <Button
           aria-label={`在时间线中查看 ${fired.short}`}
-          onClick={() => focusTimeline(outputId)}
+          onClick={() => {
+            onOpenTimeline?.();
+            focusTimeline(outputId);
+          }}
           size="compact-xs"
           variant="subtle"
         >
