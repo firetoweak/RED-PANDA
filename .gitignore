@@ -5,6 +5,8 @@ redpanda-env/
 .vscode/
 .pytest_cache/
 .cursor/
+/.claude/worktrees/
+/.worktrees/
 tests/.parallel_logs/
 tests/.live_workspace/
 docs/.obsidian/
