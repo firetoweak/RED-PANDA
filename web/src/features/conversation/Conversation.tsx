@@ -283,7 +283,6 @@ export function Conversation({ agentName }: { agentName?: string }) {
                   {turn.process.length === 0 ? null : (
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
-                      complete={settled}
                       sessionId={sessionId}
                       onAuthorize={authorize}
                       steps={turn.process}

@@ -91,6 +91,10 @@ it("submits a recovered pending command with the new connection without an autho
       </MemoryRouter>
     </MantineProvider></Provider>,
   );
+  const process = await screen.findByRole("button", { name: /执行过程/ });
+  expect(process).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(process);
+  fireEvent.click(await screen.findByRole("button", { name: /1.*write_file/ }));
   await screen.findByRole("button", { name: "拒绝" });
   await waitFor(() => expect(store.getState().runtime.ownerSessionId).toBe("session"));
   act(() => { store.dispatch(disconnected()); store.dispatch(connected("new-connection")); });
@@ -142,6 +146,10 @@ it("disables pending authorization buttons while the web connection is down", as
       </MemoryRouter>
     </MantineProvider></Provider>,
   );
+  const process = await screen.findByRole("button", { name: /执行过程/ });
+  expect(process).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(process);
+  fireEvent.click(await screen.findByRole("button", { name: /1.*write_file/ }));
   const reject = await screen.findByRole("button", { name: "拒绝" });
   expect(reject).toBeEnabled();
   act(() => { store.dispatch(disconnected()); });

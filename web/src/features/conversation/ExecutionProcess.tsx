@@ -56,7 +56,6 @@ const STATUS_COLOR: Record<ToolStatus, string> = {
 };
 
 interface ExecutionProcessProps {
-  complete: boolean;
   sessionId: string;
   steps: VisibleStep[];
   authorizationDisabled: boolean;
@@ -65,26 +64,16 @@ interface ExecutionProcessProps {
 }
 
 export function ExecutionProcess({
-  complete,
   sessionId,
   steps,
   authorizationDisabled,
   onAuthorize,
   onObserveSubagent,
 }: ExecutionProcessProps) {
-  const needsAction = steps.some((step) => step.tools.some((tool) => tool.status === "awaiting_authorization"));
-  const [opened, setOpened] = useState(needsAction);
+  const [opened, setOpened] = useState(false);
   const running = steps.some(stepStatusIsRunning);
   const toolCount = steps.reduce((count, step) => count + step.tools.length, 0);
   const subagentTasks = steps.flatMap((step) => step.tools.filter((tool) => tool.name === "delegate"));
-
-  useEffect(() => {
-    if (needsAction) {
-      setOpened(true);
-    } else if (complete) {
-      setOpened(false);
-    }
-  }, [complete, needsAction]);
 
   return (
     <Paper className="execution-process" radius="md" withBorder>
@@ -162,14 +151,11 @@ export function StepDisclosure({
   expandRunning?: boolean;
 }) {
   const status = stepStatus(step);
-  const awaiting = step.tools.some(
-    (tool) => tool.status === "awaiting_authorization",
-  );
-  const autoOpened = awaiting || (expandRunning && stepStatusIsRunning(step));
+  const autoOpened = expandRunning && stepStatusIsRunning(step);
   const [opened, setOpened] = useState(autoOpened);
 
   useEffect(() => {
-    // 历史默认折叠；需要授权时展开，观察端还会展开正在执行的步骤。
+    // 主会话只由用户展开；子 Agent 观察端展开正在执行的步骤。
     setOpened(autoOpened);
   }, [autoOpened]);
 
