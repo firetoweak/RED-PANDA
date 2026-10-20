@@ -10,6 +10,7 @@ from redpanda.assistant.authorization import (
     AuthorizationTargetNotFound,
 )
 from redpanda.assistant.host.ipc import PipePeer
+from redpanda.assistant.inputs import InputConflict
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.runtime import InvokeTool, ModelDecision, SqliteJournal
 from tests.fixtures.memory_journal import MemoryJournal
@@ -118,6 +119,10 @@ class AuthorizationPipeTest(unittest.IsolatedAsyncioTestCase):
         for operation, error in (
             ("resolve_authorization", ValueError("invalid journal")),
             ("view", AuthorizationConflict("wrong boundary")),
+            ("accept_input", ValueError("invalid journal")),
+            ("view", InputConflict("wrong boundary")),
+            ("resolve_authorization", InputConflict("wrong boundary")),
+            ("accept_input", AuthorizationConflict("wrong boundary")),
         ):
             peer = PipePeer(None, AsyncMock(side_effect=error), None)
             peer.send = AsyncMock()

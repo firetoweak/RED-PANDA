@@ -80,7 +80,7 @@
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | 三栏布局、资料栏、`外观`、侧栏宽度与窄屏名册 | 桌面资料栏/内容页替换、亮色主题刷新保持通过（theme-color=#ffffff）；窄屏内容页输入框未通过；其余见条目 |
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 正常退出通过；其余见条目 |
 | subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | journal 确认同一决策步骤两个 delegate，独立子工作树创建 child-a/child-b，分别比较合并后父目录包含两文件；其余见条目 |
-| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 隔离连接临时无效 key 后出现认证失败、查看详情和再试；其余见条目 |
+| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 认证失败后再试恢复；后续实测 Worker 被杀后再试不重复执行、输入重放冲突 409 且后续对话可用；其余见条目 |
 | setup-and-launch | [setup-and-launch.md](./setup-and-launch.md) | `setup.sh`/`setup.ps1` 四步准备、模型向导、`start.sh`/`dev.sh` | Windows setup 四步、setup --check、隔离 Web 启动与 Doctor 全部通过，浏览器首页可用；其余见条目 |
 
 ## 入口 → 地图条目 覆盖表
@@ -193,7 +193,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 
 - web-session-chat（历史缺口）：未知 API 被静态兜底吞掉、静态目录缺少路径约束；当前已改用标准 StaticFiles，2026-10-20 对照测试通过，尚待 Web live 复验。
 - tool-authorization：`/control` 决定冲突与无待确认请求没有异常处理器，返回 500 而非 409。
-- crash-recovery：同一 `delivery_id` 改文本重放可能使 Worker 失败（500 + `session_failed`），待 live 确认。
+- crash-recovery（已修复）：同一 `delivery_id` 改文本重放，2026-10-20 live 确认修复前为 500 + Worker 失败，修复后为 409、原事件不变且后续对话可用。历史 Worker 卡死在同日后续实测未复现，范围见条目。
 - workspace-management：空名称创建工作区可能 500（界面已拦）。
 - extensions：`/mcp help` 列出 `/mcp reload`，实际没有该子命令。另记一项待定：终端 `/mcp upsert` 不经过模型路径上的 Shell 解释器拦截，是否应拦截由产品决定。
 - composer-attachments：隐藏的文件 `input` 没有任何入口触发。

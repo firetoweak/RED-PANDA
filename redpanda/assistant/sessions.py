@@ -8,6 +8,7 @@ from redpanda.assistant.authorization import (
     AuthorizationConflict,
     AuthorizationTargetNotFound,
 )
+from redpanda.assistant.inputs import InputConflict
 from redpanda.assistant.control import (
     CONTROL_SOURCE,
     AssistantControlPlane,
@@ -28,7 +29,7 @@ from redpanda.assistant.toolsets import ToolSurface
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.catalog import CapabilityCatalog
 from redpanda.assistant.subagent.subagent import SubAgentHost, project_pending
-from redpanda.runtime import AgentRuntime, RuntimeStatus
+from redpanda.runtime import AgentRuntime, DeliveryConflictError, RuntimeStatus
 from redpanda.runtime.model import CanonicalState, CommandPhase
 
 
@@ -281,13 +282,16 @@ class AssistantSessions:
         source: str = "user",
         artifact_refs: tuple[str, ...] = (),
     ) -> None:
-        await self._runtime.receive_user_message(
-            session_id,
-            content,
-            delivery_id=delivery_id,
-            source=source,
-            artifact_refs=tuple(artifact_refs),
-        )
+        try:
+            await self._runtime.receive_user_message(
+                session_id,
+                content,
+                delivery_id=delivery_id,
+                source=source,
+                artifact_refs=tuple(artifact_refs),
+            )
+        except DeliveryConflictError as error:
+            raise InputConflict("该消息编号已用于不同内容，请重新发送消息。") from error
         await self._scheduler.wake(session_id)
 
     async def accept_input(

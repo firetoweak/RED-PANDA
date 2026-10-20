@@ -222,6 +222,38 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await until(lambda: (sid, "done") in self.output)
         self.assertTrue(self.host.failures.empty())
 
+    async def test_conflicting_input_replay_preserves_worker_and_original_message(self):
+        from redpanda.assistant.inputs import InputConflict
+        from redpanda.runtime import UserMessageReceived
+
+        sid = "input-replay"
+        await self.host.create(sid, self.workspace.workspace_id)
+        await self.host.select("web:replay", sid)
+        await self.host.accept_input(sid, "original", delivery_id="input-1", source="web")
+        await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+        journal = SqliteJournal(self.store.require(sid))
+        before = await journal.snapshot(sid)
+        worker = self.host.workers[sid]
+        for operation in (self.host.accept_input, self.host.receive_user_message):
+            await operation(sid, "original", delivery_id="input-1", source="web")
+            await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+            with self.assertRaises(InputConflict):
+                await asyncio.wait_for(operation(
+                    sid, "changed", delivery_id="input-1", source="web",
+                ), 30)
+            self.assertEqual(await journal.snapshot(sid), before)
+            self.assertIs(self.host.workers[sid], worker)
+            self.assertTrue(worker.process.is_alive())
+            self.assertIsNone(self.host.current_failure(sid))
+            self.assertTrue(self.host.failures.empty())
+        await self.host.accept_input(sid, "next", delivery_id="input-2", source="web")
+        await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+        events = await journal.snapshot(sid)
+        self.assertEqual([e.payload.content for e in events if isinstance(e.payload, UserMessageReceived)],
+                         ["original", "next"])
+        self.assertEqual(self.output.count((sid, "done")), 2)
+        self.assertTrue(self.host.failures.empty())
+
     async def test_child_startup_failure_does_not_strand_parent_delegate(self):
         from tests.fixtures.session_worker import delegate_startup_failure_config
 
