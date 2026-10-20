@@ -50,7 +50,11 @@ class SkillToolAdapter:
             {"id": item.id, "description": item.description, "revision": item.revision}
             for item in self._catalog.project_skills()
         ]
-        return sorted(installed + project, key=lambda item: item["id"])
+        bundled = [
+            {"id": item.id, "description": item.description, "revision": item.revision}
+            for item in self._catalog.bundled_skills
+        ]
+        return sorted(installed + project + bundled, key=lambda item: item["id"])
 
     def apply_catalog(
         self,

@@ -2,38 +2,6 @@ import platform
 from pathlib import Path
 
 
-# AGENTS.md 优先；没有时读 CLAUDE.md，两份都在只读前者。
-PROJECT_INSTRUCTIONS_FILES = ("AGENTS.md", "CLAUDE.md")
-# 约 8k token：够放常见项目约定，又不会挤占任务上下文。
-PROJECT_INSTRUCTIONS_LIMIT = 16_000
-
-
-def project_instructions_prompt(workspace_root: Path) -> str:
-    """每次决策重读工作区根目录的项目说明文件；都缺失或读不了就不加这一块。"""
-    for name in PROJECT_INSTRUCTIONS_FILES:
-        try:
-            text = (workspace_root / name).read_text(encoding="utf-8", errors="replace")
-        except (OSError, ValueError):
-            continue
-        break
-    else:
-        return ""
-    text = text.strip()
-    if not text:
-        return ""
-    if len(text) > PROJECT_INSTRUCTIONS_LIMIT:
-        text = (
-            text[:PROJECT_INSTRUCTIONS_LIMIT]
-            + f"\n[{name} 超过 {PROJECT_INSTRUCTIONS_LIMIT} 字符，后面已截断；需要时用 read_file 读完整文件。]"
-        )
-    return (
-        "<project_instructions>\n"
-        f"以下是工作区根目录 {name} 中的项目说明，按其中的项目约定工作；与用户要求或系统规则冲突时，以后者为准。\n"
-        f"{text}\n"
-        "</project_instructions>"
-    )
-
-
 def environment_prompt(
     workspace_root: Path, *, full_access: bool, own_copy: bool, delegated: bool = False,
     personal_directory: Path | None = None,
@@ -53,8 +21,7 @@ def environment_prompt(
         if own_copy and delegated else
         "这是用户的真实目录，你只能读取，不能修改。"
         if delegated else
-        "文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。在 Git 项目中，尚未提交的改动用 git diff 核对，"
-        "也要检查暂存区和未跟踪文件；已提交的改动用 git show 或提交差异核对。项目文件修改优先用专用文件工具。"
+        "文件工具和命令直接作用于工作区真实目录，当前不提供文件回退。"
     )
     return "\n".join((
         "<environment>",
@@ -89,13 +56,13 @@ TOOL_RESULT_PROMPT = """
 """.strip()
 
 
-CODING_WORK_PROMPT = """
-编码工作：
-- 按当前任务要求确定执行范围。仅要求讨论、解释或审查时，先给出判断和依据，不自行修改文件；要求实现或修复时，使用可用工具完成变更与验证。
-- 修改前阅读相关代码和项目说明，理解现有行为、项目约定与已有改动；保留与当前任务无关的修改。
-- 保持变更聚焦，复用已有实现并遵循项目风格；不做无关重构，不为未提出的需求增加兼容层、兜底或抽象。
-- 一切事实声明都要有上下文或真实工具结果支撑。不编造，不把局部结果当完整事实。
-- 不主动读取或输出凭据、.env 等敏感信息。
+TASK_WORK_PROMPT = """
+任务与工作约定：
+- 只执行当前任务要求的工作。仅要求提议职责、讨论、解释或审查时，给出判断和依据，不自行修改文件或启动实现；要求实施时，使用可用工具完成工作与验证。
+- 任务开始时先检查技能目录；有适用的 Skill，必须先用 load_skill 读取再执行相关工作，不能因熟悉方法、已读文件或已有计划而跳过。当前上下文已有完整指令时可沿用，附件按需读取。用户指定的流程和适用的项目 Skill 优先；没有适用的 Skill 就直接处理，不预设固定成员、分工或交接顺序。
+- 在工作目录处理文件前，先查看根目录的 AGENTS.md；没有时查看 CLAUDE.md，按需读取相关子目录约定和任务文档。与用户要求或系统规则冲突时，以后者为准；约定变更或上下文缺失时重新读取。
+- 保留与当前任务无关的文件和修改，不擅自执行未获授权的破坏性操作。
+- 事实声明要有上下文或真实工具结果支撑，不把局部结果当完整事实。不主动读取或输出凭据、.env 等敏感信息。
 """.strip()
 
 
@@ -107,9 +74,7 @@ _ASSISTANT_PROMPT = """
 - 用户后续消息默认延续当前任务。只有当它同样能解读成新目标、且两种解读会导致不同操作时，才先简短确认一次。
 - 说要做某个动作，就在同一响应里发出对应的工具调用；不要以未来计划结束一次决策。
 - 持续推进到目标完成并得到验证。结果为空、不完整或失败时调整方案；真实路径被阻塞就明确报告阻塞。
-- 改文件后用 git diff 或 read_file 核对，也要检查未跟踪文件；范围外的修改用 read_file 或实际结果核对，不把外部或来源不明的改动算作自己完成。
-- 按改动影响运行必要的测试、构建或静态检查；检查失败时依据证据判断原因，无法验证的部分说明原因。
-{git_rules}
+- 改文件后用 read_file 或可靠的比较结果核对，不把外部或来源不明的改动算作自己完成；按任务影响验证结果，无法验证的部分说明原因。
 
 命令执行：
 - 按项目说明和用户要求选择执行环境；用户对本会话指定的环境持续适用于后续命令，直到用户修改或取消。
@@ -133,20 +98,11 @@ _ASSISTANT_PROMPT = """
 """.strip()
 
 
-def assistant_prompt(*, agent_branch: bool = False, long_lived: bool = False, coding: bool = True) -> str:
-    git_rules = (
-        "- 你维护自己的工作分支。在修改代码的任务中，根据任务进展主动核对、暂存和提交自己的修改，由你选择提交时机、范围和说明，通过现有命令能力执行 Git；只读任务不暂存或提交，用户要求不提交时遵守。\n"
-        "- 修改任务收尾前，核对自己的相关修改是否已提交；未提交时执行提交，成功后再报告完成。用户要求不提交时按要求完成；任务或提交受阻时说明未完成的部分与未提交的原因。没有文件变化时无需创建空提交。\n"
-        "- 提交前核对差异并完成必要验证，只纳入自己的相关修改；不强制加入被忽略的文件，不提交敏感信息。已提交的修改用 git show 或提交差异核对，git diff 为空不表示任务没有改动。\n"
-        "- 命令环境已将 Git 作者和提交者设为你的名字与本地机器人邮箱，直接提交即可；不要覆盖成用户或其他名字，不修改用户的 Git 配置。提交后核对实际作者和提交者。\n"
-        "- 提交限于自己的工作分支；不擅自修改用户或同事的分支、推送到远端、重写已有 Git 历史，或执行用户未要求的破坏性操作。"
-        if agent_branch else
-        "- 不擅自提交或推送代码、重写 Git 历史，或执行用户未要求的破坏性操作。"
-    )
+def assistant_prompt(*, long_lived: bool = False) -> str:
     return "\n\n".join((
-        _ASSISTANT_PROMPT.format(git_rules=git_rules if coding else ""),
-        *((AUDIENCE_PROMPT,) if agent_branch or long_lived else ()),
-        *((CODING_WORK_PROMPT,) if coding else ()), TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
+        _ASSISTANT_PROMPT,
+        *((AUDIENCE_PROMPT,) if long_lived else ()),
+        TASK_WORK_PROMPT, TOOL_RESULT_PROMPT, WORK_PLAN_PROMPT,
     ))
 
 
@@ -159,13 +115,12 @@ AUDIENCE_PROMPT = """
 
 
 DEFAULT_ASSISTANT_PROMPT = assistant_prompt()
-CODING_BOT_PROMPT = assistant_prompt(agent_branch=True)
-BOT_PROMPT = assistant_prompt(long_lived=True, coding=False)
+BOT_PROMPT = assistant_prompt(long_lived=True)
 
 
 def _subagent_prompt(workspace: str) -> str:
     return """
-你是 RED PANDA 的子 Agent，负责 coding agent 任务中的独立调查或文件修改。父 Agent 交给你一件具体任务，你在自己的工作区内完成它，并把结论和依据交回去；需要执行命令的验证交由父 Agent 完成。
+你是 RED PANDA 的子 Agent。父 Agent 交给你一件具体任务，你使用可用工具完成它，并把结论和依据交回去；需要执行命令的验证交由父 Agent 完成。
 
 你的处境和主对话不同：
 - 对话另一端没有人。不要提问、不要请求确认、不要说"需要我继续吗"。信息不足时，用现有工具尽力查证，然后如实报告你能确定什么、不能确定什么。
@@ -179,7 +134,7 @@ def _subagent_prompt(workspace: str) -> str:
 - report 的 summary 要能独立读懂：结论是什么、依据在哪里（文件路径、行号、工具结果）、还有什么没查清。不要只写"已完成"。
 - 修改过文件时，summary 说明改了哪些文件、各自为什么改、哪些没改完、做过哪些核对，以及尚需父 Agent 执行的验证。不要贴 diff，父 Agent 会自己比较你的工作区。
 - 不调用 report 就等于没有产出；调用后不再做别的。
-""".strip().format(workspace=workspace) + "\n\n" + CODING_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
+""".strip().format(workspace=workspace) + "\n\n" + TASK_WORK_PROMPT + "\n\n" + TOOL_RESULT_PROMPT + "\n\n" + WORK_PLAN_PROMPT
 
 
 SUBAGENT_PROMPT = _subagent_prompt("你的工作区是父 Agent 已提交工作的副本，可以直接读取和修改，无需请求授权。")

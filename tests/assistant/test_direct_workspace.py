@@ -75,9 +75,9 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("file_access", command["parameters"]["properties"])
                 environment = next(message["content"] for message in llm.messages if "<environment>" in str(message["content"]))
                 self.assertIn("当前不提供文件回退", environment)
-                self.assertIn("主动核对、暂存和提交自己的修改", environment)
-                self.assertNotIn("不擅自提交或推送代码", environment)
-                self.assertIn("git show", environment)
+                for skill in assembly.runtime.step_runner._decision_maker._skill_tools._catalog.bundled_skills:
+                    self.assertIn(skill.id, str(llm.messages))
+                    self.assertNotIn(skill.bundle.main_instructions, environment)
             finally:
                 await assembly.scheduler.close()
 

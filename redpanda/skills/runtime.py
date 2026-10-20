@@ -19,13 +19,14 @@ from redpanda.tools.spec import PydanticParameters, ToolSpec
 LOAD_SKILL = "load_skill"
 READ_SKILL_RESOURCE = "read_skill_resource"
 PROJECT_SKILL_PREFIX = "project:"
+BUNDLED_SKILL_PREFIX = "builtin:"
 PROJECT_SKILLS_DIRECTORY = (".claude", "skills")
 PROJECT_SKILL_OVER_BUDGET = "项目 Skill 无法使用：技能目录超出长度上限，精简项目 Skill 的描述或数量后可用。"
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectSkill:
-    """A Skill package read from the session's task root, not installed."""
+class DirectorySkill:
+    """A bundled or project Skill package, outside the installation registry."""
 
     id: str
     description: str
@@ -62,7 +63,7 @@ class ReadSkillResourceInput(BaseModel):
 
 
 class SkillToolCatalog:
-    """把已启用 Skill 投影为两个普通工具。"""
+    """把内置、已启用与工作目录 Skill 投影为两个普通工具。"""
 
     def __init__(
         self,
@@ -83,8 +84,17 @@ class SkillToolCatalog:
         self.packages_root = registry.root / "packages"
         self.max_catalog_chars = max_catalog_chars
         self.project_root = project_root
+        self.bundled_skills = tuple(
+            DirectorySkill(
+                BUNDLED_SKILL_PREFIX + bundle.name, bundle.description,
+                _content_revision(bundle.content_hash), directory, bundle,
+            )
+            for directory in sorted((Path(__file__).parent / "bundled").iterdir())
+            if directory.is_dir()
+            for bundle in (self.package_reader.read(directory),)
+        )
 
-    def project_skills(self) -> tuple[ProjectSkill, ...]:
+    def project_skills(self) -> tuple[DirectorySkill, ...]:
         """Packages under the task root's .claude/skills, read as they are on disk now.
 
         Repository content must never stop the Agent: a package that cannot be
@@ -97,22 +107,23 @@ class SkillToolCatalog:
         if not directory.is_dir():
             return ()
         if not directory.resolve().is_relative_to(self.project_root.resolve()):
-            return (ProjectSkill(
+            return (DirectorySkill(
                 PROJECT_SKILL_PREFIX + "/".join(PROJECT_SKILLS_DIRECTORY),
                 "项目 Skill 无法使用：这个目录指向任务根以外，不读取其中的 Skill。",
                 1, directory.absolute(), None,
             ),)
         return self._within_budget(self._read_project_packages(directory))
 
-    def _within_budget(self, skills: list[ProjectSkill]) -> tuple[ProjectSkill, ...]:
+    def _within_budget(self, skills: list[DirectorySkill]) -> tuple[DirectorySkill, ...]:
         installed = "\n".join(
             f"- {record.name}: {record.description}"
             for record in self.registry.snapshot()
             if record.enabled
         )
-        used = len(installed)
+        bundled = "\n".join(f"- {item.id}: {item.description}" for item in self.bundled_skills)
+        used = len("\n".join(part for part in (bundled, installed) if part))
         unavailable = [
-            ProjectSkill(skill.id, PROJECT_SKILL_OVER_BUDGET, 1, skill.directory, None)
+            DirectorySkill(skill.id, PROJECT_SKILL_OVER_BUDGET, 1, skill.directory, None)
             for skill in skills
         ]
         # Reserve every identity before spending space on full descriptions. When
@@ -134,7 +145,7 @@ class SkillToolCatalog:
                     break
         return tuple(fitted)
 
-    def _read_project_packages(self, directory: Path) -> list[ProjectSkill]:
+    def _read_project_packages(self, directory: Path) -> list[DirectorySkill]:
         skills = []
         for package in sorted(item for item in directory.iterdir() if item.is_dir()):
             skill_id = PROJECT_SKILL_PREFIX + package.name
@@ -145,9 +156,9 @@ class SkillToolCatalog:
                         f"SKILL.md 中的 name {bundle.name} 与目录名 {package.name} 不一致"
                     )
             except SkillPackageError as exc:
-                skills.append(ProjectSkill(skill_id, f"项目 Skill 无法使用：{exc}", 1, package.absolute(), None))
+                skills.append(DirectorySkill(skill_id, f"项目 Skill 无法使用：{exc}", 1, package.absolute(), None))
                 continue
-            skills.append(ProjectSkill(
+            skills.append(DirectorySkill(
                 skill_id, bundle.description, _content_revision(bundle.content_hash), package.resolve(), bundle,
             ))
         return skills
@@ -173,6 +184,7 @@ class SkillToolCatalog:
         revisions = (
             {
                 **{record.name: record.revision for record in records},
+                **{item.id: item.revision for item in self.bundled_skills},
                 **{item.id: item.revision for item in project},
             }
             if catalog is None
@@ -189,15 +201,7 @@ class SkillToolCatalog:
                     data={"skill_id": input_data.skill_id},
                 ))
             try:
-                if input_data.skill_id.startswith(PROJECT_SKILL_PREFIX):
-                    project = self._require_current_project(input_data.skill_id, revision)
-                    package_directory, bundle = project.directory, project.bundle
-                else:
-                    current = await self._require_current_record(
-                        input_data.skill_id,
-                        revision,
-                    )
-                    package_directory, bundle = self._validated_bundle(current)
+                package_directory, bundle = await self._resolve_package(input_data.skill_id, revision)
             except SkillRuntimeError as exc:
                 return _error_result(exc)
             return {
@@ -222,16 +226,7 @@ class SkillToolCatalog:
                     data={"skill_id": input_data.skill_id},
                 ))
             try:
-                if input_data.skill_id.startswith(PROJECT_SKILL_PREFIX):
-                    package_directory = self._require_current_project(
-                        input_data.skill_id, revision,
-                    ).directory
-                else:
-                    current = await self._require_current_record(
-                        input_data.skill_id,
-                        revision,
-                    )
-                    package_directory, _ = self._validated_bundle(current)
+                package_directory, _ = await self._resolve_package(input_data.skill_id, revision)
                 return self._read_resource(
                     input_data.skill_id,
                     package_directory,
@@ -266,6 +261,21 @@ class SkillToolCatalog:
             ),
         ]
 
+    async def _resolve_package(self, skill_id: str, revision: int) -> tuple[Path, SkillBundle]:
+        if skill_id.startswith(BUNDLED_SKILL_PREFIX):
+            current = next((item for item in self.bundled_skills if item.id == skill_id), None)
+            if current is None or current.revision != revision:
+                raise SkillRuntimeError(
+                    "SKILL_CATALOG_STALE", f"Skill {skill_id} 已更新",
+                    hint="按上下文中的当前技能目录重新选择。",
+                    data={"skill_id": skill_id},
+                )
+            return current.directory, current.bundle
+        if skill_id.startswith(PROJECT_SKILL_PREFIX):
+            current = self._require_current_project(skill_id, revision)
+            return current.directory, current.bundle
+        return self._validated_bundle(await self._require_current_record(skill_id, revision))
+
     async def _require_current_record(
         self,
         skill_id: str,
@@ -285,7 +295,7 @@ class SkillToolCatalog:
             )
         return current
 
-    def _require_current_project(self, skill_id: str, revision: int) -> ProjectSkill:
+    def _require_current_project(self, skill_id: str, revision: int) -> DirectorySkill:
         current = next((item for item in self.project_skills() if item.id == skill_id), None)
         if current is None or current.revision != revision:
             raise SkillRuntimeError(

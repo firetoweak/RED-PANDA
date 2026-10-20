@@ -56,3 +56,5 @@
 - 落地不经人批准。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；Mo 单独 sync_branch 得到 SYNC_UNCHANGED。向旧分支同步新成果、冲突和阻挡未覆盖。
+
+- 2026-10-20 编码 Skill 增量：真实 Web + deepseek-flash，按任务加载 builtin:git-collaboration，提交作者与提交者均为 Bot，land_branch 快进成功，集成目录 unittest 2 个通过；用户原目录与原始分支未变。证据 `.tools/verify-coding-skill/evidence/git-workflow/`；未重验同步、冲突与非快进合并。

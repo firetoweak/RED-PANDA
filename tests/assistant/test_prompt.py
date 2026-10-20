@@ -12,9 +12,8 @@ from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
-    PROJECT_INSTRUCTIONS_LIMIT,
     DEFAULT_ASSISTANT_PROMPT,
-    CODING_BOT_PROMPT,
+    BOT_PROMPT,
     SUBAGENT_PROMPT,
     SUBAGENT_READ_ONLY_PROMPT,
 )
@@ -48,8 +47,9 @@ PROSE_VOCABULARY = frozenset(
         "PANDA",
         "Skill",
         "Toolset",
-        "coding",
-        "agent",
+        "AGENTS",
+        "CLAUDE",
+        "md",
         "diff",
         "git",
         "show",
@@ -214,7 +214,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
     def test_default_prompt_names_only_real_tools_and_fields(self):
         # Colleague and person messaging tools are assembled only for long-lived Agents.
         agent_tools = {schema["function"]["name"] for schema in MESSAGE_SCHEMAS}
-        for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (CODING_BOT_PROMPT, agent_tools)):
+        for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (BOT_PROMPT, agent_tools)):
             unknown = (
                 _ascii_tokens(prompt)
                 - PROSE_VOCABULARY
@@ -245,47 +245,17 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         decision = self._assembly.runtime.step_runner._decision_maker
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
         self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
-        self.assertIn("不擅自提交或推送代码", prompt)
-        self.assertNotIn("主动核对、暂存和提交自己的修改", prompt)
 
-    def test_workspace_agents_md_reaches_prompt_as_separate_block(self):
-        decision = self._assembly.runtime.step_runner._decision_maker
-        state = SimpleNamespace(session_id="vocabulary")
-        agents = Path(self._workspace.task_root) / "AGENTS.md"
-        self.assertNotIn("<project_instructions>", decision.prompt_for(state))
-
-        agents.write_text("测试命令：pytest -q", encoding="utf-8")
-        try:
-            prompt = decision.prompt_for(state)
-            self.assertIn("<project_instructions>", prompt)
-            self.assertIn("测试命令：pytest -q", prompt)
-
-            agents.write_text("x" * (PROJECT_INSTRUCTIONS_LIMIT + 500), encoding="utf-8")
-            prompt = decision.prompt_for(state)
-            self.assertNotIn("x" * (PROJECT_INSTRUCTIONS_LIMIT + 1), prompt)
-            self.assertIn("已截断", prompt)
-        finally:
-            agents.unlink()
-
-    def test_claude_md_is_read_only_without_agents_md(self):
+    def test_project_file_content_is_read_on_demand_instead_of_injected_into_system(self):
         decision = self._assembly.runtime.step_runner._decision_maker
         state = SimpleNamespace(session_id="vocabulary")
         root = Path(self._workspace.task_root)
-        claude = root / "CLAUDE.md"
-        agents = root / "AGENTS.md"
-        claude.write_text("CLAUDE 约定", encoding="utf-8")
-        try:
-            prompt = decision.prompt_for(state)
-            self.assertIn("CLAUDE.md 中的项目说明", prompt)
-            self.assertIn("CLAUDE 约定", prompt)
-
-            agents.write_text("AGENTS 约定", encoding="utf-8")
-            prompt = decision.prompt_for(state)
-            self.assertIn("AGENTS 约定", prompt)
-            self.assertNotIn("CLAUDE 约定", prompt)
-        finally:
-            claude.unlink()
-            agents.unlink(missing_ok=True)
+        before = decision.prompt_for(state)
+        (root / "AGENTS.md").write_text("PROJECT_AGENTS_SENTINEL", encoding="utf-8")
+        (root / "CLAUDE.md").write_text("PROJECT_CLAUDE_SENTINEL", encoding="utf-8")
+        self.assertEqual(decision.prompt_for(state), before)
+        for item in decision._skill_tools._catalog.bundled_skills:
+            self.assertNotIn(item.bundle.main_instructions, before)
 
     def test_subagent_prompt_names_no_tool_it_cannot_call(self):
         """子 Session 的工具名单比主对话窄，prompt 不能许诺名单外的动作。"""
@@ -300,7 +270,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
-    async def test_read_only_subagent_reads_agents_md_from_the_parent_directory(self):
+    async def test_read_only_subagent_has_the_same_on_demand_knowledge_boundary(self):
         from datetime import datetime, timezone
 
         from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
@@ -334,8 +304,9 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
                 state = SimpleNamespace(session_id=child)
                 prompt = decision.prompt_for(state)
                 self.assertTrue(prompt.startswith(SUBAGENT_READ_ONLY_PROMPT))
-                self.assertIn("<project_instructions>\n", prompt)
-                self.assertIn("父工作区约定", prompt)
+                self.assertNotIn("父工作区约定", prompt)
+                self.assertIn(str(workspace.task_root), prompt)
+                self.assertIn(LOAD_SKILL, assembly.subagents.tool_names(child))
             finally:
                 await assembly.scheduler.close()
 

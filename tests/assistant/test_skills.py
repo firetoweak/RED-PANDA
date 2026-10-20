@@ -115,6 +115,30 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.temporary.cleanup()
 
+    async def test_bundled_skills_are_available_without_installation_or_project(self):
+        home = RedPandaHome(Path(self.temporary.name) / "empty-home")
+        home.initialize()
+        service = SkillApplicationService(home)
+        adapter = SkillToolAdapter(
+            type("Skills", (), {"tool_catalog": service.tool_catalog})(),
+            MemoryArtifactGateway(), ModelContextSettings(),
+        )
+        catalog = adapter.registry_catalog()
+        self.assertEqual({item["id"] for item in catalog}, {"builtin:coding", "builtin:git-collaboration"})
+        self.assertEqual(service.registry.snapshot(), ())
+        adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        for item in catalog:
+            loaded = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": item["id"]})
+            self.assertEqual(loaded["code"], "SKILL_LOADED")
+            directory = Path(loaded["data"]["skill_dir"])
+            bundle = service.tool_catalog.package_reader.read(directory)
+            self.assertEqual(loaded["data"]["content"], bundle.main_instructions)
+            resource = await adapter.bindings()[READ_SKILL_RESOURCE].handler(
+                context, {"skill_id": item["id"], "relative_path": "SKILL.md"},
+            )
+            self.assertEqual(resource["data"]["content"], (directory / "SKILL.md").read_text(encoding="utf-8"))
+
     async def test_enabled_catalog_is_not_in_load_skill_description(self):
         schemas = self.adapter.schemas()
         self.assertEqual(
@@ -137,7 +161,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "project:broken", "project:verify"})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "project:broken", "project:verify"})
         self.assertEqual(by_id["project:verify"]["description"], "Verify the app")
         self.assertIn("SKILL.md", by_id["project:broken"]["description"])
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
@@ -166,7 +190,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item["description"] for item in catalog}
-        self.assertEqual(set(by_id), {"demo"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration"} | {f"project:big-{index:02}" for index in range(40)})
         self.assertLessEqual(len("\n".join(f"- {key}: {value}" for key, value in by_id.items())), 4000)
         self.assertEqual(by_id["project:big-00"], "x" * 120)
         self.assertIn("长度上限", by_id["project:big-39"])
@@ -204,7 +228,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item for item in catalog}
-        self.assertEqual(set(by_id), {"demo"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration"} | {f"project:big-{index:02}" for index in range(40)})
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
         for index in range(40):
