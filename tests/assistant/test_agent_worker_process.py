@@ -251,4 +251,3 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(current.failures.empty())
             finally:
                 await current.close()
-

@@ -18,29 +18,33 @@ vi.mock("../src/api/redpandaApi", () => ({
     { workspace_id: "beta", name: "Beta", task_root: "C:/beta" },
   ] }),
   useGetGroupsQuery: () => ({ data: [
-    { workspace_id: "alpha", group_id: "front", name: "界面讨论", members: ["Ada"] },
-    { workspace_id: "beta", group_id: "back", name: "接口讨论", members: ["Lin"] },
-    { workspace_id: "beta", group_id: "other", name: "跨项目讨论", members: ["Ada"] },
+    { group_id: "front", name: "界面讨论", members: ["Ada"] },
+    { group_id: "back", name: "接口讨论", members: ["Lin"] },
+    { group_id: "other", name: "跨项目讨论", members: ["Ada"] },
   ] }),
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("右侧资料跟随当前 Agent，按项目和成员筛选群聊，收起后可重新打开", () => {
+it("资料默认隐藏，点击页头名字打开和收起，资料跟随当前 Agent", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
     <Link to="/sessions/lin">切换到 Lin</Link>
     <Routes><Route path="/sessions/:sessionId" element={<SessionConversation />} /></Routes>
   </MemoryRouter></MantineProvider></Provider>);
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  const header = within(screen.getByRole("banner"));
+  expect(header.getByRole("button", { name: "Ada" })).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(header.getByRole("button", { name: "Ada" }));
   const details = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(details.getByText("前端体验")).toBeInTheDocument();
   expect(details.getByText("Alpha")).toBeInTheDocument();
   expect(details.getByRole("link", { name: "界面讨论" })).toHaveAttribute("href", "/groups/front");
   expect(details.getByText("跨项目讨论")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "收起 Agent 资料" }));
+  fireEvent.click(header.getByRole("button", { name: "Ada" }));
   expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   expect(screen.getByText("对话内容")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "显示 Agent 资料" }));
+  fireEvent.click(header.getByRole("button", { name: "Ada" }));
   fireEvent.click(screen.getByRole("link", { name: "切换到 Lin" }));
   const next = within(screen.getByRole("complementary", { name: "Agent 资料" }));
   expect(next.getByText("接口验证")).toBeInTheDocument();
