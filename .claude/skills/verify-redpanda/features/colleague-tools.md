@@ -6,7 +6,7 @@
 
 - `declare`：`declare_direction` 的参数只有 `direction`。侧栏在名字下方显示这句；没有声明时显示 `打开对话，开始协作`。
 - `list`：`list_colleagues` 不接受参数。每位同事有 `name`、`direction`、`worktree`、`status`、`since`。
-- `roster-facts`：第二位 Agent 创建后，已在的同事收到 `coding_bot.colleague_joined`；对方声明方向后收到 `coding_bot.direction_declared`。两条都不请求决策。
+- `roster-facts`：第二位 Agent 创建后，已在的同事收到 `bot.colleague_joined`；对方声明方向后收到 `bot.direction_declared`。两条都不请求决策。
 
 ## How to get to it (user POV)
 
@@ -19,7 +19,7 @@
 需要 `live_model_ready`。工具结果的 `code` 在该会话 journal（`$REDPANDA_HOME/runtime_sessions/<sha256(session_id)>/journal.sqlite`）的命令结果里。`GET /api/sessions/<id>` 的 `tools` 只有名字和状态：`ok: false` 的已知结果也显示徽标 `完成`。
 
 - **声明方向**：请 `Ada` 调用 `declare_direction`，方向写 `负责验证地图`。
-  - (a) `GET /api/agents` 里 `Ada` 的 `direction` 为这句；journal 有 `coding_bot.direction_declared`，`name` 是 `Ada`。
+  - (a) `GET /api/agents` 里 `Ada` 的 `direction` 为这句；journal 有 `bot.direction_declared`，`name` 是 `Ada`。
   - (b) 侧栏 `Ada` 名字下出现 `负责验证地图`；工具卡名为 `declare_direction`，徽标 `完成`。
   - (c) `GET /api/agents` 仍没有 `worktree` 和 `branch`；`Ada` 的名字不变。`Lin` 的会话不因此多一条发给人的回复。
   - (d) 空白 `direction` → 结果 `INVALID_ARGUMENT`，原方向不变；从未声明过时仍为 `null`，侧栏仍显示占位文案。再声明 `负责私信` 后，名册和侧栏只剩这一句。
@@ -29,7 +29,7 @@
   - (c) 查询不改两边工作树，也不改人检出目录里的 `note.txt`。
   - (d) 带任意参数调用 → `INVALID_ARGUMENT`，错误为 `list_colleagues 不接受参数。`。用返回的 `worktree` 请 `Ada` `read_file` 读 `Lin` 工作树里尚未提交的文件，读得到；`write_file` 写进该目录 → `ENVIRONMENT_PERMISSION_DENIED`，错误含 `path 不在可写入范围内`，`Lin` 的文件不变。
 - **加入与方向事实**：先有 `Ada`，再创建 `Lin`，然后让 `Lin` 声明方向。
-  - (a) `Ada` 的 journal 先有 `coding_bot.colleague_joined`（`name` 为 `Lin`），之后有 `Lin` 的 `coding_bot.direction_declared`。两条 `requests_decision` 都是 false。
+  - (a) `Ada` 的 journal 先有 `bot.colleague_joined`（`name` 为 `Lin`），之后有 `Lin` 的 `bot.direction_declared`。两条 `requests_decision` 都是 false。
   - (b) `Ada` 的时间线不因此多一条发给人的回复气泡。
   - (c) `/api/agents` 仍是这两个 Agent，群和这些事实不会变成名册里的另一行。
   - (d) `Lin` 尚未声明时，`Ada` 查到的 `direction` 为 `null`，侧栏 `Lin` 名字下显示 `打开对话，开始协作`。
