@@ -692,12 +692,13 @@ a.private-message-peer:focus-visible { outline: 2px solid var(--rp-composer-focu
 .group-composer-dock > .mantine-Alert-root { width: min(var(--rp-composer-width), 100%); margin-inline: auto; }
 .group-composer { position: relative; }
 .group-composer-recipients { flex: 1; min-width: 0; }
-.group-mention-menu { position: absolute; z-index: 10; bottom: calc(100% + 8px); left: 0; width: min(320px, 100%); padding: 6px; border: 1px solid var(--rp-border-strong); border-radius: 12px; background: var(--rp-surface); box-shadow: 0 6px 24px var(--rp-shadow); }
-.group-mention-heading { padding: 5px 8px 8px; }
-.group-mention-menu [role="listbox"] { max-height: 260px; overflow-y: auto; }
-.group-mention-menu [role="option"] { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
-.group-mention-menu [role="option"]:hover, .group-mention-menu [aria-selected="true"] { background: var(--rp-hover); }
-.group-mention-at { margin-left: auto; color: var(--mantine-color-dimmed); font-size: 11px; }
+.mention-menu { position: absolute; z-index: 10; bottom: calc(100% + 8px); left: 0; width: min(320px, 100%); padding: 6px; border: 1px solid var(--rp-border-strong); border-radius: 12px; background: var(--rp-surface); box-shadow: 0 6px 24px var(--rp-shadow); }
+.mention-heading { padding: 5px 8px 8px; }
+.mention-menu [role="listbox"] { position: relative; max-height: 260px; overflow-y: auto; }
+.mention-menu [role="option"] { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.mention-menu [role="option"]:hover, .mention-menu [aria-selected="true"] { background: var(--rp-hover); }
+.mention-name { min-width: 0; overflow-wrap: anywhere; }
+.mention-at { min-width: 0; overflow-wrap: anywhere; margin-left: auto; color: var(--mantine-color-dimmed); font-size: 11px; }
 .group-member-list { display: flex; flex-direction: column; gap: 4px; }
 .group-member { display: flex; align-items: center; gap: 10px; padding: 10px 6px; color: inherit; text-decoration: none; border-radius: 10px; }
 a.group-member:hover { background: var(--rp-hover); }
@@ -1006,6 +1007,7 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
   min-width: 0;
   user-select: text;
 }
+.private-composer { position: relative; }
 .private-composer .composer-line { padding: 8px 10px; }
 .private-composer .composer-input { min-width: 0; }
 .private-composer .composer-input textarea { min-height: 30px; padding: 4px 0; }

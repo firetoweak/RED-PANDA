@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Composer } from "../src/features/conversation/Composer";
+import { ChatPresentation } from "../src/features/conversation/ChatPresentation";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
 const { upload, selectLocal } = vi.hoisted(() => ({
@@ -45,10 +46,66 @@ function showComposer(running = false, inputTokens: number | null = null, sessio
     inputTokens,
     onSend, onStop: vi.fn(), onRetry: vi.fn(),
   };
-  const ui = (active: boolean) => <Provider store={store}><MantineProvider><Composer {...props} running={active} /></MantineProvider></Provider>;
+  const ui = (active: boolean) => <Provider store={store}><MantineProvider>
+    <ChatPresentation value={{ names: ["Ada", "Ada QA", "李雷", "C++"], quote: null, onQuote: () => {}, onJump: () => {} }}>
+      <Composer {...props} running={active} />
+    </ChatPresentation>
+  </MantineProvider></Provider>;
   const view = render(ui(running));
   return { ...view, onSend, stop: () => view.rerender(ui(false)) };
 }
+
+it("私聊从名册筛选并用完整名字补全，Enter 先选候选再发送", async () => {
+  const { onSend } = showComposer();
+  const input = screen.getByLabelText("消息");
+  fireEvent.change(input, { target: { value: "问问 @aD" } });
+  expect(screen.getAllByRole("option")).toHaveLength(2);
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("问问 @Ada QA ");
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith("问问 @Ada QA", []));
+});
+
+it("私聊点名支持中文输入法、鼠标和光标处替换，保留后文与引用", () => {
+  localStorage.setItem("redpanda.composerDraft.session", JSON.stringify({ text: "> [Ada](#message:original)\n> @C++ 的原话\n\n", parkedText: "" }));
+  const { onSend } = showComposer();
+  const input = screen.getByLabelText("消息") as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: "请@李 看一下" } });
+  input.setSelectionRange(3, 3);
+  fireEvent.select(input);
+  fireEvent.compositionStart(input);
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onSend).not.toHaveBeenCalled();
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  fireEvent.compositionEnd(input);
+  fireEvent.click(screen.getByRole("option", { name: /李雷/ }));
+  expect(input).toHaveValue("请@李雷  看一下");
+  expect(input.selectionStart).toBe(5);
+  expect(screen.getByRole("button", { name: "取消引用" })).toBeInTheDocument();
+});
+
+it("私聊不提供全体候选，邮箱不触发，Escape 关闭后仍可正常发送", async () => {
+  const { onSend } = showComposer();
+  const input = screen.getByLabelText("消息");
+  fireEvent.change(input, { target: { value: "dev@Ada" } });
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "@" } });
+  expect(screen.getAllByRole("option")).toHaveLength(4);
+  expect(screen.queryByRole("option", { name: /所有人/ })).not.toBeInTheDocument();
+  fireEvent.keyDown(input, { key: "ArrowUp" });
+  fireEvent.keyDown(input, { key: "Tab" });
+  expect(input).toHaveValue("@C++ ");
+  fireEvent.change(input, { target: { value: "@Ada" } });
+  fireEvent.keyDown(input, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+  expect(onSend).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith("@Ada", []));
+});
 
 it("拖入普通文件后保留名称并以附件引用发送，不要求填写正文", async () => {
   upload.mockImplementation(({ file }: { file: File }) => ({ unwrap: async () => ({
