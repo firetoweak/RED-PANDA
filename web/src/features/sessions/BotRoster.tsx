@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { AgentRosterEntry, GroupSummary } from "../../api/contracts";
 import { AgentStatus } from "./AgentStatus";
+import { BotAvatar } from "../conversation/ChatPresentation";
 
 const organizationSchema = z.object({
   sections: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })),
@@ -28,7 +29,7 @@ function deserializeOrganization(value: string | undefined): Organization {
 }
 
 /** 分组只整理当前浏览器的名册，不改变身份或群成员。 */
-export function BotRoster({ agents, chats, attentionSessionIds, sessionId, groupId, searching, onOpen }: {
+export function BotRoster({ agents, chats, attentionSessionIds, sessionId, groupId, searching, onOpen, creatingSection = false, onCloseSection }: {
   agents: AgentRosterEntry[];
   chats: GroupSummary[];
   attentionSessionIds: ReadonlySet<string>;
@@ -36,6 +37,8 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   groupId?: string;
   searching: boolean;
   onOpen: (path: string) => void;
+  creatingSection?: boolean;
+  onCloseSection?: () => void;
 }) {
   const [organization, setOrganization] = useLocalStorage<Organization>({
     key: "redpanda.sidebarGroups",
@@ -44,6 +47,8 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
     deserialize: deserializeOrganization,
   });
   const [editing, setEditing] = useState<Editing | null>(null);
+  const activeEditing = editing ?? (creatingSection ? { id: null, name: "" } as Editing : null);
+  const closeEditing = () => { setEditing(null); onCloseSection?.(); };
   const assignedSection = (entry: string) => {
     const id = organization.assignments[entry];
     return organization.sections.some((section) => section.id === id) ? id : null;
@@ -60,14 +65,14 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   }
 
   function save(name: string) {
-    if (editing === null) return;
-    const id = editing.id ?? crypto.randomUUID();
+    if (activeEditing === null) return;
+    const id = activeEditing.id ?? crypto.randomUUID();
     setOrganization((current) => ({ ...current,
-      sections: editing.id === null ? [...current.sections, { id, name, collapsed: false }]
+      sections: activeEditing.id === null ? [...current.sections, { id, name, collapsed: false }]
         : current.sections.map((section) => section.id === id ? { ...section, name } : section),
-      assignments: editing.entry === undefined ? current.assignments : { ...current.assignments, [editing.entry]: id },
+      assignments: activeEditing.entry === undefined ? current.assignments : { ...current.assignments, [activeEditing.entry]: id },
     }));
-    setEditing(null);
+    closeEditing();
   }
 
   function remove(id: string) {
@@ -112,7 +117,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
         {sectionAgents.map((agent) => renderRow(`agent:${agent.session_id}`, agent.name, agent.session_id === sessionId,
           `/sessions/${encodeURIComponent(agent.session_id)}`, <Tooltip label={agent.direction ?? agent.name} openDelay={700} position="right">
             <Group gap={10} wrap="nowrap">
-              <span className="sidebar-agent-avatar"><span className="agent-avatar agent-avatar-small" aria-hidden="true">{agent.name.slice(0, 1)}</span><AgentStatus agent={agent} compact attention={attentionSessionIds.has(agent.session_id)} /></span>
+              <span className="sidebar-agent-avatar"><BotAvatar name={agent.name} className="agent-avatar-small" /><AgentStatus agent={agent} compact attention={attentionSessionIds.has(agent.session_id)} /></span>
               <Stack className="sidebar-agent-identity" gap={2}>
                 <Text className="session-title" fz={13} truncate>{agent.name}</Text>
                 <Text c="dimmed" fz={11} truncate>{agent.direction ?? "打开对话，开始协作"}</Text>
@@ -122,22 +127,22 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
         {sectionChats.map((chat) => renderRow(`chat:${chat.group_id}`, `群聊 ${chat.name}`, chat.group_id === groupId,
           `/groups/${encodeURIComponent(chat.group_id)}`, <Group gap={10} wrap="nowrap">
             <span className="agent-avatar agent-avatar-small"><IconUsersGroup size={16} /></span>
-            <Text className="session-title" fz={13} truncate>{chat.name}</Text>
+            <Stack className="sidebar-agent-identity" gap={2}><Text className="session-title" fz={13} truncate>{chat.name}</Text><Text c="dimmed" fz={11}>群聊 · {chat.members.length} 位 Bot</Text></Stack>
           </Group>))}
       </Stack></Collapse>
     </section>;
   }
 
   return <div className="workspace-sessions">
-    <Group className="roster-sections-toolbar" justify="space-between" wrap="nowrap">
+    {onCloseSection === undefined ? <Group className="roster-sections-toolbar" justify="space-between" wrap="nowrap">
       <Text c="dimmed" fz={10}>分组</Text>
       <Tooltip label="新建分组" openDelay={400}><ActionIcon aria-label="新建分组" size="xs" variant="subtle" color="gray"
         onClick={() => setEditing({ id: null, name: "" })}><IconFolderPlus size={13} /></ActionIcon></Tooltip>
-    </Group>
+    </Group> : null}
     {organization.sections.map(renderSection)}
     {renderSection(null)}
-    {editing === null ? null : <SectionNameModal initialName={editing.name} existing={organization.sections.filter((section) => section.id !== editing.id).map((section) => section.name)}
-      creating={editing.id === null} onSave={save} onClose={() => setEditing(null)} />}
+    {activeEditing === null ? null : <SectionNameModal initialName={activeEditing.name} existing={organization.sections.filter((section) => section.id !== activeEditing.id).map((section) => section.name)}
+      creating={activeEditing.id === null} onSave={save} onClose={closeEditing} />}
   </div>;
 }
 

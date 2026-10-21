@@ -4,7 +4,7 @@ export const theme = createTheme({
   primaryColor: "ember",
   primaryShade: { light: 7, dark: 5 },
   colors: {
-    dark: ["#ececec", "#cccccc", "#b3b3b3", "#969696", "#686868", "#414141", "#2c2c2c", "#181818", "#141414", "#111111"],
+    dark: ["#e4e5e9", "#cbd0da", "#a0a6b2", "#969eac", "#626a78", "#3a3e48", "#282b32", "#202227", "#1c1e23", "#191b20"],
     ember: [
       "#fff3ec",
       "#ffe4d4",
@@ -19,7 +19,7 @@ export const theme = createTheme({
     ],
   },
   fontFamily:
-    'Inter, "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif',
+    '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif',
   fontFamilyMonospace:
     '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
   defaultRadius: "md",

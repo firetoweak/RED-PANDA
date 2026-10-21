@@ -17,7 +17,7 @@ import {
   IconCopy,
   IconSparkles,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 import { useParams } from "react-router-dom";
 
@@ -71,6 +71,9 @@ import { ConversationTimeline } from "./ConversationTimeline";
 import { registerTimelineFocus } from "./timelineFocus";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
+import { BotAvatar, ChatPresentation, identityColor, messageReference, QuoteAction, type MessageReference } from "./ChatPresentation";
+
+const privateReading = new Map<string, { following: boolean; count: number }>();
 
 type OpenPage = { kind: "changes" } | { kind: "subagent"; commandId: string }
   | { kind: "error"; title: string; message: string };
@@ -79,7 +82,7 @@ function turnHasOutput(turn: TimelineTurn, outputId: string): boolean {
   return [turn.active, turn.final, ...turn.process].some((step) => step?.outputId === outputId);
 }
 
-export function Conversation({ agentName }: { agentName?: string }) {
+export function Conversation({ agentName, agentNames = [], agentDirection }: { agentName?: string; agentNames?: string[]; agentDirection?: string | null }) {
   const dispatch = useAppDispatch();
   const { sessionId: routeSessionId } = useParams();
   const routeId = routeSessionId ?? "";
@@ -94,8 +97,29 @@ export function Conversation({ agentName }: { agentName?: string }) {
   const timelineRef = useRef<VirtuosoHandle>(null);
   const wheelAreaRef = useRef<HTMLDivElement>(null);
   const focusRef = useRef<(outputId: string) => void>(() => {});
-  const [following, setFollowing] = useState(true);
+  const [following, setFollowingState] = useState(privateReading.get(sessionId)?.following ?? true);
+  const [quote, setQuote] = useState<MessageReference | null>(null);
+  const [quoteReturn, setQuoteReturn] = useState<number | null>(null);
+  const jumpRef = useRef<(id: string) => void>(() => {});
+  const readCount = useRef(privateReading.get(sessionId)?.count ?? null);
+  const messageKeys = (selected.currentData?.items ?? [])
+    .filter((item) => item.kind === "user" || (item.text !== null && item.tools.length === 0))
+    .map((item) => item.kind === "user" ? item.message_id : `output:${item.output_id}`);
+  const count = messageKeys.length;
+  const [newCount, setNewCount] = useState(0);
+  const setFollowing = useCallback((value: boolean) => {
+    setFollowingState(value);
+    const old = privateReading.get(sessionId);
+    privateReading.set(sessionId, { following: value, count: old?.count ?? 0 });
+  }, [sessionId]);
+  useEffect(() => {
+    if (selected.currentData === undefined) return;
+    if (following || readCount.current === null) readCount.current = count;
+    setNewCount(Math.max(0, count - readCount.current));
+    privateReading.set(sessionId, { following, count: readCount.current });
+  }, [count, following, selected.currentData, sessionId]);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
+  const [quotedMessage, setQuotedMessage] = useState<string | null>(null);
   const [selectSession] = useSelectSessionMutation();
   const [sendInput, sending] = useSendInputMutation();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
@@ -114,10 +138,10 @@ export function Conversation({ agentName }: { agentName?: string }) {
   useEffect(() => registerTimelineFocus((outputId) => focusRef.current(outputId)), []);
 
   useEffect(() => {
-    if (highlightedKey === null) return;
-    const timer = window.setTimeout(() => setHighlightedKey(null), 2400);
+    if (highlightedKey === null && quotedMessage === null) return;
+    const timer = window.setTimeout(() => { setHighlightedKey(null); setQuotedMessage(null); }, 2400);
     return () => window.clearTimeout(timer);
-  }, [highlightedKey]);
+  }, [highlightedKey, quotedMessage]);
 
   useEffect(() => {
     if (connectionId === null || routeSessionId === undefined) {
@@ -168,6 +192,24 @@ export function Conversation({ agentName }: { agentName?: string }) {
     runtime?.activity ?? null,
   );
   const turns = timelineTurns(items);
+  const firstUnread = newCount === 0 ? undefined : messageKeys.at(-newCount);
+  jumpRef.current = (id) => {
+    const index = turns.findIndex((turn) => turn.user?.key === id || turnReply(turn, true)?.key === id);
+    if (index < 0) return;
+    if (quoteReturn === null) timelineRef.current?.getState((state) => setQuoteReturn(state.scrollTop));
+    setFollowing(false);
+    setQuotedMessage(id);
+    timelineRef.current?.scrollIntoView({ index, align: "start",
+      calculateViewLocation: () => ({ index, align: "start" }),
+      done: () => requestAnimationFrame(() => {
+        const viewport = wheelAreaRef.current?.parentElement?.querySelector<HTMLElement>(".virtual-timeline");
+        const target = Array.from(viewport?.querySelectorAll<HTMLElement>("[data-message-id]") ?? [])
+          .find((message) => message.dataset.messageId === id);
+        if (viewport !== null && viewport !== undefined && target !== undefined)
+          viewport.scrollTop += target.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 20;
+      }),
+    });
+  };
   focusRef.current = (outputId: string) => {
     const index = turns.findIndex((turn) => turnHasOutput(turn, outputId));
     if (index < 0) return;
@@ -229,12 +271,14 @@ export function Conversation({ agentName }: { agentName?: string }) {
   }
 
   return (
+    <ChatPresentation value={{ names: agentNames.length > 0 ? agentNames : agentName === undefined ? [] : [agentName], quote, onQuote: setQuote, onJump: (id) => jumpRef.current(id) }}>
     <Box className="conversation-layout">
     <Box component="section" className="conversation">
       {items.length === 0 ? (
         <ConversationWelcome />
       ) : (
         <ConversationTimeline
+          conversationKey={sessionId}
           turns={turns}
           listRef={timelineRef}
           wheelAreaRef={wheelAreaRef}
@@ -266,13 +310,18 @@ export function Conversation({ agentName }: { agentName?: string }) {
                   }) ? (
                     <RunningHint label="思考中" agentName={agentName} />
                   ) : reply !== null ? (
+                    <>
+                    {firstUnread !== undefined && reply.key === firstUnread ? <div className="unread-divider" role="separator">以下是未读消息</div> : null}
                     <Box
                       component="article"
-                      className="message message-assistant"
+                      className={`message message-assistant${quotedMessage === reply.key ? " is-quote-target" : ""}`}
+                      data-message-id={reply.key}
                       aria-label={`${agentName ?? "RED PANDA"} 的回复`}
                       key={reply.key}
                     >
+                        <AssistantAvatar name={agentName} />
                         <Stack className="assistant-reply" gap={6}>
+                          <Group className="message-meta" gap={7}><Text data-identity={identityColor(agentName ?? "RED PANDA")} fz={12} fw={600}>{agentName ?? "RED PANDA"}</Text>{agentDirection == null ? null : <Text fz={11} c="dimmed">{agentDirection}</Text>}<Text fz={11} c="dimmed">{turn.final?.occurredAt == null ? null : formatMessageTime(turn.final.occurredAt).short}</Text></Group>
                           <MarkdownMessage
                             content={reply.text}
                             streaming={reply.streaming}
@@ -289,15 +338,18 @@ export function Conversation({ agentName }: { agentName?: string }) {
                               ))}
                             </Group>
                           )}
-                        </Stack>
                           {settled ? (
                             <TurnEndActions
+                              messageId={reply.key}
+                              author={agentName ?? "RED PANDA"}
                               elapsedMs={elapsedMs}
                               occurredAt={turn.final?.occurredAt ?? null}
                               replyText={reply.text}
                             />
                           ) : null}
+                        </Stack>
                     </Box>
+                    </>
                   ) : turnNeedsSilentEnd(turn, settled) &&
                     !(latest && notice !== null) ? (
                     <SilentEndHint />
@@ -320,10 +372,13 @@ export function Conversation({ agentName }: { agentName?: string }) {
                 </>
               );
               return (
-              <Stack className={turn.key === highlightedKey ? "conversation-turn is-focused" : "conversation-turn"} gap={8} key={turn.key}>
+              <Stack className={turn.key === highlightedKey ? "conversation-turn is-focused" : "conversation-turn"} gap={24} key={turn.key}>
+                {firstUnread !== undefined && turn.user?.key === firstUnread ? <div className="unread-divider" role="separator">以下是未读消息</div> : null}
                 {turn.user === null ? null : (
-                  <Box component="article" className="message message-user">
+                  <Box component="article" className={`message message-user${quotedMessage === turn.user.key ? " is-quote-target" : ""}`} data-message-id={turn.user.key}>
+                    <span className="agent-avatar human-avatar" aria-hidden="true">你</span>
                     <UserMessage
+                      messageId={turn.user.key}
                       images={turn.user.images}
                       files={turn.user.files}
                       sessionId={sessionId}
@@ -363,7 +418,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
         />
       )}
       <Box className="composer-dock" ref={wheelAreaRef}>
-        {items.length === 0 || following ? null : (
+        {quoteReturn !== null ? <Button className="jump-to-latest" variant="default" size="compact-sm" onClick={() => { timelineRef.current?.scrollTo({ top: quoteReturn }); setQuoteReturn(null); }}>返回刚才的位置</Button> : items.length === 0 || following ? null : (
           <Button
             className="jump-to-latest"
             leftSection={<IconArrowDown size={14} />}
@@ -374,7 +429,7 @@ export function Conversation({ agentName }: { agentName?: string }) {
             size="compact-sm"
             variant="default"
           >
-            跳到最新
+            {newCount > 0 ? `${newCount} 条新消息` : "跳到最新"}
           </Button>
         )}
         <Box>
@@ -489,13 +544,14 @@ export function Conversation({ agentName }: { agentName?: string }) {
       </ContentPage>
     )}
     </Box>
+    </ChatPresentation>
   );
 }
 
 function AssistantAvatar({ name }: { name?: string }) {
   return name === undefined
     ? <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
-    : <span className="agent-avatar agent-avatar-small" aria-hidden="true">{name.slice(0, 1)}</span>;
+    : <BotAvatar name={name} />;
 }
 
 function RunningHint({ label, agentName }: { label: string; agentName?: string }) {
@@ -515,10 +571,14 @@ function RunningHint({ label, agentName }: { label: string; agentName?: string }
 }
 
 function TurnEndActions({
+  messageId,
+  author,
   replyText,
   occurredAt,
   elapsedMs,
 }: {
+  messageId: string;
+  author: string;
   replyText: string | null;
   occurredAt: string | null;
   elapsedMs: number | null;
@@ -527,6 +587,7 @@ function TurnEndActions({
   const time = occurredAt === null ? null : formatMessageTime(occurredAt);
   return (
     <Group className="turn-end-actions" gap={4} justify="flex-start" wrap="nowrap">
+      {replyText === null ? null : <QuoteAction message={messageReference(messageId, author, replyText)} />}
       {replyText === null ? null : (
         <ActionIcon
           aria-label="复制回复"
@@ -543,11 +604,7 @@ function TurnEndActions({
           {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         </ActionIcon>
       )}
-      {time === null ? null : (
-        <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} ml={4} title={`回复提交于 ${time.full}`}>
-          {time.short}
-        </Text>
-      )}
+      {time === null ? null : <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} title={`回复提交于 ${time.full}`}>已发送</Text>}
       <TurnTiming startedAt={null} running={false} elapsedMs={elapsedMs} />
     </Group>
   );

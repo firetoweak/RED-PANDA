@@ -196,7 +196,7 @@ it("点 Agent 打开它的会话", () => {
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
 });
 
-it("品牌返回首页，待处理只提示所属 Bot，不占独立导航", () => {
+it("对话入口返回首页，待处理只提示所属 Bot，不占独立导航", () => {
   browserStubs();
   queries.agents = [agent({ session_id: "ada", name: "Ada" }), agent({ session_id: "lin", name: "Lin" })];
   queries.groups = [];
@@ -207,7 +207,7 @@ it("品牌返回首页，待处理只提示所属 Bot，不占独立导航", () 
   expect(screen.queryByRole("button", { name: /^待处理/ })).not.toBeInTheDocument();
   expect(within(screen.getByRole("button", { name: "Ada", exact: true })).getByLabelText("空闲 · 需要你处理")).toHaveClass("activity-dot-attention");
   expect(within(screen.getByRole("button", { name: "Lin", exact: true })).getByLabelText("空闲")).toHaveClass("activity-dot-idle");
-  fireEvent.click(screen.getByRole("button", { name: "RED PANDA 首页" }));
+  fireEvent.click(screen.getByRole("button", { name: "所有对话" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent(/^\/$/);
 });
 

@@ -31,7 +31,7 @@ function group(partial: Partial<GroupView>): GroupView {
   };
 }
 
-function renderPage() {
+function renderPage(groupId = "group-1") {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(document, "fonts", { configurable: true, value: { addEventListener() {}, removeEventListener() {} } });
@@ -40,7 +40,7 @@ function renderPage() {
   return render(
     <Provider store={store}>
       <MantineProvider env="test">
-        <MemoryRouter initialEntries={["/groups/group-1"]}>
+        <MemoryRouter initialEntries={[`/groups/${groupId}`]}>
           <Routes><Route path="/groups/:groupId" element={<GroupChatPage />} /></Routes>
         </MemoryRouter>
       </MantineProvider>
@@ -53,6 +53,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "fonts");
   api.post.mockClear();
+  localStorage.clear();
 });
 
 it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
@@ -66,8 +67,10 @@ it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
     ],
   });
   renderPage();
-  expect(screen.getByText("你")).toBeInTheDocument();
+  expect(within(screen.getByRole("article", { name: "你的群消息" })).getAllByText("你").length).toBeGreaterThan(0);
   expect(screen.getByRole("link", { name: "Ada" })).toHaveAttribute("href", "/sessions/agent-ada");
+  expect(screen.queryByRole("complementary", { name: "群资料" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "显示群资料" }));
   const details = within(screen.getByRole("complementary", { name: "群资料" }));
   expect(details.getByRole("link", { name: "查看 Ada 的会话" })).toHaveAttribute("href", "/sessions/agent-ada");
   expect(details.queryByText("其他项目")).not.toBeInTheDocument();
@@ -112,7 +115,7 @@ it("候选支持方向键和点选，删除正文点名后不保留收件人", a
   fireEvent.click(screen.getByRole("option", { name: /Ada/ }));
   expect(input).toHaveValue("@Lin @Ada ");
   fireEvent.change(input, { target: { value: "大家同步一下" } });
-  expect(screen.getByText("未点名 · 通知全体")).toBeInTheDocument();
+  expect(screen.getByText("群消息 · 点名可选")).toBeInTheDocument();
   fireEvent.keyDown(input, { key: "Enter" });
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
     connectionId: "connection", groupId: "group-1", text: "大家同步一下", mention: [],
@@ -135,4 +138,58 @@ it("完整名字决定收件人，支持中文、带空格和符号的名字，�
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
     connectionId: "connection", groupId: "group-1", text: "请@李雷 同步 @Ada QA 和 @C++，联系 dev@Ada。", mention: ["Ada QA", "李雷", "C++"],
   }));
+});
+
+it("整条引用保留来源但不把预览中的点名当作通知", async () => {
+  api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "@Lin 看看这份完整报告", mentioned_agents: ["Lin"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
+  renderPage();
+  fireEvent.click(screen.getByRole("button", { name: "引用 Ada 的消息" }));
+  await screen.findByRole("button", { name: "取消引用" });
+  expect(screen.getByLabelText("群消息")).toHaveValue("");
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "这个结论继续讨论" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text: "> [Ada](#message:source)\n> @Lin 看看这份完整报告\n\n这个结论继续讨论", mention: [] }));
+});
+
+it("切换对话分别保留群草稿和引用，发送后清除", async () => {
+  api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "长报告", mentioned_agents: [], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
+  const first = renderPage();
+  fireEvent.click(screen.getByRole("button", { name: "引用 Ada 的消息" }));
+  await screen.findByRole("button", { name: "取消引用" });
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "尚未发送的判断" } });
+  first.unmount();
+  api.group = group({ group_id: "group-2", name: "另一个群" });
+  const second = renderPage("group-2");
+  expect(screen.getByLabelText("群消息")).toHaveValue("");
+  second.unmount();
+  api.group = group({});
+  renderPage();
+  expect(screen.getByLabelText("群消息")).toHaveValue("尚未发送的判断");
+  expect(screen.getByRole("button", { name: "取消引用" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(screen.getByLabelText("群消息")).toHaveValue(""));
+  expect(localStorage.getItem("redpanda.composerDraft.group:group-1")).toBeNull();
+});
+
+it("正文点名与头像同色，代码和邮箱保持原文", () => {
+  api.group = group({ messages: [{ message_id: "source", sender: "Lin", text: "请 @Ada 阅读，邮箱 dev@Ada。\n\n`@Ada`\n\n```txt\n@Ada\n```", mentioned_agents: ["Ada"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
+  const { container } = renderPage();
+  expect(container.querySelectorAll(".message-mention")).toHaveLength(1);
+  expect(container.querySelector(".message-mention")).toHaveTextContent("@Ada");
+  expect(container.querySelector("code")).toHaveTextContent("@Ada");
+});
+
+it("发送请求未结束时离开群聊，成功后不恢复已发送草稿", async () => {
+  let complete!: () => void;
+  const sent = new Promise<void>((resolve) => { complete = resolve; });
+  api.post.mockReturnValueOnce({ unwrap: () => sent });
+  api.group = group({});
+  const page = renderPage();
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "发送后马上去私聊" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  page.unmount();
+  complete();
+  await waitFor(() => expect(localStorage.getItem("redpanda.composerDraft.group:group-1")).toBeNull());
+  renderPage();
+  expect(screen.getByLabelText("群消息")).toHaveValue("");
 });

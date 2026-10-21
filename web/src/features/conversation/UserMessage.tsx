@@ -1,14 +1,17 @@
-import { ActionIcon, Group, Paper, Stack, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { IconCheck, IconCopy } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
 import { AttachmentTile, attachmentUrl } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { formatMessageTime } from "./messageTime";
+import { MarkdownMessage } from "./MarkdownMessage";
+import { messageReference, QuoteAction } from "./ChatPresentation";
 
 const ATTACHMENT_TOKEN = /\[(?:Image|File) #\d+\]/g;
 
 type UserMessageProps = {
+  messageId?: string;
   sessionId: string;
   text: string;
   occurredAt: string;
@@ -17,6 +20,7 @@ type UserMessageProps = {
 };
 
 export function UserMessage({
+  messageId,
   sessionId,
   text,
   occurredAt,
@@ -48,7 +52,8 @@ export function UserMessage({
   }, [copied]);
 
   return (
-    <Stack className="user-message-row" align="flex-end" gap={6}>
+    <Stack className="user-message-row user-bubble" gap={6}>
+      <Group className="message-meta" gap={7} justify="flex-end"><Text fw={600} fz={12}>你</Text><Text component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text></Group>
       {fileCards}
       {images.length === 0 ? null : (
         <Group className="user-attachments" gap={8} justify="flex-end">
@@ -63,13 +68,10 @@ export function UserMessage({
         </Group>
       )}
       {displayText === "" ? null : (
-        <Paper className="user-bubble" px="md" py="sm" radius="xl">
-          <Text className="message-text" lh={1.6} size="sm">
-            {displayText}
-          </Text>
-        </Paper>
+        <MarkdownMessage content={displayText} streaming={false} />
       )}
       <Group className="user-message-actions" gap={4} justify="flex-end" wrap="nowrap">
+        {messageId === undefined ? null : <QuoteAction message={messageReference(messageId, "你", text)} />}
         <Tooltip label={copied ? "已复制" : "复制消息"}>
           <ActionIcon
             aria-label={copied ? "已复制消息" : "复制消息"}
@@ -84,9 +86,6 @@ export function UserMessage({
             {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
           </ActionIcon>
         </Tooltip>
-        <Text component="time" dateTime={occurredAt} c="dimmed" fz={11} ml={4} title={`发送于 ${time.full}`}>
-          {time.short}
-        </Text>
       </Group>
     </Stack>
   );

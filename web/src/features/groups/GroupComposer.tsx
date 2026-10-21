@@ -1,15 +1,29 @@
-import { ActionIcon, Group, Text, Textarea } from "@mantine/core";
-import { IconAt, IconSend } from "@tabler/icons-react";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { ActionIcon, Button, Group, Text, Textarea } from "@mantine/core";
+import { IconAt, IconArrowUp } from "@tabler/icons-react";
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ChatPresentation, BotAvatar, MessageQuote, splitMessageQuote, withMessageQuote } from "../conversation/ChatPresentation";
+import { clearSentComposerText, restoreComposerText, saveComposerText } from "../conversation/composerDraft";
 
-export function GroupComposer({ groupName, members, connected, posting, onSend }: {
+export function GroupComposer({ groupId, groupName, members, connected, posting, onSend }: {
+  groupId?: string;
   groupName: string;
   members: string[];
   connected: boolean;
   posting: boolean;
   onSend: (text: string, mention: string[]) => Promise<boolean>;
 }) {
-  const [text, setText] = useState("");
+  const draftKey = `group:${groupId ?? groupName}`;
+  const [draft, setDraft] = useState(() => restoreComposerText(draftKey));
+  const { quote: requestedQuote, onQuote } = useContext(ChatPresentation);
+  const { body: text, quote } = splitMessageQuote(draft);
+  const setText = (body: string) => setDraft(withMessageQuote(body, quote));
+  useEffect(() => { saveComposerText(draftKey, draft, ""); }, [draftKey, draft]);
+  useEffect(() => {
+    if (requestedQuote === null) return;
+    setDraft((current) => withMessageQuote(splitMessageQuote(current).body, requestedQuote));
+    onQuote(null);
+    textarea.current?.focus();
+  }, [requestedQuote, onQuote]);
   const [cursor, setCursor] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [selected, setSelected] = useState(0);
@@ -50,26 +64,28 @@ export function GroupComposer({ groupName, members, connected, posting, onSend }
 
   async function send() {
     if (!canSend) return;
-    if (await onSend(text, mention)) {
-      setText("");
+    if (await onSend(draft, mention)) {
+      clearSentComposerText(draftKey, "text", draft);
+      setDraft("");
       setCursor(0);
       setDismissed(false);
     }
   }
 
-  return <div className="composer group-composer">
+  return <div className={`composer group-composer${quote !== null || text.length > 90 || text.includes("\n") ? " is-expanded" : ""}`}>
+    {quote === null ? null : <MessageQuote quote={quote} onRemove={() => setDraft(text)} />}
     {opened ? <div className="group-mention-menu">
       <Text className="group-mention-heading" fz={11} c="dimmed">点名群成员</Text>
       <div role="listbox" aria-label="点名候选" id={listId}>
         {candidates.map((name, index) => <button key={name} type="button" role="option"
           id={`${listId}-${index}`} aria-selected={index === activeIndex} tabIndex={-1}
           onMouseDown={(event) => event.preventDefault()} onClick={() => choose(name)}>
-          <span className="agent-avatar agent-avatar-small" aria-hidden="true">{name.slice(0, 1)}</span>
+          <BotAvatar name={name} className="agent-avatar-small" />
           <span>{name}</span><span className="group-mention-at">@{name}</span>
         </button>)}
       </div>
     </div> : null}
-    <Textarea ref={textarea} aria-label="群消息" autosize maxRows={7} minRows={1}
+    <Textarea className="composer-input" ref={textarea} aria-label="群消息" autosize maxRows={7} minRows={quote !== null || text.length > 90 || text.includes("\n") ? 2 : 1}
       aria-autocomplete="list" aria-controls={opened ? listId : undefined}
       aria-activedescendant={opened ? `${listId}-${activeIndex}` : undefined}
       onChange={(event) => {
@@ -98,23 +114,21 @@ export function GroupComposer({ groupName, members, connected, posting, onSend }
           void send();
         }
       }}
-      placeholder={`发送到 ${groupName}，输入 @ 点名…`} variant="unstyled" value={text} />
-    <Group className="group-composer-actions" justify="space-between" wrap="nowrap" gap="xs">
+      placeholder={`发送到${groupName}，输入 @ 点名成员…`} variant="unstyled" value={text} />
+    <Group className="composer-meta" justify="space-between" wrap="nowrap" gap="xs">
       <Group gap={6} wrap="nowrap" className="group-composer-recipients">
-        <ActionIcon aria-label="点名成员" variant="subtle" color="gray" size={28} onClick={() => {
+        <ActionIcon aria-label="点名成员" variant="subtle" color="gray" radius="xl" size={27} onClick={() => {
           const start = textarea.current?.selectionStart ?? text.length;
           const end = textarea.current?.selectionEnd ?? start;
           const prefix = start > 0 && /[A-Za-z0-9._%+-]/.test(text[start - 1]) ? " @" : "@";
           replace(start, end, prefix);
         }}><IconAt size={17} /></ActionIcon>
-        <Text c="dimmed" fz={11} truncate aria-live="polite">
-          {mention.length === 0 ? "未点名 · 通知全体" : `发送给 ${mention.map((name) => `@${name}`).join("、")}`}
+        <Text c="dimmed" fz={12} truncate aria-live="polite">
+          {mention.length === 0 ? "群消息 · 点名可选" : `发送给 ${mention.map((name) => `@${name}`).join("、")}`}
         </Text>
       </Group>
-      <ActionIcon aria-label="发送到群" disabled={!canSend} loading={posting}
-        onClick={() => void send()} radius="xl" size={30} variant="filled" color="gray">
-        <IconSend size={16} />
-      </ActionIcon>
+      <Button className="composer-send" aria-label="发送到群" disabled={!canSend} loading={posting}
+        onClick={() => void send()} rightSection={<IconArrowUp size={13} stroke={1.7} />}>发送</Button>
     </Group>
   </div>;
 }

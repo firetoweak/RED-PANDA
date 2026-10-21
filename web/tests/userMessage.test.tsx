@@ -19,17 +19,17 @@ afterEach(() => {
   Reflect.deleteProperty(document, "fonts");
 });
 
-it("消息下方呈现发送时间，复制原文", async () => {
+it("消息身份栏呈现发送时间，复制原文", async () => {
   render(<MantineProvider><UserMessage
     sessionId="session" text="本项目还未提交的代码，都有哪些成分"
     occurredAt="2026-10-03T08:00:05Z" images={[]} files={[]}
   /></MantineProvider>);
 
   const copy = screen.getByRole("button", { name: "复制消息" });
-  const footer = copy.closest(".user-message-actions")!;
+  const message = copy.closest(".user-message-row")!;
   expect(screen.queryByRole("button", { name: "编辑消息" })).not.toBeInTheDocument();
-  expect(footer.querySelector("time")).toHaveAttribute("datetime", "2026-10-03T08:00:05Z");
-  expect(footer.querySelector("time")).toHaveAttribute("title", expect.stringContaining("发送于"));
+  expect(message.querySelector("time")).toHaveAttribute("datetime", "2026-10-03T08:00:05Z");
+  expect(message.querySelector("time")).toHaveAttribute("title", expect.stringContaining("发送于"));
   fireEvent.click(copy);
   await screen.findByRole("button", { name: "已复制消息" });
   expect(writeText).toHaveBeenCalledWith("本项目还未提交的代码，都有哪些成分");
