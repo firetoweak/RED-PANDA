@@ -6,7 +6,7 @@ import socket
 import subprocess
 import time
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
 
 import pytest
 
@@ -48,11 +48,13 @@ def test_start_serves_built_web_without_node_from_another_directory(tmp_path):
         process = subprocess.Popen(command + ["--port", str(port)], cwd=tmp_path, env=environment,
                                    stdout=log, stderr=log)
         try:
+            # Probe this loopback server directly, regardless of machine proxies.
+            opener = build_opener(ProxyHandler({}))
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
                 assert process.poll() is None, (tmp_path / "server.log").read_text(encoding="utf-8")
                 try:
-                    with urlopen(f"http://127.0.0.1:{port}/", timeout=1) as response:
+                    with opener.open(f"http://127.0.0.1:{port}/", timeout=1) as response:
                         assert b"Prepared RED PANDA" in response.read()
                     break
                 except URLError:
