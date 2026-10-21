@@ -460,7 +460,7 @@ def window_preamble(summary, upto, catalog, identity):
     before = []
     if identity is not None:
         before.append({"role": "user", "content": json.dumps(
-            {"fact": "coding_bot.identity", "data": identity}, ensure_ascii=False)})
+            {"fact": "bot.identity", "data": identity}, ensure_ascii=False)})
     before.append({
         "role": "user",
         "content": HANDOFF_PREFIX + f"这份交接覆盖的历史截至消息序号 {upto}。\n" + summary,

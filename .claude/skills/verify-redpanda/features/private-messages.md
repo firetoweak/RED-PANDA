@@ -4,7 +4,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 
 ## Sub-features
 
-- `deliver`：送达后对方 journal 有 `coding_bot.private_message`，并因此开始一轮决策。
+- `deliver`：送达后对方 journal 有 `bot.private_message`，并因此开始一轮决策。
 - `notice`：私聊时间线用“已发消息给 / 消息来自”标明实际收发，对方名字可打开私聊，刷新后仍可见。
 - `paused`：收件人 `session.paused` 为 true 时仍送达，结果说明对方暂停。
 - `reject`：发给自己、名册中没有这个名字、人在别的项目、引用不属于这两人，都是已知失败。
@@ -20,7 +20,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 需要 `live_model_ready`。`code` 在发送方 journal 的命令结果里。已知失败（`ok: false`）的工具卡徽标仍是 `完成`，不要按 `失败` 去找。
 
 - **送达**：请 `Ada` `send_message`，`recipient` 为 `Lin`，正文为一句确定的话，不带 `reply_to`。
-  - (a) 结果 `code` 为 `DELIVERED`，`data.paused` 为 false，`data.notice` 为 `已送达；不等待对方回复。`。`Lin` 的 journal 有 `coding_bot.private_message`，`text` 是这句，`requests_decision` 为 true。`GET /api/sessions/<Lin>` 随后出现处理步骤与直接给人看的普通回复。
+  - (a) 结果 `code` 为 `DELIVERED`，`data.paused` 为 false，`data.notice` 为 `已送达；不等待对方回复。`。`Lin` 的 journal 有 `bot.private_message`，`text` 是这句，`requests_decision` 为 true。`GET /api/sessions/<Lin>` 随后出现处理步骤与直接给人看的普通回复。
   - (b) `Ada` 时间线显示“已发消息给 Lin”，`Lin` 时间线显示“消息来自 Ada”；名字带小头像和身份色，点击可进入对方私聊。工具卡名为 `send_message`，徽标 `完成`。`Lin` 的普通结尾直接显示为给人的回复；它不会自动私信回 `Ada`。刷新后收发标识不丢失、不重复。
   - (c) 人检出目录的 `note.txt` 不变。`GET /api/inbox` 不因这条私信多出条目。发送方不等 `Lin` 回完才结束这次工具调用。
   - (d) 见下方拒绝路径。
@@ -30,12 +30,12 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
   - (c) `paused` 仍为 true；暂停且有待处理输入的 Agent 会在 `GET /api/inbox` 出现 `kind: paused`，由人点 `继续` 才推进。不是单独的私信列表。
   - (d) 点 `继续` 之后，`Lin` 才处理这句，并出现直接给人看的普通回复。
 - **拒绝**：分别请 `Ada` 发给自己、发给名册不存在的名字，以及用一个不属于这两人的 `reply_to`。关联不同代码项目的 Bot 可以正常互发私信。
-  - (a) 三次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`没有这位同事。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `coding_bot.private_message`。
+  - (a) 三次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`没有这位同事。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `bot.private_message`。
   - (b) 工具卡仍是 `send_message`，徽标 `完成`；不会为被拒绝的发送新增“已发消息给”标识。
   - (c) 已有的私信和两边的暂停状态不变。
   - (d) 空白 `recipient` 或 `text` → `INVALID_ARGUMENT`，同样不投递。
 - **上限**：沿 `reply_to` 把同一条交流回复到第 11 跳（第 1 条不算跳），或让同一条人的消息驱动超过 20 条 Agent 消息（私信与群发言合计数）。
-  - (a) 结果 `code` 为 `HOP_LIMIT_REACHED` 或 `ORIGIN_LIMIT_REACHED`，`error` 为 `这条交流已达上限，已通知人；需要继续时请在与人的对话中说明。`。发送方 journal 有 `coding_bot.communication_limit_reached`，`requests_decision` 为 false。对方时间线没有这句被拒绝的正文。
+  - (a) 结果 `code` 为 `HOP_LIMIT_REACHED` 或 `ORIGIN_LIMIT_REACHED`，`error` 为 `这条交流已达上限，已通知人；需要继续时请在与人的对话中说明。`。发送方 journal 有 `bot.communication_limit_reached`，`requests_decision` 为 false。对方时间线没有这句被拒绝的正文。
   - (b) 发送方这一轮的步骤正文含 `与 <收件人> 的交流已达上限，需要你判断是否继续。`。
   - (c) `GET /api/inbox` 出现交流超限提示（`kind: limit`），没有批准按钮；人在发送方会话再发消息后消失，详见 inbox。不能再按「收件箱只有授权和控制提案」判定。
   - (d) 超限的那一次调用之后，对方 journal 的私信条数不增加。
