@@ -1,7 +1,7 @@
 import {
   ActionIcon, Alert, Button, Drawer, Group, Loader, ScrollArea, Text, Tooltip,
 } from "@mantine/core";
-import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup, IconShieldCheck } from "@tabler/icons-react";
+import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import { Link, useParams } from "react-router-dom";
@@ -172,7 +172,6 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           {failure === null ? null : <Alert color="red">{failure}</Alert>}
           <GroupComposer groupId={groupId} groupName={group.name} members={group.members} connected={connectionId !== null}
             posting={posting.isLoading} onSend={send} />
-          <div className="composer-help"><span>Enter 发送 · Shift + Enter 换行</span><span className="composer-lock-note"><IconShieldCheck size={10} />每位 Bot 的授权在私聊中处理</span></div>
         </div>
       </div>
       {narrow ? <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)} title="群资料" position="right" size={300} closeButtonProps={{ "aria-label": "关闭群资料" }}>{details}</Drawer>

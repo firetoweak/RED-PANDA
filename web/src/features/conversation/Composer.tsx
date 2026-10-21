@@ -10,7 +10,6 @@ import {
 } from "@mantine/core";
 import {
   IconArrowUp,
-  IconShieldCheck,
   IconPlayerStopFilled,
   IconPlayerPlayFilled,
   IconPlus,
@@ -607,7 +606,6 @@ export function Composer({
         </Group>
       </Group>
     </Paper>
-    <div className="composer-help"><span>Enter 发送 · Shift + Enter 换行</span><span className="composer-lock-note"><IconShieldCheck size={10} />每位 Bot 的授权在私聊中处理</span></div>
     </>
   );
 }

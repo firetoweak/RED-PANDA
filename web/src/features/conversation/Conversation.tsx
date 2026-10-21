@@ -71,7 +71,7 @@ import { ConversationTimeline } from "./ConversationTimeline";
 import { registerTimelineFocus } from "./timelineFocus";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
-import { BotAvatar, ChatPresentation, identityColor, messageReference, QuoteAction, type MessageReference } from "./ChatPresentation";
+import { BotAvatar, ChatPresentation, messageReference, QuoteAction, type MessageReference } from "./ChatPresentation";
 
 const privateReading = new Map<string, { following: boolean; count: number }>();
 
@@ -337,18 +337,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                               ))}
                             </Group>
                           )}
-                          <div className="message-footer">
-                            <Group className="message-meta" gap={7}><Text data-identity={identityColor(agentName ?? "RED PANDA")} fz={12} fw={600}>{agentName ?? "RED PANDA"}</Text><Text fz={11} c="dimmed">{turn.final?.occurredAt == null ? null : formatMessageTime(turn.final.occurredAt).short}</Text></Group>
-                          {settled ? (
-                            <TurnEndActions
-                              messageId={reply.key}
-                              author={agentName ?? "RED PANDA"}
-                              elapsedMs={elapsedMs}
-                              occurredAt={turn.final?.occurredAt ?? null}
-                              replyText={reply.text}
-                            />
-                          ) : null}
-                          </div>
                         </Stack>
                     </Box>
                     </>
@@ -356,7 +344,16 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                     !(latest && notice !== null) ? (
                     <SilentEndHint />
                   ) : null}
-                  {turn.process.length === 0 && thinking === null ? null : <div className="turn-details" aria-label="思考与执行详情">
+                  {!(reply !== null && settled) && turn.process.length === 0 && thinking === null ? null : <div className="turn-details" aria-label="消息操作与过程">
+                  {reply !== null && settled ? (
+                    <TurnEndActions
+                      messageId={reply.key}
+                      author={agentName ?? "RED PANDA"}
+                      elapsedMs={elapsedMs}
+                      occurredAt={turn.final?.occurredAt ?? null}
+                      replyText={reply.text}
+                    />
+                  ) : null}
                   {turn.process.length === 0 ? null : (
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
@@ -608,7 +605,7 @@ function TurnEndActions({
           {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
         </ActionIcon>
       )}
-      {time === null ? null : <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} title={`回复提交于 ${time.full}`}>已发送</Text>}
+      {time === null ? null : <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} title={`回复提交于 ${time.full}`}>{time.short} · 已发送</Text>}
       <TurnTiming startedAt={null} running={false} elapsedMs={elapsedMs} />
     </Group>
   );
