@@ -42,6 +42,7 @@ _ASCII_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 PROSE_VOCABULARY = frozenset(
     {
         "Agent",
+        "Bot",
         "Git",
         "RED",
         "PANDA",
