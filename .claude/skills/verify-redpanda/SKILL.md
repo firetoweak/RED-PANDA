@@ -127,7 +127,7 @@ Write proof under `$EVIDENCE_DIR/<feature-id>/`. Cleanup must not delete that di
 For each driven entry point save:
 
 - `snapshot.txt` — accessibility snapshot taken after the action, while the resulting state is on screen
-- `page.png` — screenshot of that same state, with the sidebar word `RED PANDA` visible
+- `page.png` — screenshot of that same state, with the sidebar `新建 Bot` entry visible on desktop (on mobile, include the `打开 Agent 名册` control)
 - `state.json` — the read-only HTTP body named in the feature file
 - `note.txt` — feature id, entry point, and either `passed` or `skipped` plus the Doctor field that blocked it (`live_model_ready`)
 

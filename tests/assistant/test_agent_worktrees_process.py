@@ -5,6 +5,7 @@ import asyncio
 import os
 from pathlib import Path
 import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import threading
 import unittest
@@ -120,6 +121,17 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         second = await self.create("第二位")
         self.assertEqual(git(first.worktree, "rev-parse", "HEAD"), git(second.worktree, "rev-parse", "HEAD"))
         self.assertEqual(git(self.project, "symbolic-ref", "--short", "HEAD"), "human-new-history")
+
+    @unittest.skipUnless(sys.platform == "linux", "需要 Linux 的独立 tmpfs 挂载")
+    async def test_non_repository_at_a_filesystem_boundary_does_not_create_an_agent(self):
+        with TemporaryDirectory(dir="/dev/shm") as directory:
+            root = Path(directory).resolve()
+            workspace = self.registry.create(name="plain tmpfs", task_root=root)
+            with self.assertRaisesRegex(AgentProjectRequired, "Git 仓库"):
+                await self.create(workspace=workspace)
+            self.assertFalse((root / ".git").exists())
+        self.assertEqual(await self.host.agents.list(), ())
+        self.assertFalse(self.host.agent_worktrees.root.exists())
 
     async def test_data_directory_inside_the_human_checkout_is_rejected(self):
         home = RedPandaHome(self.project / "app-data")

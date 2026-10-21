@@ -1,17 +1,19 @@
-import { Drawer, Group, Text, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Drawer, Group, Text, UnstyledButton } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { IconFolder, IconUsersGroup } from "@tabler/icons-react";
+import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
+import { BotAvatar } from "./ChatPresentation";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
+  const fromGroup = (useLocation().state as { fromGroup?: { id: string; name: string } } | null)?.fromGroup;
   const { data: agents = [] } = useGetAgentsQuery();
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const { data: groups = [] } = useGetGroupsQuery();
@@ -24,7 +26,7 @@ export function SessionConversation() {
   const details = agent === undefined ? null : (
     <>
       <div className="agent-details-profile">
-        <span className="agent-avatar agent-details-avatar" aria-hidden="true">{agent.name.slice(0, 1)}</span>
+        <BotAvatar name={agent.name} className="agent-details-avatar" />
         <Text fw={600} size="md">{agent.name}</Text>
         <AgentStatus agent={agent} />
       </div>
@@ -53,18 +55,19 @@ export function SessionConversation() {
     <div className="session-page">
       <div className="session-main">
       <header className="page-header session-header">
+        {fromGroup === undefined ? null : <ActionIcon component={Link} to={`/groups/${encodeURIComponent(fromGroup.id)}`} aria-label={`返回 ${fromGroup.name}`} title={`返回 ${fromGroup.name}`} variant="subtle" color="gray"><IconArrowLeft size={18} /></ActionIcon>}
         <Group component={UnstyledButton} gap={10} wrap="nowrap" className="session-header-identity"
           aria-label={agent?.name ?? "Agent"} aria-expanded={detailsOpened}
           onClick={() => setDetailsOpened((opened) => !opened)}>
-          <span className="agent-avatar agent-avatar-small">{agent?.name.slice(0, 1) ?? "A"}</span>
+          <BotAvatar name={agent?.name ?? "Agent"} />
           <div className="session-header-name"><Text fw={600} size="sm" truncate>{agent?.name ?? "Agent"}</Text>
-            <Text c="dimmed" fz={11} truncate>{agent?.direction ?? "一起交流想法、处理任务"}</Text></div>
-          {agent === undefined ? null : <AgentStatus agent={agent} />}
+            <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>
         </Group>
         {workspace === undefined ? null : <span className="session-project-link">
           <IconFolder size={15} /><span>{workspace.name}</span></span>}
+        <ActionIcon aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
-      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} /></div>
+      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} agentDirection={agent?.direction} agentNames={agents.map((item) => item.name)} /></div>
       </div>
       {agent === undefined ? null : narrow ? (
         <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)}
@@ -73,7 +76,7 @@ export function SessionConversation() {
           {details}
         </Drawer>
       ) : !detailsOpened ? null : (
-        <aside className="agent-details" aria-label="Agent 资料">{details}</aside>
+        <aside className="agent-details" aria-label="Agent 资料"><header className="details-heading"><Text fw={600} fz={12}>Bot 资料</Text><ActionIcon aria-label="关闭 Bot 资料" variant="subtle" color="gray" onClick={() => setDetailsOpened(false)}><IconLayoutSidebarRightCollapse size={17} /></ActionIcon></header>{details}</aside>
       )}
     </div>
   );

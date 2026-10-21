@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { VirtuosoMockContext, type VirtuosoHandle } from "react-virtuoso";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -79,4 +79,30 @@ it("输入区滚轮转给聊天，长文本能自行滚动时保留原生滚动"
   draft.dispatchEvent(textWheel);
   expect(textWheel.defaultPrevented).toBe(false);
   expect(viewport.scrollTop).toBe(1880);
+});
+
+it("离开长会话再返回，恢复历史位置而不是回到开头或最新", async () => {
+  const turns: TimelineTurn[] = Array.from({ length: 200 }, (_, index) => ({
+    key: `restore-${index}`, user: null, process: [], active: null, final: null,
+  }));
+  function TestConversation({ following }: { following: boolean }) {
+    const dockRef = createRef<HTMLDivElement>();
+    return <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 200 }}>
+      <ConversationTimeline conversationKey="reading-restore" turns={turns}
+        listRef={createRef<VirtuosoHandle>()} wheelAreaRef={dockRef}
+        following={following} onFollowingChange={() => {}}
+        renderTurn={(turn) => <p>{turn.key}</p>} />
+      <div ref={dockRef} />
+    </VirtuosoMockContext.Provider>;
+  }
+  const first = render(<TestConversation following />);
+  await screen.findByText("restore-199");
+  const viewport = screen.getByTestId("virtuoso-scroller");
+  act(() => {
+    viewport.scrollTop = 18000;
+    viewport.dispatchEvent(new Event("scroll"));
+  });
+  first.unmount();
+  render(<TestConversation following={false} />);
+  await waitFor(() => expect(screen.getByTestId("virtuoso-scroller").scrollTop).toBe(18000));
 });

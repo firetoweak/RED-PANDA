@@ -10,6 +10,7 @@ import {
 } from "@mantine/core";
 import {
   IconArrowUp,
+  IconShieldCheck,
   IconPlayerStopFilled,
   IconPlayerPlayFilled,
   IconPlus,
@@ -17,6 +18,7 @@ import {
 } from "@tabler/icons-react";
 import {
   useEffect,
+  useContext,
   useRef,
   useState,
   type ClipboardEvent,
@@ -37,6 +39,7 @@ import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { createClientId } from "./clientId";
 import { clearSentComposerText, restoreComposerText, saveComposerText } from "./composerDraft";
+import { ChatPresentation, MessageQuote, splitMessageQuote, withMessageQuote } from "./ChatPresentation";
 import {
   composeSendContent,
   parkedPreviewText,
@@ -90,6 +93,14 @@ export function Composer({
   inputTokens,
 }: ComposerProps) {
   const [text, setText] = useState(() => restoreComposerText(sessionId));
+  const { quote: requestedQuote, onQuote } = useContext(ChatPresentation);
+  const composed = splitMessageQuote(text);
+  useEffect(() => {
+    if (requestedQuote === null) return;
+    setText((current) => withMessageQuote(splitMessageQuote(current).body, requestedQuote));
+    onQuote(null);
+    textareaRef.current?.focus();
+  }, [requestedQuote, onQuote]);
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
   const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -131,7 +142,7 @@ export function Composer({
     modelReady &&
     !pending.some((item) => item.state === "error") &&
     parked === null &&
-    (text.trim() !== "" || ready.length > 0);
+    (composed.body.trim() !== "" || ready.length > 0);
 
   useEffect(() => {
     saveComposerText(sessionId, text, parked?.text ?? "");
@@ -392,7 +403,7 @@ export function Composer({
     <>
     <Paper
       component="form"
-      className="composer"
+      className="composer is-expanded"
       data-dragging={dragging || undefined}
       onSubmit={(event: FormEvent) => void submit(event)}
       onDragEnter={(event) => {
@@ -411,11 +422,6 @@ export function Composer({
         }
       }}
       onDrop={onDrop}
-      p={8}
-      pl="md"
-      radius="lg"
-      shadow="lg"
-      withBorder
     >
       <input
         hidden
@@ -481,80 +487,34 @@ export function Composer({
           ))}
         </Group>
       )}
+      {composed.quote === null ? null : <MessageQuote quote={composed.quote} onRemove={() => setText(composed.body)} />}
       <Group className="composer-top" gap={10} wrap="nowrap" align="flex-end">
         <Textarea
           aria-label="消息"
           autosize
           className="composer-input"
           ref={textareaRef}
-          value={text}
-          onChange={(event) => setText(event.currentTarget.value)}
+          value={composed.body}
+          onChange={(event) => setText(withMessageQuote(event.currentTarget.value, composed.quote))}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={disabled ? "正在连接…" : "描述你想完成的事，或拖入文件…"}
-          minRows={1}
+          minRows={2}
           maxRows={7}
           variant="unstyled"
           disabled={disabled}
         />
-        <Group gap={6} wrap="nowrap">
-          {running ? (
-            <Tooltip label="停止">
-              <ActionIcon
-                aria-label="停止"
-                color="gray"
-                disabled={stopBusy || connectionId === null}
-                loading={stopBusy}
-                onClick={onStop}
-                radius="xl"
-                size={36}
-                type="button"
-                variant="light"
-              >
-                <IconPlayerStopFilled size={16} />
-              </ActionIcon>
-            </Tooltip>
-          ) : null}
-          {shouldWake && !running ? (
-            <Tooltip label="继续">
-              <ActionIcon
-                aria-label="继续"
-                color="blue"
-                disabled={stopBusy || retryBusy || connectionId === null}
-                onClick={onRetry}
-                radius="xl"
-                size={36}
-                type="button"
-                variant="light"
-              >
-                <IconPlayerPlayFilled size={16} />
-              </ActionIcon>
-            </Tooltip>
-          ) : null}
-          <Tooltip label="发送">
-            <ActionIcon
-              aria-label="发送"
-              disabled={!canSend}
-              loading={sending}
-              radius="xl"
-              size={36}
-              type="submit"
-              variant="filled"
-            >
-              <IconArrowUp size={18} stroke={2.2} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
       </Group>
-      <Group className="composer-meta" justify="space-between" gap="sm">
-        <Group gap={10} wrap="nowrap">
+      <Group className="composer-meta" justify="space-between" gap={8}>
+        <Group gap={8} wrap="nowrap">
           <Tooltip label="选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件">
             <ActionIcon
               aria-label="Add attachment"
+              color="gray"
               disabled={busy || connectionId === null}
               onClick={() => void addLocalPath()}
               radius="xl"
-              size={32}
+              size={28}
               type="button"
               variant="subtle"
             >
@@ -580,7 +540,7 @@ export function Composer({
             {workspacePath}
           </Text>
         )}
-        <Group justify="flex-end" gap="sm" style={{ marginLeft: "auto" }}>
+        <Group className="composer-trailing" gap={8} wrap="nowrap">
           {selection === undefined ? null : (
             <Tooltip radius="md" label={<div>
               <Text size="sm" ta="center">
@@ -598,11 +558,56 @@ export function Composer({
               </span>
             </Tooltip>
           )}
-          <ModelSelector sessionId={sessionId} connectionId={connectionId} />
+          <div className="composer-model"><ModelSelector sessionId={sessionId} connectionId={connectionId} /></div>
+          <Group gap={6} wrap="nowrap">
+            {running ? (
+              <Tooltip label="停止">
+                <ActionIcon
+                  aria-label="停止"
+                  color="gray"
+                  disabled={stopBusy || connectionId === null}
+                  loading={stopBusy}
+                  onClick={onStop}
+                  radius="xl"
+                  size={32}
+                  type="button"
+                  variant="light"
+                >
+                  <IconPlayerStopFilled size={16} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            {shouldWake && !running ? (
+              <Tooltip label="继续">
+                <ActionIcon
+                  aria-label="继续"
+                  color="blue"
+                  disabled={stopBusy || retryBusy || connectionId === null}
+                  onClick={onRetry}
+                  radius="xl"
+                  size={32}
+                  type="button"
+                  variant="light"
+                >
+                  <IconPlayerPlayFilled size={16} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            <Tooltip label="发送">
+              <Button
+                className="composer-send"
+                aria-label="发送"
+                disabled={!canSend}
+                loading={sending}
+                type="submit"
+                rightSection={<IconArrowUp size={13} stroke={1.7} />}
+              >发送</Button>
+            </Tooltip>
+          </Group>
         </Group>
       </Group>
     </Paper>
-    <Text className="composer-help">Enter 发送 · Shift + Enter 换行 · 请核对 Agent 的结果与文件改动</Text>
+    <div className="composer-help"><span>Enter 发送 · Shift + Enter 换行</span><span className="composer-lock-note"><IconShieldCheck size={10} />每位 Bot 的授权在私聊中处理</span></div>
     </>
   );
 }

@@ -18,3 +18,9 @@ start-*.ps1
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+
+# Local design discovery and browser evidence
+.superdesign/init/
+.superdesign/tmp/
+.superdesign/evidence/
+.impeccable/review/

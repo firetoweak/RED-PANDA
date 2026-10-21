@@ -155,7 +155,8 @@ class AgentWorktrees:
     def _require_project(self, root: Path) -> None:
         result = self._git(root, "rev-parse", "--is-inside-work-tree", accepted=(0, 128))
         if result.returncode == 128:
-            if b"not a git repository (or any of the parent directories)" in result.stderr:
+            if (b"not a git repository (or any of the parent directories)" in result.stderr
+                    or b"not a git repository (or any parent up to mount point " in result.stderr):
                 raise AgentProjectRequired("项目必须是 Git 仓库，请先初始化并创建首个提交。")
             raise_git(result)
         if result.stdout.strip() != b"true":

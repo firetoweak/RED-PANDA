@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle, type StateSnapshot } from "react-virtuoso";
 
 import type { TimelineTurn } from "./timelineTurns";
 
@@ -7,8 +7,10 @@ const components = {
   Header: () => <div className="timeline-start" />,
   Footer: () => <div className="timeline-end" />,
 };
+const readingPositions = new Map<string, StateSnapshot>();
 
 type ConversationTimelineProps = {
+  conversationKey?: string;
   turns: TimelineTurn[];
   listRef: RefObject<VirtuosoHandle | null>;
   wheelAreaRef: RefObject<HTMLDivElement | null>;
@@ -18,8 +20,9 @@ type ConversationTimelineProps = {
 };
 
 export function ConversationTimeline({
-  turns, listRef, wheelAreaRef, following, onFollowingChange, renderTurn,
+  conversationKey, turns, listRef, wheelAreaRef, following, onFollowingChange, renderTurn,
 }: ConversationTimelineProps) {
+  const restored = useRef(conversationKey === undefined ? undefined : readingPositions.get(conversationKey));
   const viewportRef = useRef<HTMLElement | null>(null);
   const sticking = useRef(following);
   sticking.current = following;
@@ -60,6 +63,10 @@ export function ConversationTimeline({
       if (event.target === viewport) stopFollowing();
     };
     const onScroll = () => {
+      if (conversationKey !== undefined) {
+        const scrollTop = viewport.scrollTop - (viewport.querySelector(".timeline-start")?.clientHeight ?? 0);
+        listRef.current?.getState((state) => readingPositions.set(conversationKey, { ...state, scrollTop }));
+      }
       const movedDown = viewport.scrollTop > previousTop;
       previousTop = viewport.scrollTop;
       if (movedDown && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24) {
@@ -96,7 +103,7 @@ export function ConversationTimeline({
       dockObserver.disconnect();
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     };
-  }, [onFollowingChange, wheelAreaRef]);
+  }, [conversationKey, listRef, onFollowingChange, wheelAreaRef]);
 
   return (
     <Virtuoso
@@ -104,7 +111,9 @@ export function ConversationTimeline({
       className="timeline-scroll virtual-timeline"
       data={turns}
       computeItemKey={(_, turn) => turn.key}
-      initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+      {...(restored.current === undefined
+        ? { initialTopMostItemIndex: { index: "LAST" as const, align: "end" as const } }
+        : { restoreStateFrom: restored.current })}
       increaseViewportBy={{ top: 800, bottom: 800 }}
       atBottomThreshold={24}
       totalListHeightChanged={followHeight}

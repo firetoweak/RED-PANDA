@@ -78,6 +78,7 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(await screen.findByText("回给人")).toBeInTheDocument();
   expect(screen.getByText("结论给你")).toBeInTheDocument();
   expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
+  expect(screen.queryByText("以下是未读消息")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /工作记录/ })).toBeNull();
 
   // A routine reply uses the same visible output and unread contract.
