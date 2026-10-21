@@ -1,4 +1,4 @@
-"""Coding Bot identities and communication facts; no routing or scheduling."""
+"""Bot identities and communication facts; no routing or scheduling."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,16 +14,16 @@ from redpanda.runtime import (
 from redpanda.runtime.json_values import thaw_value
 
 
-AGENT_CREATED = "coding_bot.agent_created"
-PROJECT_ATTACHED = "coding_bot.project_attached"
-PRIVATE_MESSAGE = "coding_bot.private_message"
-GROUP_MESSAGE = "coding_bot.group_message"
-GROUP_ATTENTION = "coding_bot.group_attention"
-GROUP_CREATED = "coding_bot.group_created"
-DIRECTION_DECLARED = "coding_bot.direction_declared"
-COLLEAGUE_JOINED = "coding_bot.colleague_joined"
-COMMUNICATION_LIMIT_REACHED = "coding_bot.communication_limit_reached"
-ROUTINES_UNWATCHED = "coding_bot.routines_unwatched"
+AGENT_CREATED = "bot.agent_created"
+PROJECT_ATTACHED = "bot.project_attached"
+PRIVATE_MESSAGE = "bot.private_message"
+GROUP_MESSAGE = "bot.group_message"
+GROUP_ATTENTION = "bot.group_attention"
+GROUP_CREATED = "bot.group_created"
+DIRECTION_DECLARED = "bot.direction_declared"
+COLLEAGUE_JOINED = "bot.colleague_joined"
+COMMUNICATION_LIMIT_REACHED = "bot.communication_limit_reached"
+ROUTINES_UNWATCHED = "bot.routines_unwatched"
 SOURCE = "coding_bot"
 
 Text = Annotated[str, Field(min_length=1)]
