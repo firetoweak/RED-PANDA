@@ -1,5 +1,5 @@
 import { ActionIcon, Alert, Button, Drawer, Group, Text, UnstyledButton } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
@@ -20,7 +20,8 @@ export function SessionConversation() {
   const { data: groups = [] } = useGetGroupsQuery();
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const [detailsOpened, setDetailsOpened] = useState(false);
-  const narrow = useMediaQuery("(max-width: 64em)");
+  const narrow = useMediaQuery("(max-width: 73.75em)");
+  useDidUpdate(() => setDetailsOpened(false), [narrow]);
   const agent = agents.find((item) => item.session_id === sessionId);
   const [linking, setLinking] = useState(false);
   const [unlinkProject, unlinking] = useUnlinkProjectMutation();
@@ -88,7 +89,8 @@ export function SessionConversation() {
       </div>
       {agent === undefined ? null : narrow ? (
         <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)}
-          title="Agent 资料" position="right" size={320}
+          title="Agent 资料" position="right" size="min(292px, 85vw)"
+          classNames={{ header: "details-heading", body: "details-body" }}
           closeButtonProps={{ "aria-label": "关闭 Agent 资料" }}>
           {details}
         </Drawer>

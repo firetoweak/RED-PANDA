@@ -3,7 +3,7 @@ import {
 } from "@mantine/core";
 import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
-import { useMediaQuery } from "@mantine/hooks";
+import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { Link, useParams } from "react-router-dom";
 
 import type { GroupMessage } from "../../api/contracts";
@@ -71,7 +71,8 @@ function GroupConversation({ groupId }: { groupId: string; }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [detailsOpened, setDetailsOpened] = useState(false);
   const [quote, setQuote] = useState<MessageReference | null>(null);
-  const narrow = useMediaQuery("(max-width: 64em)");
+  const narrow = useMediaQuery("(max-width: 73.75em)");
+  useDidUpdate(() => setDetailsOpened(false), [narrow]);
   const reading = useGroupReading(groupId, group?.messages);
 
   if (loadError !== undefined) {
@@ -171,7 +172,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
             posting={posting.isLoading} onSend={send} />
         </div>
       </div>
-      {narrow ? <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)} title="群资料" position="right" size={300} closeButtonProps={{ "aria-label": "关闭群资料" }}>{details}</Drawer>
+      {narrow ? <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)} title="群资料" position="right" size="min(292px, 85vw)" classNames={{ header: "details-heading", body: "details-body" }} closeButtonProps={{ "aria-label": "关闭群资料" }}>{details}</Drawer>
         : !detailsOpened ? null : <aside className="agent-details" aria-label="群资料"><header className="details-heading"><Text fw={600} fz={12}>群资料</Text><ActionIcon aria-label="关闭群资料" variant="subtle" color="gray" onClick={() => setDetailsOpened(false)}><IconLayoutSidebarRightCollapse size={17} /></ActionIcon></header>{details}</aside>}
     </div>
     </ChatPresentation>
