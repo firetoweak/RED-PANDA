@@ -51,17 +51,28 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
       { kind: "user", message_id: "hi", text: "你好", occurred_at: "2026-10-19T00:00:00Z", images: [], files: [] },
       { kind: "step", step_id: "s1", output_id: "hi", text: "回给人", thinking: null,
         occurred_at: "2026-10-19T00:00:01Z", tools: [] },
+      { kind: "private_message", message_id: "received-lin", direction: "received", peer: "Lin",
+        occurred_at: "2026-10-19T00:01:00Z" },
       { kind: "step", step_id: "s2", output_id: "colleague", text: "先看看 Lin 说的文件", thinking: null,
         occurred_at: "2026-10-19T00:01:00Z", tools: [{ command_id: "read", name: "read_file", status: "succeeded",
           error: null, arguments: { path: "a.md" } }] },
+      { kind: "private_message", message_id: "sent-lin", direction: "sent", peer: "Lin",
+        occurred_at: "2026-10-19T00:01:04Z" },
       { kind: "step", step_id: "s3", output_id: "read", text: "已回复 Lin\n\n细节：文件没问题", thinking: null,
         occurred_at: "2026-10-19T00:01:05Z", tools: [] },
       { kind: "step", step_id: "s3:tell", output_id: "tell", text: "结论给你", thinking: null,
         occurred_at: "2026-10-19T00:01:05Z", tools: [] },
     ],
   };
-  vi.stubGlobal("fetch", vi.fn(async (request: Request) =>
-    Response.json(new URL(request.url).pathname.endsWith("/routines") ? [] : view)));
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (path === "/api/agents") return Response.json([
+      { session_id: "agent-lin", workspace_id: null, name: "Lin", direction: null, activity: "idle", status: "idle" },
+    ]);
+    if (path.endsWith("/routines") || path.endsWith("/commands")) return Response.json([]);
+    if (path.endsWith("/changes")) return Response.json({ files: [], added: 0, removed: 0 });
+    return Response.json(view);
+  }));
   const store = configureStore({
     reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
@@ -78,6 +89,10 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(await screen.findByText("回给人")).toBeInTheDocument();
   expect(screen.getByText("结论给你")).toBeInTheDocument();
   expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
+  expect(screen.getByText("消息来自")).toBeVisible();
+  expect(screen.getByText("已发消息给")).toBeVisible();
+  expect(screen.getAllByRole("link", { name: "Lin" }).map((link) => link.getAttribute("href")))
+    .toEqual(["/sessions/agent-lin", "/sessions/agent-lin"]);
   expect(screen.queryByText("以下是未读消息")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /工作记录/ })).toBeNull();
 

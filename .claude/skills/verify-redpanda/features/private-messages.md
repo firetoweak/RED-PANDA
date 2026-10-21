@@ -5,13 +5,14 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 ## Sub-features
 
 - `deliver`：送达后对方 journal 有 `coding_bot.private_message`，并因此开始一轮决策。
+- `notice`：私聊时间线用“已发消息给 / 消息来自”标明实际收发，对方名字可打开私聊，刷新后仍可见。
 - `paused`：收件人 `session.paused` 为 true 时仍送达，结果说明对方暂停。
 - `reject`：发给自己、名册中没有这个名字、人在别的项目、引用不属于这两人，都是已知失败。
 - `limit`：显式回复链超过 10 跳，或同一源头驱动的 Agent 消息超过 20 条，拒绝发送，并在发送方与人的这一轮里写明已达上限。
 
 ## How to get to it (user POV)
 
-- 同一项目的 `Ada` 与 `Lin`。在 `Ada` 的 `消息` 里请它给 `Lin` 发私信。
+- 名册里的 `Ada` 与 `Lin`，无需关联代码项目。在 `Ada` 的 `消息` 里请它给 `Lin` 发私信。
 - 打开 `Lin` 看这一轮是否开始。没有「发私信」按钮。
 
 ## Driving it with the browser
@@ -20,7 +21,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 
 - **送达**：请 `Ada` `send_message`，`recipient` 为 `Lin`，正文为一句确定的话，不带 `reply_to`。
   - (a) 结果 `code` 为 `DELIVERED`，`data.paused` 为 false，`data.notice` 为 `已送达；不等待对方回复。`。`Lin` 的 journal 有 `coding_bot.private_message`，`text` 是这句，`requests_decision` 为 true。`GET /api/sessions/<Lin>` 随后出现处理步骤与直接给人看的普通回复。
-  - (b) `Ada` 的工具卡名为 `send_message`，徽标 `完成`。`Lin` 的普通结尾直接显示为给人的回复；它不会自动私信回 `Ada`。
+  - (b) `Ada` 时间线显示“已发消息给 Lin”，`Lin` 时间线显示“消息来自 Ada”；名字带小头像和身份色，点击可进入对方私聊。工具卡名为 `send_message`，徽标 `完成`。`Lin` 的普通结尾直接显示为给人的回复；它不会自动私信回 `Ada`。刷新后收发标识不丢失、不重复。
   - (c) 人检出目录的 `note.txt` 不变。`GET /api/inbox` 不因这条私信多出条目。发送方不等 `Lin` 回完才结束这次工具调用。
   - (d) 见下方拒绝路径。
 - **暂停的收件人**：在 `Lin` 的会话点 `停止`，确认 `session.paused` 为 true、按钮为 `继续`。再请 `Ada` 发另一句。
@@ -30,7 +31,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
   - (d) 点 `继续` 之后，`Lin` 才处理这句，并出现直接给人看的普通回复。
 - **拒绝**：分别请 `Ada` 发给自己、发给名册不存在的名字，以及用一个不属于这两人的 `reply_to`。关联不同代码项目的 Bot 可以正常互发私信。
   - (a) 三次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`没有这位同事。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `coding_bot.private_message`。
-  - (b) 工具卡仍是 `send_message`，徽标 `完成`。
+  - (b) 工具卡仍是 `send_message`，徽标 `完成`；不会为被拒绝的发送新增“已发消息给”标识。
   - (c) 已有的私信和两边的暂停状态不变。
   - (d) 空白 `recipient` 或 `text` → `INVALID_ARGUMENT`，同样不投递。
 - **上限**：沿 `reply_to` 把同一条交流回复到第 11 跳（第 1 条不算跳），或让同一条人的消息驱动超过 20 条 Agent 消息（私信与群发言合计数）。
@@ -48,3 +49,5 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Lin 向 Ada 的 send_message 送达，Ada 无新用户输入即普通回复 PRIVATE_RECEIVED。Mo 给已暂停的 Ada 发私信，结果 paused=true，Ada 保持暂停且收件箱出现 paused 提示；人继续后才回复 PAUSED_RECEIVED。拒绝与交流上限未重验。
 
 2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。
+
+2026-10-21 收发标识增量：隔离 Web、零代码项目、真实 DeepSeek，Atlas → Nova → Atlas 往返显示双向标识；点击名字、返回与刷新通过。1440×1004 明暗主题和 390×844 窄屏检查通过，无页面横向溢出。不存在的收件人返回 RECIPIENT_NOT_FOUND，标识数量不变。暂停、其他拒绝与交流上限未在本轮 live 重验，完整证据保存在本地 `.tools/`。

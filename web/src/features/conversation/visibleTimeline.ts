@@ -37,7 +37,15 @@ export type VisibleStep = {
   files: { attachment_id: string; name: string; size: number }[];
 };
 
-export type VisibleItem = VisibleUser | VisibleStep;
+export type VisiblePrivateMessage = {
+  key: string;
+  kind: "private_message";
+  direction: "sent" | "received";
+  peer: string;
+  occurredAt: string;
+};
+
+export type VisibleItem = VisibleUser | VisibleStep | VisiblePrivateMessage;
 
 export function visibleTimeline(
   conversation: ConversationView,
@@ -54,6 +62,15 @@ export function visibleTimeline(
       .map((item) => item.output_id),
   );
   const items: VisibleItem[] = conversation.items.map((item) => {
+    if (item.kind === "private_message") {
+      return {
+        key: `private:${item.direction}:${item.message_id}`,
+        kind: "private_message",
+        direction: item.direction,
+        peer: item.peer,
+        occurredAt: item.occurred_at,
+      };
+    }
     if (item.kind === "user") {
       return {
         key: item.message_id,

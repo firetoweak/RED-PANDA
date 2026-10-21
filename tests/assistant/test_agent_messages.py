@@ -68,7 +68,9 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         if key not in self.commands:
             runtime = AgentRuntime(self.journal(sender), ScriptedDecisionMaker((lambda _: ModelDecision(
                 command_requests=(InvokeTool(SEND_MESSAGE, (("recipient", "x"), ("text", "t"))),)),)),
-                {SEND_MESSAGE: ToolBinding(AsyncMock(return_value={"ok": True}))})
+                {SEND_MESSAGE: ToolBinding(AsyncMock(return_value={
+                    "ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "没有这位同事。",
+                }))})
             await runtime.receive_user_message(sender, label, delivery_id=label)
             self.commands[key] = (await runtime.advance(sender)).step.commands[0].command_id
             # Settle it so the sender's next decision is not held behind it.

@@ -664,6 +664,11 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 .execution-toggle { padding: 3px 0; color: var(--mantine-color-dimmed); }
 .execution-toggle p { font-size: 11px; font-weight: 400; }
 .assistant-turn { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.private-message-notice { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; color: var(--mantine-color-dimmed); font-size: 12px; line-height: 1.6; }
+.private-message-peer { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; text-decoration: none; overflow-wrap: anywhere; }
+.private-message-peer .agent-avatar { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 5px; font-size: 10px; }
+a.private-message-peer:hover { text-decoration: underline; text-underline-offset: 3px; }
+a.private-message-peer:focus-visible { outline: 2px solid var(--rp-composer-focus); outline-offset: 3px; border-radius: 3px; }
 .turn-details { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; width: min(calc(100% - 46px), calc(72ch + 32px)); margin-left: 46px; font-size: 15px; }
 .turn-details > .execution-process, .turn-details > .thinking-block { width: fit-content; max-width: 100%; min-width: 0; }
 .turn-details > .is-open { flex-basis: 100%; }

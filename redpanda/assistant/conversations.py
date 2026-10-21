@@ -7,11 +7,11 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, parse_agent_fact, project_agent, project_direction
+from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent, project_direction
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
-from redpanda.assistant.agent_messages import SEND_FILE
+from redpanda.assistant.agent_messages import SEND_FILE, SEND_MESSAGE
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.runtime.json_values import thaw_value
 from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, project_work_plan_updates
@@ -154,7 +154,16 @@ class StepItem:
     files: tuple[FileAttachment, ...] = ()
 
 
-ConversationItem = UserItem | StepItem
+@dataclass(frozen=True, slots=True)
+class PrivateMessageItem:
+    kind: Literal["private_message"]
+    message_id: str
+    direction: Literal["sent", "received"]
+    peer: str
+    occurred_at: datetime
+
+
+ConversationItem = UserItem | StepItem | PrivateMessageItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -514,6 +523,15 @@ def project_conversation(
     attachments: AttachmentStore | None = None,
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
+    sent_messages = {}
+    for step in steps:
+        for command in step.commands:
+            outcome = command.outcome
+            if (command.command.effect.name == SEND_MESSAGE and outcome is not None
+                    and outcome.status is OutcomeStatus.SUCCEEDED):
+                result = thaw_value(outcome.value)
+                if result["ok"] is True and result["code"] == "DELIVERED":
+                    sent_messages[command.canonical_outcome_event_id] = result["data"]
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -523,6 +541,17 @@ def project_conversation(
     items: list[ConversationItem] = []
     for event in events:
         payload = event.payload
+        if event.event_id in sent_messages:
+            message = sent_messages[event.event_id]
+            items.append(PrivateMessageItem("private_message", message["message_id"],
+                                           "sent", message["recipient"], event.occurred_at))
+            continue
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == PRIVATE_MESSAGE:
+            message = parse_agent_fact(payload)
+            if message.sender.kind == "agent":
+                items.append(PrivateMessageItem("private_message", message.message_id,
+                                               "received", message.sender.name, event.occurred_at))
+            continue
         if isinstance(payload, UserMessageReceived):
             file_ids = tuple(ref for ref in event.artifact_refs if is_file_attachment_id(ref))
             if file_ids and attachments is None:

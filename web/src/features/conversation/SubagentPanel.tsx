@@ -6,6 +6,7 @@ import { useObserveSubagentQuery } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { StepDisclosure } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { PrivateMessageNotice } from "./PrivateMessageNotice";
 import { useFollowOutput } from "./useFollowOutput";
 import { visibleTimeline } from "./visibleTimeline";
 
@@ -58,7 +59,8 @@ export function SubagentPanel({ parentSessionId, commandId }: {
             <Stack className="execution-steps" gap={4}>
               {items.map((item, index) => item.kind === "user"
                 ? <MarkdownMessage key={item.key} content={item.text} streaming={false} />
-                : <StepDisclosure key={item.key} step={item} index={index} expandRunning />)}
+                : item.kind === "step" ? <StepDisclosure key={item.key} step={item} index={index} expandRunning />
+                : <PrivateMessageNotice key={item.key} message={item} />)}
             </Stack>
           </Paper>}
           {runtime?.lastError == null ? null : <Alert color="red">{runtime.lastError}</Alert>}

@@ -78,6 +78,57 @@ def canonical_step_event(events, event_id, content, commands, metadata=None):
 
 
 class ConversationProjectionTest(unittest.TestCase):
+    def test_private_message_notices_follow_received_facts_and_delivered_outcomes(self):
+        from redpanda.assistant.agents import PRIVATE_MESSAGE
+
+        send = Command("send-1", InvokeTool("send_message", (
+            ("recipient", "Ada"), ("text", "请检查代码"), ("reply_to", None),
+        )))
+        events = (
+            event(1, "user-1", UserMessageReceived("问问 Ada")),
+            event(2, "step-1", committed_step("decision-1", "user-1", "", (send,))),
+            event(3, "incoming-1", DomainFactCommitted(PRIVATE_MESSAGE, {
+                "message_id": "private-in", "sender": {"kind": "agent", "name": "Lin"},
+                "recipient": "Atlas", "text": "我完成了检查", "reply_to": None,
+                "thread_id": "private-in", "hop": 0, "origin": "origin-1",
+            }, requests_decision=True)),
+            event(4, "attempt-1", DispatchAttemptStarted("att-1", "send-1"), causation_id="step-1"),
+            event(5, "outcome-1", CommandOutcomeReceived("send-1", "att-1", CommandOutcome(
+                OutcomeStatus.SUCCEEDED, value={"ok": True, "code": "DELIVERED", "data": {
+                    "message_id": "private-out", "recipient": "Ada", "paused": True,
+                }},
+            )), causation_id="attempt-1"),
+            event(6, "step-2", committed_step("decision-2", "outcome-1", "已请 Ada 检查。", ())),
+        )
+        view = SessionView("waiting", ("external_fact",), (), False)
+        pending = project_conversation("session-1", events[:4], timeline(events[:4]), session=view)
+        self.assertEqual([item.direction for item in pending.items if item.kind == "private_message"],
+                         ["received"])
+        conversation = project_conversation("session-1", events, timeline(events), session=view)
+        self.assertEqual([item.kind for item in conversation.items],
+                         ["user", "step", "private_message", "private_message", "step"])
+        self.assertEqual([(item.message_id, item.direction, item.peer, item.occurred_at)
+                          for item in conversation.items if item.kind == "private_message"], [
+            ("private-in", "received", "Lin", events[2].occurred_at),
+            ("private-out", "sent", "Ada", events[4].occurred_at),
+        ])
+
+    def test_refused_private_message_is_only_a_tool_record(self):
+        send = Command("send-1", InvokeTool("send_message", (("recipient", "Missing"),)))
+        for code in ("RECIPIENT_NOT_FOUND", "SELF_MESSAGE", "INVALID_REPLY", "ORIGIN_LIMIT_REACHED"):
+            with self.subTest(code=code):
+                events = (
+                    event(1, "step-1", committed_step("decision-1", "user-1", "", (send,))),
+                    event(2, "attempt-1", DispatchAttemptStarted("att-1", "send-1"), causation_id="step-1"),
+                    event(3, "outcome-1", CommandOutcomeReceived("send-1", "att-1", CommandOutcome(
+                        OutcomeStatus.SUCCEEDED, value={"ok": False, "code": code, "error": "未送达"},
+                    )), causation_id="attempt-1"),
+                )
+                conversation = project_conversation("session-1", events, timeline(events),
+                    session=SessionView("waiting", ("external_fact",), (), False))
+                self.assertEqual([item.kind for item in conversation.items], ["step"])
+                self.assertEqual(conversation.items[0].tools[0].name, "send_message")
+
     def test_plan_history_keeps_step_identity_after_clear_and_replacement(self):
         completed = {"objective": "第一项任务", "steps": [{"text": "验证", "status": "completed"}], "note": None}
         active = {"objective": "第二项任务", "steps": [{"text": "调查", "status": "in_progress"}], "note": None}

@@ -46,6 +46,7 @@ import { ContentPage } from "./ContentPage";
 import { ExecutionProcess } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { formatMessageTime } from "./messageTime";
+import { PrivateMessageNotice } from "./PrivateMessageNotice";
 import { PendingActions } from "./PendingActions";
 import { SessionAttention } from "./SessionAttention";
 import { ScheduledWait } from "./ScheduledWait";
@@ -98,8 +99,8 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const jumpRef = useRef<(id: string) => void>(() => {});
   const readCount = useRef(privateReading.get(sessionId)?.count ?? null);
   const messageKeys = (selected.currentData?.items ?? [])
-    .filter((item) => item.kind === "user" || (item.text !== null && item.tools.length === 0))
-    .map((item) => item.kind === "user" ? item.message_id : `output:${item.output_id}`);
+    .filter((item) => item.kind === "user" || (item.kind === "step" && item.text !== null && item.tools.length === 0))
+    .map((item) => item.kind === "step" ? `output:${item.output_id}` : item.message_id);
   const count = messageKeys.length;
   const [newCount, setNewCount] = useState(0);
   const setFollowing = useCallback((value: boolean) => {
@@ -368,6 +369,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                     />
                   </Box>
                 )}
+                {turn.communications.map((message) => <PrivateMessageNotice key={message.key} message={message} />)}
                 {body}
                 {latest && notice !== null ? (
                   <ControlNotice message={notice} />
