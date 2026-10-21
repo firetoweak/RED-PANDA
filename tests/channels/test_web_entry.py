@@ -33,11 +33,13 @@ def test_sigterm_shutdown_of_an_open_sse_has_no_cancelled_error_traceback(caplog
         with patch.object(server, "capture_signals", return_value=nullcontext()):
             serving = asyncio.create_task(server.serve(sockets=[listener]))
             try:
-                async with asyncio.timeout(5):
+                # Loopback HTTP must not use machine proxies. Client setup loads
+                # certificates synchronously, before the server's time budget.
+                async with (httpx.AsyncClient(trust_env=False) as client,
+                            asyncio.timeout(5)):
                     while not server.started:
                         await asyncio.sleep(0.01)
-                    async with (httpx.AsyncClient() as client,
-                                client.stream("GET", f"http://127.0.0.1:{port}/api/events") as response):
+                    async with client.stream("GET", f"http://127.0.0.1:{port}/api/events") as response:
                         lines = response.aiter_lines()
                         first_line = await anext(lines)
                         assert first_line == "event: connected"
