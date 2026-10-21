@@ -108,6 +108,7 @@ it("候选支持方向键和点选，删除正文点名后不保留收件人", a
   fireEvent.click(screen.getByRole("button", { name: "点名成员" }));
   expect(input).toHaveValue("@");
   fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "ArrowDown" });
   expect(screen.getByRole("option", { name: /Lin/ })).toHaveAttribute("aria-selected", "true");
   fireEvent.keyDown(input, { key: "Tab" });
   expect(input).toHaveValue("@Lin ");
@@ -141,7 +142,7 @@ it("完整名字决定收件人，支持中文、带空格和符号的名字，�
 });
 
 it("整条引用保留来源但不把预览中的点名当作通知", async () => {
-  api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "@Lin 看看这份完整报告", mentioned_agents: ["Lin"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
+  api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "@all @Lin 看看这份完整报告", mentioned_agents: ["Lin"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
   renderPage();
   fireEvent.contextMenu(screen.getByRole("article", { name: "Ada的群消息" }).querySelector(".group-message-bubble")!, { clientX: 100, clientY: 100 });
   fireEvent.click(await screen.findByRole("menuitem", { name: "引用 Ada 的消息" }));
@@ -149,7 +150,36 @@ it("整条引用保留来源但不把预览中的点名当作通知", async () =
   expect(screen.getByLabelText("群消息")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "这个结论继续讨论" } });
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text: "> [Ada](#message:source)\n> @Lin 看看这份完整报告\n\n这个结论继续讨论", mention: [] }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text: "> [Ada](#message:source)\n> @all @Lin 看看这份完整报告\n\n这个结论继续讨论", mention: [] }));
+});
+
+it("全体候选置顶，补全后通知全部成员且不增加输入区提示", async () => {
+  api.group = group({});
+  renderPage();
+  const input = screen.getByLabelText("群消息");
+  fireEvent.click(screen.getByRole("button", { name: "点名成员" }));
+  expect(screen.getAllByRole("option")[0]).toHaveAccessibleName(/所有人\s*@all/);
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("@all ");
+  expect(api.post).not.toHaveBeenCalled();
+  expect(screen.getByText("群消息 · 点名可选")).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "@all @Ada 大家同步一下" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({
+    connectionId: "connection", groupId: "group-1", text: "@all @Ada 大家同步一下", mention: [],
+  }));
+});
+
+it.each([
+  ["@ALL，同步一下 @Ada", []],
+  ["dev@all.example @Ada 同步一下", ["Ada"]],
+  ["@allison @Ada 同步一下", ["Ada"]],
+])("完整的 @all 才通知全体：%s", async (text, mention) => {
+  api.group = group({});
+  renderPage();
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text, mention }));
 });
 
 it("切换对话分别保留群草稿和引用，发送后清除", async () => {

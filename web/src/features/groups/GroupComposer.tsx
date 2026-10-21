@@ -1,5 +1,5 @@
 import { ActionIcon, Button, Group, Text, Textarea } from "@mantine/core";
-import { IconAt, IconArrowUp } from "@tabler/icons-react";
+import { IconAt, IconArrowUp, IconUsersGroup } from "@tabler/icons-react";
 import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ChatPresentation, BotAvatar, MessageQuote, splitMessageQuote, withMessageQuote } from "../conversation/ChatPresentation";
 import { clearSentComposerText, restoreComposerText, saveComposerText } from "../conversation/composerDraft";
@@ -32,13 +32,17 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
   const nextCursor = useRef<number | null>(null);
   const listId = useId();
   const match = text.slice(0, cursor).match(/(^|[^A-Za-z0-9._%+-])@([^\n@]*)$/u);
-  const candidates = match === null ? [] : members.filter((name) => name.toLocaleLowerCase().startsWith(match[2].toLocaleLowerCase()));
+  const candidates = match === null ? [] : [
+    { value: "all", name: "所有人", all: true },
+    ...members.map((name) => ({ value: name, name, all: false })),
+  ].filter(({ value, name }) => [value, name].some((label) => label.toLocaleLowerCase().startsWith(match[2].toLocaleLowerCase())));
   const opened = !dismissed && !composing && candidates.length > 0;
   const activeIndex = Math.min(selected, candidates.length - 1);
   const names = [...members].sort((a, b) => b.length - a.length).map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
   const addressed = [...text.matchAll(new RegExp(`(^|[^A-Za-z0-9._%+-])@(${names})(?=$|[\\s，。！？、,:;!?）)])`, "giu"))]
     .map((item) => members.find((name) => name === item[2]) ?? members.find((name) => name.toLocaleLowerCase() === item[2].toLocaleLowerCase()));
-  const mention = members.filter((name) => addressed.includes(name));
+  const mentionAll = /(^|[^A-Za-z0-9._%+-])@all(?=$|[\s，。！？、,:;!?）)])/iu.test(text);
+  const mention = mentionAll ? [] : members.filter((name) => addressed.includes(name));
   const canSend = connected && !posting && text.trim() !== "";
 
   useLayoutEffect(() => {
@@ -77,11 +81,11 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
     {opened ? <div className="group-mention-menu">
       <Text className="group-mention-heading" fz={11} c="dimmed">点名群成员</Text>
       <div role="listbox" aria-label="点名候选" id={listId}>
-        {candidates.map((name, index) => <button key={name} type="button" role="option"
+        {candidates.map(({ value, name, all }, index) => <button key={`${all ? "all" : "member"}:${value}`} type="button" role="option"
           id={`${listId}-${index}`} aria-selected={index === activeIndex} tabIndex={-1}
-          onMouseDown={(event) => event.preventDefault()} onClick={() => choose(name)}>
-          <BotAvatar name={name} className="agent-avatar-small" />
-          <span>{name}</span><span className="group-mention-at">@{name}</span>
+          onMouseDown={(event) => event.preventDefault()} onClick={() => choose(value)}>
+          {all ? <span className="agent-avatar agent-avatar-small" aria-hidden="true"><IconUsersGroup size={16} /></span> : <BotAvatar name={name} className="agent-avatar-small" />}
+          <span>{name}</span><span className="group-mention-at">@{value}</span>
         </button>)}
       </div>
     </div> : null}
@@ -108,7 +112,7 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
           if (event.key === "Escape") setDismissed(true);
           else if (event.key === "ArrowDown") setSelected((activeIndex + 1) % candidates.length);
           else if (event.key === "ArrowUp") setSelected((activeIndex - 1 + candidates.length) % candidates.length);
-          else choose(candidates[activeIndex]);
+          else choose(candidates[activeIndex].value);
         } else if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           void send();
