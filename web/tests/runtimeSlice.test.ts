@@ -17,7 +17,7 @@ import reducer, {
   clearLiveOutput,
   toolProgress,
   viewing,
-} from "./runtimeSlice";
+} from "../src/realtime/runtimeSlice";
 
 describe("runtimeSlice", () => {
   it("appends preview deltas and commits final text on the same output identity", () => {

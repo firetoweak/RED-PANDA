@@ -1,8 +1,5 @@
 import type { VisibleTool } from "./visibleTimeline";
 
-/** 父 Session 上的 SubAgent 特殊工具。子过程不进父时间线，这两张卡是以后挂内容的入口。 */
-export const SUBAGENT_TOOLS = ["delegate", "reclaim"] as const;
-
 export function isSubagentTool(name: string): boolean {
   return name === "delegate" || name === "reclaim";
 }

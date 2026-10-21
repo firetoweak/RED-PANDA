@@ -88,7 +88,6 @@ class Worker:
     active_preview: str | None = None
     active_thinking: str | None = None
     live_tools: dict[str, str] = field(default_factory=dict)
-    # Who each output of this generation is for, read from the Journal once per output.
 
 
 async def _emit(emitted) -> None:
@@ -264,10 +263,6 @@ class HostSupervisor:
             await self._finish_agent_creation(agent)
         for session_id in unfinished:
             await self.resume(session_id)
-
-    async def _parent_agent(self, session_id) -> AgentRecord | None:
-        parent = project_parent(await SqliteJournal(self.store.require(session_id)).snapshot(session_id))
-        return None if parent is None else await self.agents.by_session(parent)
 
     async def _child_project(self, session_id) -> tuple[AgentRecord, str] | None:
         """The parent Bot and project a delegated task works in, if it got a project copy."""
