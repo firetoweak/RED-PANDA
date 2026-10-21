@@ -19,8 +19,38 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      docs_only: ${{ steps.classify.outputs.result }}
+    steps:
+      - uses: actions/github-script@v9
+        id: classify
+        with:
+          script: |
+            if (context.eventName !== 'pull_request') return false;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              ...context.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            const isDocumentation = path => path.startsWith('docs/') || path === 'README.md';
+            const docsOnly = files.length > 0 && files.every(file =>
+              isDocumentation(file.filename) &&
+              (!file.previous_filename || isDocumentation(file.previous_filename))
+            );
+            await core.summary.addRaw(docsOnly
+              ? 'Documentation-only PR: code verification skipped.'
+              : 'Code verification required.').write();
+            return docsOnly;
+
   python:
     name: Python (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,6 +75,8 @@ jobs:
 
   process:
     name: Process (${{ matrix.os }}, ${{ matrix.group }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -85,17 +117,23 @@ jobs:
   process-result:
     # Single required check for all process groups on both platforms.
     name: Process
-    needs: process
+    needs: [changes, process]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful process verification
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
           PROCESS_RESULT: ${{ needs.process.result }}
-        run: test "$PROCESS_RESULT" = success
+          EXPECTED_RESULT: ${{ needs.changes.outputs.docs_only == 'true' && 'skipped' || 'success' }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          test "$PROCESS_RESULT" = "$EXPECTED_RESULT"
 
   web-check:
     name: Web (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -116,11 +154,15 @@ jobs:
 
   web:
     name: Web
-    needs: web-check
+    needs: [changes, web-check]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful web tests and build
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
           WEB_RESULT: ${{ needs.web-check.result }}
-        run: test "$WEB_RESULT" = success
+          EXPECTED_RESULT: ${{ needs.changes.outputs.docs_only == 'true' && 'skipped' || 'success' }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          test "$WEB_RESULT" = "$EXPECTED_RESULT"
