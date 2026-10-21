@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from redpanda.assistant.attachments import (
     AttachmentGateway,
@@ -26,7 +26,7 @@ from redpanda.assistant.conversations import FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
-from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
+from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.automation.routines import RoutineNotFound
@@ -109,6 +109,18 @@ class CreateAgentRequest(ConnectionRequest):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+
+class LinkProjectRequest(ConnectionRequest):
+    """A registered project by id, or a local Git repository registered in place."""
+    workspace_id: str | None = Field(default=None, min_length=1)
+    path: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def one_source(self):
+        if (self.workspace_id is None) == (self.path is None):
+            raise ValueError("workspace_id 和 path 只给一个")
+        return self
 
 
 class CreateGroupRequest(ConnectionRequest):
@@ -320,9 +332,9 @@ def create_web_app(
     async def agent_not_found(_request: Request, error: AgentNotFound):
         return JSONResponse(status_code=404, content={"detail": f"同项目中没有这位 Agent：{error}"})
 
-    @app.exception_handler(AgentProjectRequired)
-    async def agent_project_required(_request: Request, error: AgentProjectRequired):
-        return JSONResponse(status_code=422, content={"detail": str(error)})
+    @app.exception_handler(ProjectLinkRefused)
+    async def project_link_refused(_request: Request, error: ProjectLinkRefused):
+        return JSONResponse(status_code=409, content={"detail": error.error, "code": error.code, "data": error.data})
 
     @app.exception_handler(WorkspacePathTaken)
     async def workspace_path_taken(_request: Request, error: WorkspacePathTaken):
@@ -400,6 +412,14 @@ def create_web_app(
             body.connection_id, body.workspace_id, body.name,
         )
 
+    @app.post("/api/agents/{session_id}/projects")
+    async def link_project(session_id: str, body: LinkProjectRequest, request: Request):
+        return await _channel(request).link_project(body.connection_id, session_id, body.workspace_id, body.path)
+
+    @app.post("/api/agents/{session_id}/projects/{name}/unlink")
+    async def unlink_project(session_id: str, name: str, body: ConnectionRequest, request: Request):
+        return await _channel(request).unlink_project(body.connection_id, session_id, name)
+
     @app.get("/api/groups")
     async def groups(request: Request):
         return await _channel(request).list_groups()
@@ -450,7 +470,7 @@ def create_web_app(
         return await _channel(request).set_routine_state(body.connection_id, session_id, routine_id, body.state)
 
     @app.get("/api/sessions/{session_id}/changes")
-    async def file_changes(session_id: str, request: Request, path: str | None = None,
+    async def file_changes(session_id: str, request: Request, project: str | None = None, path: str | None = None,
                            revision: str | None = None, offset: int = Query(default=0, ge=0)):
         if path is not None:
             logical = PurePosixPath(path)
@@ -460,7 +480,7 @@ def create_web_app(
         elif offset or revision is not None:
             raise HTTPException(422, "续读时必须指定文件。")
         try:
-            result = await _channel(request).file_changes(session_id, path=path, offset=offset)
+            result = await _channel(request).file_changes(session_id, project=project, path=path, offset=offset)
         except FileChangesUnavailable as error:
             raise HTTPException(503, str(error)) from error
         if result is None:

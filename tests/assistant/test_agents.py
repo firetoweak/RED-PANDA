@@ -15,6 +15,7 @@ from redpanda.assistant.compact.core import window_preamble
 from redpanda.automation.routine_tool import SAVE_ROUTINE, SET_ROUTINE_STATE
 from redpanda.automation.routines import PAUSED_BY_USER, ROUTINE_DUE
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
+from redpanda.assistant.host.agent_worktrees import GitWorktree
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor, Worker
 from redpanda.config import write_json
@@ -36,8 +37,8 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.workspace = self.registry.register_path(self.project)
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None, workspaces=self.registry)
         # These tests own the roster/fact contract; real Git is covered in process.
-        self.git = patch.object(self.host.agent_worktrees, "create", side_effect=lambda project, session_id:
-                                self.host.agent_worktrees.agent(project.workspace_id, session_id))
+        self.git = patch.object(self.host.agent_worktrees, "link", side_effect=lambda project, session_id, path:
+                                GitWorktree(path, self.host.agent_worktrees.agent_branch(project.workspace_id, session_id)))
         self.git.start()
         self.addCleanup(self.git.stop)
         # Worker activation is covered in process; here only the requested facts matter.
@@ -64,7 +65,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AgentNameTaken):
             await self.create(workspace=other)
         first = await self.host.agents.resolve("小熊猫")
-        self.assertEqual(first.workspace_id, self.workspace.workspace_id)
+        self.assertEqual([item.workspace_id for item in first.projects], [self.workspace.workspace_id])
         with self.assertRaises(AgentNotFound):
             await self.host.agents.resolve("unknown")
 
@@ -99,7 +100,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
                 await self.create()
         self.request.assert_not_awaited()
         rebuilt = AgentRoster(SessionStore(self.store.root))
-        entries = await rebuilt.list(self.workspace.workspace_id)
+        entries = await rebuilt.list()
         self.assertEqual(len(entries), 2)
         agent = await rebuilt.resolve("小熊猫")
         self.assertEqual(await self.create(), agent)
@@ -175,8 +176,9 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].agent, agent)
         self.assertEqual(entries[0].direction, "负责命令执行")
-        self.assertEqual(self.registry.get(agent.workspace_id).task_root, self.project)
-        self.assertEqual(agent.worktree, self.host.agent_worktrees.agent(agent.workspace_id, agent.session_id).path)
+        linked, = agent.projects
+        self.assertEqual(self.registry.get(linked.workspace_id).task_root, self.project)
+        self.assertEqual(Path(linked.worktree), agent.directory / "projects" / self.workspace.name)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
 
@@ -235,5 +237,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         window = window_preamble("HANDOFF", 7, None, identity)
         self.assertIn(agent.name, window[0]["content"])
         self.assertIn("HANDOFF", window[1]["content"])
-        for internal in (agent.session_id, agent.workspace_id, agent.project.branch):
+        linked, = agent.projects
+        self.assertEqual(identity["projects"], [{"project": linked.name, "directory": linked.worktree}])
+        for internal in (agent.session_id, linked.workspace_id, linked.branch):
             self.assertNotIn(internal, window[0]["content"])

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
+from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -21,6 +21,12 @@ from redpanda.paths import RedPandaHome
 
 
 pytestmark = pytest.mark.process
+
+
+def tree(agent) -> Path:
+    """The Agent's worktree of the one project these tests link."""
+    linked, = agent.projects
+    return Path(linked.worktree)
 
 
 def git(root, *arguments):
@@ -71,21 +77,21 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
                   git(self.project, "diff", "--cached"), git(self.project, "rev-parse", "HEAD"))
         first = await self.create()
         integration = self.host.agent_worktrees.integration(self.workspace.workspace_id)
-        self.assertEqual((first.worktree / "note.txt").read_text(), "initial\n")
-        self.assertFalse((first.worktree / "untracked.txt").exists())
-        self.assertEqual(git(first.worktree, "symbolic-ref", "--short", "HEAD"), first.project.branch)
+        self.assertEqual((tree(first) / "note.txt").read_text(), "initial\n")
+        self.assertFalse((tree(first) / "untracked.txt").exists())
+        self.assertEqual(git(tree(first), "symbolic-ref", "--short", "HEAD"), first.projects[0].branch)
         (integration.path / "shared.txt").write_text("integrated\n", encoding="utf-8")
         git(integration.path, "add", "shared.txt")
         git(integration.path, "commit", "-m", "advance integration")
         integrated = git(integration.path, "rev-parse", "HEAD")
-        (first.worktree / "private.txt").write_text("agent dirty\n", encoding="utf-8")
+        (tree(first) / "private.txt").write_text("agent dirty\n", encoding="utf-8")
         await self.host.close()
         self.host = self.new_host()
         second = await self.create("另一个")
-        self.assertEqual(git(second.worktree, "rev-parse", "HEAD"), integrated)
-        self.assertEqual((second.worktree / "shared.txt").read_text(), "integrated\n")
-        self.assertFalse((second.worktree / "private.txt").exists())
-        self.assertEqual((first.worktree / "private.txt").read_text(), "agent dirty\n")
+        self.assertEqual(git(tree(second), "rev-parse", "HEAD"), integrated)
+        self.assertEqual((tree(second) / "shared.txt").read_text(), "integrated\n")
+        self.assertFalse((tree(second) / "private.txt").exists())
+        self.assertEqual((tree(first) / "private.txt").read_text(), "agent dirty\n")
         self.assertEqual(await self.host.agents.resolve(first.name), first)
         self.assertEqual(self.registry.workspaces, (self.workspace,))
         after = (git(self.project, "status", "--porcelain=v1"),
@@ -108,7 +114,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
                               (bare, "裸仓库"), (subdirectory, "根目录")):
             with self.subTest(root=root):
                 workspace = self.registry.create(name=root.name, task_root=root)
-                with self.assertRaisesRegex(AgentProjectRequired, message):
+                with self.assertRaisesRegex(ProjectLinkRefused, message):
                     await self.create(workspace=workspace)
         self.assertFalse((plain / ".git").exists())
         self.assertEqual(await self.host.agents.list(), ())
@@ -119,7 +125,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         first = await self.create()
         git(self.project, "checkout", "--orphan", "human-new-history")
         second = await self.create("第二位")
-        self.assertEqual(git(first.worktree, "rev-parse", "HEAD"), git(second.worktree, "rev-parse", "HEAD"))
+        self.assertEqual(git(tree(first), "rev-parse", "HEAD"), git(tree(second), "rev-parse", "HEAD"))
         self.assertEqual(git(self.project, "symbolic-ref", "--short", "HEAD"), "human-new-history")
 
     @unittest.skipUnless(sys.platform == "linux", "需要 Linux 的独立 tmpfs 挂载")
@@ -127,7 +133,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         with TemporaryDirectory(dir="/dev/shm") as directory:
             root = Path(directory).resolve()
             workspace = self.registry.create(name="plain tmpfs", task_root=root)
-            with self.assertRaisesRegex(AgentProjectRequired, "Git 仓库"):
+            with self.assertRaisesRegex(ProjectLinkRefused, "Git 仓库"):
                 await self.create(workspace=workspace)
             self.assertFalse((root / ".git").exists())
         self.assertEqual(await self.host.agents.list(), ())
@@ -138,7 +144,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         host = HostSupervisor(SessionStore(home.runtime_sessions_root), None, home, None,
                               llm=None, workspaces=self.registry)
         try:
-            with self.assertRaisesRegex(AgentProjectRequired, "数据目录"):
+            with self.assertRaisesRegex(ProjectLinkRefused, "数据目录"):
                 await host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
             self.assertFalse(host.agent_worktrees.root.exists())
             self.assertEqual(await host.agents.list(), ())
@@ -210,15 +216,15 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         entered = threading.Event()
         release = threading.Event()
         self.addCleanup(release.set)
-        original = self.host.agent_worktrees.create
+        original = self.host.agent_worktrees.link
 
-        def delayed(project, session_id):
+        def delayed(project, session_id, path):
             entered.set()
             if not release.wait(10):
                 raise TimeoutError("test did not release Git creation")
-            return original(project, session_id)
+            return original(project, session_id, path)
 
-        with patch.object(self.host.agent_worktrees, "create", side_effect=delayed):
+        with patch.object(self.host.agent_worktrees, "link", side_effect=delayed):
             creation = asyncio.create_task(self.create())
             async with asyncio.timeout(10):
                 while not entered.is_set():
@@ -232,8 +238,8 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await creation
         agent = await self.host.agents.resolve("小熊猫")
-        self.assertTrue(agent.worktree.is_dir())
-        self.assertEqual(git(agent.worktree, "symbolic-ref", "--short", "HEAD"), agent.project.branch)
+        self.assertTrue(tree(agent).is_dir())
+        self.assertEqual(git(tree(agent), "symbolic-ref", "--short", "HEAD"), agent.projects[0].branch)
 
     async def test_repository_hooks_and_inherited_git_environment_cannot_redirect_creation(self):
         hook = self.project / ".git" / "hooks" / "post-checkout"
@@ -246,7 +252,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
                                    workspaces=self.registry, command_environment=environment)
         agent = await self.create()
         integration = self.host.agent_worktrees.integration(self.workspace.workspace_id)
-        for path in (self.project, agent.worktree, integration.path):
+        for path in (self.project, tree(agent), integration.path):
             self.assertFalse((path / "hook-ran.txt").exists())
         self.assertFalse((self.root / "wrong-index").exists())
 
@@ -257,7 +263,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         other = HostSupervisor(store, None, home, None, llm=None, workspaces=self.registry)
         try:
             second = await other.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
-            self.assertNotEqual(first.worktree, second.worktree)
+            self.assertNotEqual(tree(first), tree(second))
             self.assertNotEqual(self.host.agent_worktrees.integration(self.workspace.workspace_id).branch,
                                 other.agent_worktrees.integration(self.workspace.workspace_id).branch)
         finally:

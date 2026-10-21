@@ -1,6 +1,6 @@
 # 落地与同步
 
-`land_branch` 把 Agent 分支上已经提交的工作合入项目集成分支。`sync_branch` 把集成分支上同事已经落地的工作合进自己的分支。两个工具都不接受参数，都不进入待处理条，也不改人当前检出的分支和工作目录。未提交的修改不跟着落地。冲突时落地放弃、集成分支不动；同步则停在冲突状态，留给 Agent 用普通 Git 命令解决或放弃。来源：`redpanda/assistant/agent_tools.py`、`redpanda/assistant/host/agent_worktrees.py`。落地后变化查看变空，见 [session-file-changes.md](./session-file-changes.md)。
+`land_branch` 把 Agent 分支上已经提交的工作合入项目集成分支。`sync_branch` 把集成分支上同事已经落地的工作合进自己的分支。两个工具都只接受 `project`（Bot 挂上的项目名），都不进入待处理条，也不改人当前检出的分支和工作目录。未提交的修改不跟着落地。冲突时落地放弃、集成分支不动；同步则停在冲突状态，留给 Agent 用普通 Git 命令解决或放弃。来源：`redpanda/assistant/agent_tools.py`、`redpanda/assistant/host/agent_worktrees.py`。落地后变化查看变空，见 [session-file-changes.md](./session-file-changes.md)。
 
 工作树在 `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 的前 20 位>/`：`integration` 是集成工作树，`<sha256(session_id) 的前 20 位>` 是该 Agent 的工作树。哈希用 UTF-8 的 sha256 十六进制。提交可以直接在 Agent 工作树里用 Git 准备，再请模型单独调用工具；工具只搬已提交的内容。
 

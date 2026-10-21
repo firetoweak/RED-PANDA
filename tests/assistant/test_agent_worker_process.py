@@ -22,9 +22,20 @@ from redpanda.runtime import SqliteJournal, replay
 from redpanda.runtime.json_values import thaw_value
 from tests.fixtures.session_worker import ProcessLlm, config_for
 from tests.fixtures.compact_worker import HANDOFF
+from tests.assistant.test_agent_worktrees_process import tree
 
 
 pytestmark = pytest.mark.process
+
+
+def linked_project(messages):
+    """Where the model was told its project worktree is, as a model reading the fact would."""
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str) and '"bot.project_linked"' in content:
+            data = json.loads(content)["data"]
+            return data["project"], data["directory"]
+    return None, None
 
 
 class WorktreeLlm(ProcessLlm):
@@ -47,32 +58,35 @@ class WorktreeLlm(ProcessLlm):
                     for call in message.get("tool_calls", ())
                     if call["function"]["name"] == "execute_command"}
         calls = ()
+        project, directory = linked_project(messages)
+        here = {} if directory is None else {"cwd": directory}
+        note = "note.txt" if directory is None else str(Path(directory) / "note.txt")
         if isinstance(text, str) and text.startswith("WRITE_AGENT_"):
             if "write_file" not in results:
                 calls = (ToolCall("agent-write", "write_file", json.dumps({
-                    "path": "note.txt", "content": text, "overwrite": True,
+                    "path": note, "content": text, "overwrite": True,
                 })),)
             elif "execute_command" not in results:
                 command = ("Set-Content -LiteralPath command.txt -Value command-ok"
                            if os.name == "nt" else "printf 'command-ok\\n' > command.txt")
-                calls = (ToolCall("agent-command", "execute_command", json.dumps({"command": command})),)
+                calls = (ToolCall("agent-command", "execute_command", json.dumps({"command": command, **here})),)
         elif text == "FINISH_AGENT":
             stage = "git add -- note.txt command.txt"
             commit = 'git commit -m "record agent changes"'
             if stage not in commands:
                 calls = (ToolCall("agent-stage", "execute_command", json.dumps({
-                    "command": stage,
+                    "command": stage, **here,
                 })),)
             elif commit not in commands:
                 calls = (ToolCall("agent-commit", "execute_command", json.dumps({
-                    "command": commit,
+                    "command": commit, **here,
                 })),)
         elif text == "LAND_AGENT" and "land_branch" not in results:
-            calls = (ToolCall("agent-land", "land_branch", "{}"),)
+            calls = (ToolCall("agent-land", "land_branch", json.dumps({"project": project})),)
         elif text == "READ_AGENT" and "read_file" not in results:
             self.read_started.set()
             await self.read_release.wait()
-            calls = (ToolCall("agent-read", "read_file", '{"path":"note.txt"}'),)
+            calls = (ToolCall("agent-read", "read_file", json.dumps({"path": note})),)
         return LLMCallResult(LLMResponse(content="" if calls else "done", calls=calls),
                              LLMUsage(input_tokens=10, output_tokens=5))
 
@@ -122,7 +136,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         agent = await current.create_agent(
                             name=f"同事{index}", workspace_id=workspace.workspace_id,
                         )
-                        worktree = agent.worktree
+                        worktree = tree(agent)
                         agents.append(agent)
                         await current.select(f"page-{index}", agent.session_id)
                         await current.set_auto_authorize(True)
@@ -131,21 +145,21 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual((worktree / "note.txt").read_text(), f"WRITE_AGENT_{index}")
                         self.assertEqual((worktree / "command.txt").read_text().strip(), "command-ok")
                         # Completing write and reply Steps must not stage or commit.
-                        self.assertEqual(git("rev-parse", agent.project.branch).stdout, base)
-                        self.assertEqual(agent.workspace_id, workspace.workspace_id)
+                        self.assertEqual(git("rev-parse", agent.projects[0].branch).stdout, base)
+                        self.assertEqual([item.workspace_id for item in agent.projects], [workspace.workspace_id])
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
                     await current.receive_user_message(agents[0].session_id, "FINISH_AGENT", delivery_id="finish")
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
-                    committed = git("rev-parse", agents[0].project.branch).stdout
+                    committed = git("rev-parse", agents[0].projects[0].branch).stdout
                     self.assertNotEqual(committed, base)
                     self.assertEqual(git("show", "-s", "--format=%an%n%ae%n%cn%n%ce",
-                                         agents[0].project.branch).stdout.decode().splitlines(),
+                                         agents[0].projects[0].branch).stdout.decode().splitlines(),
                                      ["同事0", "bot@redpanda.local", "同事0", "bot@redpanda.local"])
-                    self.assertEqual(git("show", f"{agents[0].project.branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
+                    self.assertEqual(git("show", f"{agents[0].projects[0].branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
                     self.assertEqual(git("diff", "--name-only", base.decode().strip(),
-                                         agents[0].project.branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
-                    self.assertEqual(git("rev-parse", agents[1].project.branch).stdout, base)
+                                         agents[0].projects[0].branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
+                    self.assertEqual(git("rev-parse", agents[1].projects[0].branch).stdout, base)
                     await current.receive_user_message(agents[0].session_id, "LAND_AGENT", delivery_id="land")
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
                     integration = current.agent_worktrees.integration(workspace.workspace_id)
@@ -195,8 +209,8 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))
                     self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
-                    self.assertEqual(git("rev-parse", agents[0].project.branch).stdout, committed)
-                    self.assertEqual(git("rev-parse", agents[1].project.branch).stdout, base)
+                    self.assertEqual(git("rev-parse", agents[0].projects[0].branch).stdout, committed)
+                    self.assertEqual(git("rev-parse", agents[1].projects[0].branch).stdout, base)
                     self.assertEqual((project / "note.txt").read_text(), "human-uncommitted")
                     self.assertEqual(git("status", "--porcelain").stdout, original_status)
                     self.assertEqual((project / ".git" / "config").read_bytes(), repository_config)
@@ -218,7 +232,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             current = host()
             try:
                 agent = await current.create_agent(name="Notes")
-                self.assertIsNone(agent.project)
+                self.assertEqual(agent.projects, ())
                 self.assertEqual(WorkspaceRegistry.load(home.workspaces_path).workspaces, ())
                 await current.select("page", agent.session_id)
                 await current.set_auto_authorize(True)
@@ -246,8 +260,8 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(list(home.agent_worktrees_root.iterdir()), [])
                 for request in llm.requests:
                     names = {tool["function"]["name"] for tool in request["tools"]}
-                    self.assertIn("list_colleagues", names)
-                    self.assertNotIn("land_branch", names)
+                    # Without a project the Bot can still link one mid-conversation.
+                    self.assertTrue({"list_colleagues", "link_project"} <= names)
                 self.assertTrue(current.failures.empty())
             finally:
                 await current.close()

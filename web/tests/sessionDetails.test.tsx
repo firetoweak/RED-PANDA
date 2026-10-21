@@ -10,8 +10,10 @@ import runtimeReducer from "../src/realtime/runtimeSlice";
 vi.mock("../src/features/conversation/Conversation", () => ({ Conversation: () => <p>对话内容</p> }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetAgentsQuery: () => ({ data: [
-    { session_id: "ada", workspace_id: "alpha", name: "Ada", direction: "前端体验", status: "waiting" },
-    { session_id: "lin", workspace_id: "beta", name: "Lin", direction: "接口验证", status: "idle" },
+    { session_id: "ada", projects: [{ name: "Alpha", workspace_id: "alpha", directory: "C:/bots/ada/projects/Alpha" }],
+      name: "Ada", direction: "前端体验", status: "waiting" },
+    { session_id: "lin", projects: [{ name: "Beta", workspace_id: "beta", directory: "C:/bots/lin/projects/Beta" }],
+      name: "Lin", direction: "接口验证", status: "idle" },
   ] }),
   useGetWorkspacesQuery: () => ({ data: [
     { workspace_id: "alpha", name: "Alpha", task_root: "C:/alpha" },
@@ -26,6 +28,8 @@ vi.mock("../src/api/redpandaApi", () => ({
     { routine_id: "r-pr", name: "检查 PR", intent: "看评审", schedule: "@every 10m", state: "active", next_run: null, last_run: null },
   ] }),
   useSetRoutineStateMutation: () => [() => undefined, { isLoading: false }],
+  useLinkProjectMutation: () => [() => undefined, { isLoading: false, reset: () => undefined }],
+  useUnlinkProjectMutation: () => [() => undefined, { isLoading: false }],
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 

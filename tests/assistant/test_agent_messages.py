@@ -116,8 +116,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
                           for entry in colleagues["data"]["colleagues"]],
                          [{"name": "Elsewhere", "direction": None}, {"name": "Lin", "direction": None},
                           {"name": "Third", "direction": None}])
-        self.assertEqual({entry["worktree"] for entry in colleagues["data"]["colleagues"]},
-                         {str((await self.host.agents.resolve(name)).worktree)
+        self.assertEqual({entry["directory"] for entry in colleagues["data"]["colleagues"]},
+                         {str((await self.host.agents.resolve(name)).directory)
                           for name in ("Elsewhere", "Lin", "Third")})
 
     async def test_colleague_status_follows_host_facts_without_internal_identifiers(self):
@@ -129,7 +129,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         async def statuses():
             colleagues = (await self.transport(LIST_COLLEAGUES, "Ada", {}))["data"]["colleagues"]
             for entry in colleagues:
-                self.assertEqual(set(entry), {"name", "direction", "worktree", "status", "since"})
+                self.assertEqual(set(entry), {"name", "direction", "directory", "projects", "status", "since"})
                 last = (await self.journal(entry["name"]).snapshot(entry["name"]))[-1]
                 self.assertEqual(entry["since"], last.occurred_at.astimezone().isoformat(timespec="minutes"))
             return {entry["name"]: entry["status"] for entry in colleagues}

@@ -34,10 +34,11 @@ from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.agents import (
-    AGENT_CREATED, AgentCreated, AgentRecord, ProjectAttached, RoutinesUnwatched, fact_arguments, project_agent,
+    AGENT_CREATED, AgentCreated, AgentRecord, RoutinesUnwatched, fact_arguments, project_agent,
 )
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
-from redpanda.assistant.host.agent_worktrees import AgentWorktrees
+from redpanda.assistant.host.agent_worktrees import AgentWorktrees, GitWorktree
+from redpanda.assistant.host.agent_projects import AgentProjects, ProjectLinkRefused
 from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
 from redpanda.assistant.host.agent_groups import AgentGroups
@@ -58,7 +59,7 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.assistant.workspaces import bound_workspace_id, bound_workspace, bound_directory
+from redpanda.assistant.workspaces import bound_workspace_id, bound_directory
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
@@ -199,8 +200,8 @@ class HostSupervisor:
         self.agent_messages = AgentMessages(self)
         self.agent_groups = AgentGroups(self)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
+        self.agent_projects = AgentProjects(self)
         self._agent_creation_lock = asyncio.Lock()
-        self._landing_locks: dict[str, asyncio.Lock] = {}
 
     async def resume_unfinished_sessions(self) -> None:
         """进程刚起来时，上一个进程里还会自己往下走的顶层会话接着推进。
@@ -268,24 +269,41 @@ class HostSupervisor:
         parent = project_parent(await SqliteJournal(self.store.require(session_id)).snapshot(session_id))
         return None if parent is None else await self.agents.by_session(parent)
 
-    async def _git_workspace(self, session_id) -> GitWorkspace | None:
-        """Agents and the tasks they delegate run directly in their own Git worktrees."""
-        agent = await self.agents.by_session(session_id)
-        if agent is not None and agent.project is not None:
-            return GitWorkspace(agent.worktree, agent.name, self.workspaces.get(agent.workspace_id).full_access)
-        parent = await self._parent_agent(session_id)
-        if parent is None or parent.project is None:
+    async def _child_project(self, session_id) -> tuple[AgentRecord, str] | None:
+        """The parent Bot and project a delegated task works in, if it got a project copy."""
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        task = project_task(events)
+        if task is None or task.project is None:
             return None
-        return GitWorkspace(self.agent_worktrees.child(parent.workspace_id, session_id).path, parent.name)
+        return await self.agents.by_session(task.parent_session_id), task.project
+
+    async def _git_workspace(self, session_id) -> GitWorkspace | None:
+        """A Bot's Git identity; a task delegated into a project also runs in its copy."""
+        agent = await self.agents.by_session(session_id)
+        if agent is not None:
+            return GitWorkspace(None, agent.name)
+        child = await self._child_project(session_id)
+        if child is None:
+            return None
+        parent, workspace_id = child
+        return GitWorkspace(self.agent_worktrees.child(workspace_id, session_id).path, parent.name)
+
+    async def has_active_children(self, session_id: str, workspace_id: str) -> bool:
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        for child_id in project_pending(events):
+            child = await self._child_project(child_id)
+            if child is not None and child[1] == workspace_id:
+                return True
+        return False
 
     async def _copy_worktree_file(self, session_id: str, relative: str) -> dict:
-        """Snapshot one worktree file into the session attachments the person can download."""
+        """Snapshot one Bot directory file into the session attachments the person can download."""
         if type(relative) is not str or not relative.strip() or Path(relative).is_absolute() or ".." in Path(relative).parts:
             return {"ok": False, "code": "INVALID_PATH", "error": "path 必须是工作区内的相对路径。"}
         agent = await self.agents.by_session(session_id)
         if agent is None:
             return {"ok": False, "code": "FILE_REQUIRES_AGENT", "error": "只有 Agent 能把工作区文件交给人。"}
-        root = agent.worktree.resolve()
+        root = agent.directory.resolve()
         target = (root / relative).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             return {"ok": False, "code": "FILE_NOT_FOUND", "error": "工作区里没有这个文件。"}
@@ -296,14 +314,44 @@ class HostSupervisor:
             return {"ok": False, "code": "FILE_UNREADABLE", "error": "这个文件无法读取，或名称不能作为附件。"}
         return {"attachment_id": saved.attachment_id, "name": saved.name, "size": saved.size}
 
+    async def _project_operation(self, operation, session_id, arguments):
+        projects = self.agent_projects
+        if operation == "agent_land":
+            return await projects.land(session_id, arguments["project"])
+        if operation == "agent_sync":
+            return await projects.sync(session_id, arguments["project"])
+        if operation == "agent_unlink":
+            linked = await projects.unlink(session_id, arguments["project"], f"unlink:{arguments['delivery_id']}")
+            return {"ok": True, "code": "PROJECT_UNLINKED", "data": {"project": linked.name}}
+        project = projects.resolve(name=arguments.get("project"), path=arguments.get("path"))
+        linked = await projects.link(session_id, project, f"link:{arguments['delivery_id']}")
+        return {"ok": True, "code": "PROJECT_LINKED", "data": {"project": linked.name, "directory": linked.worktree}}
+
+    async def link_project_by_user(self, session_id: str, *, workspace_id: str | None, path: str | None):
+        """The person links from the Web; no approval because the person is the one acting."""
+        project = self.agent_projects.resolve(workspace_id=workspace_id, path=path)
+        return await _settle(self.agent_projects.link(session_id, project, f"link:user:{uuid4().hex}"))
+
+    async def unlink_project_by_user(self, session_id: str, name: str):
+        return await _settle(self.agent_projects.unlink(session_id, name, f"unlink:user:{uuid4().hex}"))
+
     async def _route(self, operation, session_id, arguments, *, worker=None):
         if operation == "agent_child_review":
-            parent = await self.agents.by_session(session_id)
             child = arguments["child_session_id"]
+            copy = await self._child_project(child)
+            if copy is None:
+                return {"ok": False, "code": "NO_PROJECT_CHANGES",
+                        "error": "这个子 Agent 没有在项目里工作，只做了只读调查，没有可比较或合入的改动。"}
+            parent, workspace_id = copy
+            linked = parent.project_by_id(workspace_id)
+            if linked is None:
+                return {"ok": False, "code": "PROJECT_NOT_LINKED",
+                        "error": "这个子 Agent 工作的项目已从你这里解除，无法比较或合入。",
+                        "hint": "需要它的成果时，重新挂上这个项目再委派一次。"}
             if arguments["merge"]:
-                result, changed = await _settle(asyncio.to_thread(self.agent_worktrees.merge_child, parent, child))
+                result, changed = await _settle(asyncio.to_thread(self.agent_worktrees.merge_child, parent, linked, child))
                 return {**asdict(result), "changed_files": list(changed)}
-            return await asyncio.to_thread(self.agent_worktrees.compare_child, parent, child,
+            return await asyncio.to_thread(self.agent_worktrees.compare_child, linked, child,
                                            tuple(arguments["paths"]), arguments["offset"])
         if operation == LIST_COLLEAGUES:
             return await self.agent_messages.colleagues(session_id)
@@ -320,14 +368,11 @@ class HostSupervisor:
             if self.sink is not None:
                 await _emit(self.sink(session_id, arguments["output_id"], arguments["text"]))
             return {"attachment": attachment}
-        if operation in {"agent_land", "agent_sync"}:
-            agent = await self.agents.by_session(session_id)
-            if operation == "agent_sync":
-                result = await _settle(asyncio.to_thread(self.agent_worktrees.sync, agent))
-            else:
-                async with self._landing_locks.setdefault(agent.workspace_id, asyncio.Lock()):
-                    result = await _settle(asyncio.to_thread(self.agent_worktrees.land, agent))
-            return asdict(result)
+        if operation in {"agent_land", "agent_sync", "agent_link", "agent_unlink"}:
+            try:
+                return await _settle(self._project_operation(operation, session_id, arguments))
+            except ProjectLinkRefused as refused:
+                return refused.result()
         if operation in {"command_execute", "command_query", "command_read", "command_stop", "command_list", "command_interrupt"}:
             if self.commands is None:
                 raise RuntimeError("Background commands require Windows or Linux")
@@ -415,7 +460,6 @@ class HostSupervisor:
             child_workspace_id = bound_workspace_id(parent_events)
             child_directory = bound_directory(parent_events)
             async with self.locks.setdefault(session_id, asyncio.Lock()):
-                parent_workspace = bound_workspace(expected_task.parent_session_id, parent_events, self.workspaces)
                 conflict_child_id = None
                 if expected_task.resolve_conflicts_of is not None:
                     source = next((item for item in project_delegate_intents(parent_events)
@@ -427,12 +471,16 @@ class HostSupervisor:
                     if not source_files["ok"]:
                         raise ValueError("conflict source has no completed files")
                     conflict_child_id = source.child_session_id
-                parent_agent = await self.agents.by_session(expected_task.parent_session_id)
-                # A plain session's delegated task only reads the parent's own directory.
-                if parent_agent is not None and parent_agent.project is not None:
-                    parent_workspace = self.workspaces.get(parent_agent.workspace_id)
-                    await _settle(asyncio.to_thread(self.agent_worktrees.create_child, parent_workspace,
-                                                    parent_agent, session_id, conflict_child_id))
+                # Without a project, a delegated task only reads the parent's own directory.
+                if expected_task.project is not None:
+                    parent_agent = await self.agents.by_session(expected_task.parent_session_id)
+                    linked = parent_agent.project_by_id(expected_task.project)
+                    if linked is None:
+                        raise ValueError("delegated project is not linked to the parent")
+                    if conflict_child_id is not None and (await self._child_project(conflict_child_id))[1] != linked.workspace_id:
+                        raise ValueError("conflict source belongs to another project")
+                    await _settle(asyncio.to_thread(self.agent_worktrees.create_child, self.workspaces.get(linked.workspace_id),
+                                                    parent_agent, linked, session_id, conflict_child_id))
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
@@ -467,9 +515,10 @@ class HostSupervisor:
             if not any(isinstance(event.payload, DomainFactCommitted)
                        and event.payload.fact_type == RETURN_FACT for event in events):
                 return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
-            parent_agent = await self.agents.by_session(task.parent_session_id)
-            if parent_agent is not None:
-                failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent, session_id))
+            if task.project is not None:
+                parent_agent = await self.agents.by_session(task.parent_session_id)
+                failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent,
+                                                          task.project, session_id))
                 if failure is not None:
                     return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
                             "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
@@ -1113,28 +1162,29 @@ class HostSupervisor:
         colleagues = tuple(entry.agent.session_id for entry in await self.agents.list())
         directory = Path(identity.directory)
         directory.mkdir(parents=True)
-        worktree = None
-        attachment = None
+        linked = None
         try:
+            # The link fact is written with the identity, so the first decision already sees it.
             if project is not None:
-                worktree = await asyncio.to_thread(self.agent_worktrees.create, project, session_id)
-                attachment = ProjectAttached(workspace_id=project.workspace_id,
-                                             worktree=str(worktree.path), branch=worktree.branch)
+                linked = await asyncio.to_thread(self.agent_projects.prepare, directory, session_id, project, ())
             await self.store.create(
                 session_id, directory=directory,
                 initial_fact=fact_arguments(identity, delivery_id="created"),
-                additional_facts=(() if attachment is None else (fact_arguments(attachment, delivery_id="project"),)),
+                additional_facts=(() if linked is None else (fact_arguments(linked, delivery_id="link:created"),)),
                 agent_colleagues=colleagues,
             )
         except BaseException as error:
             try:
-                if worktree is not None:
-                    await asyncio.to_thread(self.agent_worktrees.remove, project, worktree)
+                if linked is not None:
+                    await asyncio.to_thread(self.agent_worktrees.remove, project,
+                                            GitWorktree(Path(linked.worktree), linked.branch))
+                for leftover in sorted(directory.rglob("*"), reverse=True):
+                    leftover.rmdir()
                 directory.rmdir()
             except BaseException as cleanup_error:
                 raise BaseExceptionGroup("Agent registration and worktree cleanup failed", [error, cleanup_error]) from None
             raise
-        agent = AgentRecord(session_id, identity, attachment)
+        agent = AgentRecord(session_id, identity, () if linked is None else (linked,))
         # The identity is durable now; the roster must know it before anything else can fail,
         # or a retry would publish a second Agent under the same name.
         await self.agents.add(agent)

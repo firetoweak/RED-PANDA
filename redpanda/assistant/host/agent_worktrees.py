@@ -1,4 +1,4 @@
-"""Host-owned Git worktrees for long-lived coding Agents."""
+"""Host-owned Git worktrees for the projects linked to long-lived Bots."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 from redpanda.assistant.agent_git import Git, MergeResult, git_error, identity, raise_git
-from redpanda.assistant.agents import AgentRecord
+from redpanda.assistant.agents import AgentRecord, ProjectLinked
 from redpanda.filesystem.registry import WorkspaceRecord
 from redpanda.paths import RedPandaHome
 
@@ -21,6 +21,15 @@ class AgentProjectRequired(ValueError):
 class GitWorktree:
     path: Path
     branch: str
+
+
+@dataclass(frozen=True, slots=True)
+class UnlinkBlocked:
+    """Work that unlinking would lose; nothing was removed."""
+    uncommitted: tuple[str, ...]
+    unlanded: int
+    merging: bool
+    git: str | None = None
 
 
 def _key(value: str) -> str:
@@ -44,70 +53,92 @@ class AgentWorktrees:
         return GitWorktree(self.root / project / "integration",
                            f"{self.namespace}/{project}/integration")
 
-    def agent(self, workspace_id: str, session_id: str) -> GitWorktree:
-        project, agent = _key(workspace_id), _key(session_id)
-        return GitWorktree(self.root / project / agent,
-                           f"{self.namespace}/{project}/{agent}")
+    def agent_branch(self, workspace_id: str, session_id: str) -> str:
+        return f"{self.namespace}/{_key(workspace_id)}/{_key(session_id)}"
 
     def child(self, workspace_id: str, child_session_id: str) -> GitWorktree:
         project, child = _key(workspace_id), _key(child_session_id)
         return GitWorktree(self.root / project / "children" / child,
                            f"{self.namespace}/{project}/children/{child}")
 
-    def create(self, project: WorkspaceRecord, session_id: str) -> GitWorktree:
-        self._require_project(project.task_root)
+    def link(self, project: WorkspaceRecord, session_id: str, path: Path) -> GitWorktree:
+        """Give one Bot its own branch of the project, checked out at `path`.
+
+        The branch starts from the project's integration branch, which is created
+        from the project's HEAD the first time any Bot links it.
+        """
+        self.require_project(project.task_root)
         integration = self.integration(project.workspace_id)
         if self._has_branch(project.task_root, integration.branch):
             self._validate(project.task_root, integration)
         else:
             self._add(project.task_root, integration, self._initial_commit(project.task_root))
-        agent = self.agent(project.workspace_id, session_id)
+        agent = GitWorktree(path, self.agent_branch(project.workspace_id, session_id))
         self._add(project.task_root, agent, integration.branch)
         return agent
 
-    def land(self, agent: AgentRecord) -> MergeResult:
-        """Merge the Agent's committed branch into the project integration branch.
+    def unlink(self, project: WorkspaceRecord, linked: ProjectLinked) -> UnlinkBlocked | None:
+        """Remove a Bot's worktree and branch, only when nothing on them would be lost."""
+        worktree = Path(linked.worktree)
+        status = self._git(worktree, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all").stdout
+        uncommitted = tuple(entry[3:].decode("utf-8") for entry in status.split(b"\0") if len(entry) > 3)
+        integration = self.integration(linked.workspace_id).branch
+        unlanded = int(self._git(worktree, "rev-list", "--count",
+                                 f"refs/heads/{integration}..refs/heads/{linked.branch}").stdout.decode("ascii"))
+        merging = self.git.merging(worktree)
+        if uncommitted or unlanded or merging:
+            return UnlinkBlocked(uncommitted, unlanded, merging)
+        # Something written beside this call after the check makes Git refuse; nothing is lost.
+        removed = self._git(project.task_root, "worktree", "remove", str(worktree), accepted=(0, 128))
+        if removed.returncode:
+            return UnlinkBlocked(uncommitted, unlanded, merging, git_error(removed))
+        self._git(project.task_root, "branch", "-D", linked.branch)
+        return None
+
+    def land(self, agent: AgentRecord, linked: ProjectLinked) -> MergeResult:
+        """Merge the Bot's committed branch into the project integration branch.
 
         Callers serialize landings per project. A conflict or files in the integration
         worktree that the merge would overwrite leave integration untouched.
         """
-        integration = self.integration(agent.workspace_id)
+        integration = self.integration(linked.workspace_id)
         return self.git.merge(
-            integration.path, self.git.oid(integration.path, f"refs/heads/{agent.project.branch}"),
+            integration.path, self.git.oid(integration.path, f"refs/heads/{linked.branch}"),
             author=agent.name, message=f"合入 {agent.name} 的工作", keep_conflict=False,
         )
 
-    def sync(self, agent: AgentRecord) -> MergeResult:
-        """Merge landed work into the Agent branch; conflicts stay for the Agent to resolve."""
-        if self.git.merging(agent.worktree):
-            return MergeResult("in_progress", self.git.oid(agent.worktree, "HEAD"))
-        integration = self.integration(agent.workspace_id)
+    def sync(self, agent: AgentRecord, linked: ProjectLinked) -> MergeResult:
+        """Merge landed work into the Bot branch; conflicts stay for the Bot to resolve."""
+        worktree = Path(linked.worktree)
+        if self.git.merging(worktree):
+            return MergeResult("in_progress", self.git.oid(worktree, "HEAD"))
+        integration = self.integration(linked.workspace_id)
         return self.git.merge(
-            agent.worktree, self.git.oid(agent.worktree, f"refs/heads/{integration.branch}"),
+            worktree, self.git.oid(worktree, f"refs/heads/{integration.branch}"),
             author=agent.name, message="同步已落地的工作", keep_conflict=True,
         )
 
-    def create_child(self, project: WorkspaceRecord, parent: AgentRecord, child_session_id: str,
-                     conflict_source: str | None = None) -> GitWorktree:
+    def create_child(self, project: WorkspaceRecord, parent: AgentRecord, linked: ProjectLinked,
+                     child_session_id: str, conflict_source: str | None = None) -> GitWorktree:
         """Branch a delegated task from the parent's committed work; replay reuses it.
 
         A conflict-resolving task starts with the failed merge in progress, so its
         resolution is completed as that merge when the task returns.
         """
-        child = self.child(parent.workspace_id, child_session_id)
+        child = self.child(linked.workspace_id, child_session_id)
         if self._has_branch(project.task_root, child.branch):
             self._validate(project.task_root, child)
         else:
-            self._add(project.task_root, child, parent.project.branch)
+            self._add(project.task_root, child, linked.branch)
         if conflict_source is not None and not self.git.merging(child.path):
-            source = self.child(parent.workspace_id, conflict_source)
+            source = self.child(linked.workspace_id, conflict_source)
             result = self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
                                     author=parent.name, message="合入待解决冲突的子任务成果", keep_conflict=True)
             if result.status in {"blocked", "failed"}:
                 raise RuntimeError(f"conflict-resolving task could not start its merge: {result.detail}")
         return child
 
-    def finish_child(self, parent: AgentRecord, child_session_id: str) -> str | None:
+    def finish_child(self, parent: AgentRecord, workspace_id: str, child_session_id: str) -> str | None:
         """Fix the returned task's result as one commit on its branch.
 
         The task cannot run commands, so it cannot commit itself; its branch is
@@ -115,7 +146,7 @@ class AgentWorktrees:
         task's result completes the merge it started in. Returns Git's own error
         when Git fails, such as on a leftover index.lock.
         """
-        child = self.child(parent.workspace_id, child_session_id)
+        child = self.child(workspace_id, child_session_id)
         added = self.git.run(child.path, "add", "--all", accepted=(0, 128))
         if added.returncode:
             return git_error(added)
@@ -128,31 +159,33 @@ class AgentWorktrees:
                 return git_error(committed)
         return None
 
-    def compare_child(self, parent: AgentRecord, child_session_id: str,
+    def compare_child(self, linked: ProjectLinked, child_session_id: str,
                       paths: tuple[str, ...], offset: int) -> dict:
-        child = self.child(parent.workspace_id, child_session_id)
-        return self.git.compare(parent.worktree, f"refs/heads/{parent.project.branch}",
+        child = self.child(linked.workspace_id, child_session_id)
+        return self.git.compare(Path(linked.worktree), f"refs/heads/{linked.branch}",
                                 f"refs/heads/{child.branch}", paths, offset=offset)
 
-    def merge_child(self, parent: AgentRecord, child_session_id: str) -> tuple[MergeResult, tuple[str, ...]]:
+    def merge_child(self, parent: AgentRecord, linked: ProjectLinked,
+                    child_session_id: str) -> tuple[MergeResult, tuple[str, ...]]:
         """Merge a returned task into the parent branch; a conflict changes nothing."""
-        if self.git.merging(parent.worktree):
-            return MergeResult("in_progress", self.git.oid(parent.worktree, "HEAD")), ()
-        child = self.child(parent.workspace_id, child_session_id)
-        before = self.git.oid(parent.worktree, "HEAD")
-        result = self.git.merge(parent.worktree, self.git.oid(parent.worktree, f"refs/heads/{child.branch}"),
+        worktree = Path(linked.worktree)
+        if self.git.merging(worktree):
+            return MergeResult("in_progress", self.git.oid(worktree, "HEAD")), ()
+        child = self.child(linked.workspace_id, child_session_id)
+        before = self.git.oid(worktree, "HEAD")
+        result = self.git.merge(worktree, self.git.oid(worktree, f"refs/heads/{child.branch}"),
                                 author=parent.name, message="合入子任务的成果", keep_conflict=False)
         if result.status != "merged":
             return result, ()
-        return result, self.git.changed_paths(parent.worktree, before, result.head)
+        return result, self.git.changed_paths(worktree, before, result.head)
 
     def remove(self, project: WorkspaceRecord, worktree: GitWorktree) -> None:
-        # Only used to roll back a worktree whose Agent fact was not committed.
+        # Only used to roll back a worktree whose link fact was not committed.
         # Git refuses removal when it finds user changes; never force deletion.
         self._git(project.task_root, "worktree", "remove", str(worktree.path))
         self._git(project.task_root, "branch", "-D", worktree.branch)
 
-    def _require_project(self, root: Path) -> None:
+    def require_project(self, root: Path) -> None:
         result = self._git(root, "rev-parse", "--is-inside-work-tree", accepted=(0, 128))
         if result.returncode == 128:
             if (b"not a git repository (or any of the parent directories)" in result.stderr

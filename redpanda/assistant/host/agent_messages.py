@@ -84,10 +84,11 @@ class AgentMessages:
             status = "paused"
         else:
             status = COLLEAGUE_STATUS[project_agent_roster_entry(
-                agent.session_id, events, name=agent.name, workspace_id=agent.workspace_id,
+                agent.session_id, events, name=agent.name,
                 direction=entry.direction, activity=self.host.activity(agent.session_id),
                 last_error=self.host.current_failure(agent.session_id)).status]
-        return {"name": agent.name, "direction": entry.direction, "worktree": str(agent.worktree),
+        return {"name": agent.name, "direction": entry.direction, "directory": str(agent.directory),
+                "projects": [item.name for item in agent.projects],
                 "status": status, "since": events[-1].occurred_at.astimezone().isoformat(timespec="minutes")}
 
     async def _broadcast(self, sender, fact, delivery_id):

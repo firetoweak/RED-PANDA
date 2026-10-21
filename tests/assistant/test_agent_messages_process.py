@@ -182,7 +182,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(isinstance(e.payload, StepCommitted) for e in await self.events(self.lin)))
         for request in self.llm.requests:
             self.assertNotIn(self.ada.session_id, json.dumps(request["messages"]))
-            self.assertNotIn("land_branch", {tool["function"]["name"] for tool in request["tools"]})
+            self.assertIn("link_project", {tool["function"]["name"] for tool in request["tools"]})
         self.assertTrue(self.host.failures.empty())
 
     async def test_offline_recipient_is_started_and_can_observe_attributed_message(self):

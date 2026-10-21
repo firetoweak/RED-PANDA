@@ -130,12 +130,14 @@ export const redpandaApi = createApi({
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
   tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines", "AutoAuthorize"],
   endpoints: (build) => ({
-    getFileChanges: build.query<FileChanges, string>({
-      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
+    getFileChanges: build.query<FileChanges, { sessionId: string; project?: string }>({
+      query: ({ sessionId, project }) => ({
+        url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params: project === undefined ? {} : { project },
+      }),
       transformResponse: (value: unknown) => fileChangesSchema.parse(value),
       providesTags: ["FileChanges"],
     }),
-    getFileDiff: build.query<FileDiff, { sessionId: string; path: string; revision: string; offset: number }>({
+    getFileDiff: build.query<FileDiff, { sessionId: string; project?: string; path: string; revision: string; offset: number }>({
       query: ({ sessionId, ...params }) => ({ url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params }),
       transformResponse: (value: unknown) => fileDiffSchema.parse(value),
       providesTags: ["FileChanges"],
@@ -295,6 +297,29 @@ export const redpandaApi = createApi({
         const { data } = await queryFulfilled;
         dispatch(bindOwner(data.session_id));
       },
+    }),
+    linkProject: build.mutation<
+      AgentRosterEntry,
+      { connectionId: string; sessionId: string; workspaceId: string | null; path: string | null }
+    >({
+      query: ({ connectionId, sessionId, workspaceId, path }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/projects`,
+        method: "POST",
+        body: { connection_id: connectionId, workspace_id: workspaceId, path },
+      }),
+      transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Agents", "Workspaces", "FileChanges"],
+    }),
+    unlinkProject: build.mutation<AgentRosterEntry, { connectionId: string; sessionId: string; name: string }>({
+      query: ({ connectionId, sessionId, name }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/projects/${encodeURIComponent(name)}/unlink`,
+        method: "POST",
+        body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Agents", "FileChanges"],
     }),
     getWorkspaces: build.query<Workspace[], void>({
       query: () => "/workspaces",
@@ -490,6 +515,8 @@ export const {
   useGetRoutineFiresQuery,
   useSetRoutineStateMutation,
   useGetFileChangesQuery,
+  useLinkProjectMutation,
+  useUnlinkProjectMutation,
   useGetFileDiffQuery,
   useGetModelSettingsQuery,
   useSaveModelSettingsMutation,

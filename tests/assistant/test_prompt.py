@@ -289,7 +289,7 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
                 event_id="task", session_id=child,
                 payload=DomainFactCommitted("subagent.task", {
                     "task": "read", "parent_session_id": "parent",
-                    "delegate_command_id": "delegate-1", "resolve_conflicts_of": None,
+                    "delegate_command_id": "delegate-1", "resolve_conflicts_of": None, "project": None,
                 }, requests_decision=True),
                 occurred_at=datetime.now(timezone.utc),
                 delivery=DeliveryIdentity("subagent", "delegate-1:task"),

@@ -22,6 +22,7 @@ from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.automation.routines import RoutineClock, RoutineStore
 from redpanda.assistant.agents import AgentCreated, AgentRecord
 from redpanda.assistant.conversations import (
+    AgentProjectView,
     AgentRosterEntry,
     AuthorizationInboxItem,
     ConversationView,
@@ -32,7 +33,7 @@ from redpanda.assistant.conversations import (
 from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound, GroupRecord
 from redpanda.assistant.agents import GroupCreated
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
-from redpanda.assistant.host.agent_worktrees import AgentProjectRequired
+from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.model_settings import ModelSettings
 from redpanda.config import write_json
@@ -130,7 +131,7 @@ class _Sessions:
         if name == "taken":
             raise AgentNameTaken(f"项目内已有 Agent：{name}")
         if name == "nogit":
-            raise AgentProjectRequired("项目必须是 Git 仓库，请先初始化并创建首个提交。")
+            raise ProjectLinkRefused("PROJECT_UNUSABLE", "项目必须是 Git 仓库，请先初始化并创建首个提交。")
         self.queries.created = (name, workspace_id)
         return AgentRecord(
             "agent-new",
@@ -207,7 +208,8 @@ class _Queries:
 
     async def agent_entry(self, session_id):
         name, workspace_id = self.created
-        return AgentRosterEntry(session_id, workspace_id, name, "前端", "idle", "waiting")
+        projects = () if workspace_id is None else (AgentProjectView("old", workspace_id, "C:/bots/old"),)
+        return AgentRosterEntry(session_id, projects, name, "前端", "idle", "waiting")
 
     async def list_inbox(self):
         return (
@@ -757,7 +759,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         body = created.json()
         self.assertEqual(body["name"], "小熊猫")
-        self.assertEqual(body["workspace_id"], "workspace-old")
+        self.assertEqual(body["projects"], [{"name": "old", "workspace_id": "workspace-old", "directory": "C:/bots/old"}])
         self.assertEqual(body["status"], "waiting")
         self.assertEqual(body["direction"], "前端")
         self.assertNotIn("worktree", body)
@@ -790,7 +792,7 @@ class WebFirstSliceTest(unittest.TestCase):
             "workspace_id": "workspace-old",
             "name": "nogit",
         })
-        self.assertEqual(missing_git.status_code, 422)
+        self.assertEqual(missing_git.status_code, 409)
         self.assertIn("Git", missing_git.json()["detail"])
 
     def test_roster_status_uses_existing_worker_and_wait_facts(self):
