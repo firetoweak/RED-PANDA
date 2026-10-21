@@ -37,9 +37,12 @@ const queries = vi.hoisted(() => ({
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve(agent({ session_id: "agent-new", name: "小熊猫" })) })),
   groups: [] as GroupSummary[],
+  setAutoAuthorize: vi.fn(),
   createGroup: vi.fn(() => ({ unwrap: () => Promise.resolve({ group_id: "group-new" }) })),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
+  useGetConversationQuery: () => ({ currentData: { session: { auto_authorize: false } } }),
+  useSetAutoAuthorizeMutation: () => [queries.setAutoAuthorize, { isLoading: false }],
   useGetAgentsQuery: () => ({ data: queries.agents, isLoading: false }),
   useGetInboxQuery: () => ({ data: queries.inbox, isLoading: false }),
   useGetGroupsQuery: () => ({ data: queries.groups, isLoading: false }),
@@ -241,4 +244,16 @@ it("群聊直接列在名册中，成员可选任意 Bot", async () => {
   }));
   await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent("/groups/group-new"));
   expect(dialog).not.toBeInTheDocument();
+});
+
+it("侧栏自动放行只提交当前私聊的设置，返回首页后不显示开关", async () => {
+  browserStubs();
+  queries.agents = [agent({ session_id: "ada", name: "Ada" })];
+  queries.groups = [];
+  queries.setAutoAuthorize.mockClear();
+  renderSidebar("/sessions/ada");
+  fireEvent.click(screen.getByRole("switch", { name: "自动放行写文件等工具" }));
+  expect(queries.setAutoAuthorize).toHaveBeenCalledWith({ sessionId: "ada", connectionId: "connection", enabled: true });
+  fireEvent.click(screen.getByRole("button", { name: "所有对话" }));
+  expect(screen.queryByRole("switch", { name: "自动放行写文件等工具" })).not.toBeInTheDocument();
 });

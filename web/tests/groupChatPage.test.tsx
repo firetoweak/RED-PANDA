@@ -143,7 +143,8 @@ it("完整名字决定收件人，支持中文、带空格和符号的名字，�
 it("整条引用保留来源但不把预览中的点名当作通知", async () => {
   api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "@Lin 看看这份完整报告", mentioned_agents: ["Lin"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
   renderPage();
-  fireEvent.click(screen.getByRole("button", { name: "引用 Ada 的消息" }));
+  fireEvent.contextMenu(screen.getByRole("article", { name: "Ada的群消息" }).querySelector(".group-message-bubble")!, { clientX: 100, clientY: 100 });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "引用 Ada 的消息" }));
   await screen.findByRole("button", { name: "取消引用" });
   expect(screen.getByLabelText("群消息")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "这个结论继续讨论" } });
@@ -154,7 +155,8 @@ it("整条引用保留来源但不把预览中的点名当作通知", async () =
 it("切换对话分别保留群草稿和引用，发送后清除", async () => {
   api.group = group({ messages: [{ message_id: "source", sender: "Ada", text: "长报告", mentioned_agents: [], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
   const first = renderPage();
-  fireEvent.click(screen.getByRole("button", { name: "引用 Ada 的消息" }));
+  fireEvent.contextMenu(screen.getByRole("article", { name: "Ada的群消息" }).querySelector(".group-message-bubble")!, { clientX: 100, clientY: 100 });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "引用 Ada 的消息" }));
   await screen.findByRole("button", { name: "取消引用" });
   fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "尚未发送的判断" } });
   first.unmount();

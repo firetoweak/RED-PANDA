@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Alert,
   Box,
   Button,
@@ -14,7 +13,6 @@ import {
   IconAlertCircle,
   IconArrowDown,
   IconCheck,
-  IconCopy,
   IconSparkles,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,7 +26,6 @@ import {
   useResolveControlMutation,
   useSelectSessionMutation,
   useSendInputMutation,
-  useSetAutoAuthorizeMutation,
   useRetryTurnMutation,
 } from "../../api/redpandaApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
@@ -53,14 +50,12 @@ import { PendingActions } from "./PendingActions";
 import { SessionAttention } from "./SessionAttention";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { TurnTiming } from "./TurnTiming";
 import { WorkPlanPanel } from "./WorkPlanPanel";
 import { BackgroundCommands } from "./BackgroundCommands";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
   timelineTurns,
-  turnElapsedMs,
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
@@ -71,7 +66,7 @@ import { ConversationTimeline } from "./ConversationTimeline";
 import { registerTimelineFocus } from "./timelineFocus";
 import { visibleTimeline } from "./visibleTimeline";
 import { SubagentPanel } from "./SubagentPanel";
-import { BotAvatar, ChatPresentation, messageReference, QuoteAction, type MessageReference } from "./ChatPresentation";
+import { BotAvatar, ChatPresentation, MessageMenu, type MessageReference } from "./ChatPresentation";
 
 const privateReading = new Map<string, { following: boolean; count: number }>();
 
@@ -124,7 +119,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const [sendInput, sending] = useSendInputMutation();
   const [authorizeCommand, authorizing] = useAuthorizeCommandMutation();
   const [resolveControl, resolvingControl] = useResolveControlMutation();
-  const [setAutoAuthorize, autoAuthorizing] = useSetAutoAuthorizeMutation();
   const [cancelTurn, stopping] = useCancelTurnMutation();
   const [retryTurn, retrying] = useRetryTurnMutation();
 
@@ -263,13 +257,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
     await resolveControl({ connectionId, sessionId, requestId, approved }).unwrap();
   }
 
-  async function toggleAutoAuthorize(enabled: boolean) {
-    if (connectionId === null) {
-      return;
-    }
-    await setAutoAuthorize({ connectionId, sessionId, enabled }).unwrap();
-  }
-
   return (
     <ChatPresentation value={{ names: agentNames.length > 0 ? agentNames : agentName === undefined ? [] : [agentName], quote, onQuote: setQuote, onJump: (id) => jumpRef.current(id) }}>
     <Box className="conversation-layout">
@@ -293,16 +280,10 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                 awaitingControl,
               });
               const reply = turnReply(turn, settled);
-              const elapsedMs = turnElapsedMs(turn, settled);
               const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
               const plan = completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />;
               const body = (
                 <div className="assistant-turn">
-                  {latest && running ? <TurnTiming
-                    startedAt={turn.user?.occurredAt ?? null}
-                    running={latest && running && connectionId !== null}
-                    elapsedMs={elapsedMs}
-                  /> : null}
                   {turnNeedsThinkingHint(turn, {
                     latest,
                     running,
@@ -320,7 +301,8 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                       key={reply.key}
                     >
                         <AssistantAvatar name={agentName} />
-                        <Stack className="assistant-reply" gap={6}>
+                        <MessageMenu id={reply.key} author={agentName ?? "RED PANDA"} text={reply.text}>
+                        <Stack className="assistant-reply" gap={6} tabIndex={0}>
                           <MarkdownMessage
                             content={reply.text}
                             streaming={reply.streaming}
@@ -338,6 +320,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                             </Group>
                           )}
                         </Stack>
+                        </MessageMenu>
                     </Box>
                     </>
                   ) : turnNeedsSilentEnd(turn, settled) &&
@@ -345,15 +328,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                     <SilentEndHint />
                   ) : null}
                   {!(reply !== null && settled) && turn.process.length === 0 && thinking === null ? null : <div className="turn-details" aria-label="消息操作与过程">
-                  {reply !== null && settled ? (
-                    <TurnEndActions
-                      messageId={reply.key}
-                      author={agentName ?? "RED PANDA"}
-                      elapsedMs={elapsedMs}
-                      occurredAt={turn.final?.occurredAt ?? null}
-                      replyText={reply.text}
-                    />
-                  ) : null}
                   {turn.process.length === 0 ? null : (
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
@@ -369,6 +343,12 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                       text={thinking.thinking}
                     />
                   )}
+                  {reply !== null && settled && turn.final?.occurredAt != null ? (
+                    <Text className="message-time" component="time" dateTime={turn.final.occurredAt} c="dimmed" fz={11}
+                      title={`回复提交于 ${formatMessageTime(turn.final.occurredAt).full}`}>
+                      {formatMessageTime(turn.final.occurredAt).short} · 已发送
+                    </Text>
+                  ) : null}
                   </div>}
                 </div>
               );
@@ -510,10 +490,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           }
           stopBusy={stopping.isLoading}
           retryBusy={retrying.isLoading}
-          autoAuthorize={conversation.session.auto_authorize}
-          autoAuthorizeBusy={autoAuthorizing.isLoading}
           inputTokens={conversation.context_input_tokens}
-          onToggleAutoAuthorize={toggleAutoAuthorize}
           onSend={send}
           onRetry={() => {
             if (connectionId === null) {
@@ -568,46 +545,6 @@ function RunningHint({ label, agentName }: { label: string; agentName?: string }
         </Group>
       </Group>
     </Box>
-  );
-}
-
-function TurnEndActions({
-  messageId,
-  author,
-  replyText,
-  occurredAt,
-  elapsedMs,
-}: {
-  messageId: string;
-  author: string;
-  replyText: string | null;
-  occurredAt: string | null;
-  elapsedMs: number | null;
-}) {
-  const [copied, setCopied] = useState(false);
-  const time = occurredAt === null ? null : formatMessageTime(occurredAt);
-  return (
-    <Group className="turn-end-actions" gap={4} justify="flex-start" wrap="nowrap">
-      {replyText === null ? null : <QuoteAction message={messageReference(messageId, author, replyText)} />}
-      {replyText === null ? null : (
-        <ActionIcon
-          aria-label="复制回复"
-          onClick={() => {
-            void navigator.clipboard.writeText(replyText).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-          radius="xl"
-          size="sm"
-          variant="subtle"
-        >
-          {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-        </ActionIcon>
-      )}
-      {time === null ? null : <Text component="time" dateTime={occurredAt ?? undefined} c="dimmed" fz={11} title={`回复提交于 ${time.full}`}>{time.short} · 已发送</Text>}
-      <TurnTiming startedAt={null} running={false} elapsedMs={elapsedMs} />
-    </Group>
   );
 }
 

@@ -8,6 +8,7 @@ import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateGroupModal } from "../groups/CreateGroupModal";
 import { CreateAgentModal } from "./CreateAgentModal";
 import { BotRoster } from "./BotRoster";
+import { SessionAutoAuthorize } from "../conversation/SessionAutoAuthorize";
 
 export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
   const navigate = useNavigate();
@@ -48,7 +49,7 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
       <SegmentedControl className="sidebar-filter" aria-label="对话类型" fullWidth size="xs" mb={10} value={filter} onChange={setFilter} data={[{ value: "all", label: "全部" }, { value: "groups", label: "群聊" }, { value: "bots", label: "Bot" }]} />
       <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => filter !== "groups" && `${agent.name} ${agent.direction ?? ""}`.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => filter !== "bots" && chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== "" || filter !== "all"} onOpen={open} creatingSection={sectionCreating} onCloseSection={() => setSectionCreating(false)} /></ScrollArea>
     </AppShell.Section>
-    <AppShell.Section className="sidebar-footer"><Group gap={8}><Button variant="subtle" leftSection={<IconAdjustments size={17} />} onClick={() => open("/settings/models")}>模型配置</Button><ColorSchemeSwitcher /></Group><Text size="xs" c="dimmed" px={8}>{connectionId === null ? "正在连接…" : "已连接"}</Text></AppShell.Section>
+    <AppShell.Section className="sidebar-footer"><Group gap={8}><Button variant="subtle" leftSection={<IconAdjustments size={17} />} onClick={() => open("/settings/models")}>模型配置</Button><ColorSchemeSwitcher />{sessionId === undefined ? null : <SessionAutoAuthorize sessionId={sessionId} />}</Group><Text size="xs" c="dimmed" px={8}>{connectionId === null ? "正在连接…" : "已连接"}</Text></AppShell.Section>
     <CreateAgentModal opened={creating} workspaceId={null} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); open(`/sessions/${encodeURIComponent(id)}`); }} />
     <CreateGroupModal opened={groupCreating} agents={agents} connectionId={connectionId} onClose={() => setGroupCreating(false)} onCreated={(id) => { setGroupCreating(false); open(`/groups/${encodeURIComponent(id)}`); }} />
   </Stack>;

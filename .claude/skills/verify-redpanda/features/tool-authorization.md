@@ -1,12 +1,12 @@
 # 工具授权
 
-待授权调用和控制请求在所属 Bot 头像旁提示，进入它的对话后在待处理条操作（见 [inbox.md](./inbox.md)）；没有独立的待处理汇总页。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
+待授权调用和控制请求在所属 Bot 头像旁提示，进入它的对话后在待处理条操作（见 [inbox.md](./inbox.md)）；没有独立的待处理汇总页。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`SessionAutoAuthorize.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
 
 ## Sub-features
 
 - `pending`：需要授权的工具调用在步骤卡片上显示徽标 `待授权`，卡片内有 `允许`/`拒绝`；同时输入框上方出现区域 `待处理`（标题 `待处理 · N 项`），每项为 `<工具名> · <参数摘要>`，按钮 `允许 <工具名>`/`拒绝 <工具名>`（可见文字 `允许`/`拒绝`），点 `查看 <工具名> 的参数` 展开参数 JSON。待处理条只读服务端 `session.pending_authorization_commands`，与步骤卡片同源；SSE 发 `authorization_required`；侧栏该会话活动点为 `等授权`。
 - `approve` / `reject`：`POST .../commands/{command_id}/authorize`（`approved` 为 true/false）。批准后执行，徽标变 `运行中` 再到 `完成`；拒绝后徽标 `已拒绝`，不执行。
-- `auto-authorize`：当前实验阶段，未设置过的会话默认开启工具自动放行。输入框下方开关可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST .../auto-authorize`（`enabled`）。显式关闭仍按会话持久化在 `$REDPANDA_HOME/runtime_sessions/auto_authorize.json`，重启后保持关闭；打开的瞬间会把该会话当前所有待授权调用一并批准。控制提案仍使用独立确认流程，授权交互后续单独设计。
+- `auto-authorize`：当前实验阶段，未设置过的会话默认开启工具自动放行。当前私聊时，侧栏模型配置旁的开关可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST .../auto-authorize`（`enabled`）。显式关闭仍按会话持久化在 `$REDPANDA_HOME/runtime_sessions/auto_authorize.json`，重启后保持关闭；打开的瞬间会把该会话当前所有待授权调用一并批准。控制提案仍使用独立确认流程，授权交互后续单独设计。
 - `control-confirm`：模型发起的控制请求作为一项出现在待处理条里，显示摘要与 `风险：…`，按钮 `取消`/`确认`；对话上下文保持可见。读 `session.control_approval`；`POST .../control` 带 `request_id`、`approved`。
 
 ## How to get to it (user POV)
@@ -55,3 +55,5 @@
 - 2026-10-20 PC live：新 Agent 默认自动放行，命令与文件修改无需逐条批准；显式关闭的持久化有测试覆盖，控制提案未重验。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：新 Agent 默认自动放行；显式关闭后 write_file 停在待处理，从收件箱允许后才写入并回复 AUTH_DONE。CLI 控制提案经页面确认通过；拒绝及重复授权未重验。
+
+- 2026-10-21 开关位置调整：自动放行移至侧栏模型配置旁，私聊时显示，首页与群聊不显示。组件回归确认提交当前会话与连接标识；隔离浏览器只核对已有状态，未切换授权或触发新的工具调用。
