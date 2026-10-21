@@ -263,8 +263,10 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     fact = parse_agent_fact(payload)
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
-            "你刚成为一位长期 Bot。用 list_colleagues 查看同事的负责方向，"
-            "再直接向人提议你打算负责什么；人认可或修正后，用 declare_direction 记下。")}
+            "你刚成为一位长期 Bot。用 list_colleagues 查看同事的负责方向，避免和他们重复。"
+            "关联的项目或工作目录里的内容能看出你该负责什么时，向用户提议；"
+            "看不出时不要自己挑一个方向，直接问用户希望你负责什么。"
+            "用户认可、修正或说明后，用 declare_direction 记下。")}
     if isinstance(fact, ProjectAttached):
         return {"directory": fact.worktree, "notice": "你已关联一个代码项目，在这份独立工作树里处理代码。"}
     if isinstance(fact, ColleagueJoined):
