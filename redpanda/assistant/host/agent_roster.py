@@ -61,10 +61,14 @@ class AgentRoster:
         index = await self._index()
         index[session_id] = replace(index[session_id], direction=direction)
 
-    async def list(self, workspace_id: str | None = None) -> tuple[AgentView, ...]:
-        entries = [entry for entry in (await self._index()).values()
-                   if workspace_id is None or entry.agent.workspace_id == workspace_id]
-        return tuple(sorted(entries, key=lambda entry: entry.agent.name))
+    async def set_projects(self, session_id: str, projects) -> None:
+        """Called once the Bot's own link or unlink fact is durable."""
+        index = await self._index()
+        entry = index[session_id]
+        index[session_id] = replace(entry, agent=replace(entry.agent, projects=tuple(projects)))
+
+    async def list(self) -> tuple[AgentView, ...]:
+        return tuple(sorted((await self._index()).values(), key=lambda entry: entry.agent.name))
 
     async def resolve(self, name: str) -> AgentRecord:
         for entry in await self.list():

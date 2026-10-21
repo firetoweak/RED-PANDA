@@ -16,7 +16,7 @@ from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.paths import RedPandaHome
 from redpanda.runtime.dispatcher import AttemptContext
-from tests.assistant.test_agent_worktrees_process import git
+from tests.assistant.test_agent_worktrees_process import git, tree
 
 
 pytestmark = pytest.mark.process
@@ -55,14 +55,14 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
 
     def change(self, agent, path, text):
         """The Agent commits its own work."""
-        (agent.worktree / path).write_text(text, encoding="utf-8", newline="\n")
-        git(agent.worktree, "add", path)
-        git(agent.worktree, "commit", "-m", f"change {path}")
-        return git(agent.worktree, "rev-parse", "HEAD")
+        (tree(agent) / path).write_text(text, encoding="utf-8", newline="\n")
+        git(tree(agent), "add", path)
+        git(tree(agent), "commit", "-m", f"change {path}")
+        return git(tree(agent), "rev-parse", "HEAD")
 
     async def call(self, tool, agent, arguments=None):
         context = AttemptContext(agent.session_id, f"{tool}-call", f"{tool}-attempt", 1)
-        return await self.tools[tool].handler(context, arguments or {})
+        return await self.tools[tool].handler(context, {"project": agent.projects[0].name} if arguments is None else arguments)
 
     async def test_conflicts_never_change_integration_and_are_resolved_on_the_agent_branch(self):
         human = git(self.project, "rev-parse", "HEAD")
@@ -81,11 +81,11 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
 
         result = await self.call(SYNC, second)
         self.assertEqual((result["code"], result["data"]), ("SYNC_CONFLICT", {"files": ["note.txt"]}))
-        self.assertIn("<<<<<<<", (second.worktree / "note.txt").read_text(encoding="utf-8"))
+        self.assertIn("<<<<<<<", (tree(second) / "note.txt").read_text(encoding="utf-8"))
         self.assertEqual((await self.call(SYNC, second))["code"], "SYNC_MERGE_IN_PROGRESS")
-        (second.worktree / "note.txt").write_text("both\n", encoding="utf-8")
-        git(second.worktree, "add", "note.txt")
-        git(second.worktree, "commit", "--no-edit")
+        (tree(second) / "note.txt").write_text("both\n", encoding="utf-8")
+        git(tree(second), "add", "note.txt")
+        git(tree(second), "commit", "--no-edit")
 
         later = self.change(first, "first.txt", "more\n")
         self.assertEqual((await self.call(LAND, first))["data"], {"commit": later, "fast_forward": True})
@@ -93,7 +93,7 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((result["code"], result["data"]["fast_forward"]), ("LAND_COMPLETED", False))
         merge = git(self.integration, "log", "-1", "--format=%H %an %P").split()
         self.assertEqual(merge[:2], [result["data"]["commit"], "乙"])
-        self.assertEqual(merge[2:], [later, git(second.worktree, "rev-parse", "HEAD")])
+        self.assertEqual(merge[2:], [later, git(tree(second), "rev-parse", "HEAD")])
         self.assertEqual((self.integration / "note.txt").read_text(encoding="utf-8"), "both\n")
 
         result = await self.call(SYNC, first)
@@ -116,13 +116,13 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         first, second = await self.agent("甲"), await self.agent("乙")
         self.change(first, "shared.txt", "landed\n")
         await self.call(LAND, first)
-        (second.worktree / "shared.txt").write_text("local\n", encoding="utf-8")
-        head = git(second.worktree, "rev-parse", "HEAD")
+        (tree(second) / "shared.txt").write_text("local\n", encoding="utf-8")
+        head = git(tree(second), "rev-parse", "HEAD")
         result = await self.call(SYNC, second)
         self.assertEqual(result["code"], "SYNC_BLOCKED")
         self.assertIn("shared.txt", result["data"]["git"])
-        self.assertEqual((second.worktree / "shared.txt").read_text(encoding="utf-8"), "local\n")
-        self.assertEqual(git(second.worktree, "rev-parse", "HEAD"), head)
+        self.assertEqual((tree(second) / "shared.txt").read_text(encoding="utf-8"), "local\n")
+        self.assertEqual(git(tree(second), "rev-parse", "HEAD"), head)
 
     async def test_landing_does_not_overwrite_files_left_in_integration(self):
         agent = await self.agent("甲")
@@ -159,13 +159,13 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
     async def test_change_review_shows_unlanded_work_without_touching_the_index(self):
         agent = await self.agent("甲")
         queries = AssistantQueries(self.host.store, self.host)
-        self.assertEqual(await queries.file_changes(agent.session_id),
+        self.assertEqual(await queries.file_changes(agent.session_id, project=agent.projects[0].name),
                          {"files": [], "added": 0, "removed": 0})
         self.change(agent, "note.txt", "initial\ncommitted\n")
-        (agent.worktree / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
-        status = git(agent.worktree, "status", "--porcelain")
-        listed = await queries.file_changes(agent.session_id)
-        detail = await queries.file_changes(agent.session_id, path="note.txt")
+        (tree(agent) / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
+        status = git(tree(agent), "status", "--porcelain")
+        listed = await queries.file_changes(agent.session_id, project=agent.projects[0].name)
+        detail = await queries.file_changes(agent.session_id, project=agent.projects[0].name, path="note.txt")
         self.assertEqual([(file["path"], file["status"], file["added"], file["removed"]) for file in listed["files"]],
                          [("draft.txt", "added", 2, 0), ("note.txt", "modified", 1, 0)])
         self.assertEqual((listed["added"], listed["removed"]), (3, 0))
@@ -174,8 +174,8 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
                          [("hunk", None, None, "@@ -1 +1,2 @@"), ("context", 1, 1, "initial\n"),
                           ("add", None, 2, "committed\n")])
         self.assertIsNone(detail["next_offset"])
-        self.assertIsNone(await queries.file_changes(agent.session_id, path="missing.txt"))
-        self.assertEqual(git(agent.worktree, "status", "--porcelain"), status)
+        self.assertIsNone(await queries.file_changes(agent.session_id, project=agent.projects[0].name, path="missing.txt"))
+        self.assertEqual(git(tree(agent), "status", "--porcelain"), status)
         self.change(agent, "draft.txt", "one\ntwo\n")
         await self.call(LAND, agent)
-        self.assertEqual((await queries.file_changes(agent.session_id))["files"], [])
+        self.assertEqual((await queries.file_changes(agent.session_id, project=agent.projects[0].name))["files"], [])

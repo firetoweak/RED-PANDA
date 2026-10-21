@@ -35,7 +35,7 @@ from redpanda.assistant.decision import (
     with_command_interrupts,
 )
 from redpanda.assistant.runner import SessionScheduler
-from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, agent_git_bindings
+from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, EXCLUSIVE_PROJECT_TOOLS, agent_git_bindings
 from redpanda.assistant.sessions import AssistantSessions
 from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
 from redpanda.assistant.subagent.review import GitChildReview
@@ -134,13 +134,13 @@ async def build_assistant_assembly(
     async def review_operation(*args, **kwargs):
         return await child_review.review(*args, **kwargs)
 
-    # Only an Agent's delegated tasks write; they are branches merged back into its own branch.
-    agent_git = agent_branch and task is None and session_transport is not None
+    # A Bot links projects; its tasks delegated into one are branches merged back into its own branch.
+    agent_git = agent is not None and session_transport is not None
     review_schemas, review_bindings, exclusive_tools = (
         subagent_review_tools(review_operation) if agent_git else ([], {}, frozenset())
     )
     if agent_git:
-        exclusive_tools |= AGENT_GIT_TOOLS
+        exclusive_tools |= EXCLUSIVE_PROJECT_TOOLS
     settings = ModelContextSettings()
     gateway = FileArtifactGateway(sessions_root)
     projector = ModelContextProjector(
@@ -200,7 +200,7 @@ async def build_assistant_assembly(
     skill_tools = SkillToolAdapter(skills, gateway, settings,
                                   project_root=workspace.task_root)
     cli_tools = CliToolAdapter(cli, gateway, settings)
-    subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch)
+    subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch, projects=agent is not None)
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)

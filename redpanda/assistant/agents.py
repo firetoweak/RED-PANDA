@@ -15,7 +15,8 @@ from redpanda.runtime.json_values import thaw_value
 
 
 AGENT_CREATED = "bot.agent_created"
-PROJECT_ATTACHED = "bot.project_attached"
+PROJECT_LINKED = "bot.project_linked"
+PROJECT_UNLINKED = "bot.project_unlinked"
 PRIVATE_MESSAGE = "bot.private_message"
 GROUP_MESSAGE = "bot.group_message"
 GROUP_ATTENTION = "bot.group_attention"
@@ -59,8 +60,13 @@ class AgentCreated(_Fact):
         return value
 
 
-class ProjectAttached(_Fact):
+class ProjectLinked(_Fact):
+    """A registered project mounted into this Bot: its own worktree on its own branch.
+
+    `name` is how the Bot addresses the project; it is unique among its mounts.
+    """
     workspace_id: Text
+    name: Text
     worktree: Text
     branch: Text
 
@@ -70,6 +76,11 @@ class ProjectAttached(_Fact):
         if not Path(value).is_absolute():
             raise ValueError("Agent worktree 必须是绝对路径")
         return value
+
+
+class ProjectUnlinked(_Fact):
+    workspace_id: Text
+    name: Text
 
 
 class Speaker(_Fact):
@@ -151,7 +162,8 @@ class RoutinesUnwatched(_Fact):
 
 _FACTS = {
     AGENT_CREATED: (AgentCreated, True),
-    PROJECT_ATTACHED: (ProjectAttached, False),
+    PROJECT_LINKED: (ProjectLinked, False),
+    PROJECT_UNLINKED: (ProjectUnlinked, False),
     PRIVATE_MESSAGE: (PrivateMessage, True),
     GROUP_MESSAGE: (GroupMessage, False),
     GROUP_ATTENTION: (GroupAttention, True),
@@ -185,42 +197,45 @@ def parse_agent_fact(payload: DomainFactCommitted) -> _Fact:
 class AgentRecord:
     session_id: str
     identity: AgentCreated
-    project: ProjectAttached | None = None
+    projects: tuple[ProjectLinked, ...] = ()
 
     @property
     def name(self) -> str:
         return self.identity.name
 
     @property
-    def workspace_id(self) -> str | None:
-        return None if self.project is None else self.project.workspace_id
-
-    @property
     def directory(self) -> Path:
         return Path(self.identity.directory)
 
-    @property
-    def worktree(self) -> Path:
-        return self.directory if self.project is None else Path(self.project.worktree)
+    def project(self, name: str) -> ProjectLinked | None:
+        return next((item for item in self.projects if item.name == name), None)
+
+    def project_by_id(self, workspace_id: str) -> ProjectLinked | None:
+        return next((item for item in self.projects if item.workspace_id == workspace_id), None)
 
 
 def project_agent(events) -> AgentRecord | None:
     creation = None
-    project = None
+    projects: dict[str, ProjectLinked] = {}
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_CREATED:
             if creation is not None:
                 raise ValueError("Agent has more than one creation fact")
             creation = AgentRecord(event.session_id, parse_agent_fact(payload))
-        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_ATTACHED:
-            if project is not None:
-                raise ValueError("Agent has more than one project attachment")
-            project = parse_agent_fact(payload)
+        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_LINKED:
+            linked = parse_agent_fact(payload)
+            if linked.workspace_id in projects or any(item.name == linked.name for item in projects.values()):
+                raise ValueError("Agent links one project, or one name, only once at a time")
+            projects[linked.workspace_id] = linked
+        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_UNLINKED:
+            unlinked = parse_agent_fact(payload)
+            if projects.pop(unlinked.workspace_id, None) is None:
+                raise ValueError("Agent unlinks a project it has not linked")
     if creation is not None:
         if creation.directory != bound_directory(events):
             raise ValueError("Agent directory differs from Session directory binding")
-        creation = AgentRecord(creation.session_id, creation.identity, project)
+        creation = AgentRecord(creation.session_id, creation.identity, tuple(projects.values()))
     return creation
 
 
@@ -252,10 +267,17 @@ def identity_for_model(events) -> dict | None:
         and event.payload.fact_type == GROUP_CREATED
         for fact in (parse_agent_fact(event.payload),)
     ]
+    shown["projects"] = [{"project": item.name, "directory": item.worktree} for item in agent.projects]
     shown["notice"] = (
-        "这是你的名字、你声明过的负责方向和你所在的群；之后的事实可能更新它们。"
+        "这是你的名字、你声明过的负责方向、你所在的群和你挂上的项目；之后的事实可能更新它们。"
         "同事的负责方向用 list_colleagues 查看。")
     return shown
+
+
+PROJECT_LINKED_NOTICE = (
+    "这个代码项目已挂到你这里：directory 是你在其中的独立工作树，在你自己的分支上，可以读写。"
+    "处理这个项目时，文件路径写 directory 下的路径，执行命令时把 cwd 设为它；"
+    "land_branch、sync_branch 和 delegate 用 project 指明是哪个项目。")
 
 
 def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
@@ -267,8 +289,10 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
             "关联的项目或工作目录里的内容能看出你该负责什么时，向用户提议；"
             "看不出时不要自己挑一个方向，直接问用户希望你负责什么。"
             "用户认可、修正或说明后，用 declare_direction 记下。")}
-    if isinstance(fact, ProjectAttached):
-        return {"directory": fact.worktree, "notice": "你已关联一个代码项目，在这份独立工作树里处理代码。"}
+    if isinstance(fact, ProjectLinked):
+        return {"project": fact.name, "directory": fact.worktree, "notice": PROJECT_LINKED_NOTICE}
+    if isinstance(fact, ProjectUnlinked):
+        return {"project": fact.name, "notice": "这个项目已从你这里解除，它的工作树已移除。"}
     if isinstance(fact, ColleagueJoined):
         return {"colleague": fact.name, "notice": "这位同事刚加入，还没有声明负责方向。"}
     if isinstance(fact, DirectionDeclared):

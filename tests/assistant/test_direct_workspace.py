@@ -16,7 +16,6 @@ from tests.fixtures.session_worker import config_for
 import pytest
 
 from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.subagent.subagent import DELEGATE
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from redpanda.paths import RedPandaHome
@@ -38,7 +37,7 @@ class CapturingLlm:
 
 
 class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
-    async def test_agent_writes_its_worktree_and_sees_branch_tools(self):
+    async def test_session_writes_its_directory_and_sees_its_tools(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             workspace = root / "workspace"
@@ -49,7 +48,7 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                 AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=llm),
                 lambda *_: None, MemoryJournal(), session_id="agent",
                 workspace=workspace_record(workspace), home=home,
-                agent_branch=True, scheduler_factory=SettlingScheduler, session_transport=no_host_settings,
+                scheduler_factory=SettlingScheduler, session_transport=no_host_settings,
             )
             try:
                 context = AttemptContext("agent", "write", "attempt-write", 1)
@@ -69,8 +68,6 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                 await assembly.scheduler.join()
                 names = {tool["function"]["name"] for tool in llm.tools}
                 self.assertTrue({"read_file", "write_file", "execute_command"} <= names)
-                delegate = next(tool["function"] for tool in llm.tools if tool["function"]["name"] == DELEGATE)
-                self.assertIn("merge_subagent 合入你的分支", delegate["description"])
                 command = next(tool["function"] for tool in llm.tools if tool["function"]["name"] == "execute_command")
                 self.assertNotIn("file_access", command["parameters"]["properties"])
                 environment = next(message["content"] for message in llm.messages if "<environment>" in str(message["content"]))

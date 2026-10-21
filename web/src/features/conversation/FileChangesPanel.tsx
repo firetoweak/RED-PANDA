@@ -14,9 +14,10 @@ function Counts({ file }: { file: { added: number | null; removed: number | null
   </>;
 }
 
-function Diff({ sessionId, file, refresh }: { sessionId: string; file: ChangedFile; refresh: () => void }) {
+function Diff({ sessionId, project, file, refresh }: { sessionId: string; project?: string; file: ChangedFile; refresh: () => void }) {
   const [offset, setOffset] = useState(0);
-  const { currentData: data, isFetching, isError, refetch } = useGetFileDiffQuery({ sessionId, path: file.path, revision: file.revision, offset });
+  const { currentData: data, isFetching, isError, refetch } = useGetFileDiffQuery({
+    sessionId, ...(project === undefined ? {} : { project }), path: file.path, revision: file.revision, offset });
   if (isError) return <Alert color="orange">文件变化已更新或暂时无法读取。<Button variant="subtle" onClick={() => { refresh(); void refetch(); }}>刷新列表</Button></Alert>;
   if (data === undefined) return <Loader size="sm" />;
   return <div className="file-diff-page">
@@ -42,16 +43,18 @@ function Diff({ sessionId, file, refresh }: { sessionId: string; file: ChangedFi
   </div>;
 }
 
-export function FileChangesSummary({ sessionId, onOpen }: { sessionId: string; onOpen: () => void }) {
-  const { currentData: data, isFetching, isError, refetch } = useGetFileChangesQuery(sessionId, { refetchOnMountOrArgChange: true });
+export function FileChangesSummary({ sessionId, project, onOpen }: { sessionId: string; project?: string; onOpen: () => void }) {
+  const { currentData: data, isFetching, isError, refetch } = useGetFileChangesQuery(
+    { sessionId, ...(project === undefined ? {} : { project }) }, { refetchOnMountOrArgChange: true });
+  const prefix = project === undefined ? "" : `${project} · `;
   function refresh() { void refetch(); }
   return <Group justify="flex-end" gap="xs" className="file-changes-summary">
       <Button variant="default" size="compact-sm" radius="xl" leftSection={<IconFileDiff size={15} />}
         onClick={onOpen} loading={data === undefined && isFetching}>
-        {isError ? "文件变更暂不可用" : data === undefined ? "读取文件变更" : `${data.files.length} 个文件已更改`}
+        {prefix}{isError ? "文件变更暂不可用" : data === undefined ? "读取文件变更" : `${data.files.length} 个文件已更改`}
         {data !== undefined && !isError && <span className="changes-counts"><Counts file={data} /></span>}
       </Button>
-      <ActionIcon variant="subtle" color="gray" aria-label="刷新文件变更" loading={isFetching} onClick={refresh}><IconRefresh size={15} /></ActionIcon>
+      <ActionIcon variant="subtle" color="gray" aria-label={`刷新${prefix}文件变更`} loading={isFetching} onClick={refresh}><IconRefresh size={15} /></ActionIcon>
     </Group>;
 }
 
@@ -87,10 +90,11 @@ function FileTree({ files, selected, onSelect, prefix = "" }: {
   </>;
 }
 
-export function FileChangesPanel({ sessionId }: { sessionId: string }) {
+export function FileChangesPanel({ sessionId, project }: { sessionId: string; project?: string }) {
   const [filesOpened, setFilesOpened] = useState(true);
   const [path, setPath] = useState<string | null>(null);
-  const { currentData: data, isFetching, isError, refetch } = useGetFileChangesQuery(sessionId);
+  const { currentData: data, isFetching, isError, refetch } = useGetFileChangesQuery(
+    { sessionId, ...(project === undefined ? {} : { project }) });
   const selected = data?.files.find((file) => file.path === path) ?? data?.files[0];
   function refresh() { void refetch(); }
 
@@ -111,7 +115,8 @@ export function FileChangesPanel({ sessionId }: { sessionId: string }) {
         {isError ? <Alert color="orange" m="sm">无法读取文件变更，请刷新重试。</Alert>
           : data === undefined ? <Loader size="sm" m="md" />
           : selected === undefined ? <Text c="dimmed" size="sm" p="md">当前没有保留的会话变更。</Text>
-          : <Diff key={`${sessionId}:${selected.path}:${selected.revision}`} sessionId={sessionId} file={selected} refresh={refresh} />}
+          : <Diff key={`${sessionId}:${project ?? ""}:${selected.path}:${selected.revision}`} sessionId={sessionId}
+            project={project} file={selected} refresh={refresh} />}
       </div>
       {!filesOpened ? null : <aside className="file-changes-files" aria-label="改动文件列表">
         <Text size="xs" fw={600} p="sm">改动文件 · {data?.files.length ?? 0}</Text>

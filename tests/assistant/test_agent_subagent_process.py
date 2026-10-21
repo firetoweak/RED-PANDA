@@ -18,7 +18,7 @@ from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal
-from tests.assistant.test_agent_worktrees_process import git
+from tests.assistant.test_agent_worktrees_process import git, tree
 from tests.fixtures.session_worker import ProcessLlm, config_for
 
 
@@ -46,7 +46,9 @@ class DelegatingLlm(ProcessLlm):
         elif "DELEGATE_WORK" in text:
             delegated = next((call_id for call_id, name in made if name == "delegate"), None)
             if delegated is None:
-                call = ToolCall("d", "delegate", json.dumps({"task": "在 child.txt 写入 from child"}))
+                project = next(json.loads(message["content"])["data"]["project"] for message in messages
+                               if '"bot.project_linked"' in str(message.get("content")))
+                call = ToolCall("d", "delegate", json.dumps({"task": "在 child.txt 写入 from child", "project": project}))
             elif "CHILD_DONE" in text and "compare_subagent" not in names:
                 call = ToolCall("c", "compare_subagent", json.dumps({"tool_call_id": delegated}))
             elif "compare_subagent" in names and "merge_subagent" not in names:
@@ -84,13 +86,13 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         await self.host.select("page", parent.session_id)
         await self.host.receive_user_message(parent.session_id, "DELEGATE_WORK", delivery_id="work")
         async with asyncio.timeout(60):
-            while not (parent.worktree / "child.txt").exists():
+            while not (tree(parent) / "child.txt").exists():
                 self.assertTrue(self.host.failures.empty())
                 await asyncio.sleep(0.05)
             await self.host.wait_quiescent(parent.session_id)
-        self.assertEqual((parent.worktree / "child.txt").read_text(encoding="utf-8"), "from child\n")
-        self.assertEqual(git(parent.worktree, "log", "-1", "--format=%an", "--", "child.txt"), "小熊猫")
-        self.assertEqual(git(parent.worktree, "status", "--porcelain"), "")
+        self.assertEqual((tree(parent) / "child.txt").read_text(encoding="utf-8"), "from child\n")
+        self.assertEqual(git(tree(parent), "log", "-1", "--format=%an", "--", "child.txt"), "小熊猫")
+        self.assertEqual(git(tree(parent), "status", "--porcelain"), "")
         self.assertFalse((self.home.state_root / "workspace_views").exists())
         self.assertFalse((self.home.state_root / "subagent_worktrees").exists())
         self.assertFalse((self.project / "child.txt").exists())
@@ -99,7 +101,8 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         queries = AssistantQueries(self.host.store, self.host)
         # Merged into the parent, so nothing of the task remains to review.
         self.assertEqual((await queries.file_changes(intent.child_session_id))["files"], [])
-        self.assertEqual([file["path"] for file in (await queries.file_changes(parent.session_id))["files"]],
+        self.assertEqual([file["path"] for file in (await queries.file_changes(
+            parent.session_id, project=parent.projects[0].name))["files"]],
                          ["child.txt"])
         self.assertTrue(self.host.failures.empty())
 
@@ -108,45 +111,47 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         trees = self.host.agent_worktrees
         project = self.host.workspaces.get(self.workspace.workspace_id)
         first, second = f"{parent.session_id}/sub-1", f"{parent.session_id}/sub-2"
-        child = trees.create_child(project, parent, first)
-        self.assertEqual(trees.create_child(project, parent, first), child)
+        linked, = parent.projects
+        child = trees.create_child(project, parent, linked, first)
+        self.assertEqual(trees.create_child(project, parent, linked, first), child)
         (child.path / "note.txt").write_text("child\n", encoding="utf-8")
-        trees.finish_child(parent, first)
-        (parent.worktree / "note.txt").write_text("parent\n", encoding="utf-8")
-        git(parent.worktree, "commit", "-am", "parent change")
-        head = git(parent.worktree, "rev-parse", "HEAD")
+        trees.finish_child(parent, linked.workspace_id, first)
+        (tree(parent) / "note.txt").write_text("parent\n", encoding="utf-8")
+        git(tree(parent), "commit", "-am", "parent change")
+        head = git(tree(parent), "rev-parse", "HEAD")
 
-        files = trees.compare_child(parent, first, ("note.txt",), 0)
+        files = trees.compare_child(linked, first, ("note.txt",), 0)
         self.assertEqual(files["files"], [{"status": "M", "path": "note.txt"}])
         self.assertIn("+child", files["diff"])
-        result, changed = trees.merge_child(parent, first)
+        result, changed = trees.merge_child(parent, linked, first)
         self.assertEqual((result.status, result.files, changed), ("conflict", ("note.txt",), ()))
-        self.assertEqual(git(parent.worktree, "rev-parse", "HEAD"), head)
-        self.assertEqual(git(parent.worktree, "status", "--porcelain"), "")
+        self.assertEqual(git(tree(parent), "rev-parse", "HEAD"), head)
+        self.assertEqual(git(tree(parent), "status", "--porcelain"), "")
 
-        resolving = trees.create_child(project, parent, second, first)
+        resolving = trees.create_child(project, parent, linked, second, first)
         self.assertIn("<<<<<<<", (resolving.path / "note.txt").read_text(encoding="utf-8"))
         # Replaying the delegation keeps the merge it is resolving.
-        trees.create_child(project, parent, second, first)
+        trees.create_child(project, parent, linked, second, first)
         self.assertTrue(trees.git.merging(resolving.path))
         (resolving.path / "note.txt").write_text("parent and child\n", encoding="utf-8")
-        trees.finish_child(parent, second)
+        trees.finish_child(parent, linked.workspace_id, second)
         self.assertEqual(len(git(resolving.path, "log", "-1", "--format=%P").split()), 2)
-        result, changed = trees.merge_child(parent, second)
+        result, changed = trees.merge_child(parent, linked, second)
         self.assertEqual((result.status, changed), ("merged", ("note.txt",)))
-        self.assertEqual((parent.worktree / "note.txt").read_text(encoding="utf-8"), "parent and child\n")
-        self.assertEqual(trees.merge_child(parent, first)[0].status, "unchanged")
+        self.assertEqual((tree(parent) / "note.txt").read_text(encoding="utf-8"), "parent and child\n")
+        self.assertEqual(trees.merge_child(parent, linked, first)[0].status, "unchanged")
         self.assertEqual(git(self.project, "status", "--porcelain"), "")
 
     async def test_git_failure_while_fixing_a_returned_result_comes_back_with_git_own_words(self):
         parent = await self.host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
         trees = self.host.agent_worktrees
         task = f"{parent.session_id}/sub-1"
-        child = trees.create_child(self.host.workspaces.get(self.workspace.workspace_id), parent, task)
+        linked, = parent.projects
+        child = trees.create_child(self.host.workspaces.get(self.workspace.workspace_id), parent, linked, task)
         (child.path / "note.txt").write_text("child\n", encoding="utf-8")
         lock = Path(git(child.path, "rev-parse", "--absolute-git-dir")) / "index.lock"
         lock.touch()
-        self.assertIn("index.lock", trees.finish_child(parent, task))
+        self.assertIn("index.lock", trees.finish_child(parent, linked.workspace_id, task))
         lock.unlink()
-        self.assertIsNone(trees.finish_child(parent, task))
+        self.assertIsNone(trees.finish_child(parent, linked.workspace_id, task))
         self.assertEqual(git(child.path, "status", "--porcelain"), "")

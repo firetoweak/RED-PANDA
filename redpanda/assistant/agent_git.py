@@ -19,10 +19,13 @@ AUTHOR_EMAIL = "bot@redpanda.local"
 
 @dataclass(frozen=True, slots=True)
 class GitWorkspace:
-    """A real worktree a Session runs in directly, and whose Git identity it uses."""
-    worktree: Path
+    """The Git identity a Session commits with, and the project copy it runs in, if any.
+
+    A Bot runs in its own directory and mounts its projects there; only a task
+    delegated into a project runs directly in that project copy.
+    """
+    worktree: Path | None
     author: str
-    full_access: bool = False
 
 
 @dataclass(frozen=True, slots=True)
