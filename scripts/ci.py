@@ -88,7 +88,8 @@ def main(argv: list[str] | None = None) -> None:
             run([sys.executable, "-m", "pytest", "--durations=20",
                  "--junitxml=.tools/test-results/python.xml"])
         elif target == "process":
-            command = [sys.executable, "-m", "pytest", "-m", "process", "-x", "--durations=20",
+            command = [sys.executable, "-m", "pytest", "-m", "process", "-x", "-v",
+                       "-o", "faulthandler_timeout=120", "--durations=20",
                        f"--junitxml=.tools/test-results/process-{args.process_group or 'all'}.xml"]
             if args.process_group:
                 command.extend(["--process-group", args.process_group])

@@ -5,11 +5,43 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
+from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.supervisor import HostSupervisor, Worker
 
 
 class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):
+    async def test_peer_close_does_not_send_abort_back_to_exiting_worker(self):
+        host = object.__new__(HostSupervisor)
+        host.closed = False
+        host.locks = {}
+        host._stop_idle = AsyncMock()
+        sent = asyncio.Event()
+        messages = []
+        loop = asyncio.get_running_loop()
+
+        def send(message):
+            messages.append(message[0])
+            if message[0] == "abort":
+                raise BrokenPipeError("Worker has exited")
+            loop.call_soon_threadsafe(sent.set)
+
+        peer = PipePeer(SimpleNamespace(send=send), host.request, AsyncMock())
+        worker = Worker(None, peer)
+        host.workers = {"session": worker}
+        handler = asyncio.create_task(peer._handle("incoming", "view", "session", {}))
+        peer.tasks.add(handler)
+        handler.add_done_callback(peer._done)
+        await sent.wait()
+        worker.stopping = True
+        try:
+            async with asyncio.timeout(1):
+                await peer.close(RuntimeError("Worker exited"))
+        finally:
+            worker.exited.set()
+            await asyncio.gather(handler, return_exceptions=True)
+        self.assertEqual(messages, ["request"])
+        self.assertFalse(peer.pending)
+
     async def test_pipe_close_waits_for_original_failure_without_duplicate_report(self):
         for transport_error in (EOFError(), ConnectionResetError(), BrokenPipeError()):
             with self.subTest(error=type(transport_error).__name__):

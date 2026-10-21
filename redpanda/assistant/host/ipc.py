@@ -97,7 +97,10 @@ class PipePeer:
             await self.send(("request", request_id, operation, session_id, arguments))
             return await future
         except asyncio.CancelledError:
-            await asyncio.shield(self.send(("abort", request_id)))
+            # close() cancels handlers after the peer has exited; sending abort
+            # there can make Host requests wait for the same close to finish.
+            if not self.stopped:
+                await asyncio.shield(self.send(("abort", request_id)))
             raise
         finally:
             del self.pending[request_id]
