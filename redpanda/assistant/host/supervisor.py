@@ -1010,12 +1010,20 @@ class HostSupervisor:
         try:
             if just_started and operation != "apply_auto_authorize":
                 async with self._auto_authorize_lock:
+                    if worker.failure is not None:
+                        raise worker.failure
                     await worker.peer.request(
                         "apply_auto_authorize",
                         session_id,
                         {"enabled": self.auto_authorize()},
                     )
             return await worker.peer.request(operation, session_id, arguments)
+        except (EOFError, ConnectionResetError, BrokenPipeError):
+            # The lifecycle reader drains the Worker's original failure before exit.
+            await worker.exited.wait()
+            if worker.failure is not None:
+                raise worker.failure from None
+            raise
         finally:
             worker.requests -= 1
             if not worker.exited.is_set():
