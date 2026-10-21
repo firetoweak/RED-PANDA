@@ -346,7 +346,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                   {reply !== null && settled && turn.final?.occurredAt != null ? (
                     <Text className="message-time" component="time" dateTime={turn.final.occurredAt} c="dimmed" fz={11}
                       title={`回复提交于 ${formatMessageTime(turn.final.occurredAt).full}`}>
-                      {formatMessageTime(turn.final.occurredAt).short} · 已发送
+                      {formatMessageTime(turn.final.occurredAt).short}
                     </Text>
                   ) : null}
                   </div>}

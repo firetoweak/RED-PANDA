@@ -1,74 +1,107 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock, call, patch
 
+from redpanda.assistant.host.auto_authorize import AutoAuthorizeStore
 from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.session_metadata import SessionFlagStore
 
 
 class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
-    def test_new_session_auto_authorizes_and_explicit_opt_out_survives_reload(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            host = object.__new__(HostSupervisor)
-            host._auto_authorize = SessionFlagStore(root, "auto_authorize.json")
-            self.assertTrue(host.auto_authorize("new"))
-            host._auto_authorize.set("new", False)
-            host._auto_authorize = SessionFlagStore(root, "auto_authorize.json")
-            self.assertFalse(host.auto_authorize("new"))
-            self.assertTrue(host.auto_authorize("another"))
-
-    async def test_worker_policy_comes_only_from_session_store(self):
+    def host(self, root=None):
         host = object.__new__(HostSupervisor)
-        host._auto_authorize = SessionFlagStore(None, "auto_authorize.json")
-        host._auto_authorize.remember("enabled", True)
-        host._auto_authorize.remember("disabled", False)
-        host.selections = {
-            "tui": "enabled",
-            "web": "disabled",
-        }
+        host._auto_authorize = AutoAuthorizeStore(root)
+        host._auto_authorize_lock = asyncio.Lock()
+        host.workers = {"a": object(), "b": object()}
         host.request = AsyncMock()
+        return host
 
-        await host._push_auto_authorize("enabled")
-        await host._push_auto_authorize("disabled")
-
-        self.assertEqual(
-            host.request.await_args_list,
-            [
-                call(
-                    "apply_auto_authorize",
-                    "enabled",
-                    {"enabled": True},
-                ),
-                call(
-                    "apply_auto_authorize",
-                    "disabled",
-                    {"enabled": False},
-                ),
-            ],
-        )
-
-    async def test_set_auto_authorize_writes_host_store_and_pushes_policy(self):
+    def test_global_opt_out_survives_reload_and_repeated_save_does_not_write(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            host = object.__new__(HostSupervisor)
-            host._auto_authorize = SessionFlagStore(root, "auto_authorize.json")
-            host._push_auto_authorize = AsyncMock(
-                return_value=SimpleNamespace(auto_authorize=False)
-            )
-            host._with_host_metadata = lambda observed, session_id: observed
+            policy = AutoAuthorizeStore(root)
+            self.assertTrue(policy.enabled)
+            policy.set(False)
+            self.assertFalse(AutoAuthorizeStore(root).enabled)
+            with patch("redpanda.assistant.host.auto_authorize.write_json") as write:
+                policy.set(False)
+            write.assert_not_called()
 
-            view = await host.set_auto_authorize("session-1", True)
+    def test_failed_replace_preserves_previous_policy_in_memory_and_on_disk(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            policy = AutoAuthorizeStore(root)
+            policy.set(False)
+            with patch("redpanda.config.os.replace", side_effect=OSError("disk failure")):
+                with self.assertRaisesRegex(OSError, "disk failure"):
+                    policy.set(True)
+            self.assertFalse(policy.enabled)
+            self.assertFalse(AutoAuthorizeStore(root).enabled)
+            self.assertEqual(list(root.iterdir()), [root / "authorization.json"])
 
-            self.assertTrue(host.auto_authorize("session-1"))
-            self.assertEqual(
-                json.loads((root / "auto_authorize.json").read_text(encoding="utf-8")),
-                {"session-1": True},
-            )
-            host._push_auto_authorize.assert_awaited_once_with("session-1")
-            self.assertIs(view, host._push_auto_authorize.return_value)
+    def test_corrupt_global_policy_is_not_treated_as_enabled(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "authorization.json").write_text('{"enabled": "false"}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                AutoAuthorizeStore(root)
+
+    async def test_one_setting_reaches_all_active_workers_without_loading_history(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            host = self.host(root)
+            await host.set_auto_authorize(False)
+            self.assertEqual(host.request.await_args_list, [
+                call("apply_auto_authorize", "a", {"enabled": False}),
+                call("apply_auto_authorize", "b", {"enabled": False}),
+            ])
+            self.assertEqual(json.loads((root / "authorization.json").read_text()), {"enabled": False})
+
+    async def test_overlapping_switches_reach_workers_in_the_same_order(self):
+        host = self.host()
+        entered, release = asyncio.Event(), asyncio.Event()
+        applied = []
+
+        async def apply(operation, session_id, arguments):
+            if not arguments["enabled"]:
+                entered.set()
+                await release.wait()
+            applied.append((session_id, arguments["enabled"]))
+
+        host.request.side_effect = apply
+        first = asyncio.create_task(host.set_auto_authorize(False))
+        await entered.wait()
+        second = asyncio.create_task(host.set_auto_authorize(True))
+        await asyncio.sleep(0)
+        self.assertFalse(host.auto_authorize())
+        release.set()
+        await asyncio.gather(first, second)
+        self.assertEqual(applied, [("a", False), ("b", False), ("a", True), ("b", True)])
+        self.assertTrue(host.auto_authorize())
+
+    async def test_failed_worker_does_not_skip_others_and_retry_resynchronizes(self):
+        host = self.host()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def apply(operation, session_id, arguments):
+            if session_id == "a":
+                raise RuntimeError("worker failed")
+            entered.set()
+            await release.wait()
+
+        host.request.side_effect = apply
+        update = asyncio.create_task(host.set_auto_authorize(False))
+        await entered.wait()
+        await asyncio.sleep(0)
+        self.assertFalse(update.done())
+        release.set()
+        with self.assertRaises(ExceptionGroup):
+            await update
+        self.assertFalse(host.auto_authorize())
+        host.request = AsyncMock()
+        await host.set_auto_authorize(False)
+        self.assertEqual(host.request.await_count, 2)

@@ -27,6 +27,7 @@ from redpanda.automation.once import (
 )
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.session_metadata import SessionFlagStore
+from redpanda.assistant.host.auto_authorize import AutoAuthorizeStore
 from redpanda.assistant.compact.host import CompactHost
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
 from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
@@ -179,7 +180,8 @@ class HostSupervisor:
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
         self.commands = CommandHost(self) if sys.platform in {"win32", "linux"} else None
-        self._auto_authorize = SessionFlagStore(store.root, "auto_authorize.json")
+        self._auto_authorize = AutoAuthorizeStore(store.root)
+        self._auto_authorize_lock = asyncio.Lock()
         self._pause = SessionFlagStore(store.root, "paused.json")
         self.automation = OneShotClock(
             OneShotSchedules(home.state_root / "automation.sqlite")
@@ -1007,19 +1009,20 @@ class HostSupervisor:
             await worker.transition.wait()
         try:
             if just_started and operation != "apply_auto_authorize":
-                await worker.peer.request(
-                    "apply_auto_authorize",
-                    session_id,
-                    {"enabled": self.auto_authorize(session_id)},
-                )
+                async with self._auto_authorize_lock:
+                    await worker.peer.request(
+                        "apply_auto_authorize",
+                        session_id,
+                        {"enabled": self.auto_authorize()},
+                    )
             return await worker.peer.request(operation, session_id, arguments)
         finally:
             worker.requests -= 1
             if not worker.exited.is_set():
                 await self._stop_idle(session_id, worker)
 
-    def auto_authorize(self, session_id):
-        return self._auto_authorize.get(session_id, default=True)
+    def auto_authorize(self):
+        return self._auto_authorize.enabled
 
     def is_paused(self, session_id):
         return self._pause.get(session_id)
@@ -1027,7 +1030,7 @@ class HostSupervisor:
     def _with_host_metadata(self, view, session_id):
         return replace(
             view,
-            auto_authorize=self.auto_authorize(session_id),
+            auto_authorize=self.auto_authorize(),
             paused=self.is_paused(session_id),
             last_error=self.current_failure(session_id),
         )
@@ -1039,7 +1042,7 @@ class HostSupervisor:
         return await self.request(
             "apply_auto_authorize",
             session_id,
-            {"enabled": self.auto_authorize(session_id)},
+            {"enabled": self.auto_authorize()},
         )
 
     def conversation_status(self, session_id):
@@ -1266,10 +1269,16 @@ class HostSupervisor:
             "resolve_authorizations", session_id, dict(approved=approved)
         )
 
-    async def set_auto_authorize(self, session_id, enabled):
-        self._auto_authorize.set(session_id, enabled)
-        view = await self._push_auto_authorize(session_id)
-        return self._with_host_metadata(view, session_id)
+    async def set_auto_authorize(self, enabled):
+        async with self._auto_authorize_lock:
+            self._auto_authorize.set(enabled)
+            results = await asyncio.gather(
+                *(self._push_auto_authorize(session_id) for session_id in tuple(self.workers)),
+                return_exceptions=True,
+            )
+            errors = [result for result in results if isinstance(result, BaseException)]
+            if errors:
+                raise BaseExceptionGroup("工具自动放行同步失败", errors)
 
     def model_selection(self, session_id):
         self.store.require(session_id)

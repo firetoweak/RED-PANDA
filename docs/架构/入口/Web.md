@@ -73,7 +73,7 @@ Host 是对外 activity 的唯一所有者。Worker 正常静止、已识别失�
 
 三者都不是 `cancel_turn`。Agent 自然停在等用户输入时两个按钮都不出现。
 
-`auto_authorize` 与 `paused` 是 Host 持有的 Session 级产品元数据，不进 Journal。页面切换或无人选择时这条 Session 的策略不变，语义见 [Command 授权](Command授权.md)。
+自动放行是 Host 持有的全局产品偏好，暂停是各 Session 的产品状态，均不进 Journal。自动放行不随页面或会话切换，现有会话与新会话共用用户当前选择，语义见 [Command 授权](Command授权.md)。
 
 名册不提供改名或归档。Agent 的名字由创建事实固定，Host 不另存会话标题或归档标记。
 

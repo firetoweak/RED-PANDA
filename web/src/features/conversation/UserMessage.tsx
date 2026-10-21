@@ -62,7 +62,7 @@ export function UserMessage({
       )}
     </Stack>
     </MessageMenu>
-    <Text className="message-time" component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short} · 已发送</Text>
+    <Text className="message-time" component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text>
     </div>
   );
 }

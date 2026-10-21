@@ -318,8 +318,8 @@ class Idle:
     def activity(self, session_id):
         return "idle"
 
-    def auto_authorize(self, session_id):
-        return session_id == "spoken"
+    def auto_authorize(self):
+        return True
 
     def is_paused(self, session_id):
         return session_id == "spoken"
@@ -600,7 +600,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             def activity(self, session_id):
                 return "idle"
 
-            def auto_authorize(self, session_id):
+            def auto_authorize(self):
                 return None
 
             def is_paused(self, session_id):

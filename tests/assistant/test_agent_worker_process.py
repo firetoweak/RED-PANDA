@@ -125,7 +125,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         worktree = agent.worktree
                         agents.append(agent)
                         await current.select(f"page-{index}", agent.session_id)
-                        await current.set_auto_authorize(agent.session_id, True)
+                        await current.set_auto_authorize(True)
                         await current.receive_user_message(agent.session_id, f"WRITE_AGENT_{index}", delivery_id="write")
                         await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                         self.assertEqual((worktree / "note.txt").read_text(), f"WRITE_AGENT_{index}")
@@ -221,7 +221,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(agent.project)
                 self.assertEqual(WorkspaceRegistry.load(home.workspaces_path).workspaces, ())
                 await current.select("page", agent.session_id)
-                await current.set_auto_authorize(agent.session_id, True)
+                await current.set_auto_authorize(True)
                 await current.receive_user_message(agent.session_id, "WRITE_AGENT_0", delivery_id="write")
                 await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                 self.assertEqual((agent.directory / "note.txt").read_text(), "WRITE_AGENT_0")

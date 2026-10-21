@@ -41,7 +41,7 @@ class _IdleSessions:
     def activity(self, session_id: str) -> str:
         return "idle"
 
-    def auto_authorize(self, session_id: str) -> bool:
+    def auto_authorize(self) -> bool:
         return False
 
     def is_paused(self, session_id: str) -> bool:

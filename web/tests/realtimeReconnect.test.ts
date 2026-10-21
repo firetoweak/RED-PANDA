@@ -51,5 +51,7 @@ it("群变化事件让群数据重新读取，调度结束后页面不会停在�
   const close = openEventBridge(dispatch);
   listeners.get("group_changed")!(new MessageEvent("group_changed", { data: JSON.stringify({ group_id: "group-1" }) }));
   expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Groups"]));
+  listeners.get("auto_authorize_changed")!(new MessageEvent("auto_authorize_changed", { data: "{}" }));
+  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox"]));
   close();
 });
