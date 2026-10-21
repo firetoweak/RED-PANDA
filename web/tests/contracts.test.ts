@@ -8,7 +8,7 @@ import {
   modelProfileSchema,
   sessionFailedEventSchema,
   toolProgressEventSchema,
-} from "./contracts";
+} from "../src/api/contracts";
 
 const session = {
   status: "waiting",

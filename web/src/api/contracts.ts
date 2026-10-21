@@ -89,8 +89,6 @@ export const agentProjectSchema = z
   })
   .strict();
 
-export type AgentProject = z.infer<typeof agentProjectSchema>;
-
 export const agentRosterEntrySchema = z
   .object({
     session_id: z.string().min(1),
@@ -439,9 +437,6 @@ export type ModelConfig = z.infer<typeof modelConfigSchema>;
 export type ModelSettings = z.infer<typeof modelSettingsSchema>;
 export type ModelTestResult = z.infer<typeof modelTestResultSchema>;
 export type SessionModel = z.infer<typeof sessionModelSchema>;
-export type AuthorizationRequiredEvent = z.infer<
-  typeof authorizationRequiredEventSchema
->;
 
 export const backgroundCommandSchema = z.object({
   command_id: z.string(), pid: z.number().int().nullable(), command: z.string(), cwd: z.string(),

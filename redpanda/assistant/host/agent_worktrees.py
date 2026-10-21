@@ -36,11 +36,6 @@ def _key(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()[:20]
 
 
-def project_worktrees(home: RedPandaHome, workspace_id: str) -> Path:
-    """Every worktree of one project's Agents, their children and integration lives here."""
-    return (home.state_root / "coding_bot").resolve() / _key(workspace_id)
-
-
 class AgentWorktrees:
     def __init__(self, home: RedPandaHome, environment: dict[str, str]):
         self.root = home.agent_worktrees_root.resolve()
