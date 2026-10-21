@@ -1,12 +1,10 @@
-import { ActionIcon, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { IconCheck, IconCopy } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { Group, Stack, Text } from "@mantine/core";
 
 import { AttachmentTile, attachmentUrl } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { formatMessageTime } from "./messageTime";
 import { MarkdownMessage } from "./MarkdownMessage";
-import { messageReference, QuoteAction } from "./ChatPresentation";
+import { MessageMenu } from "./ChatPresentation";
 
 const ATTACHMENT_TOKEN = /\[(?:Image|File) #\d+\]/g;
 
@@ -28,7 +26,6 @@ export function UserMessage({
   files,
 }: UserMessageProps) {
   const displayText = text.replace(ATTACHMENT_TOKEN, "").trim();
-  const [copied, setCopied] = useState(false);
   const time = formatMessageTime(occurredAt);
   const fileCards = files.length === 0 ? null : (
     <Group gap={8} justify="flex-end">
@@ -43,17 +40,10 @@ export function UserMessage({
     </Group>
   );
 
-  useEffect(() => {
-    if (!copied) {
-      return;
-    }
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
   return (
-    <Stack className="user-message-row user-bubble" gap={6}>
-      <Group className="message-meta" gap={7} justify="flex-end"><Text fw={600} fz={12}>你</Text><Text component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text></Group>
+    <div className="user-message-content">
+    <MessageMenu id={messageId} author="你" text={text}>
+    <Stack className="user-message-row user-bubble" gap={6} tabIndex={0}>
       {fileCards}
       {images.length === 0 ? null : (
         <Group className="user-attachments" gap={8} justify="flex-end">
@@ -70,23 +60,9 @@ export function UserMessage({
       {displayText === "" ? null : (
         <MarkdownMessage content={displayText} streaming={false} />
       )}
-      <Group className="user-message-actions" gap={4} justify="flex-end" wrap="nowrap">
-        {messageId === undefined ? null : <QuoteAction message={messageReference(messageId, "你", text)} />}
-        <Tooltip label={copied ? "已复制" : "复制消息"}>
-          <ActionIcon
-            aria-label={copied ? "已复制消息" : "复制消息"}
-            className="user-message-action"
-            onClick={() => {
-              void navigator.clipboard.writeText(text).then(() => setCopied(true));
-            }}
-            radius="xl"
-            size="sm"
-            variant="subtle"
-          >
-            {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-          </ActionIcon>
-        </Tooltip>
-      </Group>
     </Stack>
+    </MessageMenu>
+    <Text className="message-time" component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text>
+    </div>
   );
 }

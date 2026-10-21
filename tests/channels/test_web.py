@@ -117,6 +117,7 @@ class _Sessions:
         self.queries = queries
         self.calls = []
         self.control_message = None
+        self.auto_authorize_enabled = True
 
     def model_selection(self, session_id):
         return self.models.selection(session_id)
@@ -185,9 +186,12 @@ class _Sessions:
         self.control_message = "MCP Server `demo` 安装、测试并启用成功。能力目录已更新，load_toolset 之后工具从下一个 Step 可见。"
         return self.control_message
 
-    async def set_auto_authorize(self, session_id, enabled):
-        self.calls.append(("set_auto_authorize", session_id, enabled))
-        return SessionView("waiting", ("external_fact",), (), False, auto_authorize=enabled)
+    def auto_authorize(self):
+        return self.auto_authorize_enabled
+
+    async def set_auto_authorize(self, enabled):
+        self.calls.append(("set_auto_authorize", enabled))
+        self.auto_authorize_enabled = enabled
 
 
 class _Queries:
@@ -269,6 +273,42 @@ class WebFirstSliceTest(unittest.TestCase):
     def tearDown(self):
         self.client.__exit__(None, None, None)
         self._directory.cleanup()
+
+    def test_auto_authorize_is_global_and_notifies_other_pages(self):
+        queue = self.hub.subscribe()
+        self.assertEqual(self.client.get("/api/auto-authorize").json(), {"enabled": True})
+        response = self.client.post("/api/auto-authorize", json={
+            "connection_id": self.connection.connection_id, "enabled": False,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"enabled": False})
+        self.assertEqual(self.client.get("/api/auto-authorize").json(), {"enabled": False})
+        self.assertIn(("set_auto_authorize", False), self.sessions.calls)
+        self.assertEqual(queue.get_nowait().name, "auto_authorize_changed")
+        self.hub.unsubscribe(queue)
+
+    def test_global_auto_authorize_requires_active_connection_and_boolean(self):
+        for payload, status in (
+            ({"connection_id": "expired", "enabled": False}, 409),
+            ({"connection_id": self.connection.connection_id, "enabled": "false"}, 422),
+        ):
+            self.assertEqual(self.client.post("/api/auto-authorize", json=payload).status_code, status)
+        self.assertTrue(self.sessions.auto_authorize())
+
+    def test_failed_global_sync_notifies_pages_and_exposes_the_failure(self):
+        async def fail(enabled):
+            self.sessions.auto_authorize_enabled = enabled
+            raise RuntimeError("worker synchronization failed")
+
+        self.sessions.set_auto_authorize = fail
+        queue = self.hub.subscribe()
+        with self.assertRaisesRegex(RuntimeError, "worker synchronization failed"):
+            self.client.post("/api/auto-authorize", json={
+                "connection_id": self.connection.connection_id, "enabled": False,
+            })
+        self.assertEqual(self.client.get("/api/auto-authorize").json(), {"enabled": False})
+        self.assertEqual(queue.get_nowait().name, "auto_authorize_changed")
+        self.hub.unsubscribe(queue)
 
     def test_model_connection_reports_known_failure_without_echoing_credentials(self):
         self.model_llm.chat.side_effect = LLMAuthenticationError("private-test-key")

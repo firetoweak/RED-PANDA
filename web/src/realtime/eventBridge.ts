@@ -1,5 +1,6 @@
 import {
   authorizationRequiredEventSchema,
+  autoAuthorizeChangedEventSchema,
   connectedEventSchema,
   contextUsageEventSchema,
   conversationStatusEventSchema,
@@ -56,8 +57,12 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox"]));
+    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize"]));
     refreshChanges();
+  });
+  source.addEventListener("auto_authorize_changed", (event) => {
+    autoAuthorizeChangedEventSchema.parse(JSON.parse(event.data));
+    dispatch(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox"]));
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));

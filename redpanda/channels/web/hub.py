@@ -26,6 +26,9 @@ class WebEventHub:
         self._running: set[str] = set()
         self._tools: dict[tuple[str, str], str] = {}
 
+    async def auto_authorize_changed(self) -> None:
+        await self._broadcast("auto_authorize_changed", {})
+
     def subscribe(self) -> asyncio.Queue[WebEvent]:
         queue: asyncio.Queue[WebEvent] = asyncio.Queue()
         self._queues.add(queue)

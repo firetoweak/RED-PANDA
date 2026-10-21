@@ -67,7 +67,7 @@ export function SessionConversation() {
           <IconFolder size={15} /><span>{workspace.name}</span></span>}
         <ActionIcon aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
-      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} agentDirection={agent?.direction} agentNames={agents.map((item) => item.name)} /></div>
+      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} agentNames={agents.map((item) => item.name)} /></div>
       </div>
       {agent === undefined ? null : narrow ? (
         <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)}

@@ -9,6 +9,7 @@ import {
 } from "../realtime/runtimeSlice";
 import {
   agentRosterEntrySchema,
+  autoAuthorizeSchema,
   backgroundCommandSchema,
   type BackgroundCommand,
   conversationViewSchema,
@@ -64,7 +65,8 @@ type ResolveControl = SelectSession & {
   approved: boolean;
 };
 
-type SetAutoAuthorize = SelectSession & {
+type SetAutoAuthorize = {
+  connectionId: string;
   enabled: boolean;
 };
 
@@ -126,7 +128,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines", "AutoAuthorize"],
   endpoints: (build) => ({
     getFileChanges: build.query<FileChanges, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/changes`,
@@ -451,17 +453,19 @@ export const redpandaApi = createApi({
         );
       },
     }),
-    setAutoAuthorize: build.mutation<ConversationView, SetAutoAuthorize>({
-      query: ({ connectionId, sessionId, enabled }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/auto-authorize`,
+    getAutoAuthorize: build.query<{ enabled: boolean }, void>({
+      query: () => "/auto-authorize",
+      transformResponse: (value: unknown) => autoAuthorizeSchema.parse(value),
+      providesTags: ["AutoAuthorize"],
+    }),
+    setAutoAuthorize: build.mutation<{ enabled: boolean }, SetAutoAuthorize>({
+      query: ({ connectionId, enabled }) => ({
+        url: "/auto-authorize",
         method: "POST",
         body: { connection_id: connectionId, enabled },
       }),
-      transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
-      },
+      transformResponse: (value: unknown) => autoAuthorizeSchema.parse(value),
+      invalidatesTags: ["AutoAuthorize", "Conversation", "Inbox"],
     }),
     retryTurn: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
@@ -515,5 +519,6 @@ export const {
   useAuthorizeCommandMutation,
   useResolveControlMutation,
   useSetAutoAuthorizeMutation,
+  useGetAutoAuthorizeQuery,
   useRetryTurnMutation,
 } = redpandaApi;

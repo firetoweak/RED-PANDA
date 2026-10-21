@@ -1,7 +1,7 @@
 import {
   ActionIcon, Alert, Button, Drawer, Group, Loader, ScrollArea, Text, Tooltip,
 } from "@mantine/core";
-import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup, IconShieldCheck } from "@tabler/icons-react";
+import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import { Link, useParams } from "react-router-dom";
@@ -17,7 +17,7 @@ import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { GroupComposer } from "./GroupComposer";
-import { BotAvatar, ChatPresentation, identityColor, messageReference, MessageQuote, QuoteAction, type MessageReference } from "../conversation/ChatPresentation";
+import { BotAvatar, ChatPresentation, identityColor, messageReference, MessageQuote, MessageMenu, type MessageReference } from "../conversation/ChatPresentation";
 import { useGroupReading } from "./useGroupReading";
 
 function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
@@ -33,7 +33,14 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
     <article data-message-id={message.message_id} className={message.sender === null ? "group-message is-human" : "group-message"}
       aria-label={`${message.sender ?? "你"}的群消息`}>
       {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} />}
-      <div className="group-message-bubble">
+      <MessageMenu id={message.message_id} author={message.sender ?? "你"} text={message.text}>
+      <div className="group-message-bubble" tabIndex={0}>
+        {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
+        {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
+          {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
+        </Group>}
+        <MarkdownMessage content={message.text} streaming={false} />
+        <div className="message-footer">
       <Group className="group-message-meta" gap={6}>
         {message.sender === null ? (
           <Text fw={600} fz={13}>你</Text>
@@ -48,13 +55,9 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
           <Text c="dimmed" fz={11}>{time.short}</Text>
         </Tooltip>
       </Group>
-        {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
-        {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
-          {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
-        </Group>}
-        <MarkdownMessage content={message.text} streaming={false} />
-        <div className="message-actions"><QuoteAction message={messageReference(message.message_id, message.sender ?? "你", message.text)} /></div>
+        </div>
       </div>
+      </MessageMenu>
     </article>
   );
 }
@@ -170,7 +173,6 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           {failure === null ? null : <Alert color="red">{failure}</Alert>}
           <GroupComposer groupId={groupId} groupName={group.name} members={group.members} connected={connectionId !== null}
             posting={posting.isLoading} onSend={send} />
-          <div className="composer-help"><span>Enter 发送 · Shift + Enter 换行</span><span className="composer-lock-note"><IconShieldCheck size={10} />每位 Bot 的授权在私聊中处理</span></div>
         </div>
       </div>
       {narrow ? <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)} title="群资料" position="right" size={300} closeButtonProps={{ "aria-label": "关闭群资料" }}>{details}</Drawer>

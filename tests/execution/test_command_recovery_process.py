@@ -57,7 +57,7 @@ def test_worker_loss_recovers_actual_command_without_reexecution(tmp_path, at_re
             host.commands.manager.execute = before_spawn
         try:
             await host.create("a", workspace.workspace_id)
-            await host.set_auto_authorize("a", True)
+            await host.set_auto_authorize(True)
             await host.accept_input("a", "run", delivery_id="one")
 
             async def started():
@@ -110,7 +110,7 @@ def test_foreground_cancel_stops_writer_and_does_not_continue(tmp_path):
         host = HostSupervisor(store, partial(config_for, root), home, lambda *args: output.append(args), llm=Llm())
         try:
             await host.create("a", workspace.workspace_id)
-            await host.set_auto_authorize("a", True)
+            await host.set_auto_authorize(True)
             await host.accept_input("a", "write", delivery_id="one")
 
             async def started():

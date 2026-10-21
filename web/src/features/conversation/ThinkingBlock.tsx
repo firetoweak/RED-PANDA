@@ -12,7 +12,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   const [opened, setOpened] = useState(false);
 
   return (
-    <Paper className="thinking-block" radius="md" withBorder>
+    <Paper className={`thinking-block${opened ? " is-open" : ""}`} radius="md" withBorder>
       <UnstyledButton
         aria-expanded={opened}
         className="thinking-toggle"

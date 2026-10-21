@@ -359,6 +359,9 @@ export const modelConfigSchema = z.object({
   }).strict(),
 }).strict();
 
+export const autoAuthorizeSchema = z.object({ enabled: z.boolean() }).strict();
+export const autoAuthorizeChangedEventSchema = z.object({}).strict();
+
 export const modelSettingsSchema = z.object({
   config: modelConfigSchema,
   connections_path: z.string().min(1),

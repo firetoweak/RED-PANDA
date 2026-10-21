@@ -3,14 +3,12 @@ import {
   Button,
   Group,
   Paper,
-  Switch,
   Text,
   Textarea,
   Tooltip,
 } from "@mantine/core";
 import {
   IconArrowUp,
-  IconShieldCheck,
   IconPlayerStopFilled,
   IconPlayerPlayFilled,
   IconPlus,
@@ -65,9 +63,6 @@ type ComposerProps = {
   shouldWake: boolean;
   stopBusy: boolean;
   retryBusy: boolean;
-  autoAuthorize: boolean;
-  autoAuthorizeBusy: boolean;
-  onToggleAutoAuthorize: (enabled: boolean) => void;
   onSend: (text: string, artifactRefs: string[]) => Promise<void>;
   onStop: () => void;
   onRetry: () => void;
@@ -84,9 +79,6 @@ export function Composer({
   shouldWake,
   stopBusy,
   retryBusy,
-  autoAuthorize,
-  autoAuthorizeBusy,
-  onToggleAutoAuthorize,
   onSend,
   onStop,
   onRetry,
@@ -403,7 +395,7 @@ export function Composer({
     <>
     <Paper
       component="form"
-      className="composer is-expanded"
+      className="composer private-composer"
       data-dragging={dragging || undefined}
       onSubmit={(event: FormEvent) => void submit(event)}
       onDragEnter={(event) => {
@@ -488,25 +480,7 @@ export function Composer({
         </Group>
       )}
       {composed.quote === null ? null : <MessageQuote quote={composed.quote} onRemove={() => setText(composed.body)} />}
-      <Group className="composer-top" gap={10} wrap="nowrap" align="flex-end">
-        <Textarea
-          aria-label="消息"
-          autosize
-          className="composer-input"
-          ref={textareaRef}
-          value={composed.body}
-          onChange={(event) => setText(withMessageQuote(event.currentTarget.value, composed.quote))}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder={disabled ? "正在连接…" : "描述你想完成的事，或拖入文件…"}
-          minRows={2}
-          maxRows={7}
-          variant="unstyled"
-          disabled={disabled}
-        />
-      </Group>
-      <Group className="composer-meta" justify="space-between" gap={8}>
-        <Group gap={8} wrap="nowrap">
+      <Group className="composer-line" gap={8} wrap="nowrap" align="flex-end">
           <Tooltip label="选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件">
             <ActionIcon
               aria-label="Add attachment"
@@ -521,19 +495,21 @@ export function Composer({
               <IconPlus size={16} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="自动放行写文件等工具">
-            <span style={{ display: "inline-flex" }}>
-              <Switch
-                aria-label="自动放行写文件等工具"
-                label="自动放行"
-                checked={autoAuthorize}
-                disabled={autoAuthorizeBusy || connectionId === null}
-                onChange={(event) => onToggleAutoAuthorize(event.currentTarget.checked)}
-                size="xs"
-              />
-            </span>
-          </Tooltip>
-        </Group>
+        <Textarea
+          aria-label="消息"
+          autosize
+          className="composer-input"
+          ref={textareaRef}
+          value={composed.body}
+          onChange={(event) => setText(withMessageQuote(event.currentTarget.value, composed.quote))}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          placeholder={disabled ? "正在连接…" : "输入消息…"}
+          minRows={1}
+          maxRows={7}
+          variant="unstyled"
+          disabled={disabled}
+        />
         {workspacePath === undefined ? null : (
           <Text className="composer-workspace" c="dimmed" ff="monospace" fz={11}
             title={workspacePath} truncate>
@@ -607,7 +583,6 @@ export function Composer({
         </Group>
       </Group>
     </Paper>
-    <div className="composer-help"><span>Enter 发送 · Shift + Enter 换行</span><span className="composer-lock-note"><IconShieldCheck size={10} />每位 Bot 的授权在私聊中处理</span></div>
     </>
   );
 }

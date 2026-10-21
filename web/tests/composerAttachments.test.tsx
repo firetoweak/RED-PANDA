@@ -41,9 +41,9 @@ function showComposer(running = false, inputTokens: number | null = null, sessio
   const props = {
     sessionId, workspaceId: "workspace-test", connectionId: "connection",
     disabled: false, sending: false, running, shouldWake: false,
-    stopBusy: false, retryBusy: false, autoAuthorize: false, autoAuthorizeBusy: false,
+    stopBusy: false, retryBusy: false,
     inputTokens,
-    onSend, onStop: vi.fn(), onRetry: vi.fn(), onToggleAutoAuthorize: vi.fn(),
+    onSend, onStop: vi.fn(), onRetry: vi.fn(),
   };
   const ui = (active: boolean) => <Provider store={store}><MantineProvider><Composer {...props} running={active} /></MantineProvider></Provider>;
   const view = render(ui(running));

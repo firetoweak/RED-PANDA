@@ -76,7 +76,7 @@ export function ExecutionProcess({
   const subagentTasks = steps.flatMap((step) => step.tools.filter((tool) => tool.name === "delegate"));
 
   return (
-    <Paper className="execution-process" radius="md" withBorder>
+    <Paper className={`execution-process${opened ? " is-open" : ""}`} radius="md" withBorder>
       {subagentTasks.length === 0 ? null : (
         <Group className="subagent-turn-marker" gap="xs" aria-label="本轮子 Agent 任务">
           <Badge variant="light" leftSection={<IconArrowFork size={13} />}>

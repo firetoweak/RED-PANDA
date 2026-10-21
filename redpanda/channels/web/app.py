@@ -638,17 +638,22 @@ def create_web_app(
             body.approved,
         )
 
-    @app.post("/api/sessions/{session_id}/auto-authorize")
+    @app.get("/api/auto-authorize")
+    def auto_authorize(request: Request):
+        return _channel(request).auto_authorize()
+
+    @app.post("/api/auto-authorize")
     async def set_auto_authorize(
-        session_id: str,
         body: AutoAuthorizeRequest,
         request: Request,
     ):
-        return await _channel(request).set_auto_authorize(
-            body.connection_id,
-            session_id,
-            body.enabled,
-        )
+        try:
+            return await _channel(request).set_auto_authorize(
+                body.connection_id,
+                body.enabled,
+            )
+        finally:
+            await request.app.state.hub.auto_authorize_changed()
 
     if static_dir is not None:
         app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")

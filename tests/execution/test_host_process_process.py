@@ -170,7 +170,7 @@ def test_host_port_survives_worker_retirement(tmp_path, completion):
                               lambda *args: output.append(args), llm=Llm())
         try:
             await host.create("a", workspace.workspace_id)
-            await host.set_auto_authorize("a", True)
+            await host.set_auto_authorize(True)
             await host.accept_input("a", "finish", delivery_id="one")
             async def retired():
                 return bool(output) and not host.workers

@@ -287,20 +287,17 @@ class WebChannel:
         view = await self._sessions.view(session_id)
         return await self._queries.conversation(session_id, view=view)
 
+    def auto_authorize(self):
+        return {"enabled": self._sessions.auto_authorize()}
+
     async def set_auto_authorize(
         self,
         connection_id: str,
-        session_id: str,
         enabled: bool,
     ):
         self._require_connection(connection_id)
-        if type(session_id) is not str or not session_id:
-            raise ValueError("session_id must be a non-empty str")
-        view = await self._sessions.set_auto_authorize(
-            session_id,
-            bool(enabled),
-        )
-        return await self._queries.conversation(session_id, view=view)
+        await self._sessions.set_auto_authorize(enabled)
+        return self.auto_authorize()
 
     def model_selection(self, session_id: str):
         return self._sessions.model_selection(session_id)

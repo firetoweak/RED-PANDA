@@ -1,6 +1,6 @@
-import { ActionIcon, Tooltip } from "@mantine/core";
-import { IconArrowBackUp, IconX } from "@tabler/icons-react";
-import { createContext, useContext } from "react";
+import { ActionIcon, Menu } from "@mantine/core";
+import { IconArrowBackUp, IconCopy, IconX } from "@tabler/icons-react";
+import { createContext, useContext, type ReactElement } from "react";
 
 export type MessageReference = { id: string; author: string; preview: string };
 export const ChatPresentation = createContext<{
@@ -56,7 +56,16 @@ export function MessageQuote({ quote, onRemove }: { quote: MessageReference; onR
   </div>;
 }
 
-export function QuoteAction({ message }: { message: MessageReference }) {
+export function MessageMenu({ id, author, text, children }: {
+  id?: string; author: string; text: string; children: ReactElement;
+}) {
   const { onQuote } = useContext(ChatPresentation);
-  return <Tooltip label="引用消息"><ActionIcon aria-label={`引用 ${message.author} 的消息`} variant="subtle" color="gray" size="sm" onClick={() => onQuote(message)}><IconArrowBackUp size={15} /></ActionIcon></Tooltip>;
+  return <Menu withinPortal position="bottom-start" returnFocus>
+    <Menu.ContextMenu>{children}</Menu.ContextMenu>
+    <Menu.Dropdown>
+      <Menu.Item leftSection={<IconArrowBackUp size={15} />} disabled={id === undefined}
+        aria-label={`引用 ${author} 的消息`} onClick={() => onQuote(messageReference(id!, author, text))}>引用消息</Menu.Item>
+      <Menu.Item leftSection={<IconCopy size={15} />} onClick={() => void navigator.clipboard.writeText(text)}>复制消息</Menu.Item>
+    </Menu.Dropdown>
+  </Menu>;
 }

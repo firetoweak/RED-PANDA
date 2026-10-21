@@ -45,7 +45,7 @@ async def main(root):
             # Host loaded the same empty registry before initial registration.
             host.workspaces = registry
             await host.create("session", workspace.workspace_id)
-            await host.set_auto_authorize("session", True)
+            await host.set_auto_authorize(True)
             await host.receive_user_message("session", "run the command", delivery_id="run")
         else:
             await host.resume_unfinished_sessions()

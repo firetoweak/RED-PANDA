@@ -350,7 +350,7 @@ class AssistantQueries:
                 has_active_subagents=still_running,
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
-                auto_authorize=self._sessions.auto_authorize(session_id),
+                auto_authorize=self._sessions.auto_authorize(),
                 paused=self._sessions.is_paused(session_id),
                 last_error=self._sessions.current_failure(session_id),
             )

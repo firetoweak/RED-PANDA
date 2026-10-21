@@ -1,17 +1,17 @@
 # 工具授权
 
-待授权调用和控制请求在所属 Bot 头像旁提示，进入它的对话后在待处理条操作（见 [inbox.md](./inbox.md)）；没有独立的待处理汇总页。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可按会话打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`Composer.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
+待授权调用和控制请求在所属 Bot 头像旁提示，进入它的对话后在待处理条操作（见 [inbox.md](./inbox.md)）；没有独立的待处理汇总页。写文件工具 `write_file`、`apply_patch`、`replace_all`，以及 `execute_command` 每次启动命令都要用户批准（包含立即转后台）；命令不按文本放行，`git status` 这类只读命令也要批准。Agent 委派的子 Agent 在自己的 worktree 里写文件不需要授权（`redpanda/assistant/builtin_tools.py`），`merge_subagent` 把子合进 Agent 自己的分支，也不需要授权。可全局打开自动放行；模型发起的控制请求另需确认。待授权调用与控制请求都列在输入框上方的待处理条里，没有弹窗。来源：`ExecutionProcess.tsx`、`PendingActions.tsx`、`AutoAuthorize.tsx`、`Conversation.tsx`、`app.py` 的 `/authorize`、`/auto-authorize`、`/control`、`redpanda/assistant/sessions.py`、`redpanda/assistant/host/supervisor.py`、`redpanda/tools/builtin/command_execution.py`。
 
 ## Sub-features
 
 - `pending`：需要授权的工具调用在步骤卡片上显示徽标 `待授权`，卡片内有 `允许`/`拒绝`；同时输入框上方出现区域 `待处理`（标题 `待处理 · N 项`），每项为 `<工具名> · <参数摘要>`，按钮 `允许 <工具名>`/`拒绝 <工具名>`（可见文字 `允许`/`拒绝`），点 `查看 <工具名> 的参数` 展开参数 JSON。待处理条只读服务端 `session.pending_authorization_commands`，与步骤卡片同源；SSE 发 `authorization_required`；侧栏该会话活动点为 `等授权`。
 - `approve` / `reject`：`POST .../commands/{command_id}/authorize`（`approved` 为 true/false）。批准后执行，徽标变 `运行中` 再到 `完成`；拒绝后徽标 `已拒绝`，不执行。
-- `auto-authorize`：当前实验阶段，未设置过的会话默认开启工具自动放行。输入框下方开关可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST .../auto-authorize`（`enabled`）。显式关闭仍按会话持久化在 `$REDPANDA_HOME/runtime_sessions/auto_authorize.json`，重启后保持关闭；打开的瞬间会把该会话当前所有待授权调用一并批准。控制提案仍使用独立确认流程，授权交互后续单独设计。
+- `auto-authorize`：当前实验阶段默认开启全局工具自动放行。侧栏模型配置旁始终显示开关，可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST /api/auto-authorize`（`enabled`）；`GET /api/auto-authorize` 读取同一全局值。选择持久化在 `$REDPANDA_HOME/runtime_sessions/authorization.json`，所有现有与新建会话共用，重启后保留；开启时批准运行中会话的待授权工具调用，休眠会话恢复时使用当前选择，其他页面通过 `auto_authorize_changed` 事件同步开关。控制提案仍使用独立确认流程，放行规则后续再细化。
 - `control-confirm`：模型发起的控制请求作为一项出现在待处理条里，显示摘要与 `风险：…`，按钮 `取消`/`确认`；对话上下文保持可见。读 `session.control_approval`；`POST .../control` 带 `request_id`、`approved`。
 
 ## How to get to it (user POV)
 
-- 在自动放行关闭的会话里让模型写文件：`请用 apply_patch 把 note.txt 改成 edited`。
+- 全局关闭自动放行后让模型写文件：`请用 apply_patch 把 note.txt 改成 edited`。
 
 ## Driving it with the browser
 
@@ -31,9 +31,9 @@
   - (c) 只执行一次，文件只被改一次。
   - (d) 批准后再对同一 `command_id` 拒绝 → 409，文件保持 `edited`。
 - **自动放行**：先让模型写一个文件停在 `待授权`，再打开开关；然后让模型写 `auto`。
-  - (a) 打开开关后原待授权调用立即被批准并执行，待处理条随服务端状态消失（2026-10-18 实测 0.5 s 内）；之后不再出现 `待授权`，文件直接变为 `auto`；`GET /api/sessions/<id>` 中 `session.auto_authorize` 为 true；`runtime_sessions/auto_authorize.json` 里该会话为 true；重启服务后刷新页面开关仍为开。
-  - (b) `POST .../auto-authorize` 2xx。
-  - (c) 其他会话的自动放行状态不变；`execute_command` 同样被自动放行（它也是授权工具）。
+  - (a) 打开开关后原待授权调用立即被批准并执行，待处理条随服务端状态消失（2026-10-18 实测 0.5 s 内）；之后不再出现 `待授权`，文件直接变为 `auto`；`GET /api/sessions/<id>` 中 `session.auto_authorize` 为 true；`runtime_sessions/authorization.json` 的 `enabled` 为 true；重启服务后刷新页面开关仍为开。
+  - (b) `POST /api/auto-authorize` 2xx。
+  - (c) 其他现有会话及新会话使用同一自动放行状态；`execute_command` 同样被自动放行（它也是授权工具）。
   - (d) 关掉后同类请求重新出现 `待授权`。
 - **控制确认**：触发一个模型控制请求（如 extensions 中的 `propose_*` 安装类请求）。
   - (a) `GET /api/sessions/<id>` 中 `session.control_approval` 非空，含摘要与风险。
@@ -55,3 +55,7 @@
 - 2026-10-20 PC live：新 Agent 默认自动放行，命令与文件修改无需逐条批准；显式关闭的持久化有测试覆盖，控制提案未重验。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：新 Agent 默认自动放行；显式关闭后 write_file 停在待处理，从收件箱允许后才写入并回复 AUTH_DONE。CLI 控制提案经页面确认通过；拒绝及重复授权未重验。
+
+- 2026-10-21 开关位置调整：自动放行移至侧栏模型配置旁，私聊时显示，首页与群聊不显示。组件回归确认提交当前会话与连接标识；隔离浏览器只核对已有状态，未切换授权或触发新的工具调用。
+
+- 2026-10-21 全局放行与时间增量：移除用户和 Bot 消息尾部的“已发送”，只保留时间；隔离私聊 1543×1004 实测通过。首页和私聊都显示同一全局开关，浏览器未切换授权或发送新消息。全局持久化、并发切换、失败重试、活动会话同步、新会话与重启继承由自动化回归验证，页面事件刷新有回归覆盖；未实测新的模型工具授权回合。证据 `.tools/frontend-review/evidence/compact-messages/global-authorization-time/`。
