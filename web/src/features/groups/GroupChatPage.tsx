@@ -34,6 +34,12 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
       aria-label={`${message.sender ?? "你"}的群消息`}>
       {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} />}
       <div className="group-message-bubble">
+        {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
+        {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
+          {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
+        </Group>}
+        <MarkdownMessage content={message.text} streaming={false} />
+        <div className="message-footer">
       <Group className="group-message-meta" gap={6}>
         {message.sender === null ? (
           <Text fw={600} fz={13}>你</Text>
@@ -48,12 +54,8 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
           <Text c="dimmed" fz={11}>{time.short}</Text>
         </Tooltip>
       </Group>
-        {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
-        {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
-          {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
-        </Group>}
-        <MarkdownMessage content={message.text} streaming={false} />
         <div className="message-actions"><QuoteAction message={messageReference(message.message_id, message.sender ?? "你", message.text)} /></div>
+        </div>
       </div>
     </article>
   );

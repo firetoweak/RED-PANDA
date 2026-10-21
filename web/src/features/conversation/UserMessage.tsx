@@ -53,7 +53,6 @@ export function UserMessage({
 
   return (
     <Stack className="user-message-row user-bubble" gap={6}>
-      <Group className="message-meta" gap={7} justify="flex-end"><Text fw={600} fz={12}>你</Text><Text component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text></Group>
       {fileCards}
       {images.length === 0 ? null : (
         <Group className="user-attachments" gap={8} justify="flex-end">
@@ -70,6 +69,8 @@ export function UserMessage({
       {displayText === "" ? null : (
         <MarkdownMessage content={displayText} streaming={false} />
       )}
+      <div className="message-footer">
+      <Group className="message-meta" gap={7} justify="flex-end"><Text fw={600} fz={12}>你</Text><Text component="time" dateTime={occurredAt} c="dimmed" fz={11} title={`发送于 ${time.full}`}>{time.short}</Text></Group>
       <Group className="user-message-actions" gap={4} justify="flex-end" wrap="nowrap">
         {messageId === undefined ? null : <QuoteAction message={messageReference(messageId, "你", text)} />}
         <Tooltip label={copied ? "已复制" : "复制消息"}>
@@ -87,6 +88,7 @@ export function UserMessage({
           </ActionIcon>
         </Tooltip>
       </Group>
+      </div>
     </Stack>
   );
 }

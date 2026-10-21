@@ -67,7 +67,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     </MemoryRouter>
   </MantineProvider></Provider>);
   const completedPanel = await screen.findByRole("button", { name: "已完成计划" });
-  const firstTurn = screen.getByText("第一轮完成回复").closest(".message-assistant")!.parentElement!;
+  const firstTurn = screen.getByText("第一轮完成回复").closest(".conversation-turn")!;
   expect(firstTurn).toContainElement(completedPanel);
   expect(document.querySelector(".composer-dock .work-plan")).toBeNull();
   expect(screen.getByText("第一轮完成回复").compareDocumentPosition(completedPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

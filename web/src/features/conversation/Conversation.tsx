@@ -82,7 +82,7 @@ function turnHasOutput(turn: TimelineTurn, outputId: string): boolean {
   return [turn.active, turn.final, ...turn.process].some((step) => step?.outputId === outputId);
 }
 
-export function Conversation({ agentName, agentNames = [], agentDirection }: { agentName?: string; agentNames?: string[]; agentDirection?: string | null }) {
+export function Conversation({ agentName, agentNames = [] }: { agentName?: string; agentNames?: string[] }) {
   const dispatch = useAppDispatch();
   const { sessionId: routeSessionId } = useParams();
   const routeId = routeSessionId ?? "";
@@ -297,7 +297,7 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
               const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
               const plan = completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />;
               const body = (
-                <>
+                <div className="assistant-turn">
                   {latest && running ? <TurnTiming
                     startedAt={turn.user?.occurredAt ?? null}
                     running={latest && running && connectionId !== null}
@@ -321,7 +321,6 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
                     >
                         <AssistantAvatar name={agentName} />
                         <Stack className="assistant-reply" gap={6}>
-                          <Group className="message-meta" gap={7}><Text data-identity={identityColor(agentName ?? "RED PANDA")} fz={12} fw={600}>{agentName ?? "RED PANDA"}</Text>{agentDirection == null ? null : <Text fz={11} c="dimmed">{agentDirection}</Text>}<Text fz={11} c="dimmed">{turn.final?.occurredAt == null ? null : formatMessageTime(turn.final.occurredAt).short}</Text></Group>
                           <MarkdownMessage
                             content={reply.text}
                             streaming={reply.streaming}
@@ -338,6 +337,8 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
                               ))}
                             </Group>
                           )}
+                          <div className="message-footer">
+                            <Group className="message-meta" gap={7}><Text data-identity={identityColor(agentName ?? "RED PANDA")} fz={12} fw={600}>{agentName ?? "RED PANDA"}</Text><Text fz={11} c="dimmed">{turn.final?.occurredAt == null ? null : formatMessageTime(turn.final.occurredAt).short}</Text></Group>
                           {settled ? (
                             <TurnEndActions
                               messageId={reply.key}
@@ -347,6 +348,7 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
                               replyText={reply.text}
                             />
                           ) : null}
+                          </div>
                         </Stack>
                     </Box>
                     </>
@@ -354,6 +356,7 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
                     !(latest && notice !== null) ? (
                     <SilentEndHint />
                   ) : null}
+                  {turn.process.length === 0 && thinking === null ? null : <div className="turn-details" aria-label="思考与执行详情">
                   {turn.process.length === 0 ? null : (
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
@@ -369,7 +372,8 @@ export function Conversation({ agentName, agentNames = [], agentDirection }: { a
                       text={thinking.thinking}
                     />
                   )}
-                </>
+                  </div>}
+                </div>
               );
               return (
               <Stack className={turn.key === highlightedKey ? "conversation-turn is-focused" : "conversation-turn"} gap={24} key={turn.key}>
