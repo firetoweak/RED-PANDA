@@ -258,6 +258,29 @@ describe("visibleTimeline", () => {
 });
 
 describe("timelineTurns", () => {
+  it("keeps private-message notices before the reply without closing its tool process", () => {
+    const incoming = { kind: "private_message" as const, message_id: "in", direction: "received" as const,
+      peer: "Nova", occurred_at: "2026-10-21T00:00:00Z" };
+    const sent = { ...incoming, message_id: "out", direction: "sent" as const };
+    const turns = timelineTurns(visibleTimeline({ ...conversation, items: [
+      ...conversation.items, sent,
+      { kind: "step", step_id: "final", output_id: "final", text: "已转达", thinking: null,
+        tools: [], occurred_at: "2026-10-21T00:00:01Z", files: [] },
+      incoming,
+    ] }, {}, null, {}));
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toMatchObject({
+      communications: [{ key: "private:sent:out", direction: "sent", peer: "Nova" }],
+      process: [{ key: "output:user-1" }], final: { text: "已转达" },
+    });
+    expect(turns[1]).toMatchObject({
+      communications: [{ key: "private:received:in", direction: "received", peer: "Nova" }],
+      final: null,
+    });
+    const sentOnly = timelineTurns(visibleTimeline({ ...conversation, items: [...conversation.items, sent] }, {}, null, {}))[0];
+    expect(turnNeedsSilentEnd(sentOnly, true)).toBe(false);
+  });
+
   it("keeps tool steps in the process and exposes the final no-tool step", () => {
     const items = visibleTimeline(
       {
@@ -318,6 +341,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [],
           active: null,
           final: null,
@@ -333,6 +357,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [],
           active: {
             key: "output:user-1",
@@ -357,6 +382,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [],
           active: {
             key: "output:user-1",
@@ -381,6 +407,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [],
           active: {
             key: "output:user-1",
@@ -402,6 +429,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [
             {
               key: "output:user-1",
@@ -436,6 +464,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [],
           active: null,
           final: null,
@@ -451,6 +480,7 @@ describe("turnNeedsThinkingHint", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [toolOnlyStep("succeeded")],
           active: null,
           final: null,
@@ -509,6 +539,7 @@ describe("turnIsSettled", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [toolOnlyStep("running")],
           active: null,
           final: null,
@@ -521,6 +552,7 @@ describe("turnIsSettled", () => {
         {
           key: "user-1",
           user,
+          communications: [],
           process: [toolOnlyStep("awaiting_authorization")],
           active: null,
           final: null,
@@ -544,6 +576,7 @@ describe("turnIsSettled", () => {
     const turn: TimelineTurn = {
       key: "user-1",
       user,
+      communications: [],
       process: [toolOnlyStep("succeeded")],
       active: null,
       final: {
@@ -573,6 +606,7 @@ describe("turnIsSettled", () => {
     const turn: TimelineTurn = {
       key: "user-1",
       user,
+      communications: [],
       process: [toolOnlyStep("succeeded")],
       active: {
         key: "output:user-1",
@@ -605,6 +639,7 @@ function toolOnlyTurn(user: TimelineTurn["user"]): TimelineTurn {
   return {
     key: "user-1",
     user,
+    communications: [],
     process: [toolOnlyStep("succeeded")],
     active: null,
     final: null,

@@ -32,32 +32,28 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
   return (
     <article data-message-id={message.message_id} className={message.sender === null ? "group-message is-human" : "group-message"}
       aria-label={`${message.sender ?? "你"}的群消息`}>
-      {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} />}
-      <MessageMenu id={message.message_id} author={message.sender ?? "你"} text={message.text}>
-      <div className="group-message-bubble" tabIndex={0}>
-        {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
-        {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
-          {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
-        </Group>}
-        <MarkdownMessage content={message.text} streaming={false} />
-        <div className="message-footer">
-      <Group className="group-message-meta" gap={6}>
-        {message.sender === null ? (
-          <Text fw={600} fz={13}>你</Text>
-        ) : session === undefined ? (
+      <div className="message group-message-row">
+        {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} />}
+        <MessageMenu id={message.message_id} author={message.sender ?? "你"} text={message.text}>
+          <div className="group-message-bubble" tabIndex={0}>
+            {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
+            {message.mentioned_agents.every((name) => message.text.includes(`@${name}`)) ? null : <Group gap={4} mb={6}>
+              {message.mentioned_agents.filter((name) => !message.text.includes(`@${name}`)).map((name) => <span key={name} className="message-mention" data-identity={identityColor(name)}>@{name}</span>)}
+            </Group>}
+            <MarkdownMessage content={message.text} streaming={false} />
+          </div>
+        </MessageMenu>
+      </div>
+      <div className="turn-details group-message-meta">
+        {message.sender === null ? null : session === undefined ? (
           <Text data-identity={identityColor(message.sender)} fw={600} fz={12}>{message.sender}</Text>
         ) : (
           <Text component={Link} data-identity={identityColor(message.sender)} fw={600} fz={12} to={`/sessions/${encodeURIComponent(session)}`} state={{ fromGroup: { id: groupId, name: groupName } }}>
             {message.sender}
           </Text>
         )}
-        <Tooltip label={time.full} openDelay={400}>
-          <Text c="dimmed" fz={11}>{time.short}</Text>
-        </Tooltip>
-      </Group>
-        </div>
+        <Text className="message-time" component="time" dateTime={message.occurred_at} title={`发送于 ${time.full}`} c="dimmed" fz={11}>{time.short}</Text>
       </div>
-      </MessageMenu>
     </article>
   );
 }

@@ -38,6 +38,7 @@ import { FileAttachmentTile } from "./FileAttachmentTile";
 import { createClientId } from "./clientId";
 import { clearSentComposerText, restoreComposerText, saveComposerText } from "./composerDraft";
 import { ChatPresentation, MessageQuote, splitMessageQuote, withMessageQuote } from "./ChatPresentation";
+import { useMentionCompletion } from "./MentionCompletion";
 import {
   composeSendContent,
   parkedPreviewText,
@@ -85,7 +86,7 @@ export function Composer({
   inputTokens,
 }: ComposerProps) {
   const [text, setText] = useState(() => restoreComposerText(sessionId));
-  const { quote: requestedQuote, onQuote } = useContext(ChatPresentation);
+  const { names, quote: requestedQuote, onQuote } = useContext(ChatPresentation);
   const composed = splitMessageQuote(text);
   useEffect(() => {
     if (requestedQuote === null) return;
@@ -97,6 +98,8 @@ export function Composer({
   const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentions = useMentionCompletion({ text: composed.body, names, textarea: textareaRef,
+    onChange: (body) => setText(withMessageQuote(body, composed.quote)) });
   const parkedRef = useRef<ComposerDraft | null>(null);
   const flushingRef = useRef(false);
   const wasRunningRef = useRef(running);
@@ -242,9 +245,7 @@ export function Composer({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.nativeEvent.isComposing) {
-      return;
-    }
+    if (mentions.handleKeyDown(event)) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
@@ -480,6 +481,7 @@ export function Composer({
         </Group>
       )}
       {composed.quote === null ? null : <MessageQuote quote={composed.quote} onRemove={() => setText(composed.body)} />}
+      {mentions.menu}
       <Group className="composer-line" gap={8} wrap="nowrap" align="flex-end">
           <Tooltip label="选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件">
             <ActionIcon
@@ -501,10 +503,10 @@ export function Composer({
           className="composer-input"
           ref={textareaRef}
           value={composed.body}
-          onChange={(event) => setText(withMessageQuote(event.currentTarget.value, composed.quote))}
+          {...mentions.inputProps}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          placeholder={disabled ? "正在连接…" : "输入消息…"}
+          placeholder={disabled ? "正在连接…" : "输入消息，@ 选择 Bot…"}
           minRows={1}
           maxRows={7}
           variant="unstyled"

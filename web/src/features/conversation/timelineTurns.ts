@@ -1,38 +1,44 @@
-import type { VisibleItem, VisibleStep, VisibleUser } from "./visibleTimeline";
+import type { VisibleItem, VisiblePrivateMessage, VisibleStep, VisibleUser } from "./visibleTimeline";
 
 export type TimelineTurn = {
   key: string;
   user: VisibleUser | null;
+  communications: VisiblePrivateMessage[];
   process: VisibleStep[];
   active: VisibleStep | null;
   final: VisibleStep | null;
 };
 
 export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
-  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[] }> = [];
+  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[]; communications: VisiblePrivateMessage[] }> = [];
   let current: (typeof turns)[number] | null = null;
 
   for (const item of items) {
     if (item.kind === "user") {
-      current = { key: item.key, user: item, steps: [] };
+      current = { key: item.key, user: item, steps: [], communications: [] };
       turns.push(current);
       continue;
     }
     const previous = current?.steps.at(-1);
     if (current === null || (previous !== undefined && isFinal(previous))) {
-      current = { key: item.key, user: null, steps: [] };
+      current = { key: item.key, user: null, steps: [], communications: [] };
       turns.push(current);
+    }
+    if (item.kind === "private_message") {
+      current.communications.push(item);
+      continue;
     }
     current.steps.push(item);
   }
 
-  return turns.map(({ key, user, steps }) => {
+  return turns.map(({ key, user, steps, communications }) => {
     const candidate = steps.at(-1);
     const active = candidate?.pending === true ? candidate : null;
     const final = candidate !== undefined && isFinal(candidate) ? candidate : null;
     return {
       key,
       user,
+      communications,
       process: active === null && final === null ? steps : steps.slice(0, -1),
       active,
       final,
@@ -101,7 +107,7 @@ export function turnNeedsSilentEnd(
   turn: TimelineTurn,
   settled: boolean,
 ): boolean {
-  return settled && turn.process.length > 0 && turnReply(turn, settled) === null;
+  return settled && turn.process.length > 0 && turn.communications.length === 0 && turnReply(turn, settled) === null;
 }
 
 function turnHasThinking(turn: TimelineTurn): boolean {
