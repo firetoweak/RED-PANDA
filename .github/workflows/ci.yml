@@ -118,7 +118,7 @@ jobs:
     # Single required check for all process groups on both platforms.
     name: Process
     needs: [changes, process]
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful process verification
@@ -155,7 +155,7 @@ jobs:
   web:
     name: Web
     needs: [changes, web-check]
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require successful web tests and build
