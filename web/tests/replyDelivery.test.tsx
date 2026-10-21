@@ -91,7 +91,7 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
   expect(screen.getByText("消息来自")).toBeVisible();
   expect(screen.getByText("已发消息给")).toBeVisible();
-  expect(screen.getAllByRole("link", { name: "Lin" }).map((link) => link.getAttribute("href")))
+  expect((await screen.findAllByRole("link", { name: "Lin" })).map((link) => link.getAttribute("href")))
     .toEqual(["/sessions/agent-lin", "/sessions/agent-lin"]);
   expect(screen.queryByText("以下是未读消息")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /工作记录/ })).toBeNull();
