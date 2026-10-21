@@ -19,7 +19,7 @@ from redpanda.assistant.work_plan import WorkPlanUpdate, project_work_plan, proj
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
 from redpanda.assistant.subagent.subagent import (
-    RETURN_FACT, UnreportedChildReturn, project_delegate_intents, project_parent,
+    RETURN_FACT, UnreportedChildReturn, project_delegate_intents,
     project_pending, project_task, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError, pending_authorization_ids

@@ -59,7 +59,7 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from redpanda.assistant.workspaces import bound_workspace_id, bound_workspace, bound_directory
+from redpanda.assistant.workspaces import bound_workspace_id, bound_directory
 from redpanda.assistant.host.spawn import start_worker
 from redpanda.assistant.host.worker import worker_main
 from redpanda.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted, AttemptOrphaned, CommandPhase
@@ -460,7 +460,6 @@ class HostSupervisor:
             child_workspace_id = bound_workspace_id(parent_events)
             child_directory = bound_directory(parent_events)
             async with self.locks.setdefault(session_id, asyncio.Lock()):
-                parent_workspace = bound_workspace(expected_task.parent_session_id, parent_events, self.workspaces)
                 conflict_child_id = None
                 if expected_task.resolve_conflicts_of is not None:
                     source = next((item for item in project_delegate_intents(parent_events)
