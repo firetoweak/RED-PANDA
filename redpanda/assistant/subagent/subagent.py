@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from redpanda.assistant.agents import project_agent
 from redpanda.assistant.context.prompt import SUBAGENT_PROMPT, SUBAGENT_READ_ONLY_PROMPT
 from redpanda.assistant.delivery import DeliverySink, emit_delivery
 from redpanda.assistant.host.ipc import ProcessFailure
@@ -55,15 +56,18 @@ class DelegateIntent:
     child_session_id: str
     task: str
     resolve_conflicts_of: str | None = None
+    project: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class SubAgentTask:
+    """`project` is the workspace id the task got a copy of; None means it only reads."""
     child_session_id: str
     parent_session_id: str
     delegate_command_id: str
     task: str
     resolve_conflicts_of: str | None = None
+    project: str | None = None
 
 
 def child_session_id(parent_session_id: str, command_id: str) -> str:
@@ -82,6 +86,7 @@ def task_fact_arguments(intent: DelegateIntent) -> dict[str, object]:
             "parent_session_id": intent.parent_session_id,
             "delegate_command_id": intent.command_id,
             "resolve_conflicts_of": intent.resolve_conflicts_of,
+            "project": intent.project,
         },
         "delivery_id": f"{intent.command_id}:task",
         "source": FACT_SOURCE,
@@ -119,7 +124,12 @@ def _task_from_parts(
     resolve = data["resolve_conflicts_of"]
     if resolve is not None and (type(resolve) is not str or not resolve):
         raise ValueError("resolve_conflicts_of 必须是非空 string|null")
-    return SubAgentTask(child_id, parent_session_id, command_id, task, resolve)
+    project = data["project"]
+    if project is not None and (type(project) is not str or not project):
+        raise ValueError("project 必须是非空 string|null")
+    if resolve is not None and project is None:
+        raise ValueError("resolving conflicts needs a project copy")
+    return SubAgentTask(child_id, parent_session_id, command_id, task, resolve, project)
 
 
 def task_from_arguments(
@@ -288,17 +298,19 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
 READ_ONLY_CHILD_TOOL_NAMES = CHILD_BUILTIN_TOOL_NAMES - {"write_file", "apply_patch", "replace_all"}
 
 
-# An Agent delegates from its committed branch and merges back without approval.
+# A Bot delegates into one of its projects from its committed branch and merges back
+# without approval; without a project the task only reads the Bot's own directory.
 DELEGATE_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": DELEGATE,
         "description": (
-            "把可独立完成的任务交给子 Agent。它从你分支上已提交的工作开始，在自己的文件副本里工作，"
-            "看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。"
+            "把可独立完成的任务交给子 Agent。给出 project 时，它从你在这个项目分支上已提交的工作开始，"
+            "在自己的文件副本里工作，看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。"
+            "不给 project 时，它只能读取你的个人目录，不能修改。"
             "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
-            "验收用 compare_subagent，用 merge_subagent 合入你的分支。"
+            "改了文件的子 Agent 用 compare_subagent 验收，用 merge_subagent 合入你在这个项目的分支。"
             "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
             "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
         ),
@@ -310,13 +322,17 @@ DELEGATE_SCHEMA: dict[str, object] = {
                     "description": (
                         "交给子 Agent 的完整任务描述。它看不到当前对话，"
                         "所需背景必须写在这里。写明只调查还是要修改，以及允许改动的范围。"
-                        "路径先自己核实再写进来；写明找不到目标时如实报告，不要换目标。"
+                        "路径先自己核实再写进来，写子 Agent 副本里的相对路径；写明找不到目标时如实报告，不要换目标。"
                     ),
+                },
+                "project": {
+                    "type": ["string", "null"],
+                    "description": "可选：你挂上的项目名。子 Agent 要改这个项目的文件时必须给出。",
                 },
                 "resolve_conflicts_of": {
                     "type": ["string", "null"],
                     "description": (
-                        "可选：合入冲突的那次 delegate 调用 id；"
+                        "可选：合入冲突的那次 delegate 调用 id，project 与那次相同；"
                         "新的子 Agent 在带冲突标记的文件上工作，在 task 里说明取舍原则。"
                     ),
                 },
@@ -431,6 +447,16 @@ def project_delegate_intents(
                     )
                 )
     return tuple(intents)
+
+
+def _delegated_project(events: Sequence[Event], command_id: str) -> object:
+    """The project name a committed delegate call asked for."""
+    for event in events:
+        if isinstance(event.payload, StepCommitted):
+            for command in event.payload.step.commands:
+                if command.command_id == command_id:
+                    return command.effect.argument_dict().get("project")
+    return None
 
 
 def project_delegations(events: Sequence[Event]) -> tuple[str, ...]:
@@ -618,8 +644,11 @@ class SubAgentHost:
         activity_sink: SubAgentActivitySink | None = None,
         *,
         agent_branch: bool = False,
+        projects: bool = False,
     ) -> None:
+        # agent_branch: this child runs in a project copy; projects: this parent can delegate into one.
         self._agent_branch = agent_branch
+        self._projects = projects
         self._runtime: AgentRuntime | None = None
         self._transport = None
         self._parents: dict[str, str] = {}
@@ -672,7 +701,7 @@ class SubAgentHost:
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
             return [REPORT_SCHEMA]
-        return [DELEGATE_SCHEMA if self._agent_branch else DELEGATE_READ_ONLY_SCHEMA, RECLAIM_SCHEMA]
+        return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {
@@ -954,20 +983,32 @@ class SubAgentHost:
                 "data": {"session_id": context.session_id},
                 "error": "子 Agent 不能再委派",
             }
+        events = await self._require_runtime().snapshot(context.session_id)
+        project = arguments.get("project")
+        workspace_id = None
+        if project is not None:
+            agent = project_agent(events)
+            linked = None if agent is None else agent.project(project)
+            if linked is None:
+                return {"ok": False, "code": "PROJECT_NOT_LINKED",
+                        "data": {"projects": [] if agent is None else [item.name for item in agent.projects]},
+                        "error": "你这里没有挂这个项目。", "hint": "用 data.projects 里的名字，或不给 project 只做只读调查。"}
+            workspace_id = linked.workspace_id
         intent = DelegateIntent(
             context.command_id,
             context.session_id,
             child_session_id(context.session_id, context.command_id),
             task.strip(),
             arguments.get("resolve_conflicts_of"),
+            workspace_id,
         )
         if intent.resolve_conflicts_of is not None:
-            events = await self._require_runtime().snapshot(context.session_id)
             source = next((item for item in project_delegate_intents(events)
                            if item.command_id == intent.resolve_conflicts_of), None)
-            if source is None or source.child_session_id not in project_reclaimed(events):
+            if (source is None or source.child_session_id not in project_reclaimed(events)
+                    or project is None or _delegated_project(events, source.command_id) != project):
                 return {"ok": False, "code": "UNKNOWN_CONFLICT_SOURCE", "data": {},
-                        "error": "解冲突只能引用当前会话已经交回的委派。"}
+                        "error": "解冲突只能引用当前会话已经交回、并且 project 相同的委派。"}
             available = await self._transport("prepare_child_files", source.child_session_id,
                                               {"parent_session_id": context.session_id})
             if not available["ok"]:

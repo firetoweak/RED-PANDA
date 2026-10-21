@@ -1,11 +1,12 @@
-import { ActionIcon, Drawer, Group, Text, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Alert, Button, Drawer, Group, Text, UnstyledButton } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
+import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
+import { LinkProjectModal } from "../sessions/LinkProjectModal";
 
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
@@ -21,7 +22,9 @@ export function SessionConversation() {
   const [detailsOpened, setDetailsOpened] = useState(false);
   const narrow = useMediaQuery("(max-width: 64em)");
   const agent = agents.find((item) => item.session_id === sessionId);
-  const workspace = workspaces.find((item) => item.workspace_id === agent?.workspace_id);
+  const [linking, setLinking] = useState(false);
+  const [unlinkProject, unlinking] = useUnlinkProjectMutation();
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
   const agentGroups = groups.filter((group) => group.members.includes(agent?.name ?? ""));
   const details = agent === undefined ? null : (
     <>
@@ -34,13 +37,27 @@ export function SessionConversation() {
         <Text className="agent-details-label" size="xs" c="dimmed">负责方向</Text>
         <Text size="sm">{agent.direction ?? "尚未设置负责方向"}</Text>
       </div>
-      {workspace === undefined ? null : <div className="agent-details-section">
-        <Text className="agent-details-label" size="xs" c="dimmed">所在项目</Text>
-        <div className="agent-details-project">
-          <IconFolder size={16} /><span>{workspace.name}</span>
-        </div>
-        <Text className="agent-details-path" size="xs" c="dimmed">{workspace.task_root}</Text>
-      </div>}
+      <div className="agent-details-section">
+        <Text className="agent-details-label" size="xs" c="dimmed">代码项目</Text>
+        {agent.projects.map((project) => <div key={project.workspace_id}>
+          <Group gap={6} wrap="nowrap" justify="space-between">
+            <div className="agent-details-project"><IconFolder size={16} /><span>{project.name}</span></div>
+            <Button size="compact-xs" variant="subtle" color="gray" aria-label={`解除 ${project.name}`}
+              disabled={connectionId === null || unlinking.isLoading}
+              onClick={() => {
+                if (connectionId === null) return;
+                setUnlinkError(null);
+                unlinkProject({ connectionId, sessionId: agent.session_id, name: project.name }).unwrap()
+                  .catch((cause) => setUnlinkError(typeof cause === "string" ? cause : "解除项目失败"));
+              }}>解除</Button>
+          </Group>
+          <Text className="agent-details-path" size="xs" c="dimmed">{project.directory}</Text>
+        </div>)}
+        {unlinkError === null ? null : <Alert color="orange" p="xs">{unlinkError}</Alert>}
+        <Button size="compact-xs" variant="light" disabled={connectionId === null} onClick={() => setLinking(true)}>关联项目</Button>
+        <LinkProjectModal opened={linking} agent={agent} workspaces={workspaces} connectionId={connectionId}
+          onClose={() => setLinking(false)} />
+      </div>
       {agentGroups.length === 0 ? null : <div className="agent-details-section">
         <Text className="agent-details-label" size="xs" c="dimmed">参与的群聊</Text>
         {agentGroups.map((group) => <Link className="agent-details-project" key={group.group_id} to={`/groups/${encodeURIComponent(group.group_id)}`}>
@@ -63,8 +80,8 @@ export function SessionConversation() {
           <div className="session-header-name"><Text fw={600} size="sm" truncate>{agent?.name ?? "Agent"}</Text>
             <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>
         </Group>
-        {workspace === undefined ? null : <span className="session-project-link">
-          <IconFolder size={15} /><span>{workspace.name}</span></span>}
+        {agent === undefined || agent.projects.length === 0 ? null : <span className="session-project-link">
+          <IconFolder size={15} /><span>{agent.projects.map((project) => project.name).join("、")}</span></span>}
         <ActionIcon aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
       <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} agentNames={agents.map((item) => item.name)} /></div>

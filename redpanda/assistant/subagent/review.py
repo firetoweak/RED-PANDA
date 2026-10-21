@@ -31,6 +31,8 @@ class GitChildReview:
             "child_session_id": intent.child_session_id, "paths": list(paths or ()),
             "offset": offset, "merge": merge,
         })
+        if result.get("ok") is False:
+            return result
         if not merge:
             return {"ok": True, "code": "SUBAGENT_CHANGES", "data": result}
         status, changed = result["status"], result["changed_files"]

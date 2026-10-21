@@ -13,7 +13,6 @@ from redpanda.assistant.agent_messages import SEND_FILE
 from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.automation.absence import ASK_GRACE, UNREAD_REPORTS, counts_since, next_absence_action
 from redpanda.automation.routines import ACTIVE, PAUSED_BY_USER, PAUSED_UNWATCHED, ROUTINE_DUE, RoutineStore
-from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
@@ -103,27 +102,17 @@ class AbsenceReviewTest(unittest.IsolatedAsyncioTestCase):
         root = Path(self.directory.name).resolve()
         self.home = RedPandaHome(root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
-        project = root / "project"
-        project.mkdir()
-        registry = WorkspaceRegistry.load(self.home.workspaces_path)
-        self.workspace = registry.register_path(project)
-        self.host = HostSupervisor(self.store, None, self.home, None, llm=None, workspaces=registry)
-        self.git = patch.object(
-            self.host.agent_worktrees, "create",
-            side_effect=lambda workspace, session_id: self.host.agent_worktrees.agent(workspace.workspace_id, session_id),
-        )
-        self.git.start()
+        self.host = HostSupervisor(self.store, None, self.home, None, llm=None)
         self.requests = patch.object(self.host, "request", AsyncMock())
         self.requests.start()
 
     async def asyncTearDown(self):
         self.requests.stop()
-        self.git.stop()
         await self.host.close()
         self.directory.cleanup()
 
     async def test_review_asks_then_pauses_and_tells_the_agent_once(self):
-        agent = await self.host.create_agent(name="Ada", workspace_id=self.workspace.workspace_id)
+        agent = await self.host.create_agent(name="Ada")
         saved = self.host.routines.store.save(
             "routine", agent.session_id, routine_id=None, name="检查", intent="看", schedule="@every 10m",
         )

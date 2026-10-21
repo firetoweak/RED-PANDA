@@ -81,10 +81,20 @@ const sessionViewSchema = z
   })
   .strict();
 
+export const agentProjectSchema = z
+  .object({
+    name: z.string().min(1),
+    workspace_id: z.string().min(1),
+    directory: z.string().min(1),
+  })
+  .strict();
+
+export type AgentProject = z.infer<typeof agentProjectSchema>;
+
 export const agentRosterEntrySchema = z
   .object({
     session_id: z.string().min(1),
-    workspace_id: z.string().min(1).nullable(),
+    projects: agentProjectSchema.array(),
     name: z.string().min(1),
     direction: z.string().min(1).nullable(),
     activity: z.enum(["running", "idle"]),

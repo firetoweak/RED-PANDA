@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
@@ -19,7 +20,7 @@ from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
 from redpanda.assistant.subagent.subagent import (
     RETURN_FACT, UnreportedChildReturn, project_delegate_intents, project_parent,
-    project_pending, project_unreported_returns,
+    project_pending, project_task, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError, pending_authorization_ids
 from redpanda.assistant.workspaces import bound_workspace_id
@@ -57,9 +58,16 @@ class FileChangesUnavailable(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class AgentProjectView:
+    name: str
+    workspace_id: str
+    directory: str
+
+
+@dataclass(frozen=True, slots=True)
 class AgentRosterEntry:
     session_id: str
-    workspace_id: str | None
+    projects: tuple[AgentProjectView, ...]
     name: str
     direction: str | None
     activity: SessionActivity
@@ -239,7 +247,6 @@ class AssistantQueries:
                 record.session_id,
                 events,
                 name=record.name,
-                workspace_id=record.workspace_id,
                 direction=view.direction,
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
@@ -255,7 +262,6 @@ class AssistantQueries:
             session_id,
             events,
             name=agent.name,
-            workspace_id=agent.workspace_id,
             direction=project_direction(events, agent),
             activity=self._sessions.activity(session_id),
             last_error=self._sessions.current_failure(session_id),
@@ -275,16 +281,16 @@ class AssistantQueries:
             view = session_view(state, control_approval=pending_approval_view(events))
             if view.pending_authorization_commands or view.control_approval is not None:
                 items.extend(project_inbox_items(
-                    session_id=session_id, workspace_id=agent.workspace_id, label=agent.name,
+                    session_id=session_id, workspace_id=None, label=agent.name,
                     authorizations=view.pending_authorization_commands,
                     control=view.control_approval,
                 ))
             items.extend(project_limit_items(
-                session_id=session_id, workspace_id=agent.workspace_id, label=agent.name, events=events,
+                session_id=session_id, workspace_id=None, label=agent.name, events=events,
             ))
             if self._sessions.is_paused(session_id) and state.status is RuntimeStatus.RUNNABLE:
                 items.append(PausedInboxItem(
-                    "paused", session_id, agent.workspace_id, agent.name,
+                    "paused", session_id, None, agent.name,
                     "已暂停，有未处理的消息。继续后才会处理。",
                 ))
             watch = watches.get(session_id)
@@ -295,7 +301,7 @@ class AssistantQueries:
                     "无人查看，已暂停当时仍在运行的例行任务。恢复只恢复这些。"
                 )
                 items.append(AbsenceInboxItem(
-                    "absence", session_id, agent.workspace_id, agent.name, watch.phase, summary,
+                    "absence", session_id, None, agent.name, watch.phase, summary,
                 ))
         return tuple(sorted(items, key=_inbox_sort_key))
 
@@ -326,26 +332,28 @@ class AssistantQueries:
         ).snapshot(session_id)
         return await self._conversation(session_id, events, view=view)
 
-    async def file_changes(self, session_id: str, *, path=None, offset=0):
-        journal = SqliteJournal(self._store.require(session_id))
-        events = await journal.snapshot(session_id)
-        parent = project_parent(events)
+    async def file_changes(self, session_id: str, *, project=None, path=None, offset=0):
+        """A Bot's changes in one project are what it has not landed yet; a task delegated
+        into a project shows what it has not merged into its parent yet."""
+        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
+        trees = self._sessions.agent_worktrees
         agent = project_agent(events)
-        parent_agent = None if parent is None else project_agent(
-            await SqliteJournal(self._store.require(parent)).snapshot(parent))
-        if (agent is not None and agent.project is not None) or (parent_agent is not None and parent_agent.project is not None):
-            # An Agent's changes are what it has not landed yet; a delegated
-            # task's are what it has not merged into its parent yet.
-            trees = self._sessions.agent_worktrees
-            if agent is not None:
-                root, base = agent.worktree, trees.integration(agent.workspace_id).branch
-            else:
-                root, base = trees.child(parent_agent.workspace_id, session_id).path, parent_agent.project.branch
-            try:
-                return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
-            except OSError as error:
-                raise FileChangesUnavailable(file_error_message(error)) from error
-        raise FileChangesUnavailable("只有 Agent 和它委派的任务提供文件变化查看。")
+        task = project_task(events)
+        if agent is not None:
+            linked = None if project is None else agent.project(project)
+            if linked is None:
+                raise FileChangesUnavailable("这位 Bot 没有挂这个项目。")
+            root, base = Path(linked.worktree), trees.integration(linked.workspace_id).branch
+        elif task is not None and task.project is not None:
+            parent = project_agent(await SqliteJournal(
+                self._store.require(task.parent_session_id)).snapshot(task.parent_session_id))
+            root, base = trees.child(task.project, session_id).path, parent.project_by_id(task.project).branch
+        else:
+            raise FileChangesUnavailable("只有挂了项目的 Bot 和委派到项目里的任务提供文件变化查看。")
+        try:
+            return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
+        except OSError as error:
+            raise FileChangesUnavailable(file_error_message(error)) from error
 
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
@@ -428,15 +436,15 @@ def project_agent_roster_entry(
     events: tuple[Event, ...],
     *,
     name: str,
-    workspace_id: str | None,
     direction: str | None,
     activity: SessionActivity,
     last_error: str | None,
 ) -> AgentRosterEntry:
     state = replay(session_id, events).state
+    agent = project_agent(events)
     return AgentRosterEntry(
         session_id=session_id,
-        workspace_id=workspace_id,
+        projects=tuple(AgentProjectView(item.name, item.workspace_id, item.worktree) for item in agent.projects),
         name=name,
         direction=direction,
         activity=activity,
@@ -618,8 +626,7 @@ def project_conversation(
         items.extend(messages)
     return ConversationView(
         session_id=session_id,
-        workspace_id=(agent.workspace_id if (agent := project_agent(events)) is not None
-                      else bound_workspace_id(events)),
+        workspace_id=bound_workspace_id(events),
         revision=events[-1].sequence if events else 0,
         items=tuple(items),
         session=session,

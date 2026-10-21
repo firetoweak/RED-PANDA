@@ -93,8 +93,9 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
         "description": (
-            "查询同事名字、他们声明的负责方向和各自的工作目录；未声明时方向为 null。"
-            "可以用文件工具只读查看同事工作目录里尚未落地的改动，不能在其中写入。"
+            "查询同事名字、他们声明的负责方向、各自的工作目录和挂上的项目；未声明时方向为 null。"
+            "同事挂上的项目在其工作目录的 projects 下，以项目名为子目录。"
+            "可以用文件工具只读查看同事工作目录，包括项目里尚未落地的改动，不能在其中写入。"
             "每位同事还带 status 与 since。status 是当前状态：working 正在工作；"
             "awaiting_authorization 有操作在等人授权，授权前不会继续；"
             "paused 被人暂停，消息照常送达，但要等人让它继续才会处理；idle 当前没在工作。"

@@ -65,6 +65,16 @@ class WebChannel:
         await self._sessions.select(connection.owner, record.session_id)
         return await self._queries.agent_entry(record.session_id)
 
+    async def link_project(self, connection_id: str, session_id: str, workspace_id: str | None, path: str | None):
+        self._require_connection(connection_id)
+        await self._sessions.link_project_by_user(session_id, workspace_id=workspace_id, path=path)
+        return await self._queries.agent_entry(session_id)
+
+    async def unlink_project(self, connection_id: str, session_id: str, name: str):
+        self._require_connection(connection_id)
+        await self._sessions.unlink_project_by_user(session_id, name)
+        return await self._queries.agent_entry(session_id)
+
     async def list_inbox(self):
         return await self._queries.list_inbox()
 
@@ -141,8 +151,8 @@ class WebChannel:
     async def observe_subagent(self, parent_session_id: str, command_id: str):
         return await self._queries.observe_subagent(parent_session_id, command_id)
 
-    async def file_changes(self, session_id: str, *, path=None, offset=0):
-        return await self._queries.file_changes(session_id, path=path, offset=offset)
+    async def file_changes(self, session_id: str, *, project=None, path=None, offset=0):
+        return await self._queries.file_changes(session_id, project=project, path=path, offset=offset)
 
     async def select(self, connection_id: str, session_id: str):
         connection = self._require_connection(connection_id)
