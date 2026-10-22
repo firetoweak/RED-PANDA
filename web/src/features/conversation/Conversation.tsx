@@ -223,7 +223,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const awaitingControl = conversation.session.control_approval !== null;
   const notice =
     runtime?.controlNotice ?? conversation.session.control_message;
-  const subagentsActive = conversation.session.has_active_subagents;
+  const subagentsOpen = conversation.session.has_open_subagents;
   const activePlan = conversation.work_plan !== null && !isPlanCompleted(conversation.work_plan)
     ? conversation.work_plan : null;
 
@@ -237,7 +237,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
       deliveryId: `web-${createClientId()}`,
       text,
       artifactRefs,
-      interrupt: running || subagentsActive,
+      interrupt: running,
     }).unwrap();
     dispatch(controlNotice({ sessionId, message: null }));
   }
@@ -380,9 +380,9 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                 ) : null}
                 {turnNeedsSubagentHint(
                   turn.key === lastTurnKey,
-                  subagentsActive,
+                  subagentsOpen,
                 ) ? (
-                  <RunningHint label="子 Agent 执行中" />
+                  <Text c="dimmed" size="sm">有未结束的子 Agent 协作</Text>
                 ) : null}
                 {turn.key === lastTurnKey
                   ? (conversation.subagent_terminals ?? []).map((terminal) => (
@@ -494,7 +494,8 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           connectionId={connectionId}
           disabled={connectionId === null}
           sending={sending.isLoading}
-          running={running || subagentsActive}
+          running={running}
+          canStop={running || subagentsOpen}
           shouldWake={
             conversation.session.should_wake && lastError == null
           }

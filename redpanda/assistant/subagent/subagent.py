@@ -1,4 +1,4 @@
-"""SubAgent 委派与回收。
+"""SubAgent 委派、父子交流与回收。
 
 子 Session 是普通独立 Session：同一套 create / advance / recover，自己的
 Journal 与判定。父子关系只存在于 Assistant 侧，用因果事实表达，Runtime 不
@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from redpanda.assistant.agents import project_agent
 from redpanda.assistant.context.prompt import SUBAGENT_PROMPT, SUBAGENT_READ_ONLY_PROMPT
-from redpanda.assistant.delivery import DeliverySink, emit_delivery
+from redpanda.assistant.delivery import DELIVER_TOOL_NAME, DeliverySink, deliver_binding, emit_delivery
 from redpanda.assistant.host.ipc import ProcessFailure
 from redpanda.runtime import (
     AgentRuntime,
@@ -35,15 +35,17 @@ from redpanda.runtime import (
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.runtime.events import DeliveryIdentity, EventDraft
 from redpanda.runtime.journal.api import Journal
-from redpanda.runtime.model import CanonicalState
 
 
 DELEGATE = "delegate"
 RECLAIM = "reclaim"
-REPORT = "report"
+INSTRUCT = "instruct_subagent"
+LIST_SUBAGENTS = "list_subagents"
 
 TASK_FACT = "subagent.task"
-REPORT_FACT = "subagent.report"
+INSTRUCTION_FACT = "subagent.instruction"
+REPLY_FACT = "subagent.reply"
+CLOSED_FACT = "subagent.closed"
 RETURN_FACT = "subagent.return"
 
 FACT_SOURCE = "subagent"
@@ -150,35 +152,58 @@ def task_from_arguments(
 def return_data(
     child_session_id: str,
     *,
-    reported: bool,
-    summary: str | None,
     failure: str | None,
-    cancelled: bool = False,
     reason: str | None = None,
 ) -> dict[str, object]:
     return {
         "child_session_id": child_session_id,
-        "reported": reported,
-        "summary": summary,
         "failure": failure,
-        "cancelled": cancelled,
         "reason": reason,
     }
 
 
-def report_arguments(
+def closed_arguments(
     session_id: str,
     data: Mapping[str, object],
 ) -> dict[str, object]:
-    """Parent report payload. Parent-initiated cancel does not request a Step."""
+    """Only failures wake the parent; it already knows its own close decision."""
 
     return dict(
-        fact_type=REPORT_FACT,
+        fact_type=CLOSED_FACT,
         data=dict(data),
-        delivery_id=f"{session_id}:report",
+        delivery_id=f"{session_id}:closed",
         source=FACT_SOURCE,
-        requests_decision=data.get("cancelled") is not True,
+        requests_decision=data["failure"] is not None,
     )
+
+
+def instruction_arguments(parent_session_id: str, command_id: str, text: str) -> dict[str, object]:
+    return dict(
+        fact_type=INSTRUCTION_FACT,
+        data={"parent_session_id": parent_session_id, "text": text},
+        delivery_id=f"{command_id}:instruction",
+        source=FACT_SOURCE,
+        requests_decision=True,
+    )
+
+
+def reply_arguments(child_id: str, command_id: str, text: str) -> dict[str, object]:
+    return dict(
+        fact_type=REPLY_FACT,
+        data={"child_session_id": child_id, "text": text},
+        delivery_id=f"{child_id}:{command_id}:reply",
+        source=FACT_SOURCE,
+        requests_decision=True,
+    )
+
+
+def instructed_result(child_id: str) -> dict[str, object]:
+    return {"ok": True, "code": "SUBAGENT_INSTRUCTED", "data": {"child_session_id": child_id}}
+
+
+def child_finished_result(child_id: str) -> dict[str, object]:
+    return {"ok": False, "code": "CHILD_FINISHED", "data": {"child_session_id": child_id},
+            "error": "子 Agent 的协作已结束，不能追加指令。需要时重新 delegate。"}
 
 
 def _return_event(events: Sequence[Event]) -> Event | None:
@@ -241,12 +266,10 @@ async def record_unexpected_return(journal: Journal, session_id: str, error: Exc
         session_id,
         return_data(
             session_id,
-            reported=False,
-            summary=None,
             failure=ProcessFailure.capture(error).render(),
         ),
     )
-    return parent, report_arguments(session_id, returned.payload.data)
+    return parent, closed_arguments(session_id, returned.payload.data)
 
 
 async def record_interrupted_return(journal: Journal, session_id: str) -> None:
@@ -262,9 +285,7 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
         session_id,
         return_data(
             session_id,
-            reported=False,
-            summary=None,
-            failure="子 Agent 被中断，未完成任务，也没有交回结论。需要时重新 delegate。",
+            failure="子 Agent 执行中断，存在未取得结果的操作。需要时重新 delegate。",
         ),
     )
 
@@ -285,7 +306,6 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "apply_patch",
         "replace_all",
         "update_plan",
-        REPORT,
     }
 )
 """子 Session 能看见的内建工具；外部工具从只读 Server 目录渐进加载。
@@ -308,11 +328,11 @@ DELEGATE_SCHEMA: dict[str, object] = {
             "把可独立完成的任务交给子 Agent。给出 project 时，它从你在这个项目分支上已提交的工作开始，"
             "在自己的文件副本里工作，看不到未提交的修改，需要时先提交再委派；可以改文件，不能执行命令。"
             "不给 project 时，它只能读取你的个人目录，不能修改。"
-            "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
-            "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
+            "调用立即返回 child_session_id，子普通回复会直接送给你；由你判断成果是否满足目标。"
             "改了文件的子 Agent 用 compare_subagent 验收，用 merge_subagent 合入你在这个项目的分支。"
             "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
-            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
+            "询问进展、补充要求或让等待中的子继续时用 instruct_subagent；用 list_subagents 查看是否正在执行。"
+            "子普通回复不结束协作；完成验收或不再需要时，用 reclaim 明确结束。"
         ),
         "parameters": {
             "type": "object",
@@ -332,7 +352,7 @@ DELEGATE_SCHEMA: dict[str, object] = {
                 "resolve_conflicts_of": {
                     "type": ["string", "null"],
                     "description": (
-                        "可选：合入冲突的那次 delegate 调用 id，project 与那次相同；"
+                        "可选：合入冲突的那次 delegate 调用 id；先结束原协作，project 与那次相同；"
                         "新的子 Agent 在带冲突标记的文件上工作，在 task 里说明取舍原则。"
                     ),
                 },
@@ -349,10 +369,10 @@ DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
         "name": DELEGATE,
         "description": (
             "把可独立完成的调查交给子 Agent。它只能读取你的工作区，不能修改文件，也不能执行命令。"
-            "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
-            "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
+            "调用立即返回 child_session_id，子普通回复会直接送给你；由你判断成果是否满足目标。"
             "互不依赖的调查可在同一次决策里各发一次 delegate 并行，结论逐个返回。"
-            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
+            "询问进展、补充要求或让等待中的子继续时用 instruct_subagent；用 list_subagents 查看是否正在执行。"
+            "子普通回复不结束协作；完成验收或不再需要时，用 reclaim 明确结束。"
         ),
         "parameters": {
             "type": "object",
@@ -371,15 +391,40 @@ DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
 }
 
 
+INSTRUCT_SCHEMA: dict[str, object] = {
+    "type": "function",
+    "function": {
+        "name": INSTRUCT,
+        "description": (
+            "给自己委派、尚未结束的子 Agent 追加指令、询问进展或调整方向。"
+            "打断它当前的思考，保留历史与工作目录，按新指令继续；已发生的改动不会回退，"
+            "尚未返回的工具先收尾。返回接纳结果，不等待答复。"
+            "子普通回复会送给你，回复或等待消息不结束协作，由你判断继续还是用 reclaim 结束。"
+            "协作已经结束的子 Agent 不能继续，需要时重新 delegate。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "child_session_id": {"type": "string", "minLength": 1,
+                                     "description": "先前 delegate 返回的 child_session_id。"},
+                "text": {"type": "string", "minLength": 1,
+                         "description": "完整的新指令与所需背景；子 Agent 看不到你的当前对话。"},
+            },
+            "required": ["child_session_id", "text"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 RECLAIM_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": RECLAIM,
         "description": (
-            "收回一个还在工作的子 Agent。"
-            "用户不要继续、任务已变、或这个子 Agent 的参数已经不对时使用。"
-            "收回后它会停下来，不再有结论送回；需要的话可以再 delegate 一个新的。"
-            "已经交回结论的子 Agent 再收回没有效果。"
+            "结束自己与一个子 Agent 的协作。验收完成、不再需要或任务取消时使用。"
+            "停止它的执行并保留历史和文件改动，不自动合入成果；结束后不能继续发指令，需要时重新 delegate。"
+            "重复结束同一个子 Agent 没有效果。"
         ),
         "parameters": {
             "type": "object",
@@ -401,21 +446,12 @@ RECLAIM_SCHEMA: dict[str, object] = {
 }
 
 
-REPORT_SCHEMA: dict[str, object] = {
+LIST_SUBAGENTS_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
-        "name": REPORT,
-        "description": "把最终结论交回父 Agent 并结束任务。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "summary": {
-                    "type": "string",
-                    "description": "面向父 Agent 的完整结论，含依据、改动的文件与原因、遗留问题。",
-                },
-            },
-            "required": ["summary"],
-        },
+        "name": LIST_SUBAGENTS,
+        "description": "查看自己委派的子 Agent 及其当前状态：creating（创建中）、running（正在执行）、waiting（等待消息）、paused（暂停）、closed（协作结束）、failed（执行失败）。状态不代表任务完成程度；需要进展时直接用 instruct_subagent 询问。",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
     },
 }
 
@@ -532,7 +568,7 @@ def project_parent(events: Sequence[Event]) -> str | None:
 
 
 def project_pending(events: Sequence[Event]) -> frozenset[str]:
-    """父已委派但还没交回结论的子 Session。"""
+    """父已委派且尚未结束协作的子 Session。"""
 
     return (
         frozenset(project_delegations(events))
@@ -547,10 +583,7 @@ class UnreportedChildReturn:
 
     command_id: str
     child_session_id: str
-    reported: bool
-    summary: str | None
     failure: str | None
-    cancelled: bool
     reason: str | None
 
 
@@ -573,10 +606,7 @@ def project_unreported_returns(
             UnreportedChildReturn(
                 intent.command_id,
                 child_id,
-                data["reported"],
-                data["summary"],
                 data["failure"],
-                data["cancelled"],
                 data["reason"],
             )
         )
@@ -584,14 +614,14 @@ def project_unreported_returns(
 
 
 def project_reclaimed(events: Sequence[Event]) -> frozenset[str]:
-    """父 Session 已经收到过结论的那些子 Session。"""
+    """父 Session 已经收到结束通知的子 Session。"""
 
     reclaimed: set[str] = set()
     for event in events:
         payload = event.payload
         if (
             not isinstance(payload, DomainFactCommitted)
-            or payload.fact_type != REPORT_FACT
+            or payload.fact_type != CLOSED_FACT
         ):
             continue
         data = payload.data
@@ -601,43 +631,8 @@ def project_reclaimed(events: Sequence[Event]) -> frozenset[str]:
     return frozenset(reclaimed)
 
 
-def project_report(events: Sequence[Event]) -> str | None:
-    """从子 Session 的 Journal 取回最后一次成功的 report 内容。"""
-
-    report_commands: set[str] = set()
-    for event in events:
-        payload = event.payload
-        if not isinstance(payload, StepCommitted):
-            continue
-        for command in payload.step.commands:
-            effect = command.effect
-            if isinstance(effect, InvokeTool) and effect.name == REPORT:
-                report_commands.add(command.command_id)
-
-    summary: str | None = None
-    for event in events:
-        payload = event.payload
-        if (
-            not isinstance(payload, CommandOutcomeReceived)
-            or payload.command_id not in report_commands
-            or payload.outcome.status is not OutcomeStatus.SUCCEEDED
-        ):
-            continue
-        value = payload.outcome.value
-        if not isinstance(value, Mapping):
-            raise ValueError("report outcome 必须是 object")
-        data = value.get("data")
-        if not isinstance(data, Mapping):
-            raise ValueError("report outcome data 无效")
-        reported = data.get("summary")
-        if type(reported) is not str or not reported:
-            raise ValueError("report outcome summary 无效")
-        summary = reported
-    return summary
-
-
 class SubAgentHost:
-    """委派、回收，以及子 Session 的策略边界。"""
+    """委派、父子交流、回收，以及子 Session 的策略边界。"""
 
     def __init__(
         self,
@@ -700,14 +695,15 @@ class SubAgentHost:
 
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
-            return [REPORT_SCHEMA]
-        return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, RECLAIM_SCHEMA]
+            return []
+        return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, INSTRUCT_SCHEMA, LIST_SUBAGENTS_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {
             DELEGATE: ToolBinding(self._delegate, decision_on_outcome=False),
-            RECLAIM: ToolBinding(self._reclaim_command, decision_on_outcome=False),
-            REPORT: ToolBinding(self._report, decision_on_outcome=False),
+            INSTRUCT: ToolBinding(self._instruct_command),
+            RECLAIM: ToolBinding(self._reclaim_command),
+            LIST_SUBAGENTS: ToolBinding(self._list_subagents),
         }
 
     async def note_returned(self, session_id: str) -> bool:
@@ -720,35 +716,31 @@ class SubAgentHost:
         self._returned.add(session_id)
         return True
 
-    async def cancel(self, session_id: str, arguments: Mapping[str, object]) -> None:
-        """Persist a parent-initiated return and deliver the report. Tests use this."""
+    def delivery_binding(self, sink: DeliverySink, observation_sink=None, preview=None):
+        """A child's ordinary speech is a durable message to its parent."""
+        async def routed(session_id, output_id, text):
+            target = observation_sink if self.is_subagent(session_id) else sink
+            if target is not None:
+                await emit_delivery(target, session_id, output_id, text)
 
-        parent_session_id = arguments["parent_session_id"]
-        if type(parent_session_id) is not str or not parent_session_id:
-            raise ValueError("reclaim parent_session_id 无效")
-        reason = arguments.get("reason")
-        if reason is not None and type(reason) is not str:
-            raise TypeError("reclaim reason 必须是 string|null")
-        await self._reclaim(
-            session_id,
-            parent_session_id,
-            summary=None,
-            failure=None,
-            cancelled=True,
-            reason=reason.strip() if type(reason) is str and reason.strip() else None,
-        )
+        binding = deliver_binding(routed, preview)[DELIVER_TOOL_NAME]
 
-    def routed_sink(self, sink: DeliverySink, observation_sink: DeliverySink | None = None) -> DeliverySink:
-        """子正文只路由到观察端口，父模型仍只收到 report。"""
+        async def handler(context, arguments):
+            if self.is_subagent(context.session_id):
+                await self.send_reply(context, arguments["text"])
+            return await binding.handler(context, arguments)
 
-        async def routed(session_id: str, output_id: str, text: str) -> None:
-            if self.is_subagent(session_id):
-                if observation_sink is not None:
-                    await emit_delivery(observation_sink, session_id, output_id, text)
-                return
-            await emit_delivery(sink, session_id, output_id, text)
+        return {DELIVER_TOOL_NAME: ToolBinding(handler, decision_on_outcome=False)}
 
-        return routed
+    async def send_reply(self, context, text):
+        return await self._transport("child_message", context.session_id, {
+            "command_id": context.command_id, "text": text,
+        })
+
+    async def _list_subagents(self, context, arguments):
+        if arguments:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "此工具不接受参数。"}
+        return await self._transport("list_subagents", context.session_id, {})
 
     async def rehydrate(self, session_id: str) -> tuple[str, ...]:
         """重启后认回父子关系，并唤醒还没回收的子 Session。
@@ -772,7 +764,7 @@ class SubAgentHost:
                     await self._transport(
                         "fact",
                         parent_session_id,
-                        report_arguments(session_id, event.payload.data),
+                        closed_arguments(session_id, event.payload.data),
                     )
             return ()
         pending_ids = project_pending(events)
@@ -811,29 +803,6 @@ class SubAgentHost:
         self._publish_activity(session_id)
         return tuple(pending)
 
-    async def on_quiesced(
-        self,
-        session_id: str,
-        state: CanonicalState,
-    ) -> None:
-        """Session 静止时判断是否到了回收一个子 Session 的时候。"""
-
-        parent_session_id = self._parents.get(session_id)
-        if parent_session_id is None:
-            return
-        # 子没有人，落到等外部事实就等于本轮做完了。等授权或等命令都不是。
-        # 允许递归委派后，这里还要加上「没有未回收的子 Session」。
-        if state.waiting_for != ("external_fact",):
-            return
-        runtime = self._require_runtime()
-        summary = project_report(await runtime.snapshot(session_id))
-        await self._reclaim(
-            session_id,
-            parent_session_id,
-            summary=summary,
-            failure=None,
-        )
-
     async def on_failed(self, session_id: str, message: str) -> None:
         """子 Session 撞上已识别的失败，也是一种终局。
 
@@ -851,7 +820,6 @@ class SubAgentHost:
         await self._reclaim(
             session_id,
             parent_session_id,
-            summary=None,
             failure=message,
         )
 
@@ -871,16 +839,14 @@ class SubAgentHost:
         session_id: str,
         parent_session_id: str,
         *,
-        summary: str | None,
         failure: str | None,
-        cancelled: bool = False,
         reason: str | None = None,
     ) -> None:
         """把一个子 Session 的终局交回父。一个子最多回收一次。
 
         回收事实只记这个子自己的终局。「还差谁」是派生值，由父在决策时从自己
         已冻结的事实里投影；冻进事实就要求两个并行的子在父维度串行读写。
-        已经有终局时沿用先写入的那条，包括父取消与子自己交回的竞态。
+        已经有终局时沿用先写入的那条，包括父结束协作与子执行失败的竞态。
         """
 
         returned = await persist_return(
@@ -888,17 +854,14 @@ class SubAgentHost:
             session_id,
             return_data(
                 session_id,
-                reported=summary is not None,
-                summary=summary,
                 failure=failure,
-                cancelled=cancelled,
                 reason=reason,
             ),
         )
         await self._transport(
             "fact",
             parent_session_id,
-            report_arguments(session_id, returned.payload.data),
+            closed_arguments(session_id, returned.payload.data),
         )
         self._returned.add(session_id)
 
@@ -963,6 +926,46 @@ class SubAgentHost:
             "data": {"child_session_id": child_session_id},
         }
 
+    async def _instruct_command(self, context: AttemptContext, arguments: Mapping[str, object]):
+        if self.is_subagent(context.session_id):
+            return {"ok": False, "code": "INSTRUCT_NOT_ALLOWED", "error": "子 Agent 不能指挥其他子 Agent。"}
+        child_id = arguments.get("child_session_id")
+        text = arguments.get("text")
+        if (set(arguments) != {"child_session_id", "text"}
+                or type(child_id) is not str or not child_id.strip()
+                or type(text) is not str or not text.strip()):
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "需要非空的 child_session_id 和 text。"}
+        child_id, text = child_id.strip(), text.strip()
+        events = await self._require_runtime().snapshot(context.session_id)
+        if child_id not in project_delegations(events) or child_id in project_failed_delegations(events):
+            return {"ok": False, "code": "UNKNOWN_CHILD", "error": "不是当前会话委派的子 Agent。"}
+        return await self._transport("instruct_child", child_id, {
+            "parent_session_id": context.session_id, "command_id": context.command_id, "text": text,
+        })
+
+    async def recover_messages(self, session_id: str) -> None:
+        """Replay known instructions and child speech with their original identity."""
+        runtime = self._require_runtime()
+        state = await runtime.state(session_id)
+        for command in state.commands:
+            name = command.command.effect.name
+            if command.phase is not CommandPhase.UNKNOWN:
+                continue
+            if name != INSTRUCT and not (name == DELIVER_TOOL_NAME and self.is_subagent(session_id)):
+                continue
+            attempt = command.attempts[-1]
+            context = AttemptContext(session_id, command.command.command_id, attempt.attempt_id, len(command.attempts))
+            arguments = command.command.effect.argument_dict()
+            if name == INSTRUCT:
+                result = await self._instruct_command(context, arguments)
+            else:
+                await self.send_reply(context, arguments["text"])
+                result = arguments["text"]
+            await runtime.dispatcher.accept_outcome(
+                session_id, command.command.command_id, attempt.attempt_id, attempt.started_event_id,
+                CommandOutcome(OutcomeStatus.SUCCEEDED, value=result),
+            )
+
     async def _delegate(
         self,
         context: AttemptContext,
@@ -1008,7 +1011,7 @@ class SubAgentHost:
             if (source is None or source.child_session_id not in project_reclaimed(events)
                     or project is None or _delegated_project(events, source.command_id) != project):
                 return {"ok": False, "code": "UNKNOWN_CONFLICT_SOURCE", "data": {},
-                        "error": "解冲突只能引用当前会话已经交回、并且 project 相同的委派。"}
+                        "error": "解冲突只能引用当前会话已经结束协作、并且 project 相同的委派。"}
             available = await self._transport("prepare_child_files", source.child_session_id,
                                               {"parent_session_id": context.session_id})
             if not available["ok"]:
@@ -1023,25 +1026,6 @@ class SubAgentHost:
         )
         self._publish_activity(context.session_id)
         return _delegated_result(intent.child_session_id)
-
-    async def _report(
-        self,
-        context: AttemptContext,
-        arguments: Mapping[str, object],
-    ) -> dict[str, object]:
-        summary = arguments.get("summary")
-        if type(summary) is not str or not summary.strip():
-            return {
-                "ok": False,
-                "code": "INVALID_ARGUMENT",
-                "data": {"summary": summary},
-                "error": "summary 必须是非空字符串",
-            }
-        return {
-            "ok": True,
-            "code": "REPORTED",
-            "data": {"summary": summary.strip()},
-        }
 
     def _require_runtime(self) -> AgentRuntime:
         if self._runtime is None:

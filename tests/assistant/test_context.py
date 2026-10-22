@@ -90,6 +90,32 @@ def _result(data):
 class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
     SESSION = "ctx-session"
 
+    async def test_new_progress_question_keeps_delegated_child_addressable(self):
+        child_id = "ctx-session/sub-task"
+
+        async def delegate(_context, _arguments):
+            return {"ok": True, "code": "DELEGATED", "data": {"child_session_id": child_id}}
+
+        runtime = AgentRuntime(
+            MemoryJournal(),
+            ScriptedDecisionMaker((
+                lambda _frame: ModelDecision(command_requests=(InvokeTool("delegate"),)),
+                lambda _frame: _deliver("已委派"),
+            )),
+            {"delegate": ToolBinding(delegate), **deliver_binding(lambda *_values: None)},
+            SequentialIds(),
+        )
+        await runtime.receive_user_message(self.SESSION, "委派任务", delivery_id="task")
+        await settle_session(runtime, self.SESSION)
+        await runtime.receive_user_message(self.SESSION, "做到什么程度了？", delivery_id="progress")
+        events = await runtime.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events, StateProjector().project_visible(self.SESSION, events), self.SESSION, "sys",
+        )
+        result = json.loads(self._tool_messages(prepared.messages)[0]["content"])
+        self.assertEqual(len(prepared.age_dehydrated_command_ids), 1)
+        self.assertEqual(result["data"]["child_session_id"], child_id)
+
     async def test_schedule_trigger_times_reach_the_model_in_local_time(self):
         from redpanda.automation.once import TIME_REACHED
         from redpanda.automation.routines import ROUTINE_DUE

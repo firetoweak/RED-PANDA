@@ -12,7 +12,7 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from redpanda.assistant.management import ManagementSurface
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.sessions import AssistantSessions, SessionView
-from redpanda.assistant.subagent.subagent import DELEGATE, REPORT_FACT, child_session_id
+from redpanda.assistant.subagent.subagent import DELEGATE, CLOSED_FACT, child_session_id
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
     ToolSurface,
@@ -69,12 +69,12 @@ class AssistantSessionResumeTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0)
             view = await sessions.view(self.SESSION_ID)
             self.assertEqual(view.status, "waiting")
-            self.assertTrue(view.has_active_subagents)
+            self.assertTrue(view.has_open_subagents)
             self.assertFalse(view.should_wake)
             child = child_session_id(self.SESSION_ID, issued.step.commands[0].command_id)
-            await runtime.receive_domain_fact(self.SESSION_ID, REPORT_FACT, {"child_session_id": child},
+            await runtime.receive_domain_fact(self.SESSION_ID, CLOSED_FACT, {"child_session_id": child},
                                               source="subagent", delivery_id="report", requests_decision=True)
-            self.assertFalse((await sessions.view(self.SESSION_ID)).has_active_subagents)
+            self.assertFalse((await sessions.view(self.SESSION_ID)).has_open_subagents)
         finally:
             await scheduler.close()
             await runtime.dispatcher.close()

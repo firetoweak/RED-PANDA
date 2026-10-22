@@ -134,7 +134,7 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         await runtime.create_session("session")
         await runtime.receive_domain_fact(
             "session",
-            "subagent.report",
+            "subagent.closed",
             {"child_session_id": "child-1"},
             delivery_id="report-1",
             source="subagent",
@@ -145,7 +145,7 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         await runtime.advance("session")
 
         self.assertEqual(len(model.frames), 1)
-        self.assertEqual(model.frames[0].trigger_event.payload.fact_type, "subagent.report")
+        self.assertEqual(model.frames[0].trigger_event.payload.fact_type, "subagent.closed")
 
     async def test_domain_fact_without_decision_request_stays_quiet(self):
         runtime = AgentRuntime(
@@ -246,7 +246,7 @@ class RuntimeSemanticSliceTest(unittest.IsolatedAsyncioTestCase):
         for index in (1, 2):
             await runtime.receive_domain_fact(
                 "session",
-                "subagent.report",
+                "subagent.closed",
                 {"child_session_id": f"child-{index}"},
                 delivery_id=f"report-{index}",
                 source="subagent",

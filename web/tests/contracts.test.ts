@@ -16,7 +16,7 @@ const session = {
   pending_authorization_ids: [],
   pending_authorization_commands: [],
   should_wake: false,
-  has_active_subagents: false,
+  has_open_subagents: false,
   control_approval: null,
   control_message: null,
   auto_authorize: false,

@@ -57,7 +57,7 @@ Assistant 从 Journal 重建 active window。Runtime 始终归约完整 Journal�
 
 失败保留原始诊断，不自动重试、不发布半成品。B 保留旧窗口并继续运行；压缩失败本身不暂停业务会话。压缩状态推给 Channel 展示，失败不冒充用户会话的模型失败。
 
-子 Session 的交接失败同样不阻塞其业务执行；后续模型调用若实际失败，沿既有子会话失败通道交回父 Agent。子正常 `report`、静止交回或被 `reclaim` 后，未发布的后台交接作废，reader 停止；`subagent.return` 之后不得再发布窗口。已发布的窗口仍是该子 Journal 的历史事实。
+子 Session 的交接失败同样不阻塞其业务执行；后续模型调用若实际失败，沿既有子会话失败通道交回父 Agent。父明确结束子协作或子执行失败后，未发布的后台交接作废，reader 停止；`subagent.return` 之后不得再发布窗口。已发布的窗口仍是该子 Journal 的历史事实。
 
 普通暂停不取消后台交接。
 

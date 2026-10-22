@@ -268,7 +268,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         await self.host.resume(child)
         return child
 
-    async def test_child_rollover_keeps_report_in_its_own_session(self):
+    async def test_child_rollover_keeps_conversation_open_and_delivers_reply(self):
         (self.root / "hold_child").touch()
         child = await self.start_child(" history" * 2800)
         await until(lambda: (self.root / "compact_started").exists())
@@ -285,8 +285,8 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         ), 1)
         self.assertEqual(sum(
             isinstance(e.payload, DomainFactCommitted)
-            and e.payload.fact_type == "subagent.report"
-            and e.payload.data["reported"] is True
+            and e.payload.fact_type == "subagent.reply"
+            and e.payload.data["text"] == "已完成子任务"
             for e in parent_events
         ), 1)
         self.assertTrue(all(sid != child for sid, _ in self.outputs))
@@ -296,7 +296,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         child = await self.start_child(" history" * 2800)
         await until(lambda: (self.root / "compact_started").exists())
         job = self.host.compact.store.job(child)
-        (self.root / "release_child").touch()
+        await self.host._route("reclaim_child", child, {"parent_session_id": "chat", "reason": "测试结束协作"})
         await until(lambda: self.host.compact.store.reader_job(job["reader"])["published"] == 2)
         (self.root / "release_compact").touch()
         await until(lambda: job["reader"] not in self.host.workers)
@@ -312,20 +312,20 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.host.conversation_status(child).compact_count, 0)
         self.assertEqual(self.host.compact.store.reader_job(job["reader"])["published"], 2)
 
-    async def test_child_large_context_can_report_without_local_budget_failure(self):
+    async def test_child_large_context_can_reply_without_local_budget_failure(self):
         (self.root / "release_compact").touch()
         await self.start_child(" history" * 4000)
         async with asyncio.timeout(45):
             while True:
                 parent_events = await SqliteJournal(self.store.require("chat")).snapshot("chat")
                 failures = [
-                    e.payload.data["failure"]
+                    e.payload.data["text"]
                     for e in parent_events
                     if isinstance(e.payload, DomainFactCommitted)
-                    and e.payload.fact_type == "subagent.report"
+                    and e.payload.fact_type == "subagent.reply"
                 ]
                 if failures:
                     break
                 await asyncio.sleep(0.05)
         self.assertEqual(len(failures), 1)
-        self.assertIsNone(failures[0])
+        self.assertEqual(failures[0], "已完成子任务")

@@ -258,18 +258,17 @@ class QuiescentDespiteUnreportedChildTest(unittest.IsolatedAsyncioTestCase):
                 await persist_return(
                     SqliteJournal(store.require(child)),
                     child,
-                    return_data(child, reported=False, summary=None, failure="限流失败"),
+                    return_data(child, failure="限流失败"),
                 )
                 worker = Worker(
                     process=SimpleNamespace(is_alive=lambda: False),
                     peer=object(),
                 )
                 worker.idle_revision = 1
-                worker.idle_has_active_subagents = True
+                worker.idle_has_open_subagents = True
                 host.workers["parent"] = worker
                 host.view = AsyncMock(return_value="quiet")
 
-                self.assertFalse(await host._children_still_running("parent"))
                 self.assertEqual(await host.wait_quiescent("parent"), "quiet")
             finally:
                 await host.close()

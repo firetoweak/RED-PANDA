@@ -58,6 +58,7 @@ type ComposerProps = {
   disabled: boolean;
   sending: boolean;
   running: boolean;
+  canStop?: boolean;
   shouldWake: boolean;
   stopBusy: boolean;
   retryBusy: boolean;
@@ -74,6 +75,7 @@ export function Composer({
   disabled,
   sending,
   running,
+  canStop = running,
   shouldWake,
   stopBusy,
   retryBusy,
@@ -429,7 +431,7 @@ export function Composer({
           )}
           <div className="composer-model"><ModelSelector sessionId={sessionId} connectionId={connectionId} /></div>
           <Group gap={6} wrap="nowrap">
-            {running ? (
+            {canStop ? (
               <Tooltip label="停止">
                 <ActionIcon
                   aria-label="停止"

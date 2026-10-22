@@ -37,7 +37,7 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
         occurred_at: "2026-10-03T00:00:00Z",
       }],
       session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
-        pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
+        pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
         control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
       compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
       work_plan: null, work_plan_updates: [],
@@ -68,12 +68,12 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   act(() => {
     store.dispatch(sessionActivity({ sessionId: "child", activity: "idle" }));
     query.data = { ...query.data!, activity: "idle", result: {
-      reported: true, cancelled: false, summary: "调查结论", failure: null, reason: null,
+      failure: null, reason: "已验收",
     }};
   });
   view.rerender(show("delegate"));
-  expect(screen.getByText("已交回")).toBeInTheDocument();
-  expect(screen.getByText("调查结论")).toBeInTheDocument();
+  expect(screen.getByText("协作已结束")).toBeInTheDocument();
+  expect(screen.getByText("结束原因：已验收")).toBeInTheDocument();
   query.data = { ...query.data!, session_id: "other-child", task: "另一个任务", conversation: null, result: null };
   view.rerender(show("other-delegate"));
   expect(screen.getByText("另一个任务")).toBeInTheDocument();
@@ -107,7 +107,7 @@ it("子任务输入默认折叠可展开，长任务不挤掉过程区", () => {
         occurred_at: "2026-10-03T00:00:00Z",
       }],
       session: { status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
-        pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
+        pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
         control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null },
       compact_count: 0, compact_phase: null, context_input_tokens: null, waiting_until: null,
       work_plan: null, work_plan_updates: [],

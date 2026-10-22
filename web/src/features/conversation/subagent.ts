@@ -4,7 +4,7 @@ export function isSubagentTool(name: string): boolean {
   return name === "delegate" || name === "reclaim";
 }
 
-/** 当前轮次、父仍有未回收的子时，画「子 Agent 执行中」。不看 delegate 命令终态。 */
+/** 当前轮次、父仍有未回收的子时，显示未结束协作的提示。不看 delegate 命令终态。 */
 export function turnNeedsSubagentHint(latest: boolean, active: boolean): boolean {
   return latest && active;
 }

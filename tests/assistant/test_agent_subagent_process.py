@@ -41,8 +41,8 @@ class DelegatingLlm(ProcessLlm):
         if "你是 RED PANDA 的子 Agent" in messages[0]["content"]:
             if "write_file" not in names:
                 call = ToolCall("w", "write_file", json.dumps({"path": "child.txt", "content": "from child\n"}))
-            elif "report" not in names:
-                call = ToolCall("r", "report", json.dumps({"summary": "CHILD_DONE 写了 child.txt"}))
+            else:
+                return LLMCallResult(LLMResponse(content="CHILD_DONE 写了 child.txt"), LLMUsage(input_tokens=1, output_tokens=1))
         elif "DELEGATE_WORK" in text:
             delegated = next((call_id for call_id, name in made if name == "delegate"), None)
             if delegated is None:
@@ -53,6 +53,10 @@ class DelegatingLlm(ProcessLlm):
                 call = ToolCall("c", "compare_subagent", json.dumps({"tool_call_id": delegated}))
             elif "compare_subagent" in names and "merge_subagent" not in names:
                 call = ToolCall("m", "merge_subagent", json.dumps({"tool_call_id": delegated}))
+            elif "merge_subagent" in names and "reclaim" not in names:
+                child = next(json.loads(message["content"])["data"]["child_session_id"] for message in messages
+                             if message["role"] == "tool" and '"DELEGATED"' in str(message["content"]))
+                call = ToolCall("end", "reclaim", json.dumps({"child_session_id": child, "reason": "验收与合入完成"}))
         if call is None:
             return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=1, output_tokens=1))
         return LLMCallResult(LLMResponse(content="", calls=(call,)), LLMUsage(input_tokens=1, output_tokens=1))

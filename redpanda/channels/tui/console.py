@@ -167,7 +167,7 @@ class _ContextMeter:
             phase = {"running": "整理中", "ready": "等待切换", "failed": "失败"}
             context += f"  ·  compact {phase[self._compact_phase]}"
         if self._subagent_active:
-            context += "  ·  子 Agent 工作中"
+            context += "  ·  有未结束的子 Agent 协作"
         return f"{context}\nSession ID：{self._current_session_id}"
 
 
@@ -282,7 +282,7 @@ async def run_runtime_console(
         context_meter.select(
             sessions.conversation_status(session_id),
             selected_threshold(),
-            subagent_active=view.has_active_subagents,
+            subagent_active=view.has_open_subagents,
         )
         image_paste.bind(session_id)
         input_queue: asyncio.Queue[ConsoleMessage | None] = asyncio.Queue()
@@ -340,7 +340,7 @@ async def run_runtime_console(
                         context_meter.select(
                             sessions.conversation_status(session_id),
                             selected_threshold(),
-                            subagent_active=view.has_active_subagents,
+                            subagent_active=view.has_open_subagents,
                         )
                         print(f"\n新 Session 已创建：{session_id}")
                         continue
