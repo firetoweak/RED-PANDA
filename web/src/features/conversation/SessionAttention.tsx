@@ -8,7 +8,7 @@ export function SessionAttention({ sessionId, connectionId }: { sessionId: strin
   const { data: inbox = [] } = useGetInboxQuery();
   const [answerAbsence, answering] = useAnswerAbsenceMutation();
   const [retryTurn, retrying] = useRetryTurnMutation();
-  const items = inbox.filter((item): item is Extract<InboxItem, { kind: "limit" | "paused" | "absence" }> => item.session_id === sessionId
+  const items = inbox.filter((item): item is Extract<InboxItem, { kind: "limit" | "stopped" | "absence" }> => item.session_id === sessionId
     && item.kind !== "authorization" && item.kind !== "control");
   const disabled = connectionId === null || answering.isLoading || retrying.isLoading;
   if (items.length === 0) return null;
@@ -24,7 +24,7 @@ export function SessionAttention({ sessionId, connectionId }: { sessionId: strin
             <Button variant="light" size="compact-sm" disabled={disabled}
               onClick={() => {
                 if (connectionId === null) return;
-                if (item.kind === "paused") void retryTurn({ connectionId, sessionId });
+                if (item.kind === "stopped") void retryTurn({ connectionId, sessionId });
                 else void answerAbsence({ connectionId, sessionId, action: "continue" });
               }}>{item.kind === "absence" && item.phase === "paused" ? "恢复" : "继续"}</Button>
           </Group>

@@ -265,16 +265,16 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                 finally:
                     await assembly.scheduler.close()
 
-    async def test_paused_session_does_not_advance(self):
+    async def test_stopped_session_does_not_advance(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             workspace = root / "workspace"
             workspace.mkdir()
-            paused = False
+            execution_stopped = False
 
             async def transport(operation, session_id, arguments):
-                if operation == "is_paused":
-                    return paused
+                if operation == "is_execution_stopped":
+                    return execution_stopped
                 if operation == "compact_boundary":
                     return "continue"
                 raise AssertionError(operation)
@@ -310,7 +310,7 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
                         delivery_id="user-1",
                     )
                     self.assertTrue(await assembly.scheduler.before_advance())
-                    paused = True
+                    execution_stopped = True
                     self.assertFalse(await assembly.scheduler.before_advance())
                 finally:
                     await assembly.scheduler.close()

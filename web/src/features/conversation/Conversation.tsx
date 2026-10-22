@@ -434,7 +434,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           {activePlan === null ? null : (
             <Box className="composer-column" mb={8}>
               <WorkPlanPanel plan={activePlan}
-                stopped={!running && (conversation.session.paused || lastError != null)} />
+                stopped={!running && (conversation.session.execution_stopped || lastError != null)} />
             </Box>
           )}
         </Box>

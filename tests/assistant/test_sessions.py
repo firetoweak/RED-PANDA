@@ -321,14 +321,14 @@ class AssistantSessionResumeTest(unittest.IsolatedAsyncioTestCase):
             try:
                 view = await sessions.create(self.SESSION_ID)
                 self.assertFalse(view.auto_authorize)
-                self.assertFalse(view.paused)
+                self.assertFalse(view.execution_stopped)
                 updated = await sessions.apply_auto_authorize(
                     self.SESSION_ID,
                     enabled=True,
                 )
                 self.assertTrue(updated.auto_authorize)
                 self.assertFalse((root / "auto_authorize.json").is_file())
-                self.assertFalse((root / "paused.json").is_file())
+                self.assertFalse((root / "execution_stopped.json").is_file())
             finally:
                 await scheduler.close()
 

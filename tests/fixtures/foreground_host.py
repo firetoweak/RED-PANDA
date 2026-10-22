@@ -49,12 +49,12 @@ async def main(root):
             await host.receive_user_message("session", "run the command", delivery_id="run")
         else:
             await host.resume_unfinished_sessions()
-            if host.is_paused("session"):
+            if host.is_execution_stopped("session"):
                 await host.request("fact", "session", {
                     "fact_type": "test.external_wake", "data": {}, "source": "test",
                     "delivery_id": uuid4().hex, "requests_decision": True,
                 })
-        (root / "ready").write_text(json.dumps({"paused": host.is_paused("session")}))
+        (root / "ready").write_text(json.dumps({"execution_stopped": host.is_execution_stopped("session")}))
         while not (root / "close-host").exists():
             await asyncio.sleep(.02)
     finally:

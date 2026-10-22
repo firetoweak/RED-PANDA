@@ -26,7 +26,7 @@ Bot 工具和下一轮读取验证需要 `live_model_ready`；Web 共同记忆�
   - (c) `GET /api/agents` 仍没有 `branch`；`Ada` 的名字不变。`Lin` 的会话不因此多一条发给人的回复。
   - (d) 空白 `direction` → 结果 `INVALID_ARGUMENT`，原方向不变；从未声明过时仍为 `null`，侧栏仍显示占位文案。再声明 `负责私信` 后，名册和侧栏只剩这一句。
 - **查询同事**：请 `Ada` 调用 `list_colleagues`，不要带参数。
-  - (a) 结果 `code` 为 `COLLEAGUES_READ`。`colleagues` 含 `Lin` 的 `name`、`direction`（未声明为 `null`）、`directory`、`projects`、`status`、`since`；没有 `Ada`；没有 `session_id`、`workspace_id`、`branch`。`directory` 是 Lin 的个人目录，挂上的项目在其 `projects/<项目名>` 下，`projects` 是这些项目名。`status` 对照 Web 名册：`干活` → `working`，`等授权` → `awaiting_authorization`，`等人回话` 和 `空闲` 都是 `idle`。在 `Lin` 的会话点 `停止` 之后，这里是 `paused`（侧栏没有「暂停」二字，看 `GET /api/sessions/<Lin>` 的 `session.paused` 与按钮 `继续`）。
+  - (a) 结果 `code` 为 `COLLEAGUES_READ`。`colleagues` 含 `Lin` 的 `name`、`direction`（未声明为 `null`）、`directory`、`projects`、`status`、`since`；没有 `Ada`；没有 `session_id`、`workspace_id`、`branch`。`directory` 是 Lin 的个人目录，挂上的项目在其 `projects/<项目名>` 下，`projects` 是这些项目名。`status` 对照 Web 名册：`干活` → `working`，`等授权` → `awaiting_authorization`，`等人回话` 和 `空闲` 都是 `idle`。在 `Lin` 的会话点 `停止` 之后，这里是 `stopped`（侧栏没有「停止执行」二字，看 `GET /api/sessions/<Lin>` 的 `session.execution_stopped` 与按钮 `继续`）。
   - (b) 工具卡 `list_colleagues` 徽标 `完成`。
   - (c) 查询不改两边工作树，也不改人检出目录里的 `note.txt`。
   - (d) 带任意参数调用 → `INVALID_ARGUMENT`，错误为 `list_colleagues 不接受参数。`。用返回的 `directory` 请 `Ada` `read_file` 读 `Lin` 项目工作树（`projects/<项目名>` 下）里尚未提交的文件，读得到；`write_file` 写进该目录 → `ENVIRONMENT_PERMISSION_DENIED`，错误含 `path 不在可写入范围内`，`Lin` 的文件不变。

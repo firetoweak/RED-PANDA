@@ -187,9 +187,9 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(attentions), 3)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_paused_offline_recipient_gets_fact_but_no_step_until_human_continues(self):
-        # Persist the human pause without creating a Worker, as after a Host restart.
-        self.host._pause.set(self.lin.session_id, True)
+    async def test_stopped_offline_recipient_gets_fact_but_no_step_until_human_continues(self):
+        # Persist the execution stop without creating a Worker, as after a Host restart.
+        self.host._execution_stopped.set(self.lin.session_id, True)
         self.assertNotIn(self.lin.session_id, self.host.workers)
         before = await self.events(self.lin)
         await self.host.receive_user_message(self.ada.session_id, "SEND_TO_LIN", delivery_id="send")
@@ -201,10 +201,10 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(messages), 1)
         self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in before),
                          sum(isinstance(e.payload, StepCommitted) for e in after))
-        self.assertTrue(self.host.is_paused(self.lin.session_id))
+        self.assertTrue(self.host.is_execution_stopped(self.lin.session_id))
         command = next(item for item in replay(self.ada.session_id, await self.events(self.ada)).state.commands
                        if item.command.effect.name == SEND_MESSAGE)
-        self.assertTrue(command.outcome.value["data"]["paused"])
+        self.assertTrue(command.outcome.value["data"]["execution_stopped"])
         self.assertIn("在人让它继续后处理", command.outcome.value["data"]["notice"])
         await self.host.retry(self.lin.session_id)
         await self.settled(self.lin)

@@ -92,7 +92,7 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_command(tmp_path
             for _ in range(2):
                 host = start()
                 until(lambda: (tmp_path / "ready").exists())
-                assert json.loads((tmp_path / "ready").read_text())["paused"] is (not background)
+                assert json.loads((tmp_path / "ready").read_text())["execution_stopped"] is (not background)
                 if background:
                     until(lambda: len((tmp_path / "model-calls").read_text().splitlines()) == 3)
                 time.sleep(.2)

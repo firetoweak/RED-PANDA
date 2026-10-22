@@ -95,7 +95,7 @@ class ConversationProjectionTest(unittest.TestCase):
             event(4, "attempt-1", DispatchAttemptStarted("att-1", "send-1"), causation_id="step-1"),
             event(5, "outcome-1", CommandOutcomeReceived("send-1", "att-1", CommandOutcome(
                 OutcomeStatus.SUCCEEDED, value={"ok": True, "code": "DELIVERED", "data": {
-                    "message_id": "private-out", "recipient": "Ada", "paused": True,
+                    "message_id": "private-out", "recipient": "Ada", "execution_stopped": True,
                 }},
             )), causation_id="attempt-1"),
             event(6, "step-2", committed_step("decision-2", "outcome-1", "已请 Ada 检查。", ())),
@@ -373,7 +373,7 @@ class Idle:
     def auto_authorize(self):
         return self.auto_authorize_enabled
 
-    def is_paused(self, session_id):
+    def is_execution_stopped(self, session_id):
         return session_id == "spoken"
 
     def current_failure(self, session_id):
@@ -420,7 +420,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             spoken = await queries.conversation("spoken")
 
         self.assertTrue(spoken.session.auto_authorize)
-        self.assertTrue(spoken.session.paused)
+        self.assertTrue(spoken.session.execution_stopped)
 
     async def test_inbox_lists_only_agent_pending_items(self):
         from pathlib import Path
@@ -606,7 +606,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inbox[1].summary, "删除工作区")
         self.assertEqual(inbox[1].risk, "high")
 
-    async def test_inbox_reports_an_unanswered_limit_and_a_paused_runnable_agent(self):
+    async def test_inbox_reports_an_unanswered_limit_and_a_stopped_runnable_agent(self):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
@@ -618,13 +618,13 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         from redpanda.runtime.events import DeliveryIdentity, EventDraft
 
         class Sessions(Idle):
-            def is_paused(self, session_id):
-                return session_id == "paused"
+            def is_execution_stopped(self, session_id):
+                return session_id == "execution_stopped"
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
             queries = AssistantQueries(store, Sessions())
-            for session_id, name in (("limited", "上限熊猫"), ("paused", "暂停熊猫")):
+            for session_id, name in (("limited", "上限熊猫"), ("execution_stopped", "停止熊猫")):
                 await store.create(session_id, directory=Path(directory))
                 await SqliteJournal(store.require(session_id)).accept_delivery(EventDraft(
                     event_id=f"created-{session_id}", session_id=session_id,
@@ -644,16 +644,16 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                 occurred_at=datetime(2026, 10, 19, 1, tzinfo=timezone.utc),
                 delivery=DeliveryIdentity("coding_bot", "limit-1"),
             ))
-            await SqliteJournal(store.require("paused")).accept_delivery(EventDraft(
-                event_id="user-paused", session_id="paused",
+            await SqliteJournal(store.require("execution_stopped")).accept_delivery(EventDraft(
+                event_id="user-execution_stopped", session_id="execution_stopped",
                 payload=UserMessageReceived("还有事"),
                 occurred_at=datetime(2026, 10, 19, 1, tzinfo=timezone.utc),
-                delivery=DeliveryIdentity("web", "user-paused"),
+                delivery=DeliveryIdentity("web", "user-execution_stopped"),
             ))
             inbox = await queries.list_inbox()
 
         kinds = [(item.kind, item.label) for item in inbox]
-        self.assertEqual(kinds, [("limit", "上限熊猫"), ("paused", "暂停熊猫")])
+        self.assertEqual(kinds, [("limit", "上限熊猫"), ("stopped", "停止熊猫")])
         self.assertEqual(inbox[0].recipient, "Lin")
 
     async def test_conversation_projects_control_approval_from_journal(self):
@@ -677,7 +677,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             def auto_authorize(self):
                 return None
 
-            def is_paused(self, session_id):
+            def is_execution_stopped(self, session_id):
                 return None
 
             def current_failure(self, session_id):

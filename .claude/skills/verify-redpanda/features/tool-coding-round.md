@@ -15,7 +15,7 @@
 - `referenced-content`：`read_content` 读取工具结果或历史检索返回的真实 `reference`；可按 `offset`/`limit` 连续读取，或用 `query` 查找字面关键词，按 `next_offset` 续读。来源 `redpanda/assistant/content.py`。
 - `argument-validation`：任一工具参数不符合 schema（如 `wait_seconds` 超出 0–30）→ `ok:false`、`code:VALIDATION_ERROR`、`hint`「按工具 schema 修正参数后重试。」（`executor.py`）。
 - `session-review-entry`：Agent 会话输入框上方的 Git 差异摘要与 `文件改动` 内容页，独立验证见 [session-file-changes.md](./session-file-changes.md)。
-- `background-commands`：`execute_command(wait_seconds=0)` 立即转后台，等待到点未结束同样返回 `COMMAND_BACKGROUND`；完成事实 `background_command_finished` 只接纳一次并唤醒 Agent。`read_command` / `list_commands` / `stop_command` 查看与停止；成功码 `COMMAND_READ`、`COMMANDS_LISTED`、`COMMAND_STOPPED`，未知身份 `COMMAND_NOT_FOUND`。Windows/Linux 顶层会话注册，子 Agent 不提供；macOS 只有等待结束的前台命令。会话页的 `后台命令 · N 项运行中` 可展开查看状态、时长，`停止命令` 只终止这一条，不暂停整个 Agent。
+- `background-commands`：`execute_command(wait_seconds=0)` 立即转后台，等待到点未结束同样返回 `COMMAND_BACKGROUND`；完成事实 `background_command_finished` 只接纳一次并唤醒 Agent。`read_command` / `list_commands` / `stop_command` 查看与停止；成功码 `COMMAND_READ`、`COMMANDS_LISTED`、`COMMAND_STOPPED`，未知身份 `COMMAND_NOT_FOUND`。Windows/Linux 顶层会话注册，子 Agent 不提供；macOS 只有等待结束的前台命令。会话页的 `后台命令 · N 项运行中` 可展开查看状态、时长，`停止命令` 只终止这一条，不停止执行整个 Agent。
 - `file-side-effect`：改动真实落盘到 Agent 工作树（见 Gotchas），人自己的 `$SCRATCH_WORKSPACE` 不变。
 - `coding-skill`：通用系统提示不含编码与 Git 工作流正文；能力目录提供 `builtin:coding` 与 `builtin:git-collaboration`，模型按任务用 `load_skill` 读取。无 Git 的 Bot 目录也能编码、验证并交付文件；用户指定的 Skill 与流程优先。
 - `project-instructions`：项目与普通目录统一由模型在文件工作前用 `read_file` 读取根目录 `AGENTS.md`，没有时读 `CLAUDE.md`，并按需读取相关目录约定和任务文档。全文不再逐轮注入系统提示；约定更新或上下文缺失时重新读取。判据是在约定中指向独立需求文档与验证命令，模型实际读取并执行，而非只看回复是否带固定词。

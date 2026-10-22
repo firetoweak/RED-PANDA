@@ -12,7 +12,7 @@
 - `mcp-stdio-guard`：`propose_mcp_install` / `propose_mcp_update` 的 stdio `command` 文件名（不区分大小写）为 `bash`、`cmd`、`cmd.exe`、`powershell`、`powershell.exe`、`pwsh`、`sh`、`zsh` 时直接校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，不进入确认。
 - `skill-source`：来源 `local` / `url` / `github`；`local` 的 locator 必须是本机绝对目录，否则 `local locator 必须是本机绝对目录`；`requested_ref` 只用于 `github`，其他来源传了即 `requested_ref 仅适用于 github 来源`。
 - `cli-register`：`propose_cli_install` 只登记本机已安装的程序（`name`、`description`、`locator`），`name` 须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，不合规返回 `code: CLI_INVALID`；已登记返回 `CLI_ALREADY_INSTALLED`；找不到程序返回 `CLI_SOURCE_ERROR`。登记后立即可用，没有启用/停用开关。
-  - `control-startup-recovery`：重启会继续已提交的控制准备、已批准但尚未开始的操作；提案仍待批准时不执行，已开始而结果未知时不自动重试，人已暂停的会话不自动执行。连续重启不能重复已完成的操作。
+  - `control-startup-recovery`：重启会继续已提交的控制准备、已批准但尚未开始的操作；提案仍待批准时不执行，已开始而结果未知时不自动重试，人已停止执行的会话不自动执行。连续重启不能重复已完成的操作。
 - `console-commands`：
   - `/mcp list [--runtime]`、`/mcp upsert <json>`、`/mcp enable|disable|remove|test|retry <id>`、`/mcp resources|resource-templates|prompts <id> [--cursor TOKEN]`、`/mcp read-resource <id> <uri>`、`/mcp get-prompt <id> <name> [json-args]`、`/mcp help`（`/mcp` 不带子命令同样显示帮助）。
   - `/skill list [id]`、`/skill install [local|url|github] <locator> [ref]`、`/skill test <id>`、`/skill set_enabled <id> <true|false>`、`/skill uninstall <id>`、`/skill update <id> [[local|url|github] <locator> [ref]]`、`/skill help`。

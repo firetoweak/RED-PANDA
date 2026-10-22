@@ -450,7 +450,7 @@ LIST_SUBAGENTS_SCHEMA: dict[str, object] = {
     "type": "function",
     "function": {
         "name": LIST_SUBAGENTS,
-        "description": "查看自己委派的子 Agent 及其当前状态：creating（创建中）、running（正在执行）、waiting（等待消息）、paused（暂停）、closed（协作结束）、failed（执行失败）。状态不代表任务完成程度；需要进展时直接用 instruct_subagent 询问。",
+        "description": "查看自己委派的子 Agent 及其当前状态：creating（创建中）、running（正在执行）、waiting（等待消息）、stopped（执行已停止）、closed（协作结束）、failed（执行失败）。状态不代表任务完成程度；需要进展时直接用 instruct_subagent 询问。",
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
     },
 }

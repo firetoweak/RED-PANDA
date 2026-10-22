@@ -57,7 +57,7 @@ class HostStopChildrenTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_stopping_one_child_does_not_leave_others_unattempted(self):
         host = object.__new__(HostSupervisor)
         host.turn_locks = {}
-        host._pause = SessionFlagStore(None, "paused.json")
+        host._execution_stopped = SessionFlagStore(None, "execution_stopped.json")
         host.workers = {}
         host.compact = SimpleNamespace(application=AsyncMock())
         host.store = SimpleNamespace(require=lambda _session: "journal")
@@ -76,7 +76,7 @@ class HostStopChildrenTest(unittest.IsolatedAsyncioTestCase):
             await host.cancel_turn("parent")
         self.assertIs(caught.exception, failure)
         self.assertEqual(set(attempted), {"child-1", "child-2"})
-        self.assertTrue(host.is_paused("parent"))
+        self.assertTrue(host.is_execution_stopped("parent"))
         host.wait_quiescent.assert_not_awaited()
 
 
@@ -173,7 +173,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 await crashed.advance("session-crashed")
                 await crashed.dispatcher.close()
 
-                # 人停止过的会话：同样还会自己往下走，但保持暂停。
+                # 人停止过的会话：同样还会自己往下走，但保持执行停止。
                 await host.create("session-stopped", workspace.workspace_id)
                 await SqliteJournal(store.require("session-stopped")).accept_delivery(
                     EventDraft(
@@ -184,7 +184,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                         delivery=DeliveryIdentity("user", "d3"),
                     )
                 )
-                host._pause.set("session-stopped", True)
+                host._execution_stopped.set("session-stopped", True)
                 host.resume = AsyncMock()
 
                 await host.resume_unfinished_sessions()
@@ -192,14 +192,14 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 resumed = {call.args[0] for call in host.resume.await_args_list}
                 self.assertEqual(resumed, {"session-open"})
                 for session_id in ("session-waiting", "session-open", child):
-                    self.assertFalse(host.is_paused(session_id))
-                self.assertTrue(host.is_paused("session-crashed"))
-                self.assertTrue(host.is_paused("session-stopped"))
+                    self.assertFalse(host.is_execution_stopped(session_id))
+                self.assertTrue(host.is_execution_stopped("session-crashed"))
+                self.assertTrue(host.is_execution_stopped("session-stopped"))
 
                 # Explicit continuation releases the stop. Once a decision has
                 # seen the interruption, the old unknown does not stop a later restart.
                 await host.retry("session-crashed")
-                self.assertFalse(host.is_paused("session-crashed"))
+                self.assertFalse(host.is_execution_stopped("session-crashed"))
                 reviewed = AgentRuntime(
                     SqliteJournal(store.require("session-crashed")),
                     ScriptedDecisionMaker((lambda _: ModelDecision(content="已核对中断现场"),)),
@@ -211,7 +211,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 host.resume.reset_mock()
                 await host.resume_unfinished_sessions()
                 self.assertIn("session-crashed", {call.args[0] for call in host.resume.await_args_list})
-                self.assertFalse(host.is_paused("session-crashed"))
+                self.assertFalse(host.is_execution_stopped("session-crashed"))
             finally:
                 await host.close()
 

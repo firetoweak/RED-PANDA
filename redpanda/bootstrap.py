@@ -138,7 +138,7 @@ async def bootstrap_assistant(
         )
         async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
             try:
-                # Recovery establishes pauses before any clock can wake a Worker.
+                # Recovery establishes execution stops before any clock can wake a Worker.
                 await host.resume_unfinished_sessions()
                 host.start_automation(tasks)
                 yield BootstrappedAssistant(

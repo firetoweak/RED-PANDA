@@ -10,7 +10,7 @@
 - **没有状态迁移规则**：源码不校验 `pending→in_progress→completed` 的顺序，允许多个 `in_progress`，允许 `completed→pending` 倒退，允许直接提交全 `completed`。
 - **用户没有计划操作入口**：`更新计划` / `结束当前计划` 只是步骤标题（`stepHeading.ts`、`ExecutionProcess.tsx`：`tool.arguments.plan === null ? "结束当前计划" : "更新计划"`），不是按钮。面板唯一的交互是展开/收起（`aria-label` 为 `当前计划` 或 `已完成计划`）。
 - **界面放置**：`Conversation.tsx` 中 `activePlan` 只在当前计划存在且**未全部完成**时显示在输入框上方；全部完成的计划由 `completedPlanForTurn` 挂在产生它的那一轮下方，标题 `已完成计划`。
-- **面板文字**（`WorkPlanPanel.tsx`）：标题 `当前计划 · <objective>`（或 `已完成计划 · <objective>`）；其下固定一行 `模型记录的计划进度`，只有输入框上方的当前计划会传 `stopped`（未运行且会话已暂停或有错误），此时这一行为 `模型记录的计划进度 · 执行已停止`；有 `in_progress` 项时再一行 `计划标记为进行中：<各项>`（以 `、` 连接）；右侧 `已完成 n/m 项`。有 `note` 时 note 显示在标题按钮下方，不用展开；展开后每项前标 `待做`/`进行中`/`已完成`。
+- **面板文字**（`WorkPlanPanel.tsx`）：标题 `当前计划 · <objective>`（或 `已完成计划 · <objective>`）；其下固定一行 `模型记录的计划进度`，只有输入框上方的当前计划会传 `stopped`（未运行且会话已停止执行或有错误），此时这一行为 `模型记录的计划进度 · 执行已停止`；有 `in_progress` 项时再一行 `计划标记为进行中：<各项>`（以 `、` 连接）；右侧 `已完成 n/m 项`。有 `note` 时 note 显示在标题按钮下方，不用展开；展开后每项前标 `待做`/`进行中`/`已完成`。
 - **模型上下文**：`render_work_plan(events)` 从 journal 事件算出快照，有计划时为 `<work_plan>\n{JSON}\n</work_plan>`，`plan=null` 后为 `<work_plan>\n当前计划已清除。\n</work_plan>`；块里没有说明文字，含义由系统提示 `WORK_PLAN_PROMPT` 解释（「最近一块是当前计划，更早的只是历史；最近一块说明已清除时，不再沿用旧计划。」）。快照**只在与当前窗口内最近一块 `<work_plan>` 不同时**才追加到消息末尾，并存进该步骤 `decision_metadata` 的 `work_plan_context`，之后作为窗口里的历史消息重放（`projection.py` `_project_step`）。计划没变时后续决策不再追加；compact 后旧块滚出窗口，下一次决策会重新追加一次。
 
 ## Sub-features

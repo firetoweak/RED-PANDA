@@ -360,7 +360,7 @@ async def build_assistant_assembly(
 
     async def before_advance():
         if session_transport is not None and await session_transport(
-            "is_paused", session_id, {}
+            "is_execution_stopped", session_id, {}
         ):
             return False
         if not compact_context.is_reader:

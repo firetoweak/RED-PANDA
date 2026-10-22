@@ -77,11 +77,11 @@ class AgentMessages:
             if entry.agent.session_id != session_id]}}
 
     async def _colleague(self, entry):
-        """The same status the Web roster shows, plus the person's pause; reads this colleague's Journal."""
+        """The same status the Web roster shows, plus the execution stop; reads this colleague's Journal."""
         agent = entry.agent
         events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
-        if self.host.is_paused(agent.session_id):
-            status = "paused"
+        if self.host.is_execution_stopped(agent.session_id):
+            status = "stopped"
         else:
             status = COLLEAGUE_STATUS[project_agent_roster_entry(
                 agent.session_id, events, name=agent.name,
@@ -195,7 +195,7 @@ class AgentMessages:
         return self._delivered(recipient, identity)
 
     def _delivered(self, recipient, identity):
-        paused = self.host.is_paused(recipient.session_id)
+        execution_stopped = self.host.is_execution_stopped(recipient.session_id)
         return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity,
-                "recipient": recipient.name, "paused": paused,
-                "notice": "已送达；对方当前暂停，会在人让它继续后处理。" if paused else "已送达；不等待对方回复。"}}
+                "recipient": recipient.name, "execution_stopped": execution_stopped,
+                "notice": "已送达；对方当前已停止执行，会在人让它继续后处理。" if execution_stopped else "已送达；不等待对方回复。"}}

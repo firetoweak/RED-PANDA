@@ -187,7 +187,14 @@ class HostSupervisor:
         self.commands = CommandHost(self) if sys.platform in {"win32", "linux"} else None
         self._auto_authorize = AutoAuthorizeStore(store.root)
         self._auto_authorize_lock = asyncio.Lock()
-        self._pause = SessionFlagStore(store.root, "paused.json")
+        # Rename the existing execution-stop flag once; never silently lose a stop on upgrade.
+        previous_stop = store.root / "paused.json"
+        current_stop = store.root / "execution_stopped.json"
+        if previous_stop.exists():
+            if current_stop.exists():
+                raise ValueError("both execution stop metadata files exist")
+            previous_stop.rename(current_stop)
+        self._execution_stopped = SessionFlagStore(store.root, "execution_stopped.json")
         self.automation = OneShotClock(
             OneShotSchedules(home.state_root / "automation.sqlite")
         )
@@ -225,7 +232,7 @@ class HostSupervisor:
         for path in self.store.journals():
             journal = SqliteJournal(path)
             session_id = await journal.session_identity()
-            if not self.is_paused(session_id):
+            if not self.is_execution_stopped(session_id):
                 await journal.prepare_recovery(session_id)
             events = await journal.snapshot(session_id)
             command_sessions.append((session_id, events))
@@ -238,7 +245,7 @@ class HostSupervisor:
                             if isinstance(event.payload, DomainFactCommitted)
                             and event.payload.fact_type == AGENT_CREATED)
                 agent_births[session_id] = (agent, born)
-            if self.is_paused(session_id):
+            if self.is_execution_stopped(session_id):
                 continue
             observed = max((step.step.observed_journal_position for step in state.steps), default=0)
             unknown = {command.command.command_id for command in state.commands
@@ -248,7 +255,7 @@ class HostSupervisor:
                    and event.payload.command_id in unknown and event.sequence > observed for event in events):
                 # An unknown execution may already have produced side effects.
                 # Persist the stop before any Worker or external wake can advance it.
-                self._pause.set(session_id, True)
+                self._execution_stopped.set(session_id, True)
                 continue
             if agent is not None and ((path.parent / "agent-creation.json").exists() or not state.steps):
                 joining.append(agent)
@@ -441,8 +448,8 @@ class HostSupervisor:
             return await complete_llm_chat(
                 self.llm, arguments, on_delta, on_reasoning_delta
             )
-        if operation == "is_paused":
-            return self.is_paused(session_id)
+        if operation == "is_execution_stopped":
+            return self.is_execution_stopped(session_id)
         if operation == "compact_boundary":
             return await self.compact.boundary(session_id, arguments)
         if operation == "compact_complete":
@@ -993,8 +1000,8 @@ class HostSupervisor:
                          and e.payload.fact_type == RETURN_FACT), None)
         if returned is not None:
             return "failed" if returned["failure"] is not None else "closed"
-        if self.is_paused(child_id):
-            return "paused"
+        if self.is_execution_stopped(child_id):
+            return "stopped"
         state = replay(child_id, events).state
         if self.activity(child_id) == "running" or state.waiting_command_ids or session_view(state).should_wake:
             return "running"
@@ -1049,7 +1056,7 @@ class HostSupervisor:
             if project_returned(events):
                 return child_finished_result(session_id)
             await self._interrupt_turn(session_id)
-            self._pause.set(session_id, False)
+            self._execution_stopped.set(session_id, False)
             if project_returned(await journal.snapshot(session_id)):
                 return child_finished_result(session_id)
             await self.compact.application("fact", session_id, fact)
@@ -1155,14 +1162,14 @@ class HostSupervisor:
     def auto_authorize(self):
         return self._auto_authorize.enabled
 
-    def is_paused(self, session_id):
-        return self._pause.get(session_id)
+    def is_execution_stopped(self, session_id):
+        return self._execution_stopped.get(session_id)
 
     def _with_host_metadata(self, view, session_id):
         return replace(
             view,
             auto_authorize=self.auto_authorize(),
-            paused=self.is_paused(session_id),
+            execution_stopped=self.is_execution_stopped(session_id),
             last_error=self.current_failure(session_id),
         )
 
@@ -1322,7 +1329,7 @@ class HostSupervisor:
         )
 
     async def _should_wake(self, session_id):
-        if self.is_paused(session_id) or self.current_failure(session_id) is not None:
+        if self.is_execution_stopped(session_id) or self.current_failure(session_id) is not None:
             return False
         _events, state = await self._journal_state(session_id)
         return session_view(state).should_wake
@@ -1342,15 +1349,15 @@ class HostSupervisor:
                 await self._stop_idle(session_id, worker)
 
     async def resume(self, session_id):
-        operation = "view" if self.is_paused(session_id) else "resume"
+        operation = "view" if self.is_execution_stopped(session_id) else "resume"
         return self._with_host_metadata(
             await self.compact.application(operation, session_id, {}),
             session_id,
         )
 
     async def retry(self, session_id):
-        if self.is_paused(session_id):
-            self._pause.set(session_id, False)
+        if self.is_execution_stopped(session_id):
+            self._execution_stopped.set(session_id, False)
         return await self.resume(session_id)
 
     async def view(self, session_id):
@@ -1364,8 +1371,8 @@ class HostSupervisor:
             if self.models is not None:
                 self.store.require(session_id)
                 self.models.require_ready(session_id)
-            if self._pause.get(session_id):
-                self._pause.set(session_id, False)
+            if self._execution_stopped.get(session_id):
+                self._execution_stopped.set(session_id, False)
             await self.compact.application(
                 "receive_user_message", session_id, dict(content=content, **kwargs)
             )
@@ -1389,8 +1396,8 @@ class HostSupervisor:
                 )
                 if not delivered:
                     await self._interrupt_turn(session_id)
-            if self._pause.get(session_id):
-                self._pause.set(session_id, False)
+            if self._execution_stopped.get(session_id):
+                self._execution_stopped.set(session_id, False)
             view = await self.compact.application(
                 "accept_input", session_id,
                 dict(content=content, delivery_id=delivery_id, source=source, artifact_refs=artifact_refs),
@@ -1448,8 +1455,8 @@ class HostSupervisor:
             return await self._cancel_turn(session_id, "用户中断父会话")
 
     async def _interrupt_turn(self, session_id):
-        # Child returns may arrive, but cannot advance the paused parent.
-        self._pause.set(session_id, True)
+        # Child returns may arrive, but cannot advance the stopped parent.
+        self._execution_stopped.set(session_id, True)
         await self.compact.application("cancel_turn", session_id, {})
         # Settle direct commands before accepting new input or reclaiming:
         # a committed delegate may still be creating its Session.

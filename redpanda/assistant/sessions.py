@@ -52,7 +52,7 @@ class SessionView:
     control_approval: ControlApprovalView | None = None
     control_message: str | None = None
     auto_authorize: bool = False
-    paused: bool = False
+    execution_stopped: bool = False
     pending_authorization_commands: tuple[PendingAuthorization, ...] = ()
     last_error: str | None = None
 
@@ -64,7 +64,7 @@ def session_view(
     control_message: str | None = None,
     has_open_subagents: bool = False,
     auto_authorize: bool = False,
-    paused: bool = False,
+    execution_stopped: bool = False,
     last_error: str | None = None,
 ) -> SessionView:
     pending_ids = () if auto_authorize else pending_authorization_ids(state)
@@ -86,7 +86,7 @@ def session_view(
         control_approval=control_approval,
         control_message=control_message,
         auto_authorize=auto_authorize,
-        paused=paused,
+        execution_stopped=execution_stopped,
         last_error=last_error,
         pending_authorization_commands=tuple(
             PendingAuthorization(
