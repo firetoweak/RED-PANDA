@@ -541,7 +541,53 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.host.is_paused(PARENT))
         self.assertTrue(self.host.failures.empty())
 
-    async def test_input_during_parent_reclaim_is_accepted_after_stop_finishes(self):
+    async def test_interrupt_input_cancels_old_decision_and_replay_preserves_new_work(self):
+        from redpanda.assistant.inputs import InputConflict
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
+        from redpanda.runtime import DecisionCancelled, UserMessageReceived
+
+        started, cancelled, redirected, release = (asyncio.Event() for _ in range(4))
+
+        class RedirectLlm(ProcessLlm):
+            calls = 0
+
+            async def chat(client, messages, model, **kwargs):
+                client.calls += 1
+                if client.calls == 1:
+                    started.set()
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        cancelled.set()
+                redirected.set()
+                await release.wait()
+                return LLMCallResult(LLMResponse(content="按新指令完成"), LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.llm = client = RedirectLlm(self.root)
+        sid = "interrupt-input"
+        await self.host.create(sid, self.workspace.workspace_id)
+        await self.host.select("web:interrupt", sid)
+        await self.host.accept_input(sid, "旧指令", delivery_id="old", source="web")
+        await asyncio.wait_for(started.wait(), 30)
+
+        await self.host.accept_input(sid, "改为新指令", delivery_id="new", source="web", interrupt=True)
+        await asyncio.wait_for(redirected.wait(), 30)
+        self.assertTrue(cancelled.is_set())
+        self.assertFalse(self.host.is_paused(sid))
+        await self.host.accept_input(sid, "改为新指令", delivery_id="new", source="web", interrupt=True)
+        with self.assertRaises(InputConflict):
+            await self.host.accept_input(sid, "不同内容", delivery_id="new", source="web", interrupt=True)
+        self.assertEqual(client.calls, 2)
+        release.set()
+        await asyncio.wait_for(self.host.wait_quiescent(sid), 30)
+        self.assertIn((sid, "按新指令完成"), self.output)
+        events = await SqliteJournal(self.store.require(sid)).snapshot(sid)
+        self.assertEqual([event.payload.content for event in events if isinstance(event.payload, UserMessageReceived)],
+                         ["旧指令", "改为新指令"])
+        self.assertEqual(sum(isinstance(event.payload, DecisionCancelled) for event in events), 1)
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_interrupt_input_waits_for_children_and_serializes_repeated_send(self):
         from unittest.mock import AsyncMock
 
         await self.host.create(PARENT, self.workspace.workspace_id)
@@ -557,10 +603,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             await reclaim(*args)
 
         self.host._reclaim_child = AsyncMock(side_effect=held_reclaim)
-        stopping = asyncio.create_task(self.host.cancel_turn(PARENT))
+        stopping = asyncio.create_task(
+            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next", interrupt=True)
+        )
         await asyncio.wait_for(entered.wait(), 30)
         incoming = asyncio.create_task(
-            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next")
+            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next", interrupt=True)
         )
         await asyncio.sleep(0)
         self.assertFalse(incoming.done())

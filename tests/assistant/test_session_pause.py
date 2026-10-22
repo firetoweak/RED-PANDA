@@ -22,7 +22,7 @@ class HostAcceptInputPauseTest(unittest.IsolatedAsyncioTestCase):
         host.compact = SimpleNamespace(application=AsyncMock(return_value=view))
         host._with_host_metadata = lambda observed, session_id: observed
 
-        result = await host.accept_input("session-1", "hello")
+        result = await host.accept_input("session-1", "hello", delivery_id="hello")
 
         self.assertIs(result, view)
         self.assertFalse(host._pause.get("session-1"))

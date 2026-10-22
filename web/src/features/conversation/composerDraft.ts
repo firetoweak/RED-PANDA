@@ -1,6 +1,4 @@
-import { joinRestoredText } from "./parkDraft";
-
-type SavedDraft = { text: string; parkedText: string };
+type SavedDraft = { text: string };
 
 function key(sessionId: string): string {
   return `redpanda.composerDraft.${sessionId}`;
@@ -8,32 +6,29 @@ function key(sessionId: string): string {
 
 function read(sessionId: string): SavedDraft {
   const raw = localStorage.getItem(key(sessionId));
-  if (raw === null) return { text: "", parkedText: "" };
+  if (raw === null) return { text: "" };
   const value: unknown = JSON.parse(raw);
   if (value === null || typeof value !== "object" ||
-      !("text" in value) || typeof value.text !== "string" ||
-      !("parkedText" in value) || typeof value.parkedText !== "string") {
+      !("text" in value) || typeof value.text !== "string") {
     throw new Error("Invalid composer draft");
   }
-  return { text: value.text, parkedText: value.parkedText };
+  return { text: value.text };
 }
 
 export function restoreComposerText(sessionId: string): string {
-  const draft = read(sessionId);
-  return draft.parkedText === "" ? draft.text : joinRestoredText(draft.parkedText, draft.text);
+  return read(sessionId).text;
 }
 
-export function saveComposerText(sessionId: string, text: string, parkedText: string): void {
-  if (text === "" && parkedText === "") {
+export function saveComposerText(sessionId: string, text: string): void {
+  if (text === "") {
     localStorage.removeItem(key(sessionId));
   } else {
-    localStorage.setItem(key(sessionId), JSON.stringify({ text, parkedText }));
+    localStorage.setItem(key(sessionId), JSON.stringify({ text }));
   }
 }
 
-export function clearSentComposerText(sessionId: string, field: keyof SavedDraft, sentText: string): void {
+export function clearSentComposerText(sessionId: string, sentText: string): void {
   const draft = read(sessionId);
-  if (draft[field] !== sentText) return;
-  draft[field] = "";
-  saveComposerText(sessionId, draft.text, draft.parkedText);
+  if (draft.text !== sentText) return;
+  saveComposerText(sessionId, "");
 }

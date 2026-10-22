@@ -237,6 +237,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
       deliveryId: `web-${createClientId()}`,
       text,
       artifactRefs,
+      interrupt: running || subagentsActive,
     }).unwrap();
     dispatch(controlNotice({ sessionId, message: null }));
   }
@@ -493,7 +494,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           connectionId={connectionId}
           disabled={connectionId === null}
           sending={sending.isLoading}
-          running={running === true}
+          running={running || subagentsActive}
           shouldWake={
             conversation.session.should_wake && lastError == null
           }

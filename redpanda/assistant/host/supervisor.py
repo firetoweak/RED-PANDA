@@ -1291,15 +1291,30 @@ class HostSupervisor:
                 "receive_user_message", session_id, dict(content=content, **kwargs)
             )
 
-    async def accept_input(self, session_id, content, **kwargs):
+    async def accept_input(
+        self, session_id, content, *, delivery_id, source="user", artifact_refs=(), interrupt=False,
+    ):
         async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
             if self.models is not None:
                 self.store.require(session_id)
                 self.models.require_ready(session_id)
+            if interrupt:
+                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+                # Replayed input is validated by accept_input below; it must not
+                # cancel the work already started for that same delivery.
+                delivered = any(
+                    event.delivery is not None
+                    and event.delivery.source == source
+                    and event.delivery.delivery_id == delivery_id
+                    for event in events
+                )
+                if not delivered:
+                    await self._cancel_turn(session_id, "用户发来新指令")
             if self._pause.get(session_id):
                 self._pause.set(session_id, False)
             view = await self.compact.application(
-                "accept_input", session_id, dict(content=content, **kwargs)
+                "accept_input", session_id,
+                dict(content=content, delivery_id=delivery_id, source=source, artifact_refs=artifact_refs),
             )
             return self._with_host_metadata(view, session_id)
 

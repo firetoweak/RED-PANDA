@@ -801,17 +801,6 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
   box-shadow: 0 0 0 2px #8b9bb00c;
 }
 
-.composer-parked {
-  min-width: 0;
-  padding: 4px 8px 6px 2px;
-  border-bottom: 1px solid var(--rp-divider);
-}
-
-.composer-parked-text {
-  flex: 1;
-  min-width: 0;
-}
-
 .composer-meta .mantine-ActionIcon-root { flex-shrink: 0; }
 
 .composer-input {

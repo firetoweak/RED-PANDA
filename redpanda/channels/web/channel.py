@@ -228,6 +228,8 @@ class WebChannel:
         text: str,
         delivery_id: str,
         artifact_refs: tuple[str, ...] = (),
+        *,
+        interrupt: bool = False,
     ):
         self._require_connection(connection_id)
         content = self._require_text(text)
@@ -241,6 +243,7 @@ class WebChannel:
             content,
             delivery_id=delivery_id,
             source="web",
+            interrupt=interrupt,
             **({"artifact_refs": refs} if refs else {}),
         )
         return await self._queries.conversation(session_id, view=view)

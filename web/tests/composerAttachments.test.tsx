@@ -70,7 +70,7 @@ it("私聊从名册筛选并用完整名字补全，Enter 先选候选再发送"
 });
 
 it("私聊点名支持中文输入法、鼠标和光标处替换，保留后文与引用", () => {
-  localStorage.setItem("redpanda.composerDraft.session", JSON.stringify({ text: "> [Ada](#message:original)\n> @C++ 的原话\n\n", parkedText: "" }));
+  localStorage.setItem("redpanda.composerDraft.session", JSON.stringify({ text: "> [Ada](#message:original)\n> @C++ 的原话\n\n" }));
   const { onSend } = showComposer();
   const input = screen.getByLabelText("消息") as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: "请@李 看一下" } });
@@ -138,17 +138,18 @@ it("上传失败保留文件并阻止缺附件发送，重试成功后才可提�
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("分析文件 [File #1]", [`file:${"a".repeat(32)}`]));
 });
 
-it("运行中停放的文件在当前轮结束后一起发送", async () => {
+it("运行中点打断并发送立即提交文字和附件，不等待旧轮结束", async () => {
   upload.mockReturnValue({ unwrap: async () => ({ kind: "file", attachment_id: `file:${"a".repeat(32)}` }) });
   const { container, onSend, stop } = showComposer(true);
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "改为分析这个附件" } });
   fireEvent.paste(screen.getByLabelText("消息"), { clipboardData: { files: [new File([], "empty.txt")] } });
-  await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "发送" }));
-  expect(onSend).not.toHaveBeenCalled();
-  expect(screen.getByText("附件（1）")).toBeVisible();
+  await waitFor(() => expect(screen.getByRole("button", { name: "打断并发送" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "打断并发送" }));
+  await waitFor(() => expect(onSend).toHaveBeenCalledWith("改为分析这个附件 [File #1]", [`file:${"a".repeat(32)}`]));
+  expect(screen.queryByRole("button", { name: "立即发送" })).not.toBeInTheDocument();
   expect(container.querySelector('input[type="file"]')).not.toHaveAttribute("accept");
   stop();
-  await waitFor(() => expect(onSend).toHaveBeenCalledWith("[File #1]", [`file:${"a".repeat(32)}`]));
+  expect(onSend).toHaveBeenCalledTimes(1);
 });
 
 it("本机选择直接返回已挂入附件，浏览器不传服务器路径", async () => {
@@ -242,14 +243,16 @@ it("发送确认后不覆盖用户在等待期间新写的文字", async () => {
   expect(screen.getByLabelText("消息")).toHaveValue("下一条草稿");
 });
 
-it("重新打开页面后将停放文字恢复到编辑栏，保留新输入且不自动发送", () => {
+it("打断请求失败后保留文字草稿，刷新后也不自动发送", async () => {
   const view = showComposer(true);
-  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "等待发送" } });
-  fireEvent.click(screen.getByRole("button", { name: "发送" }));
-  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "继续补充" } });
+  view.onSend.mockRejectedValueOnce(new Error("打断失败"));
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "改为执行新要求" } });
+  fireEvent.click(screen.getByRole("button", { name: "打断并发送" }));
+  await waitFor(() => expect(view.onSend).toHaveBeenCalledOnce());
+  expect(screen.getByLabelText("消息")).toHaveValue("改为执行新要求");
   view.unmount();
   const restored = showComposer(true);
-  expect(screen.getByLabelText("消息")).toHaveValue("等待发送\n继续补充");
+  expect(screen.getByLabelText("消息")).toHaveValue("改为执行新要求");
   restored.stop();
   expect(restored.onSend).not.toHaveBeenCalled();
 });

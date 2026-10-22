@@ -49,6 +49,7 @@ type SendInput = SelectSession & {
   deliveryId: string;
   text: string;
   artifactRefs: string[];
+  interrupt: boolean;
 };
 
 type UploadAttachment = SelectSession & {
@@ -405,7 +406,7 @@ export const redpandaApi = createApi({
       },
     }),
     sendInput: build.mutation<ConversationView, SendInput>({
-      query: ({ connectionId, sessionId, deliveryId, text, artifactRefs }) => ({
+      query: ({ connectionId, sessionId, deliveryId, text, artifactRefs, interrupt }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/inputs`,
         method: "POST",
         body: {
@@ -413,6 +414,7 @@ export const redpandaApi = createApi({
           delivery_id: deliveryId,
           text,
           artifact_refs: artifactRefs,
+          interrupt,
         },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),

@@ -563,6 +563,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 "connection_id": self.connection.connection_id,
                 "delivery_id": "delivery-1",
                 "text": "  你好  ",
+                "interrupt": True,
             },
         )
 
@@ -576,7 +577,7 @@ class WebFirstSliceTest(unittest.TestCase):
                     "accept_input",
                     "session-old",
                     "你好",
-                    {"delivery_id": "delivery-1", "source": "web"},
+                    {"delivery_id": "delivery-1", "source": "web", "interrupt": True},
                 )
             ],
         )
@@ -618,6 +619,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 {
                     "delivery_id": "delivery-image",
                     "source": "web",
+                    "interrupt": False,
                     "artifact_refs": (attachment_id,),
                 },
             ),
