@@ -1,6 +1,6 @@
 # 工具编码回合
 
-在会话里打开 `自动放行写文件等工具`，让模型改文件、跑命令，时间线依次出现 `read_file`、`apply_patch`、`execute_command`，任务根真实目录里的文件真的变了。工具来源 `redpanda/tools/builtin/`（`file_read.py`、`file_write.py`、`file_manage.py`、`command_execution.py`、`background_commands.py`），参数校验与 handler 异常转换在 `redpanda/tools/executor.py`；路径解析与文本读写在 `redpanda/filesystem/`。所有文件工具与命令直接作用于任务根，没有回退。
+在侧栏底部打开全局 `自动放行写文件等工具`，让模型改文件、跑命令，时间线依次出现 `read_file`、`apply_patch`、`execute_command`，任务根真实目录里的文件真的变了。工具来源 `redpanda/tools/builtin/`（`file_read.py`、`file_write.py`、`file_manage.py`、`command_execution.py`、`background_commands.py`），参数校验与 handler 异常转换在 `redpanda/tools/executor.py`；路径解析与文本读写在 `redpanda/filesystem/`。所有文件工具与命令直接作用于任务根，没有回退。
 
 ## Sub-features
 
@@ -11,7 +11,7 @@
   - `ok:null`（结果不确定，工具状态投影为 `unknown`/「中断」）：`COMMAND_INTERRUPTED`（「命令被用户停止，可能已部分执行。」）。
 - `command-authorization`：Windows/Linux 顶层会话的 `execute_command` 参数为 `cwd`、`command`、`wait_seconds`；不支持后台的平台使用 `cwd`、`command` 并等待结束。每次调用都需要授权（自动放行开启时被自动批准）；工具描述写明直接作用于真实目录、不提供回退，按实际结果核对影响；Git 核对方法由适用 Skill 提供。
 - `search-tools`：`glob`、`grep` 在工作区内查找；`glob` 依赖 `fd`/`fdfind`，找不到时返回 `GLOB_NOT_FOUND`（「未找到 fd」）。
-- `write-tools`：`write_file`（新建/覆盖）、`replace_all`（全量替换）。
+- `write-tools`：`write_file`（新建/覆盖）、`replace_all`（替换文件中所有精确匹配文本）。
 - `referenced-content`：`read_content` 读取工具结果或历史检索返回的真实 `reference`；可按 `offset`/`limit` 连续读取，或用 `query` 查找字面关键词，按 `next_offset` 续读。来源 `redpanda/assistant/content.py`。
 - `argument-validation`：任一工具参数不符合 schema（如 `wait_seconds` 超出 0–30）→ `ok:false`、`code:VALIDATION_ERROR`、`hint`「按工具 schema 修正参数后重试。」（`executor.py`）。
 - `session-review-entry`：Agent 会话输入框上方的 Git 差异摘要与 `文件改动` 内容页，独立验证见 [session-file-changes.md](./session-file-changes.md)。
@@ -30,7 +30,7 @@
 
 前置：`$SCRATCH_WORKSPACE` 是已提交 `note.txt`（内容 `verify`）的 Git 仓库，已在名册里用它创建 Agent；Doctor 返回 0。
 
-- **确认开关开启**：新会话默认开启，不要无条件点击切换；仅在关闭时点击 `自动放行写文件等工具`。`GET /api/sessions/<id>` 中 `session.auto_authorize` 为 true。
+- **确认开关开启**：现有和新会话共用全局选择，不要无条件点击切换；仅在关闭时点击 `自动放行写文件等工具`。`GET /api/sessions/<id>` 中 `session.auto_authorize` 为 true。
 - **发请求**：
 
 ```text
@@ -55,7 +55,7 @@ Windows 将第三条命令换成 `Write-Output edited`；不要在 PowerShell �
 - **错误路径（工具结果，不打崩会话）**：`glob` 的 pattern 为 `""` / `"."` / 仅空白时返回工具结果 `ok:false`、`code:EMPTY_PATTERN`，会话与 Worker 继续存活。参数不合 schema → `VALIDATION_ERROR`。handler 抛出的普通 `Exception`（如未预期 `ValueError`）由 `ToolsExecutor._execute_spec` 转为工具结果 `ok:false`、`code:TOOL_HANDLER_ERROR`（`data.exception_type` 为异常类名），**不**升级为调度器/Worker failure；`asyncio.CancelledError` / `KeyboardInterrupt` / `SystemExit` 等 `BaseException` 仍上抛。
 - **搜索/写入**：让模型 `glob` 找 `*.txt`、`grep` 找 `edited`、`write_file` 新建 `new.txt` 写 `hi`、`replace_all` 把 `hi` 换成 `yo`。(a) `new.txt` 为 `yo`。(d) 实例 PATH 里没有 `fd`/`fdfind` 时 `glob` → `GLOB_NOT_FOUND`，记录为环境问题而非功能通过。
 - **结果引用**：某个工具或历史检索实际返回 `data.reference` 后，请模型用 `read_content` 先连续读取，再用 `query` 找一个已知标识。(a) `CONTENT_READ` 的片段与原文一致，续读使用真实 `next_offset`。(b) 时间线出现 `read_content` 调用。(c) 读取不修改源文件。(d) 合法格式但不存在的引用 → `CONTENT_NOT_FOUND`；偏移超出原文 → `OFFSET_OUT_OF_RANGE`。没有取得真实引用时记录未覆盖，不编造成功路径。
-- **命令授权**：在**关闭**自动放行的会话里让模型 `execute_command` 跑一个只读命令（如 `git status`）→ (b) 待处理条出现该调用（自动放行开启时所有待授权调用都会被自动批准，看不到这一步）；(a) 批准后才执行。(c) 不存在按命令文本放行的情况。(d) 拒绝后命令不执行，模型收到「用户拒绝」。
+- **命令授权**：在侧栏**全局关闭**自动放行后，在会话里让模型 `execute_command` 跑一个只读命令（如 `git status`）→ (b) 待处理条出现该调用（自动放行开启时所有待授权调用都会被自动批准，看不到这一步）；(a) 批准后才执行。(c) 不存在按命令文本放行的情况。(d) 拒绝后命令不执行，模型收到「用户拒绝」。
 - **后台接管与响应**：从页面请求 `execute_command` 跑长命令，`wait_seconds=0`，接管后用普通回复回执并结束本轮；命令运行中另发消息，要求普通回复包含标识。(a) `GET /api/sessions/<id>/commands` 仍为 running，后台列表展示时长，新消息已回复。(b) 启动须批准，读取与停止不另授权。(c) 页面 `停止命令` 后状态 stopped，完成事实恰好一条并唤醒 Agent；只有主动停止，没有自动重跑。(d) 再停同一条不再产生完成事实。短命令用 `wait_seconds=1` 等待较长于一秒的操作，确认到点转后台且自然结束后主动通知；核对完成后模型的普通回复直接可见，无需调用交付工具。
 - **证据**：三个工具名可见时快照+截图；会话 JSON 与 `note.txt` 副本存到 `$EVIDENCE_DIR/tool-coding-round/`。
 - **关开关的反向路径**：新开会话，先关闭自动放行，发 `请用 apply_patch 把 note.txt 改成 edited，然后停止。`，在待处理条点 `允许 apply_patch`（详见 tool-authorization）；`read_file` 是只读工具，不会进入待处理。
@@ -86,3 +86,5 @@ Windows 将第三条命令换成 `Write-Output edited`；不要在 PowerShell �
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；原生 cmd /c exit 2 得到 COMMAND_EXIT_NONZERO、exit_code=2、ok=true。后续子任务审阅真实使用 find_history/read_content；后台接管、运行中新消息回复、自然完成通过，未穷尽错误码。
 
 - 2026-10-20 编码 Skill 增量：隔离 Web + deepseek-flash，普通讨论未加载编码 Skill；无 Git Bot 按需加载 builtin:coding 和 project:file-handoff，读取 AGENTS.md 与独立需求文档、修复函数、执行 unittest（2 个通过）、生成交接文件，用户原文件保留且无 Git 操作。项目 Bot 在实施任务与集成任务中分别加载编码、Git Skill；首轮提议未修改文件。证据 `.tools/verify-coding-skill/evidence/`。未复验所有命令错误码、压缩后重读与子任务实机路径。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 read_file/apply_patch/write_file/execute_command 通过，文件只改在挂载项目内；后台命令与非零退出未重验。

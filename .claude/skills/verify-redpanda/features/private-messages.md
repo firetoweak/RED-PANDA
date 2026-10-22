@@ -7,7 +7,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 - `deliver`：送达后对方 journal 有 `bot.private_message`，并因此开始一轮决策。
 - `notice`：私聊时间线用“已发消息给 / 消息来自”标明实际收发，对方名字可打开私聊，刷新后仍可见。
 - `paused`：收件人 `session.paused` 为 true 时仍送达，结果说明对方暂停。
-- `reject`：发给自己、名册中没有这个名字、人在别的项目、引用不属于这两人，都是已知失败。
+- `reject`：发给自己、名册中没有这个名字、引用不属于这两人，都是已知失败。
 - `limit`：显式回复链超过 10 跳，或同一源头驱动的 Agent 消息超过 20 条，拒绝发送，并在发送方与人的这一轮里写明已达上限。
 
 ## How to get to it (user POV)
@@ -51,3 +51,5 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。
 
 2026-10-21 收发标识增量：隔离 Web、零代码项目、真实 DeepSeek，Atlas → Nova → Atlas 往返显示双向标识；点击名字、返回与刷新通过。1440×1004 明暗主题和 390×844 窄屏检查通过，无页面横向溢出。不存在的收件人返回 RECIPIENT_NOT_FOUND，标识数量不变。暂停、其他拒绝与交流上限未在本轮 live 重验，完整证据保存在本地 `.tools/`。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；暂停接收和交流上限未重验。

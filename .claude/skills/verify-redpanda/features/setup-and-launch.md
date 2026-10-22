@@ -22,7 +22,7 @@
 在一次性目录（新 clone + 临时 `REDPANDA_HOME`）里做，避免破坏现有环境。
 
 - **setup**：
-  - (a) `redpanda-env/bin/python --version`（Windows `redpanda-env\Scripts\python.exe`）与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`；空 home 初始化后没有 `workspaces.json`，首次登记工作区后才产生；PATH 缺工具时 `.tools/runtime/` 下出现对应版本。
+  - (a) `redpanda-env/bin/python --version`（Windows `redpanda-env\Scripts\python.exe`）的主次版本与 `.python-version` 一致；`$REDPANDA_HOME` 下有 `config.json`、`connections.json`；空 home 初始化后没有 `workspaces.json`，首次登记工作区后才产生；PATH 缺工具时 `.tools/runtime/` 下出现对应版本。
   - (b) 依次打印 `[1/4]`…`[4/4]` 与成功末行，退出码 0。
   - (c) 已有的 `config.json`、`connections.json` 不被覆盖（先写入标记内容再跑一次，逐字节比较）。
   - (d) 从 PATH 去掉 `rg` 再跑 **不会**报错：`[1/4]` 把 rg `14.1.1` 装进 `.tools/runtime/` 后继续。要看到失败路径，用下载失败（断网且 `.tools/runtime/` 缺工具）→ `[1/4]` 失败并以 `准备未完成…` 结束，不进入 `[2/4]`。
@@ -48,3 +48,5 @@
 - 历史验证：2026-10-12（main@1a4790a）与 2026-10-16（main@e191eab）验证了当时的五步准备流程；`setup.py --check` 在 Node 20.19 上按预期报版本不支持。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Windows setup 四步、setup --check、隔离 Web 启动与 Doctor 全部通过，浏览器首页可用；启动与 Doctor 分开执行成功。Linux、交互模型向导及 start/dev 包装入口未覆盖。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：Windows setup 四步、setup --check、隔离 Web 启动、Doctor 与首页通过；Linux、首次模型向导和开发启动未重验。

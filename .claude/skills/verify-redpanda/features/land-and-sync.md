@@ -2,7 +2,7 @@
 
 `land_branch` 把 Agent 分支上已经提交的工作合入项目集成分支。`sync_branch` 把集成分支上同事已经落地的工作合进自己的分支。两个工具都只接受 `project`（Bot 挂上的项目名），都不进入待处理条，也不改人当前检出的分支和工作目录。未提交的修改不跟着落地。冲突时落地放弃、集成分支不动；同步则停在冲突状态，留给 Agent 用普通 Git 命令解决或放弃。来源：`redpanda/assistant/agent_tools.py`、`redpanda/assistant/host/agent_worktrees.py`。落地后变化查看变空，见 [session-file-changes.md](./session-file-changes.md)。
 
-工作树在 `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 的前 20 位>/`：`integration` 是集成工作树，`<sha256(session_id) 的前 20 位>` 是该 Agent 的工作树。哈希用 UTF-8 的 sha256 十六进制。提交可以直接在 Agent 工作树里用 Git 准备，再请模型单独调用工具；工具只搬已提交的内容。
+Bot 的项目工作树位于其个人目录的 `projects/<挂载项目名>`；以名册 `projects[].directory` 或 `link_project` 返回的目录为准。集成工作树仍在 `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 的前 20 位>/integration`。提交可以直接在 Agent 工作树里用 Git 准备，再请模型单独调用工具；工具只搬已提交的内容。
 
 ## Sub-features
 
@@ -23,7 +23,7 @@
 需要 `live_model_ready` 才能请模型调用工具。`code` 在该会话 journal 的命令结果里。成功调用的那一步 `tools` 里只有这一个工具。
 
 - **落地已提交的工作**：在 `Ada` 的工作树提交 `landed.txt`，内容 `landed`。请它调用 `land_branch`。
-  - (a) 结果 `LAND_COMPLETED`，`data.fast_forward` 为 true 时集成分支 HEAD 等于 `Ada` 分支 HEAD；否则集成工作树多一个作者为 `Ada`、说明为 `合入 Ada 的工作` 的合并提交。`integration` 工作树里有 `landed.txt`。`GET /api/sessions/<Ada>/changes` 不再包含这个已落地的文件。
+  - (a) 结果 `LAND_COMPLETED`，`data.fast_forward` 为 true 时集成分支 HEAD 等于 `Ada` 分支 HEAD；否则集成工作树多一个作者为 `Ada`、说明为 `合入 Ada 的工作` 的合并提交。`integration` 工作树里有 `landed.txt`。`GET /api/sessions/<Ada>/changes?project=<挂载项目名>` 不再包含这个已落地的文件。
   - (b) 工具卡 `land_branch` 徽标 `完成`。输入框上方不出现这条调用的待处理条。
   - (c) `$SCRATCH_WORKSPACE` 的 HEAD、暂存区和 `note.txt` 不变。集成分支出现在该仓库的分支列表里是正常的，不要把人的检出切到那条分支。
   - (d) 没有新提交时再落地 → `LAND_UNCHANGED`，提示集成分支已经包含全部分支上已提交的工作，集成 HEAD 不变。
@@ -51,10 +51,12 @@
 ## Gotchas
 
 - 两个工具都必须单独调用。同一步里还有别的工具时，这一步不会落地或同步，Git 状态保持调用前的样子。
-- 带参数调用的结果是 `INVALID_ARGUMENT`，错误为 `land_branch 不接受参数` 或 `sync_branch 不接受参数`。
+- 两个工具都要求唯一非空参数 `project`。缺失、空白或带其他参数时得到 `INVALID_ARGUMENT`，提示 `<工具名> 只接受非空的 project。`。
 - Git 的其他失败（例如 `index.lock`、文件被占用）是 `LAND_FAILED` 或 `SYNC_FAILED`，`data.git` 为 Git 原文。不要把这类失败说成「文件会被覆盖」。
 - 落地不经人批准。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；Mo 单独 sync_branch 得到 SYNC_UNCHANGED。向旧分支同步新成果、冲突和阻挡未覆盖。
 
 - 2026-10-20 编码 Skill 增量：真实 Web + deepseek-flash，按任务加载 builtin:git-collaboration，提交作者与提交者均为 Bot，land_branch 快进成功，集成目录 unittest 2 个通过；用户原目录与原始分支未变。证据 `.tools/verify-coding-skill/evidence/git-workflow/`；未重验同步、冲突与非快进合并。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实指定 project 落地后同步，包含两个子任务成果，差异清零且人的原始 note.txt 不变；同步他人新增成果、冲突和阻挡未重验。

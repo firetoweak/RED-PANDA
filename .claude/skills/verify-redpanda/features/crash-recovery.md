@@ -5,7 +5,7 @@
 源码事实（判据以此为准，2026-10-18 核对）：
 - **进程结构**：Web 进程内的 `HostSupervisor`（`redpanda/assistant/host/supervisor.py`）为每个会话用 `multiprocessing` spawn 起 Worker 子进程（命令行含 `spawn_main`）；Worker 在父进程退出后自行退出（`worker.py` 的 `parent_process().join()`）。Worker 失败经 `report_worker_failures`（`redpanda/channels/web/app.py`）发 SSE `session_failed`，文案 `Session 进程失败：...`，同一文案也记为该会话的 `last_error`。
 - **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；人停止过的保持 paused。`execute_command` 已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起。
-- **执行一半的工具**：journal 已记 attempt 但无结果的命令处于 `CommandPhase.UNKNOWN`（`redpanda/runtime/state.py`）。新 Worker 接管或 Web 启动时，`SqliteJournal.prepare_recovery` 为每个未完成 attempt 追加 `command.attempt.orphaned`（不是 Outcome，状态仍 unknown）；之后新消息不再被它挡住，`再试`/`继续` 会让模型看到 `NO_RESULT_YET` 并续步。给模型的投影 `NO_RESULT_YET`（`redpanda/assistant/context/projection.py`）：error「该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具=<name>）。」，hint「先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。」。Web 中该调用状态 `unknown`、徽标 `中断`，错误文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`（`redpanda/assistant/conversations.py` 的 `UNKNOWN_TOOL_ERROR`）。**不会自动重试**。子 Agent 同理（`record_interrupted_return`）。
+- **执行一半的工具**：journal 已记 attempt 但无结果的命令处于 `CommandPhase.UNKNOWN`（`redpanda/runtime/state.py`）。新 Worker 接管或 Web 启动时，`SqliteJournal.prepare_recovery` 为每个未完成 attempt 追加 `command.attempt.orphaned`（不是 Outcome，状态仍 unknown）；之后新消息不再被它挡住，接管时先找回已完成的真实命令结果；仍无法确认的调用，`再试`/`继续` 才会让模型看到 `NO_RESULT_YET` 并续步。给模型的投影 `NO_RESULT_YET`（`redpanda/assistant/context/projection.py`）：error「该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具=<name>）。」，hint「先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。」。Web 中该调用状态 `unknown`、徽标 `中断`，错误文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`（`redpanda/assistant/conversations.py` 的 `UNKNOWN_TOOL_ERROR`）。**不会自动重试**。子 Agent 同理（`record_interrupted_return`）。
 - **待授权**：未授权的命令投影为 `AWAITING_AUTHORIZATION`，「尚未执行」。对已处理的命令再授权/拒绝 → `AuthorizationConflict`「该操作已处理或当前不可授权：<command_id>」→ HTTP 409。
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`redpanda/runtime/journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件。不同内容在 Assistant 输入边界转为 `InputConflict`，经 IPC 回传，Web 返回 409；不新增事件、不使 Worker 失败。
 - **模型错误**（`thinllm/chat_completions.py`、`redpanda/assistant/failures.py`）：超时为 `connect=10, read=60, write=30, pool=10` 秒。408/425/429/500/502/503/504 与 `httpx.TransportError`（含 `ReadTimeout`、`ConnectTimeout`、连接被拒）→ `LLMTransientError`，**仅在流尚未开始时**按 0.5/1/2 秒重试 3 次（共 4 次尝试）；收到任何一行后就不再重试。401/403 → `模型认证失败：API 密钥无效……`；`context_length_exceeded` → `模型输入超出上下文限制`；流没有 `[DONE]` → `模型响应不符合约定`；空回复 → `模型这一拍没有给出可用回复或工具调用。下一条消息会从同一触发重试。`。
@@ -46,7 +46,7 @@
   - (b) 重启后侧栏底部从 `正在连接…` 变为 `已连接`；会话不会自动续跑，输入框出现 `继续`；侧栏不应永远停在运行状态。
   - (c) 其他会话 journal 不变；工作区里与该命令无关的文件不变；重启前记下的 Worker、命令及其后代进程都已退出，不继续写 journal 或任务文件。Linux 包含脱离原进程组的普通后代。
   - (d) 不点 `继续` 再重启两次：仍 paused，不新增模型调用或同一命令的执行，文件不再追加。点 `继续` → 模型读到 `NO_RESULT_YET`，应先检查 `out.txt` 再决定；清理旧进程不等于操作没有产生副作用。
-- **kill -9 Worker**：只杀 Worker。(b) SSE `session_failed`，界面横幅 `执行已停止。Session 进程失败：...`，按钮 `再试`。(a) 点 `再试` 或再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。(d) Web 已断开时点 `再试` → `再试失败，请确认后端连接后重试。`。
+- **kill -9 Worker**：只杀 Worker。(b) SSE `session_failed`，界面横幅 `执行已停止。Session 进程失败：...`，按钮 `再试`。(a) 点 `再试` 或再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。(d) Web 已断开时 `再试` 禁用，重连后才可点击；请求发出后才断线可能显示 `再试失败，请确认后端连接后重试。`。
 - **断网**：
   - 连接被拒（base URL 指向不监听的端口）：(b) 约 3.5 秒（0.5+1+2 秒重试等待）后横幅 `执行已停止。运行失败：模型服务暂时不可用：... transport failed`。
   - 丢包（`iptables -j DROP` 等，连接不上也不回绝）：(b) 约 4×10 + 3.5 ≈ 43.5 秒后出现同类失败。
@@ -77,3 +77,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：隔离连接临时无效 key 后出现认证失败、查看详情和再试；恢复连接并点再试得到 AUTH_RECOVERY_OK，GET 只有一条原用户输入，错误清除。该轮未重验杀 Web/Worker、去重冲突、429/超时矩阵；Worker 与去重冲突的后续实测结论见本文件。
 
 - 2026-10-20 产品修复实测：Windows Chrome、真实模型、隔离 home；同内容重放 200、异内容 409、事件数不变、后续页面发消息得到 INPUT_REPLAY_OK。证据在本地 `.tools/verification/worker-crash-20261020/evidence/`。429/读超时、待授权跨重启与杀 Web 矩阵本次未重验。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：隔离配置无效 key 触发认证失败，刷新横幅仍在，恢复配置后再试成功且原输入仅一条；杀进程、断网、429 和未知命令恢复未重验。

@@ -5,7 +5,7 @@ description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace,
 
 # Verify RED PANDA
 
-Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are persistent Bots with their own ordinary directories under `$REDPANDA_HOME/state/bots/`. Create and chat without registering a project. Optionally associate a code project at creation; only that path needs a Git repository with a first commit and prepares a Git worktree under `$REDPANDA_HOME/state/coding_bot/`. This skill does not cover the terminal entry point (`console_chat.py`), which has its own data directory and no relation to Web data.
+Drive the Web app a person actually uses. The page is served by `web_chat.py`. Chat and tool calls also need a configured model. Web sessions are persistent Bots with their own ordinary directories under `$REDPANDA_HOME/state/bots/`. Create and chat without registering a project. Optionally link a code project at creation or from Bot details. That path needs a Git repository with a first commit; the Bot project worktree lives in its personal directory under `projects/<name>/`. Integration and child worktrees live under `$REDPANDA_HOME/state/coding_bot/`. The terminal entry point is covered by `features/console-chat.md`; use a separate disposable home for each terminal drive, never the Web home.
 
 UI copy is Chinese. Match the accessible names below exactly. Set the browser viewport to at least 1280×800 before any click; below the `sm` breakpoint the sidebar is collapsed behind `打开 Agent 名册`.
 
@@ -74,6 +74,10 @@ Set-Content -Path "$env:RUN_DIR\web.pid" -Value $proc.Id
 
 `-WindowStyle Hidden` gives the server its own console. Do not use `-NoNewWindow`: a server that shares your console receives your Ctrl+C.
 
+### Terminal session
+
+For `console-chat`, create a fresh `$RUN_DIR/tui-home` and copy only the needed model configuration into it. Run `./redpanda-env/bin/python console_chat.py --home "$RUN_DIR/tui-home" --workspace "$SCRATCH_WORKSPACE"` in a real interactive terminal; on Windows use `.\redpanda-env\Scripts\python.exe`. Do not run two CLIs against the same home. Before typing, confirm the process command line, the isolated home, and its startup session id. The Web Doctor does not health-check a TUI; verify its prompt and successful model reply in the terminal itself. Exit with Ctrl+D and confirm process exit.
+
 ## Doctor
 
 Run this before the first click, after any surprising failure, and before claiming the instance is still the one you started.
@@ -114,7 +118,7 @@ The conversation timeline is a virtual list (react-virtuoso) and dialogs and men
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
 
-For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes`. The read-only API also accepts delegated tasks, but their observation page currently has no file-diff entry; other session types get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
+For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `<project> · 文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes?project=<project>`. A Bot without a linked project has no summary. The read-only API also accepts delegated tasks, but their observation page currently has no file-diff entry; other session types get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
 
 Colleague tools, private messages, landing and sync, and group chat are `features/colleague-tools.md`, `features/private-messages.md`, `features/land-and-sync.md`, and `features/group-chat.md`. Drive them from the page those files name. Pending items highlight the corresponding Bot in the sidebar and are handled in that Bot's conversation; there is no standalone inbox page. Communication-limit reports, paused Agents with unhandled messages, and unattended-routine prompts are covered by `features/inbox.md` and `features/routines.md`.
 
@@ -130,6 +134,8 @@ For each driven entry point save:
 - `page.png` — screenshot of that same state, with the sidebar `新建 Bot` entry visible on desktop (on mobile, include the `打开 Agent 名册` control)
 - `state.json` — the read-only HTTP body named in the feature file
 - `note.txt` — feature id, entry point, and either `passed` or `skipped` plus the Doctor field that blocked it (`live_model_ready`)
+
+For TUI, save `terminal.txt` (startup, command input, reply and exit), the isolated session metadata or journal observations, and `note.txt`; a browser screenshot is not TUI proof.
 
 A skipped live-model step is not a pass and not a pass via pytest. Capture the action and the result. For a workspace, the result is the sidebar control and `GET /api/workspaces`. For a chat send, the result is the user text in the transcript and `GET /api/sessions/<id>`. For a coding round, the result is the transcript and the file contents in the Agent's worktree.
 

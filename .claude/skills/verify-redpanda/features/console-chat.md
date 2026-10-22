@@ -45,4 +45,6 @@
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 正常退出通过；证据为终端文本，无 Web 截图。底栏、粘贴、并发占用与重启清理未覆盖。
 
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 退出通过；更新终端说明后另建 home 复跑。粘贴、底栏和并发占用未重验。
+
 - 2026-10-22 修复复验（Windows ConPTY）：无项目 Bot 的隔离副本启动被拒绝，Bot 文件及会话哈希不变；另一独立目录正常启动、`/new`、Ctrl+D 退出。有项目与无项目两条保护路径均通过回归测试。本轮未重验粘贴、底栏与重启清理。

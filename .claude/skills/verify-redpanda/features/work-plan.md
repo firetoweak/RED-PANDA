@@ -50,7 +50,7 @@
 - **回收：停止/取消**：计划有 `in_progress` 项时点输入框的 `停止`。(a) `work_plan` 保持最后一次成功版本，没有自动清理。(b) 面板仍显示 `计划标记为进行中：...`，执行停止后那一行显示 `模型记录的计划进度 · 执行已停止`；实际运行状态单独显示，不靠计划推断。(d) 停止发生在 `update_plan` 已开始但无结果时 → 该调用不计入（只认 `SUCCEEDED`），`work_plan` 为上一版。
 - **回收：失败或被拒绝的更新**：(a) 工具失败/校验错误的调用不改变 `work_plan`。
 - **回收：compact**：建计划后把 compact 阈值调小触发 compact。(a) compact 后 `work_plan` 不变（来源是 journal 事件）。(b) compact 后的第一次决策步骤带 `work_plan_context`，当前窗口内最近一块 `<work_plan>` 是 compact 前的当前版本；问模型「现在计划的第二项是什么」能答对。(d) 若新窗口里没有任何 `<work_plan>` 块，判失败。
-- **回收：另一个 Agent**：在同一项目再 `新建 Agent` → 新会话的 `work_plan` 为 `null`，面板不显示；计划不跨 Agent 继承。
+- **回收：另一个 Agent**：再从名册 `新建 Bot`（项目可选） → 新会话的 `work_plan` 为 `null`，面板不显示；计划不跨 Agent 继承。
 - **子 Agent 的计划**：让父委派一个子 Agent 并要求子也用 `update_plan`。(a) 子会话 `GET /api/sessions/<子 id>` 有自己的 `work_plan`；父的 `work_plan` 不变。(b) 子计划不出现在父的 `当前计划`；点子 Agent 调用卡打开的 `子 Agent` 页（`ContentPage` 内的 `SubagentPanel`）不渲染计划，子计划只能经子会话的 `GET` 读到。(c) 子被收回/交回后父计划不受影响。
 - **完成与归档**：模型把所有项标 `completed`。(a) `work_plan` 全为 `completed`。(b) 输入框上方面板消失；该轮下方出现 `已完成计划 · <objective>`、`模型记录的计划进度`（不带 `执行已停止`）、`已完成 m/m 项`。(c) 当前窗口内最近一块 `<work_plan>` 是这份全部完成的版本（全部完成的计划不会自动清除，直到模型提交 `null` 或新计划）。(d) 同一轮内先完成计划 A、再建并完成计划 B → 该轮下方只显示最后一份完成的计划（`completedPlanForTurn` 取最后一次），A 不再显示——记为观察项。
 
@@ -68,3 +68,5 @@
 - 历史验证：r2 按新条件通过（cancel 后第 1 步仍 `in_progress`、可双 `in_progress`，均为设计行为）；UI 截图里计划与运行状态分开显示未验。2026-10-18 按源码改写文案与上下文判据，未 live 复跑。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：update_plan 建两步计划，API 留有进行中和全部完成两版；页面已完成计划 2/2 可展开。结束、compact、停止与子计划回收未重验。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 update_plan 建两步计划并全部完成，展开归档与 GET 一致；中断、compact 和跨 Agent 回收未重验。
