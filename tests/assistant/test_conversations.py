@@ -365,12 +365,13 @@ class _Workspaces:
 
 class Idle:
     workspaces = _Workspaces("workspace-1")
+    auto_authorize_enabled = True
 
     def activity(self, session_id):
         return "idle"
 
     def auto_authorize(self):
-        return True
+        return self.auto_authorize_enabled
 
     def is_paused(self, session_id):
         return session_id == "spoken"
@@ -515,7 +516,8 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Idle())
+            sessions = Idle()
+            queries = AssistantQueries(store, sessions)
             for session_id in ("quiet", "named", "old"):
                 await store.create(session_id, directory=Path(directory))
             await wake(
@@ -572,7 +574,28 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                 },
             })
             await propose(store, "old", "req-old")
+            sessions.auto_authorize_enabled = False
             inbox = await queries.list_inbox()
+
+            # Read the exact interval between issuing an ask command and recording
+            # its automatic authorization; no Worker is running to close it.
+            journal = SqliteJournal(store.require("quiet"))
+            before = await journal.snapshot("quiet")
+            for enabled in (True, False):
+                sessions.auto_authorize_enabled = enabled
+                conversation = await queries.conversation("quiet")
+                self.assertEqual(conversation.session.pending_authorization_ids,
+                                 () if enabled else ("cmd-quiet",))
+                self.assertEqual(len(conversation.session.pending_authorization_commands),
+                                 0 if enabled else 1)
+                self.assertEqual(conversation.items[0].tools[0].status,
+                                 "queued" if enabled else "awaiting_authorization")
+                self.assertEqual((await queries.agent_entry("quiet")).status,
+                                 "idle" if enabled else "authorization")
+                current_inbox = await queries.list_inbox()
+                self.assertEqual([item.kind for item in current_inbox],
+                                 ["control"] if enabled else ["authorization", "control"])
+                self.assertEqual(await journal.snapshot("quiet"), before)
 
         self.assertEqual(
             [(item.kind, item.label, item.session_id) for item in inbox],

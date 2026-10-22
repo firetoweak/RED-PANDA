@@ -490,7 +490,7 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId, enabled },
       }),
       transformResponse: (value: unknown) => autoAuthorizeSchema.parse(value),
-      invalidatesTags: ["AutoAuthorize", "Conversation", "Inbox"],
+      invalidatesTags: ["AutoAuthorize", "Conversation", "Inbox", "Agents"],
     }),
     retryTurn: build.mutation<ConversationView, SelectSession>({
       query: ({ connectionId, sessionId }) => ({

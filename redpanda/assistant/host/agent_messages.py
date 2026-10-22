@@ -86,7 +86,8 @@ class AgentMessages:
             status = COLLEAGUE_STATUS[project_agent_roster_entry(
                 agent.session_id, events, name=agent.name,
                 direction=entry.direction, activity=self.host.activity(agent.session_id),
-                last_error=self.host.current_failure(agent.session_id)).status]
+                last_error=self.host.current_failure(agent.session_id),
+                auto_authorize=self.host.auto_authorize()).status]
         return {"name": agent.name, "direction": entry.direction, "directory": str(agent.directory),
                 "projects": [item.name for item in agent.projects],
                 "status": status, "since": events[-1].occurred_at.astimezone().isoformat(timespec="minutes")}

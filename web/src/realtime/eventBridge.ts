@@ -62,7 +62,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("auto_authorize_changed", (event) => {
     autoAuthorizeChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox"]));
+    dispatch(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));

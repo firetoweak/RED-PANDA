@@ -250,6 +250,7 @@ class AssistantQueries:
                 direction=view.direction,
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
+                auto_authorize=self._sessions.auto_authorize(),
             ))
         return tuple(entries)
 
@@ -265,6 +266,7 @@ class AssistantQueries:
             direction=project_direction(events, agent),
             activity=self._sessions.activity(session_id),
             last_error=self._sessions.current_failure(session_id),
+            auto_authorize=self._sessions.auto_authorize(),
         )
 
     async def list_inbox(self) -> tuple[InboxItem, ...]:
@@ -278,7 +280,8 @@ class AssistantQueries:
             if agent is None:
                 continue
             state = replay(session_id, events).state
-            view = session_view(state, control_approval=pending_approval_view(events))
+            view = session_view(state, control_approval=pending_approval_view(events),
+                                auto_authorize=self._sessions.auto_authorize())
             if view.pending_authorization_commands or view.control_approval is not None:
                 items.extend(project_inbox_items(
                     session_id=session_id, workspace_id=None, label=agent.name,
@@ -439,6 +442,7 @@ def project_agent_roster_entry(
     direction: str | None,
     activity: SessionActivity,
     last_error: str | None,
+    auto_authorize: bool,
 ) -> AgentRosterEntry:
     state = replay(session_id, events).state
     agent = project_agent(events)
@@ -451,7 +455,7 @@ def project_agent_roster_entry(
         status=project_agent_status(
             activity=activity,
             has_active_subagents=bool(project_pending(events)),
-            pending_authorization=bool(pending_authorization_ids(state)),
+            pending_authorization=not auto_authorize and bool(pending_authorization_ids(state)),
             control_approval=pending_approval_view(events) is not None,
             waiting_for=state.waiting_for,
             last_error=last_error,
@@ -592,7 +596,7 @@ def project_conversation(
             if effect.name == SEND_FILE:
                 if not _file_sent(command_state):
                     # A rejected or unfinished call reached nobody; it stays a tool record.
-                    status, error = _tool_status(command_state)
+                    status, error = _tool_status(command_state, auto_authorize=session.auto_authorize)
                     tools.append(ToolItem(command_state.command.command_id, effect.name, status, error,
                                           effect.argument_dict()))
                     continue
@@ -601,7 +605,7 @@ def project_conversation(
                     command_state.command.command_id, effect.argument_dict()["text"], (),
                     event.occurred_at, files=_delivered_files(command_state, attachments)))
                 continue
-            status, error = _tool_status(command_state)
+            status, error = _tool_status(command_state, auto_authorize=session.auto_authorize)
             tools.append(
                 ToolItem(
                     command_state.command.command_id,
@@ -668,8 +672,10 @@ def _file_sent(state: CommandState) -> bool:
 
 def _tool_status(
     state: CommandState,
+    *,
+    auto_authorize: bool,
 ) -> tuple[ToolStatus, str | None]:
-    """只从 Journal 投影工具基态；running 由 Channel 按 command_id 叠加。"""
+    """自动放行中的调用展示为排队；running 由 Channel 按 command_id 叠加。"""
 
     outcome = state.outcome
     if outcome is not None:
@@ -683,6 +689,6 @@ def _tool_status(
         return ("rejected", None)
     if state.phase is CommandPhase.UNKNOWN:
         return ("unknown", UNKNOWN_TOOL_ERROR)
-    if state.dispatch_eligible_by_event_id is None:
+    if state.dispatch_eligible_by_event_id is None and not auto_authorize:
         return ("awaiting_authorization", None)
     return ("queued", None)
