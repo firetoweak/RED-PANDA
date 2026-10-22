@@ -412,7 +412,19 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 
 @media (max-width: 64em) {
   .content-page-resize { display: none; }
-  .conversation-layout:has(> .content-page) > .conversation { display: none; }
+  .conversation-layout:has(> .content-page) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .conversation-layout:has(> .content-page) > .conversation { display: contents; }
+  .conversation-layout:has(> .content-page) > .conversation > :not(.composer-dock) { display: none; }
+  .conversation-layout:has(> .content-page) .composer-dock {
+    position: relative;
+    grid-row: 2;
+  }
+  .conversation-layout:has(> .content-page) .jump-to-latest { display: none; }
+  .conversation-layout > .content-page { grid-row: 1; }
   .content-page { flex: 1; border-left: 0; }
 }
 

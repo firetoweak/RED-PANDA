@@ -7,7 +7,7 @@
 - `start`：每次启动都新建一个会话并打印：`RED PANDA 已启动。model=<模型>`、`工作区：<访问范围>`（完全访问时为 `工作区：整台电脑`，否则 `工作区：工作区 <工作区名>`）、`当前对话：<session_id>`，随后是提示行 `/new 新对话（关闭后不保留会话）`、`/mcp  /skill  管理外部能力`、`直接输入任务。运行中再输入会打断当前任务。`、`Ctrl+C 或 Ctrl+D 退出。`、`Ctrl+V 粘贴图片或文字；终端拦截时用 Alt+V。删除 [Image #n] 可取消附件。`。
 - `new`：`/new` 另开新对话；切走后不能切回，没有 `/resume`。
 - `first-run`：数据目录里没有可用默认模型时，启动前先在终端走模型配置向导。
-- `fresh`：启动时丢弃上次运行留下的 `runtime_sessions/` 与 `state/`，保留 `config.json`、`connections.json` 与扩展登记；`--home` 已承载长期 Agent 工作树时拒绝启动并提示换独立目录，不清理该目录。
+- `fresh`：启动时丢弃上次运行留下的 `runtime_sessions/` 与 `state/`，保留 `config.json`、`connections.json` 与扩展登记；`--home` 已承载长期 Bot 工作目录或项目工作树时拒绝启动并提示换独立目录，包括未关联项目的 Bot，不清理其文件与会话。
 - `single-instance`：同一数据目录已有入口在运行时，第二个启动报错退出并写明占用者。
 - `interrupt`：运行中再输入会打断当前任务。
 - `approve`：待授权或待确认时输入 `yes`/`y` 批准、`no`/`n` 拒绝（见 extensions、tool-authorization）。
@@ -33,6 +33,7 @@
 - **/new**：(a) `runtime_sessions/` 多一个会话。(b) 打印 `新 Session 已创建：session-...`。(c) 原会话历史不变。
 - **回复与底栏**：发送一条短任务，观察流式预览和完成正文；核对底栏 Session ID 与当前会话一致，模型返回用量后更新输入 token 数。`/new` 后底栏切到新 Session；停止未完成预览时记录 `[输出已中止]`，不能将预览记为最终回复。
 - **与 Web 无关**：Web 与终端同时运行互不阻塞；终端建的会话不出现在 Web 的 Agent 名册（`GET /api/agents`）与收件箱。
+- **Bot 数据保护**：只用本轮隔离 Bot 的数据副本，分别覆盖未关联项目与关联项目的情况；用 `--home` 指向副本启动 TUI，应拒绝启动并提示换目录。启动前后核对 Bot 文件及会话哈希不变；不能只测仍被 Web 占用的数据目录。
 - **退出**：Ctrl+D（或 Ctrl+C）退出，打印 `已退出。`。(c) 无残留子进程。
 
 ## Gotchas
@@ -43,3 +44,5 @@
 - 历史验证：2026-10-12（main@1a4790a）跳过，需真 TTY。2026-10-18 按源码改写启动文案与 Windows 入口，未 live 复跑。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 正常退出通过；证据为终端文本，无 Web 截图。底栏、粘贴、并发占用与重启清理未覆盖。
+
+- 2026-10-22 修复复验（Windows ConPTY）：无项目 Bot 的隔离副本启动被拒绝，Bot 文件及会话哈希不变；另一独立目录正常启动、`/new`、Ctrl+D 退出。有项目与无项目两条保护路径均通过回归测试。本轮未重验粘贴、底栏与重启清理。
