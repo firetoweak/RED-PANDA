@@ -768,6 +768,120 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await child_journal.snapshot(client.target), child_events)
         self.assertTrue(self.host.failures.empty())
 
+    async def test_parent_can_ask_twice_and_child_reply_recovery_does_not_finish_task(self):
+        from redpanda.assistant.subagent.subagent import (
+            REPLY_FACT, REPLY_PARENT, REPORT_FACT, RETURN_FACT,
+            project_pending, project_report, project_returned,
+        )
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.runtime import DomainFactCommitted, UserMessageReceived, replay
+
+        started, accepted, continued_one, continued_two, finish = (asyncio.Event() for _ in range(5))
+
+        class InteractiveLlm(ProcessLlm):
+            target = None
+            phase = "ONE"
+            asked = set()
+            replied = set()
+
+            async def chat(client, messages, model, **kwargs):
+                text = json.dumps(messages)
+                names = {tool["function"]["name"] for tool in kwargs["tools"]}
+                if "report" in names:
+                    if "QUESTION_ONE" not in text:
+                        started.set()
+                        await asyncio.Event().wait()
+                    stage = "TWO" if "QUESTION_TWO" in text else "ONE"
+                    if stage not in client.replied:
+                        client.replied.add(stage)
+                        response = LLMResponse(calls=(ToolCall(f"reply-{stage}", REPLY_PARENT,
+                            json.dumps({"text": f"CHILD_PROGRESS_{stage}"})),))
+                    else:
+                        (continued_two if stage == "TWO" else continued_one).set()
+                        if stage == "ONE":
+                            await asyncio.Event().wait()
+                        await finish.wait()
+                        response = LLMResponse(calls=(ToolCall("report-final", "report", '{"summary":"FINAL_DONE"}'),))
+                elif client.target is None:
+                    response = LLMResponse(calls=(ToolCall("delegate-one", "delegate", '{"task":"持续调查"}'),))
+                elif client.phase not in client.asked:
+                    client.asked.add(client.phase)
+                    response = LLMResponse(calls=(ToolCall(f"ask-{client.phase}", "instruct_subagent", json.dumps({
+                        "child_session_id": client.target, "text": f"QUESTION_{client.phase}，说明进度后继续原任务",
+                    })),))
+                else:
+                    stage = "TWO" if "CHILD_PROGRESS_TWO" in text else "ONE"
+                    response = LLMResponse(content=f"PARENT_SAW_{stage}")
+                return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.llm = client = InteractiveLlm(self.root)
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.select("web", PARENT)
+        await self.host.accept_input(PARENT, "委派调查", delivery_id="delegate")
+        await asyncio.wait_for(started.wait(), 30)
+        events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        (client.target,) = project_pending(events)
+        reply = self.host._reply_parent
+
+        async def hold_reply_ack(*args):
+            result = await reply(*args)
+            accepted.set()
+            await asyncio.Event().wait()
+            return result
+
+        self.host._reply_parent = hold_reply_ack
+        await self.host.accept_input(PARENT, "先问一次进度", delivery_id="ask-one", interrupt=True)
+        await asyncio.wait_for(accepted.wait(), 30)
+        await until(lambda: (PARENT, "PARENT_SAW_ONE") in self.output)
+        self.assertTrue((await self.host.view(PARENT)).has_active_subagents)
+        child_journal = SqliteJournal(self.store.require(client.target))
+        self.assertFalse(project_returned(await child_journal.snapshot(client.target)))
+
+        # The parent has received the reply, but its acknowledgement has not
+        # reached the child. Recovery must not turn this send into task failure.
+        self.host.workers[client.target].process.terminate()
+        failure = await asyncio.wait_for(self.host.wait_failure(), 30)
+        self.assertEqual(failure.session_id, client.target)
+        await until(lambda: client.target not in self.host.workers)
+        self.host._reply_parent = reply
+        await asyncio.wait_for(self.host.resume(client.target), 30)
+        await asyncio.wait_for(continued_one.wait(), 30)
+        self.assertFalse(project_returned(await child_journal.snapshot(client.target)))
+        events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        replies = [e.payload for e in events if isinstance(e.payload, DomainFactCommitted)
+                   and e.payload.fact_type == REPLY_FACT]
+        self.assertEqual([e.data["text"] for e in replies], ["CHILD_PROGRESS_ONE"])
+
+        client.phase = "TWO"
+        await self.host.accept_input(PARENT, "再问一次进度", delivery_id="ask-two", interrupt=True)
+        await asyncio.wait_for(continued_two.wait(), 30)
+        await until(lambda: (PARENT, "PARENT_SAW_TWO") in self.output)
+        self.assertTrue((await self.host.view(PARENT)).has_active_subagents)
+        finish.set()
+        await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
+        child_events = await child_journal.snapshot(client.target)
+        self.assertEqual(project_report(child_events), "FINAL_DONE")
+        self.assertFalse(any(isinstance(e.payload, UserMessageReceived) for e in child_events))
+        self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
+                             and e.payload.fact_type == RETURN_FACT for e in child_events), 1)
+        events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        replies = [e.payload for e in events if isinstance(e.payload, DomainFactCommitted)
+                   and e.payload.fact_type == REPLY_FACT]
+        self.assertEqual([e.data["text"] for e in replies], ["CHILD_PROGRESS_ONE", "CHILD_PROGRESS_TWO"])
+        self.assertTrue(all(e.data["child_session_id"] == client.target for e in replies))
+        self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
+                             and e.payload.fact_type == REPORT_FACT for e in events), 1)
+        late = await self.host._reply_parent(client.target, {"command_id": "late", "text": "late"})
+        self.assertEqual(late["code"], "CHILD_FINISHED")
+        first_reply = next(command.command.command_id for command in replay(client.target, child_events).state.commands
+                           if command.command.effect.name == REPLY_PARENT)
+        repeated = await self.host._reply_parent(client.target, {
+            "command_id": first_reply, "text": "CHILD_PROGRESS_ONE",
+        })
+        self.assertEqual(repeated["code"], "REPLY_SENT")
+        self.assertEqual(await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT), events)
+        self.assertTrue(self.host.failures.empty())
+
     async def test_unselected_busy_worker_stops_only_after_work_finishes(self):
         await self.host.create("one", self.workspace.workspace_id)
         await self.host.select("cli", "one")

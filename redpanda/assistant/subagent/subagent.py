@@ -1,4 +1,4 @@
-"""SubAgent 委派、追加指令与回收。
+"""SubAgent 委派、父子交流与回收。
 
 子 Session 是普通独立 Session：同一套 create / advance / recover，自己的
 Journal 与判定。父子关系只存在于 Assistant 侧，用因果事实表达，Runtime 不
@@ -41,10 +41,12 @@ from redpanda.runtime.model import CanonicalState
 DELEGATE = "delegate"
 RECLAIM = "reclaim"
 INSTRUCT = "instruct_subagent"
+REPLY_PARENT = "reply_parent"
 REPORT = "report"
 
 TASK_FACT = "subagent.task"
 INSTRUCTION_FACT = "subagent.instruction"
+REPLY_FACT = "subagent.reply"
 REPORT_FACT = "subagent.report"
 RETURN_FACT = "subagent.return"
 
@@ -193,6 +195,16 @@ def instruction_arguments(parent_session_id: str, command_id: str, text: str) ->
     )
 
 
+def reply_arguments(child_id: str, command_id: str, text: str) -> dict[str, object]:
+    return dict(
+        fact_type=REPLY_FACT,
+        data={"child_session_id": child_id, "text": text},
+        delivery_id=f"{child_id}:{command_id}:reply",
+        source=FACT_SOURCE,
+        requests_decision=True,
+    )
+
+
 def instructed_result(child_id: str) -> dict[str, object]:
     return {"ok": True, "code": "SUBAGENT_INSTRUCTED", "data": {"child_session_id": child_id}}
 
@@ -306,6 +318,7 @@ CHILD_BUILTIN_TOOL_NAMES = frozenset(
         "apply_patch",
         "replace_all",
         "update_plan",
+        REPLY_PARENT,
         REPORT,
     }
 )
@@ -333,7 +346,7 @@ DELEGATE_SCHEMA: dict[str, object] = {
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
             "改了文件的子 Agent 用 compare_subagent 验收，用 merge_subagent 合入你在这个项目的分支。"
             "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
-            "调整还在工作的子 Agent 时用 instruct_subagent 追加指令；不再需要时用 reclaim 收回。"
+            "询问进展或调整方向时用 instruct_subagent，子可回复后继续；不再需要时用 reclaim 收回。"
         ),
         "parameters": {
             "type": "object",
@@ -373,7 +386,7 @@ DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
             "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
             "互不依赖的调查可在同一次决策里各发一次 delegate 并行，结论逐个返回。"
-            "调整还在工作的子 Agent 时用 instruct_subagent 追加指令；不再需要时用 reclaim 收回。"
+            "询问进展或调整方向时用 instruct_subagent，子可回复后继续；不再需要时用 reclaim 收回。"
         ),
         "parameters": {
             "type": "object",
@@ -397,9 +410,10 @@ INSTRUCT_SCHEMA: dict[str, object] = {
     "function": {
         "name": INSTRUCT,
         "description": (
-            "给自己委派、尚未结束的子 Agent 追加指令或调整方向。"
+            "给自己委派、尚未结束的子 Agent 追加指令、询问进展或调整方向。"
             "打断它当前的思考，保留历史与工作目录，按新指令继续；已发生的改动不会回退，"
             "尚未返回的工具先收尾。返回接纳结果，不等待最终结论，结论仍由 report 交回。"
+            "子用 reply_parent 回答询问或说明进展后继续任务；阶段性回复不表示任务完成。"
             "已经交回或被收回的子 Agent 不能继续，需要时重新 delegate。"
         ),
         "parameters": {
@@ -442,6 +456,25 @@ RECLAIM_SCHEMA: dict[str, object] = {
                 },
             },
             "required": ["child_session_id"],
+        },
+    },
+}
+
+
+REPLY_PARENT_SCHEMA: dict[str, object] = {
+    "type": "function",
+    "function": {
+        "name": REPLY_PARENT,
+        "description": (
+            "向父 Agent 回答询问，或说明当前进展、依据与阻碍。回复会送达父 Agent，"
+            "不会结束你的任务；发送后继续当前任务，完成时再用 report 交回最终结论。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "minLength": 1,
+                                    "description": "给父 Agent 的阶段性答复，包含判断所需的进展、依据或阻碍。"}},
+            "required": ["text"],
+            "additionalProperties": False,
         },
     },
 }
@@ -683,7 +716,7 @@ def project_report(events: Sequence[Event]) -> str | None:
 
 
 class SubAgentHost:
-    """委派、追加指令、回收，以及子 Session 的策略边界。"""
+    """委派、父子交流、回收，以及子 Session 的策略边界。"""
 
     def __init__(
         self,
@@ -746,13 +779,14 @@ class SubAgentHost:
 
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
-            return [REPORT_SCHEMA]
+            return [REPLY_PARENT_SCHEMA, REPORT_SCHEMA]
         return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, INSTRUCT_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {
             DELEGATE: ToolBinding(self._delegate, decision_on_outcome=False),
             INSTRUCT: ToolBinding(self._instruct_command),
+            REPLY_PARENT: ToolBinding(self._reply_parent_command),
             RECLAIM: ToolBinding(self._reclaim_command, decision_on_outcome=False),
             REPORT: ToolBinding(self._report, decision_on_outcome=False),
         }
@@ -786,7 +820,7 @@ class SubAgentHost:
         )
 
     def routed_sink(self, sink: DeliverySink, observation_sink: DeliverySink | None = None) -> DeliverySink:
-        """子正文只路由到观察端口，父模型仍只收到 report。"""
+        """子普通正文只路由到观察端口，给父的答复由显式工具发送。"""
 
         async def routed(session_id: str, output_id: str, text: str) -> None:
             if self.is_subagent(session_id):
@@ -1027,14 +1061,27 @@ class SubAgentHost:
             "parent_session_id": context.session_id, "command_id": context.command_id, "text": text,
         })
 
-    async def recover_instructions(self, session_id: str) -> None:
+    async def _reply_parent_command(self, context: AttemptContext, arguments: Mapping[str, object]):
+        text = arguments.get("text")
+        if set(arguments) != {"text"} or type(text) is not str or not text.strip():
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "需要非空的 text。"}
+        if await self._resolve_parent(context.session_id) is None:
+            return {"ok": False, "code": "REPLY_NOT_ALLOWED", "error": "只有子 Agent 可以回复父 Agent。"}
+        return await self._transport(REPLY_PARENT, context.session_id, {
+            "command_id": context.command_id, "text": text.strip(),
+        })
+
+    async def recover_messages(self, session_id: str) -> None:
+        """Resolve known sends before exposing unknown operations to a model."""
         runtime = self._require_runtime()
         state = await runtime.state(session_id)
+        handlers = {INSTRUCT: self._instruct_command, REPLY_PARENT: self._reply_parent_command}
         for command in state.commands:
-            if command.command.effect.name != INSTRUCT or command.phase is not CommandPhase.UNKNOWN:
+            handler = handlers.get(command.command.effect.name)
+            if handler is None or command.phase is not CommandPhase.UNKNOWN:
                 continue
             attempt = command.attempts[-1]
-            result = await self._instruct_command(
+            result = await handler(
                 AttemptContext(session_id, command.command.command_id, attempt.attempt_id, len(command.attempts)),
                 command.command.effect.argument_dict(),
             )

@@ -14,6 +14,7 @@ from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     INSTRUCT,
+    REPLY_PARENT,
     CHILD_BUILTIN_TOOL_NAMES,
     READ_ONLY_CHILD_TOOL_NAMES,
     RECLAIM,
@@ -590,7 +591,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
                     schema["function"]["name"]
                     for schema in host.schemas(child_session_id)
                 ],
-                [REPORT],
+                [REPLY_PARENT, REPORT],
             )
             self.assertNotIn(RECLAIM, CHILD_BUILTIN_TOOL_NAMES)
             self.assertNotIn(INSTRUCT, CHILD_BUILTIN_TOOL_NAMES)
@@ -880,6 +881,23 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reply_parent_requires_child_identity_and_valid_text(self):
+        from unittest.mock import AsyncMock
+
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("parent")
+        host, transport = SubAgentHost(), AsyncMock()
+        host.attach(runtime, transport)
+        for arguments in ({"text": " "}, {"text": 123}, {"text": "进展", "parent": "other"}):
+            with self.subTest(arguments=arguments):
+                result = await host._reply_parent_command(_attempt_context("parent"), arguments)
+                self.assertEqual(result["code"], "INVALID_ARGUMENT")
+        result = await host._reply_parent_command(_attempt_context("parent"), {"text": "进展"})
+        self.assertEqual(result["code"], "REPLY_NOT_ALLOWED")
+        self.assertNotIn(REPLY_PARENT, {s["function"]["name"] for s in host.schemas("parent")})
+        self.assertIn(REPLY_PARENT, CHILD_BUILTIN_TOOL_NAMES)
+        transport.assert_not_awaited()
+
     async def test_instruction_rejects_invalid_arguments_and_unowned_child(self):
         from unittest.mock import AsyncMock
 

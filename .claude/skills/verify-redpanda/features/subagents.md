@@ -12,6 +12,7 @@
 - `compare-merge`：`compare_subagent` 先列文件再给 diff；`merge_subagent` 不需要授权、必须单独调用，把子分支合进 Agent 自己的分支；冲突返回 `MERGE_CONFLICT`，Agent 分支不变。
 - `reclaim`：`reclaim` 结果码 `RECLAIMED`/`ALREADY_RECLAIMED`/`UNKNOWN_CHILD`/`RECLAIM_NOT_ALLOWED`。
 - `instruct`：`instruct_subagent(child_session_id, text)` 给自己尚未结束的子任务追加指令；打断旧思考后沿用同一任务继续，结果码 `SUBAGENT_INSTRUCTED`/`CHILD_FINISHED`/`UNKNOWN_CHILD`/`INSTRUCT_NOT_ALLOWED`。
+- `reply-parent`：子用 `reply_parent(text)` 回答父的询问或说明阶段进展，送达后继续任务；父收到 `subagent.reply`，它不表示最终交回。结果码 `REPLY_SENT`/`REPLY_NOT_ALLOWED`/`CHILD_FINISHED`，文本参数严格校验。
 - `sidebar-wait`：有活跃子任务时，主会话侧栏状态圆点为 `干活`；等待提示 `子 Agent 执行中` 显示在主会话正文中。
 
 ## How to get to it (user POV)
@@ -42,6 +43,11 @@
   - (c) 没有第二次 delegate 或 reclaim；子原历史保留，新指令是 `subagent.instruction` 事实，不能伪装成用户消息；一次委派仍只交回一次。
   - (d) 已交回或收回的子拒绝新指令（`CHILD_FINISHED`）；重复投递不再打断新工作；报告正在提交时保留原结论，不接续新方向。后两项由进程测试核对。
 - **子失败**：(b) 子以失败结束时内容页状态 `执行失败`，父最新一轮出现 Alert `子 Agent 执行失败` 并显示失败文字；(c) 父会话本身不进入失败状态。
+- **插话问答**：长任务执行中，让父用 `instruct_subagent` 问当前进展，要求子 `reply_parent` 答复后继续原任务。
+  - (a) 子历史出现成功的 `reply_parent`；父历史有对应 `subagent.reply`，含原子 id 与答复。此时观察 GET 的 result 仍为 null，父 `has_active_subagents=true`。
+  - (b) 父收到阶段答复后可转述进展；页面仍显示 `子 Agent 执行中`。再问一次可收到另一条答复，最终才显示 `已交回`。
+  - (c) 阶段性答复不触发回收、不伪装为用户消息；原 delegate 不变，最终 report 与 return 各一条。
+  - (d) 子在送达确认前退出，恢复核对同一回复，不重复投递、不误报任务失败；已结束时拒绝新的阶段回复，旧回复仍可确认。进程测试核对这些边界。
 
 ## Gotchas
 
@@ -55,3 +61,4 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；收回、冲突、子失败未重验。
 - 2026-10-22 插话控制增量：隔离 Web、Windows Chrome、真实 DeepSeek；子任务运行时插话保留它，父先回复且子继续执行；随后另派任务，在其运行中要求父 `reclaim`，观察页显示已收回与指定原因，GET 的 `cancelled=true`。自然结束与收回的首次竞态不计作收回通过；选择性收回及保留任务正常交回另由进程测试验证。未重验分支改动与合并、冲突、子失败；证据见 `.tools/interrupt-adjust-evidence/`。
 - 2026-10-22 追加指令增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；排序长文子任务执行中，父实际调用 `instruct_subagent`，原子任务中断旧思考并通过 report 交回 `CHILD_REDIRECT_OK`。GET 与 journal 确认同一子 id、一条新指令、一次决策取消、没有用户消息，最终 `reported=true`、`cancelled=false`；父未重新委派或收回。进程测试另验父在接纳确认前退出后的恢复幂等、报告提交竞态和已结束拒绝。未真实驱动代码项目写入/MCP 长调用/Linux；代码项目分支与原有停止等由进程回归核对。证据在 `.tools/subagent-instruction-evidence/`。
+- 2026-10-22 插话问答增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；父连续两次用 `instruct_subagent` 问进度，子两次 `reply_parent` 返回 `PROGRESS_ONE`/`PROGRESS_TWO`，父自动接到并转述，此时仍有活跃子任务。随后父调整同一个子任务，最终正常 report `DIALOGUE_FINAL_OK`。Journal 核对一次委派、三次插话、两条阶段答复、一条最终交回、零子会话用户消息，没有收回或重派。子在回复确认前退出的恢复、旧回复在终局后的确认与新回复拒绝由进程测试覆盖；未 live 验证代码项目写入、MCP 长调用与 Linux，不评价本次算法写作内容的正确性。证据在 `.tools/subagent-dialogue-evidence/`。

@@ -27,7 +27,7 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.control import (
     CONTROL_PROPOSED, CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
 )
-from redpanda.assistant.subagent.subagent import TASK_FACT, INSTRUCTION_FACT
+from redpanda.assistant.subagent.subagent import TASK_FACT, INSTRUCTION_FACT, REPLY_FACT
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
 from redpanda.runtime.events import (
@@ -48,7 +48,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 19
+PROJECTOR_VERSION = 20
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -302,6 +302,9 @@ def _translate_visible_events(
                 }
             elif payload.fact_type == INSTRUCTION_FACT:
                 shown_data = {"text": shown_data["text"], "notice": "父 Agent 发来的新指令，按它调整当前任务；这不是用户消息。"}
+            elif payload.fact_type == REPLY_FACT:
+                shown_data = {"child_session_id": shown_data["child_session_id"], "text": shown_data["text"],
+                              "notice": "子 Agent 的阶段性回复，不是最终交回；根据内容决定追加指令或等待最终结论。"}
             elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]

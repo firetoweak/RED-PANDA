@@ -47,7 +47,6 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
     # The model implementation lives on the Host; this Worker only holds a Port.
     home = RedPandaHome(Path(home_root))
     await journal.prepare_recovery(session_id)
-    await record_interrupted_return(journal, session_id)
     config = config_factory()
     events = await journal.snapshot(session_id)
     workspace = bound_workspace(
@@ -217,7 +216,8 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
             # let either model advance until its unknown sends are resolved.
             ready.set()
             await recover_message_attempts(journal, session_id, peer.request)
-            await assembly.subagents.recover_instructions(session_id)
+            await assembly.subagents.recover_messages(session_id)
+            await record_interrupted_return(journal, session_id)
             await assembly.sessions.recover_control(session_id)
             parent = project_parent(events)
             if parent is not None:

@@ -48,6 +48,7 @@ from redpanda.assistant.agent_messages import (
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
     REPORT_FACT,
+    REPLY_PARENT,
     RETURN_FACT,
     project_delegate_intents,
     persist_return,
@@ -57,6 +58,7 @@ from redpanda.assistant.subagent.subagent import (
     project_task,
     project_report,
     instruction_arguments,
+    reply_arguments,
     instructed_result,
     child_finished_result,
     report_arguments,
@@ -528,6 +530,8 @@ class HostSupervisor:
             return None
         if operation == "instruct_child":
             return await self._instruct_child(session_id, arguments)
+        if operation == REPLY_PARENT:
+            return await self._reply_parent(session_id, arguments)
         return await self.request(operation, session_id, arguments)
 
     def start_automation(self, group: asyncio.TaskGroup) -> None:
@@ -979,6 +983,22 @@ class HostSupervisor:
         if worker.running:
             worker.running = False
             await self._emit_session_activity(session_id, "idle")
+
+    async def _reply_parent(self, session_id, arguments):
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        task = project_task(events)
+        if task is None:
+            raise ValueError("reply sender is not a child")
+        fact = reply_arguments(session_id, arguments["command_id"], arguments["text"])
+        if project_returned(events):
+            parent_events = await SqliteJournal(self.store.require(task.parent_session_id)).snapshot(task.parent_session_id)
+            delivered = any(event.delivery is not None
+                            and event.delivery.source == fact["source"]
+                            and event.delivery.delivery_id == fact["delivery_id"] for event in parent_events)
+            if not delivered:
+                return {"ok": False, "code": "CHILD_FINISHED", "error": "子任务已结束，不能发送新的阶段性回复。"}
+        await self.request("fact", task.parent_session_id, fact)
+        return {"ok": True, "code": "REPLY_SENT"}
 
     async def _instruct_child(self, session_id, arguments):
         async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
