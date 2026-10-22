@@ -939,7 +939,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         (self.root / "release").touch()
         await until(lambda: ("blocked", "done") in self.output)
 
-    async def test_resume_selected_parent_recovers_its_children_only(self):
+    async def test_startup_recovers_idle_parents_children_without_selecting_parent(self):
         await self.host.create("unrelated", self.workspace.workspace_id)
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host.receive_user_message(
@@ -947,11 +947,21 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
         await until(lambda: "parent" not in self.host.workers)
+        from redpanda.assistant.sessions import session_view
+        from redpanda.runtime import replay
+
+        before = await SqliteJournal(self.store.require("parent")).snapshot("parent")
+        self.assertFalse(session_view(replay("parent", before).state).should_wake)
+        unrelated_before = await SqliteJournal(self.store.require("unrelated")).snapshot("unrelated")
         await self.host.close()
         (self.root / "release").touch()
         self.host = self.new_host()
         self.assertEqual(self.host.workers, {})
-        await asyncio.wait_for(self.host.resume("parent"), 30)
+        self.host._pause.set("parent", True)
+        await asyncio.wait_for(self.host.resume_unfinished_sessions(), 30)
+        self.assertEqual(self.host.workers, {})
+        self.host._pause.set("parent", False)
+        await asyncio.wait_for(self.host.resume_unfinished_sessions(), 30)
         await until(lambda: not self.host.workers and not self.host.watchers)
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         self.assertEqual(len(project_reclaimed(events)), 0)
@@ -962,6 +972,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         ).snapshot("unrelated")
         self.assertEqual(len(project_delegations(unrelated)), 0)
         self.assertEqual(len(project_reclaimed(unrelated)), 0)
+        self.assertEqual(unrelated, unrelated_before)
+        self.assertTrue(self.host.failures.empty())
+        # Open collaboration alone must not manufacture another model decision.
+        await self.host.close()
+        self.host = self.new_host()
+        await asyncio.wait_for(self.host.resume_unfinished_sessions(), 30)
+        await until(lambda: not self.host.workers and not self.host.watchers)
+        self.assertEqual(await SqliteJournal(self.store.require("parent")).snapshot("parent"), events)
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_recovery_preserves_unfinished_read_and_reports_once(self):

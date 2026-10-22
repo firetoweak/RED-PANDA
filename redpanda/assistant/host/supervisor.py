@@ -25,7 +25,7 @@ from redpanda.automation.once import (
     ScheduleDeliveryUnavailable,
     ScheduledCheck,
 )
-from redpanda.assistant.control import pending_approval_view, project_control_message
+from redpanda.assistant.control import pending_approval_view, project_control, project_control_message
 from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.host.auto_authorize import AutoAuthorizeStore
 from redpanda.assistant.compact.host import CompactHost
@@ -211,7 +211,8 @@ class HostSupervisor:
         """进程刚起来时，上一个进程里还会自己往下走的顶层会话接着推进。
 
         长期 Agent 通常自动续跑；人停止过或命令结果未知的会话等人继续。
-        等外部事实的会话本来就不会自己动，子会话只由父恢复时带起来，这里都不改。
+        父会话即使已静止，未结束的委派和未完成的控制准备、已批准执行仍要恢复。
+        只等外部输入的会话保持静止；子会话只由父恢复时带起来。
 
         此刻没有任何 Worker，上一个进程留下的未完成 Attempt 先按接管记下，
         否则判断看到的是一条永远等不到结果的命令。
@@ -252,7 +253,9 @@ class HostSupervisor:
             if agent is not None and ((path.parent / "agent-creation.json").exists() or not state.steps):
                 joining.append(agent)
                 continue
-            if session_view(state).should_wake:
+            control = project_control(events).active
+            if (session_view(state).should_wake or project_pending(events)
+                    or (control is not None and control.phase in {"requested", "approved"})):
                 unfinished.append(session_id)
         if self.commands is not None:
             for session_id, events in command_sessions:

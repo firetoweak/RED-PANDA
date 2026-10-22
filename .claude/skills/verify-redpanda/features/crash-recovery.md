@@ -4,7 +4,7 @@
 
 源码事实（判据以此为准，2026-10-18 核对）：
 - **进程结构**：Web 进程内的 `HostSupervisor`（`redpanda/assistant/host/supervisor.py`）为每个会话用 `multiprocessing` spawn 起 Worker 子进程（命令行含 `spawn_main`）；Worker 在父进程退出后自行退出（`worker.py` 的 `parent_process().join()`）。Worker 失败经 `report_worker_failures`（`redpanda/channels/web/app.py`）发 SSE `session_failed`，文案 `Session 进程失败：...`，同一文案也记为该会话的 `last_error`。
-- **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；人停止过的保持 paused。`execute_command` 已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起。
+- **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；顶层即使已静止，仍恢复未结束的子任务、已提交的控制准备和已批准但尚未开始的控制执行。人停止过的保持 paused。`execute_command` 已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起，未批准的控制操作仍等人，已开始而结果未知的仍不自动重试。
 - **执行一半的工具**：journal 已记 attempt 但无结果的命令处于 `CommandPhase.UNKNOWN`（`redpanda/runtime/state.py`）。新 Worker 接管或 Web 启动时，`SqliteJournal.prepare_recovery` 为每个未完成 attempt 追加 `command.attempt.orphaned`（不是 Outcome，状态仍 unknown）；之后新消息不再被它挡住，接管时先找回已完成的真实命令结果；仍无法确认的调用，`再试`/`继续` 才会让模型看到 `NO_RESULT_YET` 并续步。给模型的投影 `NO_RESULT_YET`（`redpanda/assistant/context/projection.py`）：error「该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具=<name>）。」，hint「先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。」。Web 中该调用状态 `unknown`、徽标 `中断`，错误文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`（`redpanda/assistant/conversations.py` 的 `UNKNOWN_TOOL_ERROR`）。**不会自动重试**。子 Agent 同理（`record_interrupted_return`）。
 - **待授权**：未授权的命令投影为 `AWAITING_AUTHORIZATION`，「尚未执行」。对已处理的命令再授权/拒绝 → `AuthorizationConflict`「该操作已处理或当前不可授权：<command_id>」→ HTTP 409。
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`redpanda/runtime/journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件。不同内容在 Assistant 输入边界转为 `InputConflict`，经 IPC 回传，Web 返回 409；不新增事件、不使 Worker 失败。

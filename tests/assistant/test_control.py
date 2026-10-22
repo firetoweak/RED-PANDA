@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import unittest
+from functools import partial
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
+import pytest
 from pydantic import BaseModel, ConfigDict
 
 from tests.fixtures.artifacts import MemoryArtifactGateway, MemoryArtifactStore
@@ -250,6 +255,105 @@ def _sessions(runtime, control, scheduler=None) -> AssistantSessions:
         management=SimpleNamespace(),
         catalog=EmptyCatalog(),
     )
+
+
+def _recovery_config(workspace):
+    from redpanda.assistant.host import worker
+    from tests.fixtures.session_worker import config_for
+
+    class Handler(ApprovalHandler):
+        async def execute(self, payload):
+            with (workspace / "control-executions.txt").open("a", encoding="utf-8") as target:
+                target.write(payload["value"] + "\n")
+            return await super().execute(payload)
+
+    build = worker.build_assistant_assembly
+
+    async def assembly(*args, **kwargs):
+        result = await build(*args, **kwargs)
+        result.sessions._control = AssistantControlPlane((_operation(_proposal, Handler()),))
+        return result
+
+    worker.build_assistant_assembly = assembly
+    return config_for(workspace)
+
+
+@pytest.mark.process
+class StartupControlRecoveryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_startup_resumes_committed_control_work_with_no_automatic_retry(self):
+        from redpanda.assistant.host.session_store import SessionStore
+        from redpanda.assistant.host.supervisor import HostSupervisor
+        from redpanda.assistant.sessions import session_view
+        from redpanda.paths import RedPandaHome
+        from redpanda.runtime import SqliteJournal, replay
+        from tests.assistant.test_supervisor import until
+        from tests.fixtures.session_worker import ProcessLlm
+
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            home = RedPandaHome(root / "home")
+            store = SessionStore(home.runtime_sessions_root)
+
+            def host():
+                return HostSupervisor(
+                    store, partial(_recovery_config, root), home, lambda *_: None, llm=ProcessLlm(root),
+                )
+
+            owner = host()
+            before = {}
+            try:
+                for phase in ("requested", "proposed", "approved", "paused", "execution_started"):
+                    await store.create(phase, directory=root)
+                    journal = SqliteJournal(store.require(phase))
+                    control = AssistantControlPlane((_operation(_proposal),))
+                    runtime = _runtime(journal, control)
+                    await runtime.receive_user_message(phase, "安装它", delivery_id="input")
+                    await runtime.advance(phase)
+                    await asyncio.gather(*runtime.dispatcher._tasks.values())
+
+                    async def commit(outcome):
+                        await runtime.receive_domain_fact(
+                            phase, outcome.fact_type, dict(outcome.data), source=CONTROL_SOURCE,
+                            delivery_id=outcome.delivery_id, requests_decision=outcome.requests_decision,
+                        )
+
+                    if phase != "requested":
+                        await commit(await control.prepare_pending(await journal.snapshot(phase)))
+                    if phase in {"approved", "paused", "execution_started"}:
+                        request = project_pending_approval(await journal.snapshot(phase))
+                        await commit(control.decision_outcome(request, approved=True))
+                        if phase == "execution_started":
+                            await commit(control.execution_started_outcome(request))
+                    if phase == "paused":
+                        owner._pause.set(phase, True)
+                    before[phase] = await journal.snapshot(phase)
+                    self.assertFalse(session_view(replay(phase, before[phase]).state).should_wake)
+                    await runtime.dispatcher.close()
+            finally:
+                await owner.close()
+
+            for _restart in range(2):
+                owner = host()
+                try:
+                    await asyncio.wait_for(owner.resume_unfinished_sessions(), 30)
+                    await until(lambda: not owner.workers and not owner.watchers)
+                    self.assertTrue(owner.failures.empty())
+                    self.assertTrue(owner.is_paused("paused"))
+                    self.assertEqual((root / "control-executions.txt").read_text(encoding="utf-8"), "frozen\n")
+                    for phase in before:
+                        events = await SqliteJournal(store.require(phase)).snapshot(phase)
+                        state = project_control(events)
+                        if phase == "approved":
+                            self.assertEqual(state.states[-1].phase, "succeeded")
+                            self.assertEqual(len(_facts(events, CONTROL_EXECUTION_STARTED)), 1)
+                            self.assertEqual(len(_facts(events, CONTROL_SUCCEEDED)), 1)
+                        elif phase == "requested":
+                            self.assertEqual(state.active.phase, "proposed")
+                            self.assertEqual(len(_facts(events, CONTROL_PROPOSED)), 1)
+                        else:
+                            self.assertEqual(events, before[phase])
+                finally:
+                    await owner.close()
 
 
 class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
