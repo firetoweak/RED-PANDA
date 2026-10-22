@@ -17,6 +17,9 @@ import {
   groupSummarySchema,
   groupViewSchema,
   modelSettingsSchema,
+  sharedMemorySchema,
+  sharedMemoryConflictSchema,
+  type SharedMemory,
   modelTestResultSchema,
   sessionModelSchema,
   inboxItemSchema,
@@ -129,8 +132,23 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines", "AutoAuthorize"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines", "AutoAuthorize", "SharedMemory"],
   endpoints: (build) => ({
+    getSharedMemory: build.query<SharedMemory, void>({
+      query: () => "/shared-memory",
+      transformResponse: (value: unknown) => sharedMemorySchema.parse(value),
+      providesTags: ["SharedMemory"],
+    }),
+    saveSharedMemory: build.mutation<SharedMemory, { connectionId: string; deliveryId: string; version: number; content: string }>({
+      query: ({ connectionId, deliveryId, version, content }) => ({
+        url: "/shared-memory", method: "PUT", body: { connection_id: connectionId, delivery_id: deliveryId, version, content },
+      }),
+      transformResponse: (value: unknown) => sharedMemorySchema.parse(value),
+      transformErrorResponse: (response) => response.status === 409
+        && typeof response.data === "object" && response.data !== null && "current" in response.data
+        ? sharedMemoryConflictSchema.parse(response.data) : response,
+      invalidatesTags: ["SharedMemory"],
+    }),
     getFileChanges: build.query<FileChanges, { sessionId: string; project?: string }>({
       query: ({ sessionId, project }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params: project === undefined ? {} : { project },
@@ -521,6 +539,8 @@ export const {
   useUnlinkProjectMutation,
   useGetFileDiffQuery,
   useGetModelSettingsQuery,
+  useGetSharedMemoryQuery,
+  useSaveSharedMemoryMutation,
   useSaveModelSettingsMutation,
   useTestModelMutation,
   useGetSessionModelQuery,

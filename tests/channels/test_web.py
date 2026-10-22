@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+
 import asyncio
 import json
 import unittest
@@ -253,6 +255,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
         self.models.initialize_session("session-old")
         self.sessions.models = self.models
+        self.shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite")
         self.channel = WebChannel(
             self.sessions,
             self.queries,
@@ -268,13 +271,39 @@ class WebFirstSliceTest(unittest.TestCase):
         )
         self.client = TestClient(
             create_web_app(self.channel, self.hub, workspaces=self.workspaces,
-                           models=self.models, model_llm=self.model_llm)
+                           models=self.models, model_llm=self.model_llm, shared_memory=self.shared_memory)
         )
         self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
         self._directory.cleanup()
+
+    def test_user_and_bots_edit_the_same_memory_with_revision_conflicts(self):
+        self.assertEqual(self.client.get("/api/shared-memory").json()["content"], "")
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "user-save",
+                "version": 0, "content": "交接附验证依据。"}
+        saved = self.client.put("/api/shared-memory", json=body)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["updated_by"], "用户")
+        self.assertEqual(self.client.put("/api/shared-memory", json=body).json(), saved.json())
+        bot = self.shared_memory.update(UpdateSharedMemory(version=1, content="共享资源先协调。"),
+                                        author="Ada", source="bot:ada", operation_id="bot-save")
+        self.assertEqual(self.client.get("/api/shared-memory").json(), bot["data"])
+        stale = self.client.put("/api/shared-memory", json={**body, "delivery_id": "stale", "version": 1})
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()["current"], bot["data"])
+        self.assertEqual(self.shared_memory.read().content, "共享资源先协调。")
+
+    def test_memory_web_boundary_enforces_length_and_active_connection(self):
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "limit", "version": 0,
+                "content": "🐼" * 500}
+        self.assertEqual(self.client.put("/api/shared-memory", json=body).status_code, 200)
+        too_long = self.client.put("/api/shared-memory", json={**body, "delivery_id": "long", "content": "字" * 501})
+        self.assertEqual(too_long.status_code, 422)
+        inactive = self.client.put("/api/shared-memory", json={**body, "connection_id": "gone", "content": ""})
+        self.assertEqual(inactive.status_code, 409)
+        self.assertEqual(self.shared_memory.read().version, 1)
 
     def test_auto_authorize_is_global_and_notifies_other_pages(self):
         queue = self.hub.subscribe()

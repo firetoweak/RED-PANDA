@@ -7,12 +7,14 @@
 - `declare`：`declare_direction` 的参数只有 `direction`。侧栏在名字下方显示这句；没有声明时显示 `打开对话，开始协作`。
 - `list`：`list_colleagues` 不接受参数。每位同事有 `name`、`direction`、`directory`、`projects`、`status`、`since`。
 - `roster-facts`：第二位 Agent 创建后，已在的同事收到 `bot.colleague_joined`；对方声明方向后收到 `bot.direction_declared`。两条都不请求决策。
+- `shared-memory`：所有长期 Bot 用 `read_shared_memory` 查阅、用 `update_shared_memory` 修改同一份正文，最多500字符，含标点、空白和换行，可以为空。修改需要已读的 `version` 和完整 `content`；沿用工具授权。状态在 `$REDPANDA_HOME/state/shared_memory.sqlite`，修改者与来源一起保存。首次工作、内容变化和压缩后，完整正文通过 `bot.shared_memory` / `<shared_memory>` 呈现，不单独唤醒空闲同事。
 
 ## How to get to it (user POV)
 
 - 不关联项目也可以建两个 Bot，例如 `Ada` 与 `Lin`。
 - 打开 `Ada` 的会话，在 `消息` 里请它声明方向、再查询同事。
 - 侧栏 `Ada` 的名字下方看方向。负责方向不会出现在 `/inbox`。
+- 人直接维护共同记忆：侧栏底部 `设置 → 共同记忆` 打开抽屉，`共同记忆正文` 显示全文和最近修改者；`保存记忆` 提交，`撤销修改` 恢复当前正文。无需先创建 Bot。
 
 ## Driving it with the browser
 
@@ -34,6 +36,10 @@
   - (c) `/api/agents` 仍是这两个 Agent，群和这些事实不会变成名册里的另一行。
   - (d) `Lin` 尚未声明时，`Ada` 查到的 `direction` 为 `null`，侧栏 `Lin` 名字下显示 `打开对话，开始协作`。
 
+共同记忆增量验证仍从两个 Bot 的 `消息` 输入框进入：请 Ada 读取后保存一句团队约定；Lin 在下次工作时应直接看到该正文，也能读取并修改，Ada 再工作时看到 Lin 的新版本。(a) 数据库最新正文、版本、修改者及两边 journal 的观察一致；(b) 时间线出现对应读写工具卡；(c) 不改工作目录或项目文件，不因更新让空闲同事多出回复；(d) 501字符正文得到 `SHARED_MEMORY_TOO_LONG`，旧版本得到 `SHARED_MEMORY_CHANGED` 并返回最新正文，原文不被覆盖。压缩后继续问同一约定，对照实际模型输入中的 `<shared_memory>`，不能只凭回复猜测注入成功。未实测的子路径单独标注，不以进程测试替代页面证据。
+
+Web 编辑增量：输入500个表情，计数是 `500 / 500` 且可保存；501个字显示 `超过500字，请精简后保存。` 且不能保存。清空后可保存，最近修改者为 `用户`；Bot 下次工作直接看到该正文。关闭抽屉、进入模型配置再返回，未保存草稿仍在。另一页面或 Bot 在编辑期间先保存时，显示最新正文并保留自己的草稿，`保存记忆` 禁用；点 `已核对，继续编辑` 后才能按新版本保存。GET/PUT `/api/shared-memory` 与页面一致；未知或失效 Web 连接不能写入，重投同一次成功操作不增加版本。Web 编辑与读取本身不调用模型。
+
 ## Gotchas
 
 - 方向是 Agent 自己的声明，不是人在界面上批准的角色。系统不解析对话里的「同意」。
@@ -42,3 +48,7 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：declare_direction 和 list_colleagues 真实调用通过，侧栏显示最新方向；越权写入和非法参数未重验。
 
 2026-10-20 Bot 解耦增量：隔离 home、零代码项目、真实 deepseek/deepseek-flash，通过个人目录写入并读回、方向声明、私信往返、两名成员群聊发言。证据路径与完整日志保存在本地验证记录；未据此宣称其余子功能或完整功能地图已重验。
+
+2026-10-22 共同记忆增量：隔离 Web、1440×1000、真实 deepseek-flash，通过 Ada 保存、Lin 读取修订、Ada 不再调用读取工具即回复最新正文；两名 Bot 的实际 Compact 新窗口均含当前正文。500/501字符、清空、旧版本冲突和并发修改由自动化测试覆盖，未在页面驱动这些错误路径；其他系统与完整功能地图未重验。证据留在本地 `.tools/verification/shared-memory/evidence/`。
+
+2026-10-22 Web 编辑增量：隔离 home，通过500个表情保存、501字禁止保存、清空、草稿跨抽屉保留，以及两个页面先后保存时保留草稿和核对最新正文。数据库用户来源与版本递增一致；Ada 真实对话先看到用户正文，用户再次修改后，Ada 下一轮无需读取工具直接复述新版本。深浅主题与390×844窄屏可用。本次没有重复驱动 Compact 页面场景，两个对应真实进程测试通过。证据留在本地 `.tools/verification/settings/evidence/`。

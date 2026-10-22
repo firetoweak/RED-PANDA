@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ModelSettingsPage } from "../src/features/models/ModelSettingsPage";
+import { ModelSettings } from "../src/features/models/ModelSettings";
 
 const { data, save } = vi.hoisted(() => ({
   data: {
@@ -40,7 +40,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("saves the selected Step 5 effort and omits it when reset to provider default", async () => {
-  render(<MantineProvider env="test"><ModelSettingsPage /></MantineProvider>);
+  render(<MantineProvider env="test"><ModelSettings /></MantineProvider>);
   fireEvent.click(screen.getByRole("button", { name: "编辑" }));
   fireEvent.click(screen.getByRole("combobox", { name: "推理程度" }));
   fireEvent.click(screen.getByRole("option", { name: "高", exact: true }));

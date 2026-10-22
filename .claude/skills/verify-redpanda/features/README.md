@@ -63,7 +63,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 页面创建 Agent、真实用户输入、普通回复及刷新通过；其余见条目 |
 | workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 旧登记路径通过；当前界面变更与未重验范围见条目 |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目创建与方向/状态对照 GET 通过；其余见条目 |
-| colleague-tools | [colleague-tools.md](./colleague-tools.md) | `list_colleagues`、`declare_direction`；侧栏显示最新方向；同事加入与方向事实不请求决策 | declare_direction 和 list_colleagues 真实调用通过，侧栏显示最新方向；其余见条目 |
+| colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 用户编辑、超限、清空、草稿保留与双页面冲突通过；真实Bot下一轮直接读到用户新版本；其余见条目 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | Lin 向 Ada 的 send_message 送达，Ada 无新用户输入即普通回复 PRIVATE_RECEIVED；其余见条目 |
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；其余见条目 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 红色 PNG 经真实粘贴、发送、预览和 GET 下载通过，下载与原件逐字节相同；其余见条目 |
@@ -76,7 +76,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 真实模型多批自然回复、父主动追问和调整、状态查询、显式结束通过；项目成果与并行隔离见条目 |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | update_plan 建两步计划，API 留有进行中和全部完成两版；其余见条目 |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合的上下文用量与耗时可见，API context_input_tokens 有值；其余见条目 |
-| model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；其余见条目 |
+| model-settings | [model-settings.md](./model-settings.md) | `设置 → 模型配置` 抽屉、`测试`、`保存配置`、会话切换模型 | 抽屉编辑、草稿保留、撤销、保存与窄屏通过；真实连接测试空响应的错误展示通过；其余见条目 |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | UI 请求 45 秒 schedule_once，倒计时可见，无新用户输入即回复 WOKE_UP；其余见条目 |
 | routines | [routines.md](./routines.md) | `Agent 资料` 侧栏 `例行任务`：开关 `暂停 <名字>` / `恢复 <名字>`，`删除 <名字>` → `确认删除 <名字>`；`查看 <名字>` 看意图与执行记录 | 真实 save_routine 后列表出现；其余见条目 |
 | reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 普通结束正文、私信触发 PRIVATE_RECEIVED、定时触发 WOKE_UP 实时与刷新历史一致；其余见条目 |
@@ -98,7 +98,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat、inbox 及所有会话类条目 |
 | `/groups/:groupId` → `GroupChatPage` | group-chat |
-| `/settings/models` → `ModelSettingsPage` | model-settings |
+| 侧栏 `设置 → 模型配置` / `共同记忆` → `SettingsMenu` 抽屉（保持聊天路由） | model-settings、colleague-tools |
 | 未知前端路径回落 `index.html`（`app.py` 的 `_FrontendFiles`）；未知 API 保持 404 | web-session-chat |
 
 ### HTTP / SSE 接口（`redpanda/channels/web/app.py`）
@@ -107,6 +107,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 |---|---|
 | `GET /api/events` | realtime-events、reply-delivery（流式预览与最终回复） |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
+| `GET/PUT /api/shared-memory` | colleague-tools |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
 | `GET /api/sessions/{id}` | web-session-chat、reply-delivery（普通回复与文件附件） |
@@ -137,6 +138,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `save_routine` `set_routine_state` `list_routines` | `redpanda/automation/routine_tool.py` | routines |
 | `list_colleagues` `declare_direction` | `redpanda/assistant/agent_messages.py` | colleague-tools |
+| `read_shared_memory` `update_shared_memory` | `redpanda/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |

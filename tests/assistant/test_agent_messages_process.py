@@ -16,6 +16,7 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, project_shared_memory
 from redpanda.automation.routines import RoutineFire
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
@@ -51,6 +52,17 @@ class MessagingLlm(ProcessLlm):
         if attention is not None:
             calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps(
                 {"group": attention["group"], "text": "收到", "reply_to": attention["message_id"]})),)
+        elif "MEMORY_WRITE:" in text:
+            if READ_SHARED_MEMORY not in called:
+                calls = (ToolCall("read-memory", READ_SHARED_MEMORY, "{}"),)
+            elif UPDATE_SHARED_MEMORY not in called:
+                current = next(json.loads(message["content"])["data"] for message in reversed(messages)
+                               if message["role"] == "tool" and "SHARED_MEMORY_READ" in str(message["content"]))
+                instruction = next(message["content"] for message in reversed(messages)
+                                   if message["role"] == "user" and str(message["content"]).startswith("MEMORY_WRITE:"))
+                calls = (ToolCall("write-memory", UPDATE_SHARED_MEMORY, json.dumps({
+                    "version": current["version"], "content": instruction.removeprefix("MEMORY_WRITE:"),
+                })),)
         elif "SEND_TO_LIN" in text:
             if "list_colleagues" not in called:
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
@@ -131,6 +143,23 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(args[0] == self.ada.session_id for args in outputs))
         self.assertEqual(await self.events(self.lin), before)
         self.assertNotIn(self.lin.session_id, self.host.workers)
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_both_bots_edit_one_memory_and_updates_do_not_wake_idle_colleagues(self):
+        idle = await self.events(self.lin)
+        await self.host.receive_user_message(self.ada.session_id, "MEMORY_WRITE:共享资源先协调。", delivery_id="ada-memory")
+        await self.settled(self.ada)
+        self.assertEqual(await self.events(self.lin), idle)
+        self.assertNotIn(self.lin.session_id, self.host.workers)
+        self.assertEqual(project_shared_memory(await self.events(self.ada))["content"], "共享资源先协调。")
+        await self.host.receive_user_message(self.lin.session_id, "MEMORY_WRITE:共享资源先协调，交接附验证依据。", delivery_id="lin-memory")
+        await self.settled(self.lin)
+        note = project_shared_memory(await self.events(self.lin))
+        self.assertEqual(note, {"version": 2, "content": "共享资源先协调，交接附验证依据。", "updated_by": "Lin"})
+        await self.host.receive_user_message(self.ada.session_id, "查看同事的新约定。", delivery_id="observe-memory")
+        await self.settled(self.ada)
+        self.assertEqual(project_shared_memory(await self.events(self.ada)), note)
+        self.assertIn("共享资源先协调，交接附验证依据。", json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False))
         self.assertTrue(self.host.failures.empty())
 
     async def test_group_members_are_called_in_turn_and_speak_through_their_tool(self):

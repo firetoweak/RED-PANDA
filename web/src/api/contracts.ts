@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const sharedMemorySchema = z.object({
+  version: z.number().int().nonnegative(),
+  content: z.string().refine((value) => Array.from(value).length <= 500),
+  updated_by: z.string().nullable(),
+}).strict();
+export type SharedMemory = z.infer<typeof sharedMemorySchema>;
+export const sharedMemoryConflictSchema = z.object({ detail: z.string(), current: sharedMemorySchema }).strict();
+
 const controlApprovalSchema = z
   .object({
     request_id: z.string().min(1),
