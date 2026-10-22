@@ -185,7 +185,8 @@ def test_host_port_survives_worker_retirement(tmp_path, completion):
                 return len(output) > previous and not host.workers
             await until(responsive)
             assert (await replacement_port.read(entry["command_id"], 0, 0))["state"] == "running"
-            # Pausing the Agent does not revoke an already acknowledged background command.
+            # Cancelling the current turn leaves the acknowledged background command
+            # running; its later completion is a new fact that wakes the Agent.
             await host.cancel_turn("a")
             assert (await replacement_port.read(entry["command_id"], 0, 0))["state"] == "running"
             before = len(output)
@@ -200,12 +201,11 @@ def test_host_port_survives_worker_retirement(tmp_path, completion):
                 return any(isinstance(event.payload, DomainFactCommitted)
                            and event.payload.fact_type == "background_command_finished" for event in events)
             await until(notified)
-            assert len(output) == before
-            await host.retry("a")
             async def reported():
                 return len(output) > before
             await until(reported)
             await host.wait_quiescent("a")
+            assert len(output) == before + 1
             events = await journal.snapshot("a")
             assert len([event for event in events if isinstance(event.payload, DomainFactCommitted)
                         and event.payload.fact_type == "background_command_finished"]) == 1
