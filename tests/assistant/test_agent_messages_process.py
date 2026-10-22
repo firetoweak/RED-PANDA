@@ -162,7 +162,8 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("共享资源先协调，交接附验证依据。", json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False))
         self.assertTrue(self.host.failures.empty())
 
-    async def test_group_members_are_called_in_turn_and_speak_through_their_tool(self):
+    async def test_group_members_are_called_in_turn_even_after_current_turn_interruption(self):
+        await self.host.cancel_turn(self.lin.session_id)
         outputs = []
         self.host.sink = lambda *args: outputs.append(args)
         group = await self.host.agent_groups.create(name="开发组",
@@ -187,10 +188,8 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(attentions), 3)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_stopped_offline_recipient_gets_fact_but_no_step_until_human_continues(self):
-        # Persist the execution stop without creating a Worker, as after a Host restart.
-        self.host._execution_stopped.set(self.lin.session_id, True)
-        self.assertNotIn(self.lin.session_id, self.host.workers)
+    async def test_interrupted_recipient_processes_new_peer_message_automatically(self):
+        await self.host.cancel_turn(self.lin.session_id)
         before = await self.events(self.lin)
         await self.host.receive_user_message(self.ada.session_id, "SEND_TO_LIN", delivery_id="send")
         await self.settled(self.ada)
@@ -199,16 +198,11 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         messages = [event for event in after if isinstance(event.payload, DomainFactCommitted)
                     and event.payload.fact_type == PRIVATE_MESSAGE]
         self.assertEqual(len(messages), 1)
-        self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in before),
-                         sum(isinstance(e.payload, StepCommitted) for e in after))
-        self.assertTrue(self.host.is_execution_stopped(self.lin.session_id))
+        self.assertGreater(sum(isinstance(e.payload, StepCommitted) for e in after),
+                           sum(isinstance(e.payload, StepCommitted) for e in before))
         command = next(item for item in replay(self.ada.session_id, await self.events(self.ada)).state.commands
                        if item.command.effect.name == SEND_MESSAGE)
-        self.assertTrue(command.outcome.value["data"]["execution_stopped"])
-        self.assertIn("在人让它继续后处理", command.outcome.value["data"]["notice"])
-        await self.host.retry(self.lin.session_id)
-        await self.settled(self.lin)
-        self.assertTrue(any(isinstance(e.payload, StepCommitted) for e in await self.events(self.lin)))
+        self.assertEqual(command.outcome.value["data"]["notice"], "已送达；不等待对方回复。")
         for request in self.llm.requests:
             self.assertNotIn(self.ada.session_id, json.dumps(request["messages"]))
             self.assertIn("link_project", {tool["function"]["name"] for tool in request["tools"]})

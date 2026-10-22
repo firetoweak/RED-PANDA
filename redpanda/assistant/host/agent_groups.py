@@ -211,8 +211,6 @@ class AgentGroups:
     async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
         agent = await self.host.agents.resolve(name)
-        if self.host.is_execution_stopped(agent.session_id):
-            return
         drive.answering[name, call.message_id] = call
         delivery_id = f"attention:{drive.group.group_id}:{call.message_id}:{name}"
         attention = fact_arguments(GroupAttention(group=drive.group.name, message_id=call.message_id),

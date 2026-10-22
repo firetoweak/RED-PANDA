@@ -24,7 +24,7 @@ it("对话只处理所属 Bot 的通知，例行任务决定沿用原接口并�
     { ...common, kind: "absence", phase: "asked", summary: "要让 Ada 的例行任务继续吗？" },
     { ...common, kind: "limit", event_id: "limit", recipient: "Lin", text: "请调整交流方向。" },
     { ...common, kind: "authorization", command_id: "write", name: "write_file", arguments: {} },
-    { ...common, kind: "stopped", session_id: "lin", label: "Lin", summary: "Lin 执行已停止" },
+    { ...common, kind: "absence", phase: "paused", session_id: "lin", label: "Lin", summary: "Lin 例行任务已暂停" },
   ];
   const changes: unknown[] = [];
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
@@ -44,7 +44,7 @@ it("对话只处理所属 Bot 的通知，例行任务决定沿用原接口并�
   </MantineProvider></Provider>);
   expect(await screen.findByText("要让 Ada 的例行任务继续吗？")).toBeInTheDocument();
   expect(screen.getByText(/请调整交流方向/)).toBeInTheDocument();
-  expect(screen.queryByText("Lin 执行已停止")).not.toBeInTheDocument();
+  expect(screen.queryByText("Lin 例行任务已暂停")).not.toBeInTheDocument();
   expect(screen.queryByText("write_file")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "继续" })).toBeDisabled();
   view.rerender(<Provider store={store}><MantineProvider env="test">

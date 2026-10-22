@@ -1,4 +1,4 @@
-"""Overdue clocks cannot deliver before startup recovery establishes execution stops."""
+"""Overdue clocks cannot deliver before startup recovery takes over old attempts."""
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -21,16 +21,17 @@ def test_overdue_clock_waits_for_startup_recovery(tmp_path, monkeypatch):
 
     async def check():
         delivered = asyncio.Event()
+        recovered = asyncio.Event()
 
         async def recover(host):
             # Let an already-started overdue clock run, if there is one.
             await asyncio.sleep(0)
             assert not delivered.is_set()
-            host._execution_stopped.set("bot", True)
+            recovered.set()
 
         async def receive(host, operation, session_id, arguments):
             assert operation == "fact" and arguments["fact_type"] == TIME_REACHED
-            assert host.is_execution_stopped(session_id)
+            assert recovered.is_set()
             delivered.set()
 
         monkeypatch.setattr(bootstrap.HostSupervisor, "resume_unfinished_sessions", recover)

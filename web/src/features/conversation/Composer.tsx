@@ -10,7 +10,6 @@ import {
 import {
   IconArrowUp,
   IconPlayerStopFilled,
-  IconPlayerPlayFilled,
   IconPlus,
 } from "@tabler/icons-react";
 import {
@@ -59,12 +58,9 @@ type ComposerProps = {
   sending: boolean;
   running: boolean;
   canStop?: boolean;
-  shouldWake: boolean;
   stopBusy: boolean;
-  retryBusy: boolean;
   onSend: (text: string, artifactRefs: string[]) => Promise<void>;
   onStop: () => void;
-  onRetry: () => void;
   inputTokens: number | null;
 };
 
@@ -76,12 +72,9 @@ export function Composer({
   sending,
   running,
   canStop = running,
-  shouldWake,
   stopBusy,
-  retryBusy,
   onSend,
   onStop,
-  onRetry,
   inputTokens,
 }: ComposerProps) {
   const [text, setText] = useState(() => restoreComposerText(sessionId));
@@ -445,22 +438,6 @@ export function Composer({
                   variant="light"
                 >
                   <IconPlayerStopFilled size={16} />
-                </ActionIcon>
-              </Tooltip>
-            ) : null}
-            {shouldWake && !running ? (
-              <Tooltip label="继续">
-                <ActionIcon
-                  aria-label="继续"
-                  color="blue"
-                  disabled={stopBusy || retryBusy || connectionId === null}
-                  onClick={onRetry}
-                  radius="xl"
-                  size={32}
-                  type="button"
-                  variant="light"
-                >
-                  <IconPlayerPlayFilled size={16} />
                 </ActionIcon>
               </Tooltip>
             ) : null}

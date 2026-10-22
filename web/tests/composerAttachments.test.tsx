@@ -41,10 +41,10 @@ function showComposer(running = false, inputTokens: number | null = null, sessio
   const onSend = vi.fn(async () => {});
   const props = {
     sessionId, workspaceId: "workspace-test", connectionId: "connection",
-    disabled: false, sending: false, running, shouldWake: false,
-    stopBusy: false, retryBusy: false,
+    disabled: false, sending: false, running,
+    stopBusy: false,
     inputTokens,
-    onSend, onStop: vi.fn(), onRetry: vi.fn(),
+    onSend, onStop: vi.fn(),
   };
   const ui = (active: boolean) => <Provider store={store}><MantineProvider>
     <ChatPresentation value={{ names: ["Ada", "Ada QA", "李雷", "C++"], quote: null, onQuote: () => {}, onJump: () => {} }}>

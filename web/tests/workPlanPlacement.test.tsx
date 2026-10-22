@@ -45,7 +45,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
       pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
-      control_approval: null, control_message: null, auto_authorize: false, execution_stopped: false, last_error: null,
+      control_approval: null, control_message: null, auto_authorize: false, last_error: null,
     },
     items: [
       { kind: "user", message_id: "first", text: "第一轮请求", occurred_at: "2026-10-03T00:00:00Z", images: [], files: [] },

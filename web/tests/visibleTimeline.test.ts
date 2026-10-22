@@ -20,7 +20,7 @@ const session = {
   control_approval: null,
   control_message: null,
   auto_authorize: false,
-  execution_stopped: false, last_error: null,
+  last_error: null,
 };
 
 const conversation: ConversationView = {

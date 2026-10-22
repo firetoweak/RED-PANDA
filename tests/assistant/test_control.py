@@ -302,7 +302,7 @@ class StartupControlRecoveryTest(unittest.IsolatedAsyncioTestCase):
             owner = host()
             before = {}
             try:
-                for phase in ("requested", "proposed", "approved", "execution_stopped", "execution_started"):
+                for phase in ("requested", "proposed", "approved", "execution_started"):
                     await store.create(phase, directory=root)
                     journal = SqliteJournal(store.require(phase))
                     control = AssistantControlPlane((_operation(_proposal),))
@@ -319,13 +319,11 @@ class StartupControlRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
                     if phase != "requested":
                         await commit(await control.prepare_pending(await journal.snapshot(phase)))
-                    if phase in {"approved", "execution_stopped", "execution_started"}:
+                    if phase in {"approved", "execution_started"}:
                         request = project_pending_approval(await journal.snapshot(phase))
                         await commit(control.decision_outcome(request, approved=True))
                         if phase == "execution_started":
                             await commit(control.execution_started_outcome(request))
-                    if phase == "execution_stopped":
-                        owner._execution_stopped.set(phase, True)
                     before[phase] = await journal.snapshot(phase)
                     self.assertFalse(session_view(replay(phase, before[phase]).state).should_wake)
                     await runtime.dispatcher.close()
@@ -338,7 +336,6 @@ class StartupControlRecoveryTest(unittest.IsolatedAsyncioTestCase):
                     await asyncio.wait_for(owner.resume_unfinished_sessions(), 30)
                     await until(lambda: not owner.workers and not owner.watchers)
                     self.assertTrue(owner.failures.empty())
-                    self.assertTrue(owner.is_execution_stopped("execution_stopped"))
                     self.assertEqual((root / "control-executions.txt").read_text(encoding="utf-8"), "frozen\n")
                     for phase in before:
                         events = await SqliteJournal(store.require(phase)).snapshot(phase)

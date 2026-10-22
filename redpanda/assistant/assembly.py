@@ -359,10 +359,6 @@ async def build_assistant_assembly(
     )
 
     async def before_advance():
-        if session_transport is not None and await session_transport(
-            "is_execution_stopped", session_id, {}
-        ):
-            return False
         if not compact_context.is_reader:
             if not (await runtime.state(session_id)).waiting_command_ids:
                 await catalog.sync(runtime, session_id)

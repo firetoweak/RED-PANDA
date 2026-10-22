@@ -47,7 +47,7 @@ Agent 在同一次决策里发出多个 `delegate`，各子 Agent 在各自从 A
 - **合并冲突**：(a) 先合的使 `shared.txt`=`S-left`；后合的 `shared.txt` **仍为 `S-left`**，Agent 工作树里没有冲突标记，其他文件不变。(b) 结果 `code=MERGE_CONFLICT`，`data.conflicts` 含 `shared.txt`，`error` 为「合入冲突，你的分支没有被改动；可自己修改、放弃，或用 resolve_conflicts_of 再委派解决。」。(c) 不得出现「后合覆盖先合」。(d) 带 `resolve_conflicts_of=<冲突那次 delegate 的调用 id>` 重派 → 新子的 worktree 里 `shared.txt` 带冲突标记开工，解决后合并得到唯一结果；`resolve_conflicts_of` 填一个不存在或尚未结束协作的 id → `UNKNOWN_CONFLICT_SOURCE`。
 - **并发收回**：三个运行中让父 `reclaim` 子 2。(a) 子 2 journal 有结束事实；其他两个继续并正常交回。(b) 结果 `RECLAIMED`，子 2 内容页 `协作已结束` 与 `结束原因：<reason>`。(c) 子 2 的修改不进入 Agent 分支。(d) 再收回子 2 → `ALREADY_RECLAIMED`。
 - **父会话 `停止`**：三个运行中点输入框的 `停止`。(a) 每个子 journal 有结束事实，原因 `用户中断父会话`；之后各子事件数不再增长；`GET /api/sessions/<父 id>` 的 `has_open_subagents` 为 false。(b) `cancel` 返回 200；各子内容页 `协作已结束`，显示 `结束原因：用户中断父会话`。(c) 子 worktree 与分支保留可查看，不自动合入、不撤销。(d) 停止后子仍在跑或仍交回结论 → 记为问题。
-- **服务重启**：三个运行中杀服务后同一 home 重启（命令见 crash-recovery）。(a) 子不会自己恢复：只有父会话走恢复（点 `继续` 或发新消息）时 `rehydrate` 才认回并推进未回收的子；子会话里已开始但无结果的调用让该子以失败回传「子 Agent 执行中断，存在未取得结果的操作。需要时重新 delegate。」。(b) 父最新一轮出现 Alert `子 Agent 执行失败`。(c) 不重复执行已完成的子工具调用（比较子 worktree 内容与 journal 调用次数）。(d) 父只在等子回传时不会被自动 execution_stopped，界面也可能没有 `继续`；若此时子始终不推进、只能靠发新消息唤醒，记为疑似问题并写明实际表现。
+- **服务重启**：三个运行中杀服务后同一 home 重启（命令见 crash-recovery）。(a) 启动自动恢复未结束的父子协作，无需点击继续；子仍由父认回并推进。(b) 已开始且无结果的子调用按原有规则报告执行中断。(c) 已完成子工具不重复执行。(d) 待协作静止后再次重启，不因恢复协作而强行让父模型再决策。
 - **计量**：(a) 父的 `上下文用量` 不包含子的过程文本，也不要求累计值单调增长；子计划不覆盖父的 `当前计划`，子 `update_plan` 调用可在子过程记录中核对，观察页不另展示计划面板。(b) `本轮子 Agent 任务` 数等于 delegate 数。(c) 子思考和工具过程不进父转录，子普通回复进入父上下文。(d) 父转录里出现子思考或完整工具过程 → 记为问题。
 
 ## Gotchas

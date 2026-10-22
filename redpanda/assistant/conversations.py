@@ -31,7 +31,6 @@ from redpanda.runtime import (
     DomainFactCommitted,
     Event,
     OutcomeStatus,
-    RuntimeStatus,
     SqliteJournal,
     StepCommitted,
     StepState,
@@ -110,15 +109,6 @@ class LimitInboxItem:
 
 
 @dataclass(frozen=True, slots=True)
-class StoppedInboxItem:
-    kind: Literal["stopped"]
-    session_id: str
-    workspace_id: str | None
-    label: str
-    summary: str
-
-
-@dataclass(frozen=True, slots=True)
 class AbsenceInboxItem:
     kind: Literal["absence"]
     session_id: str
@@ -128,7 +118,7 @@ class AbsenceInboxItem:
     summary: str
 
 
-InboxItem = AuthorizationInboxItem | ControlInboxItem | LimitInboxItem | StoppedInboxItem | AbsenceInboxItem
+InboxItem = AuthorizationInboxItem | ControlInboxItem | LimitInboxItem | AbsenceInboxItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,11 +277,6 @@ class AssistantQueries:
             items.extend(project_limit_items(
                 session_id=session_id, workspace_id=None, label=agent.name, events=events,
             ))
-            if self._sessions.is_execution_stopped(session_id) and state.status is RuntimeStatus.RUNNABLE:
-                items.append(StoppedInboxItem(
-                    "stopped", session_id, None, agent.name,
-                    "执行已停止，有未处理的消息。继续后才会处理。",
-                ))
             watch = watches.get(session_id)
             if watch is not None:
                 summary = (
@@ -367,7 +352,6 @@ class AssistantQueries:
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
                 auto_authorize=self._sessions.auto_authorize(),
-                execution_stopped=self._sessions.is_execution_stopped(session_id),
                 last_error=self._sessions.current_failure(session_id),
             )
         else:
