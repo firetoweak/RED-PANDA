@@ -655,6 +655,119 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn((PARENT, "保留剩余子任务"), self.output)
         self.assertTrue(self.host.failures.empty())
 
+    async def test_parent_instruction_redirects_child_once_even_after_parent_crash(self):
+        from redpanda.assistant.subagent.subagent import (
+            INSTRUCT, INSTRUCTION_FACT, project_pending, project_report, project_returned,
+        )
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.runtime import DomainFactCommitted, UserMessageReceived
+        from tests.fixtures.session_worker import held_report_config
+
+        old_started, old_cancelled, redirected, release, accepted = (asyncio.Event() for _ in range(5))
+
+        class InstructionLlm(ProcessLlm):
+            target = None
+            phase = "redirect"
+            sent = set()
+            new_calls = 0
+            child_messages = None
+
+            async def chat(client, messages, model, **kwargs):
+                names = {tool["function"]["name"] for tool in kwargs["tools"]}
+                if "report" in names:
+                    if INSTRUCTION_FACT not in json.dumps(messages):
+                        old_started.set()
+                        try:
+                            await asyncio.Event().wait()
+                        finally:
+                            old_cancelled.set()
+                    client.child_messages = messages
+                    client.new_calls += 1
+                    redirected.set()
+                    await release.wait()
+                    response = LLMResponse(calls=(ToolCall("report-new", "report", '{"summary":"NEW_DIRECTION_DONE"}'),))
+                elif client.target is None:
+                    response = LLMResponse(calls=(ToolCall("delegate-one", "delegate", '{"task":"旧调查方向"}'),))
+                elif client.phase not in client.sent:
+                    client.sent.add(client.phase)
+                    response = LLMResponse(calls=(ToolCall(f"instruct-{client.phase}", INSTRUCT, json.dumps({
+                        "child_session_id": client.target, "text": "改为 NEW_DIRECTION，直接报告 NEW_DIRECTION_DONE",
+                    })),))
+                else:
+                    response = LLMResponse(content="指令处理完毕")
+                return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.config_factory = partial(held_report_config, self.root)
+        self.host.llm = client = InstructionLlm(self.root)
+        await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.select("web", PARENT)
+        await self.host.accept_input(PARENT, "开始调查", delivery_id="delegate")
+        await asyncio.wait_for(old_started.wait(), 30)
+        events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        (client.target,) = project_pending(events)
+        child_journal = SqliteJournal(self.store.require(client.target))
+        child_before = await child_journal.snapshot(client.target)
+        instruct = self.host._instruct_child
+
+        async def hold_ack(*args):
+            result = await instruct(*args)
+            accepted.set()
+            await asyncio.Event().wait()
+            return result
+
+        self.host._instruct_child = hold_ack
+        await self.host.accept_input(PARENT, "调整子任务方向", delivery_id="redirect", interrupt=True)
+        await asyncio.wait_for(accepted.wait(), 30)
+        await asyncio.wait_for(redirected.wait(), 30)
+        self.assertTrue(old_cancelled.is_set())
+        child_events = await child_journal.snapshot(client.target)
+        self.assertEqual(child_events[:len(child_before)], child_before)
+        self.assertFalse(project_returned(child_events))
+        self.assertFalse(any(isinstance(e.payload, UserMessageReceived) for e in child_events))
+        shown = json.dumps(client.child_messages, ensure_ascii=False)
+        self.assertIn("NEW_DIRECTION", shown)
+        self.assertNotIn("parent_session_id", shown)
+
+        # The child has accepted the instruction; the parent dies before its
+        # tool receipt. Recovery must resolve that receipt without interrupting again.
+        self.host.workers[PARENT].process.terminate()
+        failure = await asyncio.wait_for(self.host.wait_failure(), 30)
+        self.assertEqual(failure.session_id, PARENT)
+        await until(lambda: PARENT not in self.host.workers)
+        self.host._instruct_child = instruct
+        await asyncio.wait_for(self.host.resume(PARENT), 30)
+        await until(lambda: (PARENT, "指令处理完毕") in self.output)
+        self.assertEqual(client.new_calls, 1)
+        child_events = await child_journal.snapshot(client.target)
+        self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
+                             and e.payload.fact_type == INSTRUCTION_FACT for e in child_events), 1)
+        self.assertFalse(project_returned(child_events))
+
+        release.set()
+        await until(lambda: (self.root / "report-started").exists())
+        # A report already being submitted wins over another direction change.
+        client.phase = "late"
+        await self.host.accept_input(PARENT, "再次调整已提交报告的子任务", delivery_id="late")
+        await until(lambda: self.host.is_paused(client.target))
+        (self.root / "release-report").touch()
+        await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
+        child_events = await child_journal.snapshot(client.target)
+        self.assertEqual(project_report(child_events), "NEW_DIRECTION_DONE")
+        self.assertTrue(project_returned(child_events))
+        state = await self.host.view(PARENT)
+        self.assertFalse(state.has_active_subagents)
+        from redpanda.runtime import replay
+        parent_events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        outcomes = [command.outcome.value["code"] for command in replay(PARENT, parent_events).state.commands
+                    if command.command.effect.name == INSTRUCT]
+        self.assertEqual(outcomes, ["SUBAGENT_INSTRUCTED", "CHILD_FINISHED"])
+        late = await self.host._route("instruct_child", client.target, {
+            "parent_session_id": PARENT, "command_id": "after-return", "text": "不能重开已结束任务",
+        })
+        self.assertEqual(late["code"], "CHILD_FINISHED")
+        self.assertEqual(await child_journal.snapshot(client.target), child_events)
+        self.assertTrue(self.host.failures.empty())
+
     async def test_unselected_busy_worker_stops_only_after_work_finishes(self):
         await self.host.create("one", self.workspace.workspace_id)
         await self.host.select("cli", "one")

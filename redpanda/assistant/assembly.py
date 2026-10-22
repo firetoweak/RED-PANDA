@@ -323,12 +323,20 @@ async def build_assistant_assembly(
     child_review = GitChildReview(runtime, session_id, session_transport)
     surface.attach(runtime)
     compact_context.runtime = runtime
+
+    async def on_quiesced(target, state):
+        # A parent's new instruction is replacing the cancelled decision.
+        # The cancellation's transient idle state is not a child conclusion.
+        if task is not None and session_transport is not None and await session_transport("is_paused", target, {}):
+            return
+        await subagents.on_quiesced(target, state)
+
     scheduler = scheduler_factory(
         runtime,
         session_id,
         control=control,
         # 子 Session 失败提示不外露：用户该看到的是父转述后的判断。
-        on_quiesced=subagents.on_quiesced,
+        on_quiesced=on_quiesced,
         on_failed=subagents.on_failed,
         session_failed=report_session_failed,
         preview=preview,

@@ -13,6 +13,7 @@ from redpanda.assistant.loop_guard import LoopGuard
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
+    INSTRUCT,
     CHILD_BUILTIN_TOOL_NAMES,
     READ_ONLY_CHILD_TOOL_NAMES,
     RECLAIM,
@@ -592,6 +593,7 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
                 [REPORT],
             )
             self.assertNotIn(RECLAIM, CHILD_BUILTIN_TOOL_NAMES)
+            self.assertNotIn(INSTRUCT, CHILD_BUILTIN_TOOL_NAMES)
             refused = await host._delegate(
                 _attempt_context(child_session_id),
                 {"task": "再委派一层"},
@@ -604,6 +606,11 @@ class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIs(refused_reclaim["ok"], False)
             self.assertEqual(refused_reclaim["code"], "RECLAIM_NOT_ALLOWED")
+            refused_instruction = await host._instruct_command(
+                _attempt_context(child_session_id),
+                {"child_session_id": child_session_id, "text": "换方向"},
+            )
+            self.assertEqual(refused_instruction["code"], "INSTRUCT_NOT_ALLOWED")
         finally:
             await scheduler.close()
 
@@ -873,6 +880,28 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_instruction_rejects_invalid_arguments_and_unowned_child(self):
+        from unittest.mock import AsyncMock
+
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("parent")
+        transport = AsyncMock()
+        host = SubAgentHost()
+        host.attach(runtime, transport)
+        for arguments in (
+            {"child_session_id": "other/sub-child", "text": " "},
+            {"child_session_id": "other/sub-child", "text": 123},
+            {"child_session_id": "other/sub-child", "text": "换方向", "interrupt": False},
+        ):
+            with self.subTest(arguments=arguments):
+                result = await host._instruct_command(_attempt_context("parent"), arguments)
+                self.assertEqual(result["code"], "INVALID_ARGUMENT")
+        result = await host._instruct_command(
+            _attempt_context("parent"), {"child_session_id": "other/sub-child", "text": "换方向"},
+        )
+        self.assertEqual(result["code"], "UNKNOWN_CHILD")
+        transport.assert_not_awaited()
+
     async def test_external_schemas_bypass_builtin_name_filter(self):
         from redpanda.assistant.toolsets import ToolSurface
         from tests.assistant.test_toolsets import FakeEchoProvider
@@ -902,7 +931,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(host.system_prompt("plain-session"))
         self.assertEqual(
             [schema["function"]["name"] for schema in host.schemas("plain")],
-            [DELEGATE, RECLAIM],
+            [DELEGATE, INSTRUCT, RECLAIM],
         )
 
 

@@ -1,6 +1,6 @@
 # 子 Agent
 
-主 Agent 用 `delegate` 派出子任务，子 Agent 在从 Agent 分支切出的 worktree 里干活，`report` 交回结论；主 Agent 可 `reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合进自己的分支。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/assistant/subagent/review.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/assistant/host/agent_worktrees.py`（`create_child`/`compare_child`/`merge_child`）、`redpanda/assistant/conversations.py`（`observe_subagent`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`ExecutionProcess.tsx`、`ContentPage.tsx`、`Conversation.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
+主 Agent 用 `delegate` 派出子任务，子 Agent 在从 Agent 分支切出的 worktree 里干活，`report` 交回结论；主 Agent 可用 `instruct_subagent` 调整执行中的任务、`reclaim` 收回、`compare_subagent` 看差异、`merge_subagent` 合进自己的分支。来源：`redpanda/assistant/subagent/subagent.py`、`redpanda/assistant/subagent/review.py`、`redpanda/tools/builtin/subagent_workspace.py`、`redpanda/assistant/host/agent_worktrees.py`（`create_child`/`compare_child`/`merge_child`）、`redpanda/assistant/conversations.py`（`observe_subagent`）、`SubagentCallCard.tsx`、`SubagentPanel.tsx`、`ExecutionProcess.tsx`、`ContentPage.tsx`、`Conversation.tsx`、`app.py` 的 `GET .../subagents/{command_id}`。
 
 ## Sub-features
 
@@ -11,6 +11,7 @@
 - `isolation`：子 Agent 从 Agent 分支上已提交的工作切出自己的分支，改动写在 `$REDPANDA_HOME/state/coding_bot/<项目>/children/<子>`，看不到 Agent 未提交的修改，也不动 Agent 工作树。
 - `compare-merge`：`compare_subagent` 先列文件再给 diff；`merge_subagent` 不需要授权、必须单独调用，把子分支合进 Agent 自己的分支；冲突返回 `MERGE_CONFLICT`，Agent 分支不变。
 - `reclaim`：`reclaim` 结果码 `RECLAIMED`/`ALREADY_RECLAIMED`/`UNKNOWN_CHILD`/`RECLAIM_NOT_ALLOWED`。
+- `instruct`：`instruct_subagent(child_session_id, text)` 给自己尚未结束的子任务追加指令；打断旧思考后沿用同一任务继续，结果码 `SUBAGENT_INSTRUCTED`/`CHILD_FINISHED`/`UNKNOWN_CHILD`/`INSTRUCT_NOT_ALLOWED`。
 - `sidebar-wait`：有活跃子任务时，主会话侧栏状态圆点为 `干活`；等待提示 `子 Agent 执行中` 显示在主会话正文中。
 
 ## How to get to it (user POV)
@@ -35,6 +36,11 @@
   - (b) 工具结果 `code=RECLAIMED`；内容页状态 `已收回`，显示 `收回原因：<reason>`。
   - (c) 进程表里没有该子会话残留的 Worker（进程查询见 crash-recovery）。
   - (d) 再收回一次 → `ALREADY_RECLAIMED`；给一个不是本会话委派的 id → `UNKNOWN_CHILD`（「不是当前会话委派的子 Agent」）；子 Agent 自己调 `reclaim` → `RECLAIM_NOT_ALLOWED`（「子 Agent 不能收回其他子 Agent」）。
+- **追加指令**：先委派一项较长的只读调查，子仍运行时，从父输入框 `打断并发送` 要求用 `instruct_subagent` 调整为「只通过 report 交回 CHILD_REDIRECT_OK」。
+  - (a) 父实际调用 `instruct_subagent`，目标与原 `delegate` 的子 id 一致；GET 观察接口结果为 `reported=true` 且 summary 含新标记，`cancelled=false`。
+  - (b) 子内容页显示 `已交回` 和新结论，父收到结论后回复新标记。
+  - (c) 没有第二次 delegate 或 reclaim；子原历史保留，新指令是 `subagent.instruction` 事实，不能伪装成用户消息；一次委派仍只交回一次。
+  - (d) 已交回或收回的子拒绝新指令（`CHILD_FINISHED`）；重复投递不再打断新工作；报告正在提交时保留原结论，不接续新方向。后两项由进程测试核对。
 - **子失败**：(b) 子以失败结束时内容页状态 `执行失败`，父最新一轮出现 Alert `子 Agent 执行失败` 并显示失败文字；(c) 父会话本身不进入失败状态。
 
 ## Gotchas
@@ -48,3 +54,4 @@
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；收回、冲突、子失败未重验。
 - 2026-10-22 插话控制增量：隔离 Web、Windows Chrome、真实 DeepSeek；子任务运行时插话保留它，父先回复且子继续执行；随后另派任务，在其运行中要求父 `reclaim`，观察页显示已收回与指定原因，GET 的 `cancelled=true`。自然结束与收回的首次竞态不计作收回通过；选择性收回及保留任务正常交回另由进程测试验证。未重验分支改动与合并、冲突、子失败；证据见 `.tools/interrupt-adjust-evidence/`。
+- 2026-10-22 追加指令增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；排序长文子任务执行中，父实际调用 `instruct_subagent`，原子任务中断旧思考并通过 report 交回 `CHILD_REDIRECT_OK`。GET 与 journal 确认同一子 id、一条新指令、一次决策取消、没有用户消息，最终 `reported=true`、`cancelled=false`；父未重新委派或收回。进程测试另验父在接纳确认前退出后的恢复幂等、报告提交竞态和已结束拒绝。未真实驱动代码项目写入/MCP 长调用/Linux；代码项目分支与原有停止等由进程回归核对。证据在 `.tools/subagent-instruction-evidence/`。

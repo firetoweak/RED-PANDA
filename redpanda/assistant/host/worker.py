@@ -217,6 +217,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
             # let either model advance until its unknown sends are resolved.
             ready.set()
             await recover_message_attempts(journal, session_id, peer.request)
+            await assembly.subagents.recover_instructions(session_id)
             await assembly.sessions.recover_control(session_id)
             parent = project_parent(events)
             if parent is not None:

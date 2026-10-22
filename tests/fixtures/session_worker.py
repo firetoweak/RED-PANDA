@@ -105,6 +105,27 @@ def cancellable_config(workspace: Path):
     )
 
 
+def held_report_config(workspace: Path):
+    from redpanda.assistant.host import worker
+    from redpanda.runtime import ToolBinding
+
+    build = worker.build_assistant_assembly
+
+    async def report(context, arguments):
+        (workspace / "report-started").touch()
+        while not (workspace / "release-report").exists():
+            await asyncio.sleep(0.02)
+        return {"ok": True, "code": "REPORTED", "data": {"summary": arguments["summary"]}}
+
+    async def assembly(*args, **kwargs):
+        result = await build(*args, **kwargs)
+        result.runtime.bind_tool("report", ToolBinding(report, decision_on_outcome=False))
+        return result
+
+    worker.build_assistant_assembly = assembly
+    return config_for(workspace)
+
+
 def interrupted_read_config(workspace: Path):
     from redpanda.assistant.host import worker
     from redpanda.runtime import ToolBinding

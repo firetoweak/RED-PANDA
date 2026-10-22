@@ -1,4 +1,4 @@
-"""SubAgent 委派与回收。
+"""SubAgent 委派、追加指令与回收。
 
 子 Session 是普通独立 Session：同一套 create / advance / recover，自己的
 Journal 与判定。父子关系只存在于 Assistant 侧，用因果事实表达，Runtime 不
@@ -40,9 +40,11 @@ from redpanda.runtime.model import CanonicalState
 
 DELEGATE = "delegate"
 RECLAIM = "reclaim"
+INSTRUCT = "instruct_subagent"
 REPORT = "report"
 
 TASK_FACT = "subagent.task"
+INSTRUCTION_FACT = "subagent.instruction"
 REPORT_FACT = "subagent.report"
 RETURN_FACT = "subagent.return"
 
@@ -181,6 +183,25 @@ def report_arguments(
     )
 
 
+def instruction_arguments(parent_session_id: str, command_id: str, text: str) -> dict[str, object]:
+    return dict(
+        fact_type=INSTRUCTION_FACT,
+        data={"parent_session_id": parent_session_id, "text": text},
+        delivery_id=f"{command_id}:instruction",
+        source=FACT_SOURCE,
+        requests_decision=True,
+    )
+
+
+def instructed_result(child_id: str) -> dict[str, object]:
+    return {"ok": True, "code": "SUBAGENT_INSTRUCTED", "data": {"child_session_id": child_id}}
+
+
+def child_finished_result(child_id: str) -> dict[str, object]:
+    return {"ok": False, "code": "CHILD_FINISHED", "data": {"child_session_id": child_id},
+            "error": "子 Agent 已结束，不能追加指令。需要继续工作时重新 delegate。"}
+
+
 def _return_event(events: Sequence[Event]) -> Event | None:
     return next(
         (
@@ -312,7 +333,7 @@ DELEGATE_SCHEMA: dict[str, object] = {
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
             "改了文件的子 Agent 用 compare_subagent 验收，用 merge_subagent 合入你在这个项目的分支。"
             "互不依赖的任务可在同一次决策里各发一次 delegate 并行，结论逐个返回；改同一批文件会在合入时冲突。"
-            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
+            "调整还在工作的子 Agent 时用 instruct_subagent 追加指令；不再需要时用 reclaim 收回。"
         ),
         "parameters": {
             "type": "object",
@@ -352,7 +373,7 @@ DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
             "调用立即返回 child_session_id，结论之后单独送回：failure 非空表示没跑完，"
             "由你决定重派、换做法或告诉用户；cancelled=true 表示已被你 reclaim。"
             "互不依赖的调查可在同一次决策里各发一次 delegate 并行，结论逐个返回。"
-            "不再需要还在工作的子 Agent 时用 reclaim 收回，不要空等。"
+            "调整还在工作的子 Agent 时用 instruct_subagent 追加指令；不再需要时用 reclaim 收回。"
         ),
         "parameters": {
             "type": "object",
@@ -366,6 +387,31 @@ DELEGATE_READ_ONLY_SCHEMA: dict[str, object] = {
                 },
             },
             "required": ["task"],
+        },
+    },
+}
+
+
+INSTRUCT_SCHEMA: dict[str, object] = {
+    "type": "function",
+    "function": {
+        "name": INSTRUCT,
+        "description": (
+            "给自己委派、尚未结束的子 Agent 追加指令或调整方向。"
+            "打断它当前的思考，保留历史与工作目录，按新指令继续；已发生的改动不会回退，"
+            "尚未返回的工具先收尾。返回接纳结果，不等待最终结论，结论仍由 report 交回。"
+            "已经交回或被收回的子 Agent 不能继续，需要时重新 delegate。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "child_session_id": {"type": "string", "minLength": 1,
+                                     "description": "先前 delegate 返回的 child_session_id。"},
+                "text": {"type": "string", "minLength": 1,
+                         "description": "完整的新指令与所需背景；子 Agent 看不到你的当前对话。"},
+            },
+            "required": ["child_session_id", "text"],
+            "additionalProperties": False,
         },
     },
 }
@@ -637,7 +683,7 @@ def project_report(events: Sequence[Event]) -> str | None:
 
 
 class SubAgentHost:
-    """委派、回收，以及子 Session 的策略边界。"""
+    """委派、追加指令、回收，以及子 Session 的策略边界。"""
 
     def __init__(
         self,
@@ -701,11 +747,12 @@ class SubAgentHost:
     def schemas(self, session_id: str) -> list[dict[str, object]]:
         if self.is_subagent(session_id):
             return [REPORT_SCHEMA]
-        return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, RECLAIM_SCHEMA]
+        return [DELEGATE_SCHEMA if self._projects else DELEGATE_READ_ONLY_SCHEMA, INSTRUCT_SCHEMA, RECLAIM_SCHEMA]
 
     def bindings(self) -> dict[str, ToolBinding]:
         return {
             DELEGATE: ToolBinding(self._delegate, decision_on_outcome=False),
+            INSTRUCT: ToolBinding(self._instruct_command),
             RECLAIM: ToolBinding(self._reclaim_command, decision_on_outcome=False),
             REPORT: ToolBinding(self._report, decision_on_outcome=False),
         }
@@ -962,6 +1009,39 @@ class SubAgentHost:
             "code": "RECLAIMED",
             "data": {"child_session_id": child_session_id},
         }
+
+    async def _instruct_command(self, context: AttemptContext, arguments: Mapping[str, object]):
+        if self.is_subagent(context.session_id):
+            return {"ok": False, "code": "INSTRUCT_NOT_ALLOWED", "error": "子 Agent 不能指挥其他子 Agent。"}
+        child_id = arguments.get("child_session_id")
+        text = arguments.get("text")
+        if (set(arguments) != {"child_session_id", "text"}
+                or type(child_id) is not str or not child_id.strip()
+                or type(text) is not str or not text.strip()):
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "需要非空的 child_session_id 和 text。"}
+        child_id, text = child_id.strip(), text.strip()
+        events = await self._require_runtime().snapshot(context.session_id)
+        if child_id not in project_delegations(events) or child_id in project_failed_delegations(events):
+            return {"ok": False, "code": "UNKNOWN_CHILD", "error": "不是当前会话委派的子 Agent。"}
+        return await self._transport("instruct_child", child_id, {
+            "parent_session_id": context.session_id, "command_id": context.command_id, "text": text,
+        })
+
+    async def recover_instructions(self, session_id: str) -> None:
+        runtime = self._require_runtime()
+        state = await runtime.state(session_id)
+        for command in state.commands:
+            if command.command.effect.name != INSTRUCT or command.phase is not CommandPhase.UNKNOWN:
+                continue
+            attempt = command.attempts[-1]
+            result = await self._instruct_command(
+                AttemptContext(session_id, command.command.command_id, attempt.attempt_id, len(command.attempts)),
+                command.command.effect.argument_dict(),
+            )
+            await runtime.dispatcher.accept_outcome(
+                session_id, command.command.command_id, attempt.attempt_id, attempt.started_event_id,
+                CommandOutcome(OutcomeStatus.SUCCEEDED, value=result),
+            )
 
     async def _delegate(
         self,

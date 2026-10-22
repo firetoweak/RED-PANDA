@@ -55,6 +55,10 @@ from redpanda.assistant.subagent.subagent import (
     project_parent,
     project_returned,
     project_task,
+    project_report,
+    instruction_arguments,
+    instructed_result,
+    child_finished_result,
     report_arguments,
     return_data,
     task_from_arguments,
@@ -522,6 +526,8 @@ class HostSupervisor:
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
             return None
+        if operation == "instruct_child":
+            return await self._instruct_child(session_id, arguments)
         return await self.request(operation, session_id, arguments)
 
     def start_automation(self, group: asyncio.TaskGroup) -> None:
@@ -973,6 +979,34 @@ class HostSupervisor:
         if worker.running:
             worker.running = False
             await self._emit_session_activity(session_id, "idle")
+
+    async def _instruct_child(self, session_id, arguments):
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            journal = SqliteJournal(self.store.require(session_id))
+            events = await journal.snapshot(session_id)
+            task = project_task(events)
+            if task is None or task.parent_session_id != arguments["parent_session_id"]:
+                raise ValueError("instruction parent does not own child")
+            fact = instruction_arguments(arguments["parent_session_id"], arguments["command_id"], arguments["text"])
+            for event in events:
+                if (event.delivery is not None and event.delivery.source == fact["source"]
+                        and event.delivery.delivery_id == fact["delivery_id"]):
+                    expected = DomainFactCommitted(fact["fact_type"], fact["data"], requests_decision=True)
+                    if event.payload != expected:
+                        raise ValueError("instruction delivery conflicts with existing content")
+                    return instructed_result(session_id)
+            if project_returned(events):
+                return child_finished_result(session_id)
+            await self._interrupt_turn(session_id)
+            # Cancellation may race with a committed report. Settle it rather
+            # than restarting a child that has already completed its task.
+            events = await journal.snapshot(session_id)
+            self._pause.set(session_id, False)
+            if project_returned(events) or project_report(events) is not None:
+                await self.compact.application("resume", session_id, {})
+                return child_finished_result(session_id)
+            await self.compact.application("fact", session_id, fact)
+            return instructed_result(session_id)
 
     async def _reclaim_child(self, session_id, arguments):
         """Stop the child Worker, persist cancel if needed, then report to parent.

@@ -27,7 +27,7 @@ from redpanda.assistant.delivery import DELIVER_TOOL_NAME
 from redpanda.assistant.control import (
     CONTROL_PROPOSED, CONTROL_EXECUTION_STARTED, CONTROL_SUCCEEDED, CONTROL_FAILED,
 )
-from redpanda.assistant.subagent.subagent import TASK_FACT
+from redpanda.assistant.subagent.subagent import TASK_FACT, INSTRUCTION_FACT
 from redpanda.assistant.work_plan import WORK_PLAN_CONTEXT, render_work_plan
 from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
 from redpanda.runtime.events import (
@@ -48,7 +48,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 18
+PROJECTOR_VERSION = 19
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -300,6 +300,8 @@ def _translate_visible_events(
                 shown_data = {
                     key: shown_data[key] for key in ("task", "resolve_conflicts_of")
                 }
+            elif payload.fact_type == INSTRUCTION_FACT:
+                shown_data = {"text": shown_data["text"], "notice": "父 Agent 发来的新指令，按它调整当前任务；这不是用户消息。"}
             elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]
