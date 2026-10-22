@@ -422,7 +422,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                                      and event.payload.command_id in read_commands for event in events), 1)
 
     async def test_child_stream_crosses_worker_boundary_only_to_observer(self):
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
 
         observed, thoughts = [], []
 
@@ -598,7 +598,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             reclaimed = False
 
             async def chat(client, messages, model, **kwargs):
-                names = {tool["function"]["name"] for tool in kwargs["tools"]}
                 if client.target is None or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     return await super().chat(messages, model, **kwargs)
                 deciding.set()
@@ -672,7 +671,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             child_messages = None
 
             async def chat(client, messages, model, **kwargs):
-                names = {tool["function"]["name"] for tool in kwargs["tools"]}
                 if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     if INSTRUCTION_FACT not in json.dumps(messages):
                         old_started.set()
@@ -784,7 +782,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
             async def chat(client, messages, model, **kwargs):
                 text = json.dumps(messages)
-                names = {tool["function"]["name"] for tool in kwargs["tools"]}
                 if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     if "QUESTION_ONE" not in text:
                         started.set()

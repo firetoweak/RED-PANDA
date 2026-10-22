@@ -35,7 +35,6 @@ from redpanda.runtime import (
 from redpanda.runtime.dispatcher import AttemptContext
 from redpanda.runtime.events import DeliveryIdentity, EventDraft
 from redpanda.runtime.journal.api import Journal
-from redpanda.runtime.model import CanonicalState
 
 
 DELEGATE = "delegate"

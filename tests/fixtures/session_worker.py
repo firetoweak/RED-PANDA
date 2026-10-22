@@ -34,7 +34,6 @@ class ProcessLlm:
                 json.dumps(images), encoding="utf-8"
             )
         text = json.dumps(messages)
-        names = {tool["function"]["name"] for tool in tools}
         if "CRASH_PROCESS" in text:
             raise RuntimeError("intentional worker crash")
         if "BLOCK_PROCESS" in text or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
