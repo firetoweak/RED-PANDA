@@ -33,3 +33,5 @@
 - 历史 live 状态：通过（2026-10-12，main@1a4790a），重启后持久性未测。2026-10-18 按源码改写，未重新 live 验证。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：UI 请求 45 秒 schedule_once，倒计时可见，无新用户输入即回复 WOKE_UP；重启持久性、取消与非法参数未重验。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 schedule_once 45 秒倒计时可见，无新用户输入即 MAP_WAKE；取消、重启持久化与错参未重验。

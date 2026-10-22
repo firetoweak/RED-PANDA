@@ -43,3 +43,5 @@
 - 历史验证：2026-10-12（main@1a4790a）跳过，需真 TTY。2026-10-18 按源码改写启动文案与 Windows 入口，未 live 复跑。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 正常退出通过；证据为终端文本，无 Web 截图。底栏、粘贴、并发占用与重启清理未覆盖。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 退出通过；更新终端说明后另建 home 复跑。粘贴、底栏和并发占用未重验。

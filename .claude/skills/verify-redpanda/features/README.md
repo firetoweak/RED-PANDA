@@ -4,13 +4,13 @@
 
 原有条目的历史验证基线与日期保留在各自状态里。2026-10-13 按当前工作区新增会话变更审阅的增量地图，不表示全量重验，也不将源码核对或自动化测试标为真实 UI 通过。
 
-2026-10-20 按 `origin/main@32860f6` 核对全部 27 个功能文件，并以隔离 Web + 真实模型、Windows Chrome/ConPTY 对每个功能至少驱动一条路径。下表只汇总本轮覆盖；每个条目的其余子功能、错误路径与平台范围并未全验，详见各文件末尾。源码核对、自动化测试与 live 结论不相互替代。窄屏内容页隐藏输入框与原判据冲突，保留为未通过；产品代码未在维护中改动。
+2026-10-22 按 `origin/main@4c000ca` 核对全部 27 个功能文件，使用同一个隔离 Web 实例、真实 DeepSeek 和 Windows Chrome，每个功能至少实跑一条路径；终端另用独立 home 与 ConPTY。下表与条目末尾记录本轮覆盖，不代表所有子功能和错误路径都通过。窄屏内容页隐藏输入框仍是产品缺口，维护未修改产品代码。
 
 ## 基线前置条件
 
 编码 Skill 增量：编码方法与 Git 协作分别按需加载，普通目录支持自定义 Skill；验证见 tool-coding-round 与 extensions，既有记录不代表全部重验。
 
-Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新为无项目可用。以下表格中的维护记录仍是此前基线；当前增量的真实模型验证范围见各条目，未重新执行全部 27 项 UI 审计。
+Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 `projects` 列表描述挂载关系，落地、同步与项目委派都需要项目名。
 
 - 按 `../SKILL.md` 启动一个隔离实例：地址 `$REDPANDA_VERIFY_URL`，数据目录 `$REDPANDA_HOME`，临时工作区 `$SCRATCH_WORKSPACE`（内含 `note.txt`，内容为一行 `verify`）。
 - 第一次点击前 `doctor.py` 必须对该 pid 和 home 返回 0。
@@ -32,7 +32,8 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | 定时任务 | `$REDPANDA_HOME/state/automation.sqlite` |
 | 例行任务 | `$REDPANDA_HOME/state/routines.sqlite` |
 | Bot 个人目录 | `$REDPANDA_HOME/state/bots/<sha256(session_id) 前 20 位>/` |
-| 集成、Agent 与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`<sha256(session_id) 前 20 位>`、`children/<sha256(子会话) 前 20 位>` |
+| Bot 的项目 worktree | Bot 个人目录下 `projects/<项目名>/` |
+| 集成与子任务 worktree | `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`children/<sha256(子会话) 前 20 位>` |
 | MCP / Skill / CLI 安装 | `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` |
 
 ## 判据写法约定
@@ -60,33 +61,33 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 
 | id | 文件 | 一句话 | 本轮 live 覆盖（非全部子功能） |
 |---|---|---|---|
-| web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 页面创建 Agent、真实用户输入、普通回复及刷新通过；其余见条目 |
-| workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 旧登记路径通过；当前界面变更与未重验范围见条目 |
-| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目创建与方向/状态对照 GET 通过；其余见条目 |
-| colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 用户编辑、超限、清空、草稿保留与双页面冲突通过；真实Bot下一轮直接读到用户新版本；其余见条目 |
-| private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | Lin 向 Ada 的 send_message 送达，Ada 无新用户输入即普通回复 PRIVATE_RECEIVED；其余见条目 |
-| land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | Ada 单独 land_branch 得到 LAND_COMPLETED，集成工作树包含两个子任务成果，人的 note.txt 与 HEAD 不变；其余见条目 |
-| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 红色 PNG 经真实粘贴、发送、预览和 GET 下载通过，下载与原件逐字节相同；其余见条目 |
-| tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 新 Agent 默认自动放行；其余见条目 |
-| inbox | [inbox.md](./inbox.md) | Bot 旁提示 → 对应对话处理授权、控制、交流超限、暂停消息与无人查看询问 | 入口精简增量：真实 write_file、Bot 提醒、会话参数展开与批准后清除通过；其余与旧版历史见条目 |
-| group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 无项目建群，Ada 与 Lin 通过 send_group_message 真实发言，群页实时更新；其余见条目 |
-| tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；其余见条目 |
-| session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 从摘要打开文件改动，note.txt 的 verify→edited、行号和禁用分页与 GET 一致；其余见条目 |
-| run-control | [run-control.md](./run-control.md) | 打断并发送、前台停止/继续、失败再试；后台命令单独停止 | 历史停止验证通过；打断并发送的增量验证见条目 |
-| subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 真实模型多批自然回复、父主动追问和调整、状态查询、显式结束通过；项目成果与并行隔离见条目 |
-| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | update_plan 建两步计划，API 留有进行中和全部完成两版；其余见条目 |
-| work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合的上下文用量与耗时可见，API context_input_tokens 有值；其余见条目 |
-| model-settings | [model-settings.md](./model-settings.md) | `设置 → 模型配置` 抽屉、`测试`、`保存配置`、会话切换模型 | 抽屉编辑、草稿保留、撤销、保存与窄屏通过；真实连接测试空响应的错误展示通过；其余见条目 |
-| scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | UI 请求 45 秒 schedule_once，倒计时可见，无新用户输入即回复 WOKE_UP；其余见条目 |
-| routines | [routines.md](./routines.md) | `Agent 资料` 侧栏 `例行任务`：开关 `暂停 <名字>` / `恢复 <名字>`，`删除 <名字>` → `确认删除 <名字>`；`查看 <名字>` 看意图与执行记录 | 真实 save_routine 后列表出现；其余见条目 |
-| reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 普通结束正文、私信触发 PRIVATE_RECEIVED、定时触发 WOKE_UP 实时与刷新历史一致；其余见条目 |
-| extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 真实加载 MCP/Skill/CLI 管理工具并列空目录；其余见条目 |
-| realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | Doctor 首事件通过；其余见条目 |
-| layout-appearance | [layout-appearance.md](./layout-appearance.md) | 三栏布局、资料栏、`外观`、侧栏宽度与窄屏名册 | 桌面资料栏/内容页替换、亮色主题刷新保持通过（theme-color=#ffffff）；窄屏内容页输入框未通过；其余见条目 |
-| console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 正常退出通过；其余见条目 |
-| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | journal 确认同一决策步骤两个 delegate，独立子工作树创建 child-a/child-b，分别比较合并后父目录包含两文件；其余见条目 |
-| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 认证失败后再试恢复；后续实测 Worker 被杀后再试不重复执行、输入重放冲突 409 且后续对话可用；其余见条目 |
-| setup-and-launch | [setup-and-launch.md](./setup-and-launch.md) | `setup.sh`/`setup.ps1` 四步准备、模型向导、`start.sh`/`dev.sh` | Windows setup 四步、setup --check、隔离 Web 启动与 Doctor 全部通过，浏览器首页可用；其余见条目 |
+| web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 无项目 Bot 真实发送与回复、刷新历史通过；长历史、引用跳转与异常 API 未重验。 |
+| workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 创建 Bot 中新增代码项目，返回后名字与选择保留，项目 worktree 与名册 GET 一致；本机目录选择、解除与冲突未重验。 |
+| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
+| colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 真实 declare_direction/list_colleagues，用户保存共同记忆，另一 Bot 下一轮读到新内容；超限、清空和冲突未重验。 |
+| private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；暂停接收和交流上限未重验。 |
+| land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | 真实指定 project 落地后同步，包含两个子任务成果，差异清零且人的原始 note.txt 不变；同步他人新增成果、冲突和阻挡未重验。 |
+| composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 PNG 真实粘贴、发送、刷新预览通过，GET 下载与原件逐字节相同；本机选择、普通文件、跨会话边界未重验。 |
+| tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 全局关闭自动放行后 write_file 等待，展开参数并允许后执行一次，待处理消失；拒绝与控制确认未重验。 |
+| inbox | [inbox.md](./inbox.md) | Bot 旁提示 → 对应对话处理授权、控制、交流超限、暂停消息与无人查看询问 | 名册提示与会话待处理参数、批准后清除通过；交流超限、暂停积压与长时间无人查看未重验。 |
+| group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 创建两成员群、@all 补全、人发言及两个 Bot 的真实群回复实时显示通过；成员改动与群回复引用跳转未重验。 |
+| tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | 真实 read_file/apply_patch/write_file/execute_command 通过，文件只改在挂载项目内；后台命令与非零退出未重验。 |
+| session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 按项目摘要、内容页标题、两个刷新入口、两文件正文与行号对照 GET 通过，落地后摘要清零；大文件分页和版本冲突未重验。 |
+| run-control | [run-control.md](./run-control.md) | 打断并发送、前台停止/继续、失败再试；后台命令单独停止 | 子助手已回复但协作未结束时，父空闲显示发送与停止；显式回收后停止消失；认证失败再试通过。 |
+| subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 无项目子助手初稿、同一子追问与多批普通回复、父显式 reclaim 通过；过程页可观察，普通回复不自动结束协作。 |
+| work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | 真实 update_plan 建两步计划并全部完成，展开归档与 GET 一致；中断、compact 和跨 Agent 回收未重验。 |
+| work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 消息时间、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合时间与上下文用量环、200K 阈值和 GET 一致，不再有轮次耗时；compact 未触发。 |
+| model-settings | [model-settings.md](./model-settings.md) | `设置 → 模型配置` 抽屉、`测试`、`保存配置`、会话切换模型 | 设置抽屉编辑当前模型阈值，加入待保存配置并保存，GET 确认生效；连接测试、模型切换和表单边界未重验。 |
+| scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 真实 schedule_once 45 秒倒计时可见，无新用户输入即 MAP_WAKE；取消、重启持久化与错参未重验。 |
+| routines | [routines.md](./routines.md) | `Bot 资料` 侧栏／窄屏 `Agent 资料` 抽屉的 `例行任务`：开关 `暂停 <名字>` / `恢复 <名字>`，`删除 <名字>` → `确认删除 <名字>`；`查看 <名字>` 看意图与执行记录 | 真实 save_routine，1100 宽度资料抽屉查看与暂停，状态变为人暂停且下次未安排；删除、失败和无人查看策略未重验。 |
+| reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 普通回复、私信与定时触发的结果可见，刷新后原文一致；正文右键复制消息的剪贴板为原文。send_file 未重验。 |
+| extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 真实加载 MCP/Skill/CLI 管理工具并列出空安装清单；安装、测试、控制提案和移除未重验。 |
+| realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | Doctor 首事件与双标签实时状态、全局自动授权同步通过；保活时间、断线重连和失效连接未重验。 |
+| layout-appearance | [layout-appearance.md](./layout-appearance.md) | 三栏布局、资料栏、`外观`、侧栏宽度与窄屏名册 | 亮色主题刷新保持、桌面内容页和 1100 资料抽屉通过；390 窄屏内容页仍隐藏输入框，作为产品缺口保留。 |
+| console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 退出通过；更新终端说明后另建 home 复跑。粘贴、底栏和并发占用未重验。 |
+| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | 同一决策两个带 project 的 delegate，各自写文件，compare、逐次 merge、reclaim 后父目录含两文件；并发冲突与停止传播未重验。 |
+| crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 隔离配置无效 key 触发认证失败，刷新横幅仍在，恢复配置后再试成功且原输入仅一条；杀进程、断网、429 和未知命令恢复未重验。 |
+| setup-and-launch | [setup-and-launch.md](./setup-and-launch.md) | `setup.sh`/`setup.ps1` 四步准备、模型向导、`start.sh`/`dev.sh` | Windows setup 四步、setup --check、隔离 Web 启动、Doctor 与首页通过；Linux、首次模型向导和开发启动未重验。 |
 
 ## 入口 → 地图条目 覆盖表
 
@@ -95,7 +96,6 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | 入口 | 条目 |
 |---|---|
 | `/` → `AgentHome` | session-sidebar、web-session-chat |
-| `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat、inbox 及所有会话类条目 |
 | `/groups/:groupId` → `GroupChatPage` | group-chat |
 | 侧栏 `设置 → 模型配置` / `共同记忆` → `SettingsMenu` 抽屉（保持聊天路由） | model-settings、colleague-tools |
@@ -110,17 +110,18 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | `GET/PUT /api/shared-memory` | colleague-tools |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
+| `POST /api/agents/{id}/projects`、`POST /api/agents/{id}/projects/{name}/unlink` | workspace-management |
 | `GET /api/sessions/{id}` | web-session-chat、reply-delivery（普通回复与文件附件） |
 | `GET /api/sessions/{id}/commands`、`POST /api/sessions/{id}/commands/{command_id}/stop` | tool-coding-round |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `GET /api/inbox` | inbox |
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages` | group-chat |
-| `GET /api/sessions/{id}/changes`（仅 Agent 与其委派任务；摘要；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
+| `GET /api/sessions/{id}/changes`（Bot 必须带 `project`；项目委派也可查；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
 | `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
-| `POST .../commands/{command_id}/authorize`、`POST .../auto-authorize`、`POST .../control` | tool-authorization |
+| `POST .../commands/{command_id}/authorize`、`GET/POST /api/auto-authorize`、`POST .../control` | tool-authorization |
 | `POST .../cancel`、`POST .../retry` | run-control、crash-recovery（故障后重试） |
 | `GET .../subagents/{command_id}` | subagents、subagents-parallel |
 | `/assets/*`、`/` 静态挂载与前端回落 | web-session-chat |
@@ -141,6 +142,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | `read_shared_memory` `update_shared_memory` | `redpanda/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
+| `link_project` `unlink_project` | `redpanda/assistant/agent_tools.py` | workspace-management |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |
 | `send_file`，以及长期 Agent 的普通回复直接给人看 | `redpanda/assistant/agent_messages.py`、`redpanda/assistant/conversations.py` | reply-delivery |
 | `load_management_tools` `load_toolset` `list_mcp_servers` `test_mcp_server` `propose_mcp_*` `load_skill` `read_skill_resource` `list_installed_skills` `test_installed_skill` `propose_skill_*` `load_cli` `list_installed_clis` `inspect_cli` `test_cli` `propose_cli_*` | `redpanda/mcp/`、`redpanda/skills/`、`redpanda/cli/`、`redpanda/assistant/management.py` | extensions |
@@ -221,7 +223,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。
-- `文件改动` 只对 Agent 与其委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
+- `文件改动` 只对挂项目的 Bot 与项目委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
 - 工作计划由模型制定和控制，没有完整状态机。
 - `select-directory` 是 human-in-the-loop，人不选就一直等。
 - 停止：只有一个 `停止`；一次性写入写完再停，长命令杀进程组，中断调用标 unknown 并给模型简短提示，`继续` 不自动重跑。

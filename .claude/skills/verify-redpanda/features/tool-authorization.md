@@ -6,7 +6,7 @@
 
 - `pending`：需要授权的工具调用在步骤卡片上显示徽标 `待授权`，卡片内有 `允许`/`拒绝`；同时输入框上方出现区域 `待处理`（标题 `待处理 · N 项`），每项为 `<工具名> · <参数摘要>`，按钮 `允许 <工具名>`/`拒绝 <工具名>`（可见文字 `允许`/`拒绝`），点 `查看 <工具名> 的参数` 展开参数 JSON。待处理条只读服务端 `session.pending_authorization_commands`，与步骤卡片同源；SSE 发 `authorization_required`；侧栏该会话活动点为 `等授权`。
 - `approve` / `reject`：`POST .../commands/{command_id}/authorize`（`approved` 为 true/false）。批准后执行，徽标变 `运行中` 再到 `完成`；拒绝后徽标 `已拒绝`，不执行。
-- `auto-authorize`：当前实验阶段默认开启全局工具自动放行。侧栏模型配置旁始终显示开关，可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST /api/auto-authorize`（`enabled`）；`GET /api/auto-authorize` 读取同一全局值。选择持久化在 `$REDPANDA_HOME/runtime_sessions/authorization.json`，所有现有与新建会话共用，重启后保留；开启时批准运行中会话的待授权工具调用，休眠会话恢复时使用当前选择，其他页面通过 `auto_authorize_changed` 事件同步开关。控制提案仍使用独立确认流程，放行规则后续再细化。
+- `auto-authorize`：当前实验阶段默认开启全局工具自动放行。侧栏底部始终显示全局开关，首页、私聊和群聊共用，可访问名称 `自动放行写文件等工具`，可见标签 `自动放行` → `POST /api/auto-authorize`（`enabled`）；`GET /api/auto-authorize` 读取同一全局值。选择持久化在 `$REDPANDA_HOME/runtime_sessions/authorization.json`，所有现有与新建会话共用，重启后保留；开启时批准运行中会话的待授权工具调用，休眠会话恢复时使用当前选择，其他页面通过 `auto_authorize_changed` 事件同步开关。控制提案仍使用独立确认流程，放行规则后续再细化。
 
 自动放行开启时，调用提交到批准完成之间也不显示需要人操作的授权提示：待处理条与名册不列工具授权，展开的执行过程显示排队中；关闭后同一待批准调用恢复待授权。开关变化同步刷新名册。
 - `control-confirm`：模型发起的控制请求作为一项出现在待处理条里，显示摘要与 `风险：…`，按钮 `取消`/`确认`；对话上下文保持可见。读 `session.control_approval`；`POST .../control` 带 `request_id`、`approved`。
@@ -63,3 +63,5 @@
 - 2026-10-21 全局放行与时间增量：移除用户和 Bot 消息尾部的“已发送”，只保留时间；隔离私聊 1543×1004 实测通过。首页和私聊都显示同一全局开关，浏览器未切换授权或发送新消息。全局持久化、并发切换、失败重试、活动会话同步、新会话与重启继承由自动化回归验证，页面事件刷新有回归覆盖；未实测新的模型工具授权回合。证据 `.tools/frontend-review/evidence/compact-messages/global-authorization-time/`。
 
 - 2026-10-22 隔离 Chrome 1920×911：用固定的已提交、未批准调用现场对照开关，开启时无待处理条、工具为排队中、名册无授权提醒；关闭后恢复授权操作，重新开启后各处同步消失。读展示状态不写授权事实、控制确认不受影响由回归验证。默认后端测试与授权相关前端测试通过；隔离实例 `live_model_ready=false`，未发送消息或验证真实模型动态回合。证据 `.tools/auth-flicker-evidence/`。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：全局关闭自动放行后 write_file 等待，展开参数并允许后执行一次，待处理消失；拒绝与控制确认未重验。
