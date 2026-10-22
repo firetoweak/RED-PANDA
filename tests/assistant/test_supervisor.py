@@ -183,7 +183,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             e.payload
             for e in events
             if isinstance(e.payload, DomainFactCommitted)
-            and e.payload.fact_type == "subagent.report"
+            and e.payload.fact_type == "subagent.closed"
         ]
         self.assertEqual(len(reports), 1)
         self.assertIn(message, reports[0].data["failure"])
@@ -429,7 +429,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         class StreamingChildLlm(ProcessLlm):
             async def chat(client, messages, model, *, tools=None,
                            on_content_delta=None, on_reasoning_delta=None):
-                if "report" not in {tool["function"]["name"] for tool in tools}:
+                if "你是 RED PANDA 的子 Agent" not in str(messages[0]["content"]):
                     return await super().chat(
                         messages, model, tools=tools,
                         on_content_delta=on_content_delta,
@@ -438,8 +438,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                 await on_reasoning_delta("child reasoning")
                 await on_content_delta("child progress")
                 return LLMCallResult(
-                    LLMResponse(content="child progress", message_extensions={"reasoning_content": "child reasoning"},
-                                calls=(ToolCall("report-one", "report", '{"summary":"child done"}'),)),
+                    LLMResponse(content="child progress", message_extensions={"reasoning_content": "child reasoning"}),
                     LLMUsage(input_tokens=10, output_tokens=5),
                 )
 
@@ -525,13 +524,13 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         view = await self.host.cancel_turn(PARENT)
 
         self.assertTrue(view.paused)
-        self.assertFalse(view.has_active_subagents)
+        self.assertFalse(view.has_open_subagents)
         self.assertEqual(self.host.activity(PARENT), "idle")
         for child in children:
             self.assertNotIn(child, self.host.workers)
             child_events = await SqliteJournal(self.store.require(child)).snapshot(child)
             self.assertTrue(project_returned(child_events))
-            self.assertTrue(child_events[-1].payload.data["cancelled"])
+            self.assertEqual(child_events[-1].payload.data["reason"], "用户中断父会话")
         # Viewing/resuming a stopped parent must not turn reclaim into new work.
         stopped_outputs = list(self.output)
         await self.host.resume(PARENT)
@@ -600,7 +599,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
             async def chat(client, messages, model, **kwargs):
                 names = {tool["function"]["name"] for tool in kwargs["tools"]}
-                if client.target is None or "report" in names:
+                if client.target is None or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     return await super().chat(messages, model, **kwargs)
                 deciding.set()
                 await release.wait()
@@ -642,7 +641,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         returned = await SqliteJournal(self.store.require(client.target)).snapshot(client.target)
         self.assertTrue(project_returned(returned))
-        self.assertTrue(returned[-1].payload.data["cancelled"])
+        self.assertEqual(returned[-1].payload.data["reason"], "新要求不再需要")
         self.assertIn(sibling, self.host.workers)
         pending = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
         self.assertEqual(set(project_pending(pending)), {sibling})
@@ -650,20 +649,20 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         (self.root / "release").touch()
         await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
         returned = await SqliteJournal(self.store.require(sibling)).snapshot(sibling)
-        self.assertTrue(project_returned(returned))
-        self.assertFalse(returned[-1].payload.data["cancelled"])
+        self.assertFalse(project_returned(returned))
         self.assertIn((PARENT, "保留剩余子任务"), self.output)
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_instruction_redirects_child_once_even_after_parent_crash(self):
         from redpanda.assistant.subagent.subagent import (
-            INSTRUCT, INSTRUCTION_FACT, project_pending, project_report, project_returned,
+            INSTRUCT, INSTRUCTION_FACT, project_pending, project_returned,
         )
         from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
         from redpanda.runtime import DomainFactCommitted, UserMessageReceived
-        from tests.fixtures.session_worker import held_report_config
 
         old_started, old_cancelled, redirected, release, accepted = (asyncio.Event() for _ in range(5))
+        observed = []
+        self.host.subagent_output_sink = lambda sid, _out, text: observed.append((sid, text))
 
         class InstructionLlm(ProcessLlm):
             target = None
@@ -674,7 +673,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
             async def chat(client, messages, model, **kwargs):
                 names = {tool["function"]["name"] for tool in kwargs["tools"]}
-                if "report" in names:
+                if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     if INSTRUCTION_FACT not in json.dumps(messages):
                         old_started.set()
                         try:
@@ -685,7 +684,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                     client.new_calls += 1
                     redirected.set()
                     await release.wait()
-                    response = LLMResponse(calls=(ToolCall("report-new", "report", '{"summary":"NEW_DIRECTION_DONE"}'),))
+                    response = LLMResponse(content="NEW_DIRECTION_DONE")
                 elif client.target is None:
                     response = LLMResponse(calls=(ToolCall("delegate-one", "delegate", '{"task":"旧调查方向"}'),))
                 elif client.phase not in client.sent:
@@ -697,7 +696,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                     response = LLMResponse(content="指令处理完毕")
                 return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
 
-        self.host.config_factory = partial(held_report_config, self.root)
         self.host.llm = client = InstructionLlm(self.root)
         await self.host.create(PARENT, self.workspace.workspace_id)
         await self.host.select("web", PARENT)
@@ -706,6 +704,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
         (client.target,) = project_pending(events)
         child_journal = SqliteJournal(self.store.require(client.target))
+        self.assertEqual((await self.host._list_subagents(PARENT))["data"]["subagents"][0]["status"], "running")
         child_before = await child_journal.snapshot(client.target)
         instruct = self.host._instruct_child
 
@@ -744,25 +743,24 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(project_returned(child_events))
 
         release.set()
-        await until(lambda: (self.root / "report-started").exists())
-        # A report already being submitted wins over another direction change.
-        client.phase = "late"
-        await self.host.accept_input(PARENT, "再次调整已提交报告的子任务", delivery_id="late")
-        await until(lambda: self.host.is_paused(client.target))
-        (self.root / "release-report").touch()
-        await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
+        await until(lambda: any(text == "NEW_DIRECTION_DONE" for sid, text in observed))
+        await until(lambda: client.target not in self.host.workers)
         child_events = await child_journal.snapshot(client.target)
-        self.assertEqual(project_report(child_events), "NEW_DIRECTION_DONE")
+        self.assertFalse(project_returned(child_events))
+        self.assertTrue((await self.host.view(PARENT)).has_open_subagents)
+        status = await self.host._list_subagents(PARENT)
+        self.assertEqual(status["data"]["subagents"][0]["status"], "waiting")
+        client.phase = "late"
+        await self.host.accept_input(PARENT, "普通回复后继续调整", delivery_id="late")
+        await until(lambda: client.new_calls == 2)
+        await until(lambda: client.target not in self.host.workers)
+        await self.host._route("reclaim_child", client.target, {"parent_session_id": PARENT, "reason": "验收完成"})
+        child_events = await child_journal.snapshot(client.target)
         self.assertTrue(project_returned(child_events))
-        state = await self.host.view(PARENT)
-        self.assertFalse(state.has_active_subagents)
-        from redpanda.runtime import replay
-        parent_events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
-        outcomes = [command.outcome.value["code"] for command in replay(PARENT, parent_events).state.commands
-                    if command.command.effect.name == INSTRUCT]
-        self.assertEqual(outcomes, ["SUBAGENT_INSTRUCTED", "CHILD_FINISHED"])
+        self.assertFalse((await self.host.view(PARENT)).has_open_subagents)
+        self.assertEqual((await self.host._list_subagents(PARENT))["data"]["subagents"][0]["status"], "closed")
         late = await self.host._route("instruct_child", client.target, {
-            "parent_session_id": PARENT, "command_id": "after-return", "text": "不能重开已结束任务",
+            "parent_session_id": PARENT, "command_id": "after-close", "text": "不能重开已结束协作",
         })
         self.assertEqual(late["code"], "CHILD_FINISHED")
         self.assertEqual(await child_journal.snapshot(client.target), child_events)
@@ -770,8 +768,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_parent_can_ask_twice_and_child_reply_recovery_does_not_finish_task(self):
         from redpanda.assistant.subagent.subagent import (
-            REPLY_FACT, REPLY_PARENT, REPORT_FACT, RETURN_FACT,
-            project_pending, project_report, project_returned,
+            REPLY_FACT, CLOSED_FACT, RETURN_FACT,
+            project_pending, project_returned,
         )
         from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
         from redpanda.runtime import DomainFactCommitted, UserMessageReceived, replay
@@ -787,21 +785,20 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             async def chat(client, messages, model, **kwargs):
                 text = json.dumps(messages)
                 names = {tool["function"]["name"] for tool in kwargs["tools"]}
-                if "report" in names:
+                if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
                     if "QUESTION_ONE" not in text:
                         started.set()
                         await asyncio.Event().wait()
                     stage = "TWO" if "QUESTION_TWO" in text else "ONE"
                     if stage not in client.replied:
                         client.replied.add(stage)
-                        response = LLMResponse(calls=(ToolCall(f"reply-{stage}", REPLY_PARENT,
-                            json.dumps({"text": f"CHILD_PROGRESS_{stage}"})),))
+                        response = LLMResponse(content=f"CHILD_PROGRESS_{stage}", calls=(ToolCall("check", "read_file", '{"path":"input.txt"}'),) if stage == "ONE" else ())
                     else:
                         (continued_two if stage == "TWO" else continued_one).set()
                         if stage == "ONE":
                             await asyncio.Event().wait()
                         await finish.wait()
-                        response = LLMResponse(calls=(ToolCall("report-final", "report", '{"summary":"FINAL_DONE"}'),))
+                        response = LLMResponse(content="FINAL_DONE")
                 elif client.target is None:
                     response = LLMResponse(calls=(ToolCall("delegate-one", "delegate", '{"task":"持续调查"}'),))
                 elif client.phase not in client.asked:
@@ -821,7 +818,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(started.wait(), 30)
         events = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
         (client.target,) = project_pending(events)
-        reply = self.host._reply_parent
+        reply = self.host._child_message
 
         async def hold_reply_ack(*args):
             result = await reply(*args)
@@ -829,11 +826,11 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
             return result
 
-        self.host._reply_parent = hold_reply_ack
+        self.host._child_message = hold_reply_ack
         await self.host.accept_input(PARENT, "先问一次进度", delivery_id="ask-one", interrupt=True)
         await asyncio.wait_for(accepted.wait(), 30)
         await until(lambda: (PARENT, "PARENT_SAW_ONE") in self.output)
-        self.assertTrue((await self.host.view(PARENT)).has_active_subagents)
+        self.assertTrue((await self.host.view(PARENT)).has_open_subagents)
         child_journal = SqliteJournal(self.store.require(client.target))
         self.assertFalse(project_returned(await child_journal.snapshot(client.target)))
 
@@ -843,7 +840,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         failure = await asyncio.wait_for(self.host.wait_failure(), 30)
         self.assertEqual(failure.session_id, client.target)
         await until(lambda: client.target not in self.host.workers)
-        self.host._reply_parent = reply
+        self.host._child_message = reply
         await asyncio.wait_for(self.host.resume(client.target), 30)
         await asyncio.wait_for(continued_one.wait(), 30)
         self.assertFalse(project_returned(await child_journal.snapshot(client.target)))
@@ -854,13 +851,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         client.phase = "TWO"
         await self.host.accept_input(PARENT, "再问一次进度", delivery_id="ask-two", interrupt=True)
-        await asyncio.wait_for(continued_two.wait(), 30)
         await until(lambda: (PARENT, "PARENT_SAW_TWO") in self.output)
-        self.assertTrue((await self.host.view(PARENT)).has_active_subagents)
-        finish.set()
-        await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
+        self.assertTrue((await self.host.view(PARENT)).has_open_subagents)
+        await until(lambda: client.target not in self.host.workers)
+        self.assertEqual((await self.host._list_subagents(PARENT))["data"]["subagents"][0]["status"], "waiting")
+        await self.host._route("reclaim_child", client.target, {"parent_session_id": PARENT, "reason": "两次问答已验收"})
         child_events = await child_journal.snapshot(client.target)
-        self.assertEqual(project_report(child_events), "FINAL_DONE")
         self.assertFalse(any(isinstance(e.payload, UserMessageReceived) for e in child_events))
         self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
                              and e.payload.fact_type == RETURN_FACT for e in child_events), 1)
@@ -870,12 +866,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([e.data["text"] for e in replies], ["CHILD_PROGRESS_ONE", "CHILD_PROGRESS_TWO"])
         self.assertTrue(all(e.data["child_session_id"] == client.target for e in replies))
         self.assertEqual(sum(isinstance(e.payload, DomainFactCommitted)
-                             and e.payload.fact_type == REPORT_FACT for e in events), 1)
-        late = await self.host._reply_parent(client.target, {"command_id": "late", "text": "late"})
+                             and e.payload.fact_type == CLOSED_FACT for e in events), 1)
+        late = await self.host._child_message(client.target, {"command_id": "late", "text": "late"})
         self.assertEqual(late["code"], "CHILD_FINISHED")
         first_reply = next(command.command.command_id for command in replay(client.target, child_events).state.commands
-                           if command.command.effect.name == REPLY_PARENT)
-        repeated = await self.host._reply_parent(client.target, {
+                           if command.command.effect.name == "deliver" and command.command.effect.argument_dict()["text"] == "CHILD_PROGRESS_ONE")
+        repeated = await self.host._child_message(client.target, {
             "command_id": first_reply, "text": "CHILD_PROGRESS_ONE",
         })
         self.assertEqual(repeated["code"], "REPLY_SENT")
@@ -961,7 +957,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(self.host.resume("parent"), 30)
         await until(lambda: not self.host.workers and not self.host.watchers)
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
-        self.assertEqual(len(project_reclaimed(events)), 2)
+        self.assertEqual(len(project_reclaimed(events)), 0)
+        self.assertEqual(len(project_delegations(events)), 2)
+        self.assertEqual(len([e for e in events if getattr(e.payload, "fact_type", None) == "subagent.reply"]), 2)
         unrelated = await SqliteJournal(
             self.store.require("unrelated")
         ).snapshot("unrelated")
@@ -996,7 +994,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(started, {e.event_id for e in after})
         self.assertFalse((self.root / "read-retried").exists())
         from redpanda.runtime import CommandPhase, DomainFactCommitted, StateProjector
-        from redpanda.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
+        from redpanda.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
         state = StateProjector().project(CHILD, after).state
         self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
         self.assertEqual(sum(
@@ -1006,22 +1004,22 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         self.assertEqual(project_reclaimed(events), frozenset({CHILD}))
         report = next(e for e in events if isinstance(e.payload, DomainFactCommitted)
-                      and e.payload.fact_type == REPORT_FACT)
+                      and e.payload.fact_type == CLOSED_FACT)
         self.assertTrue(report.payload.requests_decision)
-        self.assertIn("被中断", report.payload.data["failure"])
+        self.assertIn("执行中断", report.payload.data["failure"])
         await asyncio.wait_for(self.host.resume(CHILD), 30)
         await until(lambda: not self.host.workers and not self.host.watchers)
         self.assertEqual(await journal.snapshot(CHILD), after)
         events = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         self.assertEqual(sum(
-            isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == REPORT_FACT
+            isinstance(e.payload, DomainFactCommitted) and e.payload.fact_type == CLOSED_FACT
             for e in events
         ), 1)
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_unexpected_crash_is_reported_then_still_exposed(self):
         from redpanda.runtime import DomainFactCommitted
-        from redpanda.assistant.subagent.subagent import REPORT_FACT
+        from redpanda.assistant.subagent.subagent import CLOSED_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(
@@ -1038,15 +1036,14 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             event.payload
             for event in events
             if isinstance(event.payload, DomainFactCommitted)
-            and event.payload.fact_type == REPORT_FACT
+            and event.payload.fact_type == CLOSED_FACT
         )
-        self.assertIs(report.data["reported"], False)
         self.assertIn("intentional worker crash", report.data["failure"])
         self.assertIn("Traceback", report.data["failure"])
 
     async def test_parent_reclaim_stops_child_and_does_not_resume_it(self):
         from redpanda.runtime import DomainFactCommitted
-        from redpanda.assistant.subagent.subagent import REPORT_FACT, RETURN_FACT
+        from redpanda.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(
@@ -1073,7 +1070,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             if isinstance(event.payload, DomainFactCommitted)
             and event.payload.fact_type == RETURN_FACT
         )
-        self.assertIs(returned.data["cancelled"], True)
         self.assertEqual(returned.data["reason"], "stop")
 
         parent_events = await SqliteJournal(self.store.require("parent")).snapshot(
@@ -1083,10 +1079,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             event.payload
             for event in parent_events
             if isinstance(event.payload, DomainFactCommitted)
-            and event.payload.fact_type == REPORT_FACT
+            and event.payload.fact_type == CLOSED_FACT
         )
         self.assertIs(report.requests_decision, False)
-        self.assertIs(report.data["cancelled"], True)
         self.assertEqual(project_reclaimed(parent_events), frozenset({CHILD}))
 
         await asyncio.wait_for(self.host.resume("parent"), 30)

@@ -48,7 +48,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 21
+PROJECTOR_VERSION = 22
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -304,7 +304,7 @@ def _translate_visible_events(
                 shown_data = {"text": shown_data["text"], "notice": "父 Agent 发来的新指令，按它调整当前任务；这不是用户消息。"}
             elif payload.fact_type == REPLY_FACT:
                 shown_data = {"child_session_id": shown_data["child_session_id"], "text": shown_data["text"],
-                              "notice": "子 Agent 的阶段性回复，不是最终交回；根据内容决定追加指令或等待最终结论。"}
+                              "notice": "子 Agent 的回复，不表示协作结束。由你判断继续询问、追加要求或用 reclaim 结束协作。"}
             elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]

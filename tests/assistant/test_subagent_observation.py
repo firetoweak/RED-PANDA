@@ -51,10 +51,10 @@ class SubagentObservationTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await parent.snapshot("parent"), before_parent)
             self.assertEqual(await child.snapshot(child_id), before_child)
             await persist_return(SqliteJournal(store.require(child_id)), child_id, return_data(
-                child_id, reported=False, summary=None, failure=None, cancelled=True, reason="父收回",
+                child_id, failure=None, reason="父收回",
             ))
             returned = await queries.observe_subagent("parent", command_id)
-            self.assertTrue(returned.result.cancelled)
+            self.assertIsNone(returned.result.failure)
             self.assertEqual(returned.result.reason, "父收回")
             with self.assertRaises(SessionNotFoundError):
                 await queries.observe_subagent("parent", "不是委派")

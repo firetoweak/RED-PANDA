@@ -37,18 +37,18 @@ class ProcessLlm:
         names = {tool["function"]["name"] for tool in tools}
         if "CRASH_PROCESS" in text:
             raise RuntimeError("intentional worker crash")
-        if "BLOCK_PROCESS" in text or "report" in names:
+        if "BLOCK_PROCESS" in text or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
             (self.workspace / f"blocked-{uuid4().hex}").touch()
             while not (self.workspace / "release").exists():
                 await asyncio.sleep(0.02)
         calls = ()
-        if "report" in names:
+        if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
             if "READ_THEN_REPORT" in text and not any(
                 m["role"] == "assistant" for m in messages
             ):
                 calls = (ToolCall("read-one", "read_file", '{"path":"input.txt"}'),)
             else:
-                calls = (ToolCall("report-one", "report", '{"summary":"child done"}'),)
+                calls = ()
         elif "BLOCK_TOOL" in text and not any(
             m["role"] == "assistant" for m in messages
         ):
@@ -60,7 +60,7 @@ class ProcessLlm:
                 ToolCall(f"delegate-{i}", "delegate", '{"task":"read something"}')
                 for i in range(2)
             )
-        content = "" if calls else "done"
+        content = "" if calls else ("child done" if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]) else "done")
         if content and on_content_delta is not None:
             emitted = on_content_delta(content)
             if isawaitable(emitted):
@@ -103,27 +103,6 @@ def cancellable_config(workspace: Path):
         compact_threshold_tokens=config.compact_threshold_tokens,
         llm=CancellableProcessLlm(workspace),
     )
-
-
-def held_report_config(workspace: Path):
-    from redpanda.assistant.host import worker
-    from redpanda.runtime import ToolBinding
-
-    build = worker.build_assistant_assembly
-
-    async def report(context, arguments):
-        (workspace / "report-started").touch()
-        while not (workspace / "release-report").exists():
-            await asyncio.sleep(0.02)
-        return {"ok": True, "code": "REPORTED", "data": {"summary": arguments["summary"]}}
-
-    async def assembly(*args, **kwargs):
-        result = await build(*args, **kwargs)
-        result.runtime.bind_tool("report", ToolBinding(report, decision_on_outcome=False))
-        return result
-
-    worker.build_assistant_assembly = assembly
-    return config_for(workspace)
 
 
 def interrupted_read_config(workspace: Path):

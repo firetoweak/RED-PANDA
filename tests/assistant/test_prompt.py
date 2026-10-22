@@ -19,7 +19,7 @@ from redpanda.assistant.context.prompt import (
 )
 from redpanda.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
-    REPORT_FACT,
+    CLOSED_FACT,
     TASK_FACT,
     DelegateIntent,
     task_fact_arguments,
@@ -132,7 +132,7 @@ def _externalized_meta_fields() -> set[str]:
 
 def _fact_type_tokens() -> set[str]:
     tokens: set[str] = set()
-    for fact_type in (TASK_FACT, REPORT_FACT):
+    for fact_type in (TASK_FACT, CLOSED_FACT):
         tokens |= _ascii_tokens(fact_type)
     tokens |= _ascii_tokens(PROJECT_SKILL_PREFIX + "/".join(PROJECT_SKILLS_DIRECTORY))
     task = task_fact_arguments(DelegateIntent("command", "parent", "parent/sub-command", "task"))

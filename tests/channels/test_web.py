@@ -799,13 +799,12 @@ class WebFirstSliceTest(unittest.TestCase):
 
     def test_roster_status_uses_existing_worker_and_wait_facts(self):
         def status(**overrides):
-            facts = dict(activity="idle", has_active_subagents=False, pending_authorization=False,
+            facts = dict(activity="idle", pending_authorization=False,
                          control_approval=False, waiting_for=(), last_error=None)
             facts.update(overrides)
             return project_agent_status(**facts)
 
         self.assertEqual(status(activity="running"), "working")
-        self.assertEqual(status(has_active_subagents=True), "working")
         self.assertEqual(status(activity="running", pending_authorization=True), "working")
         self.assertEqual(status(pending_authorization=True), "authorization")
         self.assertEqual(status(control_approval=True), "authorization")

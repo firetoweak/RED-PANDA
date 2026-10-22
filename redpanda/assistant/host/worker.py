@@ -260,7 +260,7 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
                         (
                             "idle",
                             observed_revision,
-                            view.has_active_subagents,
+                            view.has_open_subagents,
                         )
                     )
             await peer.send(("stopping",))

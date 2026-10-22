@@ -42,12 +42,12 @@
   - (a) 新消息入历史，`session.paused=false`；已有子任务未被标为收回，不等子任务完成就能处理新指令。
   - (b) 输入入口为 `打断并发送`，父回复 `PARENT_INTERVENED`；子任务仍能正常交回。
   - (c) 子任务去留由父的工具调用决定；独立 `停止` 仍收回全部未完成子任务。
-  - (d) 改为要求父收回指定任务，核对实际 `reclaim` 调用及子结果 `cancelled=true`，不能把刚好自然结束记作收回通过。
+  - (d) 改为要求父收回指定任务，核对实际 `reclaim` 调用及子会话出现结束事实并保留父给出的原因，不能把刚好自然结束记作收回通过。
 
 ## Gotchas
 
 - 2026-10-22 打断并发送增量：Windows Chrome、隔离 home、真实 DeepSeek，1440×900 点击和 390×844 回车均在前台长命令运行中提交新指令。旧命令留下 `COMMAND_INTERRUPTED`，后续文件未生成；模型直接回复指定标记，`paused=false`，不需要继续。窄屏无页面横向溢出。重投不再次打断及冲突输入由进程测试验证；未验证 Linux、MCP 长调用或独立后台命令停止。完整证据留在本地 `.tools/interrupt-evidence/`。
-- 2026-10-22 子任务保留增量：同样使用隔离 Web、Windows Chrome 与真实 DeepSeek，等待子任务时从 `打断并发送` 提交保留要求，父约 1.5 秒后回复 `PARENT_INTERVENED`，同时 `has_active_subagents=true`、`paused=false`，子任务未被收回。另一次在新子任务运行中要求收回，父实际调用 `reclaim`，观察页与 GET 均显示已收回和用户给出的原因，`cancelled=true`。首次收回尝试撞上子自然结束，不计作收回通过。选择性收回一个、另一个正常报告和独立停止全部收回由进程测试验证；本轮未重验代码项目写入、后台命令停止与其他平台。证据留在 `.tools/interrupt-adjust-evidence/`。
+- 2026-10-22 子任务保留增量（旧显式报告协议的历史记录，状态字段与报告方式已被自然回复协议替换）：同样使用隔离 Web、Windows Chrome 与真实 DeepSeek，等待子任务时从 `打断并发送` 提交保留要求，父约 1.5 秒后回复 `PARENT_INTERVENED`，同时 `has_active_subagents=true`、`paused=false`，子任务未被收回。另一次在新子任务运行中要求收回，父实际调用 `reclaim`，观察页与 GET 均显示已收回和用户给出的原因，`cancelled=true`。首次收回尝试撞上子自然结束，不计作收回通过。选择性收回一个、另一个正常报告和独立停止全部收回由进程测试验证；本轮未重验代码项目写入、后台命令停止与其他平台。证据留在 `.tools/interrupt-adjust-evidence/`。
 
 - 进程级中断两平台实现不同：Linux 在 `redpanda/execution/process_posix.py`（`os.killpg(..., SIGKILL)`），Windows Host 命令在 `redpanda/execution/process_win.py`（`TerminateJobObject`），两边都要单独验。
 - 输入框里的 `重试` 只属于附件上传失败的重试，与回合控制无关。

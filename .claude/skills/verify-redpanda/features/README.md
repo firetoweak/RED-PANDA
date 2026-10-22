@@ -73,7 +73,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | read_file→apply_patch→execute_command 通过，note.txt 只改在 Ada 工作树；其余见条目 |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 从摘要打开文件改动，note.txt 的 verify→edited、行号和禁用分页与 GET 一致；其余见条目 |
 | run-control | [run-control.md](./run-control.md) | 打断并发送、前台停止/继续、失败再试；后台命令单独停止 | 历史停止验证通过；打断并发送的增量验证见条目 |
-| subagents | [subagents.md](./subagents.md) | `delegate`、内容页 `子 Agent`、`交回结论`、`compare_subagent`/`merge_subagent`（Agent 分支委派） | 同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；其余见条目 |
+| subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 真实模型多批自然回复、父主动追问和调整、状态查询、显式结束通过；项目成果与并行隔离见条目 |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | update_plan 建两步计划，API 留有进行中和全部完成两版；其余见条目 |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合的上下文用量与耗时可见，API context_input_tokens 有值；其余见条目 |
 | model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；其余见条目 |
@@ -129,7 +129,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | 工具 | 来源 | 条目 |
 |---|---|---|
 | `read_file` `glob` `grep` `write_file` `apply_patch` `replace_all` `execute_command` | `redpanda/tools/builtin/` | tool-coding-round |
-| `delegate` `reclaim` `report` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
+| `delegate` `instruct_subagent` `list_subagents` `reclaim` `compare_subagent` `merge_subagent` | `redpanda/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
 | `read_image` | `redpanda/assistant/attachments.py` | composer-attachments |
 | `update_plan` | `redpanda/assistant/work_plan.py` | work-plan |
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `redpanda/assistant/compact/core.py` | work-plan-and-usage |

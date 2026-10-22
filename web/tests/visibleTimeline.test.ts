@@ -16,7 +16,7 @@ const session = {
   waiting_for: ["external_fact"],
   pending_authorization_ids: [],
   should_wake: false,
-  has_active_subagents: false,
+  has_open_subagents: false,
   control_approval: null,
   control_message: null,
   auto_authorize: false,

@@ -20,7 +20,6 @@ from redpanda.automation.routine_tool import ROUTINE_SCHEMAS, ROUTINE_TOOLS, rou
 from redpanda.assistant.delivery import (
     DELIVER_TOOL_NAME,
     PreviewEmitter,
-    deliver_binding,
 )
 from redpanda.assistant.context.prompt import BOT_PROMPT, DEFAULT_ASSISTANT_PROMPT, environment_prompt
 from redpanda.assistant.host.command_port import WorkerCommandPort
@@ -37,7 +36,7 @@ from redpanda.assistant.decision import (
 from redpanda.assistant.runner import SessionScheduler
 from redpanda.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, EXCLUSIVE_PROJECT_TOOLS, agent_git_bindings
 from redpanda.assistant.sessions import AssistantSessions
-from redpanda.assistant.subagent.subagent import DELEGATE, REPORT, SubAgentHost, project_task
+from redpanda.assistant.subagent.subagent import SubAgentHost, project_task
 from redpanda.assistant.subagent.review import GitChildReview
 from redpanda.assistant.toolsets import (
     LOAD_TOOLSET,
@@ -204,7 +203,6 @@ async def build_assistant_assembly(
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
-    delivery_sink = subagents.routed_sink(sink, subagent_output_sink)
 
     async def report_session_failed(session_id: str, text: str) -> None:
         if subagents.is_subagent(session_id) or session_failed_sink is None:
@@ -241,8 +239,7 @@ async def build_assistant_assembly(
             "read_image",
             UPDATE_PLAN,
             DELIVER_TOOL_NAME,
-            DELEGATE,
-            REPORT,
+            *subagents.bindings(),
             FIND_HISTORY,
             SUBMIT,
             *management.names(),
@@ -283,7 +280,7 @@ async def build_assistant_assembly(
         ),
         **read_image_binding(journal, attachments),
         UPDATE_PLAN: update_plan_binding(),
-        **deliver_binding(delivery_sink, preview),
+        **subagents.delivery_binding(sink, subagent_output_sink, preview),
         **load_toolset_binding(surface),
         **skill_tools.bindings(),
         **cli_tools.bindings(),
@@ -324,19 +321,11 @@ async def build_assistant_assembly(
     surface.attach(runtime)
     compact_context.runtime = runtime
 
-    async def on_quiesced(target, state):
-        # A parent's new instruction is replacing the cancelled decision.
-        # The cancellation's transient idle state is not a child conclusion.
-        if task is not None and session_transport is not None and await session_transport("is_paused", target, {}):
-            return
-        await subagents.on_quiesced(target, state)
-
     scheduler = scheduler_factory(
         runtime,
         session_id,
         control=control,
         # 子 Session 失败提示不外露：用户该看到的是父转述后的判断。
-        on_quiesced=on_quiesced,
         on_failed=subagents.on_failed,
         session_failed=report_session_failed,
         preview=preview,

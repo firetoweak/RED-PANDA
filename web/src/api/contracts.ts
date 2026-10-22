@@ -72,7 +72,7 @@ const sessionViewSchema = z
     pending_authorization_ids: z.array(z.string().min(1)),
     pending_authorization_commands: z.array(pendingAuthorizationSchema),
     should_wake: z.boolean(),
-    has_active_subagents: z.boolean(),
+    has_open_subagents: z.boolean(),
     control_approval: controlApprovalSchema.nullable(),
     control_message: z.string().nullable(),
     auto_authorize: z.boolean(),
@@ -274,10 +274,7 @@ export const conversationViewSchema = z
     subagent_terminals: z.array(z.object({
       command_id: z.string().min(1),
       child_session_id: z.string().min(1),
-      reported: z.boolean(),
-      summary: z.string().nullable(),
       failure: z.string().nullable(),
-      cancelled: z.boolean(),
       reason: z.string().nullable(),
     }).strict()).optional(),
   })
@@ -423,8 +420,7 @@ export const subagentObservationSchema = z.object({
   activity: z.enum(["running", "idle"]),
   conversation: conversationViewSchema.nullable(),
   result: z.object({
-    reported: z.boolean(), summary: z.string().nullable(), failure: z.string().nullable(),
-    cancelled: z.boolean(), reason: z.string().nullable(),
+    failure: z.string().nullable(), reason: z.string().nullable(),
   }).strict().nullable(),
 }).strict();
 

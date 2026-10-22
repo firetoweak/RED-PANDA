@@ -108,7 +108,7 @@ class ChildCompactLlm(CompactLlm):
                 on_content_delta=on_content_delta,
                 on_reasoning_delta=on_reasoning_delta,
             )
-        if any(tool["function"]["name"] == "report" for tool in tools or ()):
+        if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
             has_tools = any(message["role"] == "tool" for message in messages)
             used = 10 if any("模型生成的交接摘要" in str(m["content"]) for m in messages) else 60000
             while has_tools and (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():
@@ -127,9 +127,7 @@ class ChildCompactLlm(CompactLlm):
                     LLMUsage(input_tokens=used, output_tokens=5),
                 )
             return LLMCallResult(
-                LLMResponse(content="", calls=(ToolCall(
-                    "report", "report", '{"summary":"已完成子任务"}'
-                ),)),
+                LLMResponse(content="已完成子任务"),
                 LLMUsage(input_tokens=used, output_tokens=5),
             )
         return await super().chat(
