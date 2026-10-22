@@ -1309,7 +1309,7 @@ class HostSupervisor:
                     for event in events
                 )
                 if not delivered:
-                    await self._cancel_turn(session_id, "用户发来新指令")
+                    await self._interrupt_turn(session_id)
             if self._pause.get(session_id):
                 self._pause.set(session_id, False)
             view = await self.compact.application(
@@ -1368,13 +1368,12 @@ class HostSupervisor:
         async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
             return await self._cancel_turn(session_id, "用户中断父会话")
 
-    async def _cancel_turn(self, session_id, reason):
-        # Child return is a new external fact, even when it races with reclaim.
-        # Keep the stopped parent paused until an explicit continuation/input.
+    async def _interrupt_turn(self, session_id):
+        # Child returns may arrive, but cannot advance the paused parent.
         self._pause.set(session_id, True)
         await self.compact.application("cancel_turn", session_id, {})
-        # Wait for this Worker's direct commands to settle before projecting
-        # children: a committed delegate may still be creating its Session.
+        # Settle direct commands before accepting new input or reclaiming:
+        # a committed delegate may still be creating its Session.
         worker = self.workers.get(session_id)
         if worker is not None:
             while True:
@@ -1384,6 +1383,9 @@ class HostSupervisor:
                 if worker.idle_revision is not None or worker.exited.is_set():
                     break
                 await worker.changed.wait()
+
+    async def _cancel_turn(self, session_id, reason):
+        await self._interrupt_turn(session_id)
         stopped = await asyncio.gather(*(
             self._reclaim_child(
                 child_id,

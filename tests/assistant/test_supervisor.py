@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from functools import partial
 from pathlib import Path
 import tempfile
@@ -587,36 +588,71 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(isinstance(event.payload, DecisionCancelled) for event in events), 1)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_interrupt_input_waits_for_children_and_serializes_repeated_send(self):
-        from unittest.mock import AsyncMock
+    async def test_interrupt_input_preserves_children_for_parent_to_reclaim_selectively(self):
+        from redpanda.assistant.subagent.subagent import project_pending, project_returned
+        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
+        deciding, release = asyncio.Event(), asyncio.Event()
+
+        class SelectiveLlm(ProcessLlm):
+            target = None
+            reclaimed = False
+
+            async def chat(client, messages, model, **kwargs):
+                names = {tool["function"]["name"] for tool in kwargs["tools"]}
+                if client.target is None or "report" in names:
+                    return await super().chat(messages, model, **kwargs)
+                deciding.set()
+                await release.wait()
+                if not client.reclaimed:
+                    client.reclaimed = True
+                    response = LLMResponse(calls=(ToolCall(
+                        "reclaim-selected", "reclaim",
+                        json.dumps({"child_session_id": client.target, "reason": "新要求不再需要"}),
+                    ),))
+                else:
+                    response = LLMResponse(content="保留剩余子任务")
+                return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
+
+        self.host.llm = client = SelectiveLlm(self.root)
         await self.host.create(PARENT, self.workspace.workspace_id)
+        await self.host.select("web", PARENT)
         await self.host.accept_input(PARENT, "DELEGATE_CHILDREN", delivery_id="delegate")
         await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
-        previous_output_count = len(self.output)
-        entered, release = asyncio.Event(), asyncio.Event()
-        reclaim = self.host._reclaim_child
+        await until(lambda: self.host.workers[PARENT].idle_revision is not None)
+        before = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        children = list(project_pending(before))
+        self.assertEqual(len(children), 2)
+        client.target, sibling = children
 
-        async def held_reclaim(*args):
-            entered.set()
-            await release.wait()
-            await reclaim(*args)
-
-        self.host._reclaim_child = AsyncMock(side_effect=held_reclaim)
-        stopping = asyncio.create_task(
-            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next", interrupt=True)
+        await asyncio.wait_for(
+            self.host.accept_input(PARENT, "只收回第一个子任务", delivery_id="next", interrupt=True),
+            30,
         )
-        await asyncio.wait_for(entered.wait(), 30)
-        incoming = asyncio.create_task(
-            self.host.accept_input(PARENT, "新的独立输入", delivery_id="next", interrupt=True)
-        )
-        await asyncio.sleep(0)
-        self.assertFalse(incoming.done())
-        self.assertTrue(self.host.is_paused(PARENT))
-        release.set()
-        await asyncio.wait_for(asyncio.gather(stopping, incoming), 30)
-        await until(lambda: len(self.output) == previous_output_count + 1)
+        await asyncio.wait_for(deciding.wait(), 30)
+        for child in children:
+            self.assertIn(child, self.host.workers)
+            events = await SqliteJournal(self.store.require(child)).snapshot(child)
+            self.assertFalse(project_returned(events))
         self.assertFalse(self.host.is_paused(PARENT))
+        release.set()
+        await until(
+            lambda: client.target not in self.host.workers
+            and self.host.workers[PARENT].idle_revision is not None
+        )
+        returned = await SqliteJournal(self.store.require(client.target)).snapshot(client.target)
+        self.assertTrue(project_returned(returned))
+        self.assertTrue(returned[-1].payload.data["cancelled"])
+        self.assertIn(sibling, self.host.workers)
+        pending = await SqliteJournal(self.store.require(PARENT)).snapshot(PARENT)
+        self.assertEqual(set(project_pending(pending)), {sibling})
+
+        (self.root / "release").touch()
+        await asyncio.wait_for(self.host.wait_quiescent(PARENT), 30)
+        returned = await SqliteJournal(self.store.require(sibling)).snapshot(sibling)
+        self.assertTrue(project_returned(returned))
+        self.assertFalse(returned[-1].payload.data["cancelled"])
+        self.assertIn((PARENT, "保留剩余子任务"), self.output)
         self.assertTrue(self.host.failures.empty())
 
     async def test_unselected_busy_worker_stops_only_after_work_finishes(self):

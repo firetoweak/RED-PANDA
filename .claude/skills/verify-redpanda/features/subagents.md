@@ -47,3 +47,4 @@
 - 历史 live 状态：通过（2026-10-12，main@1a4790a，当时界面为独立的「子 Agent 观察面板」）。2026-10-18 按源码改写为 `子 Agent` 内容页与新状态/结果码，未重新 live 验证。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；收回、冲突、子失败未重验。
+- 2026-10-22 插话控制增量：隔离 Web、Windows Chrome、真实 DeepSeek；子任务运行时插话保留它，父先回复且子继续执行；随后另派任务，在其运行中要求父 `reclaim`，观察页显示已收回与指定原因，GET 的 `cancelled=true`。自然结束与收回的首次竞态不计作收回通过；选择性收回及保留任务正常交回另由进程测试验证。未重验分支改动与合并、冲突、子失败；证据见 `.tools/interrupt-adjust-evidence/`。
