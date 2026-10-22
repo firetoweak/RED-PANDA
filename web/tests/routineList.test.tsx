@@ -39,7 +39,7 @@ const conversation = {
   }],
   session: {
     status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
-    pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
+    pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
     control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null,
   },
   compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null,

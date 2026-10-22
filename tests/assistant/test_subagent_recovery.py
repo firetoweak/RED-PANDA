@@ -62,8 +62,7 @@ class SubagentRecoveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after[:-1], before)
         self.assertIsInstance(after[-1].payload, DomainFactCommitted)
         self.assertEqual(after[-1].payload.fact_type, RETURN_FACT)
-        self.assertFalse(after[-1].payload.data["reported"])
-        self.assertIn("被中断", after[-1].payload.data["failure"])
+        self.assertIn("执行中断", after[-1].payload.data["failure"])
         state = StateProjector().project(CHILD, after).state
         self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
         await record_interrupted_return(journal, CHILD)
@@ -72,7 +71,7 @@ class SubagentRecoveryTest(unittest.IsolatedAsyncioTestCase):
     async def test_existing_return_wins_over_unknown_attempt(self):
         journal = await self.interrupted_journal()
         await persist_return(journal, CHILD, return_data(
-            CHILD, reported=True, summary="already reported", failure=None,
+            CHILD, failure=None, reason="验收完成",
         ))
         before = await journal.snapshot(CHILD)
         await record_interrupted_return(journal, CHILD)

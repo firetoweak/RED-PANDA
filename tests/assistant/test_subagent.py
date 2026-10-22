@@ -8,35 +8,34 @@ from types import SimpleNamespace
 from redpanda.assistant.control import AssistantControlPlane
 from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
 from redpanda.assistant.context.projection import ModelContextProjector
-from redpanda.assistant.delivery import PreviewEmitter, deliver_binding
+from redpanda.assistant.delivery import PreviewEmitter, ensure_deliver
 from redpanda.assistant.loop_guard import LoopGuard
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
-    CHILD_BUILTIN_TOOL_NAMES,
-    READ_ONLY_CHILD_TOOL_NAMES,
+    INSTRUCT,
+    LIST_SUBAGENTS,
+    REPLY_FACT,
+    RETURN_FACT,
+    reply_arguments,
+    instruction_arguments,
+    instructed_result,
     RECLAIM,
-    REPORT,
-    REPORT_FACT,
-    TASK_FACT,
-    DelegateIntent,
+    CLOSED_FACT,
     SubAgentHost,
     project_delegations,
     project_failed_delegations,
     project_pending,
     project_reclaimed,
-    report_arguments,
+    closed_arguments,
     return_data,
-    task_fact_arguments,
 )
-from redpanda.llm.api import LLMProviderError
 from redpanda.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     CommandPhase,
     DomainFactCommitted,
     InvokeTool,
-    LeaseLostError,
     ModelDecision,
     RuntimeStatus,
     ToolBinding,
@@ -146,8 +145,8 @@ class _ParentChildDecisions:
             self.parent_frames.append(frame)
         decision = script(frame)
         if isinstance(decision, Awaitable):
-            return await decision
-        return decision
+            decision = await decision
+        return ensure_deliver(decision, frame.trigger_event.event_id)
 
 
 class LocalSessionRouter:
@@ -198,8 +197,17 @@ def local_transport(runtime, scheduler, host):
             await runtime.create_session(session_id)
             host._parents[session_id] = arguments["data"]["parent_session_id"]
             await runtime.receive_domain_fact(session_id, **arguments)
+        elif operation == "instruct_child":
+            await runtime.receive_domain_fact(session_id, **instruction_arguments(arguments["parent_session_id"], arguments["command_id"], arguments["text"]))
+            await scheduler.wake(session_id)
+            return instructed_result(session_id)
+        elif operation == "child_message":
+            parent = host._parents[session_id]
+            await runtime.receive_domain_fact(parent, **reply_arguments(session_id, arguments["command_id"], arguments["text"]))
+            await scheduler.wake(parent)
+            return {"ok": True}
         elif operation == "reclaim_child":
-            await host.cancel(session_id, arguments)
+            await host._reclaim(session_id, arguments["parent_session_id"], failure=None, reason=arguments.get("reason"))
             return
         elif operation == "fact":
             await runtime.receive_domain_fact(session_id, **arguments)
@@ -236,523 +244,86 @@ def _decision_maker(runtime, llm, host):
 class SubAgentDelegationTest(unittest.IsolatedAsyncioTestCase):
     PARENT = "parent-session"
 
-    def _build(
-        self,
-        parent_scripts,
-        child_scripts,
-        *,
-        delivered=None,
-        activity=None,
-        interleave=False,
-    ):
-        host = SubAgentHost(
-            None
-            if activity is None
-            else lambda session_id, active: activity.append((session_id, active))
-        )
+    def build(self, parent_scripts, child_scripts):
+        host = SubAgentHost()
         model = _ParentChildDecisions(parent_scripts, child_scripts)
-        bindings = dict(host.bindings())
-        if delivered is not None:
-            bindings.update(
-                deliver_binding(
-                    host.routed_sink(
-                        lambda session_id, _output_id, text: delivered.append((session_id, text))
-                    )
-                )
-            )
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            model,
-            bindings,
-            SequentialIds(),
-        )
-        def _surface(session_id, text):
-            if delivered is None or host.is_subagent(session_id):
-                return None
-            delivered.append((session_id, text))
-            return None
+        runtime = AgentRuntime(MemoryJournal(), model, {
+            **host.bindings(), **host.delivery_binding(lambda *_args: None),
+        }, SequentialIds())
+        router = LocalSessionRouter(runtime, on_failed=host.on_failed)
+        host.attach(runtime, local_transport(runtime, router, host))
+        return host, model, runtime, router
 
-        scheduler = LocalSessionRouter(
-            runtime,
-            session_failed=_surface,
-            on_quiesced=host.on_quiesced,
-            on_failed=host.on_failed,
-        )
-        host.attach(
-            _Interleaving(runtime) if interleave else runtime,
-            local_transport(
-                _Interleaving(runtime) if interleave else runtime, scheduler, host
-            ),
-        )
-        return host, model, runtime, scheduler
+    async def test_ordinary_batches_reach_parent_and_only_parent_ends_collaboration(self):
+        def child(frame):
+            return frame.trigger_event.payload.data["child_session_id"]
 
-    async def _child_session_id(self, runtime) -> str:
-        reports = _facts(await runtime.snapshot(self.PARENT), REPORT_FACT)
-        return reports[0].data["child_session_id"]
-
-    async def test_single_delegation_returns_its_report_to_the_parent(self):
-        delivered: list[tuple[str, str]] = []
-        activity: list[tuple[str, bool]] = []
-        host, model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(
-                        InvokeTool(DELEGATE, (("task", "查清 A 的调用点"),)),
-                    ),
-                ),
-                lambda _frame: ModelDecision(content="收到子 Agent 结论"),
-            ),
-            child_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(
-                        InvokeTool(
-                            REPORT,
-                            (("summary", "A 有三个调用点，见 x.py:10"),),
-                        ),
-                    ),
-                ),
-            ),
-            delivered=delivered,
-            activity=activity,
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(
-            self.PARENT,
-            "帮我查 A",
-            delivery_id="user-1",
-        )
-
+        host, model, runtime, router = self.build((
+            lambda _: ModelDecision(command_requests=(InvokeTool(DELEGATE, (("task", "分批交稿"),)),)),
+            lambda f: ModelDecision(command_requests=(InvokeTool(INSTRUCT, (("child_session_id", child(f)), ("text", "补充第二批"))),)),
+            lambda _: ModelDecision(content="第二批指令已发送"),
+            lambda f: ModelDecision(command_requests=(InvokeTool(RECLAIM, (("child_session_id", child(f)), ("reason", "两批已验收"))),)),
+            lambda _: ModelDecision(content="验收完成"),
+        ), (
+            lambda _: ModelDecision(content="第一批正文"),
+            lambda _: ModelDecision(content="第二批正文"),
+        ))
+        await runtime.receive_user_message(self.PARENT, "开始", delivery_id="start")
         try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-            await asyncio.sleep(0)
-
+            await router.wake(self.PARENT)
+            await router.join()
             parent_events = await runtime.snapshot(self.PARENT)
-            reports = _facts(parent_events, REPORT_FACT)
-            self.assertEqual(len(reports), 1)
-            self.assertIs(reports[0].requests_decision, True)
-            self.assertEqual(
-                reports[0].data["summary"],
-                "A 有三个调用点，见 x.py:10",
-            )
-            self.assertIs(reports[0].data["reported"], True)
-
-            child_session_id = reports[0].data["child_session_id"]
-            self.assertTrue(host.is_subagent(child_session_id))
-
-            # 子的任务事实落在子自己的 Journal，父只拿到结论。
-            child_events = await runtime.snapshot(child_session_id)
-            tasks = _facts(child_events, TASK_FACT)
-            self.assertEqual(len(tasks), 1)
-            self.assertEqual(tasks[0].data["task"], "查清 A 的调用点")
-            self.assertEqual(_facts(parent_events, TASK_FACT), [])
-
-            # 父因为这条事实醒来，做了第二次决策。
-            self.assertEqual(len(model.parent_frames), 2)
-            self.assertEqual(
-                model.parent_frames[1].trigger_event.payload.fact_type,
-                REPORT_FACT,
-            )
-            self.assertEqual(
-                (await runtime.state(self.PARENT)).status,
-                RuntimeStatus.WAITING,
-            )
-            self.assertEqual(activity[0], (self.PARENT, True))
-            self.assertEqual(activity[-1], (self.PARENT, False))
-
-            unknown = await host._reclaim_command(
-                _attempt_context(self.PARENT),
-                {"child_session_id": "not-a-child"},
-            )
-            self.assertIs(unknown["ok"], False)
-            self.assertEqual(unknown["code"], "UNKNOWN_CHILD")
+            replies = _facts(parent_events, REPLY_FACT)
+            self.assertEqual([p.data["text"] for p in replies], ["第一批正文", "第二批正文"])
+            (child_id,) = project_delegations(parent_events)
+            child_events = await runtime.snapshot(child_id)
+            self.assertEqual(len(_facts(child_events, RETURN_FACT)), 1)
+            self.assertEqual(_facts(child_events, RETURN_FACT)[0].data["reason"], "两批已验收")
+            self.assertEqual(project_pending(parent_events), frozenset())
+            self.assertFalse(_facts(parent_events, CLOSED_FACT)[0].requests_decision)
         finally:
-            await scheduler.close()
+            await router.close()
 
-    async def test_one_step_can_open_several_children_at_once(self):
-        host, model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    content="我同时让两个子 Agent 去查",
-                    command_requests=(
-                        InvokeTool(DELEGATE, (("task", "查 A"),)),
-                        InvokeTool(DELEGATE, (("task", "查 B"),)),
-                    ),
-                ),
-                # 两条结论各自到达还是挤在一次决策里取决于时序，
-                # 父可能被唤醒一次也可能两次，脚本给足即可。
-                lambda _frame: ModelDecision(content="收到一条"),
-                lambda _frame: ModelDecision(content="收到另一条"),
-            ),
-            child_scripts=(
-                lambda frame: ModelDecision(
-                    command_requests=(
-                        InvokeTool(
-                            REPORT,
-                            (
-                                (
-                                    "summary",
-                                    f"结论来自 {frame.trigger_event.session_id}",
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-            interleave=True,
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(
-            self.PARENT,
-            "同时查 A 和 B",
-            delivery_id="user-1",
-        )
-
+    async def test_reply_then_idle_is_open_and_survives_rehydrate(self):
+        host, model, runtime, router = self.build((
+            lambda _: ModelDecision(command_requests=(InvokeTool(DELEGATE, (("task", "写第一批后等待"),)),)),
+            lambda _: ModelDecision(content="收到，稍后继续"),
+        ), (lambda _: ModelDecision(content="第一批正文，等你回复"),))
+        await runtime.receive_user_message(self.PARENT, "开始", delivery_id="start")
         try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-
-            parent_events = await runtime.snapshot(self.PARENT)
-            reports = _facts(parent_events, REPORT_FACT)
-            children = [report.data["child_session_id"] for report in reports]
-
-            self.assertEqual(len(reports), 2)
-            self.assertEqual(len(set(children)), 2)
-            for report in reports:
-                self.assertIs(report.data["reported"], True)
-                self.assertEqual(
-                    report.data["summary"],
-                    f"结论来自 {report.data['child_session_id']}",
-                )
-            # 两条结论都送到了，父不会漏看其中一条。
-            self.assertEqual(
-                set(project_delegations(parent_events)),
-                set(children),
-            )
-            self.assertEqual(project_reclaimed(parent_events), frozenset(children))
-            # 全部交回之后，父不再欠任何一条结论。
-            self.assertEqual(_pending(parent_events), frozenset())
+            await router.wake(self.PARENT)
+            await router.join()
+            events = await runtime.snapshot(self.PARENT)
+            (child_id,) = project_pending(events)
+            before = await runtime.snapshot(child_id)
+            self.assertEqual(_facts(before, RETURN_FACT), [])
+            self.assertEqual((await runtime.state(child_id)).waiting_for, ("external_fact",))
+            restarted = SubAgentHost()
+            restarted.attach(runtime, local_transport(runtime, router, restarted))
+            self.assertEqual(await restarted.rehydrate(self.PARENT), (child_id,))
+            await router.join()
+            self.assertEqual(await runtime.snapshot(child_id), before)
+            self.assertEqual(len(model.child_frames), 1)
         finally:
-            await scheduler.close()
+            await router.close()
 
-    async def test_failing_child_is_reclaimed_as_a_failure_not_as_silence(self):
-        def _boom(_frame):
-            raise LLMProviderError("上游返回 500")
-
-        delivered: list[tuple[str, str]] = []
-        host, model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(DELEGATE, (("task", "查清 A"),)),),
-                ),
-                lambda _frame: ModelDecision(content="子 Agent 没跑完，我换个做法"),
-            ),
-            child_scripts=(_boom,),
-            delivered=delivered,
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(self.PARENT, "查 A", delivery_id="user-1")
-
+    async def test_parallel_children_send_independent_replies_and_remain_open(self):
+        _, _, runtime, router = self.build((
+            lambda _: ModelDecision(command_requests=tuple(InvokeTool(DELEGATE, (("task", name),)) for name in ("A", "B"))),
+            lambda _: ModelDecision(content="收到一位"),
+            lambda _: ModelDecision(content="收到另一位"),
+        ), (lambda f: ModelDecision(content=f.trigger_event.session_id),))
+        await runtime.receive_user_message(self.PARENT, "并行调查", delivery_id="start")
         try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-
-            parent_events = await runtime.snapshot(self.PARENT)
-            reports = _facts(parent_events, REPORT_FACT)
-
-            self.assertEqual(len(reports), 1)
-            report = reports[0]
-            # 失败不被改写成「停机但无产出」，父能看出区别。
-            self.assertIs(report.data["reported"], False)
-            self.assertIsNone(report.data["summary"])
-            self.assertIn("上游返回 500", report.data["failure"])
-            # 失败也是终局：父不会拿着一个永不归零的待回收集合干等。
-            self.assertEqual(
-                project_reclaimed(parent_events),
-                frozenset(project_delegations(parent_events)),
-            )
-            self.assertEqual(_pending(parent_events), frozenset())
-            # 父被叫醒并做了下一步判断。
-            self.assertEqual(len(model.parent_frames), 2)
-            # 子那条裸错误没有冒到用户面前，用户该看到的是父的转述。
-            self.assertEqual(delivered, [])
+            await router.wake(self.PARENT)
+            await router.join()
+            events = await runtime.snapshot(self.PARENT)
+            replies = _facts(events, REPLY_FACT)
+            self.assertEqual(len(replies), 2)
+            self.assertEqual({r.data["text"] for r in replies}, set(project_pending(events)))
+            self.assertEqual(_facts(events, CLOSED_FACT), [])
         finally:
-            await scheduler.close()
-
-    async def test_unexpected_child_failure_is_reclaimed_with_original_exception(
-        self,
-    ):
-        host, _model, runtime, scheduler = self._build(
-            parent_scripts=(lambda _frame: ModelDecision(content="换路"),),
-            child_scripts=(),
-        )
-        await runtime.create_session(self.PARENT)
-        intent = DelegateIntent(
-            "manual-command",
-            self.PARENT,
-            f"{self.PARENT}/sub-manual-command",
-            "查 A",
-        )
-        child = intent.child_session_id
-        await runtime.create_session(child)
-        await runtime.receive_domain_fact(child, **task_fact_arguments(intent))
-        try:
-            from redpanda.assistant.subagent.subagent import record_unexpected_return
-
-            self.assertIsNone(
-                await record_unexpected_return(
-                    runtime._journal, child, LeaseLostError("stale")
-                )
-            )
-            self.assertEqual(
-                _facts(await runtime.snapshot(self.PARENT), REPORT_FACT), []
-            )
-
-            try:
-                raise RuntimeError("disk vanished")
-            except RuntimeError as error:
-                parent, arguments = await record_unexpected_return(
-                    runtime._journal, child, error
-                )
-                await host._transport("fact", parent, arguments)
-            reports = _facts(await runtime.snapshot(self.PARENT), REPORT_FACT)
-            self.assertEqual(len(reports), 1)
-            self.assertIs(reports[0].data["reported"], False)
-            self.assertIsNone(reports[0].data["summary"])
-            self.assertIn("RuntimeError", reports[0].data["failure"])
-            self.assertIn("disk vanished", reports[0].data["failure"])
-            self.assertIn("Traceback", reports[0].data["failure"])
-            self.assertEqual(
-                project_reclaimed(await runtime.snapshot(self.PARENT)),
-                frozenset({child}),
-            )
-        finally:
-            await scheduler.close()
-
-    async def test_child_stopping_without_report_is_reclaimed_honestly(self):
-        host, model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(DELEGATE, (("task", "看一眼 B"),)),),
-                ),
-                lambda _frame: ModelDecision(content="子 Agent 没有产出"),
-            ),
-            child_scripts=(lambda _frame: ModelDecision(content="我看完了"),),
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(
-            self.PARENT,
-            "看 B",
-            delivery_id="user-1",
-        )
-
-        try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-
-            reports = _facts(await runtime.snapshot(self.PARENT), REPORT_FACT)
-            self.assertEqual(len(reports), 1)
-            self.assertIs(reports[0].data["reported"], False)
-            self.assertIsNone(reports[0].data["summary"])
-        finally:
-            await scheduler.close()
-
-    async def test_child_cannot_delegate_again(self):
-        host, _model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(DELEGATE, (("task", "查 D"),)),),
-                ),
-                lambda _frame: ModelDecision(content="好"),
-            ),
-            child_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(REPORT, (("summary", "D 正常"),)),),
-                ),
-            ),
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(
-            self.PARENT,
-            "查 D",
-            delivery_id="user-1",
-        )
-
-        try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-            child_session_id = await self._child_session_id(runtime)
-
-            self.assertNotIn(DELEGATE, CHILD_BUILTIN_TOOL_NAMES)
-            self.assertEqual(
-                [
-                    schema["function"]["name"]
-                    for schema in host.schemas(child_session_id)
-                ],
-                [REPORT],
-            )
-            self.assertNotIn(RECLAIM, CHILD_BUILTIN_TOOL_NAMES)
-            refused = await host._delegate(
-                _attempt_context(child_session_id),
-                {"task": "再委派一层"},
-            )
-            self.assertIs(refused["ok"], False)
-            self.assertEqual(refused["code"], "DELEGATION_NOT_ALLOWED")
-            refused_reclaim = await host._reclaim_command(
-                _attempt_context(child_session_id),
-                {"child_session_id": child_session_id},
-            )
-            self.assertIs(refused_reclaim["ok"], False)
-            self.assertEqual(refused_reclaim["code"], "RECLAIM_NOT_ALLOWED")
-        finally:
-            await scheduler.close()
-
-    async def test_children_are_recognised_again_after_restart(self):
-        host, _model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(DELEGATE, (("task", "查 E"),)),),
-                ),
-                lambda _frame: ModelDecision(content="好"),
-            ),
-            child_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(REPORT, (("summary", "E 正常"),)),),
-                ),
-            ),
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(
-            self.PARENT,
-            "查 E",
-            delivery_id="user-1",
-        )
-        try:
-            await scheduler.wake(self.PARENT)
-            await scheduler.join()
-        finally:
-            await scheduler.close()
-        child_session_id = await self._child_session_id(runtime)
-        events = await runtime.snapshot(self.PARENT)
-
-        restarted = SubAgentHost()
-        restarted_scheduler = LocalSessionRouter(
-            runtime,
-            on_quiesced=restarted.on_quiesced,
-        )
-        restarted.attach(
-            runtime, local_transport(runtime, restarted_scheduler, restarted)
-        )
-        try:
-            self.assertFalse(restarted.is_subagent(child_session_id))
-            pending = await restarted.rehydrate(self.PARENT)
-
-            # 认回来是安全边界：不认回，子 Session 就没有能力限制了。
-            self.assertTrue(restarted.is_subagent(child_session_id))
-            self.assertEqual(
-                restarted.tool_names(child_session_id),
-                READ_ONLY_CHILD_TOOL_NAMES,
-            )
-            # 已经回收过，不需要再推它。
-            self.assertEqual(pending, ())
-            self.assertEqual(project_delegations(events), (child_session_id,))
-            self.assertEqual(
-                project_reclaimed(events),
-                frozenset({child_session_id}),
-            )
-
-            # 回收事实还没写下来时，同一个子就是待推进的那个。
-            before_reclaim = tuple(
-                event
-                for event in events
-                if not (
-                    isinstance(event.payload, DomainFactCommitted)
-                    and event.payload.fact_type == REPORT_FACT
-                )
-            )
-            self.assertEqual(project_reclaimed(before_reclaim), frozenset())
-            self.assertEqual(
-                project_delegations(before_reclaim),
-                (child_session_id,),
-            )
-        finally:
-            await restarted_scheduler.close()
-
-
-    async def test_parent_reclaim_clears_pending_without_another_decision(self):
-        hang = asyncio.Event()
-        started = asyncio.Event()
-        child_id: dict[str, str] = {}
-
-        async def child_hang(_frame):
-            started.set()
-            await hang.wait()
-            return ModelDecision(
-                command_requests=(
-                    InvokeTool(REPORT, (("summary", "不该被看见"),)),
-                ),
-            )
-
-        host, model, runtime, scheduler = self._build(
-            parent_scripts=(
-                lambda _frame: ModelDecision(
-                    command_requests=(InvokeTool(DELEGATE, (("task", "查 A"),)),),
-                ),
-                lambda _frame: ModelDecision(
-                    content="已停",
-                    command_requests=(
-                        InvokeTool(
-                            RECLAIM,
-                            (
-                                ("child_session_id", child_id["id"]),
-                                ("reason", "用户不要了"),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-            child_scripts=(child_hang,),
-        )
-        await runtime.create_session(self.PARENT)
-        await runtime.receive_user_message(self.PARENT, "查 A", delivery_id="user-1")
-
-        try:
-            await scheduler.wake(self.PARENT)
-            await started.wait()
-            child_id["id"] = project_delegations(
-                await runtime.snapshot(self.PARENT)
-            )[0]
-            await runtime.receive_user_message(self.PARENT, "停", delivery_id="user-2")
-            await scheduler.wake(self.PARENT)
-
-            async with asyncio.timeout(5):
-                while True:
-                    reports = _facts(
-                        await runtime.snapshot(self.PARENT),
-                        REPORT_FACT,
-                    )
-                    if reports:
-                        break
-                    await asyncio.sleep(0)
-            hang.set()
-            await scheduler.join()
-
-            parent_events = await runtime.snapshot(self.PARENT)
-            reports = _facts(parent_events, REPORT_FACT)
-            self.assertEqual(len(reports), 1)
-            self.assertIs(reports[0].requests_decision, False)
-            self.assertIs(reports[0].data["cancelled"], True)
-            self.assertIs(reports[0].data["reported"], False)
-            self.assertIsNone(reports[0].data["summary"])
-            self.assertIsNone(reports[0].data["failure"])
-            self.assertEqual(reports[0].data["reason"], "用户不要了")
-            self.assertEqual(_pending(parent_events), frozenset())
-            # 取消不单独要一次决策：delegate + 用户插话后的 reclaim。
-            self.assertEqual(len(model.parent_frames), 2)
-        finally:
-            hang.set()
-            await scheduler.close()
-
+            await router.close()
 
 
 class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
@@ -824,9 +395,9 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
         )
         await runtime.receive_domain_fact(
             parent,
-            **report_arguments(
+            **closed_arguments(
                 intent,
-                return_data(intent, reported=True, summary="查清了", failure=None),
+                return_data(intent, failure="中断"),
             ),
         )
         self.assertEqual((await runtime.state(parent)).status, RuntimeStatus.RUNNABLE)
@@ -873,6 +444,34 @@ class SubAgentUnknownCreationRecoveryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
+    def test_child_uses_ordinary_speech_without_special_reply_or_finish_tools(self):
+        host = SubAgentHost()
+        host._parents["child"] = "parent"
+        self.assertEqual(host.schemas("child"), [])
+        self.assertTrue({"report", "reply_parent", DELEGATE, INSTRUCT, RECLAIM, LIST_SUBAGENTS}.isdisjoint(host.tool_names("child")))
+
+    async def test_instruction_rejects_invalid_arguments_and_unowned_child(self):
+        from unittest.mock import AsyncMock
+
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("parent")
+        transport = AsyncMock()
+        host = SubAgentHost()
+        host.attach(runtime, transport)
+        for arguments in (
+            {"child_session_id": "other/sub-child", "text": " "},
+            {"child_session_id": "other/sub-child", "text": 123},
+            {"child_session_id": "other/sub-child", "text": "换方向", "interrupt": False},
+        ):
+            with self.subTest(arguments=arguments):
+                result = await host._instruct_command(_attempt_context("parent"), arguments)
+                self.assertEqual(result["code"], "INVALID_ARGUMENT")
+        result = await host._instruct_command(
+            _attempt_context("parent"), {"child_session_id": "other/sub-child", "text": "换方向"},
+        )
+        self.assertEqual(result["code"], "UNKNOWN_CHILD")
+        transport.assert_not_awaited()
+
     async def test_external_schemas_bypass_builtin_name_filter(self):
         from redpanda.assistant.toolsets import ToolSurface
         from tests.assistant.test_toolsets import FakeEchoProvider
@@ -902,7 +501,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(host.system_prompt("plain-session"))
         self.assertEqual(
             [schema["function"]["name"] for schema in host.schemas("plain")],
-            [DELEGATE, RECLAIM],
+            [DELEGATE, INSTRUCT, LIST_SUBAGENTS, RECLAIM],
         )
 
 

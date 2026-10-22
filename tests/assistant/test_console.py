@@ -129,7 +129,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
         meter.update_subagent_activity("chat", True)
         self.assertEqual(
             meter.render(),
-            "实际输入 12.3k / compact 200k  ·  compact 0 次  ·  子 Agent 工作中\nSession ID：session-1",
+            "实际输入 12.3k / compact 200k  ·  compact 0 次  ·  有未结束的子 Agent 协作\nSession ID：session-1",
         )
 
         meter.update_subagent_activity("chat", False)

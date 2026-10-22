@@ -47,15 +47,20 @@ from redpanda.assistant.agent_messages import (
 )
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
-    REPORT_FACT,
+    CLOSED_FACT,
     RETURN_FACT,
     project_delegate_intents,
     persist_return,
     project_pending,
+    project_failed_delegations,
     project_parent,
     project_returned,
     project_task,
-    report_arguments,
+    instruction_arguments,
+    reply_arguments,
+    instructed_result,
+    child_finished_result,
+    closed_arguments,
     return_data,
     task_from_arguments,
 )
@@ -81,7 +86,7 @@ class Worker:
     failure: WorkerFailed | None = None
     transition: asyncio.Event = field(default_factory=asyncio.Event)
     changed: asyncio.Event = field(default_factory=asyncio.Event)
-    idle_has_active_subagents: bool = False
+    idle_has_open_subagents: bool = False
     running: bool = False
     returned: tuple[str, dict] | None = None
     intentionally_stopped: bool = False
@@ -503,25 +508,31 @@ class HostSupervisor:
             self._track(session_id, activation)
             return None
         if operation == "prepare_child_files":
-            events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-            task = project_task(events)
-            if task is None or task.parent_session_id != arguments["parent_session_id"]:
-                raise ValueError("child workspace owner does not match delegate")
-            if not any(isinstance(event.payload, DomainFactCommitted)
-                       and event.payload.fact_type == RETURN_FACT for event in events):
-                return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子会话尚未交回或收回。"}
-            if task.project is not None:
-                parent_agent = await self.agents.by_session(task.parent_session_id)
-                failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent,
-                                                          task.project, session_id))
-                if failure is not None:
-                    return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
-                            "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
-                            "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再试。"}
-            return {"ok": True}
+            async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+                task = project_task(events)
+                if task is None or task.parent_session_id != arguments["parent_session_id"]:
+                    raise ValueError("child workspace owner does not match delegate")
+                if await self._child_status(session_id, events) == "running":
+                    return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子 Agent 正在执行。请等它回复并停下来后再查看或合入；也可先用 reclaim 结束协作。"}
+                if task.project is not None:
+                    parent_agent = await self.agents.by_session(task.parent_session_id)
+                    failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent,
+                                                              task.project, session_id))
+                    if failure is not None:
+                        return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
+                                "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
+                                "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再试。"}
+                return {"ok": True}
         if operation == "reclaim_child":
             await self._reclaim_child(session_id, arguments)
             return None
+        if operation == "instruct_child":
+            return await self._instruct_child(session_id, arguments)
+        if operation == "child_message":
+            return await self._child_message(session_id, arguments)
+        if operation == "list_subagents":
+            return await self._list_subagents(session_id)
         return await self.request(operation, session_id, arguments)
 
     def start_automation(self, group: asyncio.TaskGroup) -> None:
@@ -772,7 +783,7 @@ class HostSupervisor:
             elif kind == "idle":
                 was_running = worker.running
                 worker.idle_revision = values[0]
-                worker.idle_has_active_subagents = values[1]
+                worker.idle_has_open_subagents = values[1]
                 worker.running = False
                 worker.changed.set()
                 await self._stop_idle(session_id, worker)
@@ -781,7 +792,7 @@ class HostSupervisor:
             elif kind == "busy":
                 self._current_failures.pop(session_id, None)
                 worker.idle_revision = None
-                worker.idle_has_active_subagents = False
+                worker.idle_has_open_subagents = False
                 worker.running = True
                 worker.stopping = False
                 worker.transition.set()
@@ -974,41 +985,106 @@ class HostSupervisor:
             worker.running = False
             await self._emit_session_activity(session_id, "idle")
 
+    async def _child_status(self, child_id, events):
+        returned = next((e.payload.data for e in events if isinstance(e.payload, DomainFactCommitted)
+                         and e.payload.fact_type == RETURN_FACT), None)
+        if returned is not None:
+            return "failed" if returned["failure"] is not None else "closed"
+        if self.is_paused(child_id):
+            return "paused"
+        state = replay(child_id, events).state
+        if self.activity(child_id) == "running" or state.waiting_command_ids or session_view(state).should_wake:
+            return "running"
+        return "waiting"
+
+    async def _list_subagents(self, parent_id):
+        events = await SqliteJournal(self.store.require(parent_id)).snapshot(parent_id)
+        children = []
+        failed = project_failed_delegations(events)
+        for intent in project_delegate_intents(events):
+            if intent.child_session_id in failed:
+                status = "failed"
+            elif not self.store.path(intent.child_session_id).is_file():
+                status = "creating"
+            else:
+                child_events = await SqliteJournal(self.store.require(intent.child_session_id)).snapshot(intent.child_session_id)
+                status = await self._child_status(intent.child_session_id, child_events)
+            children.append({"child_session_id": intent.child_session_id, "task": intent.task, "status": status})
+        return {"ok": True, "code": "SUBAGENTS_READ", "data": {"subagents": children}}
+
+    async def _child_message(self, session_id, arguments):
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        task = project_task(events)
+        if task is None:
+            raise ValueError("reply sender is not a child")
+        fact = reply_arguments(session_id, arguments["command_id"], arguments["text"])
+        if project_returned(events):
+            parent_events = await SqliteJournal(self.store.require(task.parent_session_id)).snapshot(task.parent_session_id)
+            delivered = any(event.delivery is not None
+                            and event.delivery.source == fact["source"]
+                            and event.delivery.delivery_id == fact["delivery_id"] for event in parent_events)
+            if not delivered:
+                return {"ok": False, "code": "CHILD_FINISHED", "error": "协作已结束，不能发送新的回复。"}
+        await self.request("fact", task.parent_session_id, fact)
+        return {"ok": True, "code": "REPLY_SENT"}
+
+    async def _instruct_child(self, session_id, arguments):
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            journal = SqliteJournal(self.store.require(session_id))
+            events = await journal.snapshot(session_id)
+            task = project_task(events)
+            if task is None or task.parent_session_id != arguments["parent_session_id"]:
+                raise ValueError("instruction parent does not own child")
+            fact = instruction_arguments(arguments["parent_session_id"], arguments["command_id"], arguments["text"])
+            for event in events:
+                if (event.delivery is not None and event.delivery.source == fact["source"]
+                        and event.delivery.delivery_id == fact["delivery_id"]):
+                    expected = DomainFactCommitted(fact["fact_type"], fact["data"], requests_decision=True)
+                    if event.payload != expected:
+                        raise ValueError("instruction delivery conflicts with existing content")
+                    return instructed_result(session_id)
+            if project_returned(events):
+                return child_finished_result(session_id)
+            await self._interrupt_turn(session_id)
+            self._pause.set(session_id, False)
+            if project_returned(await journal.snapshot(session_id)):
+                return child_finished_result(session_id)
+            await self.compact.application("fact", session_id, fact)
+            return instructed_result(session_id)
+
     async def _reclaim_child(self, session_id, arguments):
-        """Stop the child Worker, persist cancel if needed, then report to parent.
+        """Stop child execution and notify its parent of the closed collaboration.
 
         Host writes the child's Journal only after that Session has no Worker.
         """
 
         parent_session_id = arguments["parent_session_id"]
         reason = arguments.get("reason")
-        self.intentionally_stopped.add(session_id)
-        async with self.locks.setdefault(session_id, asyncio.Lock()):
-            worker = self.workers.get(session_id)
-            if worker is not None and not worker.exited.is_set():
-                worker.intentionally_stopped = True
-                if worker.process.is_alive():
-                    worker.process.terminate()
-                await worker.exited.wait()
-            returned = await persist_return(
-                SqliteJournal(self.store.require(session_id)),
-                session_id,
-                return_data(
+        async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
+            self.intentionally_stopped.add(session_id)
+            async with self.locks.setdefault(session_id, asyncio.Lock()):
+                worker = self.workers.get(session_id)
+                if worker is not None and not worker.exited.is_set():
+                    worker.intentionally_stopped = True
+                    if worker.process.is_alive():
+                        worker.process.terminate()
+                    await worker.exited.wait()
+                returned = await persist_return(
+                    SqliteJournal(self.store.require(session_id)),
                     session_id,
-                    reported=False,
-                    summary=None,
-                    failure=None,
-                    cancelled=True,
-                    reason=reason,
-                ),
-            )
+                    return_data(
+                        session_id,
+                        failure=None,
+                        reason=reason,
+                    ),
+                )
         await self.compact.retire(session_id)
         if worker is not None and worker.failure is not None:
             raise worker.failure
         await self.request(
             "fact",
             parent_session_id,
-            report_arguments(session_id, returned.payload.data),
+            closed_arguments(session_id, returned.payload.data),
         )
 
     def _selected(self, session_id):
@@ -1031,11 +1107,11 @@ class HostSupervisor:
 
     async def request(self, operation, session_id, arguments):
         assert not self.closed
-        if operation == "fact" and arguments["fact_type"] == REPORT_FACT:
+        if operation == "fact" and arguments["fact_type"] == CLOSED_FACT:
             prepared = await self._route("prepare_child_files", arguments["data"]["child_session_id"],
                                          {"parent_session_id": session_id})
             if not prepared["ok"] and prepared["code"] == "CHILD_STILL_WORKING":
-                raise ValueError("child report precedes its durable return")
+                raise ValueError("child close precedes its durable return")
         lock = self.locks.setdefault(session_id, asyncio.Lock())
         just_started = False
         while True:
@@ -1236,7 +1312,7 @@ class HostSupervisor:
                 state,
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
-                has_active_subagents=bool(project_pending(events)),
+                has_open_subagents=bool(project_pending(events)),
                 auto_authorize=self.auto_authorize(),
             ),
             session_id,
@@ -1408,24 +1484,13 @@ class HostSupervisor:
             worker.changed.clear()
             if worker.failure is not None:
                 raise worker.failure
-            if worker.idle_revision is not None and (
-                not worker.idle_has_active_subagents
-                or not await self._children_still_running(session_id)
-            ):
+            if worker.idle_revision is not None:
                 return await self.view(session_id)
             if worker.exited.is_set():
                 return await self.view(session_id)
             if worker.changed.is_set():
                 continue
             await worker.changed.wait()
-
-    async def _children_still_running(self, session_id) -> bool:
-        """待回收集合里，子 Journal 还没有回传的那些才算还在工作。
-
-        子会话自己的回传已经说明它停了，不必等父会话记下回收。
-        """
-
-        return bool(await self._running_children(session_id))
 
     async def _running_children(self, session_id):
         events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)

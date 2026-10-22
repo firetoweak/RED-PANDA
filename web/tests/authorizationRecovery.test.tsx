@@ -55,7 +55,7 @@ it("submits a recovered pending command with the new connection without an autho
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],
       pending_authorization_commands: [{ command_id: commandId, name: "write_file", arguments: { path: "probe.md" } }],
-      should_wake: false, has_active_subagents: false, control_approval: null,
+      should_wake: false, has_open_subagents: false, control_approval: null,
       control_message: null, auto_authorize: false, paused: false, last_error: null,
     },
     items: [
@@ -116,7 +116,7 @@ it("disables pending authorization buttons while the web connection is down", as
       status: "waiting", waiting_for: [`authorization:${commandId}`],
       pending_authorization_ids: [commandId],
       pending_authorization_commands: [{ command_id: commandId, name: "write_file", arguments: { path: "probe.md" } }],
-      should_wake: false, has_active_subagents: false, control_approval: null,
+      should_wake: false, has_open_subagents: false, control_approval: null,
       control_message: null, auto_authorize: false, paused: false, last_error: null,
     },
     items: [
@@ -169,7 +169,7 @@ it("recovers a model failure from the conversation after refresh and retries wit
     compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null, work_plan_updates: [], context_input_tokens: null,
     session: {
       status: "runnable", waiting_for: [], pending_authorization_ids: [], pending_authorization_commands: [],
-      should_wake: true, has_active_subagents: false, control_approval: null, control_message: null,
+      should_wake: true, has_open_subagents: false, control_approval: null, control_message: null,
       auto_authorize: false, paused: false, last_error: "供应商暂时不可用，请稍后再试。",
     },
     items: [{ kind: "user", message_id: "user", text: "原始请求", occurred_at: "2026-10-12T00:00:00Z", images: [], files: [] }],

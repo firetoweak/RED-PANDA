@@ -192,10 +192,7 @@ class ConversationView:
 
 @dataclass(frozen=True, slots=True)
 class SubagentResult:
-    reported: bool
-    summary: str | None
     failure: str | None
-    cancelled: bool
     reason: str | None
 
 
@@ -228,8 +225,7 @@ class AssistantQueries:
         returned = next((event.payload.data for event in child_events
                          if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == RETURN_FACT), None)
         result = None if returned is None else SubagentResult(
-            reported=returned["reported"], summary=returned["summary"], failure=returned["failure"],
-            cancelled=returned["cancelled"], reason=returned["reason"],
+            failure=returned["failure"], reason=returned["reason"],
         )
         return SubagentObservation(
             child_id, intent.task, self._sessions.activity(child_id), result,
@@ -361,13 +357,13 @@ class AssistantQueries:
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
         terminals = project_unreported_returns(events, await self._child_returns(events))
-        still_running = bool(
+        still_open = bool(
             set(project_pending(events)) - {item.child_session_id for item in terminals}
         )
         if view is None:
             view = session_view(
                 state,
-                has_active_subagents=still_running,
+                has_open_subagents=still_open,
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
                 auto_authorize=self._sessions.auto_authorize(),
@@ -375,7 +371,7 @@ class AssistantQueries:
                 last_error=self._sessions.current_failure(session_id),
             )
         else:
-            view = replace(view, has_active_subagents=still_running,
+            view = replace(view, has_open_subagents=still_open,
                            last_error=self._sessions.current_failure(session_id))
         status = self._sessions.conversation_status(session_id)
         scheduled = self._sessions.next_scheduled_check(session_id)
@@ -418,14 +414,13 @@ class AssistantQueries:
 def project_agent_status(
     *,
     activity: SessionActivity,
-    has_active_subagents: bool,
     pending_authorization: bool,
     control_approval: bool,
     waiting_for: tuple[str, ...],
     last_error: str | None,
 ) -> AgentStatus:
     """名册状态只归约 Worker、授权和等待这些已经存在的事实。"""
-    if activity == "running" or has_active_subagents:
+    if activity == "running":
         return "working"
     if pending_authorization or control_approval:
         return "authorization"
@@ -454,7 +449,6 @@ def project_agent_roster_entry(
         activity=activity,
         status=project_agent_status(
             activity=activity,
-            has_active_subagents=bool(project_pending(events)),
             pending_authorization=not auto_authorize and bool(pending_authorization_ids(state)),
             control_approval=pending_approval_view(events) is not None,
             waiting_for=state.waiting_for,

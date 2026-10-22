@@ -48,7 +48,7 @@ class SessionView:
     waiting_for: tuple[str, ...]
     pending_authorization_ids: tuple[str, ...]
     should_wake: bool
-    has_active_subagents: bool = False
+    has_open_subagents: bool = False
     control_approval: ControlApprovalView | None = None
     control_message: str | None = None
     auto_authorize: bool = False
@@ -62,7 +62,7 @@ def session_view(
     *,
     control_approval: ControlApprovalView | None = None,
     control_message: str | None = None,
-    has_active_subagents: bool = False,
+    has_open_subagents: bool = False,
     auto_authorize: bool = False,
     paused: bool = False,
     last_error: str | None = None,
@@ -82,7 +82,7 @@ def session_view(
                 command.phase is CommandPhase.PENDING for command in state.commands
             )
         ),
-        has_active_subagents=has_active_subagents,
+        has_open_subagents=has_open_subagents,
         control_approval=control_approval,
         control_message=control_message,
         auto_authorize=auto_authorize,
@@ -129,13 +129,13 @@ class AssistantSessions:
         state: CanonicalState,
         events,
         *,
-        has_active_subagents: bool = False,
+        has_open_subagents: bool = False,
     ) -> SessionView:
         return session_view(
             state,
             control_approval=pending_approval_view(events),
             control_message=project_control_message(events),
-            has_active_subagents=has_active_subagents,
+            has_open_subagents=has_open_subagents,
             auto_authorize=self._auto_authorize.get(state.session_id, False),
         )
 
@@ -163,24 +163,22 @@ class AssistantSessions:
             return self._view(state, events)
         if self._view(state, events).should_wake:
             await self._scheduler.wake(session_id)
-        elif self._subagents is not None:
-            await self._subagents.on_quiesced(session_id, state)
         return self._view(
             state,
             events,
-            has_active_subagents=bool(pending_subagents),
+            has_open_subagents=bool(pending_subagents),
         )
 
     async def view(self, session_id: str) -> SessionView:
         events = await self._runtime.snapshot(session_id)
         state = await self._runtime.state(session_id)
-        has_active_subagents = False
+        has_open_subagents = False
         if self._subagents is not None:
-            has_active_subagents = bool(project_pending(events))
+            has_open_subagents = bool(project_pending(events))
         return self._view(
             state,
             events,
-            has_active_subagents=has_active_subagents,
+            has_open_subagents=has_open_subagents,
         )
 
     async def resolve_control(

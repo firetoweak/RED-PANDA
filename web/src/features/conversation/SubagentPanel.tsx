@@ -28,7 +28,7 @@ export function SubagentPanel({ parentSessionId, commandId }: {
     runtime?.committedThinking ?? {}, runtime?.activeThinking ?? null, runtime?.activity ?? null,
   );
   const label = result !== null
-    ? result.cancelled ? "已收回" : result.failure !== null ? "执行失败" : result.reported ? "已交回" : "已结束，未报告"
+    ? result.failure !== null ? "执行失败" : "协作已结束"
     : !connected ? "连接中断" : conversation === null ? "正在创建" : activity === "running" ? "运行中" : "等待中";
 
   return <div className="subagent-page">
@@ -64,11 +64,8 @@ export function SubagentPanel({ parentSessionId, commandId }: {
             </Stack>
           </Paper>}
           {runtime?.lastError == null ? null : <Alert color="red">{runtime.lastError}</Alert>}
-          {result?.summary == null ? null : <Paper withBorder radius="md" p="sm">
-            <Text fz={12} fw={600} mb="xs">交回结论</Text><MarkdownMessage content={result.summary} streaming={false} />
-          </Paper>}
           {result?.failure == null ? null : <Alert color="red" title="执行失败">{result.failure}</Alert>}
-          {result?.reason == null ? null : <Text c="dimmed" size="sm">收回原因：{result.reason}</Text>}
+          {result?.reason == null ? null : <Text c="dimmed" size="sm">结束原因：{result.reason}</Text>}
         </Stack>
       </ScrollArea>}
     {follow.following ? null : <Button className="subagent-jump" size="compact-sm" variant="light"

@@ -44,7 +44,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     work_plan_updates: [{ step_id: "plan-step", plan: completed }],
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
-      pending_authorization_commands: [], should_wake: false, has_active_subagents: false,
+      pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
       control_approval: null, control_message: null, auto_authorize: false, paused: false, last_error: null,
     },
     items: [
