@@ -84,6 +84,7 @@ def main(argv: list[str] | None = None) -> None:
     for target in targets:
         if target == "python":
             run([sys.executable, "-m", "ruff", "check", "--select", "F",
+                 "--target-version", f"py{expected_python.replace('.', '')}",
                  "redpanda", "thinllm", "scripts", "tests", "console_chat.py", "web_chat.py"])
             run([sys.executable, "-m", "pytest", "--durations=20",
                  "--junitxml=.tools/test-results/python.xml"])
