@@ -24,11 +24,11 @@ web
 
 ## Brand Commitments
 
-用户已确认 designs/web-redesign 中 A「轻盈协作」为定稿，包含明暗两套配色。侧栏顶部是新建 Bot，不再展示品牌块和「我的协作空间」。每位 Bot 的身份色在头像、署名和正文 @ 中一致。
+采用用户已确认并落地的 A「轻盈协作」，包含明暗两套配色。侧栏顶部是新建 Bot，不再展示品牌块和「我的协作空间」。每位 Bot 的身份色在头像、署名和正文 @ 中一致。
 
 ## Evidence on Hand
 
-已确认的可交互 HTML 原型、长对话样例和截图位于 designs/web-redesign；最终约束见 .superdesign/design-system.md。现有 React 应用和测试是功能事实源，原型内容不能当作后台执行证据。
+设计约束见 .superdesign/design-system.md；实际界面以 web/src 中的 React 前端为准，代码和测试是功能事实源。早期 HTML 原型、样例和截图可从 Git 历史回看，不再单独维护。
 
 ## Product Principles
 
