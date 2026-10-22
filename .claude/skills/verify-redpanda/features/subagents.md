@@ -43,7 +43,11 @@
   - (c) 没有第二次 delegate 或 reclaim；子原历史保留，新指令是 `subagent.instruction` 事实，不能伪装成用户消息；一次委派仍只交回一次。
   - (d) 已交回或收回的子拒绝新指令（`CHILD_FINISHED`）；重复投递不再打断新工作；报告正在提交时保留原结论，不接续新方向。后两项由进程测试核对。
 - **子失败**：(b) 子以失败结束时内容页状态 `执行失败`，父最新一轮出现 Alert `子 Agent 执行失败` 并显示失败文字；(c) 父会话本身不进入失败状态。
-- **插话问答**：长任务执行中，让父用 `instruct_subagent` 问当前进展，要求子 `reply_parent` 答复后继续原任务。
+- **自主询问进度**：在全新 Bot 中用普通语言要求把一项较长任务交给子助手。确认真实委派且子仍在运行后，从父输入框只发「做到什么程度了？」；初始任务和追问都不能指定工具名、回复协议或测试标记。
+  - (a) 父自主调用 `instruct_subagent` 向原子任务询问实际进度；子用 `reply_parent` 答复后，父收到对应 `subagent.reply` 并据此回答用户。
+  - (b) 核对答复内容与先后顺序，区分委派目标、模型计划和实际完成的工作。未询问就复述目标、只说等待报告，或直接从文件推测子进展，不计作这项通过。
+  - (c) 阶段回复时子仍活跃，不能重派或收回，也不能把阶段回复当最终交回。另一个新 Bot 可复测不同自然问法；一次通过不等于跨模型稳定性保证。
+- **插话问答链路**：长任务执行中，显式要求父用 `instruct_subagent` 问当前进展、子用 `reply_parent` 答复后继续。这里只证明通信链路，不证明模型自主选择工具。
   - (a) 子历史出现成功的 `reply_parent`；父历史有对应 `subagent.reply`，含原子 id 与答复。此时观察 GET 的 result 仍为 null，父 `has_active_subagents=true`。
   - (b) 父收到阶段答复后可转述进展；页面仍显示 `子 Agent 执行中`。再问一次可收到另一条答复，最终才显示 `已交回`。
   - (c) 阶段性答复不触发回收、不伪装为用户消息；原 delegate 不变，最终 report 与 return 各一条。
@@ -61,4 +65,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：同一步派出两个 delegate，观察页已交回并显示 write/read/report 与交回结论，compare_subagent/merge_subagent 及父目录成果通过；收回、冲突、子失败未重验。
 - 2026-10-22 插话控制增量：隔离 Web、Windows Chrome、真实 DeepSeek；子任务运行时插话保留它，父先回复且子继续执行；随后另派任务，在其运行中要求父 `reclaim`，观察页显示已收回与指定原因，GET 的 `cancelled=true`。自然结束与收回的首次竞态不计作收回通过；选择性收回及保留任务正常交回另由进程测试验证。未重验分支改动与合并、冲突、子失败；证据见 `.tools/interrupt-adjust-evidence/`。
 - 2026-10-22 追加指令增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；排序长文子任务执行中，父实际调用 `instruct_subagent`，原子任务中断旧思考并通过 report 交回 `CHILD_REDIRECT_OK`。GET 与 journal 确认同一子 id、一条新指令、一次决策取消、没有用户消息，最终 `reported=true`、`cancelled=false`；父未重新委派或收回。进程测试另验父在接纳确认前退出后的恢复幂等、报告提交竞态和已结束拒绝。未真实驱动代码项目写入/MCP 长调用/Linux；代码项目分支与原有停止等由进程回归核对。证据在 `.tools/subagent-instruction-evidence/`。
-- 2026-10-22 插话问答增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；父连续两次用 `instruct_subagent` 问进度，子两次 `reply_parent` 返回 `PROGRESS_ONE`/`PROGRESS_TWO`，父自动接到并转述，此时仍有活跃子任务。随后父调整同一个子任务，最终正常 report `DIALOGUE_FINAL_OK`。Journal 核对一次委派、三次插话、两条阶段答复、一条最终交回、零子会话用户消息，没有收回或重派。子在回复确认前退出的恢复、旧回复在终局后的确认与新回复拒绝由进程测试覆盖；未 live 验证代码项目写入、MCP 长调用与 Linux，不评价本次算法写作内容的正确性。证据在 `.tools/subagent-dialogue-evidence/`。
+- 2026-10-22 插话问答链路增量：隔离 home、Windows Chrome 1440×900、真实 DeepSeek；测试提示显式指定工具，父连续两次用 `instruct_subagent` 问进度，子两次 `reply_parent` 返回 `PROGRESS_ONE`/`PROGRESS_TWO`，父自动接到并转述，此时仍有活跃子任务。随后父调整同一个子任务，最终正常 report `DIALOGUE_FINAL_OK`。Journal 核对一次委派、三次插话、两条阶段答复、一条最终交回、零子会话用户消息，没有收回或重派。只证明链路，不证明自然问法下模型自主选择。子在回复确认前退出的恢复、旧回复在终局后的确认与新回复拒绝由进程测试覆盖；未 live 验证代码项目写入、MCP 长调用与 Linux，不评价本次算法写作内容的正确性。证据在 `.tools/subagent-dialogue-evidence/`。
+- 2026-10-22 自主询问增量：隔离 home、Windows Chrome 1440×900、真实 deepseek-flash。原版本只问「做到什么程度了？」失败：父查文件并称没有子 id；保留可寻址 id、但仅说「需要了解时询问」仍失败，请求核对确认模型拿到了工具与 id，却选择等待。明确用户问进度且已有信息不足时应先询问后，在两个全新 Bot 中用「做到什么程度了？」和「现在进展怎么样，有卡住的地方吗？」均自主调用原子任务的 `instruct_subagent`，子 `reply_parent`，父收到后转述。数据库教程例中子随后实际写文件并继续修改，没有收回或重派。排序教程例的初次问答通过，但后续父自行要求分批交稿时，子用了普通文字而非回复工具，未 report 就结束，父随后重派；该后续流程不计通过。保留三次失败与两个最终样本，不据此宣称统计可靠性、跨模型表现、教程内容正确或任务完整交付通过。证据在 `.tools/subagent-natural-evidence/`。

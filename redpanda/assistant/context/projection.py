@@ -48,7 +48,7 @@ from redpanda.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 20
+PROJECTOR_VERSION = 21
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -571,6 +571,8 @@ def _stub_content(
     if outcome["code"] == "COMMAND_BACKGROUND":
         # The handoff stays addressable when output is externalized or dehydrated.
         stub["data"]["background"] = outcome["data"]["background"]
+    elif outcome["code"] == "DELEGATED":
+        stub["data"]["child_session_id"] = outcome["data"]["child_session_id"]
     return json.dumps(stub, ensure_ascii=False, separators=(",", ":"))
 
 
