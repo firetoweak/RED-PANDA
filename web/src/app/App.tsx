@@ -14,7 +14,6 @@ import {
 } from "./sidebarWidth";
 import { SessionConversation } from "../features/conversation/SessionConversation";
 import { GroupChatPage } from "../features/groups/GroupChatPage";
-import { ModelSettingsPage } from "../features/models/ModelSettingsPage";
 import { AgentHome } from "../features/sessions/AgentHome";
 import { AgentSidebar } from "../features/sessions/AgentSidebar";
 import { openEventBridge } from "../realtime/eventBridge";
@@ -106,7 +105,6 @@ export function App() {
           <IconMenu2 size={19} />
         </ActionIcon>
         <Routes>
-          <Route path="/settings/models" element={<ModelSettingsPage />} />
           <Route path="/" element={<AgentHome />} />
           <Route path="/groups/:groupId" element={<GroupChatPage />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />

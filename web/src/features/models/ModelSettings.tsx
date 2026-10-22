@@ -1,13 +1,13 @@
-import { Alert, Badge, Button, Container, Group, Modal, NumberInput, Paper, Radio, Select, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Group, Modal, NumberInput, Paper, Radio, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { ModelConfig, ModelProfile } from "../../api/contracts";
 import { useGetModelSettingsQuery, useSaveModelSettingsMutation } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { ModelTestButton } from "./ModelTestButton";
 
-export function ModelSettingsPage() {
+export function ModelSettings({ active = true }: { active?: boolean }) {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
-  const { data, error, isLoading } = useGetModelSettingsQuery(undefined, { pollingInterval: 5000 });
+  const { data, error, isLoading } = useGetModelSettingsQuery(undefined, { skip: !active, pollingInterval: active ? 5000 : 0 });
   const [save, { isLoading: saving, error: saveError }] = useSaveModelSettingsMutation();
   const [draft, setDraft] = useState<ModelConfig | null>(null);
   const saved = useRef<ModelConfig | null>(null);
@@ -66,13 +66,13 @@ export function ModelSettingsPage() {
     } catch { setNotice(""); } // 具体失败由 mutation 状态展示。
   }
 
-  if (isLoading || draft === null) return <Container py={80}><Text>{error ? "读取模型配置失败：" + JSON.stringify(error) : "读取模型配置…"}</Text></Container>;
+  if (isLoading || draft === null) return <Text>{error ? "读取模型配置失败：" + JSON.stringify(error) : "读取模型配置…"}</Text>;
   const changed = data !== undefined && JSON.stringify(draft) !== JSON.stringify(data.config);
 
-  return <Container size="md" py={70} style={{ height: "100%", overflowY: "auto" }}>
+  return <>
     <Stack gap="lg">
       {error ? <Alert color="red" title="读取配置失败">{JSON.stringify(error)}</Alert> : null}
-      <Group justify="space-between"><div><Title order={2}>模型配置</Title><Text c="dimmed" mt={6} size="sm">维护可选模型，在每个会话的输入区切换。</Text></div>
+      <Group justify="space-between"><Text c="dimmed" size="sm">维护可选模型，在每个会话的输入区切换。</Text>
         <Button onClick={() => edit("new")}>添加模型</Button></Group>
       <Paper withBorder p="md" radius="md">
         <Text fw={600} mb="xs">候选模型</Text>
@@ -131,5 +131,5 @@ export function ModelSettingsPage() {
         <Button onClick={applyEdit}>加入待保存配置</Button>
       </Stack>
     </Modal>
-  </Container>;
+  </>;
 }

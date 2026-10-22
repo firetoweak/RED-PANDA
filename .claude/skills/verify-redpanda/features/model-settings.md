@@ -1,6 +1,6 @@
 # 模型配置
 
-`/settings/models` 页面管理候选模型、默认模型、推理程度与 compact 阈值，可测试连接；会话内可切换模型。来源：`web/src/features/models/ModelSettingsPage.tsx`、`ModelTestButton.tsx`、`web/src/features/models/ModelSelector.tsx`、`redpanda/model_settings.py`、`redpanda/config.py`（候选与默认的形状校验）、`redpanda/llm/config.py`（`ModelConfig`、初始 `connections.json`）、`thinllm/providers.py`（`PROVIDERS`）、`redpanda/assistant/model_connection.py`、`redpanda/channels/web/app.py` 的 `/api/model-settings*` 与 `/api/sessions/{id}/model`，说明文档 `docs/模型配置.md`。
+侧栏 `设置 → 模型配置` 抽屉管理候选模型、默认模型、推理程度与 compact 阈值，可测试连接；会话内可切换模型。来源：`web/src/features/models/ModelSettings.tsx`、`ModelTestButton.tsx`、`web/src/features/models/ModelSelector.tsx`、`redpanda/model_settings.py`、`redpanda/config.py`（候选与默认的形状校验）、`redpanda/llm/config.py`（`ModelConfig`、初始 `connections.json`）、`thinllm/providers.py`（`PROVIDERS`）、`redpanda/assistant/model_connection.py`、`redpanda/channels/web/app.py` 的 `/api/model-settings*` 与 `/api/sessions/{id}/model`，说明文档 `docs/模型配置.md`。
 
 ## Sub-features
 
@@ -12,7 +12,7 @@
 
 ## How to get to it (user POV)
 
-- 侧栏进入 `模型配置`（路由 `/settings/models`）。没有候选模型时，设置页 `候选模型` 区显示 `先添加一个模型，再开始会话。`（首页没有这句）。
+- 侧栏底部点 `设置`，菜单选择 `模型配置`；打开右侧抽屉，聊天路由保持不变。没有候选模型时，设置页 `候选模型` 区显示 `先添加一个模型，再开始会话。`（首页没有这句）。
 
 ## Driving it with the browser
 
@@ -29,7 +29,7 @@
 - **删除默认模型**：
   - (a) 默认模型那一行的 `删除` 是禁用的，UI 不能直接删。
   - (d) 要走到服务端拒绝：在草稿里先把 `新会话默认` 改到另一个候选，再删原默认模型，然后 `保存配置` → 409 `请先保存新的默认模型，再删除原默认模型`，页面 `保存失败`，`config.json` 不变。删除仍被某个会话选用的模型并保存 → 409 `请先切换以下会话的模型：<session_id 列表>`，`config.json` 不变。
-- **丢弃未保存**：添加候选后点 `撤销修改` 或离开页面不保存 → `config.json` mtime 不变。
+- **草稿**：添加候选后关闭抽屉，打开 `共同记忆` 再返回 `模型配置`，候选草稿仍在；没有点 `保存配置` 时 `config.json` 不变。点 `撤销修改` 才恢复已保存配置；刷新页面会丢弃草稿。
 - **测试**：
   - (a) 测试不写任何文件。
   - (b) 已保存且供应商已配置 → `测试通过 · N ms`；把 key 改错 → `测试失败 · N ms` 加原因，响应不回显 key。测试失败时 HTTP 仍是 200（`ok: false`）。
@@ -46,7 +46,9 @@
 - 设置 `REDPANDA_CONFIG` 环境变量会让 `config.json` 指向别处（`redpanda/config.py`），验证时确认未设置。
 - `测试` 需要可用连接，`live_model_ready` 为 false 时跳过 `测试` 与发送，只验证配置编辑和禁用状态。
 - `推理程度` 只对 `stepfun/step-5-preview` 开放；其他模型该列显示 `—`，服务端对其他模型传 `reasoning_effort` 直接拒绝。
-- 页面每 5 秒轮询 `GET /api/model-settings`；草稿与旧的已保存配置一致时会被新数据覆盖，有未保存修改时保留草稿。
+- 抽屉打开时每 5 秒轮询 `GET /api/model-settings`；草稿与旧的已保存配置一致时会被新数据覆盖，有未保存修改时保留草稿。
 - 历史验证：2026-10-12（main@1a4790a）通过。2026-10-18 按源码改写按钮文案、徽标与错误路径，未 live 复跑。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；删除默认与会话换模型未重验。
+
+2026-10-22 设置抽屉增量：桌面1440×1000与窄屏390×844，通过菜单进入、模型编辑弹窗、阈值草稿跨抽屉保留、撤销和保存；API 确认保存后的阈值为64000。候选表在窄屏内部横向滚动，页面无横向溢出。真实连接测试收到模型空响应，页面原样呈现失败原因；同一模型的真实 Bot 对话成功。删除默认与会话切换模型未重验。证据留在本地 `.tools/verification/settings/evidence/`。

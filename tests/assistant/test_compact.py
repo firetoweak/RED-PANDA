@@ -72,11 +72,11 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
     async def test_bot_rollover_restates_shared_memory_updated_during_handoff(self):
         memory = SharedMemoryStore(self.home.state_root / "shared_memory.sqlite")
         memory.update(UpdateSharedMemory(version=0, content="旧的团队约定"),
-                      author="Lin", session_id="lin", command_id="before")
+                      author="Lin", source="bot:lin", operation_id="before")
         ada = await self.host.create_agent(name="Ada")
         await until(lambda: (self.root / "compact_started").exists() and len(self.outputs) == 1)
         memory.update(UpdateSharedMemory(version=1, content="最新团队约定：共享资源先协调。"),
-                      author="Lin", session_id="lin", command_id="during")
+                      author="Lin", source="bot:lin", operation_id="during")
         await self.host.receive_user_message(ada.session_id, "TAIL_KEEP", delivery_id="tail")
         await until(lambda: len(self.outputs) == 2)
         (self.root / "release_compact").touch()

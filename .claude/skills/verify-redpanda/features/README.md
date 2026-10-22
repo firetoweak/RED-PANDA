@@ -76,7 +76,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 真实模型多批自然回复、父主动追问和调整、状态查询、显式结束通过；项目成果与并行隔离见条目 |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | update_plan 建两步计划，API 留有进行中和全部完成两版；其余见条目 |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 轮次耗时、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合的上下文用量与耗时可见，API context_input_tokens 有值；其余见条目 |
-| model-settings | [model-settings.md](./model-settings.md) | `模型配置` 页、`测试`、`保存配置`、会话切换模型 | UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；其余见条目 |
+| model-settings | [model-settings.md](./model-settings.md) | `设置 → 模型配置` 抽屉、`测试`、`保存配置`、会话切换模型 | UI 添加 deepseek-flash、阈值 64000、保存和真实连接测试通过（1209 ms），未保存时测试禁用；其余见条目 |
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | UI 请求 45 秒 schedule_once，倒计时可见，无新用户输入即回复 WOKE_UP；其余见条目 |
 | routines | [routines.md](./routines.md) | `Agent 资料` 侧栏 `例行任务`：开关 `暂停 <名字>` / `恢复 <名字>`，`删除 <名字>` → `确认删除 <名字>`；`查看 <名字>` 看意图与执行记录 | 真实 save_routine 后列表出现；其余见条目 |
 | reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 普通结束正文、私信触发 PRIVATE_RECEIVED、定时触发 WOKE_UP 实时与刷新历史一致；其余见条目 |
@@ -98,7 +98,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 | `/workspaces/:workspaceId` → `AgentHome` | session-sidebar、workspace-management |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat、inbox 及所有会话类条目 |
 | `/groups/:groupId` → `GroupChatPage` | group-chat |
-| `/settings/models` → `ModelSettingsPage` | model-settings |
+| 侧栏 `设置 → 模型配置` / `共同记忆` → `SettingsMenu` 抽屉（保持聊天路由） | model-settings、colleague-tools |
 | 未知前端路径回落 `index.html`（`app.py` 的 `_FrontendFiles`）；未知 API 保持 404 | web-session-chat |
 
 ### HTTP / SSE 接口（`redpanda/channels/web/app.py`）
@@ -107,6 +107,7 @@ Bot 解耦增量：名册、首页、可选代码项目和通信条目已更新�
 |---|---|
 | `GET /api/events` | realtime-events、reply-delivery（流式预览与最终回复） |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
+| `GET/PUT /api/shared-memory` | colleague-tools |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
 | `GET /api/agents`、`POST /api/agents` | session-sidebar、colleague-tools |
 | `GET /api/sessions/{id}` | web-session-chat、reply-delivery（普通回复与文件附件） |

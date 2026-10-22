@@ -45,7 +45,7 @@ class SharedMemoryTest(unittest.IsolatedAsyncioTestCase):
         with ThreadPoolExecutor(2) as workers:
             jobs = [workers.submit(
                 store.update, UpdateSharedMemory(version=0, content=name),
-                author=name, session_id=name, command_id="first",
+                author=name, source=f"bot:{name}", operation_id="first",
             ) for store, name in ((self.store, "Ada"), (other, "Lin"))]
             results = [job.result() for job in jobs]
         winner, = [result for result in results if result["ok"]]

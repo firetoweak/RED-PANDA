@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { ModelSettingsPage } from "../src/features/models/ModelSettingsPage";
+import { ModelSettings } from "../src/features/models/ModelSettings";
 import { ModelTestButton } from "../src/features/models/ModelTestButton";
 
 const { testModel, settings } = vi.hoisted(() => ({
@@ -36,7 +36,7 @@ it("测试按钮调用所在行的模型，显示失败原因并允许重新测�
   }) }).mockReturnValueOnce({ unwrap: async () => ({
     model: "deepseek/flash", ok: true, message: "模型可用", elapsed_ms: 80,
   }) });
-  render(<MantineProvider><ModelSettingsPage /></MantineProvider>);
+  render(<MantineProvider><ModelSettings /></MantineProvider>);
   const button = await screen.findByRole("button", { name: "测试 deepseek/flash" });
   fireEvent.click(button);
   expect(await screen.findByText(/当前密钥无权访问此模型/)).toBeVisible();

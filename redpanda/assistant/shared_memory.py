@@ -64,10 +64,10 @@ class SharedMemoryStore:
                 version INTEGER PRIMARY KEY,
                 content TEXT NOT NULL,
                 updated_by TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                command_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                operation_id TEXT NOT NULL,
                 based_on INTEGER NOT NULL,
-                UNIQUE (session_id, command_id)
+                UNIQUE (source, operation_id)
             )""")
 
     def _connect(self):
@@ -86,12 +86,12 @@ class SharedMemoryStore:
         with closing(self._connect()) as db:
             return self._current(db)
 
-    def update(self, change: UpdateSharedMemory, *, author: str, session_id: str, command_id: str):
+    def update(self, change: UpdateSharedMemory, *, author: str, source: str, operation_id: str):
         with closing(self._connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
             previous = db.execute(
                 "SELECT version, content, updated_by, based_on FROM shared_memory "
-                "WHERE session_id = ? AND command_id = ?", (session_id, command_id),
+                "WHERE source = ? AND operation_id = ?", (source, operation_id),
             ).fetchone()
             if previous is not None:
                 if (previous[1], previous[2], previous[3]) != (change.content, author, change.version):
@@ -106,9 +106,9 @@ class SharedMemoryStore:
                     }
                 saved = SharedMemory(version=current.version + 1, content=change.content, updated_by=author)
                 db.execute(
-                    "INSERT INTO shared_memory (version, content, updated_by, session_id, command_id, based_on) "
+                    "INSERT INTO shared_memory (version, content, updated_by, source, operation_id, based_on) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (saved.version, saved.content, author, session_id, command_id, change.version),
+                    (saved.version, saved.content, author, source, operation_id, change.version),
                 )
         return {"ok": True, "code": "SHARED_MEMORY_UPDATED", "data": saved.model_dump()}
 
@@ -129,7 +129,7 @@ def shared_memory_bindings(store: SharedMemoryStore, author: str):
                     "error": "共同记忆正文最多500字，标点、空白和换行也计数。请精简后重试，原文未修改。",
                 }
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": str(error)}
-        return store.update(change, author=author, session_id=context.session_id, command_id=context.command_id)
+        return store.update(change, author=author, source=f"bot:{context.session_id}", operation_id=context.command_id)
 
     return {
         READ_SHARED_MEMORY: ToolBinding(read),

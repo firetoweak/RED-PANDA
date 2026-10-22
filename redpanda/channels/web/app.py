@@ -29,6 +29,7 @@ from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
+from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from redpanda.automation.routines import RoutineNotFound
 from redpanda.model_settings import ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
@@ -89,6 +90,10 @@ class AbsenceAnswer(ConnectionRequest):
 
 class ModelSettingsRequest(ConnectionRequest):
     config: dict
+
+
+class SharedMemoryRequest(ConnectionRequest, UpdateSharedMemory):
+    delivery_id: str = Field(min_length=1)
 
 
 class SessionModelRequest(ConnectionRequest):
@@ -217,6 +222,7 @@ def create_web_app(
     models=None,
     model_llm=None,
     static_dir: Path | None = None,
+    shared_memory: SharedMemoryStore | None = None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
@@ -228,6 +234,7 @@ def create_web_app(
             app.state.models = models
             app.state.model_llm = model_llm
             app.state.workspaces = workspaces
+            app.state.shared_memory = shared_memory
             yield
             return
         async with bootstrap_assistant(
@@ -253,6 +260,7 @@ def create_web_app(
             app.state.models = assistant.sessions.models
             app.state.model_llm = assistant.sessions.llm
             app.state.workspaces = assistant.workspaces
+            app.state.shared_memory = SharedMemoryStore(assistant.sessions.home.state_root / "shared_memory.sqlite")
             failures = asyncio.create_task(
                 report_worker_failures(assistant.sessions, events),
                 name="web-assistant-failure",
@@ -382,6 +390,20 @@ def create_web_app(
     @app.get("/api/model-settings")
     async def model_settings(request: Request):
         return request.app.state.models.view()
+
+    @app.get("/api/shared-memory")
+    async def read_shared_memory(request: Request):
+        return request.app.state.shared_memory.read().model_dump()
+
+    @app.put("/api/shared-memory")
+    async def save_shared_memory(body: SharedMemoryRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        result = request.app.state.shared_memory.update(
+            body, author="用户", source="user", operation_id=body.delivery_id,
+        )
+        if not result["ok"]:
+            return JSONResponse(status_code=409, content={"detail": result["error"], "current": result["data"]})
+        return result["data"]
 
     @app.put("/api/model-settings")
     async def save_model_settings(body: ModelSettingsRequest, request: Request):
