@@ -38,6 +38,8 @@ verdict 为 `ask` 时：总闸开启则 Host 为该 Command 追加明确授权�
 
 Host 另以精确 command 身份提供活动叠加：只有 Worker 明确报告该 Command 正在执行时，Channel 才把排队或 unknown 临时画成 running。**Session 级 running / idle 不参与单个 Command 的判定。**
 
+自动放行开启时，尚未写入授权事实的调用仍按原有规则等待派发，但对人展示为排队，不作为需要人决定的待授权事项；对话、待处理条与名册遵守同一选择。控制提案仍需人确认。
+
 Worker 报告执行函数已经返回也不能产生终态——终态必须等 Outcome 提交后由 Journal 投影，实时事件只负责提示 Channel 重拉。刷新后等待、拒绝和终态从 Journal 恢复；总闸不在 Journal 里，走 Host 元数据。
 
 ## 拒绝语义

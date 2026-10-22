@@ -1237,6 +1237,7 @@ class HostSupervisor:
                 control_approval=pending_approval_view(events),
                 control_message=project_control_message(events),
                 has_active_subagents=bool(project_pending(events)),
+                auto_authorize=self.auto_authorize(),
             ),
             session_id,
         )

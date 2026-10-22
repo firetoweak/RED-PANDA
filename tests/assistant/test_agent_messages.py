@@ -121,6 +121,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
                           for name in ("Elsewhere", "Lin", "Third")})
 
     async def test_colleague_status_follows_host_facts_without_internal_identifiers(self):
+        await self.host.set_auto_authorize(False)
         runtime = AgentRuntime(self.journal("Lin"), ScriptedDecisionMaker((lambda _: ModelDecision(
             command_requests=(InvokeTool("write_file", (("path", "a.txt"),)),)),)),
             {"write_file": ToolBinding(AsyncMock(), requires_authorization=True)})
@@ -135,6 +136,10 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             return {entry["name"]: entry["status"] for entry in colleagues}
 
         self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "awaiting_authorization", "Third": "idle"})
+        self.assertEqual(len((await self.host._project_view("Lin")).pending_authorization_ids), 1)
+        await self.host.set_auto_authorize(True)
+        self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "idle", "Third": "idle"})
+        self.assertEqual((await self.host._project_view("Lin")).pending_authorization_ids, ())
         self.host._pause.set("Third", True)
         with patch.object(self.host, "activity", lambda session_id: "running" if session_id == "Lin" else "idle"):
             self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "working", "Third": "paused"})

@@ -67,7 +67,7 @@ def session_view(
     paused: bool = False,
     last_error: str | None = None,
 ) -> SessionView:
-    pending_ids = pending_authorization_ids(state)
+    pending_ids = () if auto_authorize else pending_authorization_ids(state)
     by_id = {
         command_state.command.command_id: command_state.command
         for command_state in state.commands
