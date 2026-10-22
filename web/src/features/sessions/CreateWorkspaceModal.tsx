@@ -2,6 +2,7 @@ import { Alert, Button, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { IconFolderOpen } from "@tabler/icons-react";
 import { useState } from "react";
 
+import type { Workspace } from "../../api/contracts";
 import {
   useCreateWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
@@ -10,6 +11,7 @@ import {
 type CreateWorkspaceModalProps = {
   opened: boolean;
   onClose: () => void;
+  onCreated?: (workspace: Workspace) => void;
 };
 
 /**
@@ -19,6 +21,7 @@ type CreateWorkspaceModalProps = {
 export function CreateWorkspaceModal({
   opened,
   onClose,
+  onCreated,
 }: CreateWorkspaceModalProps) {
   const [name, setName] = useState("");
   const [taskRoot, setTaskRoot] = useState("");
@@ -43,6 +46,7 @@ export function CreateWorkspaceModal({
       onClose={close}
       opened={opened}
       title="添加代码项目"
+      closeButtonProps={{ "aria-label": "关闭" }}
       closeOnClickOutside={!isSelecting}
       closeOnEscape={!isSelecting}
       withCloseButton={!isSelecting}
@@ -109,7 +113,10 @@ export function CreateWorkspaceModal({
               fullAccess: false,
             })
               .unwrap()
-              .then(close, () => undefined);
+              .then((workspace) => {
+                onCreated?.(workspace);
+                close();
+              }, () => undefined);
           }}
         >
           创建
