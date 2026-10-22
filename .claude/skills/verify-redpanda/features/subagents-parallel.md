@@ -24,10 +24,10 @@ Agent 在同一次决策里发出多个 `delegate`，各子 Agent 在各自从 A
 
 ## How to get to it (user POV)
 
-准备：Agent 分支上已提交 `a.txt`（`A0`）、`b.txt`（`B0`）、`shared.txt`（`S0`）。
+准备：Bot 已挂载一个 Git 项目，以下每次 `delegate` 都显式传该项目名 `project`；Bot 的项目分支上已提交 `a.txt`（`A0`）、`b.txt`（`B0`）、`shared.txt`（`S0`）。
 
 ```text
-请在同一次决策里并行委派三个子 Agent：
+请在同一次决策里并行委派三个子 Agent，每次 delegate 都指定已挂载的项目名：
 1. 把 a.txt 改成 A1；2. 把 b.txt 改成 B1；3. 把 shared.txt 改成 S-third。
 等三个都交回后，先 compare 每一个，再逐个 merge_subagent。
 ```
@@ -55,9 +55,11 @@ Agent 在同一次决策里发出多个 `delegate`，各子 Agent 在各自从 A
 - 疑似问题：无并发上限。`subagent/` 中没有限制并行数量的代码；一次委派很多个（如 10 个）会同时起 10 个 Worker 与 10 个 worktree。验证时观察内存、磁盘与模型并发 429。
 - 父会话停止只收回子任务，子过程与子分支保留可查看，不自动撤销文件变化、不自动合入。
 - 模型可能串行委派而非并行；通过条件是同一步出现多个 `delegate` 且子运行时间重叠。
-- 需要 `live_model_ready`。文件修改、worktree 与合并场景只在 Agent 会话里验证；普通会话也可并行委派只读调查，但不创建独立子 worktree，子不能写文件、执行命令或再委派，可经 console-chat 验证此入口。
+- 需要 `live_model_ready`。文件修改、worktree 与合并场景要求 Bot 已挂项目且 delegate 指定 project；不指定项目的委派也可并行只读调查，但不创建独立子 worktree，子不能写文件、执行命令或再委派，可经 console-chat 验证此入口。
 - 历史 live 状态：部分（2026-10-12，修复后）：父中断收回子任务、活跃子任务期间回滚收尾由 `tests/assistant/test_supervisor.py` 覆盖；并行委派、副本隔离、并发合并冲突的界面流程未验。2026-10-18 按源码改写，未重新 live 验证。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：journal 确认同一决策步骤两个 delegate，独立子工作树创建 child-a/child-b，分别比较合并后父目录包含两文件；并发冲突、收回与父停止传播未重验。
 
 - 当前普通回复与结束语义的 live 范围见 subagents。旧并行修改/合并实测不作为本次新回复与结束语义通过的证据；本次进程回归核对项目写入、等待时比较/合入与父明确结束。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：同一决策两个带 project 的 delegate，各自写文件，compare、逐次 merge、reclaim 后父目录含两文件；并发冲突与停止传播未重验。

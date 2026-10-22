@@ -57,3 +57,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实加载 MCP/Skill/CLI 管理工具并列空目录；propose_cli_install 登记本机 git 的控制提案和页面确认通过。Skill/MCP 安装与取消路径未覆盖。
 
 - 2026-10-20 编码 Skill 增量：隔离空安装登记可发现内置编码与 Git Skill；真实无 Git Bot 从个人目录发现 project:file-handoff，并与 builtin:coding 分别加载后交付文件。普通讨论未加载编码 Skill。证据 `.tools/verify-coding-skill/evidence/no-git-coding/`；未重验外部包安装、更新与取消。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实加载 MCP/Skill/CLI 管理工具并列出空安装清单；安装、测试、控制提案和移除未重验。

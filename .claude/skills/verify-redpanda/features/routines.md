@@ -17,7 +17,7 @@
 ## How to get to it (user POV)
 
 - 打开一个 Agent 的会话，发 `请用 save_routine 建一个例行任务，名字「检查 PR」，每 10 分钟一次（@every 10m），intent 写「看看有没有新评审」，然后回复 SAVED。`
-- 回复后点页头名字打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。桌面是资料侧栏；1024px 及以下是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
+- 回复后点页头名字打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。宽屏是标题为 `Bot 资料` 的侧栏；1180px 及以下（73.75em，默认字号）是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
 - 要看执行记录，需要至少一次触发。最短间隔 5 分钟；也可以直接往 `routine_fires` 写入一条已触发的记录，并在该会话 Journal 里写下对应的 `automation.routine_due`（投递身份与 `fire_id` 相同），再补上由它开始的一轮回复。
 
 ## Driving it with the browser
@@ -39,3 +39,5 @@
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实 save_routine 后列表出现；人暂停后模型恢复得到 PAUSED_BY_USER，页面恢复、取消确认及列表消失通过。未完成正常例行触发；无人查看暂停未覆盖。删除按钮当时的文案是 `取消`。
 - 2026-10-20 本分支（隔离 home，占位模型 ollama/dummy，`live_model_ready` 为真但没有可用模型，未发消息、未点测试）：写入两条例行任务和两次已送达触发后，侧栏列表显示可读安排、开关、上次与下次，以及 `删除`；点进 `检查 PR` 能看到意图全文、原文时间表和倒序执行记录；`在时间线中查看 11:40` 滚到对应回复并高亮。`删除` 后出现 `确认删除` 与 `保留`，点 `保留` 该项仍在。未等时钟真实触发，未覆盖无人查看暂停，未用真实模型走 `save_routine` / `PAUSED_BY_USER`。
+
+- 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 save_routine，1100 宽度资料抽屉查看与暂停，状态变为人暂停且下次未安排；删除、失败和无人查看策略未重验。
