@@ -6,9 +6,10 @@ from dataclasses import asdict
 from pathlib import Path
 import re
 
-from redpanda.assistant.agents import AgentRecord, ProjectLinked, ProjectUnlinked, fact_arguments
+from redpanda.assistant.agents import AgentRecord, ProjectLinked, ProjectUnlinked, fact_arguments, project_agent
 from redpanda.assistant.host.agent_worktrees import AgentProjectRequired, GitWorktree
 from redpanda.filesystem.registry import WorkspaceRecord, WorkspaceRegistryError
+from redpanda.runtime import DomainFactCommitted, SqliteJournal
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -105,14 +106,25 @@ class AgentProjects:
                     "ALREADY_LINKED", "这个项目已经挂在这里。",
                     data={"project": current.name, "directory": current.worktree})
             linked = await asyncio.to_thread(self.prepare, agent.directory, session_id, project, agent.projects)
+            arguments = fact_arguments(linked, delivery_id=delivery_id)
             try:
-                await self.host.request("fact", session_id, fact_arguments(linked, delivery_id=delivery_id))
+                await self.host.request("fact", session_id, arguments)
             except BaseException as error:
                 try:
-                    await asyncio.to_thread(self.host.agent_worktrees.remove, project,
-                                            GitWorktree(Path(linked.worktree), linked.branch))
+                    # A failed acknowledgement does not undo the recipient's acceptance.
+                    events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+                    accepted = next((event for event in events if event.delivery is not None
+                                     and event.delivery.source == arguments["source"]
+                                     and event.delivery.delivery_id == delivery_id), None)
+                    if accepted is None:
+                        await asyncio.to_thread(self.host.agent_worktrees.remove, project,
+                                                GitWorktree(Path(linked.worktree), linked.branch))
+                    else:
+                        if accepted.payload != DomainFactCommitted(arguments["fact_type"], arguments["data"]):
+                            raise ValueError("project link result conflicts with its request")
+                        await self.host.agents.set_projects(session_id, project_agent(events).projects)
                 except BaseException as cleanup_error:
-                    raise BaseExceptionGroup("project link and worktree cleanup failed",
+                    raise BaseExceptionGroup("project link and reconciliation failed",
                                              [error, cleanup_error]) from None
                 raise
             await self.host.agents.set_projects(session_id, (*agent.projects, linked))

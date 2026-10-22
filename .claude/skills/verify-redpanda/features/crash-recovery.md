@@ -79,3 +79,5 @@
 - 2026-10-20 产品修复实测：Windows Chrome、真实模型、隔离 home；同内容重放 200、异内容 409、事件数不变、后续页面发消息得到 INPUT_REPLAY_OK。证据在本地 `.tools/verification/worker-crash-20261020/evidence/`。429/读超时、待授权跨重启与杀 Web 矩阵本次未重验。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：隔离配置无效 key 触发认证失败，刷新横幅仍在，恢复配置后再试成功且原输入仅一条；杀进程、断网、429 和未知命令恢复未重验。
+
+- 2026-10-22 恢复修复增量：Windows 隔离 Web、真实 DeepSeek，同一例行触发已被处理后模拟源头送达确认丢失，强制结束本实例并按原 home 重启；补投沿用原内容与身份，事实和模型决策均未增加，Chrome 刷新后历史、项目和执行记录一致。旧触发由脚本准备，未等待自然时钟；前台未知命令、子任务及群调度的恢复矩阵本轮未重验。证据在本地 `.tools/recovery-fixes/verification/evidence/`。

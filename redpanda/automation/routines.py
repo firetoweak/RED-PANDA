@@ -116,7 +116,7 @@ class RoutineStore:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = FULL")
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 3):
                 raise ValueError(f"unsupported routine schema version: {version}")
             states = f"'{ACTIVE}', '{PAUSED}', '{PAUSED_BY_USER}', '{PAUSED_UNWATCHED}', '{DELETED}'"
             connection.executescript(
@@ -140,35 +140,15 @@ class RoutineStore:
                 CREATE TABLE IF NOT EXISTS routine_fires (
                     fire_id TEXT PRIMARY KEY,
                     routine_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    intent TEXT NOT NULL,
                     planned_at TEXT NOT NULL,
                     fired_at TEXT NOT NULL,
                     delivered_at TEXT
                 );
                 """
             )
-            if version < 2:
-                defined = connection.execute(
-                    "SELECT sql FROM sqlite_master WHERE name = 'routines'",
-                ).fetchone()[0]
-                if PAUSED_UNWATCHED not in defined:
-                    connection.executescript(
-                        f"""
-                        CREATE TABLE routines_next (
-                            routine_id TEXT PRIMARY KEY,
-                            session_id TEXT NOT NULL,
-                            name TEXT NOT NULL,
-                            intent TEXT NOT NULL,
-                            schedule TEXT NOT NULL,
-                            state TEXT NOT NULL CHECK (state IN ({states})),
-                            revision INTEGER NOT NULL,
-                            next_due TEXT,
-                            last_fired_at TEXT
-                        );
-                        INSERT INTO routines_next SELECT * FROM routines;
-                        DROP TABLE routines;
-                        ALTER TABLE routines_next RENAME TO routines;
-                        """
-                    )
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS absence_watch (
@@ -185,7 +165,7 @@ class RoutineStore:
                 );
                 INSERT OR IGNORE INTO web_presence VALUES (1, NULL, 0);
                 UPDATE web_presence SET connections = 0 WHERE id = 1;
-                PRAGMA user_version = 2;
+                PRAGMA user_version = 3;
                 """
             )
             connection.commit()
@@ -315,9 +295,8 @@ class RoutineStore:
             if row is None or row["state"] == DELETED:
                 raise RoutineNotFound(routine_id)
             rows = connection.execute(
-                "SELECT f.*, r.session_id, r.name, r.intent FROM routine_fires AS f "
-                "JOIN routines AS r USING (routine_id) WHERE f.routine_id = ? "
-                "ORDER BY f.fired_at DESC, f.fire_id DESC",
+                "SELECT * FROM routine_fires WHERE routine_id = ? "
+                "ORDER BY fired_at DESC, fire_id DESC",
                 (routine_id,),
             ).fetchall()
         return tuple(_fire_from_row(row) for row in rows)
@@ -325,9 +304,8 @@ class RoutineStore:
     def undelivered(self) -> RoutineFire | None:
         with closing(self._connect()) as connection:
             row = connection.execute(
-                "SELECT f.*, r.session_id, r.name, r.intent FROM routine_fires AS f "
-                "JOIN routines AS r USING (routine_id) WHERE f.delivered_at IS NULL "
-                "ORDER BY f.fired_at, f.fire_id LIMIT 1",
+                "SELECT * FROM routine_fires WHERE delivered_at IS NULL "
+                "ORDER BY fired_at, fire_id LIMIT 1",
             ).fetchone()
         return None if row is None else _fire_from_row(row)
 
@@ -353,8 +331,9 @@ class RoutineStore:
                     return None
                 fire_id = f"{routine.routine_id}:{routine.revision}:{routine.next_due.isoformat()}"
                 connection.execute(
-                    "INSERT OR IGNORE INTO routine_fires VALUES (?, ?, ?, ?, NULL)",
-                    (fire_id, routine.routine_id, routine.next_due.isoformat(), now.isoformat()),
+                    "INSERT INTO routine_fires VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                    (fire_id, current.routine_id, current.session_id, current.name, current.intent,
+                     current.next_due.isoformat(), now.isoformat()),
                 )
                 # The clock may wake a moment early; never schedule the slot just fired again.
                 after = max(now, routine.next_due)
