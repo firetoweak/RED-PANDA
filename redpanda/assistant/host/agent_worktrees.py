@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import os
+import json
 from pathlib import Path
 import subprocess
 
@@ -11,6 +12,7 @@ from redpanda.assistant.agent_git import Git, MergeResult, git_error, identity, 
 from redpanda.assistant.agents import AgentRecord, ProjectLinked
 from redpanda.filesystem.registry import WorkspaceRecord
 from redpanda.paths import RedPandaHome
+from redpanda.config import write_json
 
 
 class AgentProjectRequired(ValueError):
@@ -64,17 +66,25 @@ class AgentWorktrees:
         """
         self.require_project(project.task_root)
         integration = self.integration(project.workspace_id)
-        if self._has_branch(project.task_root, integration.branch):
-            self._validate(project.task_root, integration)
-        else:
-            self._add(project.task_root, integration, self._initial_commit(project.task_root))
+        base = (integration.branch if self._has_branch(project.task_root, integration.branch)
+                else self._initial_commit(project.task_root))
+        self._add(project.task_root, integration, base)
         agent = GitWorktree(path, self.agent_branch(project.workspace_id, session_id))
         self._add(project.task_root, agent, integration.branch)
         return agent
 
-    def unlink(self, project: WorkspaceRecord, linked: ProjectLinked) -> UnlinkBlocked | None:
+    def unlink(self, project: WorkspaceRecord, linked: ProjectLinked, *, recovering: bool = False) -> UnlinkBlocked | None:
         """Remove a Bot's worktree and branch, only when nothing on them would be lost."""
         worktree = Path(linked.worktree)
+        if recovering and not worktree.exists():
+            if self._has_branch(project.task_root, linked.branch):
+                integration = self.integration(linked.workspace_id).branch
+                unlanded = int(self._git(project.task_root, "rev-list", "--count",
+                    f"refs/heads/{integration}..refs/heads/{linked.branch}").stdout)
+                if unlanded:
+                    raise RuntimeError("removed project worktree still has unlanded commits")
+                self._git(project.task_root, "branch", "-D", linked.branch)
+            return None
         status = self._git(worktree, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all").stdout
         uncommitted = tuple(entry[3:].decode("utf-8") for entry in status.split(b"\0") if len(entry) > 3)
         integration = self.integration(linked.workspace_id).branch
@@ -121,10 +131,7 @@ class AgentWorktrees:
         resolution is completed as that merge when the task returns.
         """
         child = self.child(linked.workspace_id, child_session_id)
-        if self._has_branch(project.task_root, child.branch):
-            self._validate(project.task_root, child)
-        else:
-            self._add(project.task_root, child, linked.branch)
+        self._add(project.task_root, child, linked.branch)
         if conflict_source is not None and not self.git.merging(child.path):
             source = self.child(linked.workspace_id, conflict_source)
             result = self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
@@ -222,18 +229,41 @@ class AgentWorktrees:
         return Path(value.decode("utf-8").rstrip("\r\n")).resolve()
 
     def _add(self, root: Path, worktree: GitWorktree, base: str) -> None:
+        pending = self.root / "creating" / f"{_key(worktree.branch)}.json"
+        if pending.exists():
+            intent = json.loads(pending.read_text(encoding="utf-8"))
+            if intent["path"] != str(worktree.path) or intent["branch"] != worktree.branch:
+                raise ValueError("worktree creation conflicts with its original intent")
+            oid = intent["oid"]
+        elif self._has_branch(root, worktree.branch):
+            self._validate(root, worktree)
+            return
+        else:
+            oid = self.git.oid(root, base)
+            write_json(pending, dict(path=str(worktree.path), branch=worktree.branch, oid=oid))
         worktree.path.parent.mkdir(parents=True, exist_ok=True)
-        # Create the ref separately, so failure cleanup owns exactly this ref.
-        oid = self._git(root, "rev-parse", "--verify", f"{base}^{{commit}}").stdout.decode("ascii").strip()
-        self._git(root, "update-ref", f"refs/heads/{worktree.branch}", oid, "0" * len(oid))
+        if self._has_branch(root, worktree.branch):
+            if self.git.oid(root, f"refs/heads/{worktree.branch}") != oid:
+                raise ValueError("unfinished worktree branch moved from its initial commit")
+        else:
+            self._git(root, "update-ref", f"refs/heads/{worktree.branch}", oid, "0" * len(oid))
+        if (worktree.path / ".git").is_file():
+            self._validate(root, worktree)
+            # This unpublished tree has never been handed to a Bot. Complete only
+            # the checkout of the commit frozen before its creation.
+            self._git(worktree.path, "reset", "--hard", oid)
+            pending.unlink()
+            return
         try:
             self._git(root, "worktree", "add", str(worktree.path), worktree.branch)
         except BaseException as error:
             try:
                 self._git(root, "update-ref", "-d", f"refs/heads/{worktree.branch}", oid)
+                pending.unlink()
             except BaseException as cleanup_error:
                 raise BaseExceptionGroup("worktree creation and ref cleanup failed", [error, cleanup_error]) from None
             raise
+        pending.unlink()
 
     def _git(self, root: Path, *arguments: str, accepted: tuple[int, ...] = (0,)) -> subprocess.CompletedProcess[bytes]:
         return self.git.run(root, *arguments, accepted=accepted)

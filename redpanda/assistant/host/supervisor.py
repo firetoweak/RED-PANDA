@@ -245,6 +245,8 @@ class HostSupervisor:
         if self.commands is not None:
             for session_id, events in command_sessions:
                 await self.commands.restore(session_id, events)
+        await self.agent_projects.recover()
+        await self.agent_groups.prepare_recovery()
         for agent in joining:
             pending = self.store.require(agent.session_id).parent / "agent-creation.json"
             if not pending.exists():
@@ -254,6 +256,7 @@ class HostSupervisor:
                               if time < born]
                 write_json(pending, {"colleagues": colleagues})
             await self._finish_agent_creation(agent)
+        await self.agent_groups.recover()
         for session_id in unfinished:
             await self.resume(session_id)
 

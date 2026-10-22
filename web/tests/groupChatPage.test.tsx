@@ -11,7 +11,7 @@ import runtimeReducer, { connected } from "../src/realtime/runtimeSlice";
 
 const api = vi.hoisted(() => ({
   group: undefined as GroupView | undefined,
-  post: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+  post: vi.fn((_args: { deliveryId: string }) => ({ unwrap: () => Promise.resolve() })),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
   useGetGroupQuery: () => ({ data: api.group, error: undefined }),
@@ -97,7 +97,7 @@ it("发言带上点名", async () => {
   expect(api.post).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByLabelText("群消息"), { key: "Enter" });
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
-    connectionId: "connection", groupId: "group-1", text: "@Lin 看看测试", mention: ["Lin"],
+    connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text: "@Lin 看看测试", mention: ["Lin"],
   }));
 });
 
@@ -119,7 +119,7 @@ it("候选支持方向键和点选，删除正文点名后不保留收件人", a
   expect(screen.getByText("群消息 · 点名可选")).toBeInTheDocument();
   fireEvent.keyDown(input, { key: "Enter" });
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
-    connectionId: "connection", groupId: "group-1", text: "大家同步一下", mention: [],
+    connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text: "大家同步一下", mention: [],
   }));
 });
 
@@ -137,7 +137,7 @@ it("完整名字决定收件人，支持中文、带空格和符号的名字，�
   fireEvent.change(input, { target: { value: "请@李雷 同步 @Ada QA 和 @C++，联系 dev@Ada。" } });
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
-    connectionId: "connection", groupId: "group-1", text: "请@李雷 同步 @Ada QA 和 @C++，联系 dev@Ada。", mention: ["Ada QA", "李雷", "C++"],
+    connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text: "请@李雷 同步 @Ada QA 和 @C++，联系 dev@Ada。", mention: ["Ada QA", "李雷", "C++"],
   }));
 });
 
@@ -150,7 +150,7 @@ it("整条引用保留来源但不把预览中的点名当作通知", async () =
   expect(screen.getByLabelText("群消息")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "这个结论继续讨论" } });
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text: "> [Ada](#message:source)\n> @all @Lin 看看这份完整报告\n\n这个结论继续讨论", mention: [] }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text: "> [Ada](#message:source)\n> @all @Lin 看看这份完整报告\n\n这个结论继续讨论", mention: [] }));
 });
 
 it("全体候选置顶，补全后通知全部成员且不增加输入区提示", async () => {
@@ -166,7 +166,7 @@ it("全体候选置顶，补全后通知全部成员且不增加输入区提示"
   fireEvent.change(input, { target: { value: "@all @Ada 大家同步一下" } });
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
   await waitFor(() => expect(api.post).toHaveBeenCalledWith({
-    connectionId: "connection", groupId: "group-1", text: "@all @Ada 大家同步一下", mention: [],
+    connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text: "@all @Ada 大家同步一下", mention: [],
   }));
 });
 
@@ -179,7 +179,7 @@ it.each([
   renderPage();
   fireEvent.change(screen.getByLabelText("群消息"), { target: { value: text } });
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", text, mention }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith({ connectionId: "connection", groupId: "group-1", deliveryId: expect.any(String), text, mention }));
 });
 
 it("切换对话分别保留群草稿和引用，发送后清除", async () => {
@@ -224,4 +224,25 @@ it("发送请求未结束时离开群聊，成功后不恢复已发送草稿", a
   await waitFor(() => expect(localStorage.getItem("redpanda.composerDraft.group:group-1")).toBeNull());
   renderPage();
   expect(screen.getByLabelText("群消息")).toHaveValue("");
+});
+
+
+it("发送确认丢失后重新打开群页，重试沿用原消息身份", async () => {
+  api.group = group({});
+  api.post.mockImplementationOnce(() => ({ unwrap: () => Promise.reject("连接中断") }));
+  const page = renderPage();
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "同一条消息" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await screen.findByText("连接中断");
+  const original = api.post.mock.calls[0][0].deliveryId;
+  page.unmount();
+  renderPage();
+  expect(screen.getByLabelText("群消息")).toHaveValue("同一条消息");
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(screen.getByLabelText("群消息")).toHaveValue(""));
+  expect(api.post.mock.calls[1][0].deliveryId).toBe(original);
+  fireEvent.change(screen.getByLabelText("群消息"), { target: { value: "同一条消息" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
+  expect(api.post.mock.calls[2][0].deliveryId).not.toBe(original);
 });

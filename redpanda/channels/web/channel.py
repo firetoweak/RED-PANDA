@@ -97,13 +97,13 @@ class WebChannel:
         group = await self._sessions.agent_groups.create(name=name, members=members)
         return await self._sessions.agent_groups.view(group.group_id)
 
-    async def post_group_message(self, connection_id: str, group_id: str, text: str, mention: list[str]):
+    async def post_group_message(self, connection_id: str, group_id: str, text: str, mention: list[str], *, delivery_id: str):
         self._require_connection(connection_id)
         content = self._require_text(text)
         group = await self._sessions.agent_groups.get(group_id)
         if any(name not in group.members for name in mention):
             raise WebInputInvalid("只能点名这个群里的成员。")
-        await self._sessions.agent_groups.post(group_id, content, mention)
+        await self._sessions.agent_groups.post(group_id, content, mention, delivery_id=delivery_id)
         return await self._sessions.agent_groups.view(group_id)
 
     def routines(self, session_id: str):

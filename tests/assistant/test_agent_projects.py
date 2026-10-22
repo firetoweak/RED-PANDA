@@ -37,7 +37,7 @@ class ProjectLinkAcknowledgementTest(unittest.IsolatedAsyncioTestCase):
                 host = SimpleNamespace(store=store, agents=AgentRoster(store), request=AsyncMock(side_effect=receive),
                                        agent_worktrees=SimpleNamespace(remove=remove))
                 projects = AgentProjects(host)
-                with patch.object(projects, "prepare", return_value=linked):
+                with patch.object(projects, "prepare", return_value=linked), patch.object(projects, "_plan", return_value=linked):
                     with self.assertRaises(EOFError) as raised:
                         await projects.link("bot", SimpleNamespace(workspace_id="project"), "link:original")
                 self.assertIs(raised.exception, lost)

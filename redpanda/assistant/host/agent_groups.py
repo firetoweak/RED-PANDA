@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 from collections.abc import Awaitable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from uuid import uuid4
 
 from redpanda.assistant.agent_messages import (
@@ -16,6 +16,9 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.runtime import AgentRuntime, DecisionCancelled, DomainFactCommitted, SqliteJournal, replay
+from redpanda.runtime.json_values import thaw_value
+
+_DRIVE = "group.drive"
 
 
 class GroupNameTaken(ValueError):
@@ -65,6 +68,9 @@ class _Drive:
     group: GroupRecord
     replies: Counter = field(default_factory=Counter)
     pending: dict[str, _Call] = field(default_factory=dict)
+    batch: dict[str, _Call] = field(default_factory=dict)
+    active: str | None = None
+    outbox: dict[str, GroupMessage] = field(default_factory=dict)
     # Calls not yet answered, by member and the message it was asked to answer.
     answering: dict[tuple[str, str], _Call] = field(default_factory=dict)
     waiting: dict[str, asyncio.Event] = field(default_factory=dict)
@@ -88,6 +94,69 @@ class AgentGroups:
         self._creation_lock = asyncio.Lock()
         self._group_locks: dict[str, asyncio.Lock] = {}
         self._drives: dict[str, _Drive] = {}
+
+    async def _load(self, group: GroupRecord) -> _Drive:
+        if group.group_id in self._drives:
+            return self._drives[group.group_id]
+        drive = _Drive(group)
+        events = await self._journal(group.group_id).snapshot(group.group_id)
+        saved = [event.payload.data for event in events if isinstance(event.payload, DomainFactCommitted)
+                 and event.payload.fact_type == _DRIVE]
+        if saved:
+            state = thaw_value(saved[-1])
+            drive.replies = Counter(state["replies"])
+            drive.pending = {name: _Call(**call) for name, call in state["pending"]}
+            drive.batch = {name: _Call(**call) for name, call in state["batch"]}
+            drive.active = state["active"]
+            drive.answering = {(name, call["message_id"]): _Call(**call) for name, call in state["answering"]}
+            drive.outbox = {item["message_id"]: GroupMessage.model_validate(item) for item in state["outbox"]}
+        self._drives[group.group_id] = drive
+        return drive
+
+    async def _save(self, drive: _Drive, *, receipt: tuple[str, bool] | None = None) -> None:
+        # One durable group fact accepts both the speech and its scheduling effects.
+        # Public/member copies can then be completed using their original delivery id.
+        data = dict(replies=dict(drive.replies), pending=[(name, asdict(call)) for name, call in drive.pending.items()],
+                    batch=[(name, asdict(call)) for name, call in drive.batch.items()], active=drive.active,
+                    answering=[(name, asdict(call)) for (name, _), call in drive.answering.items()],
+                    outbox=[message.model_dump(mode="json") for message in drive.outbox.values()],
+                    receipt=None if receipt is None else list(receipt))
+        await AgentRuntime(self._journal(drive.group.group_id), None, {}).receive_domain_fact(
+            drive.group.group_id, _DRIVE, data, source="group", delivery_id=uuid4().hex)
+
+    async def _flush(self, drive: _Drive) -> None:
+        for identity, message in list(drive.outbox.items()):
+            await self._publish(drive.group, message)
+            del drive.outbox[identity]
+            await self._save(drive)
+
+    async def prepare_recovery(self) -> None:
+        # Publish all accepted source records before any Worker can rebuild origin budgets.
+        for group in await self.list():
+            drive = await self._load(group)
+            for message in drive.outbox.values():
+                await AgentRuntime(self._journal(group.group_id), None, {}).receive_domain_fact(
+                    group.group_id, **fact_arguments(message, delivery_id=message.message_id))
+
+    async def recover(self) -> None:
+        await self.prepare_recovery()
+        for group in await self.list():
+            async with self._group_locks.setdefault(group.group_id, asyncio.Lock()):
+                for name in group.members:
+                    agent = await self.host.agents.resolve(name)
+                    await self.host.request("fact", agent.session_id,
+                        fact_arguments(group.created, delivery_id=f"joined:{group.group_id}"))
+                drive = self._drives[group.group_id]
+                await self._flush(drive)
+                self._schedule(drive)
+
+    async def _receipt(self, group_id: str, identity: str) -> bool | None:
+        for event in await self._journal(group_id).snapshot(group_id):
+            if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == _DRIVE:
+                receipt = event.payload.data["receipt"]
+                if receipt is not None and receipt[0] == identity:
+                    return receipt[1]
+        return None
 
     def _journal(self, group_id):
         return SqliteJournal(self.store.require(group_id))
@@ -168,17 +237,27 @@ class AgentGroups:
         if isinstance(observed, Awaitable):
             await observed
 
-    async def post(self, group_id: str, text: str, mention: list[str]) -> GroupMessage:
+    async def post(self, group_id: str, text: str, mention: list[str], *, delivery_id: str | None = None) -> GroupMessage:
         """A human message starts a new drive, superseding the previous one."""
         group = await self.get(group_id)
         if any(name not in group.members for name in mention):
             raise ValueError("点名的成员不在这个群里")
-        message = GroupMessage(message_id=f"group-message-{uuid4().hex}", sender=Speaker(kind="user", name=None),
+        message = GroupMessage(message_id=f"group-message-{delivery_id or uuid4().hex}", sender=Speaker(kind="user", name=None),
                                reply_to=None, text=text, group=group.name, mentioned_agents=mention, origin=None)
         async with self._group_locks.setdefault(group_id, asyncio.Lock()):
-            await self._publish(group, message)
+            previous = await self._load(group)
+            await self._flush(previous)
+            existing = next((item for item in await self.messages(group_id) if item.message_id == message.message_id), None)
+            if existing is not None:
+                if existing != message:
+                    raise ValueError("group message delivery identity conflicts with its content")
+                self._schedule(previous)
+                return existing
             drive = self._replace_drive(group)
             drive.queue(None, mention, _Call(message.message_id, message.message_id, 1))
+            drive.outbox[message.message_id] = message
+            await self._save(drive, receipt=(message.message_id, True))
+            await self._flush(drive)
             self._schedule(drive)
         return message
 
@@ -191,18 +270,30 @@ class AgentGroups:
         return drive
 
     def _schedule(self, drive: _Drive) -> None:
-        if drive.pending and not drive.replaced.is_set() and not drive.running:
+        if (drive.pending or drive.batch) and not drive.replaced.is_set() and not drive.running:
             drive.running = True
             self.host._track(drive.group.group_id, asyncio.create_task(self._run(drive)))
 
     async def _run(self, drive: _Drive) -> None:
         try:
-            while drive.pending and not drive.replaced.is_set():
-                calls, drive.pending = drive.pending, {}
-                for name, call in calls.items():
+            while (drive.pending or drive.batch) and not drive.replaced.is_set():
+                async with self._group_locks[drive.group.group_id]:
                     if drive.replaced.is_set() or self.host.closed:
                         return
-                    await self._call(drive, name, call)
+                    if not drive.batch:
+                        drive.batch, drive.pending = drive.pending, {}
+                    name, call = next(iter(drive.batch.items()))
+                    if drive.active is None:
+                        drive.active = name
+                        drive.answering[name, call.message_id] = call
+                        await self._save(drive)
+                await self._call(drive, name, call)
+                async with self._group_locks[drive.group.group_id]:
+                    if drive.replaced.is_set():
+                        return
+                    del drive.batch[name]
+                    drive.active = None
+                    await self._save(drive)
         finally:
             # Cleared before any await so a speech arriving now starts a new run.
             drive.running = False
@@ -211,11 +302,20 @@ class AgentGroups:
     async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
         agent = await self.host.agents.resolve(name)
-        drive.answering[name, call.message_id] = call
         delivery_id = f"attention:{drive.group.group_id}:{call.message_id}:{name}"
+        events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
+        accepted = next((event.event_id for event in events if event.delivery is not None
+                         and event.delivery.delivery_id == delivery_id), None)
+        if accepted is not None:
+            state = replay(agent.session_id, events).state
+            handled = {step.step.trigger_event_id for step in state.steps} | {
+                event.payload.trigger_event_id for event in events if isinstance(event.payload, DecisionCancelled)}
+            if accepted in handled:
+                return
         attention = fact_arguments(GroupAttention(group=drive.group.name, message_id=call.message_id),
                                    delivery_id=delivery_id)
         spoke = drive.waiting[name] = asyncio.Event()
+        waits = []
         self._changed(drive.group.group_id)
         try:
             await self.host.request("fact", agent.session_id, attention)
@@ -231,6 +331,10 @@ class AgentGroups:
             for task in done:
                 task.result()
         finally:
+            for task in waits:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*waits, return_exceptions=True)
             del drive.waiting[name]
             self._changed(drive.group.group_id)
 
@@ -268,6 +372,8 @@ class AgentGroups:
         if any(name not in group.members or name == sender.name for name in mention):
             return {"ok": False, "code": "INVALID_MENTION", "error": "只能点名这个群里的其他成员。"}
         async with self._group_locks.setdefault(group.group_id, asyncio.Lock()):
+            drive = await self._load(group)
+            await self._flush(drive)
             messages = await self.messages(group.group_id)
             identity = arguments["message_id"]
             existing = next((message for message in messages if message.message_id == identity), None)
@@ -277,16 +383,14 @@ class AgentGroups:
                         or existing.reply_to != arguments["reply_to"]):
                     raise ValueError("persisted group message conflicts with its sending Command")
                 await self._publish(group, existing)
-                return self._delivered(group, identity, group.group_id in self._drives)
+                self._schedule(drive)
+                return self._delivered(group, identity, await self._receipt(group.group_id, identity))
             if arguments["reply_to"] is not None and all(
                     message.message_id != arguments["reply_to"] for message in messages):
                 return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是这个群里的消息。"}
             refused = await admit(group.name)
             if refused is not None:
                 return refused
-            drive = self._drives.get(group.group_id)
-            if drive is None:
-                drive = self._replace_drive(group)
             answered = drive.answering.get((sender.name, arguments["reply_to"]))
             if answered is not None and drive.replies[answered.opener] >= MAX_GROUP_REPLIES:
                 return {"ok": False, "code": "GROUP_LIMIT_REACHED",
@@ -294,22 +398,24 @@ class AgentGroups:
             message = GroupMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
                                    reply_to=arguments["reply_to"], text=arguments["text"], group=group.name,
                                    mentioned_agents=mention, origin=origin)
-            await self._publish(group, message)
             if answered is not None:
                 del drive.answering[sender.name, arguments["reply_to"]]
             # Any speech from a member being called ends the Host's wait for it.
-            if sender.name in drive.waiting:
-                drive.waiting[sender.name].set()
             if answered is None:
                 calls = drive.queue(sender.name, mention, _Call(identity, identity, 1))
             else:
                 drive.replies[answered.opener] += 1
                 calls = drive.queue(sender.name, mention, _Call(identity, answered.opener, answered.round + 1))
+            drive.outbox[identity] = message
+            await self._save(drive, receipt=(identity, calls))
+            await self._flush(drive)
+            if sender.name in drive.waiting:
+                drive.waiting[sender.name].set()
             self._schedule(drive)
             return self._delivered(group, identity, calls)
 
     def _delivered(self, group, identity, calls):
-        notice = ("已送达；被叫到的成员会依次回应，不等待回复。" if calls else
+        notice = ("已送达。" if calls is None else "已送达；被叫到的成员会依次回应，不等待回复。" if calls else
                   "已送达；这次群讨论已达轮数上限，不会再叫成员回应；需要某位同事接着处理时可以私信他。")
         return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity, "group": group.name,
                 "notice": notice}}

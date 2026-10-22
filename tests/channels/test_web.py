@@ -686,9 +686,10 @@ class WebFirstSliceTest(unittest.TestCase):
             **create_body, "members": ["Ada", "Nobody"]}).status_code, 404)
 
         post = lambda group_id="group-1", **body: self.client.post(
-            f"/api/groups/{group_id}/messages", json={"connection_id": connection, "text": "大家好", **body})
+            f"/api/groups/{group_id}/messages", json={"connection_id": connection, "text": "大家好",
+                                                       "delivery_id": "human-message", **body})
         self.assertEqual(post(mention=["Lin"]).status_code, 200)
-        groups.post.assert_awaited_once_with("group-1", "大家好", ["Lin"])
+        groups.post.assert_awaited_once_with("group-1", "大家好", ["Lin"], delivery_id="human-message")
         self.assertEqual(post(mention=["Elsewhere"]).status_code, 422)
         self.assertEqual(post(text="  ").status_code, 422)
         self.assertEqual(post("missing").status_code, 404)

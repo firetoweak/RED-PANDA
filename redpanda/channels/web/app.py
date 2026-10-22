@@ -148,6 +148,7 @@ class CreateGroupRequest(ConnectionRequest):
 
 
 class GroupMessageRequest(ConnectionRequest):
+    delivery_id: str = Field(min_length=1)
     text: str
     mention: list[str] = Field(default_factory=list)
 
@@ -457,7 +458,8 @@ def create_web_app(
 
     @app.post("/api/groups/{group_id}/messages")
     async def post_group_message(group_id: str, body: GroupMessageRequest, request: Request):
-        return await _channel(request).post_group_message(body.connection_id, group_id, body.text, body.mention)
+        return await _channel(request).post_group_message(body.connection_id, group_id, body.text, body.mention,
+                                                         delivery_id=body.delivery_id)
 
     @app.get("/api/inbox")
     async def inbox(request: Request):

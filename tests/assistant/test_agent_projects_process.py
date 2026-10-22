@@ -10,6 +10,9 @@ import pytest
 
 from redpanda.assistant.agent_tools import LAND, LINK, UNLINK, agent_git_bindings
 from redpanda.assistant.agents import PROJECT_LINKED, PROJECT_UNLINKED
+from redpanda.assistant.host.agent_projects import AgentProjects
+from redpanda.assistant.host.agent_roster import AgentRoster
+from redpanda.runtime import SqliteJournal
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -55,6 +58,98 @@ class AgentProjectsTest(unittest.IsolatedAsyncioTestCase):
     def facts(self, kind):
         return [args[2]["data"] for args in (call.args for call in self.request.await_args_list)
                 if args[0] == "fact" and args[2]["fact_type"] == kind]
+
+    async def test_restart_completes_link_and_unlink_at_physical_boundaries(self):
+        project = self.registry.register_path(repository(self.root / "alpha"))
+        agent = await self.host.create_agent(name="Ada")
+        projects = self.host.agent_projects
+        worktrees = self.host.agent_worktrees
+        run = worktrees._git
+        branch = worktrees.agent_branch(project.workspace_id, agent.session_id)
+
+        def after_ref(root, *arguments, **options):
+            result = run(root, *arguments, **options)
+            if arguments[:2] == ("update-ref", f"refs/heads/{branch}"):
+                raise EOFError("Host exited after branch creation")
+            return result
+
+        with patch.object(worktrees, "_git", side_effect=after_ref):
+            with self.assertRaises(EOFError):
+                await projects.link(agent.session_id, project, "original-link")
+        self.host.agents = AgentRoster(self.host.store)
+        projects = self.host.agent_projects = AgentProjects(self.host)
+        await projects.recover()
+        linked, = (await self.host.agents.by_session(agent.session_id)).projects
+        self.assertEqual((Path(linked.worktree) / "note.txt").read_text(), "initial\n")
+        await projects.recover()
+        events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
+        self.assertEqual(sum(event.delivery is not None and event.delivery.delivery_id == "original-link"
+                             for event in events), 1)
+
+        async def lost(_operation, session_id, arguments):
+            raise EOFError("Host exited after worktree removal")
+
+        self.request.side_effect = lost
+        with self.assertRaises(EOFError):
+            await projects.unlink(agent.session_id, linked.name, "original-unlink")
+        self.assertFalse(Path(linked.worktree).exists())
+        self.host.agents = AgentRoster(self.host.store)
+        self.host.agent_projects = AgentProjects(self.host)
+        await self.host.agent_projects.recover()
+        self.assertEqual((await self.host.agents.by_session(agent.session_id)).projects, ())
+        await self.host.agent_projects.recover()
+        remove = worktrees.remove
+
+        def lost_cleanup(project, worktree):
+            remove(project, worktree)
+            raise EOFError("Host exited after rolling back the unaccepted mount")
+
+        with patch.object(worktrees, "remove", side_effect=lost_cleanup):
+            with self.assertRaises(BaseExceptionGroup):
+                await self.host.agent_projects.link(agent.session_id, project, "unaccepted-link")
+        self.host.agent_projects = AgentProjects(self.host)
+        await self.host.agent_projects.recover()
+        self.assertFalse(Path(linked.worktree).exists())
+        self.assertFalse(worktrees._has_branch(project.task_root, linked.branch))
+        self.assertEqual((await self.host.agents.by_session(agent.session_id)).projects, ())
+
+    async def test_startup_finishes_only_the_original_prepared_integration_merge(self):
+        project = self.registry.register_path(repository(self.root / "alpha"))
+        agent = await self.host.create_agent(name="Ada", workspace_id=project.workspace_id)
+        linked, = agent.projects
+        integration = self.host.agent_worktrees.integration(project.workspace_id)
+        for root, name in ((Path(linked.worktree), "bot.txt"), (integration.path, "landed.txt")):
+            (root / name).write_text(name)
+            git(root, "add", name)
+            git(root, "commit", "-m", name)
+        owned = self.host.agent_worktrees.git
+        run = owned.run
+
+        def before_commit(root, *arguments, **options):
+            if arguments[:2] == ("merge", "--no-edit"):
+                run(root, "merge", "--no-commit", *arguments[1:], **options)
+                raise EOFError("Host exited with clean MERGE_HEAD")
+            return run(root, *arguments, **options)
+
+        with patch.object(owned, "run", side_effect=before_commit):
+            with self.assertRaises(EOFError):
+                await self.host.agent_projects.land(agent.session_id, linked.name)
+        self.assertTrue(owned.merging(integration.path))
+        self.assertEqual(git(integration.path, "diff", "--name-only", "--diff-filter=U"), "")
+        before = git(integration.path, "rev-parse", "HEAD")
+        (integration.path / "bot.txt").write_text("changed outside the operation")
+        git(integration.path, "add", "bot.txt")
+        with self.assertRaisesRegex(ValueError, "original automatic merge"):
+            await self.host.agent_projects.recover()
+        self.assertEqual(git(integration.path, "rev-parse", "HEAD"), before)
+        (integration.path / "bot.txt").write_text("bot.txt")
+        git(integration.path, "add", "bot.txt")
+        await self.host.agent_projects.recover()
+        head = git(integration.path, "rev-parse", "HEAD")
+        self.assertFalse(owned.merging(integration.path))
+        self.assertTrue((integration.path / "bot.txt").exists())
+        await self.host.agent_projects.recover()
+        self.assertEqual(git(integration.path, "rev-parse", "HEAD"), head)
 
     async def test_a_bot_links_projects_into_its_own_directory_mid_conversation(self):
         alpha = repository(self.root / "alpha")
