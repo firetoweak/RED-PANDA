@@ -1,13 +1,13 @@
-# 运行控制：停止、继续、再试、排队消息
+# 运行控制：打断并发送、停止、继续与再试
 
-控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、停下后 `继续`、运行中发送的排队行 `立即发送`/`退回编辑栏`）、`Conversation.tsx`（`停止` 接 `cancelTurn` → `POST .../cancel`；模型失败横幅 `执行已停止` 带 `查看详情`/`再试`；请求失败横幅 `操作失败`）、`ErrorNotice.tsx`、`ExecutionProcess.tsx`（结果不确定的调用显示 `中断`）、`redpanda/tools/builtin/command_execution.py`（`COMMAND_INTERRUPTED`）、`redpanda/assistant/host/supervisor.py`（`cancel_turn`/`retry`/`accept_input`）。用户侧没有「暂停」按钮。
+控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、`打断并发送`，停下后 `继续`）、`Conversation.tsx`（新消息接 `POST .../inputs`，运行中携带 `interrupt=true`；`停止` 接 `POST .../cancel`；模型失败横幅 `执行已停止` 带 `查看详情`/`再试`；请求失败横幅 `操作失败`）、`ErrorNotice.tsx`、`ExecutionProcess.tsx`（结果不确定的调用显示 `中断`）、`redpanda/tools/builtin/command_execution.py`（`COMMAND_INTERRUPTED`）、`redpanda/assistant/host/supervisor.py`（`cancel_turn`/`retry`/`accept_input`）。用户侧没有「暂停」按钮。
 
 ## Sub-features
 
 - `stop`：运行中点 `停止`（aria-label `停止`）→ `POST /api/sessions/{id}/cancel`；会话被标为 paused，仍在前台等待的 `execute_command` 被中断（Linux 杀进程组，Windows 终止 Job）。已转后台的命令继续运行，需要用该条的 `停止命令` 或 `stop_command` 单独停止。
 - `continue`：`继续`（aria-label `继续`）只在 `should_wake && lastError == null && !running` 时出现，走 `POST /api/sessions/{id}/retry`（paused 时先解除 paused 再推进）。
 - `retry-after-failure`：模型请求失败后输入框上方出现红色横幅 `执行已停止。<失败原因首行>`，按钮 `查看详情`、`再试`；`再试` 同样走 `POST .../retry`。
-- `queue-while-running`：运行中再发消息**不打断**当前回合：消息变成输入框上方一行排队预览，带 `立即发送` 与 `退回编辑栏`（垃圾桶图标），当前回合结束（running 由真变假）时自动发出。
+- `interrupt-with-input`：运行中或等待子任务时发送新消息，按钮为 `打断并发送`；父当前执行取消后处理新消息，不等待或自动收回子任务，成功后不保持暂停。没有排队预览；文字与附件随同一消息提交。
 
 ## How to get to it (user POV)
 
@@ -33,13 +33,21 @@
   - (b) 失败时横幅文字以 `执行已停止。运行失败：` 开头；`查看详情` 打开错误详情页（标题 `执行已停止 · 错误详情`，有 `复制完整错误`）。
   - (c) 再试前 `session.last_error` 保持不变，刷新页面后横幅仍在。
   - (d) 后端断开时点 `再试` → 横幅 `操作失败。再试失败，请确认后端连接后重试。`。
-- **运行中发送（排队）**：运行中输入 `改为回复 QUEUED_OK` 并回车。
-  - (a) 输入框清空，上方出现排队行显示该文字；此时 `GET` 里还没有这条用户消息，`sleep` 仍在跑。
-  - (b) 当前回合结束后自动 `POST .../inputs`，回复含 `QUEUED_OK`；点 `立即发送` 则立刻发出（同样不调用 `cancel`）。
-  - (c) 原命令不被打断：20 秒后 `late.txt` 出现。
-  - (d) 点 `退回编辑栏` → 排队行消失，文字（与附件）回到输入框，不发送。
+- **运行中发送（打断）**：前台长命令运行中输入 `改为只回复 INTERRUPT_OK，不要重跑旧命令` 并回车或点 `打断并发送`。
+  - (a) 旧命令产生 `COMMAND_INTERRUPTED`，`late.txt` 不出现；`GET` 中新用户消息只有一条，成功后 `session.paused=false`。
+  - (b) 一次 `POST .../inputs` 携带 `interrupt=true`，没有先从浏览器请求 `cancel`，模型随后回复 `INTERRUPT_OK`，无需点继续。
+  - (c) 已有历史和已发生的副作用保留；旧前台命令不自动重跑。子任务与独立后台命令继续运行，父根据新要求用 `reclaim` 或 `stop_command` 逐项停止；重投同一 `delivery_id` 不再打断新执行。
+  - (d) 请求失败保留正文和附件并显示 `操作失败`；刷新后仅恢复文字，不自动发送。窄屏也能用回车发送，按钮可访问名称仍为 `打断并发送`。
+- **等待子任务时插话**：委派任务仍在执行时，发送 `保留子任务，先回复 PARENT_INTERVENED`。
+  - (a) 新消息入历史，`session.paused=false`；已有子任务未被标为收回，不等子任务完成就能处理新指令。
+  - (b) 输入入口为 `打断并发送`，父回复 `PARENT_INTERVENED`；子任务仍能正常交回。
+  - (c) 子任务去留由父的工具调用决定；独立 `停止` 仍收回全部未完成子任务。
+  - (d) 改为要求父收回指定任务，核对实际 `reclaim` 调用及子结果 `cancelled=true`，不能把刚好自然结束记作收回通过。
 
 ## Gotchas
+
+- 2026-10-22 打断并发送增量：Windows Chrome、隔离 home、真实 DeepSeek，1440×900 点击和 390×844 回车均在前台长命令运行中提交新指令。旧命令留下 `COMMAND_INTERRUPTED`，后续文件未生成；模型直接回复指定标记，`paused=false`，不需要继续。窄屏无页面横向溢出。重投不再次打断及冲突输入由进程测试验证；未验证 Linux、MCP 长调用或独立后台命令停止。完整证据留在本地 `.tools/interrupt-evidence/`。
+- 2026-10-22 子任务保留增量：同样使用隔离 Web、Windows Chrome 与真实 DeepSeek，等待子任务时从 `打断并发送` 提交保留要求，父约 1.5 秒后回复 `PARENT_INTERVENED`，同时 `has_active_subagents=true`、`paused=false`，子任务未被收回。另一次在新子任务运行中要求收回，父实际调用 `reclaim`，观察页与 GET 均显示已收回和用户给出的原因，`cancelled=true`。首次收回尝试撞上子自然结束，不计作收回通过。选择性收回一个、另一个正常报告和独立停止全部收回由进程测试验证；本轮未重验代码项目写入、后台命令停止与其他平台。证据留在 `.tools/interrupt-adjust-evidence/`。
 
 - 进程级中断两平台实现不同：Linux 在 `redpanda/execution/process_posix.py`（`os.killpg(..., SIGKILL)`），Windows Host 命令在 `redpanda/execution/process_win.py`（`TerminateJobObject`），两边都要单独验。
 - 输入框里的 `重试` 只属于附件上传失败的重试，与回合控制无关。

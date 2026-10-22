@@ -158,6 +158,7 @@ class InputRequest(BaseModel):
     delivery_id: str = Field(min_length=1)
     text: str
     artifact_refs: list[str] = Field(default_factory=list)
+    interrupt: bool = False
 
     @field_validator("artifact_refs")
     @classmethod
@@ -613,6 +614,7 @@ def create_web_app(
             body.text,
             body.delivery_id,
             tuple(body.artifact_refs),
+            interrupt=body.interrupt,
         )
 
     @app.post("/api/sessions/{session_id}/control")

@@ -18,7 +18,7 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
   const { quote: requestedQuote, onQuote } = useContext(ChatPresentation);
   const { body: text, quote } = splitMessageQuote(draft);
   const setText = (body: string) => setDraft(withMessageQuote(body, quote));
-  useEffect(() => { saveComposerText(draftKey, draft, ""); }, [draftKey, draft]);
+  useEffect(() => { saveComposerText(draftKey, draft); }, [draftKey, draft]);
   useEffect(() => {
     if (requestedQuote === null) return;
     setDraft((current) => withMessageQuote(splitMessageQuote(current).body, requestedQuote));
@@ -37,7 +37,7 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
   async function send() {
     if (!canSend) return;
     if (await onSend(draft, mention)) {
-      clearSentComposerText(draftKey, "text", draft);
+      clearSentComposerText(draftKey, draft);
       setDraft("");
     }
   }

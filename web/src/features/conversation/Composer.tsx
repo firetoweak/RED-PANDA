@@ -12,7 +12,6 @@ import {
   IconPlayerStopFilled,
   IconPlayerPlayFilled,
   IconPlus,
-  IconTrash,
 } from "@tabler/icons-react";
 import {
   useEffect,
@@ -41,11 +40,9 @@ import { ChatPresentation, MessageQuote, splitMessageQuote, withMessageQuote } f
 import { useMentionCompletion } from "./MentionCompletion";
 import {
   composeSendContent,
-  parkedPreviewText,
-  restoreParkedDraft,
   type ComposerDraft,
   type ComposerAttachment,
-} from "./parkDraft";
+} from "./composerContent";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -95,16 +92,11 @@ export function Composer({
     textareaRef.current?.focus();
   }, [requestedQuote, onQuote]);
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
-  const [parked, setParked] = useState<ComposerDraft | null>(null);
   const [dragging, setDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentionCompletion({ text: composed.body, names, textarea: textareaRef,
     onChange: (body) => setText(withMessageQuote(body, composed.quote)) });
-  const parkedRef = useRef<ComposerDraft | null>(null);
-  const flushingRef = useRef(false);
-  const wasRunningRef = useRef(running);
   const onSendRef = useRef(onSend);
-  parkedRef.current = parked;
   onSendRef.current = onSend;
   const { data: selection, error: selectionError } = useGetSessionModelQuery(sessionId, { pollingInterval: 2000 });
   const { data: settings, error: settingsError } = useGetModelSettingsQuery(undefined, { pollingInterval: 5000 });
@@ -116,8 +108,6 @@ export function Composer({
   const [selectLocalFile] = useSelectLocalFileMutation();
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
-  const parkedPendingRef = useRef(parked?.pending ?? []);
-  parkedPendingRef.current = parked?.pending ?? [];
   const limit = selection?.effective?.compact_threshold_tokens ?? selection?.selected?.compact_threshold_tokens ?? 0;
   const usagePercent = inputTokens !== null && limit > 0 ? Math.round(inputTokens / limit * 100) : null;
   const usageTitle = usagePercent !== null ? `${usagePercent}% 已用`
@@ -130,83 +120,36 @@ export function Composer({
   const ready = pending.filter(
     (item) => item.state === "done" && item.attachmentId !== null,
   );
-  const busy = disabled || sending || uploading;
+  const busy = disabled || sending || uploading || stopBusy;
   const canSend =
     !busy &&
     !selectionError && !settingsError &&
     modelReady &&
     !pending.some((item) => item.state === "error") &&
-    parked === null &&
     (composed.body.trim() !== "" || ready.length > 0);
 
   useEffect(() => {
-    saveComposerText(sessionId, text, parked?.text ?? "");
-  }, [sessionId, text, parked]);
+    saveComposerText(sessionId, text);
+  }, [sessionId, text]);
 
   useEffect(() => {
     return () => {
       for (const item of pendingRef.current) {
         releasePreview(item);
       }
-      for (const item of parkedPendingRef.current) {
-        releasePreview(item);
-      }
     };
   }, []);
 
-  const sessionIdRef = useRef(sessionId);
-  useEffect(() => {
-    if (sessionIdRef.current === sessionId) {
-      return;
-    }
-    sessionIdRef.current = sessionId;
-    const previous = parkedRef.current;
-    if (previous !== null) {
-      for (const item of previous.pending) {
-        releasePreview(item);
-      }
-    }
-    parkedRef.current = null;
-    setParked(null);
-    flushingRef.current = false;
-  }, [sessionId]);
-
-  useEffect(() => {
-    const wasRunning = wasRunningRef.current;
-    wasRunningRef.current = running;
-    if (wasRunning && !running && parked !== null && !sending) {
-      void dispatchParked();
-    }
-  }, [running, parked, sending]);
-
-  async function sendDraft(draft: ComposerDraft, field: "text" | "parkedText") {
+  async function sendDraft(draft: ComposerDraft) {
     const done = draft.pending.filter(
       (item) => item.state === "done" && item.attachmentId !== null,
     );
     const content = composeSendContent(draft.text, done);
     const artifactRefs = done.map((item) => item.attachmentId as string);
     await onSendRef.current(content, artifactRefs);
-    clearSentComposerText(sessionId, field, draft.text);
+    clearSentComposerText(sessionId, draft.text);
     for (const item of draft.pending) {
       releasePreview(item);
-    }
-  }
-
-  async function dispatchParked() {
-    const draft = parkedRef.current;
-    if (draft === null || flushingRef.current) {
-      return;
-    }
-    flushingRef.current = true;
-    try {
-      await sendDraft(draft, "parkedText");
-      parkedRef.current = null;
-      setParked(null);
-    } catch {
-      parkedRef.current = draft;
-      setParked(draft);
-    } finally {
-      flushingRef.current = false;
     }
   }
 
@@ -217,31 +160,12 @@ export function Composer({
     }
     const draft: ComposerDraft = { text, pending };
     setPending([]);
-    if (running) {
-      setText("");
-      parkedRef.current = draft;
-      setParked(draft);
-      return;
-    }
     try {
-      await sendDraft(draft, "text");
+      await sendDraft(draft);
       setText((current) => current === draft.text ? "" : current);
     } catch {
       setPending(draft.pending);
     }
-  }
-
-  function restoreParked() {
-    const draft = parkedRef.current;
-    if (draft === null || flushingRef.current) {
-      return;
-    }
-    parkedRef.current = null;
-    const restored = restoreParkedDraft(draft, { text, pending });
-    setParked(null);
-    setText(restored.text);
-    setPending(restored.pending);
-    textareaRef.current?.focus();
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -426,39 +350,6 @@ export function Composer({
         }}
         type="file"
       />
-      {parked === null ? null : (
-        <Group className="composer-parked" gap={8} wrap="nowrap">
-          <Text className="composer-parked-text" fz="sm" truncate>
-            {parkedPreviewText(parked)}
-          </Text>
-          <Group gap={4} wrap="nowrap">
-            <Button
-              disabled={sending || disabled}
-              loading={sending}
-              onClick={() => void dispatchParked()}
-              size="compact-xs"
-              type="button"
-              variant="subtle"
-            >
-              立即发送
-            </Button>
-            <Tooltip label="退回编辑栏">
-              <ActionIcon
-                aria-label="退回编辑栏"
-                color="gray"
-                disabled={sending || disabled}
-                onClick={restoreParked}
-                radius="xl"
-                size={28}
-                type="button"
-                variant="subtle"
-              >
-                <IconTrash size={14} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Group>
-      )}
       {pending.length === 0 ? null : (
         <Group className="composer-attachments" gap={8} wrap="wrap">
           {pending.map((item) => item.kind === "file" ? (
@@ -571,15 +462,15 @@ export function Composer({
                 </ActionIcon>
               </Tooltip>
             ) : null}
-            <Tooltip label="发送">
+            <Tooltip label={running ? "打断当前执行，按新消息继续" : "发送"}>
               <Button
                 className="composer-send"
-                aria-label="发送"
+                aria-label={running ? "打断并发送" : "发送"}
                 disabled={!canSend}
                 loading={sending}
                 type="submit"
                 rightSection={<IconArrowUp size={13} stroke={1.7} />}
-              >发送</Button>
+              >{running ? "打断并发送" : "发送"}</Button>
             </Tooltip>
           </Group>
         </Group>
