@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from redpanda.assistant.shared_memory import SHARED_MEMORY, shared_memory_message
+
 from redpanda.runtime.json_values import thaw_value
 
 from collections.abc import Mapping
@@ -324,6 +326,8 @@ def _translate_visible_events(
                 items.append(_received_at(event))
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
+            elif payload.fact_type == SHARED_MEMORY:
+                content = shared_memory_message(shown_data)["content"]
             items.append(_Projected(
                 {"role": "user", "content": content},
                 "trigger" if payload.requests_decision else "fact",

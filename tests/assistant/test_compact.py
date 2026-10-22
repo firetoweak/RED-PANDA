@@ -18,6 +18,7 @@ from redpanda.assistant.compact.core import (
 from redpanda.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from redpanda.assistant.artifacts import FileArtifactGateway
 from redpanda.paths import RedPandaHome
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -67,6 +68,27 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         await until(
             lambda: (self.root / "compact_started").exists() and len(self.outputs) == 1
         )
+
+    async def test_bot_rollover_restates_shared_memory_updated_during_handoff(self):
+        memory = SharedMemoryStore(self.home.state_root / "shared_memory.sqlite")
+        memory.update(UpdateSharedMemory(version=0, content="旧的团队约定"),
+                      author="Lin", session_id="lin", command_id="before")
+        ada = await self.host.create_agent(name="Ada")
+        await until(lambda: (self.root / "compact_started").exists() and len(self.outputs) == 1)
+        memory.update(UpdateSharedMemory(version=1, content="最新团队约定：共享资源先协调。"),
+                      author="Lin", session_id="lin", command_id="during")
+        await self.host.receive_user_message(ada.session_id, "TAIL_KEEP", delivery_id="tail")
+        await until(lambda: len(self.outputs) == 2)
+        (self.root / "release_compact").touch()
+        await until(lambda: self.host.conversation_status(ada.session_id).compact_count == 1)
+        await self.host.receive_user_message(ada.session_id, "压缩后继续。", delivery_id="after")
+        await self.host.wait_quiescent(ada.session_id)
+        requests = [json.loads(line) for line in (self.root / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
+        shown = json.dumps(requests[-1], ensure_ascii=False)
+        self.assertIn("最新团队约定：共享资源先协调。", shown)
+        self.assertIn("<shared_memory>", shown)
+        self.assertNotIn("旧的团队约定", shown)
+        self.assertTrue(self.host.failures.empty())
 
     async def test_background_rollover_preserves_session_tail_and_delivery_identity(
         self,

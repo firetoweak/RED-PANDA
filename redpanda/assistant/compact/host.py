@@ -190,7 +190,9 @@ class CompactHost:
             "upto": p,
             "request": material["inherited"],
         }
-        before = window_preamble(job["summary"], p, snapshot["catalog"], snapshot["identity"])
+        before = window_preamble(
+            job["summary"], p, snapshot["catalog"], snapshot["identity"], snapshot["shared_memory"],
+        )
         after = projected_tail(bundle["records"], p, q)
         messages = [*before, *after]
         context = save_document(self.gateway, source, {"messages": messages})

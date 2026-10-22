@@ -9,6 +9,7 @@ from copy import deepcopy
 from dataclasses import replace
 
 from redpanda.assistant.agents import identity_for_model
+from redpanda.assistant.shared_memory import project_shared_memory, shared_memory_message
 from redpanda.assistant.artifacts import (
     is_valid_artifact_id,
     ArtifactNotFoundError,
@@ -39,7 +40,7 @@ PURPOSE = """<self_handoff>
 请为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
 优先使用已有上下文，仅为关键缺口用 find_history 定位历史、read_content 读取真实引用。其他工具不能执行。
 保持各项目标、约束、纠正、决定、未完成委派、证据与来源；计划不写成已执行，声明不写成验证。
-如有同事或群：保留与用户、每位同事和每个群之间尚未了结的往来，写清对方、所在私信或群、相关消息 id，以及谁在等谁、答应了什么；保留用户交代的职责、分工与约定的做法及其后续修改；保留派出或接下的工作，写清负责人、状态和对应的代码版本、分支或 PR。你的名字、负责方向、所在的群与挂上的项目会另行给出，无需复述。
+如有同事或群：保留与用户、每位同事和每个群之间尚未了结的往来，写清对方、所在私信或群、相关消息 id，以及谁在等谁、答应了什么；保留用户交代的职责、分工与约定的做法及其后续修改；保留派出或接下的工作，写清负责人、状态和对应的代码版本、分支或 PR。你的名字、负责方向、所在的群、挂上的项目与共同记忆会另行给出，无需复述。
 保留仍影响后续工作的工具执行状态：区分已完成、明确未执行、等待与结果未知，保留已知中断原因、部分执行证据及相关引用；原因未知就明确写未知，不猜测是用户停止、崩溃、断网或超时。写清续跑前需要检查的文件或外部状态，不把部分输出当作最终结果，不把连接恢复当作操作未执行。
 保留用户对本会话命令环境的要求及其后续修改、取消；区分用户要求、已验证的执行方式与尚未验证的设想。单次 Shell 激活不写成可延续的进程状态。
 关键证据保留真实来源引用和消息序号；文件位置保留相对工作区的完整路径，不省略目录前缀。
@@ -455,7 +456,7 @@ def history_bundle(projector, events, session_id):
     return {"raw": raw, "artifacts": sorted(artifacts)}
 
 
-def window_preamble(summary, upto, catalog, identity):
+def window_preamble(summary, upto, catalog, identity, shared_memory):
     """A new window restates what earlier facts established before the handoff text."""
     before = []
     if identity is not None:
@@ -473,6 +474,8 @@ def window_preamble(summary, upto, catalog, identity):
                          ensure_ascii=False)
             + "\n</capability_catalog>",
         })
+    if shared_memory is not None:
+        before.append(shared_memory_message(shared_memory))
     return before
 
 
@@ -539,6 +542,7 @@ class CompactBoundary:
             ),
             "catalog": catalog,
             "identity": await self._identity(events),
+            "shared_memory": project_shared_memory(events),
         }
 
     async def _identity(self, events):

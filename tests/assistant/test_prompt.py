@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS
+from redpanda.assistant.shared_memory import SHARED_MEMORY_SCHEMAS, SHARED_MEMORY_TAG
 from redpanda.assistant.assembly import build_assistant_assembly
 from redpanda.assistant.context.projection import externalize_payload
 from redpanda.assistant.context.prompt import (
@@ -209,12 +210,12 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             | set(TOOL_RESULT_FIELD_NAMES)
             | _externalized_meta_fields()
             | _fact_type_tokens()
-            | {WORK_PLAN_TAG}
+            | {WORK_PLAN_TAG, SHARED_MEMORY_TAG}
         )
 
     def test_default_prompt_names_only_real_tools_and_fields(self):
         # Colleague and person messaging tools are assembled only for long-lived Agents.
-        agent_tools = {schema["function"]["name"] for schema in MESSAGE_SCHEMAS}
+        agent_tools = {schema["function"]["name"] for schema in (*MESSAGE_SCHEMAS, *SHARED_MEMORY_SCHEMAS)}
         for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (BOT_PROMPT, agent_tools)):
             unknown = (
                 _ascii_tokens(prompt)

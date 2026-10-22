@@ -66,6 +66,9 @@ from redpanda.assistant.management import (
 )
 from redpanda.assistant.skills import SkillToolAdapter
 from redpanda.assistant.catalog import CapabilityCatalog
+from redpanda.assistant.shared_memory import (
+    SHARED_MEMORY_SCHEMAS, SharedMemoryStore, shared_memory_bindings, sync_shared_memory,
+)
 from redpanda.config import AssistantConfig
 from redpanda.paths import RedPandaHome, runtime_data_root
 from redpanda.cli.composition import CliAssembly, build_cli
@@ -149,6 +152,7 @@ async def build_assistant_assembly(
         settings=settings,
     )
     home.initialize()
+    shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite") if agent is not None else None
     mcp = build_mcp(home)
     skills = build_skills(
         home,
@@ -219,6 +223,7 @@ async def build_assistant_assembly(
             *builtin_tools.schemas,
             *review_schemas,
             *colleague_schemas,
+            *(SHARED_MEMORY_SCHEMAS if shared_memory is not None else []),
             *(ROUTINE_SCHEMAS if colleague_schemas else []),
             *(AGENT_GIT_SCHEMAS if agent_git else []),
             *(
@@ -233,6 +238,7 @@ async def build_assistant_assembly(
             *builtin_tools.names(),
             *review_bindings,
             *colleague_bindings,
+            *(schema["function"]["name"] for schema in SHARED_MEMORY_SCHEMAS),
             *ROUTINE_TOOLS,
             *AGENT_GIT_TOOLS,
             SCHEDULE_ONCE,
@@ -273,6 +279,7 @@ async def build_assistant_assembly(
         ),
         **review_bindings,
         **colleague_bindings,
+        **(shared_memory_bindings(shared_memory, agent.name) if shared_memory is not None else {}),
         **(routine_bindings(session_transport) if colleague_schemas else {}),
         **(agent_git_bindings(session_transport) if agent_git else {}),
         **(
@@ -362,6 +369,8 @@ async def build_assistant_assembly(
         if not compact_context.is_reader:
             if not (await runtime.state(session_id)).waiting_command_ids:
                 await catalog.sync(runtime, session_id)
+                if shared_memory is not None:
+                    await sync_shared_memory(runtime, session_id, shared_memory)
         return True if compact is None else await compact.before_advance()
 
     scheduler.before_advance = before_advance

@@ -234,7 +234,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(identity["name"], agent.name)
         self.assertEqual(identity["direction"], "负责命令执行")
         self.assertEqual(identity["groups"], [{"group": "开发组", "members": [agent.name, "Lin"]}])
-        window = window_preamble("HANDOFF", 7, None, identity)
+        window = window_preamble("HANDOFF", 7, None, identity, None)
         self.assertIn(agent.name, window[0]["content"])
         self.assertIn("HANDOFF", window[1]["content"])
         linked, = agent.projects
