@@ -87,9 +87,9 @@ async def bootstrap_assistant(
     # 先独占数据根，再碰任何 Journal、定时或持续进程。
     with hold_data_root(home):
         if fresh_sessions:
-            if home.agent_worktrees_root.exists():
+            if home.agent_directories_root.exists() or home.agent_worktrees_root.exists():
                 raise DataRootHasAgents(
-                    f"数据根 {home.root} 里有长期 Agent 的会话与工作树，"
+                    f"数据根 {home.root} 里有长期 Bot 的数据，"
                     "每次启动都清空会话的入口不能使用它；请换一个数据目录。"
                 )
             for root in (home.runtime_sessions_root, home.state_root):
