@@ -39,8 +39,9 @@ class ScopedAccess:
             return await self.app(scope, receive, send)
         service = self.service()
         authorization = Request(scope).headers.get("authorization", "")
-        connection = (service.connections.authorize(authorization[7:])
-                      if service is not None and authorization.startswith("Bearer ") else None)
+        scheme, _, token = authorization.partition(" ")
+        connection = (service.connections.authorize(token.lstrip(" "))
+                      if service is not None and scheme.lower() == "bearer" else None)
         if connection is None:
             response = JSONResponse({"detail": "需要有效的协作者接入凭据。"}, status_code=401,
                                     headers={"WWW-Authenticate": "Bearer"})

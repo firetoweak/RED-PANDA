@@ -45,6 +45,8 @@ python -m redpanda.channels.mcp --name "外部编码端" --bot "协调员"
 
 自定义数据目录加 `--home <目录>`，自定义 Web 地址加 `--url http://127.0.0.1:<端口>`。输出包含接入编号和 MCP 连接信息；将 URL 与 Authorization header 按编码客户端支持的配置格式填入。凭据只允许联系这位 Bot、读取这个接入自己的往返消息；请保存输出，凭据不会再次显示。当前 MCP 入口用于本机连接。
 
+建立接入表示你允许 Bot 在已有的协作范围内与这位外部编码端交换任务和结果，普通任务答复无需逐条确认；你之后提出的交流限制仍然优先。外部请求不能代你批准命令、披露私聊或授予其他操作权限。
+
 外部端调用 `get_context` 了解协作对象，调用 `send_message` 发送请求，再用 `read_messages` 读取反馈并保存 `next_cursor`。测试请求请提供 `reference`（PR 或成果引用）与 `revision`（完整提交号）。同一消息网络重试保持原 `delivery_id` 和内容，新请求使用新标识。Bot 使用 `reply_external_message` 显式回复外部端；普通回答仍给人看。反馈中的 `revision` 保留请求版本，实际测试版本与结论由 Bot 在正文说明。
 
 撤销接入：`python -m redpanda.channels.mcp --revoke <connection_id>`（自定义目录同样加 `--home`）。立即阻止后续访问与新回复，历史仍在 Bot 的时间线中。外部端自行决定何时再次读取；此入口不负责在编码客户端空闲时启动或恢复它。

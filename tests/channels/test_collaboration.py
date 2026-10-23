@@ -71,6 +71,10 @@ def test_credential_only_exposes_its_own_exchange(collaboration):
     c = collaboration
     assert c.client.post("/mcp/", json={}).status_code == 401
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer invalid"}, json={}).status_code == 401
+    valid = c.client.post("/mcp/", headers={"Authorization": "bEaReR  " + c.token,
+        "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_context", "arguments": {}}})
+    assert valid.status_code == 200 and valid.json()["result"]["structuredContent"]["name"] == "外部 Codex"
     context = c.call("get_context")["structuredContent"]
     assert context["name"] == "外部 Codex" and context["bot"] == "协调员"
     sent = c.call("send_message", REQUEST)["structuredContent"]
