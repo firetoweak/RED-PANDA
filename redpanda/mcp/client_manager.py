@@ -410,9 +410,12 @@ class _SdkConnectionOwner:
         self,
         record: McpServerRecord,
         secrets: Mapping[str, str],
+        *,
+        task_root: Path | None = None,
     ) -> None:
         self._record = record
         self._secrets = secrets
+        self._task_root = task_root
         self._queue: asyncio.Queue[_SdkOperation | None] = asyncio.Queue()
         self._ready: asyncio.Future[ManagedMcpConnection] = (
             asyncio.get_running_loop().create_future()
@@ -573,6 +576,11 @@ class _SdkConnectionOwner:
         from mcp import Client
         from mcp.client.stdio import StdioServerParameters, stdio_client
         from mcp.client.streamable_http import streamable_http_client
+        from mcp.types import ListRootsResult, Root
+
+        async def list_roots(_context):
+            assert self._task_root is not None
+            return ListRootsResult(roots=[Root(uri=self._task_root.as_uri())])
 
         read_timeout: float | None = None
         if self._record.transport is TransportKind.STDIO:
@@ -609,6 +617,7 @@ class _SdkConnectionOwner:
                 transport,
                 mode="auto",
                 read_timeout_seconds=read_timeout,
+                list_roots_callback=None if self._task_root is None else list_roots,
             )
         )
         return _SdkClientFacade(client)
@@ -637,9 +646,11 @@ class McpClientManager:
         runtime_root: Path,
         session_factory: SessionFactory | None = None,
         list_cache_ttl_seconds: float = 30.0,
+        task_root: Path | None = None,
     ) -> None:
         self._secret_store = secret_store
         self._runtime_root = runtime_root.resolve()
+        self._task_root = None if task_root is None else task_root.resolve()
         self._session_factory = (
             self._open_sdk_connection
             if session_factory is None
@@ -986,7 +997,7 @@ class McpClientManager:
                 ),
             )
         try:
-            return await _SdkConnectionOwner(record, secrets).start()
+            return await _SdkConnectionOwner(record, secrets, task_root=self._task_root).start()
         except BaseExceptionGroup as exc:
             if not _is_transport_failure(exc):
                 raise

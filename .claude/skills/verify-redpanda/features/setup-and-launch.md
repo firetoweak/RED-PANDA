@@ -5,8 +5,8 @@
 ## Sub-features
 
 - `setup`：`sh scripts/setup.sh`（Windows 为 `scripts/setup.ps1`）先装固定版本 uv、下载 `.python-version` 指定的 Python、建 `redpanda-env`，再跑 `python -m scripts.setup` 四步：
-  - `[1/4] 准备应用命令行工具`：PATH 上缺失的工具（Node 还要求版本受支持且有 npm）装进 `.tools/runtime/`：Node `24.22.0`、rg `14.1.1`、fd `10.2.0`，Windows 另有 MinGit；Linux 缺 `git` 时经系统包管理器安装。不安装驱动或其他系统组件。
-  - `[2/4] 安装 Python 依赖`、`[3/4] 安装前端依赖并构建网页`（`npm ci` + build）、`[4/4] 初始化配置`（`python -m redpanda.initialize`，带 `--configure` 时进向导）。
+  - `[1/4] 准备应用命令行工具`：PATH 上缺失的工具（Node 还要求版本受支持且有 npm）装进 `.tools/runtime/`：Node、rg、fd，Windows 另有 MinGit；Chrome for Testing 固定使用应用专用的 `.tools/runtime/chrome/`，不复用日常浏览器。Linux 缺 `git` 时经系统包管理器安装。不安装驱动或其他系统组件；版本与下载校验以 `scripts/runtime_tools.json` 为准。
+  - `[2/4] 安装 Python 依赖`、`[3/4] 安装浏览器能力与前端依赖并构建网页`（`scripts/browser` 与 `web` 分别 `npm ci`，再 build 网页）、`[4/4] 初始化配置`（`python -m redpanda.initialize`，带 `--configure` 时进向导）。
   - 成功末行 `运行环境准备完成。使用 scripts/start.ps1 或 scripts/start.sh 启动，在网页侧栏配置模型。`；子命令失败打印 `准备未完成（命令退出码 N）。请处理上方错误后重新执行。`；下载、校验或文件操作错误打印 `准备未完成：<具体原因>` 并退出 1。非 Linux 跑 `setup.sh` 打印 `RED PANDA supports Windows x64 and Linux x64. Use setup.ps1 on Windows.` 退出 1。
 - `setup-flags`：`setup.py` 只有 `--configure`（安装后在终端配模型；默认在网页配）与 `--check`。`--check` 先把 `.tools/runtime/` 下已有工具加到本进程 PATH 前面，再查 Git/rg/fd/Node/npm，Node 须 22.x（≥22.13）或 24.x；不通过时打印 `系统依赖未就绪：` 加各项（如 `Node.js 版本不支持；请使用 22.x（至少 22.13）或 24.x，或重新运行准备命令自动安装。`）退出 1，通过时打印 `系统依赖检查通过。`。
 - `start`：`sh scripts/start.sh` → `scripts.launch` → `web_chat.py`。
@@ -50,3 +50,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：Windows setup 四步、setup --check、隔离 Web 启动与 Doctor 全部通过，浏览器首页可用；启动与 Doctor 分开执行成功。Linux、交互模型向导及 start/dev 包装入口未覆盖。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：Windows setup 四步、setup --check、隔离 Web 启动、Doctor 与首页通过；Linux、首次模型向导和开发启动未重验。
+
+- 2026-10-23 浏览器增量：Windows 独立 worktree，按清单校验并安装应用专用 Chrome；`python -m scripts.setup` 四步完成，实际执行两份 npm 锁文件安装及网页构建，新 home 配置初始化成功。内置浏览器真实调用见 extensions。Linux 压缩包已核对下载校验与程序权限信息，未实跑 Linux；未重跑 PowerShell 的 Python 引导层与交互向导。

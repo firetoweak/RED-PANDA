@@ -4,6 +4,8 @@
 
 ## Sub-features
 
+- `bundled-browsers`：空安装登记的 Bot 默认可见 `mcp:builtin-chrome-devtools` 与 `mcp:builtin-playwright`；通过 `load_toolset` 按需加载，具体工具下一步才可调用，不产生安装提案或安装记录。每个连接使用独立的无头 Chrome，会话关闭后不保留登录状态；只读子 Agent 的能力目录排除两者。内置能力随产品更新，安装管理清单仍只列用户安装的 Server。
+
 - `bundled-skills`：空数据根无需安装即可在能力目录发现 `builtin:coding` 与 `builtin:git-collaboration`，正文经 `load_skill` 读取，不注入系统提示，也不作为用户安装记录。工作目录的 `.claude/skills/` 在无 Git、无登记项目的 Bot 中同样可发现为 `project:` Skill。验证时让普通 Bot 按目录自定义 Skill 交付文件，并核对调用与真实文件。
 
 - `load`：`load_management_tools`、`load_toolset`、`load_skill`、`read_skill_resource`、`load_cli`。
@@ -23,6 +25,12 @@
 - 终端：见 console-chat，直接输入 `/mcp list`、`/skill list`。
 
 ## Driving it with the browser
+
+- **默认浏览器**：按 setup-and-launch 准备环境，在空 home 从页面创建无项目 Bot，让它分别用 Chrome DevTools 与 Playwright 打开本次隔离 Web 的首页、读取标题并截图。
+  - (a) 会话初始能力目录含两项内置 Toolset；Journal 留下各自的加载与真实调用结果，用户安装登记仍为空。
+  - (b) 页面显示两项调用完成与读取的网页标题，无安装待确认条；截图结果可查看。
+  - (c) 另一个 Bot 同时使用浏览器时不争用配置、不共享登录状态；只读子 Agent 的目录不含这两项能力。
+  - (d) 缺浏览器依赖时加载或调用给出原始连接失败与重新准备产品环境的提示，不建议重新安装一个同名外部 MCP。
 
 - **列出**：
   - (a) 回复与 `$REDPANDA_HOME/mcp/`、`skills/`、`clis/` 实际内容一致（新 home 应为空）。
@@ -62,3 +70,5 @@
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实加载 MCP/Skill/CLI 管理工具并列出空安装清单；安装、测试、控制提案和移除未重验。
 
 - 2026-10-22 启动恢复增量：隔离 Windows Web、Chrome、真实 DeepSeek；消息框发起本机 Git 的 CLI 登记，页面点击确认后，在批准已写入、执行尚未开始处注入 Worker 退出。正常入口重启后原操作成功，页面显示登记结果；再次重启 Journal 不变，没有重复执行。控制准备、待批准、暂停与执行结果未知的边界由进程回归核对；未重验其他控制操作的实际安装与更新。证据：`.tools/recovery-fixes/startup-web-evidence/`。
+
+- 2026-10-23 浏览器增量：Windows、隔离空安装登记、无项目 Bot、真实 DeepSeek。页面创建的 Bot 首次即发现两项内置 Toolset，真实打开隔离首页、读取标题与截图；重启后重新加载并把两张 PNG 直接保存至个人目录、交付附件。桌面 1440×900 结果与 GET、文件头一致。另以四个真实 MCP 连接核对独立页面状态与截图目录；只读目录过滤、断线结果未知与外部安装 ID 冲突由回归守约。证据 `.tools/browser-evidence/`；Linux 与需要登录的外部网站未实跑。

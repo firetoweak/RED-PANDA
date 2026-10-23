@@ -52,8 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "pip"], cwd=ROOT, check=True)
     subprocess.run([str(uv), "pip", "install", "--python", sys.executable, "-r", "requirements.lock", "--require-hashes"],
                    cwd=ROOT, check=True)
-    print("[3/4] 安装前端依赖并构建网页", flush=True)
+    print("[3/4] 安装浏览器能力与前端依赖并构建网页", flush=True)
     npm = shutil.which("npm.cmd" if WINDOWS else "npm")
+    subprocess.run([npm, "--prefix", "scripts/browser", "ci"], cwd=ROOT, check=True)
     subprocess.run([npm, "--prefix", "web", "ci"], cwd=ROOT, check=True)
     subprocess.run([npm, "--prefix", "web", "run", "build"], cwd=ROOT, check=True)
     print("[4/4] 初始化配置", flush=True)
