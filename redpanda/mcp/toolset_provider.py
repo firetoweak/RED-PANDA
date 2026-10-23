@@ -72,7 +72,7 @@ class McpToolsetProvider:
 
     def _connection_hint(self, server_id: str) -> str:
         if server_id == SEARCH_SERVER_ID:
-            return "Exa 检索暂不可用；加载 web-research Skill，使用可用的浏览器检索或用户指定的搜索服务。免费服务限流时不要连续重试。"
+            return "Exa 检索暂不可用；加载 web-research Skill，尚未尝试用户已配置的检索服务时优先使用它，否则使用浏览器兜底。免费服务限流时不要连续重试。"
         if server_id in self._bundled:
             return "内置浏览器连接失败；请报告错误详情。环境未准备好时，请用户在 RED PANDA 源码目录重新运行 scripts/setup.ps1（Windows）或 scripts/setup.sh（Linux）。"
         return "不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。"
