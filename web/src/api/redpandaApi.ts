@@ -17,6 +17,8 @@ import {
   groupSummarySchema,
   groupViewSchema,
   modelSettingsSchema,
+  codexModelsSchema,
+  type CodexModels,
   sharedMemorySchema,
   sharedMemoryConflictSchema,
   type SharedMemory,
@@ -146,6 +148,13 @@ export const redpandaApi = createApi({
       query: () => "/model-settings",
       transformResponse: (value: unknown) => modelSettingsSchema.parse(value),
       providesTags: ["ModelSettings"],
+    }),
+    getCodexModels: build.query<CodexModels, void>({
+      query: () => "/model-settings/codex-models",
+      transformResponse: (value: unknown) => codexModelsSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400 || response.status === 502
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+      keepUnusedDataFor: 0,
     }),
     saveModelSettings: build.mutation<ModelSettings, { connectionId: string; config: ModelConfig }>({
       query: ({ connectionId, config }) => ({
@@ -523,6 +532,7 @@ export const {
   useGetSharedMemoryQuery,
   useSaveSharedMemoryMutation,
   useSaveModelSettingsMutation,
+  useGetCodexModelsQuery,
   useTestModelMutation,
   useGetSessionModelQuery,
   useSetSessionModelMutation,

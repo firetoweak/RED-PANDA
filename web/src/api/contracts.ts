@@ -388,6 +388,14 @@ export const modelSettingsSchema = z.object({
   }).strict().array(),
 }).strict();
 
+export const codexModelsSchema = z.object({
+  slug: z.string().min(1),
+  display_name: z.string().min(1),
+  context_window: z.number().int().positive().nullable(),
+  default_reasoning_level: z.string().nullable(),
+  supported_reasoning_levels: z.object({ effort: z.string().min(1) }).strict().array(),
+}).strict().array();
+
 export const sessionModelSchema = z.object({
   selected: modelProfileSchema.nullable(),
   effective: modelProfileSchema.nullable(),
@@ -434,6 +442,7 @@ export type ToolStatus = z.infer<typeof toolStatusSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type ModelConfig = z.infer<typeof modelConfigSchema>;
 export type ModelSettings = z.infer<typeof modelSettingsSchema>;
+export type CodexModels = z.infer<typeof codexModelsSchema>;
 export type ModelTestResult = z.infer<typeof modelTestResultSchema>;
 export type SessionModel = z.infer<typeof sessionModelSchema>;
 

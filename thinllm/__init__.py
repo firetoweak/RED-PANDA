@@ -1,10 +1,11 @@
 """Thin streaming clients for built-in model providers.
 
 Stays thin: no cross-provider fallback, load balancing, circuit breaking,
-cost tracking, model catalog or discovery, and no user-defined providers.
+cost tracking, or user-defined providers.
 """
 
 from thinllm.chat_completions import ChatCompletionsClient
+from thinllm.catalog import list_codex_models
 from thinllm.codex import CodexResponsesClient, create_client
 from thinllm.errors import (
     InvalidLLMResponse,
@@ -32,6 +33,7 @@ __all__ = [
     "ChatCompletionsClient",
     "CodexResponsesClient",
     "create_client",
+    "list_codex_models",
     "ContentDeltaSink",
     "Endpoint",
     "InvalidLLMResponse",
