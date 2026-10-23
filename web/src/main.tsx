@@ -21,7 +21,7 @@ import "./styles/app.css";
 const codeHighlightAdapter = createHighlightJsAdapter(hljs);
 
 createRoot(document.getElementById("root")!).render(
-  <MantineProvider theme={theme} defaultColorScheme="dark">
+  <MantineProvider theme={theme} defaultColorScheme="light">
     <CodeHighlightAdapterProvider adapter={codeHighlightAdapter}>
       <Provider store={store}>
         <BrowserRouter>
