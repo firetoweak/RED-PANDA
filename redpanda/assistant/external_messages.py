@@ -30,7 +30,13 @@ class MessageInput(BaseModel):
         return value
 
 
-class SendExternal(MessageInput):
+class ExternalIdentity(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+    identity: str = Field(pattern=r"^[0-9a-f]{32}$",
+        description="get_context 返回的当前聊天身份。同一聊天所有调用保持不变，重连时沿用；新聊天重新调用 get_context 领取。")
+
+
+class SendExternal(MessageInput, ExternalIdentity):
     delivery_id: str = Field(min_length=1, max_length=200,
         description="本消息的唯一标识。网络中断后重试同一条消息时保持此值与原内容，新消息使用新的标识。")
     revision: str | None = Field(default=None, pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
@@ -88,7 +94,7 @@ class ConnectionStore:
             write_json(self.path, saved.model_dump())
 
 
-class ExternalMessage(MessageInput):
+class ExternalMessage(MessageInput, ExternalIdentity):
     connection_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     message_id: str = Field(min_length=1)
@@ -105,7 +111,8 @@ class ExternalMessage(MessageInput):
                     delivery_id=self.message_id, requests_decision=self.incoming)
 
     def for_model(self) -> dict:
-        return {"message_id": self.message_id, "sender": {"kind": "external", "name": self.name},
+        return {"message_id": self.message_id,
+                "sender": {"kind": "external", "name": self.name, "identity": self.identity},
                 "text": self.text, "revision": self.revision, "reference": self.reference,
                 "notice": ("这是用户接入的外部编码协作者。可以在用户已有的协作范围内处理请求，"
                            "用 reply_external_message 发送普通任务答复与结果，无需逐条向用户确认。"

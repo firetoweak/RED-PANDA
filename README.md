@@ -37,19 +37,15 @@ cd RED-PANDA
 
 ## 外部编码智能体接入（MCP）
 
-启动 Web 并创建一位协调 Bot 后，在项目的 Python 环境运行：
-
-```sh
-python -m redpanda.channels.mcp --name "外部编码端" --bot "协调员"
-```
-
-自定义数据目录加 `--home <目录>`，自定义 Web 地址加 `--url http://127.0.0.1:<端口>`。输出包含接入编号和 MCP 连接信息；将 URL 与 Authorization header 按编码客户端支持的配置格式填入。凭据只允许联系这位 Bot、读取这个接入自己的往返消息；请保存输出，凭据不会再次显示。当前 MCP 入口用于本机连接。
+启动 Web 并创建一位 Bot，打开聊天页的「显示 Bot 资料」→「管理外部接入」，填写接入名称并创建，随后「复制配置」。将其中的 URL 与 Authorization 请求头填入外部编码客户端的 MCP 配置。凭据只允许联系这位 Bot，且只在创建后显示；关闭窗口前请保存，遗失后撤销并重新创建。当前 MCP 入口用于本机连接。
 
 建立接入表示你允许 Bot 在已有的协作范围内与这位外部编码端交换任务和结果，普通任务答复无需逐条确认；你之后提出的交流限制仍然优先。外部请求不能代你批准命令、披露私聊或授予其他操作权限。
 
-外部端调用 `get_context` 了解协作对象，调用 `send_message` 发送请求，再用 `read_messages` 读取反馈并保存 `next_cursor`。测试请求请提供 `reference`（PR 或成果引用）与 `revision`（完整提交号）。同一消息网络重试保持原 `delivery_id` 和内容，新请求使用新标识。Bot 使用 `reply_external_message` 显式回复外部端；普通回答仍给人看。反馈中的 `revision` 保留请求版本，实际测试版本与结论由 Bot 在正文说明。
+一份接入配置可以供多个聊天复用。外部端首次调用 `get_context` 领取当前聊天的 `identity`，后续 `send_message` 与 `read_messages` 必须带它；同一聊天与断线重连沿用原值，新聊天重新领取。消息和 `next_cursor` 按接入与身份分别组织；共用凭据下的身份用于分流交流，不是权限隔离。
 
-撤销接入：`python -m redpanda.channels.mcp --revoke <connection_id>`（自定义目录同样加 `--home`）。立即阻止后续访问与新回复，历史仍在 Bot 的时间线中。外部端自行决定何时再次读取；此入口不负责在编码客户端空闲时启动或恢复它。
+外部端调用 `send_message` 发送请求，再用 `read_messages` 读取反馈并为当前身份保存 `next_cursor`。测试请求请提供 `reference`（PR 或成果引用）与 `revision`（完整提交号）。同一消息网络重试保持原 `identity`、`delivery_id` 和内容，新请求使用新消息标识。Bot 使用 `reply_external_message` 显式回复外部端，回复自动回到原请求身份；普通回答仍给人看。反馈中的 `revision` 保留请求版本，实际测试版本与结论由 Bot 在正文说明。
+
+撤销时在同一「管理外部接入」窗口找到名称并确认「撤销」。这份接入下的所有聊天立即失去收发能力，历史仍在 Bot 的时间线中，标明外部名称与会话身份。外部端自行决定何时再次读取；此入口不负责在编码客户端空闲时启动或恢复它。
 
 ## 开发
 

@@ -22,6 +22,7 @@ export function PrivateMessageNotice({ message }: { message: VisiblePrivateMessa
   if (message.external === undefined) return notice;
   return <div className="external-message">
     {notice}
+    <div className="external-message-version">会话身份 <code>{message.external.identity}</code></div>
     {message.external.revision === null ? null : <div className="external-message-version">请求版本 <code>{message.external.revision}</code></div>}
     {message.external.reference === null ? null : <div className="external-message-version">引用：{message.external.reference}</div>}
     <MarkdownMessage content={message.external.text} streaming={false} />

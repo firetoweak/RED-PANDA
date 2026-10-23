@@ -102,6 +102,18 @@ export const agentRosterEntrySchema = z
 
 export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
+export const externalConnectionSchema = z.object({
+  connection_id: z.string().regex(/^[0-9a-f]{32}$/),
+  name: z.string().min(1),
+}).strict();
+export type ExternalConnection = z.infer<typeof externalConnectionSchema>;
+export const createdExternalConnectionSchema = z.object({
+  connection: externalConnectionSchema,
+  token: z.string().min(1),
+  url: z.url(),
+}).strict();
+export type CreatedExternalConnection = z.infer<typeof createdExternalConnectionSchema>;
+
 export const avatarSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("generated"), seed: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("image"), attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }).strict(),
@@ -239,6 +251,7 @@ export const conversationViewSchema = z
           message_id: z.string().min(1),
           direction: z.enum(["sent", "received"]),
           peer: z.string().min(1),
+          identity: z.string().min(1),
           text: z.string().min(1),
           revision: z.string().nullable(),
           reference: z.string().nullable(),

@@ -562,6 +562,8 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 .external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
 .external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
 .external-message-version { color: var(--mantine-color-dimmed); font-size: 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.external-connection-config { font-family: var(--mantine-font-family-monospace); font-size: var(--mantine-font-size-xs); }
+.external-connection-name { min-width: 0; overflow-wrap: anywhere; }
 .private-message-peer { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; text-decoration: none; overflow-wrap: anywhere; }
 .private-message-peer .agent-avatar { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 5px; font-size: 10px; }
 a.private-message-peer:hover { text-decoration: underline; text-underline-offset: 3px; }

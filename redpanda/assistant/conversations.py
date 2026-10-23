@@ -161,6 +161,7 @@ class ExternalMessageItem:
     message_id: str
     direction: Literal["sent", "received"]
     peer: str
+    identity: str
     text: str
     revision: str | None
     reference: str | None
@@ -525,7 +526,7 @@ def project_conversation(
             else:
                 peer = external_peers[message.reply_to]
             items.append(ExternalMessageItem("external_message", message.message_id,
-                "received" if message.incoming else "sent", peer, message.text,
+                "received" if message.incoming else "sent", peer, message.identity, message.text,
                 message.revision, message.reference, event.occurred_at))
             continue
         if event.event_id in sent_messages:

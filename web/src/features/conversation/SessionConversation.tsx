@@ -14,6 +14,7 @@ import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
 import { BotAvatarPicker } from "./BotAvatarPicker";
+import { ExternalConnections } from "./ExternalConnections";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -67,6 +68,7 @@ export function SessionConversation() {
           <IconUsersGroup size={16} /><span>{group.name}</span>
         </Link>)}
       </div>}
+      <ExternalConnections key={`external-${agent.session_id}`} sessionId={agent.session_id} botName={agent.name} connectionId={connectionId} />
       <RoutineList key={agent.session_id} sessionId={agent.session_id} connectionId={connectionId}
         onOpenTimeline={narrow ? () => setDetailsOpened(false) : undefined} />
     </>

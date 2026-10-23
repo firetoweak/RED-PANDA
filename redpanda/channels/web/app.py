@@ -26,6 +26,7 @@ from redpanda.assistant.authorization import AuthorizationConflict, Authorizatio
 from redpanda.assistant.host.agent_groups import GroupDissolvedError, GroupNameTaken, GroupNotFound
 from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
+from redpanda.assistant.host.external_messages import ExternalConnectionNotFound
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.agent_messages import DirectionArguments
 from redpanda.assistant.model_connection import check_model_connection
@@ -119,6 +120,17 @@ class AgentNameRequest(ConnectionRequest):
 
 class AgentAvatarRequest(ConnectionRequest):
     seed: str | None = Field(min_length=1)
+
+
+class CreateExternalConnectionRequest(ConnectionRequest):
+    name: str = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def named_collaborator(cls, value):
+        if not value.strip() or value != value.strip():
+            raise ValueError("外部端名字不能为空白或带首尾空白")
+        return value
 
 
 class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
@@ -484,6 +496,24 @@ def create_web_app(
     @app.get("/api/agents")
     async def agents(request: Request):
         return await _channel(request).list_agents()
+
+    @app.get("/api/agents/{session_id}/external-connections")
+    async def external_connections(session_id: str, request: Request):
+        return await _channel(request).list_external_connections(session_id)
+
+    @app.post("/api/agents/{session_id}/external-connections", status_code=201)
+    async def create_external_connection(session_id: str, body: CreateExternalConnectionRequest, request: Request):
+        created = await _channel(request).create_external_connection(body.connection_id, session_id, body.name)
+        return JSONResponse(status_code=201, content={**created, "url": str(request.base_url) + "mcp/"},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.delete("/api/agents/{session_id}/external-connections/{external_id}", status_code=204)
+    async def revoke_external_connection(session_id: str, external_id: str, body: ConnectionRequest, request: Request):
+        try:
+            await _channel(request).revoke_external_connection(body.connection_id, session_id, external_id)
+        except ExternalConnectionNotFound:
+            return JSONResponse(status_code=404, content={"detail": "这位 Bot 没有这个接入，可能已撤销。"})
+        return Response(status_code=204)
 
     @app.post("/api/agents", status_code=201)
     async def create_agent(body: CreateAgentRequest, request: Request):

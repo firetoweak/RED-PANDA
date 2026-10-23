@@ -9,6 +9,10 @@ import {
 } from "../realtime/runtimeSlice";
 import {
   agentRosterEntrySchema,
+  externalConnectionSchema,
+  createdExternalConnectionSchema,
+  type ExternalConnection,
+  type CreatedExternalConnection,
   avatarSelectionSchema,
   avatarsSchema,
   type AvatarSelection,
@@ -131,7 +135,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections"],
   endpoints: (build) => ({
     getSharedMemory: build.query<SharedMemory, void>({
       query: () => "/shared-memory",
@@ -222,6 +226,28 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) =>
         agentRosterEntrySchema.array().parse(value),
       providesTags: ["Agents"],
+    }),
+    getExternalConnections: build.query<ExternalConnection[], string>({
+      query: (sessionId) => `/agents/${encodeURIComponent(sessionId)}/external-connections`,
+      transformResponse: (value: unknown) => externalConnectionSchema.array().parse(value),
+      providesTags: (_result, _error, id) => [{ type: "ExternalConnections", id }],
+    }),
+    createExternalConnection: build.mutation<CreatedExternalConnection, SelectSession & { name: string }>({
+      query: ({ connectionId, sessionId, name }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/external-connections`, method: "POST",
+        body: { connection_id: connectionId, name },
+      }),
+      transformResponse: (value: unknown) => createdExternalConnectionSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error, { sessionId }) => error === undefined ? [{ type: "ExternalConnections", id: sessionId }] : [],
+    }),
+    revokeExternalConnection: build.mutation<void, SelectSession & { externalId: string }>({
+      query: ({ connectionId, sessionId, externalId }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/external-connections/${encodeURIComponent(externalId)}`,
+        method: "DELETE", body: { connection_id: connectionId },
+      }),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error, { sessionId }) => error === undefined ? [{ type: "ExternalConnections", id: sessionId }] : [],
     }),
     deleteAgent: build.mutation<void, SelectSession>({
       query: ({ connectionId, sessionId }) => ({
@@ -560,6 +586,9 @@ export const redpandaApi = createApi({
 });
 
 export const {
+  useGetExternalConnectionsQuery,
+  useCreateExternalConnectionMutation,
+  useRevokeExternalConnectionMutation,
   useGetBackgroundCommandsQuery,
   useStopBackgroundCommandMutation,
   useGetRoutinesQuery,

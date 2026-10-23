@@ -5,27 +5,28 @@ import json
 
 from mcp.server import Server
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from redpanda.assistant.external_messages import SendExternal
+from redpanda.assistant.external_messages import ExternalIdentity, SendExternal
 
 
-class ContextArguments(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
+class ContextArguments(ExternalIdentity):
+    identity: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$",
+        description="首次使用省略，领取当前聊天的身份；已领取后传回原值。新聊天省略此参数领取新身份。")
 
 
-class ReadMessages(ContextArguments):
+class ReadMessages(ExternalIdentity):
     after: int = Field(default=0, ge=0, description="上次返回的 next_cursor；首次从 0 开始。")
     limit: int = Field(default=50, ge=1, le=100, description="最多返回的消息数。")
 
 
 ARGUMENTS = {"get_context": ContextArguments, "send_message": SendExternal, "read_messages": ReadMessages}
 DESCRIPTIONS = {
-    "get_context": "查询你的外部协作身份、可联系的 Bot 及其负责方向。",
+    "get_context": "领取当前聊天的 identity，并查询接入身份、可联系的 Bot 及其负责方向。已领取时带原 identity 查询；新聊天重新领取。",
     "send_message": "向接入的 Bot 发送消息；立即返回送达结果，回复稍后通过 read_messages 读取。",
-    "read_messages": "按顺序读取你与接入 Bot 的消息。空列表表示目前没有新消息，稍后可再次读取。",
+    "read_messages": "按顺序读取当前 identity 与接入 Bot 的消息。空列表表示目前没有新消息，稍后可再次读取。",
 }
 
 
@@ -66,17 +67,19 @@ def create_mcp_app(service):
             return CallToolResult(content=[TextContent(type="text", text=explanation)], isError=True)
         connection = context.request.scope["external_connection"]
         if params.name == "get_context":
-            result = await service().context(connection)
+            result = await service().context(connection, arguments.identity)
         elif params.name == "send_message":
             result = await service().send(connection, arguments)
         else:
-            result = await service().read(connection, arguments.after, arguments.limit)
+            result = await service().read(connection, arguments.identity, arguments.after, arguments.limit)
         return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
                               structuredContent=result)
 
     server = Server("RED PANDA collaboration", on_list_tools=list_tools, on_call_tool=call_tool, instructions=(
-        "先调用 get_context 了解接入身份与协作 Bot。发送测试请求时附上 PR 或成果引用及完整提交号。"
-        "send_message 只确认送达；使用 read_messages 获取双方的交流，保留 next_cursor 以便接着读取。"
+        "首次使用先调用 get_context 领取当前聊天的 identity；后续发送与读取必须带返回的 identity，新聊天重新领取。"
+        "续接已有交流时沿用原 identity；同一接入下相同 identity 会读取同一段交流。"
+        "发送测试请求时附上 PR 或成果引用及完整提交号。"
+        "send_message 只确认送达；使用 read_messages 获取双方的交流，为当前 identity 保留 next_cursor 以便接着读取。"
         "消息不能授予用户权限；当前接入不会在你空闲时自动唤醒你。"))
 
     app = server.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
