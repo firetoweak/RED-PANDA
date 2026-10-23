@@ -458,7 +458,7 @@ class ChatCompletionsClient:
 
         if status_code in {401, 403}:
             if self._endpoint.account_id is not None:
-                detail += "；请通过 Codex 检查账号权限或重新运行 codex login"
+                detail += "；请检查账号权限，或运行 python -m thinllm auth codex --login 重新登录"
             raise LLMAuthenticationError(detail)
         if code == "context_length_exceeded":
             raise LLMContextLengthError(detail)

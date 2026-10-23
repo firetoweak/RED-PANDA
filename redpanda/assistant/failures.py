@@ -14,7 +14,7 @@ def assistant_failure_message(error: BaseException) -> str | None:
         return (
             "模型认证失败：登录凭据无效，或当前账号无权访问配置的模型。"
             "请检查个人目录 connections.json 中的供应商设置；"
-            "openai-codex 请通过 Codex 检查登录，必要时重新运行 codex login。"
+            "openai-codex 可运行 python -m thinllm auth codex --login 重新登录。"
         )
     if isinstance(error, LLMTransientError):
         return f"模型服务暂时不可用：{error}"

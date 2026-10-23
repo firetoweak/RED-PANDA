@@ -66,7 +66,7 @@ def configure(home: RedPandaHome) -> ModelConfig:
     specification = PROVIDERS[provider]
     connection = dict(connections[provider])
     if specification.uses_codex_auth:
-        print("请先使用 codex login 登录 ChatGPT；认证文件由 Codex 管理。")
+        print("请先运行 python -m thinllm auth codex 获取连接配置；认证文件由 Codex 管理。")
         connection["auth_file"] = _ask("Codex auth.json 路径（留空使用 CODEX_HOME 或 ~/.codex）",
                                        connection["auth_file"])
     else:

@@ -51,7 +51,7 @@ def test_auth_resolution_reads_latest_login_without_modifying_it(auth_file, tmp_
     assert auth_file.read_bytes() == before
     write_auth(auth_file, {"tokens": {"access_token": "updated", "account_id": "other"}})
     assert resolve_endpoint(MODEL, {"auth_file": str(auth_file)}).api_key == "updated"
-    with pytest.raises(MissingProviderSetting, match="codex login"):
+    with pytest.raises(MissingProviderSetting, match="thinllm auth codex"):
         resolve_endpoint(MODEL, {"auth_file": str(tmp_path / "missing.json")})
     write_auth(auth_file, {"auth_mode": "apikey", "OPENAI_API_KEY": "not-a-chatgpt-login"})
     with pytest.raises(MissingProviderSetting, match="ChatGPT"):
@@ -63,7 +63,7 @@ def test_auth_resolution_reads_latest_login_without_modifying_it(auth_file, tmp_
 
 def test_default_auth_location_and_explicit_path_are_independent(tmp_path, monkeypatch):
     monkeypatch.delenv("CODEX_HOME", raising=False)
-    monkeypatch.setattr("thinllm.providers.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("thinllm.auth.Path.home", lambda: tmp_path)
     path = tmp_path / ".codex" / "auth.json"
     write_auth(path, {"tokens": {"access_token": "default", "account_id": "account"}})
     assert resolve_endpoint(MODEL, {"auth_file": ""}).api_key == "default"

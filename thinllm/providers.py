@@ -2,9 +2,9 @@
 from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
-import json
-import os
-from pathlib import Path
+
+from thinllm.auth import codex_auth_path, load_codex_auth
+from thinllm.errors import MissingProviderSetting
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,36 +62,12 @@ class Endpoint:
     account_id: str | None = None
 
 
-class MissingProviderSetting(ValueError):
-    def __init__(self, setting: str):
-        self.setting = setting
-        super().__init__(f"{setting} is required")
-
-
 def resolve_endpoint(model: str, connection: Mapping[str, str]) -> Endpoint:
     name = model.partition("/")[0]
     provider = PROVIDERS[name]
     if provider.uses_codex_auth:
-        path = Path(connection["auth_file"]).expanduser() if connection["auth_file"].strip() else (
-            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
-        )
-        try:
-            auth = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError as error:
-            raise MissingProviderSetting("auth_file（请先运行 codex login）") from error
-        if type(auth) is not dict:
-            raise ValueError(f"Codex 认证文件必须是对象：{path}")
-        if auth.get("auth_mode") not in (None, "chatgpt"):
-            raise MissingProviderSetting("ChatGPT 登录（请运行 codex login）")
-        tokens = auth.get("tokens")
-        if tokens is None:
-            raise MissingProviderSetting("ChatGPT 登录（请运行 codex login）")
-        if type(tokens) is not dict or any(
-            type(tokens.get(key)) is not str or not tokens[key].strip()
-            for key in ("access_token", "account_id")
-        ):
-            raise ValueError(f"Codex 认证文件缺少有效的 access_token/account_id：{path}")
-        return Endpoint(name, provider.base_url, tokens["access_token"], False, tokens["account_id"])
+        access_token, account_id = load_codex_auth(codex_auth_path(connection["auth_file"]))
+        return Endpoint(name, provider.base_url, access_token, False, account_id)
     base_url = provider.base_url
     if base_url is None:
         base_url = connection["base_url"].strip()

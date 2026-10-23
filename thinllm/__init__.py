@@ -12,11 +12,11 @@ from thinllm.errors import (
     LLMContextLengthError,
     LLMProviderError,
     LLMTransientError,
+    MissingProviderSetting,
 )
 from thinllm.providers import (
     PROVIDERS,
     Endpoint,
-    MissingProviderSetting,
     resolve_endpoint,
 )
 from thinllm.types import (
