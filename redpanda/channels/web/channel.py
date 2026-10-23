@@ -60,6 +60,17 @@ class WebChannel:
     async def list_agents(self):
         return await self._queries.list_agents()
 
+    async def list_external_connections(self):
+        return self._sessions.external_messages.list_connections()
+
+    async def create_external_connection(self, connection_id):
+        self._require_connection(connection_id)
+        return self._sessions.external_messages.create_connection()
+
+    async def revoke_external_connection(self, connection_id, external_id):
+        self._require_connection(connection_id)
+        await self._sessions.external_messages.revoke_connection(external_id)
+
     async def create_agent(self, connection_id: str, path: str | None, name: str):
         connection = self._require_connection(connection_id)
         record = await self._sessions.create_agent(name=name, path=path)
@@ -82,11 +93,6 @@ class WebChannel:
     async def delete_agent(self, connection_id: str, session_id: str):
         self._require_connection(connection_id)
         await self._sessions.delete_agent(session_id)
-
-    async def set_agent_direction(self, connection_id: str, session_id: str, direction: str):
-        self._require_connection(connection_id)
-        await self._sessions.set_direction_by_user(session_id, direction)
-        return await self._queries.agent_entry(session_id)
 
     async def dissolve_group(self, connection_id: str, group_id: str):
         self._require_connection(connection_id)

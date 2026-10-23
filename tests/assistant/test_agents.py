@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from redpanda.assistant.agents import (
-    AGENT_CREATED, AGENT_DELETED, AGENT_RENAMED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
+    AGENT_CREATED, AGENT_DELETED, AGENT_RENAMED, COLLEAGUE_JOINED, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
 )
 from redpanda.assistant.compact.core import window_preamble
@@ -184,35 +184,28 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(notices), 1)
         self.assertFalse((self.store.require(partial.session_id).parent / "agent-creation.json").exists())
 
-    async def test_identity_and_latest_direction_rebuild_from_journals(self):
+    async def test_identity_rebuilds_from_journals(self):
         agent = await self.create()
         journal = SqliteJournal(self.store.require(agent.session_id))
-        runtime = AgentRuntime(journal, None, {})
-        for index, direction in enumerate(("研究执行环境", "负责命令执行")):
-            await runtime.receive_domain_fact(agent.session_id, **fact_arguments(
-                DirectionDeclared(name=agent.name, direction=direction), delivery_id=f"direction-{index}",
-            ))
         await self.host.create("ordinary", self.workspace.workspace_id)
         roster = AgentRoster(SessionStore(self.store.root))
         self.assertEqual(await roster.by_session(agent.session_id), agent)
         self.assertIsNone(await roster.by_session("ordinary"))
         entries = await roster.list()
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0].agent, agent)
-        self.assertEqual(entries[0].direction, "负责命令执行")
+        self.assertEqual(entries[0], agent)
         linked, = agent.projects
         self.assertEqual(self.registry.get(linked.workspace_id).task_root, self.project)
         self.assertEqual(Path(linked.worktree), agent.directory / "projects" / self.workspace.name)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
 
-    async def test_rename_keeps_identity_direction_and_group_context_across_restart(self):
+    async def test_rename_keeps_identity_and_group_context_across_restart(self):
         agent, colleague = await self.create("Ada"), await self.create("Lin")
         journal = SqliteJournal(self.store.require(agent.session_id))
         runtime = AgentRuntime(journal, None, {})
-        for i, fact in enumerate((DirectionDeclared(name="Ada", direction="验证"),
-                                  GroupCreated(group="开发组", members=["Ada", "Lin"]))):
-            await runtime.receive_domain_fact(agent.session_id, **fact_arguments(fact, delivery_id=f"setup-{i}"))
+        await runtime.receive_domain_fact(agent.session_id, **fact_arguments(
+            GroupCreated(group="开发组", members=["Ada", "Lin"]), delivery_id="setup-group"))
 
         async def accept(_operation, session_id, arguments):
             await AgentRuntime(SqliteJournal(self.store.require(session_id)), None, {}).receive_domain_fact(
@@ -226,8 +219,6 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await rebuilt.resolve("测试")).name, "测试")
         with self.assertRaises(AgentNotFound):
             await rebuilt.resolve("Ada")
-        self.assertEqual(next(entry.direction for entry in await rebuilt.list()
-                              if entry.agent.session_id == agent.session_id), "验证")
         identity = identity_for_model(await journal.snapshot(agent.session_id))
         self.assertEqual(identity["name"], "测试")
         self.assertEqual(identity["groups"], [{"group": "开发组", "members": ["测试", "Lin"]}])
@@ -303,14 +294,11 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         journal = SqliteJournal(self.store.require(agent.session_id))
         runtime = AgentRuntime(journal, None, {})
         for index, fact in enumerate((
-            DirectionDeclared(name=agent.name, direction="负责命令执行"),
-            DirectionDeclared(name="Lin", direction="负责前端"),
             GroupCreated(group="开发组", members=[agent.name, "Lin"]),
         )):
             await runtime.receive_domain_fact(agent.session_id, **fact_arguments(fact, delivery_id=f"fact-{index}"))
         identity = identity_for_model(await journal.snapshot(agent.session_id))
         self.assertEqual(identity["name"], agent.name)
-        self.assertEqual(identity["direction"], "负责命令执行")
         self.assertEqual(identity["groups"], [{"group": "开发组", "members": [agent.name, "Lin"]}])
         window = window_preamble("HANDOFF", 7, None, identity, None)
         self.assertIn(agent.name, window[0]["content"])

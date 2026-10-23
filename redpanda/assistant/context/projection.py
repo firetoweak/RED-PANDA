@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, parse_external
+
 from redpanda.assistant.shared_memory import SHARED_MEMORY, shared_memory_message
 
 from redpanda.runtime.json_values import thaw_value
@@ -290,6 +292,11 @@ def _translate_visible_events(
                 shown_data = catalog_for_model(shown_data)
             elif payload.fact_type in AGENT_FACT_TYPES:
                 shown_data = agent_fact_for_model(payload)
+            elif payload.fact_type == EXTERNAL_MESSAGE:
+                message = parse_external(payload)
+                if not message.incoming:
+                    continue
+                shown_data = message.for_model()
             elif payload.fact_type == ROUTINE_DUE:
                 shown_data = {key: shown_data[key] for key in ("routine_id", "name", "intent", "planned_at", "fired_at")}
                 shown_data["notice"] = (

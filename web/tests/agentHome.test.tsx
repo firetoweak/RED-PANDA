@@ -18,8 +18,8 @@ vi.mock("../src/api/redpandaApi", () => ({
     { workspace_id: "beta", name: "Beta", task_root: "C:/beta", full_access: false, created_at: "2026-10-20" },
   ] }),
   useGetAgentsQuery: () => ({ isError: queries.failed, data: [
-    { workspace_id: "alpha", session_id: "a/1", name: "Ada", direction: "前端", status: "idle" },
-    { workspace_id: "beta", session_id: "b", name: "Lin", direction: "后端", status: "idle" },
+    { workspace_id: "alpha", session_id: "a/1", name: "Ada", status: "idle" },
+    { workspace_id: "beta", session_id: "b", name: "Lin", status: "idle" },
   ] }),
   useGetGroupsQuery: () => ({ data: [
     { workspace_id: "alpha", group_id: "g/1", name: "前端讨论", members: ["Ada"] },

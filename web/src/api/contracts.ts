@@ -94,13 +94,23 @@ export const agentRosterEntrySchema = z
     session_id: z.string().min(1),
     projects: agentProjectSchema.array(),
     name: z.string().min(1),
-    direction: z.string().min(1).nullable(),
     activity: z.enum(["running", "idle"]),
     status: z.enum(["working", "authorization", "waiting", "idle"]),
   })
   .strict();
 
 export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
+
+export const externalConnectionSchema = z.object({
+  connection_id: z.string().regex(/^[0-9a-f]{32}$/),
+}).strict();
+export type ExternalConnection = z.infer<typeof externalConnectionSchema>;
+export const createdExternalConnectionSchema = z.object({
+  connection: externalConnectionSchema,
+  token: z.string().min(1),
+  url: z.url(),
+}).strict();
+export type CreatedExternalConnection = z.infer<typeof createdExternalConnectionSchema>;
 
 export const avatarSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("generated"), seed: z.string().min(1) }).strict(),
@@ -225,6 +235,14 @@ export const workPlanSchema = z.object({
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
 
+export const verificationFeedbackSchema = z.object({
+  kind: z.enum(["progress", "question", "report"]),
+  verdict: z.enum(["passed", "issues_found", "blocked"]).nullable(),
+  tested_revision: z.string().nullable(),
+  evidence: z.array(z.string()),
+}).strict();
+export type VerificationFeedback = z.infer<typeof verificationFeedbackSchema>;
+
 export const conversationViewSchema = z
   .object({
     deleted: z.boolean(),
@@ -234,6 +252,19 @@ export const conversationViewSchema = z
     revision: z.number().int().nonnegative(),
     items: z.array(
       z.discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("external_message"),
+          message_id: z.string().min(1),
+          direction: z.enum(["sent", "received"]),
+          peer: z.string().min(1),
+          identity: z.string().min(1),
+          text: z.string().min(1),
+          revision: z.string(),
+          reference: z.string(),
+          previous_request_id: z.string().nullable(),
+          feedback: verificationFeedbackSchema.nullable(),
+          occurred_at: z.string().datetime({ offset: true }),
+        }).strict(),
         z.object({
           kind: z.literal("private_message"),
           message_id: z.string().min(1),

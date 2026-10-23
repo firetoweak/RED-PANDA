@@ -69,8 +69,8 @@ class AgentLifecycle:
 
     async def recover(self) -> None:
         for entry in await self.host.agents.list(include_deleted=True):
-            if entry.agent.deleted:
-                await self._retire_tree(entry.agent.session_id)
+            if entry.deleted:
+                await self._retire_tree(entry.session_id)
 
     async def notify(self, session_id: str) -> None:
         agent = await self.host.agents.by_session(session_id)

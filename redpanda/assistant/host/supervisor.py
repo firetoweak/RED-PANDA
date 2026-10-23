@@ -43,8 +43,10 @@ from redpanda.assistant.host.agent_projects import AgentProjects, ProjectLinkRef
 from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
 from redpanda.assistant.host.agent_groups import AgentGroups
+from redpanda.assistant.host.external_messages import ExternalMessages
+from redpanda.assistant.external_messages import REPLY_EXTERNAL
 from redpanda.assistant.agent_messages import (
-    DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_FILE, SEND_GROUP_MESSAGE, SEND_MESSAGE,
+    LIST_COLLEAGUES, SEND_FILE, SEND_GROUP_MESSAGE, SEND_MESSAGE,
 )
 from redpanda.assistant.sessions import session_view
 from redpanda.assistant.subagent.subagent import (
@@ -204,6 +206,7 @@ class HostSupervisor:
         self.lifecycle = AgentLifecycle(self)
         self.agent_messages = AgentMessages(self)
         self.agent_groups = AgentGroups(self)
+        self.external_messages = ExternalMessages(self)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
         self.agent_projects = AgentProjects(self)
         self._agent_creation_lock = asyncio.Lock()
@@ -274,8 +277,8 @@ class HostSupervisor:
             if not await self.lifecycle.is_deleted(session_id):
                 await self.resume(session_id)
         for entry in await self.agents.list(include_deleted=True):
-            if entry.agent.deleted:
-                await self.lifecycle.notify(entry.agent.session_id)
+            if entry.deleted:
+                await self.lifecycle.notify(entry.session_id)
 
     async def _child_project(self, session_id) -> tuple[AgentRecord, str] | None:
         """The parent Bot and project a delegated task works in, if it got a project copy."""
@@ -365,10 +368,10 @@ class HostSupervisor:
             return await self.agent_messages.colleagues(session_id)
         if operation == SEND_MESSAGE:
             return await self.agent_messages.send(session_id, arguments)
+        if operation == REPLY_EXTERNAL:
+            return await self.external_messages.reply(session_id, arguments)
         if operation == SEND_GROUP_MESSAGE:
             return await self.agent_messages.send_group(session_id, arguments)
-        if operation == DECLARE_DIRECTION:
-            return await _settle(self.agent_messages.declare(session_id, arguments))
         if operation == SEND_FILE:
             attachment = await self._copy_worktree_file(session_id, arguments["path"])
             if attachment.get("ok") is False:
@@ -642,7 +645,7 @@ class HostSupervisor:
                 await self._emit_schedule_changed(watch.session_id)
         watched = {item.session_id for item in store.watches()}
         for entry in await self.agents.list():
-            session_id = entry.agent.session_id
+            session_id = entry.session_id
             if session_id in watched:
                 continue
             events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
@@ -824,7 +827,7 @@ class HostSupervisor:
                 raise ValueError(f"Unknown Host signal: {kind}")
 
         async def route(operation, target, arguments):
-            if operation in {SEND_MESSAGE, SEND_GROUP_MESSAGE, LIST_COLLEAGUES, DECLARE_DIRECTION}                     and target != session_id:
+            if operation in {SEND_MESSAGE, SEND_GROUP_MESSAGE, LIST_COLLEAGUES} and target != session_id:
                 raise ValueError("communication request does not belong to this Worker")
             return await self._route(
                 operation,
@@ -1234,10 +1237,10 @@ class HostSupervisor:
         identity = AgentCreated(name=name, directory=str(directory))
         async with self._agent_creation_lock:
             for entry in await self.agents.list(include_deleted=True):
-                if name in entry.agent.names:
-                    pending = self.store.require(entry.agent.session_id).parent / "agent-creation.json"
-                    if pending.exists() and entry.agent.name == name:
-                        return await _settle(self._finish_agent_creation(entry.agent))
+                if name in entry.names:
+                    pending = self.store.require(entry.session_id).parent / "agent-creation.json"
+                    if pending.exists() and entry.name == name:
+                        return await _settle(self._finish_agent_creation(entry))
                     raise AgentNameTaken(f"已有 Agent：{name}")
             # A cancelled request must not leave a worktree without its identity fact.
             if path is not None:
@@ -1245,7 +1248,7 @@ class HostSupervisor:
             return await _settle(self._create_agent(project, session_id, identity))
 
     async def _create_agent(self, project, session_id, identity) -> AgentRecord:
-        colleagues = tuple(entry.agent.session_id for entry in await self.agents.list())
+        colleagues = tuple(entry.session_id for entry in await self.agents.list())
         directory = Path(identity.directory)
         directory.mkdir(parents=True)
         linked = None
@@ -1289,11 +1292,6 @@ class HostSupervisor:
         pending.unlink()
         return agent
 
-    async def set_direction_by_user(self, session_id: str, direction: str) -> None:
-        await _settle(self.agent_messages.declare(session_id, {
-            "direction": direction, "source": "user", "delivery_id": f"direction:{uuid4().hex}",
-        }))
-
     async def rename_agent(self, session_id: str, name: str) -> AgentRecord:
         async with self._agent_creation_lock:
             return await _settle(self._rename_agent(session_id, name))
@@ -1303,7 +1301,7 @@ class HostSupervisor:
         if agent is None or agent.deleted:
             raise AgentNotFound(session_id)
         fact = AgentRenamed(session_id=session_id, old_name=agent.name, name=name)
-        if any(name in entry.agent.names and entry.agent.session_id != session_id
+        if any(name in entry.names and entry.session_id != session_id
                for entry in await self.agents.list(include_deleted=True)):
             raise AgentNameTaken(f"这个名字已被其他 Bot 使用：{name}")
         if name != agent.name:

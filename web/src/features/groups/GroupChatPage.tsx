@@ -124,8 +124,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
             const agent = memberOf(name);
             const identity = <>
               <BotAvatar name={name} sessionId={sessionOf(name)} />
-              <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text>
-                <Text fz={11} c="dimmed" lineClamp={2}>{agent?.direction ?? "尚未设置负责方向"}</Text></div>
+              <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text></div>
               {agent === undefined ? null : <AgentStatus agent={agent} compact />}
             </>;
             return agent === undefined ? <div className="group-member" key={name}>{identity}</div> : (
@@ -174,7 +173,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           {reading.canReturn ? <Button className="jump-to-latest quote-return" variant="default" size="compact-sm" onClick={reading.returnToReading}>返回刚才的位置</Button> : reading.atBottom ? null : <Button className="jump-to-latest" variant="default" size="compact-sm" onClick={reading.latest}>{reading.pending > 0 ? `${reading.pending} 条新消息` : "回到最新"} ↓</Button>}
           <div className="group-composer-status" aria-live="polite">
             {group.calling.length === 0 ? null : (
-              <Text c="dimmed" fz={12}>正在等 {group.calling.join("、")} 回应…</Text>
+              <Text c="dimmed" fz={12}>正在通知 {group.calling.join("、")}…</Text>
             )}
           </div>
           {failure === null ? null : <Alert color="red">{failure}</Alert>}

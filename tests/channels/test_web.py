@@ -213,7 +213,7 @@ class _Queries:
     async def agent_entry(self, session_id):
         name, workspace_id = self.created
         projects = () if workspace_id is None else (AgentProjectView("old", workspace_id, "C:/bots/old"),)
-        return AgentRosterEntry(session_id, projects, name, "前端", "idle", "waiting")
+        return AgentRosterEntry(session_id, projects, name, "idle", "waiting")
 
     async def list_inbox(self):
         return (
@@ -517,7 +517,7 @@ class WebFirstSliceTest(unittest.TestCase):
             # A real release awaits IPC; disconnect cancellation must not skip it.
             import anyio
 
-            await anyio.sleep(0)
+            await anyio.lowlevel.checkpoint()
             released.append(owner)
 
         self.sessions.release = release
@@ -898,7 +898,6 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(body["name"], "小熊猫")
         self.assertEqual(body["projects"], [{"name": "old", "workspace_id": "workspace-old", "directory": "C:/bots/old"}])
         self.assertEqual(body["status"], "waiting")
-        self.assertEqual(body["direction"], "前端")
         self.assertNotIn("worktree", body)
         self.assertNotIn("branch", body)
         self.assertEqual(self.sessions.calls[0], ("create_agent", "小熊猫", "C:/project"))
@@ -931,23 +930,6 @@ class WebFirstSliceTest(unittest.TestCase):
         })
         self.assertEqual(missing_git.status_code, 409)
         self.assertIn("Git", missing_git.json()["detail"])
-
-    def test_direction_editor_requires_active_connection_and_nonblank_text(self):
-        self.queries.created = ("Ada", None)
-        self.sessions.set_direction_by_user = AsyncMock()
-        url = "/api/agents/agent-new/direction"
-        body = {"connection_id": self.connection.connection_id, "direction": "前端"}
-        saved = self.client.put(url, json=body)
-        self.assertEqual(saved.status_code, 200)
-        self.assertEqual(saved.json()["direction"], "前端")
-        self.sessions.set_direction_by_user.assert_awaited_once_with("agent-new", "前端")
-        for direction in ("", " \n ", None, 1):
-            self.assertEqual(self.client.put(url, json={**body, "direction": direction}).status_code, 422)
-        self.assertEqual(self.client.put(url, json={**body, "source": "agent"}).status_code, 422)
-        self.assertEqual(self.client.put(url, json={**body, "connection_id": "gone"}).status_code, 409)
-        self.assertEqual(self.sessions.set_direction_by_user.await_count, 1)
-        self.sessions.set_direction_by_user.side_effect = AgentNotFound("missing")
-        self.assertEqual(self.client.put(url, json=body).status_code, 404)
 
     def test_roster_status_uses_existing_worker_and_wait_facts(self):
         def status(**overrides):

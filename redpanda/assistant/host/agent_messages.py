@@ -6,7 +6,7 @@ from hashlib import sha256
 
 from redpanda.assistant.agent_messages import LIMIT_NOTICE, MAX_MESSAGE_HOPS, MAX_MESSAGES_PER_ORIGIN
 from redpanda.assistant.agents import (
-    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, DirectionSetByUser, PrivateMessage, Speaker, fact_arguments, message_origin,
+    PRIVATE_MESSAGE, ColleagueJoined, PrivateMessage, Speaker, fact_arguments, message_origin,
     parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_agent_roster_entry
@@ -42,8 +42,8 @@ class OriginUsage:
             if self._used is None:
                 used: dict[str, set[str]] = {}
                 for entry in await self.host.agents.list(include_deleted=True):
-                    events = await SqliteJournal(self.host.store.require(entry.agent.session_id)).snapshot(
-                        entry.agent.session_id)
+                    events = await SqliteJournal(self.host.store.require(entry.session_id)).snapshot(
+                        entry.session_id)
                     for event in events:
                         if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
                             fact = parse_agent_fact(event.payload)
@@ -74,27 +74,26 @@ class AgentMessages:
             raise ValueError("colleague query requires a Coding Bot identity")
         return {"ok": True, "code": "COLLEAGUES_READ", "data": {"colleagues": [
             await self._colleague(entry) for entry in await self.host.agents.list()
-            if entry.agent.session_id != session_id]}}
+            if entry.session_id != session_id]}}
 
-    async def _colleague(self, entry):
+    async def _colleague(self, agent):
         """The same status the Web roster shows; reads this colleague's Journal."""
-        agent = entry.agent
         events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
         status = COLLEAGUE_STATUS[project_agent_roster_entry(
             agent.session_id, events, name=agent.name,
-            direction=entry.direction, activity=self.host.activity(agent.session_id),
+            activity=self.host.activity(agent.session_id),
             last_error=self.host.current_failure(agent.session_id),
             auto_authorize=self.host.auto_authorize()).status]
-        return {"name": agent.name, "direction": entry.direction, "directory": str(agent.directory),
+        return {"name": agent.name, "directory": str(agent.directory),
                 "projects": [item.name for item in agent.projects],
                 "status": status, "since": events[-1].occurred_at.astimezone().isoformat(timespec="minutes")}
 
     async def _broadcast(self, sender, fact, delivery_id):
         """Roster changes reach colleagues as facts that do not request a decision."""
         await asyncio.gather(*(
-            self._notify(entry.agent.session_id, fact_arguments(fact, delivery_id=delivery_id))
+            self._notify(entry.session_id, fact_arguments(fact, delivery_id=delivery_id))
             for entry in await self.host.agents.list()
-            if entry.agent.session_id != sender.session_id))
+            if entry.session_id != sender.session_id))
 
     async def _notify(self, session_id, arguments):
         try:
@@ -106,26 +105,6 @@ class AgentMessages:
         for session_id in colleagues:
             await self._notify(session_id, fact_arguments(
                 ColleagueJoined(name=agent.name), delivery_id=f"joined:{agent.session_id}"))
-
-    async def declare(self, session_id, arguments):
-        async with self.host._agent_creation_lock:
-            sender = await self.host.agents.by_session(session_id)
-            if sender is None or sender.deleted:
-                raise AgentNotFound(session_id)
-            events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
-            existing = next((event for event in events if event.delivery is not None
-                             and event.delivery.source == "coding_bot"
-                             and event.delivery.delivery_id == arguments["delivery_id"]), None)
-            model = {"user": DirectionSetByUser, "agent": DirectionDeclared}[arguments["source"]]
-            fact = (parse_agent_fact(existing.payload) if existing is not None else model(
-                name=sender.name, direction=arguments["direction"]))
-            if fact.direction != arguments["direction"] or fact.source != arguments["source"]:
-                raise ValueError("persisted direction conflicts with its update")
-            try:
-                await self.host.request("fact", session_id, fact_arguments(fact, delivery_id=arguments["delivery_id"]))
-            finally:
-                await self.host.agents.refresh(session_id)
-            await self._broadcast(sender, fact, f"{session_id}:{arguments['delivery_id']}")
 
     async def _messages(self, session_id):
         events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)

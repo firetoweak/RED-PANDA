@@ -26,8 +26,8 @@ from redpanda.assistant.authorization import AuthorizationConflict, Authorizatio
 from redpanda.assistant.host.agent_groups import GroupDissolvedError, GroupNameTaken, GroupNotFound
 from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
+from redpanda.assistant.host.external_messages import ExternalConnectionNotFound
 from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.agent_messages import DirectionArguments
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from redpanda.automation.routines import RoutineNotFound
@@ -42,6 +42,7 @@ from redpanda.channels.web.directory_picker import (
     select_directory,
 )
 from redpanda.channels.web.hub import WebEventHub
+from redpanda.channels.mcp import create_mcp_app
 from redpanda.filesystem.registry import (
     WorkspaceNotFound,
     WorkspacePathTaken,
@@ -118,10 +119,6 @@ class AgentNameRequest(ConnectionRequest):
 
 class AgentAvatarRequest(ConnectionRequest):
     seed: str | None = Field(min_length=1)
-
-
-class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
-    pass
 
 
 class CreateAgentRequest(AgentNameRequest):
@@ -215,12 +212,16 @@ def create_web_app(
     static_dir: Path | None = None,
     shared_memory: SharedMemoryStore | None = None,
     avatars: AvatarStore | None = None,
+    external_messages=None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        mcp_app = create_mcp_app(lambda: app.state.external_messages)
+        app.state.collaboration_mcp = mcp_app
         app.state.hub = events
+        app.state.external_messages = external_messages
         if channel is not None:
             app.state.channel = channel
             app.state.models = models
@@ -228,7 +229,8 @@ def create_web_app(
             app.state.workspaces = workspaces
             app.state.shared_memory = shared_memory
             app.state.avatars = avatars
-            yield
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
             return
         async with bootstrap_assistant(
             events.output_final,
@@ -245,6 +247,7 @@ def create_web_app(
             context_usage_sink=events.context_usage,
             conversation_status_sink=events.conversation_status,
         ) as assistant:
+            app.state.external_messages = assistant.sessions.external_messages
             app.state.channel = WebChannel(
                 assistant.sessions,
                 assistant.queries,
@@ -260,7 +263,8 @@ def create_web_app(
                 name="web-assistant-failure",
             )
             try:
-                yield
+                async with mcp_app.router.lifespan_context(mcp_app):
+                    yield
             finally:
                 failures.cancel()
                 await asyncio.gather(failures, return_exceptions=True)
@@ -477,6 +481,24 @@ def create_web_app(
     async def agents(request: Request):
         return await _channel(request).list_agents()
 
+    @app.get("/api/external-connections")
+    async def external_connections(request: Request):
+        return await _channel(request).list_external_connections()
+
+    @app.post("/api/external-connections", status_code=201)
+    async def create_external_connection(body: ConnectionRequest, request: Request):
+        created = await _channel(request).create_external_connection(body.connection_id)
+        return JSONResponse(status_code=201, content={**created, "url": str(request.base_url) + "mcp/"},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.delete("/api/external-connections/{external_id}", status_code=204)
+    async def revoke_external_connection(external_id: str, body: ConnectionRequest, request: Request):
+        try:
+            await _channel(request).revoke_external_connection(body.connection_id, external_id)
+        except ExternalConnectionNotFound:
+            return JSONResponse(status_code=404, content={"detail": "没有这份连接配置，可能已撤销。"})
+        return Response(status_code=204)
+
     @app.post("/api/agents", status_code=201)
     async def create_agent(body: CreateAgentRequest, request: Request):
         return await _channel(request).create_agent(
@@ -491,10 +513,6 @@ def create_web_app(
     @app.put("/api/agents/{session_id}/name")
     async def rename_agent(session_id: str, body: AgentNameRequest, request: Request):
         return await _channel(request).rename_agent(body.connection_id, session_id, body.name)
-
-    @app.put("/api/agents/{session_id}/direction")
-    async def set_agent_direction(session_id: str, body: AgentDirectionRequest, request: Request):
-        return await _channel(request).set_agent_direction(body.connection_id, session_id, body.direction)
 
     @app.post("/api/agents/{session_id}/projects")
     async def link_project(session_id: str, body: LinkProjectRequest, request: Request):
@@ -727,6 +745,10 @@ def create_web_app(
         finally:
             await request.app.state.hub.auto_authorize_changed()
 
+    async def collaboration(scope, receive, send):
+        await app.state.collaboration_mcp(scope, receive, send)
+
+    app.mount("/mcp", collaboration, name="collaboration")
     if static_dir is not None:
         app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
         app.mount("/", _FrontendFiles(directory=static_dir), name="frontend")

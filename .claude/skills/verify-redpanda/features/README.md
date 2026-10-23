@@ -66,7 +66,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 无项目 Bot 真实发送与回复、刷新历史通过；长历史、引用跳转与异常 API 未重验。 |
 | workspace-management | [workspace-management.md](./workspace-management.md) | 创建 Bot 同页选目录、按目录名展示、复用与后续关联 | 2026-10-23 增量：取消不登记、两位 Bot 复用同目录、后续关联同名仓库、路径区分、错误草稿保留及桌面与窄屏通过；原生目录窗口与解除未重验。 |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
-| colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 真实 declare_direction/list_colleagues，用户保存共同记忆，另一 Bot 下一轮读到新内容；超限、清空和冲突未重验。 |
+| colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 2026-10-24 真实 list_colleagues 通过，负责方向能力已移除；共同记忆沿用此前页面证据，本轮未重验。 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、停止执行的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；停止执行接收和交流上限未重验。 |
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | 真实指定 project 落地后同步，包含两个子任务成果，差异清零且人的原始 note.txt 不变；同步他人新增成果、冲突和阻挡未重验。 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 PNG 真实粘贴、发送、刷新预览通过，GET 下载与原件逐字节相同；本机选择、普通文件、跨会话边界未重验。 |
@@ -140,9 +140,10 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `read_command` `stop_command` `list_commands`（后台命令，Linux/Windows） | `redpanda/tools/builtin/background_commands.py` | tool-coding-round |
 | `schedule_once` `cancel_schedule` | `redpanda/automation/tool.py` | scheduling |
 | `save_routine` `set_routine_state` `list_routines` | `redpanda/automation/routine_tool.py` | routines |
-| `list_colleagues` `declare_direction` | `redpanda/assistant/agent_messages.py` | colleague-tools |
+| `list_colleagues` | `redpanda/assistant/agent_messages.py` | colleague-tools |
 | `read_shared_memory` `update_shared_memory` | `redpanda/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
+| 全局设置「外部验证接入」；MCP `get_context` `request_verification` `read_feedback`；Bot 的 `reply_external_message` | `features/settings/VerificationAccess.tsx`、`redpanda/channels/mcp/`、`assistant/host/external_messages.py` | private-messages（外部独立验证） |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
 | `link_project` `unlink_project` | `redpanda/assistant/agent_tools.py` | workspace-management |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |

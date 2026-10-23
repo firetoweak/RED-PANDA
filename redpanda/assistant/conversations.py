@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent, project_direction
+from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, Feedback, parse_external
+from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
@@ -61,7 +62,6 @@ class AgentRosterEntry:
     session_id: str
     projects: tuple[AgentProjectView, ...]
     name: str
-    direction: str | None
     activity: SessionActivity
     status: AgentStatus
 
@@ -154,7 +154,22 @@ class PrivateMessageItem:
     occurred_at: datetime
 
 
-ConversationItem = UserItem | StepItem | PrivateMessageItem
+@dataclass(frozen=True, slots=True)
+class ExternalMessageItem:
+    kind: Literal["external_message"]
+    message_id: str
+    direction: Literal["sent", "received"]
+    peer: str
+    identity: str
+    text: str
+    revision: str
+    reference: str
+    previous_request_id: str | None
+    feedback: Feedback | None
+    occurred_at: datetime
+
+
+ConversationItem = UserItem | StepItem | PrivateMessageItem | ExternalMessageItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,8 +234,7 @@ class AssistantQueries:
 
     async def list_agents(self) -> tuple[AgentRosterEntry, ...]:
         entries: list[AgentRosterEntry] = []
-        for view in await self._sessions.agents.list():
-            record = view.agent
+        for record in await self._sessions.agents.list():
             events = await SqliteJournal(self._store.require(record.session_id)).snapshot(
                 record.session_id
             )
@@ -228,7 +242,6 @@ class AssistantQueries:
                 record.session_id,
                 events,
                 name=record.name,
-                direction=view.direction,
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
                 auto_authorize=self._sessions.auto_authorize(),
@@ -244,7 +257,6 @@ class AssistantQueries:
             session_id,
             events,
             name=agent.name,
-            direction=project_direction(events, agent),
             activity=self._sessions.activity(session_id),
             last_error=self._sessions.current_failure(session_id),
             auto_authorize=self._sessions.auto_authorize(),
@@ -390,7 +402,6 @@ def project_agent_roster_entry(
     events: tuple[Event, ...],
     *,
     name: str,
-    direction: str | None,
     activity: SessionActivity,
     last_error: str | None,
     auto_authorize: bool,
@@ -401,7 +412,6 @@ def project_agent_roster_entry(
         session_id=session_id,
         projects=tuple(AgentProjectView(item.name, item.workspace_id, item.worktree) for item in agent.projects),
         name=name,
-        direction=direction,
         activity=activity,
         status=project_agent_status(
             activity=activity,
@@ -501,8 +511,20 @@ def project_conversation(
             communication_notices.setdefault(event.causation_id, []).append(
                 parse_agent_fact(event.payload))
     items: list[ConversationItem] = []
+    external_peers: dict[str, str] = {}
     for event in events:
         payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == EXTERNAL_MESSAGE:
+            message = parse_external(payload)
+            peer = message.name
+            if message.incoming:
+                external_peers[message.message_id] = message.name
+            else:
+                peer = external_peers[message.reply_to]
+            items.append(ExternalMessageItem("external_message", message.message_id,
+                "received" if message.incoming else "sent", peer, message.identity, message.text,
+                message.revision, message.reference, message.previous_request_id, message.feedback, event.occurred_at))
+            continue
         if event.event_id in sent_messages:
             message = sent_messages[event.event_id]
             items.append(PrivateMessageItem("private_message", message["message_id"],

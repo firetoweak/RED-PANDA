@@ -1,4 +1,4 @@
-import type { ConversationView, ToolStatus } from "../../api/contracts";
+import type { ConversationView, ToolStatus, VerificationFeedback } from "../../api/contracts";
 import type {
   ActivePreview,
   LiveTool,
@@ -43,6 +43,7 @@ export type VisiblePrivateMessage = {
   direction: "sent" | "received";
   peer: string;
   occurredAt: string;
+  external?: { identity: string; text: string; revision: string | null; reference: string | null; previousRequestId: string | null; feedback: VerificationFeedback | null };
 };
 
 export type VisibleItem = VisibleUser | VisibleStep | VisiblePrivateMessage;
@@ -62,6 +63,16 @@ export function visibleTimeline(
       .map((item) => item.output_id),
   );
   const items: VisibleItem[] = conversation.items.map((item) => {
+    if (item.kind === "external_message") {
+      return {
+        key: `external:${item.message_id}`,
+        kind: "private_message",
+        direction: item.direction,
+        peer: item.peer,
+        occurredAt: item.occurred_at,
+        external: { identity: item.identity, text: item.text, revision: item.revision, reference: item.reference, previousRequestId: item.previous_request_id, feedback: item.feedback },
+      };
+    }
     if (item.kind === "private_message") {
       return {
         key: `private:${item.direction}:${item.message_id}`,

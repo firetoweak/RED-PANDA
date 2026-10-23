@@ -22,7 +22,6 @@ function workspace(workspaceId: string, name: string): Workspace {
 function agent(partial: Partial<AgentRosterEntry> & Pick<AgentRosterEntry, "session_id" | "name">): AgentRosterEntry {
   return {
     workspace_id: "workspace",
-    direction: null,
     activity: "idle",
     status: "idle",
     ...partial,
@@ -225,10 +224,9 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   expect(screen.getByLabelText("等授权")).toHaveClass("activity-dot-attention");
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" })); });
-  queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "waiting", direction: "前端" })];
+  queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "waiting" })];
   view.rerender(sidebar());
   expect(screen.getByLabelText("等人回话")).toHaveClass("activity-dot-idle");
-  expect(screen.getByText("前端")).toBeInTheDocument();
 });
 
 it("点 Agent 打开它的会话", () => {

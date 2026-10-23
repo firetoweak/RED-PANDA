@@ -22,7 +22,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-const agent = { session_id: "agent-test", name: "Ada", projects: [], direction: null, activity: "idle", status: "idle" } as const;
+const agent = { session_id: "agent-test", name: "Ada", projects: [], activity: "idle", status: "idle" } as const;
 const projects: Workspace[] = ["C:/one/app", "C:/two/app"].map((path, i) => ({
   workspace_id: `workspace-${i}`, name: "app", task_root: path, full_access: false, created_at: "2026-10-23",
 }));

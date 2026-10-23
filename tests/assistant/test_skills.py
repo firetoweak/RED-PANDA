@@ -124,7 +124,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
             MemoryArtifactGateway(), ModelContextSettings(),
         )
         catalog = adapter.registry_catalog()
-        self.assertEqual({item["id"] for item in catalog}, {"builtin:coding", "builtin:git-collaboration", "builtin:web-research"})
+        self.assertEqual({item["id"] for item in catalog}, {"builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"})
         self.assertEqual(service.registry.snapshot(), ())
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
@@ -161,7 +161,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "project:broken", "project:verify"})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification", "project:broken", "project:verify"})
         self.assertEqual(by_id["project:verify"]["description"], "Verify the app")
         self.assertIn("SKILL.md", by_id["project:broken"]["description"])
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
@@ -190,7 +190,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item["description"] for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(40)})
         self.assertLessEqual(len("\n".join(f"- {key}: {value}" for key, value in by_id.items())), 4000)
         self.assertEqual(by_id["project:big-00"], "x" * 120)
         self.assertIn("长度上限", by_id["project:big-39"])
@@ -228,7 +228,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(40)})
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
         for index in range(40):
