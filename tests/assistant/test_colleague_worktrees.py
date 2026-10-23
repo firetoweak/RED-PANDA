@@ -32,7 +32,7 @@ class ColleagueWorktreeAccessTest(unittest.IsolatedAsyncioTestCase):
             target = colleague / "note.txt"
             target.write_text("original", encoding="utf-8")
             runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", own, False, "2026-10-19"), colleague_roots=(project,),
+                WorkspaceRecord("workspace-test", own, False, "2026-10-19"), colleague_roots=(project,),
             )
             bindings = bind_executor_tools(runner, MemoryArtifactGateway(), ModelContextSettings())
             for name, extra in (
@@ -73,7 +73,7 @@ class ColleagueWorktreeAccessTest(unittest.IsolatedAsyncioTestCase):
             colleague.mkdir()
             other = Path(directory) / "other-project" / "agent" / "note.txt"
             runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", own, True, "2026-10-19"), colleague_roots=(project,),
+                WorkspaceRecord("workspace-test", own, True, "2026-10-19"), colleague_roots=(project,),
             )
             denied = await runner.execute("write_file", {"path": str(colleague / "note.txt"), "content": "mine"})
             self.assertEqual(denied["code"], "ENVIRONMENT_PERMISSION_DENIED")

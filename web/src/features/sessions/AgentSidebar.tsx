@@ -51,7 +51,7 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
       <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => filter !== "groups" && `${agent.name} ${agent.direction ?? ""}`.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => filter !== "bots" && chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== "" || filter !== "all"} onOpen={open} creatingSection={sectionCreating} onCloseSection={() => setSectionCreating(false)} /></ScrollArea>
     </AppShell.Section>
     <AppShell.Section className="sidebar-footer"><Group gap={8}><SettingsMenu onOpen={onNavigate} /><ColorSchemeSwitcher /><AutoAuthorize /></Group><Text size="xs" c="dimmed" px={8}>{connectionId === null ? "正在连接…" : "已连接"}</Text></AppShell.Section>
-    <CreateAgentModal opened={creating} workspaceId={null} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); open(`/sessions/${encodeURIComponent(id)}`); }} />
+    <CreateAgentModal opened={creating} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); open(`/sessions/${encodeURIComponent(id)}`); }} />
     <CreateGroupModal opened={groupCreating} agents={agents} connectionId={connectionId} onClose={() => setGroupCreating(false)} onCreated={(id) => { setGroupCreating(false); open(`/groups/${encodeURIComponent(id)}`); }} />
   </Stack>;
 }

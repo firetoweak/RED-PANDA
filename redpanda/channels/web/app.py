@@ -105,7 +105,7 @@ class ModelTestRequest(ConnectionRequest):
 
 
 class CreateAgentRequest(ConnectionRequest):
-    workspace_id: str | None = Field(default=None, min_length=1)
+    path: str | None = Field(default=None, min_length=1)
     name: str = Field(min_length=1)
 
     @field_validator("name")
@@ -191,28 +191,6 @@ class AutoAuthorizeRequest(BaseModel):
 
     connection_id: str = Field(min_length=1)
     enabled: bool
-
-
-class WorkspaceCreateRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    name: str
-    task_root: str
-    full_access: bool = False
-
-
-class WorkspaceRenameRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    name: str
-
-    @field_validator("name")
-    @classmethod
-    def named(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("name must be a non-empty str")
-        return stripped
 
 
 def create_web_app(
@@ -433,7 +411,7 @@ def create_web_app(
     @app.post("/api/agents", status_code=201)
     async def create_agent(body: CreateAgentRequest, request: Request):
         return await _channel(request).create_agent(
-            body.connection_id, body.workspace_id, body.name,
+            body.connection_id, body.path, body.name,
         )
 
     @app.post("/api/agents/{session_id}/projects")
@@ -522,25 +500,6 @@ def create_web_app(
     async def list_workspaces(request: Request):
         registry = request.app.state.workspaces
         return [record.to_dict() for record in registry.workspaces]
-
-    @app.post("/api/workspaces", status_code=201)
-    async def create_workspace(body: WorkspaceCreateRequest, request: Request):
-        registry = request.app.state.workspaces
-        return registry.create(
-            name=body.name,
-            task_root=Path(body.task_root),
-            full_access=body.full_access,
-        ).to_dict()
-
-    @app.patch("/api/workspaces/{workspace_id}")
-    async def rename_workspace(
-        workspace_id: str, body: WorkspaceRenameRequest, request: Request,
-    ):
-        return request.app.state.workspaces.rename(workspace_id, body.name).to_dict()
-
-    @app.delete("/api/workspaces/{workspace_id}", status_code=204)
-    async def delete_workspace(workspace_id: str, request: Request):
-        request.app.state.workspaces.delete(workspace_id)
 
     @app.post("/api/workspaces/select-directory")
     async def pick_workspace_directory():
