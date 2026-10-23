@@ -23,6 +23,7 @@ from redpanda.runtime import SqliteJournal
 from tests.fixtures.session_worker import (
     CancellableProcessLlm,
     ProcessLlm,
+    is_subagent_request,
     cancellable_config,
     config_for,
     interrupted_read_config,
@@ -429,7 +430,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         class StreamingChildLlm(ProcessLlm):
             async def chat(client, messages, model, *, tools=None,
                            on_content_delta=None, on_reasoning_delta=None):
-                if "你是 RED PANDA 的子 Agent" not in str(messages[0]["content"]):
+                if not is_subagent_request(tools):
                     return await super().chat(
                         messages, model, tools=tools,
                         on_content_delta=on_content_delta,
@@ -595,7 +596,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             reclaimed = False
 
             async def chat(client, messages, model, **kwargs):
-                if client.target is None or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+                if client.target is None or is_subagent_request(kwargs["tools"]):
                     return await super().chat(messages, model, **kwargs)
                 deciding.set()
                 await release.wait()
@@ -667,7 +668,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             child_messages = None
 
             async def chat(client, messages, model, **kwargs):
-                if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+                if is_subagent_request(kwargs["tools"]):
                     if INSTRUCTION_FACT not in json.dumps(messages):
                         old_started.set()
                         try:
@@ -778,7 +779,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
             async def chat(client, messages, model, **kwargs):
                 text = json.dumps(messages)
-                if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+                if is_subagent_request(kwargs["tools"]):
                     if "QUESTION_ONE" not in text:
                         started.set()
                         await asyncio.Event().wait()
