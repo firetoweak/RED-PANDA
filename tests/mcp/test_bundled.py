@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 from mcp.types import Tool
 
 from redpanda.mcp.approval import McpInstallProposalInput
-from redpanda.mcp.bundled import BROWSER_SERVER_IDS
+from redpanda.mcp.bundled import BROWSER_SERVER_IDS, BUILTIN_SERVER_IDS
 from redpanda.mcp.client_manager import McpClientError
 from redpanda.mcp.composition import build_mcp
 from redpanda.mcp.errors import McpConfigurationError
@@ -19,9 +19,9 @@ def test_browser_catalog_is_available_without_installation_or_connection(tmp_pat
     assembly = build_mcp(home)
     provider = assembly.toolset_provider
     assert {item.id for item in provider.descriptors()} == {
-        "mcp:builtin-chrome-devtools", "mcp:builtin-playwright",
+        "mcp:builtin-chrome-devtools", "mcp:builtin-playwright", "mcp:builtin-exa",
     }
-    assert provider.descriptors(read_only_only=True) == ()
+    assert [item.id for item in provider.descriptors(read_only_only=True)] == ["mcp:builtin-exa"]
     assert assembly.service.registry.snapshot() == ()
     assert assembly.client_manager._connections == {}
 
@@ -73,17 +73,25 @@ class BundledBrowserTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("setup.ps1", result["hint"])
                 self.assertIn("connection closed", result["error"])
 
-    async def test_external_install_cannot_replace_bundled_browser(self):
-        for server_id in sorted(BROWSER_SERVER_IDS):
+    async def test_external_install_cannot_replace_bundled_server(self):
+        for server_id in sorted(BUILTIN_SERVER_IDS):
             with self.subTest(server_id=server_id):
-                with self.assertRaisesRegex(McpConfigurationError, "内置浏览器"):
+                with self.assertRaisesRegex(McpConfigurationError, "产品内置能力"):
                     await self.assembly.service.upsert_server(
                         server_id=server_id, display_name="external", transport="stdio",
                         transport_config={"command": "external"},
                     )
-                with self.assertRaisesRegex(ValueError, "内置浏览器"):
+                with self.assertRaisesRegex(ValueError, "产品内置能力"):
                     McpInstallProposalInput(
                         server_id=server_id, display_name="external", transport="stdio",
                         command="external", source="user_input",
                     )
                 self.assertEqual(self.assembly.service.registry.snapshot(), ())
+
+    async def test_search_connection_failure_offers_browser_instead_of_reinstall(self):
+        self.assembly.client_manager.list_tools = AsyncMock(side_effect=McpClientError("HTTP 429"))
+        with self.assertRaises(ToolsetLoadError) as caught:
+            await self.assembly.toolset_provider.discover_tools("mcp:builtin-exa")
+        self.assertIn("web-research", caught.exception.hint)
+        self.assertIn("浏览器", caught.exception.hint)
+        self.assertNotIn("setup.ps1", caught.exception.hint)

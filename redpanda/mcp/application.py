@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
 from redpanda.mcp.client_manager import McpClientError, McpClientManager
-from redpanda.mcp.bundled import BROWSER_SERVER_IDS
+from redpanda.mcp.bundled import BUILTIN_SERVER_IDS
 from redpanda.mcp.content import McpContentService
 from redpanda.mcp.errors import (
     McpConfigurationError,
@@ -162,8 +162,8 @@ class McpApplicationService:
         enabled: bool,
         read_only: bool,
     ) -> McpServerRecord:
-        if server_id in BROWSER_SERVER_IDS:
-            raise McpConfigurationError("此 ID 属于产品内置浏览器能力，请为外部 MCP 选择其他 ID。")
+        if server_id in BUILTIN_SERVER_IDS:
+            raise McpConfigurationError("此 ID 属于产品内置能力，请为外部 MCP 选择其他 ID。")
         existing = await self.registry.get(server_id)
         try:
             kind, prepared_secrets, config = self._validated_configuration(

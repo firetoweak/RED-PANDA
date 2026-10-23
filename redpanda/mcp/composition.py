@@ -5,7 +5,7 @@ from pathlib import Path
 
 from redpanda.paths import RedPandaHome
 from redpanda.mcp.application import McpApplicationService
-from redpanda.mcp.bundled import browser_servers
+from redpanda.mcp.bundled import bundled_servers
 from redpanda.mcp.client_manager import McpClientManager
 from redpanda.mcp.content import McpContentService
 from redpanda.mcp.registry import McpRegistry
@@ -60,7 +60,7 @@ def build_mcp(
         secret_store,
         manager,
         content_service=content,
-        bundled_servers=browser_servers(task_root),
+        bundled_servers=bundled_servers(task_root),
     )
     control_operations = (
         ControlOperation(

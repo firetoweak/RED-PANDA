@@ -1,4 +1,4 @@
-"""Product browser capabilities, independent of user-installed MCP servers."""
+"""Product web capabilities, independent of user-installed MCP servers."""
 
 from __future__ import annotations
 
@@ -6,10 +6,12 @@ import os
 import hashlib
 from pathlib import Path
 
-from redpanda.mcp.models import McpServerRecord, StdioTransportConfig, TransportKind
+from redpanda.mcp.models import McpServerRecord, StdioTransportConfig, StreamableHttpTransportConfig, TransportKind
 
 
 BROWSER_SERVER_IDS = frozenset({"builtin-chrome-devtools", "builtin-playwright"})
+SEARCH_SERVER_ID = "builtin-exa"
+BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | {SEARCH_SERVER_ID}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -55,3 +57,19 @@ def browser_servers(task_root: Path | None = None) -> tuple[McpServerRecord, ...
             revision=revision,
         ),
     )
+
+
+def search_server() -> McpServerRecord:
+    return McpServerRecord(
+        id=SEARCH_SERVER_ID,
+        display_name="Exa Web Search",
+        description="默认网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；连接失败或结果不足时可改用浏览器检索，也可使用用户指定的搜索服务。",
+        transport=TransportKind.STREAMABLE_HTTP,
+        transport_config=StreamableHttpTransportConfig(url="https://mcp.exa.ai/mcp"),
+        enabled=True,
+        read_only=True,
+    )
+
+
+def bundled_servers(task_root: Path | None = None) -> tuple[McpServerRecord, ...]:
+    return (*browser_servers(task_root), search_server())
