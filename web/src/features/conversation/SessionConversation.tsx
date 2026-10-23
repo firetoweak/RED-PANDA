@@ -13,6 +13,7 @@ import { EditableAgentDirection } from "../sessions/EditableAgentDirection";
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
+import { BotAvatarPicker } from "./BotAvatarPicker";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -34,7 +35,7 @@ export function SessionConversation() {
   const details = agent === undefined ? null : (
     <>
       <div className="agent-details-profile">
-        <BotAvatar name={agent.name} className="agent-details-avatar" />
+        <BotAvatarPicker key={`avatar-${agent.session_id}`} name={agent.name} sessionId={agent.session_id} connectionId={connectionId} />
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
@@ -76,7 +77,7 @@ export function SessionConversation() {
       <header className="page-header session-header">
         {fromGroup === undefined ? null : <ActionIcon component={Link} to={`/groups/${encodeURIComponent(fromGroup.id)}`} aria-label={`返回 ${fromGroup.name}`} title={`返回 ${fromGroup.name}`} variant="subtle" color="gray"><IconArrowLeft size={18} /></ActionIcon>}
         <Group gap={10} wrap="nowrap" className="session-header-identity">
-          <BotAvatar name={name} />
+          <BotAvatar name={name} sessionId={sessionId} />
           <div className="session-header-name">{agent === undefined ? <Text fw={600} size="sm">{name}</Text>
             : <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="sm" />}
             <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>

@@ -18,7 +18,7 @@ import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { GroupComposer } from "./GroupComposer";
-import { BotAvatar, ChatPresentation, identityColor, messageReference, MessageQuote, MessageMenu, type MessageReference } from "../conversation/ChatPresentation";
+import { BotAvatar, ChatPresentation, useIdentityColor, messageReference, MessageQuote, MessageMenu, type MessageReference } from "../conversation/ChatPresentation";
 import { useGroupReading } from "./useGroupReading";
 import { createClientId } from "../conversation/clientId";
 
@@ -30,12 +30,13 @@ function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
   sessionOf: (name: string) => string | undefined;
 }) {
   const time = formatMessageTime(message.occurred_at);
+  const identityColor = useIdentityColor();
   const session = message.sender === null ? undefined : sessionOf(message.sender);
   return (
     <article data-message-id={message.message_id} className={message.sender === null ? "group-message is-human" : "group-message"}
       aria-label={`${message.sender ?? "你"}的群消息`}>
       <div className="message group-message-row">
-        {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} />}
+        {message.sender === null ? <span className="agent-avatar human-avatar" aria-hidden="true">你</span> : <BotAvatar name={message.sender} sessionId={session} />}
         <MessageMenu id={message.message_id} author={message.sender ?? "你"} text={message.text}>
           <div className="group-message-bubble" tabIndex={0}>
             {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, source.sender ?? "你", source.text)} />}
@@ -122,7 +123,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           <div className="group-member-list">{group.members.map((name) => {
             const agent = memberOf(name);
             const identity = <>
-              <BotAvatar name={name} />
+              <BotAvatar name={name} sessionId={sessionOf(name)} />
               <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text>
                 <Text fz={11} c="dimmed" lineClamp={2}>{agent?.direction ?? "尚未设置负责方向"}</Text></div>
               {agent === undefined ? null : <AgentStatus agent={agent} compact />}

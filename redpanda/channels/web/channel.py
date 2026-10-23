@@ -12,6 +12,7 @@ from redpanda.assistant.attachments import (
     is_valid_attachment_id,
 )
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
+from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
 from redpanda.automation.once import SOURCE as AUTOMATION_SOURCE
 from redpanda.channels.web.directory_picker import select_file
 
@@ -64,6 +65,14 @@ class WebChannel:
         record = await self._sessions.create_agent(name=name, path=path)
         await self._sessions.select(connection.owner, record.session_id)
         return await self._queries.agent_entry(record.session_id)
+
+    async def require_avatar_edit(self, connection_id: str, session_id: str) -> None:
+        self._require_connection(connection_id)
+        agent = await self._sessions.agents.by_session(session_id)
+        if agent is None:
+            raise AgentNotFound(session_id)
+        if agent.deleted:
+            raise AgentDeletedError(session_id)
 
     async def rename_agent(self, connection_id: str, session_id: str, name: str):
         self._require_connection(connection_id)

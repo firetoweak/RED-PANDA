@@ -515,9 +515,10 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
 }
 
 function AssistantAvatar({ name }: { name?: string }) {
+  const { sessionId } = useParams();
   return name === undefined
     ? <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
-    : <BotAvatar name={name} />;
+    : <BotAvatar name={name} sessionId={sessionId} />;
 }
 
 function RunningHint({ label, agentName }: { label: string; agentName?: string }) {

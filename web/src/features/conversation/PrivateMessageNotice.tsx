@@ -1,14 +1,15 @@
 import { Link } from "react-router-dom";
 
 import { useGetAgentsQuery } from "../../api/redpandaApi";
-import { BotAvatar, identityColor } from "./ChatPresentation";
+import { BotAvatar, useIdentityColor } from "./ChatPresentation";
 import { formatMessageTime } from "./messageTime";
 import type { VisiblePrivateMessage } from "./visibleTimeline";
 
 export function PrivateMessageNotice({ message }: { message: VisiblePrivateMessage }) {
   const { data: agents = [] } = useGetAgentsQuery();
+  const identityColor = useIdentityColor();
   const peer = agents.find((agent) => agent.name === message.peer);
-  const identity = <><BotAvatar name={message.peer} /><span>{message.peer}</span></>;
+  const identity = <><BotAvatar name={message.peer} sessionId={peer?.session_id} /><span>{message.peer}</span></>;
   return <div className="private-message-notice" title={formatMessageTime(message.occurredAt).full}>
     <span>{message.direction === "sent" ? "已发消息给" : "消息来自"}</span>
     {peer === undefined

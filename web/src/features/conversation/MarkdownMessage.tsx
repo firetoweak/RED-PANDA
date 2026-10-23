@@ -2,7 +2,7 @@ import { createRemendPreprocessor } from "@ai-markdown/react";
 import MantineAIMarkdown from "@ai-markdown/react-mantine";
 import hljs from "highlight.js/lib/common";
 import { Children, cloneElement, isValidElement, memo, useContext, type ComponentProps, type ReactNode } from "react";
-import { ChatPresentation, identityColor, MessageQuote, splitMessageQuote } from "./ChatPresentation";
+import { ChatPresentation, useIdentityColor, MessageQuote, splitMessageQuote } from "./ChatPresentation";
 
 const highlightedCodeBlock = {
   autoDetectUnknownLanguage: true,
@@ -12,6 +12,7 @@ const contentPreprocessors = [createRemendPreprocessor()];
 
 function MentionText({ children }: { children: ReactNode }) {
   const { names } = useContext(ChatPresentation);
+  const identityColor = useIdentityColor();
   if (names.length === 0) return children;
   const alternatives = [...names].sort((a, b) => b.length - a.length)
     .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");

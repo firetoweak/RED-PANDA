@@ -26,6 +26,9 @@ class WebEventHub:
         self._running: set[str] = set()
         self._tools: dict[tuple[str, str], str] = {}
 
+    async def avatars_changed(self) -> None:
+        await self._broadcast("avatars_changed", {})
+
     async def auto_authorize_changed(self) -> None:
         await self._broadcast("auto_authorize_changed", {})
 

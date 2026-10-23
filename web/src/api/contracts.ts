@@ -102,6 +102,15 @@ export const agentRosterEntrySchema = z
 
 export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
+export const avatarSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("generated"), seed: z.string().min(1) }).strict(),
+  z.object({ kind: z.literal("image"), attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }).strict(),
+]);
+export const avatarsSchema = z.record(z.string(), avatarSelectionSchema);
+export const avatarsChangedEventSchema = z.object({}).strict();
+export type AvatarSelection = z.infer<typeof avatarSelectionSchema>;
+export type Avatars = z.infer<typeof avatarsSchema>;
+
 export const workspaceSchema = z
   .object({
     workspace_id: z.string().min(1),
