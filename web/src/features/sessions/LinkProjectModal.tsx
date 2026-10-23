@@ -1,12 +1,11 @@
-import { Alert, Button, Modal, SegmentedControl, Select, Stack, TextInput } from "@mantine/core";
-import { useEffect, useState } from "react";
+import { Alert, Button, Modal, Stack } from "@mantine/core";
+import { useState } from "react";
 
 import { useLinkProjectMutation } from "../../api/redpandaApi";
 import type { AgentRosterEntry, Workspace } from "../../api/contracts";
+import { ProjectDirectoryInput } from "./ProjectDirectoryInput";
 
-export function LinkProjectModal({
-  opened, agent, workspaces, connectionId, onClose,
-}: {
+export function LinkProjectModal({ opened, agent, workspaces, connectionId, onClose }: {
   opened: boolean;
   agent: AgentRosterEntry;
   workspaces: Workspace[];
@@ -15,52 +14,37 @@ export function LinkProjectModal({
 }) {
   const linked = new Set(agent.projects.map((project) => project.workspace_id));
   const available = workspaces.filter((workspace) => !linked.has(workspace.workspace_id));
-  const [source, setSource] = useState<"registered" | "path">(available.length > 0 ? "registered" : "path");
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [path, setPath] = useState("");
+  const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkProject, { isLoading, reset }] = useLinkProjectMutation();
-  const ready = connectionId !== null && (source === "registered" ? workspaceId !== null : path.trim() !== "");
+  const ready = connectionId !== null && path.trim() !== "" && !selecting && !isLoading;
 
-  useEffect(() => {
-    if (!opened) return;
-    setSource(available.length > 0 ? "registered" : "path");
-    setWorkspaceId(null);
+  function close() {
     setPath("");
     setError(null);
     reset();
-    // Reset only when the dialog opens.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened]);
+    onClose();
+  }
 
   async function submit() {
     if (!ready || connectionId === null) return;
     setError(null);
     try {
-      await linkProject({
-        connectionId, sessionId: agent.session_id,
-        workspaceId: source === "registered" ? workspaceId : null,
-        path: source === "path" ? path.trim() : null,
-      }).unwrap();
-      onClose();
+      await linkProject({ connectionId, sessionId: agent.session_id, workspaceId: null, path: path.trim() }).unwrap();
+      close();
     } catch (cause) {
       setError(typeof cause === "string" ? cause : "关联项目失败");
     }
   }
 
   return (
-    <Modal onClose={onClose} opened={opened} title={`给 ${agent.name} 关联代码项目`}>
+    <Modal onClose={close} opened={opened} title={`给 ${agent.name} 关联代码项目`}
+      closeOnClickOutside={!selecting && !isLoading} closeOnEscape={!selecting && !isLoading}
+      withCloseButton={!selecting && !isLoading}>
       <Stack gap="sm">
-        <SegmentedControl value={source} onChange={(value) => setSource(value as "registered" | "path")}
-          data={[{ value: "registered", label: "已登记的项目", disabled: available.length === 0 },
-            { value: "path", label: "本地仓库路径" }]} />
-        {source === "registered" ? (
-          <Select label="项目" placeholder="选择项目" value={workspaceId} onChange={setWorkspaceId}
-            data={available.map((workspace) => ({ value: workspace.workspace_id, label: workspace.name }))} />
-        ) : (
-          <TextInput label="仓库路径" description="Git 仓库根目录的绝对路径，至少有一个提交；会原地登记为项目"
-            value={path} onChange={(event) => setPath(event.currentTarget.value)} />
-        )}
+        <ProjectDirectoryInput label="代码目录" value={path} onChange={setPath} workspaces={available}
+          disabled={isLoading} onSelectingChange={setSelecting} />
         {error === null ? null : <Alert color="red" title="无法关联">{error}</Alert>}
         <Button loading={isLoading} disabled={!ready} onClick={() => void submit()}>关联</Button>
       </Stack>

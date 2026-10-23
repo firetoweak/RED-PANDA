@@ -89,7 +89,7 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
             task_root.mkdir()
             workspaces = WorkspaceRegistry.load(home.workspaces_path)
             workspace = workspaces.create(
-                name="demo",
+
                 task_root=task_root,
             )
             store = SessionStore(home.runtime_sessions_root)
@@ -122,7 +122,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
             task_root = root / "workspace"
             task_root.mkdir()
             workspaces = WorkspaceRegistry.load(home.workspaces_path)
-            workspace = workspaces.create(name="demo", task_root=task_root)
+            workspace = workspaces.create(task_root=task_root)
             store = SessionStore(home.runtime_sessions_root)
             host = HostSupervisor(
                 store,
@@ -219,7 +219,7 @@ class QuiescentDespiteUnreportedChildTest(unittest.IsolatedAsyncioTestCase):
             task_root = root / "workspace"
             task_root.mkdir()
             workspaces = WorkspaceRegistry.load(home.workspaces_path)
-            workspace = workspaces.create(name="demo", task_root=task_root)
+            workspace = workspaces.create(task_root=task_root)
             store = SessionStore(home.runtime_sessions_root)
             host = HostSupervisor(
                 store,

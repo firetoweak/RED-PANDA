@@ -151,7 +151,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         for root, message in ((plain, "Git 仓库"), (empty, "尚无提交"),
                               (bare, "裸仓库"), (subdirectory, "根目录")):
             with self.subTest(root=root):
-                workspace = self.registry.create(name=root.name, task_root=root)
+                workspace = self.registry.create(task_root=root)
                 with self.assertRaisesRegex(ProjectLinkRefused, message):
                     await self.create(workspace=workspace)
         self.assertFalse((plain / ".git").exists())
@@ -170,7 +170,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
     async def test_non_repository_at_a_filesystem_boundary_does_not_create_an_agent(self):
         with TemporaryDirectory(dir="/dev/shm") as directory:
             root = Path(directory).resolve()
-            workspace = self.registry.create(name="plain tmpfs", task_root=root)
+            workspace = self.registry.create(task_root=root)
             with self.assertRaisesRegex(ProjectLinkRefused, "Git 仓库"):
                 await self.create(workspace=workspace)
             self.assertFalse((root / ".git").exists())
@@ -193,7 +193,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         linked = self.root / "broken-linked-worktree"
         linked.mkdir()
         (linked / ".git").write_text("gitdir: missing-metadata\n", encoding="utf-8")
-        workspace = self.registry.create(name="broken", task_root=linked)
+        workspace = self.registry.create(task_root=linked)
         expected = subprocess.run(["git", "-C", str(linked), "rev-parse", "--is-inside-work-tree"],
                                   capture_output=True, env=self.host.agent_worktrees.git.environment)
         with self.assertRaises(subprocess.CalledProcessError) as raised:

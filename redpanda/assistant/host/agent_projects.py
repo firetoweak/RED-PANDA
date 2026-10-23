@@ -78,7 +78,7 @@ class AgentProjects:
             return existing
         try:
             self.host.agent_worktrees.require_project(root)
-            return registry.register_path(root)
+            return registry.create(task_root=root)
         except AgentProjectRequired as error:
             raise ProjectLinkRefused("PROJECT_UNUSABLE", str(error)) from None
         except (OSError, WorkspaceRegistryError) as error:

@@ -62,7 +62,7 @@ it("新建 Bot 默认不关联代码项目，创建后进入对话", async () =>
   fireEvent.click(screen.getByRole("button", { name: "新建 Bot" }));
   fireEvent.change(screen.getByRole("textbox", { name: /名字/ }), { target: { value: "Grace" } });
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
-  await waitFor(() => expect(queries.createAgent).toHaveBeenCalledWith({ connectionId: "connection", workspaceId: null, name: "Grace" }));
+  await waitFor(() => expect(queries.createAgent).toHaveBeenCalledWith({ connectionId: "connection", path: null, name: "Grace" }));
   expect(await screen.findByText("新 Agent 对话")).toBeInTheDocument();
 });
 

@@ -64,7 +64,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | id | 文件 | 一句话 | 本轮 live 覆盖（非全部子功能） |
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 无项目 Bot 真实发送与回复、刷新历史通过；长历史、引用跳转与异常 API 未重验。 |
-| workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 创建 Bot 中新增代码项目，返回后名字与选择保留，项目 worktree 与名册 GET 一致；本机目录选择、解除与冲突未重验。 |
+| workspace-management | [workspace-management.md](./workspace-management.md) | 创建 Bot 同页选目录、按目录名展示、复用与后续关联 | 2026-10-23 增量：取消不登记、两位 Bot 复用同目录、后续关联同名仓库、路径区分、错误草稿保留及桌面与窄屏通过；原生目录窗口与解除未重验。 |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
 | colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 真实 declare_direction/list_colleagues，用户保存共同记忆，另一 Bot 下一轮读到新内容；超限、清空和冲突未重验。 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、停止执行的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；停止执行接收和交流上限未重验。 |
@@ -120,7 +120,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages` | group-chat |
 | `GET /api/sessions/{id}/changes`（Bot 必须带 `project`；项目委派也可查；`path`/`revision`/`offset` 查询单文件差异） | session-file-changes |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
-| `GET/POST /api/workspaces`、`PATCH/DELETE /api/workspaces/{workspace_id}`、`POST /api/workspaces/select-directory` | workspace-management |
+| `GET /api/workspaces`、`POST /api/workspaces/select-directory` | workspace-management |
 | `POST .../attachments`（拖入上传）、`POST .../attachments/select`（后端本机选择）、`GET .../attachments/{attachment_id}` | composer-attachments |
 | `POST /api/sessions/{id}/inputs` | web-session-chat |
 | `POST .../commands/{command_id}/authorize`、`GET/POST /api/auto-authorize`、`POST .../control` | tool-authorization |

@@ -59,9 +59,9 @@ class WebChannel:
     async def list_agents(self):
         return await self._queries.list_agents()
 
-    async def create_agent(self, connection_id: str, workspace_id: str | None, name: str):
+    async def create_agent(self, connection_id: str, path: str | None, name: str):
         connection = self._require_connection(connection_id)
-        record = await self._sessions.create_agent(name=name, workspace_id=workspace_id)
+        record = await self._sessions.create_agent(name=name, path=path)
         await self._sessions.select(connection.owner, record.session_id)
         return await self._queries.agent_entry(record.session_id)
 

@@ -59,7 +59,7 @@ class FileAttachmentsTest(unittest.IsolatedAsyncioTestCase):
             ref = _save(store, b"original", "notes.txt")
             material = store.files.materialize(ref.attachment_id)
             runner = await build_builtin_tools(
-                WorkspaceRecord("workspace-test", "test", task, True, "2026-09-27"),
+                WorkspaceRecord("workspace-test", task, True, "2026-09-27"),
                 materials_root=store.files.materials,
             )
             read = await runner.execute("read_file", {"path": str(material)})

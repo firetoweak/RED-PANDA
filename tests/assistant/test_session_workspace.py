@@ -78,7 +78,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             task_root = root / "task"
             task_root.mkdir()
             registry = WorkspaceRegistry.load(root / "workspaces.json")
-            record = registry.create(name="demo", task_root=task_root)
+            record = registry.create(task_root=task_root)
             store = SessionStore(root / "sessions")
             await store.create("session-1", workspace_id=record.workspace_id)
             events = await SqliteJournal(
@@ -100,7 +100,7 @@ class SessionWorkspaceBindingTest(unittest.IsolatedAsyncioTestCase):
             task_root = root / "task"
             task_root.mkdir()
             registry = WorkspaceRegistry.load(root / "workspaces.json")
-            record = registry.create(name="demo", task_root=task_root)
+            record = registry.create(task_root=task_root)
             store = SessionStore(root / "sessions")
             await store.create("bound", workspace_id=record.workspace_id)
             await _append_user_message(store, "bound", "有归属")

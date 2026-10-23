@@ -291,12 +291,12 @@ export const redpandaApi = createApi({
     }),
     createAgent: build.mutation<
       AgentRosterEntry,
-      { connectionId: string; workspaceId: string | null; name: string }
+      { connectionId: string; path: string | null; name: string }
     >({
-      query: ({ connectionId, workspaceId, name }) => ({
+      query: ({ connectionId, path, name }) => ({
         url: "/agents",
         method: "POST",
-        body: { connection_id: connectionId, workspace_id: workspaceId, name },
+        body: { connection_id: connectionId, path, name },
       }),
       transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
       transformErrorResponse: (response) => {
@@ -305,7 +305,7 @@ export const redpandaApi = createApi({
         }
         return apiErrorDetail(response.data) ?? response;
       },
-      invalidatesTags: ["Agents"],
+      invalidatesTags: ["Agents", "Workspaces"],
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
         dispatch(bindOwner(data.session_id));
@@ -359,34 +359,6 @@ export const redpandaApi = createApi({
         response.status === 503
           ? z.object({ detail: z.string().min(1) }).strict().parse(response.data).detail
           : response,
-    }),
-    createWorkspace: build.mutation<
-      Workspace,
-      { name: string; taskRoot: string; fullAccess: boolean }
-    >({
-      query: ({ name, taskRoot, fullAccess }) => ({
-        url: "/workspaces",
-        method: "POST",
-        body: { name, task_root: taskRoot, full_access: fullAccess },
-      }),
-      transformResponse: (value: unknown) => workspaceSchema.parse(value),
-      invalidatesTags: ["Workspaces"],
-    }),
-    renameWorkspace: build.mutation<Workspace, { workspaceId: string; name: string }>({
-      query: ({ workspaceId, name }) => ({
-        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
-        method: "PATCH",
-        body: { name },
-      }),
-      transformResponse: (value: unknown) => workspaceSchema.parse(value),
-      invalidatesTags: ["Workspaces"],
-    }),
-    deleteWorkspace: build.mutation<void, { workspaceId: string }>({
-      query: ({ workspaceId }) => ({
-        url: `/workspaces/${encodeURIComponent(workspaceId)}`,
-        method: "DELETE",
-      }),
-      invalidatesTags: ["Workspaces", "Agents", "Inbox"],
     }),
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
@@ -545,9 +517,6 @@ export const {
   useTestModelMutation,
   useGetSessionModelQuery,
   useSetSessionModelMutation,
-  useCreateWorkspaceMutation,
-  useRenameWorkspaceMutation,
-  useDeleteWorkspaceMutation,
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
   useGetAgentsQuery,
