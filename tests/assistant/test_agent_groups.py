@@ -12,7 +12,7 @@ from redpanda.assistant.agent_messages import SEND_GROUP_MESSAGE
 from redpanda.assistant.agents import (
     GROUP_ATTENTION, GROUP_CREATED, GROUP_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
 )
-from redpanda.assistant.host.agent_groups import AgentGroups, GroupNameTaken
+from redpanda.assistant.host.agent_groups import AgentGroups, GroupDissolvedError, GroupNameTaken
 from redpanda.assistant.host.agent_roster import AgentNotFound
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -67,6 +67,40 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
 
     def journal(self, session_id):
         return SqliteJournal(self.store.require(session_id))
+
+    async def test_dissolve_preserves_history_and_does_not_resume_the_pending_calls(self):
+        group = await self.host.agent_groups.create(name="开发群", members=["Ada", "Lin"])
+        called = asyncio.Event()
+
+        async def working(_session_id):
+            called.set()
+            await asyncio.Event().wait()
+
+        self.host.wait_quiescent.side_effect = working
+        await self.host.agent_groups.post(group.group_id, "请讨论", [])
+        await asyncio.wait_for(called.wait(), 2)
+        await self.host.agent_groups.dissolve(group.group_id)
+        await self.host.agent_groups.dissolve(group.group_id)
+        await self.settled(group)
+        recovered = self.host.agent_groups = AgentGroups(self.host)
+        await recovered.recover()
+        self.assertEqual(await recovered.list(), ())
+        view = await recovered.view(group.group_id)
+        self.assertTrue(view["dissolved"])
+        self.assertEqual(view["calling"], [])
+        self.assertEqual([message["text"] for message in view["messages"]], ["请讨论"])
+        self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 0)
+        with self.assertRaises(GroupDissolvedError):
+            await recovered.post(group.group_id, "还在吗", [])
+
+    async def test_deleted_member_is_not_called_and_surviving_member_still_participates(self):
+        group = await self.host.agent_groups.create(name="开发群", members=["Ada", "Lin"])
+        await self.host.delete_agent("Ada")
+        self.assertEqual((await self.host.agent_groups.view(group.group_id))["members"], ["Lin"])
+        await self.host.agent_groups.post(group.group_id, "请继续", [])
+        await self.settled(group)
+        self.assertEqual(len(await self.facts("Ada", GROUP_ATTENTION)), 0)
+        self.assertEqual(len(await self.facts("Lin", GROUP_ATTENTION)), 1)
 
     async def facts(self, session_id, fact_type):
         return [event.payload for event in await self.journal(session_id).snapshot(session_id)

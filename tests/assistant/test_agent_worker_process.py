@@ -15,12 +15,13 @@ import pytest
 
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.host.agent_roster import AgentDeletedError
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal, replay
 from redpanda.runtime.json_values import thaw_value
-from tests.fixtures.session_worker import ProcessLlm, config_for
+from tests.fixtures.session_worker import ProcessLlm, config_for, is_subagent_request
 from tests.fixtures.compact_worker import HANDOFF
 from tests.assistant.test_agent_worktrees_process import tree
 
@@ -43,10 +44,14 @@ class WorktreeLlm(ProcessLlm):
         super().__init__(root)
         self.requests = []
         self.read_started = asyncio.Event()
+        self.child_started = asyncio.Event()
         self.read_release = asyncio.Event()
 
     async def chat(self, messages, model, *, tools=None, **kwargs):
         self.requests.append({"messages": messages, "tools": tools})
+        if is_subagent_request(tools) and "DELETE_CHILD" in str(messages):
+            self.child_started.set()
+            await self.read_release.wait()
         if any("<self_handoff>" in str(message["content"]) for message in messages):
             return LLMCallResult(LLMResponse(content=HANDOFF), LLMUsage(input_tokens=10, output_tokens=5))
         last_input = max((i for i, message in enumerate(messages) if message["role"] == "user"), default=-1)
@@ -83,6 +88,8 @@ class WorktreeLlm(ProcessLlm):
                 })),)
         elif text == "LAND_AGENT" and "land_branch" not in results:
             calls = (ToolCall("agent-land", "land_branch", json.dumps({"project": project})),)
+        elif text == "DELEGATE_FOR_DELETE" and "delegate" not in results:
+            calls = (ToolCall("child-delete", "delegate", json.dumps({"task": "DELETE_CHILD"})),)
         elif text == "READ_AGENT" and "read_file" not in results:
             self.read_started.set()
             await self.read_release.wait()
@@ -92,6 +99,45 @@ class WorktreeLlm(ProcessLlm):
 
 
 class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_delete_stops_the_worker_and_command_and_restart_keeps_it_read_only(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            home = RedPandaHome(root / "home")
+            home.initialize()
+            store = SessionStore(home.runtime_sessions_root)
+            llm = WorktreeLlm(root)
+            host = HostSupervisor(store, partial(config_for, root), home, None, llm=llm)
+            try:
+                agent = await host.create_agent(name="Ada")
+                await asyncio.wait_for(host.wait_quiescent(agent.session_id), 30)
+                (agent.directory / "成果.txt").write_text("保留", encoding="utf-8")
+                await host.receive_user_message(agent.session_id, "DELEGATE_FOR_DELETE", delivery_id="child")
+                await asyncio.wait_for(llm.child_started.wait(), 30)
+                command = "Start-Sleep -Seconds 60" if os.name == "nt" else "sleep 60"
+                result = await host.commands.manager.execute(agent.session_id, "owned-command", command, agent.directory, 0)
+                await host.receive_user_message(agent.session_id, "READ_AGENT", delivery_id="read")
+                await asyncio.wait_for(llm.read_started.wait(), 30)
+                await asyncio.wait_for(host.delete_agent(agent.session_id), 30)
+                self.assertEqual(host.workers, {})
+                stopped = await host.commands.manager.lookup(agent.session_id, result["command_id"])
+                self.assertEqual(stopped["state"], "stopped")
+                with self.assertRaises(AgentDeletedError):
+                    await host.receive_user_message(agent.session_id, "不能再执行", delivery_id="after-delete")
+                self.assertTrue(host.failures.empty())
+            finally:
+                await host.close()
+            restored = HostSupervisor(store, partial(config_for, root), home, None, llm=llm)
+            try:
+                before = len(llm.requests)
+                await restored.resume_unfinished_sessions()
+                await restored.select("history", agent.session_id)
+                self.assertEqual(await restored.agents.list(), ())
+                self.assertEqual(restored.workers, {})
+                self.assertEqual(len(llm.requests), before)
+                self.assertEqual((agent.directory / "成果.txt").read_text(encoding="utf-8"), "保留")
+            finally:
+                await restored.close()
+
     async def test_host_restart_keeps_project_identity_and_each_agents_real_execution_root(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()

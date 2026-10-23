@@ -10,7 +10,7 @@ from redpanda.assistant.agents import (
     parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_agent_roster_entry
-from redpanda.assistant.host.agent_roster import AgentNotFound
+from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
 from redpanda.runtime import DomainFactCommitted, SqliteJournal
 
 
@@ -41,14 +41,14 @@ class OriginUsage:
         async with self._loading:
             if self._used is None:
                 used: dict[str, set[str]] = {}
-                for entry in await self.host.agents.list():
+                for entry in await self.host.agents.list(include_deleted=True):
                     events = await SqliteJournal(self.host.store.require(entry.agent.session_id)).snapshot(
                         entry.agent.session_id)
                     for event in events:
                         if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
                             fact = parse_agent_fact(event.payload)
                             used.setdefault(fact.origin, set()).add(fact.message_id)
-                for group in await self.host.agent_groups.list():
+                for group in await self.host.agent_groups.list(include_dissolved=True):
                     for message in await self.host.agent_groups.messages(group.group_id):
                         if message.origin is not None:
                             used.setdefault(message.origin, set()).add(message.message_id)
@@ -92,13 +92,19 @@ class AgentMessages:
     async def _broadcast(self, sender, fact, delivery_id):
         """Roster changes reach colleagues as facts that do not request a decision."""
         await asyncio.gather(*(
-            self.host.request("fact", entry.agent.session_id, fact_arguments(fact, delivery_id=delivery_id))
+            self._notify(entry.agent.session_id, fact_arguments(fact, delivery_id=delivery_id))
             for entry in await self.host.agents.list()
             if entry.agent.session_id != sender.session_id))
 
+    async def _notify(self, session_id, arguments):
+        try:
+            await self.host.request("fact", session_id, arguments)
+        except AgentDeletedError:
+            return
+
     async def joined(self, agent, colleagues):
         for session_id in colleagues:
-            await self.host.request("fact", session_id, fact_arguments(
+            await self._notify(session_id, fact_arguments(
                 ColleagueJoined(name=agent.name), delivery_id=f"joined:{agent.session_id}"))
 
     async def declare(self, session_id, arguments):
@@ -170,6 +176,8 @@ class AgentMessages:
             return self._delivered(recipient, identity)
         if name != recipient.name:
             return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "这位同事已改名，请用 list_colleagues 查看当前名字。"}
+        if recipient.deleted:
+            return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "用户已删除这位 Bot，它不能再接收私信。"}
         if recipient.session_id == sender.session_id:
             return {"ok": False, "code": "SELF_MESSAGE", "error": "不能给自己发私信。"}
         reply_to = arguments["reply_to"]
@@ -192,7 +200,10 @@ class AgentMessages:
         message = PrivateMessage(message_id=identity, sender=Speaker(kind="agent", name=sender.name),
             recipient=name, text=arguments["text"], reply_to=reply_to,
             thread_id=identity if previous is None else previous.thread_id, hop=hop, origin=origin)
-        await self.host.request("fact", recipient.session_id, fact_arguments(message, delivery_id=identity))
+        try:
+            await self.host.request("fact", recipient.session_id, fact_arguments(message, delivery_id=identity))
+        except AgentDeletedError:
+            return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "用户已删除这位 Bot，它不能再接收私信。"}
         await self.origins.record(origin, identity)
         return self._delivered(recipient, identity)
 

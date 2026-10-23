@@ -29,6 +29,7 @@ function snapshot(id: string, revision = 1): ConversationView {
     session_id: id, workspace_id: null, revision,
     compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null,
     work_plan_updates: [], context_input_tokens: null,
+    deleted: false, agent_name: null,
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
       pending_authorization_commands: [], should_wake: false, has_open_subagents: false,
@@ -72,6 +73,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "fonts");
   localStorage.clear();
+});
+
+it("删除后的私聊保留 Bot 名字与历史，不能再发送", async () => {
+  const store = createStore();
+  stores.push(store);
+  const history = snapshot("removed");
+  history.deleted = true;
+  history.agent_name = "历史 Ada";
+  history.items.push({ kind: "step", step_id: "done", output_id: "done", text: "保留的回复",
+    thinking: null, tools: [], files: [], occurred_at: "2026-10-23T00:00:01Z" });
+  vi.stubGlobal("fetch", vi.fn((request: Request) => {
+    const path = new URL(request.url).pathname;
+    return Promise.resolve(Response.json(path.endsWith("/agents") || path.endsWith("/groups")
+      || path.endsWith("/workspaces") || path.endsWith("/commands") ? [] : history));
+  }));
+  render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/removed"]}>
+    <Routes><Route path="/sessions/:sessionId" element={<SessionConversation />} /></Routes>
+  </MemoryRouter></MantineProvider></Provider>);
+  expect(await screen.findByText("历史 Ada", { exact: true })).toBeInTheDocument();
+  expect(await screen.findByRole("article", { name: "历史 Ada 的回复" })).toHaveTextContent("保留的回复");
+  expect(screen.getByText("Bot 已删除，此处仅保留聊天记录。")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "发送", exact: true })).not.toBeInTheDocument();
 });
 
 it.each(["query-last", "mutation-last"])("较新快照不被旧响应覆盖：%s", async (order) => {
@@ -131,7 +154,7 @@ it.each(["success", "failure"])("切换 Bot 和群之后，旧 Bot 请求%s不�
   const oldSelect = deferred();
   const selections: string[] = [];
   const group: GroupView = {
-    group_id: "team", name: "测试群", members: ["Ada", "Lin"], calling: [],
+    group_id: "team", name: "测试群", members: ["Ada", "Lin"], dissolved: false, calling: [],
     messages: [{ message_id: "group-message", sender: "Lin", text: "群里的消息", mentioned_agents: [], reply_to: null, occurred_at: "2026-10-23T00:00:00Z" }],
   };
   vi.stubGlobal("fetch", vi.fn((request: Request) => {
@@ -186,7 +209,7 @@ it.each(["success", "failure"])("切换群后，旧群请求%s不覆盖新群的
   stores.push(store);
   const oldResponse = deferred();
   const group = (id: string): GroupView => ({
-    group_id: id, name: `${id}群`, members: ["Ada", "Lin"], calling: [],
+    group_id: id, name: `${id}群`, members: ["Ada", "Lin"], dissolved: false, calling: [],
     messages: [{ message_id: `message-${id}`, sender: "Lin", text: `${id}群的消息`,
       mentioned_agents: [], reply_to: null, occurred_at: "2026-10-23T00:00:00Z" }],
   });

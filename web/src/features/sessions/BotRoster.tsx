@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { AgentRosterEntry, GroupSummary } from "../../api/contracts";
 import { AgentStatus } from "./AgentStatus";
 import { BotAvatar } from "../conversation/ChatPresentation";
+import { RemoveConversationModal, type RemovalTarget } from "./RemoveConversationModal";
 
 const organizationSchema = z.object({
   sections: z.array(z.object({ id: z.string(), name: z.string(), collapsed: z.boolean() })),
@@ -47,6 +48,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
     deserialize: deserializeOrganization,
   });
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [removing, setRemoving] = useState<RemovalTarget | null>(null);
   const activeEditing = editing ?? (creatingSection ? { id: null, name: "" } as Editing : null);
   const closeEditing = () => { setEditing(null); onCloseSection?.(); };
   const assignedSection = (entry: string) => {
@@ -85,7 +87,9 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   function renderRow(entry: string, name: string, active: boolean, path: string, children: ReactNode) {
     return <RosterRow key={entry} name={name} active={active} onOpen={() => onOpen(path)}
       sections={organization.sections} sectionId={assignedSection(entry)} onMove={(id) => move(entry, id)}
-      onCreate={() => setEditing({ id: null, name: "", entry })}>{children}</RosterRow>;
+      onCreate={() => setEditing({ id: null, name: "", entry })}
+      removeLabel={entry.startsWith("agent:") ? "删除 Bot" : "解散群聊"}
+      onRemove={() => setRemoving({ kind: entry.startsWith("agent:") ? "agent" : "group", id: entry.slice(entry.indexOf(":") + 1), name: entry.startsWith("chat:") ? name.slice(3) : name })}>{children}</RosterRow>;
   }
 
   function renderSection(section: Section | null) {
@@ -134,6 +138,10 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   }
 
   return <div className="workspace-sessions">
+    {removing === null ? null : <RemoveConversationModal target={removing} onClose={() => setRemoving(null)} onRemoved={() => {
+      if (removing.kind === "agent" ? removing.id === sessionId : removing.id === groupId) onOpen("/");
+      setRemoving(null);
+    }} />}
     {onCloseSection === undefined ? <Group className="roster-sections-toolbar" justify="space-between" wrap="nowrap">
       <Text c="dimmed" fz={10}>分组</Text>
       <Tooltip label="新建分组" openDelay={400}><ActionIcon aria-label="新建分组" size="xs" variant="subtle" color="gray"
@@ -146,16 +154,17 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   </div>;
 }
 
-function RosterRow({ name, active, children, sections, sectionId, onOpen, onMove, onCreate }: {
+function RosterRow({ name, active, children, sections, sectionId, onOpen, onMove, onCreate, onRemove, removeLabel }: {
   name: string; active: boolean; children: ReactNode; sections: Section[]; sectionId: string | null;
-  onOpen: () => void; onMove: (id: string | null) => void; onCreate: () => void;
+  onOpen: () => void; onMove: (id: string | null) => void; onCreate: () => void; onRemove: () => void;
+  removeLabel: string;
 }) {
   const [opened, setOpened] = useState(false);
   return <Group className={active ? "session-row is-active" : "session-row"} gap={4} wrap="nowrap"
     onContextMenu={(event) => { event.preventDefault(); setOpened(true); }}>
     <UnstyledButton className="session-row-main" aria-label={name} aria-current={active ? "page" : undefined} onClick={onOpen}>{children}</UnstyledButton>
     <Menu opened={opened} onChange={setOpened} position="bottom-end" withinPortal>
-      <Menu.Target><ActionIcon className="roster-entry-menu" aria-label={`移动 ${name} 到分组`} color="gray" variant="subtle" size="xs"><IconDots size={13} /></ActionIcon></Menu.Target>
+      <Menu.Target><ActionIcon className="roster-entry-menu" aria-label={`${name} 操作`} color="gray" variant="subtle" size="xs"><IconDots size={13} /></ActionIcon></Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>移动到分组</Menu.Label>
         <Menu.Item leftSection={sectionId === null ? <IconCheck size={14} /> : undefined} onClick={() => onMove(null)}>未分组</Menu.Item>
@@ -163,6 +172,8 @@ function RosterRow({ name, active, children, sections, sectionId, onOpen, onMove
           onClick={() => onMove(section.id)}>{section.name}</Menu.Item>)}
         <Menu.Divider />
         <Menu.Item leftSection={<IconFolderPlus size={14} />} onClick={onCreate}>新建分组</Menu.Item>
+        <Menu.Divider />
+        <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={onRemove}>{removeLabel}</Menu.Item>
       </Menu.Dropdown>
     </Menu>
   </Group>;

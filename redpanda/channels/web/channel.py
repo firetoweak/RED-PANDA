@@ -70,6 +70,14 @@ class WebChannel:
         await self._sessions.rename_agent(session_id, name)
         return await self._queries.agent_entry(session_id)
 
+    async def delete_agent(self, connection_id: str, session_id: str):
+        self._require_connection(connection_id)
+        await self._sessions.delete_agent(session_id)
+
+    async def dissolve_group(self, connection_id: str, group_id: str):
+        self._require_connection(connection_id)
+        await self._sessions.dissolve_group(group_id)
+
     async def link_project(self, connection_id: str, session_id: str, workspace_id: str | None, path: str | None):
         self._require_connection(connection_id)
         await self._sessions.link_project_by_user(session_id, workspace_id=workspace_id, path=path)

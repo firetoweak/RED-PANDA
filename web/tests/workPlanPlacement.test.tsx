@@ -42,6 +42,7 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
     session_id: "session", workspace_id: "workspace", revision: 5,
     compact_count: 0, compact_phase: null, waiting_until: null, context_input_tokens: null, work_plan: completed,
     work_plan_updates: [{ step_id: "plan-step", plan: completed }],
+    deleted: false, agent_name: null,
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
       pending_authorization_commands: [], should_wake: false, has_open_subagents: false,

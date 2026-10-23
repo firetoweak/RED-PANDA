@@ -185,6 +185,20 @@ export const redpandaApi = createApi({
         agentRosterEntrySchema.array().parse(value),
       providesTags: ["Agents"],
     }),
+    deleteAgent: build.mutation<void, SelectSession>({
+      query: ({ connectionId, sessionId }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}`, method: "DELETE", body: { connection_id: connectionId },
+      }),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Agents", "Groups", "Inbox", "Conversation", "Routines"],
+    }),
+    dissolveGroup: build.mutation<void, { connectionId: string; groupId: string }>({
+      query: ({ connectionId, groupId }) => ({
+        url: `/groups/${encodeURIComponent(groupId)}`, method: "DELETE", body: { connection_id: connectionId },
+      }),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Groups"],
+    }),
     getGroups: build.query<GroupSummary[], void>({
       query: () => "/groups",
       transformResponse: (value: unknown) => groupSummarySchema.array().parse(value),
@@ -515,6 +529,8 @@ export const {
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
   useGetAgentsQuery,
+  useDeleteAgentMutation,
+  useDissolveGroupMutation,
   useCreateAgentMutation,
   useRenameAgentMutation,
   useGetInboxQuery,

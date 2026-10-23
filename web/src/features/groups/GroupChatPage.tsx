@@ -177,8 +177,10 @@ function GroupConversation({ groupId }: { groupId: string; }) {
             )}
           </div>
           {failure === null ? null : <Alert color="red">{failure}</Alert>}
-          <GroupComposer groupId={groupId} groupName={group.name} members={group.members} connected={connectionId !== null}
-            posting={posting.isLoading} onSend={send} />
+          {group.dissolved ? <Text size="sm" c="dimmed" ta="center" py="md">群聊已解散，此处仅保留聊天记录。</Text>
+            : group.members.length === 0 ? <Text size="sm" c="dimmed" ta="center" py="md">群里已没有 Bot，可从侧栏菜单解散群聊。</Text>
+            : <GroupComposer groupId={groupId} groupName={group.name} members={group.members} connected={connectionId !== null}
+              posting={posting.isLoading} onSend={send} />}
         </div>
       </div>
       {narrow ? <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)} title="群资料" position="right" size="min(292px, 85vw)" classNames={{ header: "details-heading", body: "details-body" }} closeButtonProps={{ "aria-label": "关闭群资料" }}>{details}</Drawer>

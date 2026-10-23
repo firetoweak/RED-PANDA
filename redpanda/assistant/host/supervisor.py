@@ -36,7 +36,8 @@ from redpanda.assistant.agents import (
     AGENT_CREATED, AGENT_RENAMED, AgentCreated, AgentRecord, AgentRenamed, RoutinesUnwatched,
     fact_arguments, parse_agent_fact, project_agent,
 )
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
+from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound, AgentRoster
+from redpanda.assistant.host.agent_lifecycle import AgentLifecycle
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees, GitWorktree
 from redpanda.assistant.host.agent_projects import AgentProjects, ProjectLinkRefused
 from redpanda.assistant.agent_git import GitWorkspace
@@ -200,6 +201,7 @@ class HostSupervisor:
             else WorkspaceRegistry.load(home.workspaces_path)
         )
         self.agents = AgentRoster(store)
+        self.lifecycle = AgentLifecycle(self)
         self.agent_messages = AgentMessages(self)
         self.agent_groups = AgentGroups(self)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
@@ -236,6 +238,8 @@ class HostSupervisor:
                 renames.extend(event for event in events if isinstance(event.payload, DomainFactCommitted)
                                and event.payload.fact_type == AGENT_RENAMED
                                and event.payload.data["session_id"] == session_id)
+                if agent.deleted:
+                    continue
                 born = next(event.occurred_at for event in events
                             if isinstance(event.payload, DomainFactCommitted)
                             and event.payload.fact_type == AGENT_CREATED)
@@ -247,9 +251,11 @@ class HostSupervisor:
             if (session_view(state).should_wake or project_pending(events)
                     or (control is not None and control.phase in {"requested", "approved"})):
                 unfinished.append(session_id)
+        await self.lifecycle.recover()
         if self.commands is not None:
             for session_id, events in command_sessions:
-                await self.commands.restore(session_id, events)
+                if not await self.lifecycle.is_deleted(session_id):
+                    await self.commands.restore(session_id, events)
         await self.agent_projects.recover()
         await self.agent_groups.prepare_recovery()
         for agent in joining:
@@ -265,7 +271,11 @@ class HostSupervisor:
             await self._notify_rename(event)
         await self.agent_groups.recover()
         for session_id in unfinished:
-            await self.resume(session_id)
+            if not await self.lifecycle.is_deleted(session_id):
+                await self.resume(session_id)
+        for entry in await self.agents.list(include_deleted=True):
+            if entry.agent.deleted:
+                await self.lifecycle.notify(entry.agent.session_id)
 
     async def _child_project(self, session_id) -> tuple[AgentRecord, str] | None:
         """The parent Bot and project a delegated task works in, if it got a project copy."""
@@ -560,6 +570,8 @@ class HostSupervisor:
                 "requests_decision": True,
                 "causation_id": fire.fire_id,
             })
+        except AgentDeletedError:
+            return
         except WorkerFailed as error:
             raise ScheduleDeliveryUnavailable(fire.fire_id) from error
 
@@ -571,6 +583,8 @@ class HostSupervisor:
 
     async def set_routine_state_by_user(self, session_id: str, routine_id: str, state: str):
         """The app's pause, resume and delete buttons; an Agent cannot undo a person's pause."""
+        if await self.lifecycle.is_deleted(session_id):
+            raise AgentDeletedError(session_id)
         routine = next((item for item in self.routines.store.list(session_id) if item.routine_id == routine_id), None)
         if routine is None:
             raise RoutineNotFound(routine_id)
@@ -687,6 +701,8 @@ class HostSupervisor:
                     "causation_id": schedule.schedule_id,
                 },
             )
+        except AgentDeletedError:
+            return
         except WorkerFailed as error:
             raise ScheduleDeliveryUnavailable(schedule.schedule_id) from error
 
@@ -703,6 +719,8 @@ class HostSupervisor:
         # close() may have taken its Worker snapshot while the Journal read waited.
         if self.closed:
             raise RuntimeError("Host closed")
+        if await self.lifecycle.is_deleted(session_id):
+            raise AgentDeletedError(session_id)
         context = multiprocessing.get_context("spawn")
         local, remote = context.Pipe()
         worker = None
@@ -913,7 +931,8 @@ class HostSupervisor:
         finally:
             worker.stopping = True
             await self._close_generation_display(session_id, worker)
-            await worker.peer.close(worker.failure or RuntimeError("Worker exited"))
+            error = AgentDeletedError(session_id) if await self.lifecycle.is_deleted(session_id) else RuntimeError("Worker exited")
+            await worker.peer.close(worker.failure or error)
             worker.peer.connection.close()
             worker.process.close()
             if self.workers.get(session_id) is worker:
@@ -945,7 +964,8 @@ class HostSupervisor:
                 await self.compact.retire(session_id)
         if worker.returned is not None and not self.closed:
             parent, arguments = worker.returned
-            await self.request("fact", parent, arguments)
+            if not await self.lifecycle.is_deleted(parent):
+                await self.request("fact", parent, arguments)
 
     async def _close_generation_display(self, session_id, worker):
         """Retire only transient display state owned by this Worker generation."""
@@ -1100,6 +1120,8 @@ class HostSupervisor:
 
     async def request(self, operation, session_id, arguments):
         assert not self.closed
+        if await self.lifecycle.is_deleted(session_id):
+            raise AgentDeletedError(session_id)
         if operation == "fact" and arguments["fact_type"] == CLOSED_FACT:
             prepared = await self._route("prepare_child_files", arguments["data"]["child_session_id"],
                                          {"parent_session_id": session_id})
@@ -1111,6 +1133,8 @@ class HostSupervisor:
             async with lock:
                 if self.closed:
                     raise RuntimeError("Host closed")
+                if await self.lifecycle.is_deleted(session_id):
+                    raise AgentDeletedError(session_id)
                 worker = self.workers.get(session_id)
                 if worker is None:
                     worker = await self._start(session_id)
@@ -1209,7 +1233,7 @@ class HostSupervisor:
         directory = self.home.agent_directories_root / hashlib.sha256(session_id.encode()).hexdigest()[:20]
         identity = AgentCreated(name=name, directory=str(directory))
         async with self._agent_creation_lock:
-            for entry in await self.agents.list():
+            for entry in await self.agents.list(include_deleted=True):
                 if name in entry.agent.names:
                     pending = self.store.require(entry.agent.session_id).parent / "agent-creation.json"
                     if pending.exists() and entry.agent.name == name:
@@ -1271,11 +1295,11 @@ class HostSupervisor:
 
     async def _rename_agent(self, session_id: str, name: str) -> AgentRecord:
         agent = await self.agents.by_session(session_id)
-        if agent is None:
+        if agent is None or agent.deleted:
             raise AgentNotFound(session_id)
         fact = AgentRenamed(session_id=session_id, old_name=agent.name, name=name)
         if any(name in entry.agent.names and entry.agent.session_id != session_id
-               for entry in await self.agents.list()):
+               for entry in await self.agents.list(include_deleted=True)):
             raise AgentNameTaken(f"这个名字已被其他 Bot 使用：{name}")
         if name != agent.name:
             try:
@@ -1298,6 +1322,13 @@ class HostSupervisor:
         for group in await self.agent_groups.list():
             if any(member in agent.names for member in group.members):
                 self.agent_groups._changed(group.group_id)
+
+    async def delete_agent(self, session_id: str) -> None:
+        async with self._agent_creation_lock:
+            await _settle(self.lifecycle.delete(session_id))
+
+    async def dissolve_group(self, group_id: str) -> None:
+        await _settle(self.agent_groups.dissolve(group_id))
 
     async def select(self, owner, session_id):
         async with self.selection_locks.setdefault(owner, asyncio.Lock()):
@@ -1344,6 +1375,8 @@ class HostSupervisor:
         )
 
     async def _should_wake(self, session_id):
+        if await self.lifecycle.is_deleted(session_id):
+            return False
         if self.current_failure(session_id) is not None:
             return False
         _events, state = await self._journal_state(session_id)
@@ -1373,6 +1406,8 @@ class HostSupervisor:
         return await self.resume(session_id)
 
     async def view(self, session_id):
+        if await self.lifecycle.is_deleted(session_id):
+            return await self._project_view(session_id)
         return self._with_host_metadata(
             await self.compact.application("view", session_id, {}),
             session_id,

@@ -48,6 +48,8 @@ class AgentProjects:
         agent = await self.host.agents.by_session(session_id)
         if agent is None:
             raise ValueError("project linking requires a Bot identity")
+        if agent.deleted:
+            raise ProjectLinkRefused("BOT_DELETED", "这位 Bot 已删除，不能再修改它的项目。")
         return agent
 
     def resolve(self, *, workspace_id: str | None = None, name: str | None = None,

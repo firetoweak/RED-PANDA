@@ -16,12 +16,14 @@ from redpanda.runtime.json_values import thaw_value
 
 AGENT_CREATED = "bot.agent_created"
 AGENT_RENAMED = "bot.agent_renamed"
+AGENT_DELETED = "bot.agent_deleted"
 PROJECT_LINKED = "bot.project_linked"
 PROJECT_UNLINKED = "bot.project_unlinked"
 PRIVATE_MESSAGE = "bot.private_message"
 GROUP_MESSAGE = "bot.group_message"
 GROUP_ATTENTION = "bot.group_attention"
 GROUP_CREATED = "bot.group_created"
+GROUP_DISSOLVED = "bot.group_dissolved"
 DIRECTION_DECLARED = "bot.direction_declared"
 COLLEAGUE_JOINED = "bot.colleague_joined"
 COMMUNICATION_LIMIT_REACHED = "bot.communication_limit_reached"
@@ -70,6 +72,15 @@ class AgentRenamed(_Fact):
     @classmethod
     def stable_name(cls, value):
         return AgentCreated.stable_name(value)
+
+
+class AgentDeleted(_Fact):
+    session_id: Text
+    name: Text
+
+
+class GroupDissolved(_Fact):
+    group: Text
 
 
 class ProjectLinked(_Fact):
@@ -175,12 +186,14 @@ class RoutinesUnwatched(_Fact):
 _FACTS = {
     AGENT_CREATED: (AgentCreated, True),
     AGENT_RENAMED: (AgentRenamed, False),
+    AGENT_DELETED: (AgentDeleted, False),
     PROJECT_LINKED: (ProjectLinked, False),
     PROJECT_UNLINKED: (ProjectUnlinked, False),
     PRIVATE_MESSAGE: (PrivateMessage, True),
     GROUP_MESSAGE: (GroupMessage, False),
     GROUP_ATTENTION: (GroupAttention, True),
     GROUP_CREATED: (GroupCreated, False),
+    GROUP_DISSOLVED: (GroupDissolved, False),
     DIRECTION_DECLARED: (DirectionDeclared, False),
     COLLEAGUE_JOINED: (ColleagueJoined, False),
     COMMUNICATION_LIMIT_REACHED: (CommunicationLimitReached, False),
@@ -212,6 +225,7 @@ class AgentRecord:
     identity: AgentCreated
     projects: tuple[ProjectLinked, ...] = ()
     renamed_names: tuple[str, ...] = ()
+    deleted: bool = False
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -250,6 +264,12 @@ def project_agent(events) -> AgentRecord | None:
                 if creation is None or creation.name != renamed.old_name:
                     raise ValueError("Agent rename differs from its current identity")
                 creation = creation.renamed(renamed.name)
+        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_DELETED:
+            deleted = parse_agent_fact(payload)
+            if deleted.session_id == event.session_id:
+                if creation is None or creation.name != deleted.name:
+                    raise ValueError("Agent deletion differs from its current identity")
+                creation = replace(creation, deleted=True)
         elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_LINKED:
             linked = parse_agent_fact(payload)
             if linked.workspace_id in projects or any(item.name == linked.name for item in projects.values()):
@@ -294,17 +314,25 @@ def identity_for_model(events) -> dict | None:
         shown["direction"] = direction
     groups = {}
     renames = []
+    deleted_names = set()
     for event in events:
         if not isinstance(event.payload, DomainFactCommitted):
             continue
         if event.payload.fact_type == GROUP_CREATED:
             fact = parse_agent_fact(event.payload)
             groups[fact.group] = {"group": fact.group, "members": list(fact.members)}
+        elif event.payload.fact_type == GROUP_DISSOLVED:
+            groups.pop(parse_agent_fact(event.payload).group, None)
+        elif event.payload.fact_type == AGENT_DELETED:
+            fact = parse_agent_fact(event.payload)
+            deleted_names.add(fact.name)
         elif event.payload.fact_type == AGENT_RENAMED:
             renames.append(parse_agent_fact(event.payload))
     for fact in renames:
         for group in groups.values():
             group["members"] = [fact.name if member == fact.old_name else member for member in group["members"]]
+    for group in groups.values():
+        group["members"] = [member for member in group["members"] if member not in deleted_names]
     shown["groups"] = list(groups.values())
     shown["projects"] = [{"project": item.name, "directory": item.worktree} for item in agent.projects]
     shown["notice"] = (
@@ -324,6 +352,14 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     if isinstance(fact, AgentRenamed):
         return {"old_name": fact.old_name, "name": fact.name,
                 "notice": "This agent's name changed. Use the current name for messages and mentions; existing conversations and group memberships continue."}
+    if isinstance(fact, AgentDeleted):
+        return {"name": fact.name, "notice": (
+            "The user deleted this agent. It no longer participates in collaboration "
+            "and cannot receive private messages or group mentions.")}
+    if isinstance(fact, GroupDissolved):
+        return {"group": fact.group, "notice": (
+            "The user dissolved this group. You can no longer send messages to it; "
+            "existing chat history is retained.")}
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
             f'Your agent name is "{fact.name}". If the user asks for your name, answer with "{fact.name}".')}

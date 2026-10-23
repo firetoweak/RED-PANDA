@@ -39,8 +39,12 @@ const queries = vi.hoisted(() => ({
   groups: [] as GroupSummary[],
   setAutoAuthorize: vi.fn(),
   createGroup: vi.fn(() => ({ unwrap: () => Promise.resolve({ group_id: "group-new" }) })),
+  deleteAgent: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+  dissolveGroup: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
 }));
 vi.mock("../src/api/redpandaApi", () => ({
+  useDeleteAgentMutation: () => [queries.deleteAgent, { isLoading: false }],
+  useDissolveGroupMutation: () => [queries.dissolveGroup, { isLoading: false }],
   useGetAutoAuthorizeQuery: () => ({ data: { enabled: false } }),
   useSetAutoAuthorizeMutation: () => [queries.setAutoAuthorize, { isLoading: false }],
   useGetAgentsQuery: () => ({ data: queries.agents, isLoading: false }),
@@ -100,6 +104,43 @@ afterEach(() => {
   Object.keys(window.localStorage).filter((key) => key.startsWith("redpanda.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
 });
 
+it("删除 Bot 要确认，失败保留弹窗，成功后离开被删除的会话", async () => {
+  browserStubs();
+  queries.agents = [agent({ session_id: "ada", name: "Ada" })];
+  queries.groups = [];
+  queries.deleteAgent.mockClear();
+  renderSidebar("/sessions/ada");
+  fireEvent.click(screen.getByRole("button", { name: "Ada 操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "删除 Bot" }));
+  expect(queries.deleteAgent).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
+  expect(queries.deleteAgent).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Ada 操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "删除 Bot" }));
+  queries.deleteAgent.mockReturnValueOnce({ unwrap: () => Promise.reject("停止失败，请重试。") });
+  fireEvent.click(screen.getByRole("button", { name: "删除 Bot", exact: true }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("停止失败，请重试。");
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/ada");
+  fireEvent.click(screen.getByRole("button", { name: "删除 Bot", exact: true }));
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent(/^\/$/));
+  expect(queries.deleteAgent).toHaveBeenLastCalledWith({ connectionId: "connection", sessionId: "ada" });
+});
+
+it("解散其他群聊不离开当前 Bot 会话", async () => {
+  browserStubs();
+  queries.agents = [agent({ session_id: "ada", name: "Ada" })];
+  queries.groups = [{ group_id: "team", name: "开发群", members: ["Ada", "Lin"] }];
+  queries.dissolveGroup.mockClear();
+  renderSidebar("/sessions/ada");
+  fireEvent.click(screen.getByRole("button", { name: "群聊 开发群 操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "解散群聊" }));
+  expect(queries.dissolveGroup).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "解散群聊", exact: true }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(queries.dissolveGroup).toHaveBeenCalledWith({ connectionId: "connection", groupId: "team" });
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/ada");
+});
+
 it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不删除条目", async () => {
   browserStubs();
   queries.workspaces = [workspace("organize", "项目")];
@@ -113,7 +154,7 @@ it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不
 
   fireEvent.contextMenu(screen.getByRole("button", { name: "Ada", exact: true }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
-  fireEvent.click(screen.getByRole("button", { name: "移动 群聊 开发群 到分组" }));
+  fireEvent.click(screen.getByRole("button", { name: "群聊 开发群 操作" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "研发", exact: true }));
   const section = screen.getByRole("region", { name: "名册的分组 研发" });
   expect(within(section).getByRole("button", { name: "Ada", exact: true })).toHaveAttribute("aria-current", "page");

@@ -33,6 +33,7 @@ it.each([0, 1, 2, 3, 4])("重连后最终快照插在第 %i 个流事件前，�
     session_id: "Ada", workspace_id: null, revision: 1,
     compact_count: 0, compact_phase: null, waiting_until: null, work_plan: null,
     work_plan_updates: [], context_input_tokens: null,
+    deleted: false, agent_name: null,
     session: {
       status: "runnable", waiting_for: [], pending_authorization_ids: [], pending_authorization_commands: [],
       should_wake: true, has_open_subagents: false, control_approval: null, control_message: null,
