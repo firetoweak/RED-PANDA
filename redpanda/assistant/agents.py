@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -24,8 +24,6 @@ GROUP_MESSAGE = "bot.group_message"
 GROUP_ATTENTION = "bot.group_attention"
 GROUP_CREATED = "bot.group_created"
 GROUP_DISSOLVED = "bot.group_dissolved"
-DIRECTION_DECLARED = "bot.direction_declared"
-DIRECTION_SET_BY_USER = "bot.direction_set_by_user"
 COLLEAGUE_JOINED = "bot.colleague_joined"
 COMMUNICATION_LIMIT_REACHED = "bot.communication_limit_reached"
 ROUTINES_UNWATCHED = "bot.routines_unwatched"
@@ -162,16 +160,6 @@ class GroupCreated(_Fact):
         return value
 
 
-class DirectionDeclared(_Fact):
-    name: Text
-    direction: Text
-    source: ClassVar[Literal["user", "agent"]] = "agent"
-
-
-class DirectionSetByUser(DirectionDeclared):
-    source: ClassVar[Literal["user", "agent"]] = "user"
-
-
 class ColleagueJoined(_Fact):
     name: Text
 
@@ -200,8 +188,6 @@ _FACTS = {
     GROUP_ATTENTION: (GroupAttention, True),
     GROUP_CREATED: (GroupCreated, False),
     GROUP_DISSOLVED: (GroupDissolved, False),
-    DIRECTION_DECLARED: (DirectionDeclared, False),
-    DIRECTION_SET_BY_USER: (DirectionSetByUser, False),
     COLLEAGUE_JOINED: (ColleagueJoined, False),
     COMMUNICATION_LIMIT_REACHED: (CommunicationLimitReached, False),
     ROUTINES_UNWATCHED: (RoutinesUnwatched, False),
@@ -293,32 +279,12 @@ def project_agent(events) -> AgentRecord | None:
     return creation
 
 
-def project_direction(events, agent: AgentRecord) -> str | None:
-    """Colleagues' declarations also reach this timeline; only the Agent's own counts."""
-    direction = None
-    name = agent.names[0]
-    for event in events:
-        payload = event.payload
-        if isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_RENAMED:
-            renamed = parse_agent_fact(payload)
-            if renamed.session_id == agent.session_id:
-                name = renamed.name
-        if isinstance(payload, DomainFactCommitted) and payload.fact_type in {DIRECTION_DECLARED, DIRECTION_SET_BY_USER}:
-            declaration = parse_agent_fact(payload)
-            if declaration.name == name:
-                direction = declaration.direction
-    return direction
-
-
 def identity_for_model(events) -> dict | None:
     """Who the Agent is, restated where earlier facts no longer reach the model."""
     agent = project_agent(events)
     if agent is None:
         return None
     shown = {"name": agent.name}
-    direction = project_direction(events, agent)
-    if direction is not None:
-        shown["direction"] = direction
     groups = {}
     renames = []
     deleted_names = set()
@@ -343,7 +309,7 @@ def identity_for_model(events) -> dict | None:
     shown["groups"] = list(groups.values())
     shown["projects"] = [{"project": item.name, "directory": item.worktree} for item in agent.projects]
     shown["notice"] = (
-        "Your current agent profile: name, direction, group memberships, and linked projects.")
+        "Your current agent profile: name, group memberships, and linked projects.")
     return shown
 
 
@@ -376,10 +342,6 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
         return {"project": fact.name, "notice": "This project has been unlinked and its working directory removed."}
     if isinstance(fact, ColleagueJoined):
         return {"colleague": fact.name}
-    if isinstance(fact, DirectionDeclared):
-        return {"agent": fact.name, "direction": fact.direction, "source": fact.source,
-                "notice": "The user updated this agent's direction." if fact.source == "user"
-                else "This agent updated its direction."}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
             "Please respond to this group message. Use send_group_message if you have something worth adding, "

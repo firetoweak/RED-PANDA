@@ -17,7 +17,6 @@ from redpanda.runtime import (
 SEND_MESSAGE = "send_message"
 LIST_COLLEAGUES = "list_colleagues"
 SEND_FILE = "send_file"
-DECLARE_DIRECTION = "declare_direction"
 SEND_GROUP_MESSAGE = "send_group_message"
 # Starting values to tune against real collaboration. All are deterministic
 # counts; none of them judges what a message says.
@@ -65,18 +64,6 @@ class GroupMessageArguments(BaseModel):
         return value
 
 
-class DirectionArguments(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-    direction: str = Field(min_length=1)
-
-    @field_validator("direction")
-    @classmethod
-    def nonblank(cls, value):
-        if not value.strip():
-            raise ValueError("文字不能为空白")
-        return value
-
-
 MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": REPLY_EXTERNAL,
@@ -104,7 +91,7 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
         "description": (
-            "查询同事名字、当前负责方向、各自的工作目录和挂上的项目；未设置时方向为 null。"
+            "查询同事名字、各自的工作目录和挂上的项目。"
             "同事挂上的项目在其工作目录的 projects 下，以项目名为子目录。"
             "可以用文件工具只读查看同事工作目录，包括项目里尚未落地的改动，不能在其中写入。"
             "每位同事还带 status 与 since。status 是当前状态：working 正在工作；"
@@ -114,22 +101,6 @@ MESSAGE_SCHEMAS = [
             "是否卡住、要不要改派由你判断。"
         ),
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-    }},
-    {"type": "function", "function": {
-        "name": DECLARE_DIRECTION,
-        "description": (
-            "设置或调整你的长期负责方向，用户和同事都能看到。你可以根据实际工作自行调整，"
-            "无需逐次征求认可；用户也能直接修改，调整时应尊重用户的要求。"
-            "这只说明长期分工，不会授予操作权限。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "direction": {"type": "string", "minLength": 1, "description": "一句话说明你负责什么。"},
-            },
-            "required": ["direction"],
-            "additionalProperties": False,
-        },
     }},
     {"type": "function", "function": {
         "name": SEND_MESSAGE,
@@ -218,16 +189,6 @@ def message_bindings(transport, journal):
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "list_colleagues 不接受参数。"}
         return await transport(LIST_COLLEAGUES, context.session_id, {})
 
-    async def declare(context, arguments):
-        try:
-            parsed = DirectionArguments.model_validate(dict(arguments))
-        except ValidationError as error:
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": str(error)}
-        delivery_id = f"direction:{context.command_id}"
-        await transport(DECLARE_DIRECTION, context.session_id, {"direction": parsed.direction,
-                                                               "source": "agent", "delivery_id": delivery_id})
-        return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": parsed.direction}}
-
     async def send_file(context, arguments):
         text = arguments.get("text")
         path = arguments.get("path")
@@ -244,7 +205,7 @@ def message_bindings(transport, journal):
 
     return {SEND_MESSAGE: sender(SEND_MESSAGE), SEND_GROUP_MESSAGE: sender(SEND_GROUP_MESSAGE),
             REPLY_EXTERNAL: sender(REPLY_EXTERNAL),
-            LIST_COLLEAGUES: ToolBinding(colleagues), DECLARE_DIRECTION: ToolBinding(declare),
+            LIST_COLLEAGUES: ToolBinding(colleagues),
             SEND_FILE: ToolBinding(send_file)}
 
 

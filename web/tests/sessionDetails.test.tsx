@@ -12,9 +12,9 @@ vi.mock("../src/api/redpandaApi", () => ({
   useGetConversationQuery: () => ({ currentData: undefined }),
   useGetAgentsQuery: () => ({ data: [
     { session_id: "ada", projects: [{ name: "Alpha", workspace_id: "alpha", directory: "C:/bots/ada/projects/Alpha" }],
-      name: "Ada", direction: "前端体验", status: "waiting" },
+      name: "Ada", status: "waiting" },
     { session_id: "lin", projects: [{ name: "Beta", workspace_id: "beta", directory: "C:/bots/lin/projects/Beta" }],
-      name: "Lin", direction: "接口验证", status: "idle" },
+      name: "Lin", status: "idle" },
   ] }),
   useGetWorkspacesQuery: () => ({ data: [
     { workspace_id: "alpha", name: "Alpha", task_root: "C:/alpha" },
@@ -33,7 +33,6 @@ vi.mock("../src/api/redpandaApi", () => ({
   useSetAgentAvatarMutation: () => [() => undefined, { isLoading: false }],
   useUploadAgentAvatarMutation: () => [() => undefined, { isLoading: false }],
   useRenameAgentMutation: () => [() => undefined, { isLoading: false }],
-  useSetAgentDirectionMutation: () => [() => undefined, { isLoading: false }],
   useUnlinkProjectMutation: () => [() => undefined, { isLoading: false }],
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -50,7 +49,6 @@ it("资料默认隐藏，点击资料按钮打开和收起，资料与例行任�
   expect(header.getByRole("button", { name: "显示 Bot 资料" })).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(header.getByRole("button", { name: "显示 Bot 资料" }));
   const details = within(screen.getByRole("complementary", { name: "Agent 资料" }));
-  expect(details.getByText("前端体验")).toBeInTheDocument();
   expect(details.getByText("Alpha")).toBeInTheDocument();
   expect(details.getByRole("link", { name: "界面讨论" })).toHaveAttribute("href", "/groups/front");
   expect(details.getByText("跨项目讨论")).toBeInTheDocument();
@@ -61,9 +59,8 @@ it("资料默认隐藏，点击资料按钮打开和收起，资料与例行任�
   fireEvent.click(header.getByRole("button", { name: "显示 Bot 资料" }));
   fireEvent.click(screen.getByRole("link", { name: "切换到 Lin" }));
   const next = within(screen.getByRole("complementary", { name: "Agent 资料" }));
-  expect(next.getByText("接口验证")).toBeInTheDocument();
   expect(next.getByText("Beta")).toBeInTheDocument();
-  expect(next.queryByText("前端体验")).not.toBeInTheDocument();
+  expect(next.queryByText("Alpha")).not.toBeInTheDocument();
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
   expect(next.getByText("无例行任务")).toBeInTheDocument();
 });

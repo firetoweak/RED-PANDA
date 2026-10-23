@@ -385,16 +385,6 @@ export const redpandaApi = createApi({
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
       invalidatesTags: ["Agents", "Groups", "Inbox", "Conversation"],
     }),
-    setAgentDirection: build.mutation<AgentRosterEntry, { connectionId: string; sessionId: string; direction: string }>({
-      query: ({ connectionId, sessionId, direction }) => ({
-        url: `/agents/${encodeURIComponent(sessionId)}/direction`,
-        method: "PUT",
-        body: { connection_id: connectionId, direction },
-      }),
-      transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
-      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
-      invalidatesTags: ["Agents", "Conversation"],
-    }),
     linkProject: build.mutation<
       AgentRosterEntry,
       { connectionId: string; sessionId: string; workspaceId: string | null; path: string | null }
@@ -613,7 +603,6 @@ export const {
   useDissolveGroupMutation,
   useCreateAgentMutation,
   useRenameAgentMutation,
-  useSetAgentDirectionMutation,
   useGetInboxQuery,
   useAnswerAbsenceMutation,
   useGetGroupsQuery,

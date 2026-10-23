@@ -68,7 +68,7 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (path === "/api/agents") return Response.json([
-      { session_id: "agent-lin", projects: [], name: "Lin", direction: null, activity: "idle", status: "idle" },
+      { session_id: "agent-lin", projects: [], name: "Lin", activity: "idle", status: "idle" },
     ]);
     if (path.endsWith("/routines") || path.endsWith("/commands")) return Response.json([]);
     return Response.json(view);

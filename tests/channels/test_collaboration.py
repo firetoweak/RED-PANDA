@@ -108,7 +108,7 @@ def test_only_current_access_and_chat_can_read_the_request(collaboration):
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer invalid"}, json={}).status_code == 401
     context = c.call("get_context")["structuredContent"]
     assert context["name"] == "编码会话-" + context["identity"][:8]
-    assert all(set(item) == {"name", "direction"} for item in context["colleagues"])
+    assert all(set(item) == {"name"} for item in context["colleagues"])
     sent = c.call("request_verification", REQUEST)["structuredContent"]
     assert sent["code"] == "ACCEPTED"
     c.reply(sent["request_id"])

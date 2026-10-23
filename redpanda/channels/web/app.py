@@ -28,7 +28,6 @@ from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTak
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.external_messages import ExternalConnectionNotFound
 from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.agent_messages import DirectionArguments
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from redpanda.automation.routines import RoutineNotFound
@@ -120,10 +119,6 @@ class AgentNameRequest(ConnectionRequest):
 
 class AgentAvatarRequest(ConnectionRequest):
     seed: str | None = Field(min_length=1)
-
-
-class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
-    pass
 
 
 class CreateAgentRequest(AgentNameRequest):
@@ -518,10 +513,6 @@ def create_web_app(
     @app.put("/api/agents/{session_id}/name")
     async def rename_agent(session_id: str, body: AgentNameRequest, request: Request):
         return await _channel(request).rename_agent(body.connection_id, session_id, body.name)
-
-    @app.put("/api/agents/{session_id}/direction")
-    async def set_agent_direction(session_id: str, body: AgentDirectionRequest, request: Request):
-        return await _channel(request).set_agent_direction(body.connection_id, session_id, body.direction)
 
     @app.post("/api/agents/{session_id}/projects")
     async def link_project(session_id: str, body: LinkProjectRequest, request: Request):

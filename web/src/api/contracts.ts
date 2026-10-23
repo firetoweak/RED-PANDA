@@ -94,7 +94,6 @@ export const agentRosterEntrySchema = z
     session_id: z.string().min(1),
     projects: agentProjectSchema.array(),
     name: z.string().min(1),
-    direction: z.string().min(1).nullable(),
     activity: z.enum(["running", "idle"]),
     status: z.enum(["working", "authorization", "waiting", "idle"]),
   })

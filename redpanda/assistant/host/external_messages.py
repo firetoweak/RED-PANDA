@@ -49,19 +49,19 @@ class ExternalMessages:
 
     async def _request(self, connection, identity, request_id):
         for entry in await self.host.agents.list(include_deleted=True):
-            messages = await self.messages(entry.agent.session_id)
+            messages = await self.messages(entry.session_id)
             for _, fact in messages:
                 if (fact.incoming and fact.message_id == request_id
                         and fact.connection_id == connection.connection_id and fact.identity == identity):
-                    return entry.agent, fact, messages
+                    return entry, fact, messages
         return None
 
     async def context(self, connection, identity=None):
         identity = uuid4().hex if identity is None else identity
         return {"ok": True, "identity": identity, "name": external_name(identity),
-                "colleagues": [{"name": item.agent.name, "direction": item.direction}
+                "colleagues": [{"name": item.name}
                                for item in await self.host.agents.list()],
-                "notice": ("根据同事分工选择验证对象，首次 request_verification 填 recipient。"
+                "notice": ("从同事名单选择验证对象，首次 request_verification 填 recipient。"
                            "同一编码会话保留 identity；提交需求、PR/仓库引用与完整版本后，用 read_feedback 等待报告。"
                            "用户无需替你取名或指定固定交接人。")}
 

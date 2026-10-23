@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.agent_messages import DECLARE_DIRECTION, SEND_GROUP_MESSAGE, SEND_MESSAGE
+from redpanda.assistant.agent_messages import SEND_GROUP_MESSAGE, SEND_MESSAGE
 from redpanda.assistant.agents import (
-    AGENT_CREATED, COLLEAGUE_JOINED, DIRECTION_DECLARED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
+    AGENT_CREATED, COLLEAGUE_JOINED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -72,8 +72,6 @@ class MessagingLlm(ProcessLlm):
         elif "Kai" in text:
             if "list_colleagues" not in called:
                 calls = (ToolCall("colleagues", "list_colleagues", "{}"),)
-            elif DECLARE_DIRECTION not in called:
-                calls = (ToolCall("declare", DECLARE_DIRECTION, json.dumps({"direction": "负责命令执行"})),)
         return LLMCallResult(LLMResponse(content="" if calls else "done", calls=calls),
                              LLMUsage(input_tokens=10, output_tokens=5))
 
@@ -107,7 +105,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
     async def settled(self, agent):
         await asyncio.wait_for(self.host.wait_quiescent(agent.session_id), 30)
 
-    async def test_created_agent_wakes_without_human_and_its_direction_reaches_colleagues(self):
+    async def test_created_agent_wakes_without_human_and_joining_reaches_colleagues(self):
         steps = {agent.session_id: sum(isinstance(e.payload, StepCommitted) for e in await self.events(agent))
                  for agent in (self.ada, self.lin)}
         self.assertTrue(all(steps.values()))
@@ -118,14 +116,13 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(f'"fact": "{AGENT_CREATED}"' in str(message["content"])
                             and '"name": "Kai"' in str(message["content"])
                             for r in self.llm.requests for message in r["messages"]))
-        roster = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
-        self.assertEqual(roster, {"Ada": None, "Kai": "负责命令执行", "Lin": None})
+        self.assertEqual([entry.name for entry in await self.host.agents.list()], ["Ada", "Kai", "Lin"])
         for agent in (self.ada, self.lin):
             events = await self.events(agent)
             facts = [(e.payload.fact_type, parse_agent_fact(e.payload).name) for e in events
                      if isinstance(e.payload, DomainFactCommitted)
-                     and e.payload.fact_type in {COLLEAGUE_JOINED, DIRECTION_DECLARED}]
-            self.assertEqual(facts[-2:], [(COLLEAGUE_JOINED, "Kai"), (DIRECTION_DECLARED, "Kai")])
+                     and e.payload.fact_type == COLLEAGUE_JOINED]
+            self.assertEqual(facts[-1:], [(COLLEAGUE_JOINED, "Kai")])
             # Roster changes are visible later but do not make colleagues decide.
             self.assertEqual(sum(isinstance(e.payload, StepCommitted) for e in events), steps[agent.session_id])
         self.assertTrue(self.host.failures.empty())

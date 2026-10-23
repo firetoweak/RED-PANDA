@@ -17,9 +17,9 @@ vi.mock("../src/api/redpandaApi", () => ({
   useGetGroupQuery: () => ({ data: api.group, error: undefined }),
   useGetWorkspacesQuery: () => ({ data: [{ workspace_id: "workspace", name: "当前项目", task_root: "/project" }] }),
   useGetAgentsQuery: () => ({ data: [{
-    session_id: "other-ada", workspace_id: "other", name: "Other", direction: "其他项目", activity: "idle", status: "idle",
+    session_id: "other-ada", workspace_id: "other", name: "Other", activity: "idle", status: "idle",
   }, {
-    session_id: "agent-ada", workspace_id: "workspace", name: "Ada", direction: null, activity: "idle", status: "idle",
+    session_id: "agent-ada", workspace_id: "workspace", name: "Ada", activity: "idle", status: "idle",
   }] }),
   usePostGroupMessageMutation: () => [api.post, { isLoading: false }],
 }));

@@ -7,7 +7,7 @@ from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
 from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, Feedback, parse_external
-from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent, project_direction
+from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
 from redpanda.assistant.file_attachments import FileAttachment, is_file_attachment_id
@@ -62,7 +62,6 @@ class AgentRosterEntry:
     session_id: str
     projects: tuple[AgentProjectView, ...]
     name: str
-    direction: str | None
     activity: SessionActivity
     status: AgentStatus
 
@@ -235,8 +234,7 @@ class AssistantQueries:
 
     async def list_agents(self) -> tuple[AgentRosterEntry, ...]:
         entries: list[AgentRosterEntry] = []
-        for view in await self._sessions.agents.list():
-            record = view.agent
+        for record in await self._sessions.agents.list():
             events = await SqliteJournal(self._store.require(record.session_id)).snapshot(
                 record.session_id
             )
@@ -244,7 +242,6 @@ class AssistantQueries:
                 record.session_id,
                 events,
                 name=record.name,
-                direction=view.direction,
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
                 auto_authorize=self._sessions.auto_authorize(),
@@ -260,7 +257,6 @@ class AssistantQueries:
             session_id,
             events,
             name=agent.name,
-            direction=project_direction(events, agent),
             activity=self._sessions.activity(session_id),
             last_error=self._sessions.current_failure(session_id),
             auto_authorize=self._sessions.auto_authorize(),
@@ -406,7 +402,6 @@ def project_agent_roster_entry(
     events: tuple[Event, ...],
     *,
     name: str,
-    direction: str | None,
     activity: SessionActivity,
     last_error: str | None,
     auto_authorize: bool,
@@ -417,7 +412,6 @@ def project_agent_roster_entry(
         session_id=session_id,
         projects=tuple(AgentProjectView(item.name, item.workspace_id, item.worktree) for item in agent.projects),
         name=name,
-        direction=direction,
         activity=activity,
         status=project_agent_status(
             activity=activity,

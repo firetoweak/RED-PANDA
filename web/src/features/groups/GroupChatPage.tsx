@@ -124,8 +124,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
             const agent = memberOf(name);
             const identity = <>
               <BotAvatar name={name} sessionId={sessionOf(name)} />
-              <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text>
-                <Text fz={11} c="dimmed" lineClamp={2}>{agent?.direction ?? "尚未设置负责方向"}</Text></div>
+              <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text></div>
               {agent === undefined ? null : <AgentStatus agent={agent} compact />}
             </>;
             return agent === undefined ? <div className="group-member" key={name}>{identity}</div> : (

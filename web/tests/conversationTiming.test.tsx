@@ -167,7 +167,7 @@ it.each(["success", "failure"])("切换 Bot 和群之后，旧 Bot 请求%s不�
     if (path === "/api/sessions/Lin") return Promise.resolve(Response.json(snapshot("Lin")));
     if (path === "/api/groups/team") return Promise.resolve(Response.json(group));
     if (path === "/api/agents") return Promise.resolve(Response.json(["Ada", "Lin"].map((id) => ({
-      session_id: id, name: id, direction: null, projects: [], activity: "idle", status: "idle",
+      session_id: id, name: id, projects: [], activity: "idle", status: "idle",
     }))));
     if (["/api/groups", "/api/workspaces", "/api/inbox"].includes(path) || path.endsWith("/commands")) return Promise.resolve(Response.json([]));
     throw new Error(`Unexpected request: ${request.method} ${path}`);

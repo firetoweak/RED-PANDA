@@ -8,7 +8,6 @@ import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";
 import { EditableAgentName } from "../sessions/EditableAgentName";
-import { EditableAgentDirection } from "../sessions/EditableAgentDirection";
 
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
@@ -39,7 +38,6 @@ export function SessionConversation() {
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
-      <EditableAgentDirection key={`direction-${agent.session_id}`} agent={agent} connectionId={connectionId} />
       <div className="agent-details-section">
         <Text className="agent-details-label" size="xs" c="dimmed">代码项目</Text>
         {agent.projects.map((project) => <div key={project.workspace_id}>
@@ -80,7 +78,7 @@ export function SessionConversation() {
           <BotAvatar name={name} sessionId={sessionId} />
           <div className="session-header-name">{agent === undefined ? <Text fw={600} size="sm">{name}</Text>
             : <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="sm" />}
-            <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>
+            <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}</div></div>
         </Group>
         {agent === undefined || agent.projects.length === 0 ? null : <span className="session-project-link">
           <IconFolder size={15} /><span>{agent.projects.map((project) => project.name).join("、")}</span></span>}
