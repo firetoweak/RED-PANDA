@@ -62,6 +62,7 @@ class ChatCompletionsClient:
         *,
         request_options: dict[str, object] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._request_options = {} if request_options is None else request_options
@@ -75,6 +76,7 @@ class ChatCompletionsClient:
             headers=headers,
             timeout=httpx.Timeout(connect=10, read=60, write=30, pool=10),
             transport=transport,
+            auth=auth,
         )
 
     async def __aenter__(self) -> "ChatCompletionsClient":
@@ -458,7 +460,7 @@ class ChatCompletionsClient:
 
         if status_code in {401, 403}:
             if self._endpoint.account_id is not None:
-                detail += "；请检查账号权限，或运行 python -m thinllm auth codex --login 重新登录"
+                detail += "；请检查账号权限，或运行 python -m thinllm auth codex --login 并更新连接配置"
             raise LLMAuthenticationError(detail)
         if code == "context_length_exceeded":
             raise LLMContextLengthError(detail)

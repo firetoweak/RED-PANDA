@@ -66,8 +66,8 @@ def configure(home: RedPandaHome) -> ModelConfig:
     specification = PROVIDERS[provider]
     connection = dict(connections[provider])
     if specification.uses_codex_auth:
-        print("请先运行 python -m thinllm auth codex 获取连接配置；认证文件由 Codex 管理。")
-        connection["auth_file"] = _ask("Codex auth.json 路径（留空使用 CODEX_HOME 或 ~/.codex）",
+        print("请先运行 python -m thinllm auth codex 复用登录或直接授权，获取连接配置。")
+        connection["auth_file"] = _ask("auth_file 路径（留空自动查找 thinllm 或 Codex 登录）",
                                        connection["auth_file"])
     else:
         connection["api_key"] = _ask(

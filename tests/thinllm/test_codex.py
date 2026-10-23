@@ -37,6 +37,7 @@ def write_auth(path, data):
 
 @pytest.fixture
 def auth_file(tmp_path, monkeypatch):
+    monkeypatch.setattr("thinllm.auth.Path.home", lambda: tmp_path)
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     path = tmp_path / "auth.json"
     write_auth(path, {"auth_mode": "chatgpt", "tokens": {"access_token": "first", "account_id": "account"}})
@@ -71,7 +72,8 @@ def test_default_auth_location_and_explicit_path_are_independent(tmp_path, monke
     assert resolve_endpoint(MODEL, {"auth_file": str(path)}).api_key == "default"
 
 
-@pytest.mark.parametrize("auth", [[], {"tokens": []}, {"tokens": {"access_token": True, "account_id": "a"}}])
+@pytest.mark.parametrize("auth", [[], {"tokens": []}, {"tokens": {"access_token": True, "account_id": "a"}},
+                                 {"auth_mode": "damaged", "tokens": {"access_token": "a", "account_id": "b"}}])
 def test_damaged_auth_is_exposed_without_echoing_credentials(auth_file, auth):
     write_auth(auth_file, auth)
     with pytest.raises(ValueError):

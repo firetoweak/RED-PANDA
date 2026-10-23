@@ -1,4 +1,4 @@
-"""Codex Responses wire adapter; authentication is owned by the Codex CLI.
+"""Codex Responses wire adapter with per-request credential renewal.
 
 Protocol reference: HKUDS/nanobot's OpenAICodexProvider and ResponsesBackend.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 
 from thinllm.chat_completions import ChatCompletionsClient, _ToolCallParts
+from thinllm.auth import CodexAuth
 from thinllm.errors import InvalidLLMResponse
 from thinllm.types import LLMUsage
 
@@ -17,6 +18,9 @@ class CodexResponsesClient(ChatCompletionsClient):
     _request_path = "responses"
     _done_marker = None
     _completion_label = "the response.completed event"
+
+    def __init__(self, endpoint, **kwargs):
+        super().__init__(endpoint, auth=CodexAuth(endpoint.auth_file) if endpoint.auth_file else None, **kwargs)
 
     def _payload(self, messages, model, tools, reasoning_effort) -> dict[str, object]:
         instructions = []

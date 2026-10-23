@@ -2,6 +2,7 @@
 from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from thinllm.auth import codex_auth_path, load_codex_auth
 from thinllm.errors import MissingProviderSetting
@@ -60,14 +61,16 @@ class Endpoint:
     api_key: str | None
     pads_reasoning_content: bool
     account_id: str | None = None
+    auth_file: Path | None = None
 
 
 def resolve_endpoint(model: str, connection: Mapping[str, str]) -> Endpoint:
     name = model.partition("/")[0]
     provider = PROVIDERS[name]
     if provider.uses_codex_auth:
-        access_token, account_id = load_codex_auth(codex_auth_path(connection["auth_file"]))
-        return Endpoint(name, provider.base_url, access_token, False, account_id)
+        path = codex_auth_path(connection["auth_file"]).resolve()
+        access_token, account_id = load_codex_auth(path)
+        return Endpoint(name, provider.base_url, access_token, False, account_id, path)
     base_url = provider.base_url
     if base_url is None:
         base_url = connection["base_url"].strip()
