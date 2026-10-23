@@ -120,7 +120,7 @@ def test_request_prefix_and_historical_plan_text_survive_replace_and_clear():
     assert second.work_plan_context != first.work_plan_context
     events += update(8, None, snapshot=second.work_plan_context)
     third = prepare(events)
-    assert "当前计划已清除" in third.work_plan_context
+    assert "Your work plan has been cleared" in third.work_plan_context
     assert third.messages[-1]["content"] == third.work_plan_context
     assert third.messages[:len(second.messages)] == second.messages
     assert any(m["content"] == first.work_plan_context for m in third.messages)
@@ -172,7 +172,7 @@ def test_cleared_plan_overrides_old_plan_in_compact_handoff():
         "s", "sys", prefix=handoff,
     )
     assert prepared.messages[1:2] == handoff
-    assert "当前计划已清除" in prepared.work_plan_context
+    assert "Your work plan has been cleared" in prepared.work_plan_context
     assert prepared.messages[-1]["content"] == prepared.work_plan_context
     assert project_work_plan(events) is None
 

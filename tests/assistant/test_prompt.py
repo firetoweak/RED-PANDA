@@ -40,32 +40,10 @@ from tests.fixtures.workspaces import workspace_record
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-PROSE_VOCABULARY = frozenset(
-    {
-        "Agent",
-        "Bot",
-        "Git",
-        "RED",
-        "PANDA",
-        "Skill",
-        "Toolset",
-        "AGENTS",
-        "CLAUDE",
-        "md",
-        "diff",
-        "git",
-        "show",
-        "env",
-        "false",
-        "null",
-        "true",
-    }
+_PROMPT_REFERENCE = re.compile(
+    r"\b[a-z]+(?:_[a-z0-9]+)+\b|(?<!`)`([A-Za-z_][A-Za-z0-9_]*)`(?!`)"
 )
-"""prompt 正文里合法出现的英文散词和字面量，不指代任何工具或字段。
-
-显式登记而不是过滤：prompt 里每出现一个新的 ASCII 词，都必须先判断它是
-工具名、协议字段名，还是散词。漂移只有在这个判断被跳过时才会溜进去。
-"""
+"""Explicit inline identifiers and snake_case names, independent of prose language."""
 
 
 CONDITIONAL_TOOL_NAMES = frozenset({
@@ -100,6 +78,10 @@ class SilentLlm:
 
 def _ascii_tokens(text: str) -> set[str]:
     return set(_ASCII_TOKEN.findall(text))
+
+
+def _prompt_references(text: str) -> set[str]:
+    return {match.group(1) or match.group(0) for match in _PROMPT_REFERENCE.finditer(text)}
 
 
 def _schema_field_names(node: object) -> set[str]:
@@ -154,6 +136,10 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         workspace = root / "workspace"
         workspace.mkdir()
         self._workspace = workspace_record(workspace)
+
+        async def no_transport(*_args):
+            raise AssertionError("prompt checks must not invoke host operations")
+
         with (
             patch(
                 "redpanda.assistant.assembly.RedPandaHome.default",
@@ -174,6 +160,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
                 MemoryJournal(),
                 session_id="parent/sub-vocabulary",
                 workspace=self._workspace,
+                session_transport=no_transport,
             )
 
     async def asyncTearDown(self) -> None:
@@ -186,6 +173,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         return [
             *assembly.surface.schemas(session_id),
             *decision._skill_tools.schemas(),
+            *decision._cli_tools.schemas(),
             *decision._management.schemas(session_id),
             *assembly.control.schemas(
                 session_id,
@@ -215,11 +203,11 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
     def test_default_prompt_names_only_real_tools_and_fields(self):
         # Colleague and person messaging tools are assembled only for long-lived Agents.
-        agent_tools = {schema["function"]["name"] for schema in (*MESSAGE_SCHEMAS, *SHARED_MEMORY_SCHEMAS)}
-        for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (BOT_PROMPT, agent_tools)):
+        agent_schemas = [*MESSAGE_SCHEMAS, *SHARED_MEMORY_SCHEMAS]
+        agent_references = {schema["function"]["name"] for schema in agent_schemas} | _schema_field_names(agent_schemas)
+        for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (BOT_PROMPT, agent_references)):
             unknown = (
-                _ascii_tokens(prompt)
-                - PROSE_VOCABULARY
+                _prompt_references(prompt)
                 - self._known_names("vocabulary")
                 - extra
             )
@@ -233,8 +221,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
         session_id = "parent/sub-vocabulary"
         self._assembly.subagents._parents[session_id] = "parent"
         unknown = (
-            _ascii_tokens(SUBAGENT_PROMPT)
-            - PROSE_VOCABULARY
+            _prompt_references(SUBAGENT_PROMPT)
             - self._known_names(session_id)
         )
         self.assertEqual(
@@ -246,7 +233,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
     def test_decision_prompt_tells_model_its_workspace(self):
         decision = self._assembly.runtime.step_runner._decision_maker
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
-        self.assertIn(f"工作区：{self._workspace.task_root}", prompt)
+        self.assertIn(f"Working directory: {self._workspace.task_root}", prompt)
 
     def test_project_file_content_is_read_on_demand_instead_of_injected_into_system(self):
         decision = self._assembly.runtime.step_runner._decision_maker
