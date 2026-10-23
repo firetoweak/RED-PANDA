@@ -6,6 +6,7 @@ import { fileChangesSchema, fileDiffSchema, type FileChanges, type FileDiff } fr
 import {
   bindOwner,
   controlNotice,
+  type RuntimeState,
 } from "../realtime/runtimeSlice";
 import {
   agentRosterEntrySchema,
@@ -114,16 +115,9 @@ export function apiErrorDetail(data: unknown): string | undefined {
 
 function putConversation(
   dispatch: (action: unknown) => void,
-  getState: () => unknown,
   sessionId: string,
   data: ConversationView,
 ) {
-  const current = redpandaApi.endpoints.getConversation.select(sessionId)(
-    getState() as never,
-  ).data;
-  if (current !== undefined && current.revision > data.revision) {
-    return;
-  }
   dispatch(
     redpandaApi.util.upsertQueryData("getConversation", sessionId, data),
   );
@@ -397,6 +391,9 @@ export const redpandaApi = createApi({
     getConversation: build.query<ConversationView, string>({
       query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}`,
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
+      merge(current, incoming) {
+        if (incoming.revision >= current.revision) return incoming;
+      },
       providesTags: (_result, _error, sessionId) => [
         { type: "Conversation", id: sessionId },
       ],
@@ -419,8 +416,11 @@ export const redpandaApi = createApi({
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        dispatch(bindOwner(arg.sessionId));
-        putConversation(dispatch, getState, arg.sessionId, data);
+        const { runtime } = getState() as unknown as { runtime: RuntimeState };
+        if (runtime.connectionId === arg.connectionId && runtime.viewingSessionId === arg.sessionId) {
+          dispatch(bindOwner(arg.sessionId));
+        }
+        putConversation(dispatch, arg.sessionId, data);
       },
     }),
     sendInput: build.mutation<ConversationView, SendInput>({
@@ -436,9 +436,9 @@ export const redpandaApi = createApi({
         },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
+        putConversation(dispatch, arg.sessionId, data);
       },
     }),
     uploadAttachment: build.mutation<AttachmentRef, UploadAttachment>({
@@ -461,9 +461,9 @@ export const redpandaApi = createApi({
         body: { connection_id: connectionId },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
+        putConversation(dispatch, arg.sessionId, data);
       },
     }),
     authorizeCommand: build.mutation<ConversationView, AuthorizeCommand>({
@@ -474,9 +474,9 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       invalidatesTags: ["Agents", "Inbox"],
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
+        putConversation(dispatch, arg.sessionId, data);
       },
     }),
     resolveControl: build.mutation<ConversationView, ResolveControl>({
@@ -487,9 +487,9 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       invalidatesTags: ["Agents", "Inbox"],
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
+        putConversation(dispatch, arg.sessionId, data);
         dispatch(
           controlNotice({
             sessionId: arg.sessionId,
@@ -520,9 +520,9 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       invalidatesTags: ["Inbox"],
-      async onQueryStarted(arg, { dispatch, getState, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         const { data } = await queryFulfilled;
-        putConversation(dispatch, getState, arg.sessionId, data);
+        putConversation(dispatch, arg.sessionId, data);
       },
     }),
   }),

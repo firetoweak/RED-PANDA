@@ -31,7 +31,7 @@ export type SessionRuntime = {
   } | null;
 };
 
-type RuntimeState = {
+export type RuntimeState = {
   connectionId: string | null;
   viewingSessionId: string | null;
   ownerSessionId: string | null;
