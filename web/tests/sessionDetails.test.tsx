@@ -31,6 +31,7 @@ vi.mock("../src/api/redpandaApi", () => ({
   useSetRoutineStateMutation: () => [() => undefined, { isLoading: false }],
   useLinkProjectMutation: () => [() => undefined, { isLoading: false, reset: () => undefined }],
   useRenameAgentMutation: () => [() => undefined, { isLoading: false }],
+  useSetAgentDirectionMutation: () => [() => undefined, { isLoading: false }],
   useUnlinkProjectMutation: () => [() => undefined, { isLoading: false }],
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

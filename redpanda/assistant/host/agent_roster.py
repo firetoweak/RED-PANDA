@@ -59,11 +59,6 @@ class AgentRoster:
         """Called once the creation fact is durable."""
         (await self._index())[agent.session_id] = AgentView(agent, None)
 
-    async def declare(self, session_id: str, direction: str) -> None:
-        """Called once the Agent's own declaration fact is durable."""
-        index = await self._index()
-        index[session_id] = replace(index[session_id], direction=direction)
-
     async def refresh(self, session_id: str) -> AgentRecord:
         events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
         agent = project_agent(events)

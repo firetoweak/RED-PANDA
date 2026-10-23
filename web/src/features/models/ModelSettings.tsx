@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Group, Modal, NumberInput, Paper, Radio, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { ModelConfig, ModelProfile } from "../../api/contracts";
-import { useGetModelSettingsQuery, useSaveModelSettingsMutation } from "../../api/redpandaApi";
+import { useGetCodexModelsQuery, useGetModelSettingsQuery, useSaveModelSettingsMutation } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { ModelTestButton } from "./ModelTestButton";
 
@@ -18,6 +18,11 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
   const [reasoningEffort, setReasoningEffort] = useState<ModelProfile["reasoning_effort"]>();
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
+  const { currentData: catalog, error: catalogError, isFetching: catalogLoading, refetch: reloadCatalog } = useGetCodexModelsQuery(
+    undefined, { skip: editing === null || provider !== "openai-codex", refetchOnMountOrArgChange: true },
+  );
+  const catalogReady = catalog !== undefined && !catalogLoading && !catalogError;
+  const selectedCodexModel = catalogReady ? catalog.find((item) => item.slug === name) : undefined;
 
   useEffect(() => {
     if (data === undefined) return;
@@ -37,6 +42,9 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
 
   function applyEdit() {
     if (draft === null || provider === null) return;
+    if (provider === "openai-codex" && selectedCodexModel === undefined) {
+      setFormError("请从当前账号的模型列表中选择模型。"); return;
+    }
     const tokens = Number(threshold);
     if (!name.trim() || !Number.isSafeInteger(tokens) || tokens <= 0) {
       setFormError("请输入模型名称和正整数 compact 触发值。"); return;
@@ -119,17 +127,36 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
     </Stack>
     <Modal opened={editing !== null} onClose={() => setEditing(null)} title={editing === "new" ? "添加模型" : "编辑模型"} centered>
       <Stack>
-        <Select label="供应商" data={data?.providers.map((item) => ({ value: item.provider, label: item.provider })) ?? []} value={provider} onChange={setProvider} allowDeselect={false} />
-        <TextInput label="模型名称" description="填写服务接受的模型 ID；同一供应商可以添加多个模型。" value={name} onChange={(event) => setName(event.currentTarget.value)} />
+        <Select label="供应商" data={data?.providers.map((item) => ({ value: item.provider, label: item.provider })) ?? []} value={provider}
+          onChange={(value) => { setProvider(value); setName(""); setReasoningEffort(undefined); setFormError(""); }} allowDeselect={false} />
+        {provider === "openai-codex" ? <>
+          <Select label="模型名称" description="从当前登录账号的模型列表中选择，名称和大小写由服务提供。"
+            data={catalogReady ? catalog.map((item) => ({ value: item.slug, label: `${item.display_name} (${item.slug})` })) : []}
+            value={name || null} onChange={(value) => { setName(value ?? ""); setFormError(""); }} searchable allowDeselect={false}
+            disabled={!catalogReady || catalog.length === 0} nothingFoundMessage="没有匹配的模型"
+            placeholder={catalogLoading ? "正在读取模型列表…" : "选择 Codex 模型"} />
+          {catalogLoading ? <Text role="status" size="sm" c="dimmed">正在读取当前账号的模型列表…</Text> : null}
+          {catalogError ? <Alert color="red" title="读取 Codex 模型列表失败">
+            <Text size="sm">{typeof catalogError === "string" ? catalogError : JSON.stringify(catalogError)}</Text>
+            <Button variant="subtle" size="xs" mt="xs" onClick={() => reloadCatalog()}>重新加载</Button>
+          </Alert> : null}
+          {catalogReady && catalog.length === 0 ? <Text size="sm" c="dimmed">当前账号没有可选择的 Codex 模型。</Text> : null}
+          {catalogReady && name && selectedCodexModel === undefined ? <Text size="sm" c="red">当前账号的模型列表中没有 {name}，请重新选择。</Text> : null}
+          {selectedCodexModel ? <Stack gap={4} aria-label="模型能力">
+            <Text size="sm">上下文容量：{selectedCodexModel.context_window === null ? "供应商未提供" : `${selectedCodexModel.context_window.toLocaleString()} tokens`}</Text>
+            <Text size="sm">支持的推理档位：{selectedCodexModel.supported_reasoning_levels.map((item) => item.effort).join(" / ") || "供应商未提供"}</Text>
+            {selectedCodexModel.default_reasoning_level !== null ? <Text size="xs" c="dimmed">默认推理档位：{selectedCodexModel.default_reasoning_level}</Text> : null}
+          </Stack> : null}
+        </> : <TextInput label="模型名称" description="填写服务接受的模型 ID；同一供应商可以添加多个模型。" value={name} onChange={(event) => setName(event.currentTarget.value)} />}
         {provider === "stepfun" && name.trim() === "step-5-preview" ? <Select
           label="推理程度" description="更高的程度允许更深入的推理，响应可能更慢。供应商默认不指定程度。"
           data={[{ value: "default", label: "供应商默认" }, { value: "low", label: "低" }, { value: "medium", label: "中" }, { value: "high", label: "高" }]}
           value={reasoningEffort ?? "default"} allowDeselect={false}
           onChange={(value) => setReasoningEffort(value === "low" || value === "medium" || value === "high" ? value : undefined)}
         /> : null}
-        <NumberInput label="compact 触发值（输入 tokens）" description="按模型的上下文容量设置，达到阈值时整理上下文。" value={threshold} onChange={setThreshold} min={1} allowDecimal={false} allowNegative={false} />
+        <NumberInput label="compact 触发值（输入 tokens）" description="达到阈值时整理上下文；它是整理策略，不是模型的上下文容量。" value={threshold} onChange={setThreshold} min={1} allowDecimal={false} allowNegative={false} />
         {formError ? <Text size="sm" c="red">{formError}</Text> : null}
-        <Button onClick={applyEdit}>加入待保存配置</Button>
+        <Button onClick={applyEdit} disabled={provider === "openai-codex" && selectedCodexModel === undefined}>加入待保存配置</Button>
       </Stack>
     </Modal>
   </>;

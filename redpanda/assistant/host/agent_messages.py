@@ -6,7 +6,7 @@ from hashlib import sha256
 
 from redpanda.assistant.agent_messages import LIMIT_NOTICE, MAX_MESSAGE_HOPS, MAX_MESSAGES_PER_ORIGIN
 from redpanda.assistant.agents import (
-    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, PrivateMessage, Speaker, fact_arguments, message_origin,
+    PRIVATE_MESSAGE, ColleagueJoined, DirectionDeclared, DirectionSetByUser, PrivateMessage, Speaker, fact_arguments, message_origin,
     parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_agent_roster_entry
@@ -108,13 +108,24 @@ class AgentMessages:
                 ColleagueJoined(name=agent.name), delivery_id=f"joined:{agent.session_id}"))
 
     async def declare(self, session_id, arguments):
-        sender = await self.host.agents.by_session(session_id)
-        if sender is None:
-            raise ValueError("direction declaration requires a Coding Bot identity")
-        await self.host.agents.declare(session_id, arguments["direction"])
-        await self._broadcast(sender, DirectionDeclared(name=sender.name, direction=arguments["direction"]),
-                              f"{session_id}:{arguments['delivery_id']}")
-        return None
+        async with self.host._agent_creation_lock:
+            sender = await self.host.agents.by_session(session_id)
+            if sender is None or sender.deleted:
+                raise AgentNotFound(session_id)
+            events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+            existing = next((event for event in events if event.delivery is not None
+                             and event.delivery.source == "coding_bot"
+                             and event.delivery.delivery_id == arguments["delivery_id"]), None)
+            model = {"user": DirectionSetByUser, "agent": DirectionDeclared}[arguments["source"]]
+            fact = (parse_agent_fact(existing.payload) if existing is not None else model(
+                name=sender.name, direction=arguments["direction"]))
+            if fact.direction != arguments["direction"] or fact.source != arguments["source"]:
+                raise ValueError("persisted direction conflicts with its update")
+            try:
+                await self.host.request("fact", session_id, fact_arguments(fact, delivery_id=arguments["delivery_id"]))
+            finally:
+                await self.host.agents.refresh(session_id)
+            await self._broadcast(sender, fact, f"{session_id}:{arguments['delivery_id']}")
 
     async def _messages(self, session_id):
         events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)

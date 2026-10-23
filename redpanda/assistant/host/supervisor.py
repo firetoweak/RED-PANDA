@@ -368,7 +368,7 @@ class HostSupervisor:
         if operation == SEND_GROUP_MESSAGE:
             return await self.agent_messages.send_group(session_id, arguments)
         if operation == DECLARE_DIRECTION:
-            return await self.agent_messages.declare(session_id, arguments)
+            return await _settle(self.agent_messages.declare(session_id, arguments))
         if operation == SEND_FILE:
             attachment = await self._copy_worktree_file(session_id, arguments["path"])
             if attachment.get("ok") is False:
@@ -1288,6 +1288,11 @@ class HostSupervisor:
         await self.request("fact", session_id, fact_arguments(identity, delivery_id="created"))
         pending.unlink()
         return agent
+
+    async def set_direction_by_user(self, session_id: str, direction: str) -> None:
+        await _settle(self.agent_messages.declare(session_id, {
+            "direction": direction, "source": "user", "delivery_id": f"direction:{uuid4().hex}",
+        }))
 
     async def rename_agent(self, session_id: str, name: str) -> AgentRecord:
         async with self._agent_creation_lock:

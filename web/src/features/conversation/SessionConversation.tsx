@@ -8,6 +8,7 @@ import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";
 import { EditableAgentName } from "../sessions/EditableAgentName";
+import { EditableAgentDirection } from "../sessions/EditableAgentDirection";
 
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
@@ -37,10 +38,7 @@ export function SessionConversation() {
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
-      <div className="agent-details-section">
-        <Text className="agent-details-label" size="xs" c="dimmed">负责方向</Text>
-        <Text size="sm">{agent.direction ?? "尚未设置负责方向"}</Text>
-      </div>
+      <EditableAgentDirection key={`direction-${agent.session_id}`} agent={agent} connectionId={connectionId} />
       <div className="agent-details-section">
         <Text className="agent-details-label" size="xs" c="dimmed">代码项目</Text>
         {agent.projects.map((project) => <div key={project.workspace_id}>

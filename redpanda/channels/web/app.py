@@ -27,10 +27,11 @@ from redpanda.assistant.host.agent_groups import GroupDissolvedError, GroupNameT
 from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.assistant.agent_messages import DirectionArguments
 from redpanda.assistant.model_connection import check_model_connection
 from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from redpanda.automation.routines import RoutineNotFound
-from redpanda.model_settings import ModelConfigurationError, ModelInUseError
+from redpanda.model_settings import ModelCatalogUnavailable, ModelConfigurationError, ModelInUseError
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.inputs import InputConflict
 from redpanda.bootstrap import bootstrap_assistant
@@ -112,6 +113,10 @@ class AgentNameRequest(ConnectionRequest):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+
+class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
+    pass
 
 
 class CreateAgentRequest(AgentNameRequest):
@@ -290,6 +295,10 @@ def create_web_app(
     async def model_in_use(_request: Request, error: ModelInUseError):
         return JSONResponse(status_code=409, content={"detail": str(error)})
 
+    @app.exception_handler(ModelCatalogUnavailable)
+    async def unavailable_model_catalog(_request: Request, error: ModelCatalogUnavailable):
+        return JSONResponse(status_code=502, content={"detail": str(error)})
+
     @app.exception_handler(SessionNotFoundError)
     async def session_not_found(_request: Request, error: SessionNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(error)})
@@ -372,6 +381,10 @@ def create_web_app(
     async def model_settings(request: Request):
         return request.app.state.models.view()
 
+    @app.get("/api/model-settings/codex-models")
+    async def codex_models(request: Request):
+        return await request.app.state.models.codex_models()
+
     @app.get("/api/shared-memory")
     async def read_shared_memory(request: Request):
         return request.app.state.shared_memory.read().model_dump()
@@ -432,6 +445,10 @@ def create_web_app(
     @app.put("/api/agents/{session_id}/name")
     async def rename_agent(session_id: str, body: AgentNameRequest, request: Request):
         return await _channel(request).rename_agent(body.connection_id, session_id, body.name)
+
+    @app.put("/api/agents/{session_id}/direction")
+    async def set_agent_direction(session_id: str, body: AgentDirectionRequest, request: Request):
+        return await _channel(request).set_agent_direction(body.connection_id, session_id, body.direction)
 
     @app.post("/api/agents/{session_id}/projects")
     async def link_project(session_id: str, body: LinkProjectRequest, request: Request):
