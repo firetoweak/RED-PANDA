@@ -1,6 +1,6 @@
 # 模型 Provider 接入
 
-RED PANDA 只拥有模型调用的窄协议 `LLMApi`。Host 按 Provider 持有 OpenAI-compatible Chat Completions 客户端，供选择该 Provider 的 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
+RED PANDA 只拥有模型调用的窄协议 `LLMApi`。Host 按 Provider 持有对应协议的流式客户端，供选择该 Provider 的 Session 复用，直接连接所选 Provider；不引入外部网关进程，不在进程内加载模型 SDK 或路由器。
 
 ```text
 Assistant → LLMApi → Worker LLM Port → Host LLM Client → Provider
@@ -23,6 +23,8 @@ Provider 是项目内置的一张表，不是用户配置。每项只描述接�
 ## 连接生命周期
 
 连接设置在每次调用边界读取。相同 Provider 与相同连接设置复用客户端；设置变化后，新调用使用新客户端，在途请求保留自己的旧客户端，最后一个请求结束后才释放旧连接。文件损坏或内部错误直接暴露，不以旧连接掩盖失败，也不要求重启应用。
+
+Codex 接入支持复用已有 ChatGPT 登录，也支持由 thinllm 的终端入口直接完成 OAuth 授权，输出可复制的连接引用，不依赖外部 CLI。新授权由 thinllm 独立保存并在实际请求前按需续期；共用同一授权的请求协调续期，完整替换凭据。已有 Codex 登录只读复用，其生命周期仍归 Codex，不复制或刷新共享凭据。配置状态查询不触发授权或续期，凭据不进入产品配置。OAuth 流程复用现成库，thinllm 只拥有必要的存储、续期与协议适配，不进入 Assistant 或 Runtime。
 
 会话的模型与生效边界见[会话模型选择](../入口/会话模型选择.md)。后台 compact 使用启动该任务时捕获的模型，已有任务不会因用户切换而被改写。
 

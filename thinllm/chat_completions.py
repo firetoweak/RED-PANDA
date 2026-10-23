@@ -52,23 +52,31 @@ class _Stream:
 class ChatCompletionsClient:
     """A streaming chat client bound to one provider endpoint."""
 
+    _request_path = "chat/completions"
+    _done_marker = "[DONE]"
+    _completion_label = "the [DONE] marker"
+
     def __init__(
         self,
         endpoint: Endpoint,
         *,
         request_options: dict[str, object] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         self._endpoint = endpoint
         self._request_options = {} if request_options is None else request_options
         headers = {"Accept": "text/event-stream"}
         if endpoint.api_key is not None:
             headers["Authorization"] = f"Bearer {endpoint.api_key}"
+        if endpoint.account_id is not None:
+            headers.update({"ChatGPT-Account-Id": endpoint.account_id, "originator": "redpanda"})
         self._client = httpx.AsyncClient(
             base_url=f"{endpoint.base_url}/",
             headers=headers,
             timeout=httpx.Timeout(connect=10, read=60, write=30, pool=10),
             transport=transport,
+            auth=auth,
         )
 
     async def __aenter__(self) -> "ChatCompletionsClient":
@@ -87,6 +95,12 @@ class ChatCompletionsClient:
         on_reasoning_delta: ContentDeltaSink | None = None,
         reasoning_effort: str | None = None,
     ) -> LLMCallResult:
+        payload = self._payload(messages, model, tools, reasoning_effort)
+        return await self._request(payload, model, on_content_delta, on_reasoning_delta)
+
+    def _payload(self, messages, model, tools, reasoning_effort) -> dict[str, object]:
+        messages = [{key: value for key, value in message.items() if key != "codex_reasoning"}
+                    for message in messages]
         if self._endpoint.pads_reasoning_content:
             messages = [
                 (
@@ -111,7 +125,9 @@ class ChatCompletionsClient:
             payload["tool_choice"] = "auto"
         if reasoning_effort is not None:
             payload["reasoning_effort"] = reasoning_effort
+        return payload
 
+    async def _request(self, payload, model, on_content_delta, on_reasoning_delta):
         attempt = 0
         while True:
             stream = _Stream()
@@ -161,7 +177,7 @@ class ChatCompletionsClient:
         try:
             async with self._client.stream(
                 "POST",
-                "chat/completions",
+                self._request_path,
                 json=payload,
             ) as response:
                 if not 200 <= response.status_code < 300:
@@ -173,12 +189,14 @@ class ChatCompletionsClient:
                     if not line or not line.startswith("data:"):
                         continue
                     data = line[5:].lstrip()
-                    if data == "[DONE]":
+                    if data == self._done_marker:
                         stream.received_done = True
                         break
                     await self._consume(
                         data, stream, on_content_delta, on_reasoning_delta
                     )
+                    if stream.received_done:
+                        break
         except httpx.TransportError as exc:
             raise LLMTransientError(
                 f"{self._endpoint.provider} transport failed: {exc}"
@@ -257,12 +275,12 @@ class ChatCompletionsClient:
             if key == "reasoning_content" and value:
                 await self._emit(on_reasoning_delta, value)
 
-    @staticmethod
-    def _result(stream: _Stream) -> LLMCallResult:
+    @classmethod
+    def _result(cls, stream: _Stream) -> LLMCallResult:
         if not stream.received_done:
             raise InvalidLLMResponse(
                 "invalid_llm_response",
-                "model stream ended without the [DONE] marker",
+                f"model stream ended without {cls._completion_label}",
             )
         if stream.usage is None:
             raise InvalidLLMResponse(
@@ -441,6 +459,8 @@ class ChatCompletionsClient:
         detail += f": {message}"
 
         if status_code in {401, 403}:
+            if self._endpoint.account_id is not None:
+                detail += "；请检查账号权限，或运行 python -m thinllm auth codex --login 并更新连接配置"
             raise LLMAuthenticationError(detail)
         if code == "context_length_exceeded":
             raise LLMContextLengthError(detail)

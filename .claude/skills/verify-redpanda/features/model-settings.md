@@ -4,7 +4,8 @@
 
 ## Sub-features
 
-- `provider-badges`：`供应商连接` 区按 `PROVIDERS` 顺序列出 `deepseek`、`openai`、`qwen`、`stepfun`、`bigmodel`、`vllm`、`ollama`，每个徽标 `<provider> · 已配置` 或 `<provider> · 缺少 <missing>`。托管供应商缺的是 `api_key`；本地供应商（`vllm`、`ollama`）不要求 key，缺的是 `base_url`。密钥只在 `connections.json` 里，页面不编辑密钥。
+- `provider-badges`：`供应商连接` 区按 `PROVIDERS` 顺序列出 `deepseek`、`openai`、`openai-codex`、`qwen`、`stepfun`、`bigmodel`、`vllm`、`ollama`，每个徽标 `<provider> · 已配置` 或 `<provider> · 缺少 <missing>`。普通托管供应商缺的是 `api_key`；`openai-codex` 读取 thinllm 独立授权或已有 Codex ChatGPT 登录，缺失时提示 `auth_file` 或 `ChatGPT 登录` 并引导 `python -m thinllm auth codex`；本地供应商（`vllm`、`ollama`）不要求 key，缺的是 `base_url`。页面不编辑密钥或登录凭据。
+- `auth-export`：项目 Python 执行 `-m thinllm auth codex`，优先复用 thinllm 授权，其次只读复用已有 Codex 登录；都没有时在交互终端直接完成浏览器 OAuth，无需 Codex CLI。新凭据保存至 `~/.thinllm/codex.json` 并按需自动续期。stdout 只输出含绝对 `auth_file` 路径的供应商 JSON，登录提示写到 stderr；失败或取消不输出配置。`--login` 始终获取 thinllm 独立授权，完成后更新连接配置；命令不写 RED PANDA 配置，不打印 token。
 - `candidates`：`候选模型` 表，列 `新会话默认`（Radio，`aria-label` 为 `默认模型 <provider/model>`）、`模型`、`推理程度`、`compact 触发值`、`连接`（`已配置` / `待配置`，`待配置` 只出现在这一列）、`操作`（`测试`、`编辑`、`删除`）。页首 `添加模型`；弹窗标题 `添加模型` / `编辑模型`，字段 `供应商`、`模型名称`、`compact 触发值（输入 tokens）`（最小 1，新模型默认 200000），只有供应商 `stepfun` 且模型名称 `step-5-preview` 时才出现 `推理程度`（`供应商默认`/`低`/`中`/`高`）。弹窗确认按钮 `加入待保存配置`，只改草稿。
 - `save`：`保存配置` → `PUT /api/model-settings`，成功提示 `已保存。默认模型用于新会话；模型参数在下一次决策生效。`，失败显示 `保存失败` Alert；`撤销修改` 把草稿恢复为已保存配置。两个按钮在草稿与已保存一致时禁用。
 - `test`：每行按钮 `测试`（`aria-label` 为 `测试 <provider/model>`）→ `POST /api/model-settings/test`，结果 `测试通过 · N ms` 或 `测试失败 · N ms` 加一行失败原因。
@@ -31,7 +32,7 @@
   - (d) 要走到服务端拒绝：在草稿里先把 `新会话默认` 改到另一个候选，再删原默认模型，然后 `保存配置` → 409 `请先保存新的默认模型，再删除原默认模型`，页面 `保存失败`，`config.json` 不变。删除仍被某个会话选用的模型并保存 → 409 `请先切换以下会话的模型：<session_id 列表>`，`config.json` 不变。
 - **草稿**：添加候选后关闭抽屉，打开 `共同记忆` 再返回 `模型配置`，候选草稿仍在；没有点 `保存配置` 时 `config.json` 不变。点 `撤销修改` 才恢复已保存配置；刷新页面会丢弃草稿。
 - **测试**：
-  - (a) 测试不写任何文件。
+  - (a) 测试不改写 RED PANDA 配置或共享 Codex 登录文件；使用 thinllm 独立授权时，临近到期的凭据会自动续期。
   - (b) 已保存且供应商已配置 → `测试通过 · N ms`；把 key 改错 → `测试失败 · N ms` 加原因，响应不回显 key。测试失败时 HTTP 仍是 200（`ok: false`）。
   - (c) 未保存的新模型或供应商未配置时按钮禁用，`请先保存模型` / `请先填写供应商连接配置` 只是悬停 `title`，不会显示为结果。
   - (d) 直接 POST 一个不在候选里的模型 → 400 `模型不在候选列表中：<model>`；请求本身失败时按钮下显示 `测试请求失败：…`。
@@ -44,6 +45,7 @@
 ## Gotchas
 
 - 设置 `REDPANDA_CONFIG` 环境变量会让 `config.json` 指向别处（`redpanda/config.py`），验证时确认未设置。
+- `openai-codex` 的 `auth_file` 留空时先查找 `~/.thinllm/codex.json`，再读取 `CODEX_HOME/auth.json` 或 `~/.codex/auth.json`；显式路径只使用该文件。徽标只验证文件形状，不触发续期。实际请求可以自动续期 thinllm 授权，共享 Codex 登录始终只读；权限与额度需要点击 `测试`。
 - `测试` 需要可用连接，`live_model_ready` 为 false 时跳过 `测试` 与发送，只验证配置编辑和禁用状态。
 - `推理程度` 只对 `stepfun/step-5-preview` 开放；其他模型该列显示 `—`，服务端对其他模型传 `reasoning_effort` 直接拒绝。
 - 抽屉打开时每 5 秒轮询 `GET /api/model-settings`；草稿与旧的已保存配置一致时会被新数据覆盖，有未保存修改时保留草稿。
@@ -54,3 +56,9 @@
 2026-10-22 设置抽屉增量：桌面1440×1000与窄屏390×844，通过菜单进入、模型编辑弹窗、阈值草稿跨抽屉保留、撤销和保存；API 确认保存后的阈值为64000。候选表在窄屏内部横向滚动，页面无横向溢出。真实连接测试收到模型空响应，页面原样呈现失败原因；同一模型的真实 Bot 对话成功。删除默认与会话切换模型未重验。证据留在本地 `.tools/verification/settings/evidence/`。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：设置抽屉编辑当前模型阈值，加入待保存配置并保存，GET 确认生效；连接测试、模型切换和表单边界未重验。
+
+- 2026-10-23 Codex 增量（Windows Chrome，隔离 home、真实 Codex 登录）：通过页面添加 `openai-codex/gpt-6.1-sol`、阈值 64000，保存并验证默认配置；登录徽标与真实连接测试通过（6827 ms）。删除与会话切换未重验。证据留在本地 `.tools/verification/codex/`。
+
+- 2026-10-23 登录命令增量：真实运行 `python -m thinllm auth codex` 导出已有登录的文件引用，合并到隔离连接文件后，Web 登录徽标、命令指引和真实连接测试通过（5245 ms）。首次登录的子进程调用与 stdout/stderr 分离经单测及 Windows 交互终端测试替身验证，未重走真实浏览器授权。证据留在本地 `.tools/verification/codex/auth-command/`。
+
+- 2026-10-23 独立 OAuth 增量：命令已去掉 Codex CLI 调用。真实导出已有登录，隔离 Web 的新指引、徽标与模型连接测试通过（5868 ms），共享凭据字节不变。直接授权的 PKCE、本地 HTTP 回调与独立保存经模拟授权服务验证；自动续期、失败保留原文件及双进程只刷新一次经测试验证。未实测真实账号的首次浏览器授权与新凭据续期，未重验 Bot 对话、删除和会话切换。证据留在本地 `.tools/verification/codex/oauth/`。

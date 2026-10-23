@@ -65,10 +65,15 @@ def configure(home: RedPandaHome) -> ModelConfig:
 
     specification = PROVIDERS[provider]
     connection = dict(connections[provider])
-    connection["api_key"] = _ask(
-        "API Key" + ("（本地服务未启用认证时可留空）" if not specification.api_key_required else ""),
-        connection["api_key"], secret=True, required=specification.api_key_required,
-    )
+    if specification.uses_codex_auth:
+        print("请先运行 python -m thinllm auth codex 复用登录或直接授权，获取连接配置。")
+        connection["auth_file"] = _ask("auth_file 路径（留空自动查找 thinllm 或 Codex 登录）",
+                                       connection["auth_file"])
+    else:
+        connection["api_key"] = _ask(
+            "API Key" + ("（本地服务未启用认证时可留空）" if not specification.api_key_required else ""),
+            connection["api_key"], secret=True, required=specification.api_key_required,
+        )
     if specification.base_url is None:
         while True:
             connection["base_url"] = _ask("服务地址（包含 /v1）", connection["base_url"], required=True)

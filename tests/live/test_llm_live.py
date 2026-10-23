@@ -6,7 +6,7 @@ import unittest
 import pytest
 
 from redpanda.config import load_app_config
-from thinllm import ChatCompletionsClient
+from thinllm import create_client
 from redpanda.llm.config import load_endpoint
 
 pytestmark = pytest.mark.live
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.live
 class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
     async def test_chat_roundtrip(self):
         config = load_app_config()
-        async with ChatCompletionsClient(load_endpoint(config.default)) as client:
+        async with create_client(load_endpoint(config.default)) as client:
             result = await client.chat(
                 [{"role": "user", "content": "Reply with the single digit 2."}],
                 config.default_model,
@@ -48,7 +48,7 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 },
             },
         }]
-        async with ChatCompletionsClient(load_endpoint(config.default)) as client:
+        async with create_client(load_endpoint(config.default)) as client:
             first = await client.chat(
                 [{"role": "user", "content": "调用 lookup 查询 key=answer。"}],
                 config.default_model,

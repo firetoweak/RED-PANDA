@@ -2,6 +2,10 @@
 from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
+
+from thinllm.auth import codex_auth_path, load_codex_auth
+from thinllm.errors import MissingProviderSetting
 
 
 @dataclass(frozen=True, slots=True)
@@ -9,11 +13,13 @@ class Provider:
     base_url: str | None = None
     api_key_required: bool = True
     pads_reasoning_content: bool = False
+    uses_codex_auth: bool = False
 
 
 PROVIDERS = {
     "deepseek": Provider("https://api.deepseek.com/v1", pads_reasoning_content=True),
     "openai": Provider("https://api.openai.com/v1"),
+    "openai-codex": Provider("https://chatgpt.com/backend-api/codex", uses_codex_auth=True),
     "qwen": Provider("https://dashscope.aliyuncs.com/compatible-mode/v1"),
     "stepfun": Provider("https://api.stepfun.com/step_plan/v1"),
     "bigmodel": Provider("https://open.bigmodel.cn/api/paas/v4"),
@@ -54,17 +60,17 @@ class Endpoint:
     base_url: str
     api_key: str | None
     pads_reasoning_content: bool
-
-
-class MissingProviderSetting(ValueError):
-    def __init__(self, setting: str):
-        self.setting = setting
-        super().__init__(f"{setting} is required")
+    account_id: str | None = None
+    auth_file: Path | None = None
 
 
 def resolve_endpoint(model: str, connection: Mapping[str, str]) -> Endpoint:
     name = model.partition("/")[0]
     provider = PROVIDERS[name]
+    if provider.uses_codex_auth:
+        path = codex_auth_path(connection["auth_file"]).resolve()
+        access_token, account_id = load_codex_auth(path)
+        return Endpoint(name, provider.base_url, access_token, False, account_id, path)
     base_url = provider.base_url
     if base_url is None:
         base_url = connection["base_url"].strip()

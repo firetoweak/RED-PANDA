@@ -1,21 +1,22 @@
-"""Thin client for built-in OpenAI-compatible model providers.
+"""Thin streaming clients for built-in model providers.
 
 Stays thin: no cross-provider fallback, load balancing, circuit breaking,
 cost tracking, model catalog or discovery, and no user-defined providers.
 """
 
 from thinllm.chat_completions import ChatCompletionsClient
+from thinllm.codex import CodexResponsesClient, create_client
 from thinllm.errors import (
     InvalidLLMResponse,
     LLMAuthenticationError,
     LLMContextLengthError,
     LLMProviderError,
     LLMTransientError,
+    MissingProviderSetting,
 )
 from thinllm.providers import (
     PROVIDERS,
     Endpoint,
-    MissingProviderSetting,
     resolve_endpoint,
 )
 from thinllm.types import (
@@ -29,6 +30,8 @@ from thinllm.types import (
 __all__ = [
     "PROVIDERS",
     "ChatCompletionsClient",
+    "CodexResponsesClient",
+    "create_client",
     "ContentDeltaSink",
     "Endpoint",
     "InvalidLLMResponse",

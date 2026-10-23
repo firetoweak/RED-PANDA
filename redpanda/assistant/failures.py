@@ -12,8 +12,9 @@ from redpanda.llm.api import (
 def assistant_failure_message(error: BaseException) -> str | None:
     if isinstance(error, LLMAuthenticationError):
         return (
-            "模型认证失败：API 密钥无效，或当前密钥无权访问配置的模型。"
-            "请检查个人目录 connections.json 中当前模型供应商的 API 密钥。"
+            "模型认证失败：登录凭据无效，或当前账号无权访问配置的模型。"
+            "请检查个人目录 connections.json 中的供应商设置；"
+            "openai-codex 可运行 python -m thinllm auth codex --login 重新授权并更新连接配置。"
         )
     if isinstance(error, LLMTransientError):
         return f"模型服务暂时不可用：{error}"
