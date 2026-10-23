@@ -56,7 +56,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
+it("群记录区分人和 Agent，显示点名与正在通知的成员", () => {
   api.group = group({
     calling: ["Lin"],
     messages: [
@@ -80,7 +80,7 @@ it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
   fireEvent.click(screen.getByRole("button", { name: "显示群资料" }));
   expect(screen.getByRole("complementary", { name: "群资料" })).toBeInTheDocument();
   expect(screen.getByText("@Lin")).toBeInTheDocument();
-  expect(screen.getByText("正在等 Lin 回应…")).toBeInTheDocument();
+  expect(screen.getByText("正在通知 Lin…")).toBeInTheDocument();
 });
 
 it("解散的群保留消息，只读查看", () => {

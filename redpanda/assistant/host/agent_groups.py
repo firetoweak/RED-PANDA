@@ -16,7 +16,7 @@ from redpanda.assistant.agents import (
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.agent_roster import AgentDeletedError
-from redpanda.runtime import AgentRuntime, DecisionCancelled, DomainFactCommitted, SqliteJournal, replay
+from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
 from redpanda.runtime.json_values import thaw_value
 
 _DRIVE = "group.drive"
@@ -80,7 +80,6 @@ class _Drive:
     outbox: dict[str, GroupMessage] = field(default_factory=dict)
     # Calls not yet answered, by member and the message it was asked to answer.
     answering: dict[tuple[str, str], _Call] = field(default_factory=dict)
-    waiting: dict[str, asyncio.Event] = field(default_factory=dict)
     # Set when a person's new message replaces this drive.
     replaced: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False
@@ -203,8 +202,8 @@ class AgentGroups:
             "group_id": group.group_id, "name": group.name,
             "dissolved": group.dissolved,
             "members": await self.member_names(group),
-            "calling": [(await self.host.agents.resolve_recorded(name)).name for name in drive.waiting]
-                       if drive is not None and drive.running and not group.dissolved else [],
+            "calling": [(await self.host.agents.resolve_recorded(drive.active)).name]
+                       if drive is not None and drive.running and drive.active is not None and not group.dissolved else [],
             "messages": [
                 {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
                  "mentioned_agents": fact.mentioned_agents, "reply_to": fact.reply_to,
@@ -352,63 +351,23 @@ class AgentGroups:
             self._changed(drive.group.group_id)
 
     async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
-        """A turn ends when the member speaks or its triggered work settles."""
+        """Deliver the response request without waiting for the member's work.
+
+        A member may start tools immediately and report much later. Its response
+        request must not hold up delivery to anyone else, including later work.
+        Re-delivery after a restart uses the original fact identity.
+        """
         agent = await self.host.agents.resolve_recorded(name)
         if agent.deleted:
             return
         delivery_id = f"attention:{drive.group.group_id}:{call.message_id}:{name}"
-        events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
-        accepted = next((event.event_id for event in events if event.delivery is not None
-                         and event.delivery.delivery_id == delivery_id), None)
-        if accepted is not None:
-            state = replay(agent.session_id, events).state
-            handled = {step.step.trigger_event_id for step in state.steps} | {
-                event.payload.trigger_event_id for event in events if isinstance(event.payload, DecisionCancelled)}
-            if accepted in handled:
-                return
         attention = fact_arguments(GroupAttention(group=drive.group.name, message_id=call.message_id),
                                    delivery_id=delivery_id)
-        spoke = drive.waiting[name] = asyncio.Event()
-        waits = []
         self._changed(drive.group.group_id)
         try:
-            try:
-                await self.host.request("fact", agent.session_id, attention)
-            except AgentDeletedError:
-                return
-            if await self._behind_running_commands(agent.session_id, delivery_id):
-                # The member answers once its running commands finish; nobody waits behind it.
-                return
-            waits = [asyncio.create_task(self.host.wait_quiescent(agent.session_id)),
-                     asyncio.create_task(spoke.wait()), asyncio.create_task(drive.replaced.wait())]
-            done, pending = await asyncio.wait(waits, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-            for task in done:
-                task.result()
-        finally:
-            for task in waits:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*waits, return_exceptions=True)
-            del drive.waiting[name]
-            self._changed(drive.group.group_id)
-
-    async def _behind_running_commands(self, session_id: str, delivery_id: str) -> bool:
-        """Whether a delivered call must wait for commands the member is already running.
-
-        Read from the member's Journal, not from whether its Worker is up: a Worker
-        started just to accept a group message is not busy.
-        """
-        events = await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
-        state = replay(session_id, events).state
-        attention = next(event.event_id for event in events
-                         if event.delivery is not None and event.delivery.delivery_id == delivery_id)
-        handled = {step.step.trigger_event_id for step in state.steps} | {
-            event.payload.trigger_event_id for event in events if isinstance(event.payload, DecisionCancelled)}
-        # Pending with nothing ready to decide: it is queued behind running commands.
-        return state.next_trigger_event_id is None and attention not in handled
+            await self.host.request("fact", agent.session_id, attention)
+        except AgentDeletedError:
+            return
 
     async def send(self, session_id: str, arguments: dict, origin: str, admit):
         """An Agent speech. ``admit`` checks the per-origin budget once the send is known to be new.
@@ -462,7 +421,6 @@ class AgentGroups:
                                    mentioned_agents=mention, origin=origin)
             if answered is not None:
                 del drive.answering[speaker, arguments["reply_to"]]
-            # Any speech from a member being called ends the Host's wait for it.
             if answered is None:
                 calls = drive.queue(speaker, mentioned, _Call(identity, identity, 1))
             else:
@@ -471,13 +429,11 @@ class AgentGroups:
             drive.outbox[identity] = message
             await self._save(drive, receipt=(identity, calls))
             await self._flush(drive)
-            if speaker in drive.waiting:
-                drive.waiting[speaker].set()
             self._schedule(drive)
             return self._delivered(group, identity, calls)
 
     def _delivered(self, group, identity, calls):
-        notice = ("已送达。" if calls is None else "已送达；被叫到的成员会依次回应，不等待回复。" if calls else
+        notice = ("已送达。" if calls is None else "已送达；已请相关成员分别处理，不等待回复。" if calls else
                   "已送达；这次群讨论已达轮数上限，不会再叫成员回应；需要某位同事接着处理时可以私信他。")
         return {"ok": True, "code": "DELIVERED", "data": {"message_id": identity, "group": group.name,
                 "notice": notice}}

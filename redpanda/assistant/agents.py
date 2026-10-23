@@ -382,7 +382,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
                 else "This agent updated its direction."}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
-            "It's your turn in this group chat. Reply with a single send_group_message if you have something worth adding, "
+            "Please respond to this group message. Use send_group_message if you have something worth adding, "
             "using reply_to to reference this message; if you have nothing new, end without a message. "
             "Never reveal private one-on-one context.")}
     if isinstance(fact, GroupCreated):

@@ -174,7 +174,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
           {reading.canReturn ? <Button className="jump-to-latest quote-return" variant="default" size="compact-sm" onClick={reading.returnToReading}>返回刚才的位置</Button> : reading.atBottom ? null : <Button className="jump-to-latest" variant="default" size="compact-sm" onClick={reading.latest}>{reading.pending > 0 ? `${reading.pending} 条新消息` : "回到最新"} ↓</Button>}
           <div className="group-composer-status" aria-live="polite">
             {group.calling.length === 0 ? null : (
-              <Text c="dimmed" fz={12}>正在等 {group.calling.join("、")} 回应…</Text>
+              <Text c="dimmed" fz={12}>正在通知 {group.calling.join("、")}…</Text>
             )}
           </div>
           {failure === null ? null : <Alert color="red">{failure}</Alert>}
