@@ -45,7 +45,7 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
     session: {
       status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [], pending_authorization_commands: [],
       should_wake: false, has_open_subagents: false, control_approval: null,
-      control_message: null, auto_authorize: false, paused: false, last_error: null,
+      control_message: null, auto_authorize: false, last_error: null,
     },
     items: [
       { kind: "user", message_id: "hi", text: "你好", occurred_at: "2026-10-19T00:00:00Z", images: [], files: [] },

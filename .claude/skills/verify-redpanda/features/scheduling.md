@@ -29,7 +29,7 @@
 - 时间较长，放在一轮验证的最后做。
 - 倒计时文字是英文（`Waiting up to ...`），照原样匹配，不要找中文。
 - 重启后的持久靠 sqlite + `OneShotClock.run` 的 `next_pending`，不是 `recovery.py`；`recovery.py` 只处理重启前「已开始但没结果」的 `schedule_once`/`cancel_schedule` 调用。
-- 重启后仍可运行的长期 Agent 自动续跑；人停止过的、或遗留结果未知且中断尚未被后续决策看见的 `execute_command` 保持 paused（见 crash-recovery）。定时事实仍会投递，暂停的会话需要点 `继续` 或发新消息才推进。
+- 重启后仍可运行的长期 Agent 自动续跑；定时事实照常投递并触发处理，未知结果由模型核对，无需人工继续。
 - 历史 live 状态：通过（2026-10-12，main@1a4790a），重启后持久性未测。2026-10-18 按源码改写，未重新 live 验证。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：UI 请求 45 秒 schedule_once，倒计时可见，无新用户输入即回复 WOKE_UP；重启持久性、取消与非法参数未重验。

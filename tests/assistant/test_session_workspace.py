@@ -44,9 +44,6 @@ class _IdleSessions:
     def auto_authorize(self) -> bool:
         return False
 
-    def is_paused(self, session_id: str) -> bool:
-        return False
-
     def current_failure(self, session_id: str) -> None:
         return None
 

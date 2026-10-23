@@ -3,6 +3,7 @@ import {
 } from "@mantine/core";
 import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
+import { z } from "zod";
 import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { Link, useParams } from "react-router-dom";
 
@@ -19,6 +20,7 @@ import { AgentStatus } from "../sessions/AgentStatus";
 import { GroupComposer } from "./GroupComposer";
 import { BotAvatar, ChatPresentation, identityColor, messageReference, MessageQuote, MessageMenu, type MessageReference } from "../conversation/ChatPresentation";
 import { useGroupReading } from "./useGroupReading";
+import { createClientId } from "../conversation/clientId";
 
 function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
   message: GroupMessage;
@@ -93,7 +95,14 @@ function GroupConversation({ groupId }: { groupId: string; }) {
     }
     setFailure(null);
     try {
-      await postMessage({ connectionId, groupId, text, mention }).unwrap();
+      const key = `redpanda.groupPending.${groupId}`;
+      const saved = localStorage.getItem(key);
+      const previous = saved === null ? null : z.object({ content: z.string(), deliveryId: z.string().min(1) }).parse(JSON.parse(saved));
+      const content = JSON.stringify([text, mention]);
+      const pending = previous?.content === content ? previous : { content, deliveryId: `web-${createClientId()}` };
+      localStorage.setItem(key, JSON.stringify(pending));
+      await postMessage({ connectionId, groupId, text, mention, deliveryId: pending.deliveryId }).unwrap();
+      localStorage.removeItem(key);
       reading.latest();
       return true;
     } catch (cause) {

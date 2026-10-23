@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
+import shlex
+import signal
 from tempfile import TemporaryDirectory
 import threading
 import unittest
@@ -21,6 +24,41 @@ from redpanda.paths import RedPandaHome
 
 
 pytestmark = pytest.mark.process
+
+
+def test_internal_git_descendants_exit_when_the_owner_is_killed(tmp_path):
+    """An internal Git invocation must not outlive the process recovering its work."""
+    script = tmp_path / "writer.py"
+    script.write_text("import os,time\nfrom pathlib import Path\n"
+                      "Path('writer.pid').write_text(str(os.getpid()))\n"
+                      "while True:\n with Path('writes').open('a') as f: f.write('write\\n')\n time.sleep(.03)\n")
+    command = "!" + shlex.join([Path(sys.executable).as_posix(), script.as_posix()])
+    code = ("import os,sys\nfrom pathlib import Path\n"
+            "from redpanda.assistant.agent_git import Git\n"
+            "root=Path(sys.argv[1]); (root/'owner.pid').write_text(str(os.getpid()))\n"
+            "Git(os.environ).run(root,'-c',sys.argv[2],'owned-writer')\n")
+    owner = subprocess.Popen([sys.executable, "-c", code, str(tmp_path), f"alias.owned-writer={command}"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 20
+        while not (tmp_path / "writes").exists():
+            if owner.poll() is not None:
+                raise AssertionError(owner.stderr.read().decode(errors="replace"))
+            assert time.monotonic() < deadline
+            time.sleep(.03)
+        pid = int((tmp_path / "owner.pid").read_text())
+        os.kill(pid, signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
+        owner.wait(timeout=20)
+        # Allow the OS Job / Linux subreaper to drain after the control owner dies.
+        time.sleep(.5)
+        before = (tmp_path / "writes").read_bytes()
+        time.sleep(.2)
+        assert (tmp_path / "writes").read_bytes() == before
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait(timeout=20)
+        owner.stderr.close()
 
 
 def tree(agent) -> Path:

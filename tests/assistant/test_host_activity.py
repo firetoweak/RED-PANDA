@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock
 
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor, Worker
-from redpanda.assistant.session_metadata import SessionFlagStore
 from redpanda.assistant.subagent.subagent import (
     DELEGATE,
     DelegateIntent,
@@ -22,6 +21,8 @@ from redpanda.assistant.subagent.subagent import (
 )
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import (
+    CommandPhase,
+    replay,
     AgentRuntime,
     InvokeTool,
     ModelDecision,
@@ -57,7 +58,6 @@ class HostStopChildrenTest(unittest.IsolatedAsyncioTestCase):
     async def test_failure_stopping_one_child_does_not_leave_others_unattempted(self):
         host = object.__new__(HostSupervisor)
         host.turn_locks = {}
-        host._pause = SessionFlagStore(None, "paused.json")
         host.workers = {}
         host.compact = SimpleNamespace(application=AsyncMock())
         host.store = SimpleNamespace(require=lambda _session: "journal")
@@ -76,7 +76,6 @@ class HostStopChildrenTest(unittest.IsolatedAsyncioTestCase):
             await host.cancel_turn("parent")
         self.assertIs(caught.exception, failure)
         self.assertEqual(set(attempted), {"child-1", "child-2"})
-        self.assertTrue(host.is_paused("parent"))
         host.wait_quiescent.assert_not_awaited()
 
 
@@ -115,7 +114,7 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_runnable_top_level_sessions_resume_unless_a_person_stopped_them(self):
+    async def test_startup_recovers_unknown_commands_and_ignores_legacy_stop_flags(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             home = RedPandaHome(root / "home")
@@ -173,7 +172,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 await crashed.advance("session-crashed")
                 await crashed.dispatcher.close()
 
-                # 人停止过的会话：同样还会自己往下走，但保持暂停。
+                # 废弃的会话暂停文件不再影响待处理消息。
                 await host.create("session-stopped", workspace.workspace_id)
                 await SqliteJournal(store.require("session-stopped")).accept_delivery(
                     EventDraft(
@@ -184,22 +183,18 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                         delivery=DeliveryIdentity("user", "d3"),
                     )
                 )
-                host._pause.set("session-stopped", True)
+                for name in ("paused.json", "execution_stopped.json"):
+                    (store.root / name).write_text('{"session-stopped": true}', encoding="utf-8")
                 host.resume = AsyncMock()
 
                 await host.resume_unfinished_sessions()
 
                 resumed = {call.args[0] for call in host.resume.await_args_list}
-                self.assertEqual(resumed, {"session-open"})
-                for session_id in ("session-waiting", "session-open", child):
-                    self.assertFalse(host.is_paused(session_id))
-                self.assertTrue(host.is_paused("session-crashed"))
-                self.assertTrue(host.is_paused("session-stopped"))
-
-                # Explicit continuation releases the stop. Once a decision has
-                # seen the interruption, the old unknown does not stop a later restart.
-                await host.retry("session-crashed")
-                self.assertFalse(host.is_paused("session-crashed"))
+                self.assertEqual(resumed, {"session-open", "session-crashed", "session-stopped"})
+                state = replay("session-crashed", await SqliteJournal(
+                    store.require("session-crashed")).snapshot("session-crashed")).state
+                self.assertEqual([command.phase for command in state.commands], [CommandPhase.UNKNOWN])
+                # 下一步交给模型核对，Host 不重试原命令。
                 reviewed = AgentRuntime(
                     SqliteJournal(store.require("session-crashed")),
                     ScriptedDecisionMaker((lambda _: ModelDecision(content="已核对中断现场"),)),
@@ -211,7 +206,6 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 host.resume.reset_mock()
                 await host.resume_unfinished_sessions()
                 self.assertIn("session-crashed", {call.args[0] for call in host.resume.await_args_list})
-                self.assertFalse(host.is_paused("session-crashed"))
             finally:
                 await host.close()
 

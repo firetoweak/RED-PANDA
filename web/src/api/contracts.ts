@@ -55,13 +55,6 @@ export const inboxItemSchema = z.discriminatedUnion("kind", [
     text: z.string().min(1),
   }).strict(),
   z.object({
-    kind: z.literal("paused"),
-    session_id: z.string().min(1),
-    workspace_id: z.string().min(1).nullable(),
-    label: z.string().min(1),
-    summary: z.string().min(1),
-  }).strict(),
-  z.object({
     kind: z.literal("absence"),
     session_id: z.string().min(1),
     workspace_id: z.string().min(1).nullable(),
@@ -84,7 +77,6 @@ const sessionViewSchema = z
     control_approval: controlApprovalSchema.nullable(),
     control_message: z.string().nullable(),
     auto_authorize: z.boolean(),
-    paused: z.boolean(),
     last_error: z.string().nullable(),
   })
   .strict();

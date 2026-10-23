@@ -4,7 +4,7 @@
 
 源码事实（判据以此为准，2026-10-18 核对）：
 - **进程结构**：Web 进程内的 `HostSupervisor`（`redpanda/assistant/host/supervisor.py`）为每个会话用 `multiprocessing` spawn 起 Worker 子进程（命令行含 `spawn_main`）；Worker 在父进程退出后自行退出（`worker.py` 的 `parent_process().join()`）。Worker 失败经 `report_worker_failures`（`redpanda/channels/web/app.py`）发 SSE `session_failed`，文案 `Session 进程失败：...`，同一文案也记为该会话的 `last_error`。
-- **重启恢复**：Web 启动时 `resume_unfinished_sessions` 自动推进仍可运行的顶层会话；人停止过的保持 paused。`execute_command` 已有 Attempt、没有结果，且中断尚未被后续决策看见时，也持久置为 paused，自动放行开启亦如此；须点 `继续` 或发新消息才恢复。子会话由父恢复时带起。
+- **重启恢复**：Web 启动时自动推进仍可运行的顶层会话；顶层即使已静止，仍恢复未结束的子任务、已提交的控制准备和已批准但尚未开始的控制执行。未知命令结果交给模型观察并决定后续动作，无需人工点击继续。子会话由父恢复时带起，未批准的控制操作仍等人，已开始而结果未知的操作不由系统重试。
 - **执行一半的工具**：journal 已记 attempt 但无结果的命令处于 `CommandPhase.UNKNOWN`（`redpanda/runtime/state.py`）。新 Worker 接管或 Web 启动时，`SqliteJournal.prepare_recovery` 为每个未完成 attempt 追加 `command.attempt.orphaned`（不是 Outcome，状态仍 unknown）；之后新消息不再被它挡住，接管时先找回已完成的真实命令结果；仍无法确认的调用，`再试`/`继续` 才会让模型看到 `NO_RESULT_YET` 并续步。给模型的投影 `NO_RESULT_YET`（`redpanda/assistant/context/projection.py`）：error「该调用已开始执行但没有结果，原因未知，可能仍在执行或已部分执行（工具=<name>）。」，hint「先检查相关文件、外部状态和仍在运行的操作，再决定等待、补做或重试。」。Web 中该调用状态 `unknown`、徽标 `中断`，错误文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`（`redpanda/assistant/conversations.py` 的 `UNKNOWN_TOOL_ERROR`）。**不会自动重试**。子 Agent 同理（`record_interrupted_return`）。
 - **待授权**：未授权的命令投影为 `AWAITING_AUTHORIZATION`，「尚未执行」。对已处理的命令再授权/拒绝 → `AuthorizationConflict`「该操作已处理或当前不可授权：<command_id>」→ HTTP 409。
 - **消息去重**：外部输入按 `(delivery_source, delivery_id)` 唯一（`redpanda/runtime/journal/sqlite.py`）；同一 `delivery_id` 同内容重发返回已有事件。不同内容在 Assistant 输入边界转为 `InputConflict`，经 IPC 回传，Web 返回 409；不新增事件、不使 Worker 失败。
@@ -42,10 +42,10 @@
 记录故障前的基线：`sqlite3 <会话 journal.sqlite> 'select count(*) from events'`、工作区文件哈希、上面的 Worker 列表。
 
 - **kill -9 Web（工具执行中）**：让模型 `execute_command` 跑 `sleep 30 && echo DONE >> out.txt`，运行中杀 Web，同 home 重启。
-  - (a) 该命令状态 `unknown`（`GET /api/sessions/<id>`），界面徽标 `中断`、文字 `执行已开始，但未取得最终结果，原因未知，可能已部分执行`；`session.paused` 为 true；事件数不少于基线 + 已提交事件；`out.txt` 是否存在都可以，但**之后不得再出现第二行 `DONE`**。
-  - (b) 重启后侧栏底部从 `正在连接…` 变为 `已连接`；会话不会自动续跑，输入框出现 `继续`；侧栏不应永远停在运行状态。
+  - (a) 该命令状态 `unknown`（`GET /api/sessions/<id>`），界面徽标 `中断`；模型自动读到 `NO_RESULT_YET`。原命令不被系统重放；核对模型之后主动选择的行为，不能把模型新发的命令误判为系统重放。
+  - (b) 重启后侧栏底部从 `正在连接…` 变为 `已连接`；会话自动续跑，没有会话级 `继续` 按钮。
   - (c) 其他会话 journal 不变；工作区里与该命令无关的文件不变；重启前记下的 Worker、命令及其后代进程都已退出，不继续写 journal 或任务文件。Linux 包含脱离原进程组的普通后代。
-  - (d) 不点 `继续` 再重启两次：仍 paused，不新增模型调用或同一命令的执行，文件不再追加。点 `继续` → 模型读到 `NO_RESULT_YET`，应先检查 `out.txt` 再决定；清理旧进程不等于操作没有产生副作用。
+  - (d) 待模型处理未知结果并静止后再次重启两次，不重复调用模型或原命令；由模型自行核对现场并决定下一步，清理旧进程不等于操作没有产生副作用。
 - **kill -9 Worker**：只杀 Worker。(b) SSE `session_failed`，界面横幅 `执行已停止。Session 进程失败：...`，按钮 `再试`。(a) 点 `再试` 或再发消息时 Worker 重新拉起，历史完整。(c) Web 进程与其他会话不受影响。(d) Web 已断开时 `再试` 禁用，重连后才可点击；请求发出后才断线可能显示 `再试失败，请确认后端连接后重试。`。
 - **断网**：
   - 连接被拒（base URL 指向不监听的端口）：(b) 约 3.5 秒（0.5+1+2 秒重试等待）后横幅 `执行已停止。运行失败：模型服务暂时不可用：... transport failed`。
@@ -68,7 +68,7 @@
 - 工具 handler 的普通 `Exception` 不是会话崩溃路径：应表现为工具结果 `TOOL_HANDLER_ERROR`（见 tool-coding-round），不应变成 `session_failed`。
 - 已知入口错误已分类：失效连接 409、空消息 422、授权目标不存在 404、重复授权/拒绝 409；内部契约违规与未知异常原样暴露，不做全局兜底。
 - `last_error` 不持久：重启 Web 后失败横幅消失，这是当前实现；"刷新后仍可见"只针对不重启的刷新。
-- 重启后会话被自动 paused 不是卡死，点 `继续` 即可。
+- 重启后无需点继续。认证错误、模型调用失败等仍如实显示错误及再试入口，不做无限重试。
 - Windows 上 Worker 在 Web 进程的 kill-on-close Job 里，随 Web 一起退出；仍用上面的进程查询确认没有残留。
 - 这些测试会故意破坏环境，只在临时 `REDPANDA_HOME` 与临时工作区里做。
 - 历史 live 状态：部分（2026-10-12，修复后）：模型失败可见与再试经隔离 API 注入认证失败验证（`.tools/verification/fixapi-20261012/`），kill -9 后工具不重复执行通过；真实 UI、真实供应商 429 未验。2026-10-18 按源码改写，未重新 live 验证；同日删除随文件服务移除的沙箱进程与挂载清理条目。
@@ -79,3 +79,7 @@
 - 2026-10-20 产品修复实测：Windows Chrome、真实模型、隔离 home；同内容重放 200、异内容 409、事件数不变、后续页面发消息得到 INPUT_REPLAY_OK。证据在本地 `.tools/verification/worker-crash-20261020/evidence/`。429/读超时、待授权跨重启与杀 Web 矩阵本次未重验。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：隔离配置无效 key 触发认证失败，刷新横幅仍在，恢复配置后再试成功且原输入仅一条；杀进程、断网、429 和未知命令恢复未重验。
+
+- 2026-10-22 恢复修复增量：Windows 隔离 Web、真实 DeepSeek，同一例行触发已被处理后模拟源头送达确认丢失，强制结束本实例并按原 home 重启；补投沿用原内容与身份，事实和模型决策均未增加，Chrome 刷新后历史、项目和执行记录一致。旧触发由脚本准备，未等待自然时钟；前台未知命令、子任务及群调度的恢复矩阵本轮未重验。证据在本地 `.tools/recovery-fixes/verification/evidence/`。
+
+- 2026-10-23 移除持久暂停验证：Windows Chrome、隔离 home、真实 DeepSeek：页面发起前台命令写 START 后等待；在 START 落盘处强制结束本实例 Web，正常入口重启后未点击继续或发送新输入，模型自动读到未知结果，自主读取文件并延迟复查。原写入命令只有一次、START 一行、DONE 不存在。静止后再次重启，四份 Journal 事件数完全不变。进程回归另覆盖正常关闭、强杀、前后台命令与连续两次重启。证据 `.tools/recovery-fixes/remove-stop-web/`。

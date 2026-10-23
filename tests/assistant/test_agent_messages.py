@@ -140,9 +140,8 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
         await self.host.set_auto_authorize(True)
         self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "idle", "Third": "idle"})
         self.assertEqual((await self.host._project_view("Lin")).pending_authorization_ids, ())
-        self.host._pause.set("Third", True)
         with patch.object(self.host, "activity", lambda session_id: "running" if session_id == "Lin" else "idle"):
-            self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "working", "Third": "paused"})
+            self.assertEqual(await statuses(), {"Elsewhere": "idle", "Lin": "working", "Third": "idle"})
 
     async def test_declared_direction_is_own_roster_entry_and_reaches_colleagues(self):
         binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]

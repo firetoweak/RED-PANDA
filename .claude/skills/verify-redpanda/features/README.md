@@ -65,15 +65,15 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | workspace-management | [workspace-management.md](./workspace-management.md) | `添加代码项目`、目录选择、可选关联；管理 API 保留 | 创建 Bot 中新增代码项目，返回后名字与选择保留，项目 worktree 与名册 GET 一致；本机目录选择、解除与冲突未重验。 |
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
 | colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具、方向与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 真实 declare_direction/list_colleagues，用户保存共同记忆，另一 Bot 下一轮读到新内容；超限、清空和冲突未重验。 |
-| private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、暂停的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；暂停接收和交流上限未重验。 |
+| private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、停止执行的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；停止执行接收和交流上限未重验。 |
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | 真实指定 project 落地后同步，包含两个子任务成果，差异清零且人的原始 note.txt 不变；同步他人新增成果、冲突和阻挡未重验。 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 PNG 真实粘贴、发送、刷新预览通过，GET 下载与原件逐字节相同；本机选择、普通文件、跨会话边界未重验。 |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 全局关闭自动放行后 write_file 等待，展开参数并允许后执行一次，待处理消失；拒绝与控制确认未重验。 |
-| inbox | [inbox.md](./inbox.md) | Bot 旁提示 → 对应对话处理授权、控制、交流超限、暂停消息与无人查看询问 | 名册提示与会话待处理参数、批准后清除通过；交流超限、暂停积压与长时间无人查看未重验。 |
+| inbox | [inbox.md](./inbox.md) | Bot 旁提示 → 对应对话处理授权、控制、交流超限、停止执行消息与无人查看询问 | 名册提示与会话待处理参数、批准后清除通过；交流超限、停止执行积压与长时间无人查看未重验。 |
 | group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 创建两成员群、@all 补全、人发言及两个 Bot 的真实群回复实时显示通过；成员改动与群回复引用跳转未重验。 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | 真实 read_file/apply_patch/write_file/execute_command 通过，文件只改在挂载项目内；后台命令与非零退出未重验。 |
 | session-file-changes | [session-file-changes.md](./session-file-changes.md) | Agent Git 差异摘要 → `文件改动` 内容页；子任务仅有只读接口，观察页无差异入口 | 按项目摘要、内容页标题、两个刷新入口、两文件正文与行号对照 GET 通过，落地后摘要清零；大文件分页和版本冲突未重验。 |
-| run-control | [run-control.md](./run-control.md) | 打断并发送、前台停止/继续、失败再试；后台命令单独停止 | 子助手已回复但协作未结束时，父空闲显示发送与停止；显式回收后停止消失；认证失败再试通过。 |
+| run-control | [run-control.md](./run-control.md) | 打断并发送、前台打断、失败再试；后台命令单独停止 | 子助手已回复但协作未结束时，父空闲显示发送与停止；显式回收后停止消失；认证失败再试通过。 |
 | subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 无项目子助手初稿、同一子追问与多批普通回复、父显式 reclaim 通过；过程页可观察，普通回复不自动结束协作。 |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | 真实 update_plan 建两步计划并全部完成，展开归档与 GET 一致；中断、compact 和跨 Agent 回收未重验。 |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 消息时间、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合时间与上下文用量环、200K 阈值和 GET 一致，不再有轮次耗时；compact 未触发。 |

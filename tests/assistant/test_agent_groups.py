@@ -12,7 +12,7 @@ from redpanda.assistant.agent_messages import SEND_GROUP_MESSAGE
 from redpanda.assistant.agents import (
     GROUP_ATTENTION, GROUP_CREATED, GROUP_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
 )
-from redpanda.assistant.host.agent_groups import GroupNameTaken
+from redpanda.assistant.host.agent_groups import AgentGroups, GroupNameTaken
 from redpanda.assistant.host.agent_roster import AgentNotFound
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -139,6 +139,58 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                 await self.group(members, name=f"组-{members}")
         self.assertEqual([item.group_id for item in await self.host.agent_groups.list()], [group.group_id])
 
+    async def test_restart_completes_partial_delivery_and_preserves_human_request_identity(self):
+        group = await self.group()
+        deliver = self.host.request.side_effect
+
+        async def lost(operation, session_id, arguments):
+            if session_id == "Lin" and arguments["fact_type"] == GROUP_MESSAGE:
+                raise EOFError("recipient unavailable")
+            return await deliver(operation, session_id, arguments)
+
+        self.host.request.side_effect = lost
+        with self.assertRaises(EOFError):
+            await self.host.agent_groups.post(group.group_id, "大家看看", [], delivery_id="original")
+        # Let successful recipients finish before replacing the Host-owned service.
+        await asyncio.sleep(.05)
+        self.host.request.side_effect = deliver
+        self.host.agent_groups = AgentGroups(self.host)
+        await self.host.agent_groups.recover()
+        await self.settled(group)
+        self.assertEqual(self.calls, list(MEMBERS))
+        await self.host.agent_groups.post(group.group_id, "大家看看", [], delivery_id="original")
+        await self.settled(group)
+        self.assertEqual(self.calls, list(MEMBERS))
+        self.assertEqual(len(await self.host.agent_groups.messages(group.group_id)), 1)
+        for name in MEMBERS:
+            self.assertEqual(len(await self.facts(name, GROUP_MESSAGE)), 1)
+            self.assertEqual(len(await self.facts(name, GROUP_ATTENTION)), 1)
+        with self.assertRaisesRegex(ValueError, "conflicts"):
+            await self.host.agent_groups.post(group.group_id, "改过的正文", [], delivery_id="original")
+
+    async def test_restart_preserves_waiting_batch_without_recalling_completed_members(self):
+        group = await self.group()
+        original = self.host.agent_groups
+        call = original._call
+
+        async def die_before_lin(drive, name, request):
+            if name == "Lin":
+                raise EOFError("Host exited")
+            await call(drive, name, request)
+
+        with patch.object(original, "_call", side_effect=die_before_lin):
+            await original.post(group.group_id, "大家看看", [])
+            await self.settled(group)
+        self.assertEqual(self.calls, ["Ada"])
+        self.host.agent_groups = AgentGroups(self.host)
+        await self.host.agent_groups.recover()
+        await self.settled(group)
+        self.assertEqual(self.calls, list(MEMBERS))
+        self.host.agent_groups = AgentGroups(self.host)
+        await self.host.agent_groups.recover()
+        await self.settled(group)
+        self.assertEqual(self.calls, list(MEMBERS))
+
     async def test_human_mentions_choose_who_is_called_and_in_what_order(self):
         group = await self.group()
         await self.host.agent_groups.post(group.group_id, "请两位看看", ["Third", "Ada"])
@@ -166,6 +218,16 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await self.host.agent_groups.messages(group.group_id)), 10)
         # A speaker never receives its own speech; others receive every one.
         self.assertEqual(len(await self.facts("Ada", GROUP_MESSAGE)), 7)
+        last = (await self.host.agent_groups.messages(group.group_id))[-1]
+        original = self.work[-1].result()[0]
+        self.host.agent_groups = AgentGroups(self.host)
+        await self.host.agent_groups.recover()
+        await self.settled(group)
+        repeated = await self.host.agent_groups.send(last.sender.name, {
+            "group": last.group, "text": last.text, "mention": last.mentioned_agents,
+            "reply_to": last.reply_to, "message_id": last.message_id}, last.origin, AsyncMock())
+        self.assertEqual(repeated, original)
+        self.assertEqual(len(self.calls), 9)
         self.calls.clear()
         self.speeches = {}
         await self.host.agent_groups.post(group.group_id, "这次不用回", [])
@@ -260,8 +322,9 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.host.wait_quiescent.side_effect = slow
         with patch.object(self.host, "activity", return_value="running"):
             await self.host.agent_groups.post(group.group_id, "大家看看", [])
-            for _ in range(20):
-                await asyncio.sleep(0)
+            async with asyncio.timeout(5):
+                while not self.host.agent_groups._drives[group.group_id].waiting:
+                    await asyncio.sleep(.01)
             self.assertEqual(self.host.agent_groups._drives[group.group_id].waiting.keys(), {"Ada"})
             release.set()
             await self.settled(group)

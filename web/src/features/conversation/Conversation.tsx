@@ -434,7 +434,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           {activePlan === null ? null : (
             <Box className="composer-column" mb={8}>
               <WorkPlanPanel plan={activePlan}
-                stopped={!running && (conversation.session.paused || lastError != null)} />
+                stopped={!running && lastError != null} />
             </Box>
           )}
         </Box>
@@ -496,19 +496,9 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           sending={sending.isLoading}
           running={running}
           canStop={running || subagentsOpen}
-          shouldWake={
-            conversation.session.should_wake && lastError == null
-          }
           stopBusy={stopping.isLoading}
-          retryBusy={retrying.isLoading}
           inputTokens={conversation.context_input_tokens}
           onSend={send}
-          onRetry={() => {
-            if (connectionId === null) {
-              return;
-            }
-            void retryTurn({ connectionId, sessionId }).unwrap();
-          }}
           onStop={() => {
             if (connectionId === null) {
               return;

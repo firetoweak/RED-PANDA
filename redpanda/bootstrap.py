@@ -137,9 +137,10 @@ async def bootstrap_assistant(
             home, diff_summarizer=LlmSkillDiffSummarizer(llm, lambda: models.config().default_model or "")
         )
         async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
-            host.start_automation(tasks)
-            await host.resume_unfinished_sessions()
             try:
+                # Take over old attempts before clocks can deliver new work.
+                await host.resume_unfinished_sessions()
+                host.start_automation(tasks)
                 yield BootstrappedAssistant(
                     config,
                     host,

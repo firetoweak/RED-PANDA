@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from datetime import timedelta
 from unittest.mock import patch
@@ -9,6 +13,8 @@ from unittest.mock import patch
 from redpanda.automation.routines import (
     ACTIVE, PAUSED, PAUSED_BY_USER, RoutineStore,
 )
+from redpanda.assistant.host.supervisor import HostSupervisor
+from redpanda.runtime import AgentRuntime, SqliteJournal
 
 
 class RoutineStoreTest(unittest.TestCase):
@@ -69,6 +75,39 @@ class RoutineStoreTest(unittest.TestCase):
         self.assertIsNotNone(resumed.next_due)
         self.assertEqual(self.store.set_state("cmd-4", "agent", routine_id, "deleted")["code"], "ROUTINE_DELETED")
         self.assertEqual(self.store.list("agent"), ())
+
+    def test_a_fired_fact_keeps_its_content_after_edit_and_restart(self):
+        routine_id = self.save()["data"]["routine_id"]
+        original = self.store.fire(self.store.list("agent")[0])
+        runtime = AgentRuntime(SqliteJournal(self.path.parent / "journal.sqlite"), None, {})
+
+        async def receive(operation, session_id, arguments):
+            self.assertEqual(operation, "fact")
+            await runtime.receive_domain_fact(session_id, **arguments)
+
+        async def redeliver():
+            host = SimpleNamespace(request=receive)
+            await HostSupervisor._deliver_routine(host, original)
+            # The fact arrived, but the clock lost its acknowledgement before the edit.
+            self.save("edit", routine_id=routine_id, name="新的名字", intent="新的意图。")
+            restored = RoutineStore(self.path)
+            recovered = restored.undelivered()
+            self.assertEqual(recovered, original)
+            await HostSupervisor._deliver_routine(host, recovered)
+            self.assertEqual(len(await runtime.snapshot("agent")), 1)
+            restored.delivered(original.fire_id)
+            history = restored.fires("agent", routine_id)[0]
+            self.assertEqual((history.name, history.intent), (original.name, original.intent))
+            following = restored.fire(restored.list("agent")[0])
+            self.assertEqual((following.name, following.intent), ("新的名字", "新的意图。"))
+
+        asyncio.run(redeliver())
+
+    def test_schema_without_frozen_fire_content_is_rejected(self):
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute("PRAGMA user_version = 2")
+        with self.assertRaisesRegex(ValueError, "unsupported routine schema version: 2"):
+            RoutineStore(self.path)
 
     def test_every_keeps_its_phase_when_waking_late_and_skips_missed_slots(self):
         self.save(schedule="@every 5m")

@@ -234,12 +234,12 @@ export const redpandaApi = createApi({
     }),
     postGroupMessage: build.mutation<
       GroupView,
-      { connectionId: string; groupId: string; text: string; mention: string[] }
+      { connectionId: string; groupId: string; text: string; mention: string[]; deliveryId: string }
     >({
-      query: ({ connectionId, groupId, text, mention }) => ({
+      query: ({ connectionId, groupId, text, mention, deliveryId }) => ({
         url: `/groups/${encodeURIComponent(groupId)}/messages`,
         method: "POST",
-        body: { connection_id: connectionId, text, mention },
+        body: { connection_id: connectionId, text, mention, delivery_id: deliveryId },
       }),
       transformResponse: (value: unknown) => groupViewSchema.parse(value),
       transformErrorResponse: (response) => response.status === 422 || response.status === 404
