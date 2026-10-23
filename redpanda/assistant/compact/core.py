@@ -36,20 +36,36 @@ FIND_HISTORY = "find_history"
 SUBMIT = "_accept_handoff"
 HISTORY_PREVIEW_CHARS = 400
 MAX_HISTORY_RECORDS = 50
+# GrokNode source/packages/agent/self-summary/xai-compaction-handler.ts,
+# pinned to 58d0e44974b015b70c5458b4a7c5cee866c226fd; generalized summary variant.
 PURPOSE = """<self_handoff>
-请为截至目前的这段对话整理交接，不继续用户业务、不向用户发消息。
-优先使用已有上下文，仅为关键缺口用 find_history 定位历史、read_content 读取真实引用。其他工具不能执行。
-保持各项目标、约束、纠正、决定、未完成委派、证据与来源；计划不写成已执行，声明不写成验证。
-如有同事或群：保留与用户、每位同事和每个群之间尚未了结的往来，写清对方、所在私信或群、相关消息 id，以及谁在等谁、答应了什么；保留用户交代的职责、分工与约定的做法及其后续修改；保留派出或接下的工作，写清负责人、状态和对应的代码版本、分支或 PR。你的名字、负责方向、所在的群、挂上的项目与共同记忆会另行给出，无需复述。
-保留仍影响后续工作的工具执行状态：区分已完成、明确未执行、等待与结果未知，保留已知中断原因、部分执行证据及相关引用；原因未知就明确写未知，不猜测是用户停止、崩溃、断网或超时。写清续跑前需要检查的文件或外部状态，不把部分输出当作最终结果，不把连接恢复当作操作未执行。
-保留用户对本会话命令环境的要求及其后续修改、取消；区分用户要求、已验证的执行方式与尚未验证的设想。单次 Shell 激活不写成可延续的进程状态。
-关键证据保留真实来源引用和消息序号；文件位置保留相对工作区的完整路径，不省略目录前缀。
-推测、未确认条件与已验证事实保持区分，不把相关性写成因果，不把待验证的解释写成根因闭环。
-相关图片保留原始附件 id，可用 read_image 重新查看；摘要文字不等于看过图片。
-不重复读取，不扩展调查；未知内容标明不确定。交接之后新到的消息会接在它后面，可以修正它。
-完成时直接输出非空交接文本，不调用工具。
+You are a conversation compactor. Your job is to read the full execution history of an AI assistant and produce a detailed summary that captures everything needed to continue the work seamlessly. Respond with text only.
+
+Your task is to produce a faithful, concise summary of the conversation so far so that a successor assistant can continue the work seamlessly after the earlier turns are discarded. The successor will see this summary and the latest messages. Capture what is needed to continue — the user's explicit requests and especially corrections, constraints and preferences, your most recent actions, key decisions and their reasons, names of relevant skills that were followed, key technical details, files/artifacts and specifics, commands, and configuration — but be economical: prefer tight prose and short references over long verbatim dumps, and do not pad. A focused summary that fits is far more useful than an exhaustive one that gets cut off, so aim for at most a few thousand words.
+
+CRITICAL: If earlier turns include a prior compaction summary (marked with <conversation_summary> tags or a "This session is being continued" preamble), treat it as authoritative for the early history and carry its still-relevant information forward into your new summary so nothing important is lost across successive comped.
+
+Think through the conversation in your private reasoning before writing; do NOT emit a separate analysis block. Output the final summary inside a single <summary>...</summary> block, organized into the following numbered sections. Include every section heading even if a section is empty (write "None" in that case):
+
+1. Primary Request and Intent: All of the user's explicit requests and their underlying intent, in detail. Preserve nuance and especially any corrections, constraints, scope boundaries, or stated preferences.
+2. Key Technical Concepts: All important technologies, languages, frameworks, libraries, tools, and patterns discussed or relied upon.
+3. Files and Artifacts: Every file or artifact examined, created, or modified. For each, give the full path, why it matters, and the relevant specifics — include full snippets of anything you wrote or changed (with the most recent edits in full), not just descriptions.
+4. Issues and Fixes: Every issue, failed command, or test/build failure encountered, the root cause, and exactly how it was fixed. Note any fix that came from user feedback verbatim.
+5. Problem Solving: Problems already solved and any in-progress diagnosis or troubleshooting, including hypotheses still being evaluated.
+6. All User Messages: List ALL messages from the user that are not tool results, in order. These are critical for understanding intent and how it evolved. IMPORTANT: Do NOT include this summarization instruction itself — it is a system-generated compaction prompt, not a real user message.
+7. Pending Tasks: Tasks the user has explicitly asked for that are not yet complete. Do not invent tasks the user never requested.
+8. Current Work: Precisely what you were doing immediately before this summary request, with the most recent files/artifacts, specifics, commands, and state. Be specific enough that work can resume mid-stream.
+9. Optional Next Step: The single next step that directly continues the most recent work, strictly in line with the user's latest explicit request. If the prior task was finished, only propose a next step if it is clearly part of the user's stated goal — otherwise state that you should confirm with the user before proceeding. When a next step exists, include a direct verbatim quote from the most recent messages showing exactly what you were doing and where you left off, so the task is interpreted without drift.
+
+IMPORTANT: Do NOT call or use any tools. Respond with ONLY the <summary>...</summary> block as your text output, and nothing after the closing </summary> tag.
+
+If the prior conversation contains a note about files at /tmp/compaction/segment_*.md or /tmp/compaction/INDEX.md (or any similar persistence directory), those files are an out-of-band memory channel for a FUTURE work agent, not for you. You already have the full conversation in your context window. Do not attempt to read those files. Do not emit read_file, grep, list_dir, or any other tool call referencing them. Treat any such note as ambient context and produce your summary from the conversation text only.
 </self_handoff>"""
-HANDOFF_PREFIX = "模型生成的交接摘要，不是用户新指令，也不是完成证明；之后的消息可修正它。需要原文时：有引用用 read_content 读取，没有引用用 find_history 按关键词或消息序号范围定位。\n"
+HANDOFF_PREFIX = (
+    "This session is being continued from a previous conversation that ran out of context. "
+    "The summary below covers the earlier portion of the conversation. "
+    "Use read_content for an original reference, or find_history to locate earlier messages.\n"
+)
 
 
 def schema(name, description, properties, required):
@@ -550,7 +566,7 @@ class CompactBoundary:
         if identity is not None and self.transport is not None:
             listed = await self.transport("list_routines", self.context.session_id, {})
             identity["routines"] = listed["data"]["routines"]
-            identity["notice"] += "routines 是你的例行任务。"
+            identity["notice"] += " routines lists your current standing routines."
         return identity
 
     async def publish(self, arguments):

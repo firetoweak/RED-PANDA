@@ -409,7 +409,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         payload = json.loads(answer["content"])
         self.assertIsNone(payload["ok"])
         self.assertEqual(payload["code"], "AWAITING_AUTHORIZATION")
-        self.assertIn("尚未执行", payload["hint"])
+        self.assertIn("has not run", payload["hint"])
 
     async def test_in_flight_command_is_not_reported_as_awaiting_authorization(self):
         """起过 attempt 的命令和等授权的命令必须分开。
@@ -451,9 +451,9 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         )
         payload = json.loads(self._tool_messages(messages)[0]["content"])
         self.assertEqual(payload["code"], "NO_RESULT_YET")
-        self.assertIn("原因未知", payload["error"])
-        self.assertIn("可能仍在执行", payload["error"])
-        self.assertNotIn("用户停止", payload["error"])
+        self.assertIn("reason is unknown", payload["error"])
+        self.assertIn("may still be running", payload["error"])
+        self.assertNotIn("user stopped", payload["error"])
 
         gate.set()
         while runtime.dispatcher.active_count:
@@ -497,10 +497,10 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(done, _result("done"))
             self.assertIsNone(unknown["ok"])
             self.assertEqual(unknown["code"], "NO_RESULT_YET")
-            self.assertIn("原因未知", unknown["error"])
-            self.assertIn("已部分执行", unknown["error"])
-            self.assertIn("先检查相关文件", unknown["hint"])
-            self.assertNotIn("用户停止", unknown["error"])
+            self.assertIn("reason is unknown", unknown["error"])
+            self.assertIn("partially executed", unknown["error"])
+            self.assertIn("Check the relevant files", unknown["hint"])
+            self.assertNotIn("user stopped", unknown["error"])
 
     async def _history(self, scripts, tools, users: tuple[str, ...]):
         delivered: list[str] = []

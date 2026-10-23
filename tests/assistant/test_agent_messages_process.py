@@ -12,7 +12,7 @@ import pytest
 
 from redpanda.assistant.agent_messages import DECLARE_DIRECTION, SEND_GROUP_MESSAGE, SEND_MESSAGE
 from redpanda.assistant.agents import (
-    COLLEAGUE_JOINED, DIRECTION_DECLARED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
+    AGENT_CREATED, COLLEAGUE_JOINED, DIRECTION_DECLARED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
 )
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -46,7 +46,7 @@ class MessagingLlm(ProcessLlm):
         for message in reversed(messages):
             if message["role"] == "assistant":
                 break
-            if "轮到你回应这条群消息" in str(message.get("content")):
+            if f'"fact": "{GROUP_ATTENTION}"' in str(message.get("content")):
                 attention = json.loads(message["content"])["data"]
                 break
         if attention is not None:
@@ -114,8 +114,9 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         await self.settled(kai)
         for agent in (self.ada, self.lin):
             await self.settled(agent)
-        self.assertTrue(any("你刚成为一位长期 Bot" in json.dumps(r["messages"], ensure_ascii=False)
-                            and "Kai" in json.dumps(r["messages"], ensure_ascii=False) for r in self.llm.requests))
+        self.assertTrue(any(f'"fact": "{AGENT_CREATED}"' in str(message["content"])
+                            and '"name": "Kai"' in str(message["content"])
+                            for r in self.llm.requests for message in r["messages"]))
         roster = {entry.agent.name: entry.direction for entry in await self.host.agents.list()}
         self.assertEqual(roster, {"Ada": None, "Kai": "负责命令执行", "Lin": None})
         for agent in (self.ada, self.lin):
