@@ -42,6 +42,7 @@ from redpanda.channels.web.directory_picker import (
     select_directory,
 )
 from redpanda.channels.web.hub import WebEventHub
+from redpanda.channels.mcp import create_mcp_app
 from redpanda.filesystem.registry import (
     WorkspaceNotFound,
     WorkspacePathTaken,
@@ -215,12 +216,16 @@ def create_web_app(
     static_dir: Path | None = None,
     shared_memory: SharedMemoryStore | None = None,
     avatars: AvatarStore | None = None,
+    external_messages=None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        mcp_app = create_mcp_app(lambda: app.state.external_messages)
+        app.state.collaboration_mcp = mcp_app
         app.state.hub = events
+        app.state.external_messages = external_messages
         if channel is not None:
             app.state.channel = channel
             app.state.models = models
@@ -228,7 +233,8 @@ def create_web_app(
             app.state.workspaces = workspaces
             app.state.shared_memory = shared_memory
             app.state.avatars = avatars
-            yield
+            async with mcp_app.router.lifespan_context(mcp_app):
+                yield
             return
         async with bootstrap_assistant(
             events.output_final,
@@ -245,6 +251,7 @@ def create_web_app(
             context_usage_sink=events.context_usage,
             conversation_status_sink=events.conversation_status,
         ) as assistant:
+            app.state.external_messages = assistant.sessions.external_messages
             app.state.channel = WebChannel(
                 assistant.sessions,
                 assistant.queries,
@@ -260,7 +267,8 @@ def create_web_app(
                 name="web-assistant-failure",
             )
             try:
-                yield
+                async with mcp_app.router.lifespan_context(mcp_app):
+                    yield
             finally:
                 failures.cancel()
                 await asyncio.gather(failures, return_exceptions=True)
@@ -727,6 +735,10 @@ def create_web_app(
         finally:
             await request.app.state.hub.auto_authorize_changed()
 
+    async def collaboration(scope, receive, send):
+        await app.state.collaboration_mcp(scope, receive, send)
+
+    app.mount("/mcp", collaboration, name="collaboration")
     if static_dir is not None:
         app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
         app.mount("/", _FrontendFiles(directory=static_dir), name="frontend")

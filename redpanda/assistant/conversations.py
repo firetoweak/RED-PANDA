@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
+from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, parse_external
 from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent, project_direction
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
@@ -154,7 +155,19 @@ class PrivateMessageItem:
     occurred_at: datetime
 
 
-ConversationItem = UserItem | StepItem | PrivateMessageItem
+@dataclass(frozen=True, slots=True)
+class ExternalMessageItem:
+    kind: Literal["external_message"]
+    message_id: str
+    direction: Literal["sent", "received"]
+    peer: str
+    text: str
+    revision: str | None
+    reference: str | None
+    occurred_at: datetime
+
+
+ConversationItem = UserItem | StepItem | PrivateMessageItem | ExternalMessageItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,8 +514,20 @@ def project_conversation(
             communication_notices.setdefault(event.causation_id, []).append(
                 parse_agent_fact(event.payload))
     items: list[ConversationItem] = []
+    external_peers: dict[str, str] = {}
     for event in events:
         payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == EXTERNAL_MESSAGE:
+            message = parse_external(payload)
+            peer = message.name
+            if message.incoming:
+                external_peers[message.message_id] = message.name
+            else:
+                peer = external_peers[message.reply_to]
+            items.append(ExternalMessageItem("external_message", message.message_id,
+                "received" if message.incoming else "sent", peer, message.text,
+                message.revision, message.reference, event.occurred_at))
+            continue
         if event.event_id in sent_messages:
             message = sent_messages[event.event_id]
             items.append(PrivateMessageItem("private_message", message["message_id"],

@@ -94,6 +94,7 @@ RED PANDA 以长期 Bot 协作为核心，是以编码为主的泛用 Bot：Agen
 | [Channel 接入契约](架构/入口/Channel接入契约.md) | 准绳：Web 常驻与 TUI 单会话的地位；identity、投递幂等、Event wake、输出路由 |
 | [入口与授权](架构/入口/入口与授权.md) | TUI 行为；控制提案的事实形状 |
 | [Web](架构/入口/Web.md) | Web Channel 与前端状态边界 |
+| [外部协作](架构/入口/外部协作.md) | 外部编码端的协作身份、范围、消息往返与授权边界 |
 | [会话模型选择](架构/入口/会话模型选择.md) | 会话偏好、决策生效边界与个人连接热更新 |
 | [Command 授权](架构/入口/Command授权.md) | Command Authorization 契约；Control Approval 另做 |
 

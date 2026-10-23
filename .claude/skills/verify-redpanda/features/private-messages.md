@@ -38,6 +38,18 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
   - (c) `GET /api/inbox` 出现交流超限提示（`kind: limit`），没有批准按钮；人在发送方会话再发消息后消失，详见 inbox。不能再按「收件箱只有授权和控制提案」判定。
   - (d) 超限的那一次调用之后，对方 journal 的私信条数不增加。
 
+## 外部编码协作者（MCP）
+
+从空 Web 首页新建一位协调 Bot。在同一数据根运行 `python -m redpanda.channels.mcp --home <隔离home> --name 外部编码端 --bot <Bot名字> --url <隔离Web地址>`，把输出的 URL 和 Authorization header 用于真实 MCP 客户端。不要把凭据贴进模型消息或证据。
+
+外部端调用 `get_context` 确认身份与协作 Bot，用 `send_message` 发送带完整提交号 `revision`、成果 `reference` 和唯一 `delivery_id` 的请求，再用 `read_messages` 获取反馈。内部 Bot 用 `reply_external_message`，`reply_to` 引用收到的外部 `message_id`。验收入口是 MCP 客户端；Web 用来确认人的可观察结果，不能用 Web API 发普通用户消息替代外部请求。
+
+页面判据：协调 Bot 的时间线出现“外部协作者”“消息来自/已发消息给”、外部名字、正文、请求版本与成果引用。外部名字不会跳到同名内部 Bot；刷新后收发记录不丢失、不重复。外部端读到 Bot 的显式回复与原 `reply_to`，普通结尾仍给人看。服务重启后原凭据可重新连接，按原游标续读；新消息不会被当成人的批准。
+
+隔离与错误判据：无效或撤销的凭据返回 401；不同接入之间不能读到彼此消息，不能读 Bot 的用户私聊。重试同一 `delivery_id` 与内容只投递一次，更改内容得到 `DELIVERY_CONFLICT`。非法参数不能产生消息；其他 Bot 不能回复不属于自己的外部消息。撤销后停止接受新的发送、读取与回复，历史保留。
+
+2026-10-23 增量：Windows、独立 home/端口、真实 MCP SDK 和 DeepSeek 已完成发送→模型显式回复→客户端读取，完整提交号与回复引用保留，Web 实时展示和刷新可见。凭据隔离、重复发送、游标与撤销由入口边界检查覆盖。完整测试团队实际跑代码与外部编码端自动唤醒不在这次 live 验收范围。原始证据留在本地 `.tools/mcp-live/evidence/`。
+
 ## Gotchas
 
 - 私信只装配给有长期身份的 Agent。普通会话、子 Agent 没有 `send_message`。

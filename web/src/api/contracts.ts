@@ -235,6 +235,16 @@ export const conversationViewSchema = z
     items: z.array(
       z.discriminatedUnion("kind", [
         z.object({
+          kind: z.literal("external_message"),
+          message_id: z.string().min(1),
+          direction: z.enum(["sent", "received"]),
+          peer: z.string().min(1),
+          text: z.string().min(1),
+          revision: z.string().nullable(),
+          reference: z.string().nullable(),
+          occurred_at: z.string().datetime({ offset: true }),
+        }).strict(),
+        z.object({
           kind: z.literal("private_message"),
           message_id: z.string().min(1),
           direction: z.enum(["sent", "received"]),

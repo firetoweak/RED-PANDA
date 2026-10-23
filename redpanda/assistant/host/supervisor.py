@@ -43,6 +43,8 @@ from redpanda.assistant.host.agent_projects import AgentProjects, ProjectLinkRef
 from redpanda.assistant.agent_git import GitWorkspace
 from redpanda.assistant.host.agent_messages import AgentMessages
 from redpanda.assistant.host.agent_groups import AgentGroups
+from redpanda.assistant.host.external_messages import ExternalMessages
+from redpanda.assistant.external_messages import REPLY_EXTERNAL
 from redpanda.assistant.agent_messages import (
     DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_FILE, SEND_GROUP_MESSAGE, SEND_MESSAGE,
 )
@@ -204,6 +206,7 @@ class HostSupervisor:
         self.lifecycle = AgentLifecycle(self)
         self.agent_messages = AgentMessages(self)
         self.agent_groups = AgentGroups(self)
+        self.external_messages = ExternalMessages(self)
         self.agent_worktrees = AgentWorktrees(home, self.command_environment)
         self.agent_projects = AgentProjects(self)
         self._agent_creation_lock = asyncio.Lock()
@@ -365,6 +368,8 @@ class HostSupervisor:
             return await self.agent_messages.colleagues(session_id)
         if operation == SEND_MESSAGE:
             return await self.agent_messages.send(session_id, arguments)
+        if operation == REPLY_EXTERNAL:
+            return await self.external_messages.reply(session_id, arguments)
         if operation == SEND_GROUP_MESSAGE:
             return await self.agent_messages.send_group(session_id, arguments)
         if operation == DECLARE_DIRECTION:

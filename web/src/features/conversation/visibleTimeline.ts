@@ -43,6 +43,7 @@ export type VisiblePrivateMessage = {
   direction: "sent" | "received";
   peer: string;
   occurredAt: string;
+  external?: { text: string; revision: string | null; reference: string | null };
 };
 
 export type VisibleItem = VisibleUser | VisibleStep | VisiblePrivateMessage;
@@ -62,6 +63,16 @@ export function visibleTimeline(
       .map((item) => item.output_id),
   );
   const items: VisibleItem[] = conversation.items.map((item) => {
+    if (item.kind === "external_message") {
+      return {
+        key: `external:${item.message_id}`,
+        kind: "private_message",
+        direction: item.direction,
+        peer: item.peer,
+        occurredAt: item.occurred_at,
+        external: { text: item.text, revision: item.revision, reference: item.reference },
+      };
+    }
     if (item.kind === "private_message") {
       return {
         key: `private:${item.direction}:${item.message_id}`,

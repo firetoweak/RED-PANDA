@@ -143,6 +143,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `list_colleagues` `declare_direction` | `redpanda/assistant/agent_messages.py` | colleague-tools |
 | `read_shared_memory` `update_shared_memory` | `redpanda/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `redpanda/assistant/agent_messages.py` | private-messages |
+| MCP `get_context` `send_message` `read_messages`；Bot 的 `reply_external_message` | `redpanda/channels/mcp/`、`assistant/host/external_messages.py` | private-messages（外部编码协作者） |
 | `send_group_message` | `redpanda/assistant/agent_messages.py` | group-chat |
 | `link_project` `unlink_project` | `redpanda/assistant/agent_tools.py` | workspace-management |
 | `land_branch` `sync_branch` | `redpanda/assistant/agent_tools.py` | land-and-sync |
@@ -156,6 +157,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 |---|---|
 | `web_chat.py [--dev] [--host] [--port] [--workspace]` | web-session-chat（`--workspace` 见 workspace-management Gotchas） |
 | `console_chat.py [--home] [--workspace]`，会内 `/new` `/mcp ...` `/skill ...` | console-chat、extensions |
+| `python -m redpanda.channels.mcp --name ... --bot ... [--home] [--url] / --revoke ...` | private-messages（外部编码协作者） |
 | `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-launch |
 | `python -m redpanda.initialize --configure / --if-needed` | setup-and-launch |
 | `scripts/start.sh`、`scripts/start.ps1`（→ `scripts/launch.py` → `web_chat.py`） | setup-and-launch |
