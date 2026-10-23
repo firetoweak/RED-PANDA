@@ -62,3 +62,5 @@
 - 2026-10-21 私聊点名增量：Windows 隔离 Web、零项目、真实 DeepSeek，中文前缀、带空格名字、方向键与 Enter、Tab、点选、Escape 通过；补全后发送的正文保留准确名字，并实际私信送达指定 Bot。1440×1004 明暗主题、390×844 窄屏候选检查通过，无横向溢出。邮箱、输入法组合、光标中间替换和保留引用由组件测试验证；物理手机、其他浏览器未测。证据留在本地 `.tools/private-mentions/`。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：无项目 Bot 真实发送与回复、刷新历史通过；长历史、引用跳转与异常 API 未重验。
+
+- 2026-10-23 时序增量：Windows Chrome、隔离实例、真实 DeepSeek，正文输出开始后刷新，150 行完整、单份显示并与 GET 对照一致；Ada → Lin → 群 → Lin → Ada 切换未串入正文，各自草稿保留。可控旧请求成功/失败及旧选择确认由组件/API 回归覆盖，未在浏览器人为延迟响应。证据 `.tools/verification/frontend-timing/evidence/`。

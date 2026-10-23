@@ -73,3 +73,5 @@
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：创建两成员群、@all 补全、人发言及两个 Bot 的真实群回复实时显示通过；成员改动与群回复引用跳转未重验。
 
 - 2026-10-23 恢复增量（Windows Chrome、隔离 home、真实 DeepSeek）：从页面新建双成员群并发言，第一位已回复、第二位正在处理时强杀 Web；正常入口重启后第二位完成原回应，第一位没有重复发言；再次重启消息身份与数量保持不变。前端 161 项测试及构建通过，确认丢失后重新打开页面的同身份重试由自动化测试覆盖。本轮未重验 Linux、窄屏或全部网络故障组合；证据 `.tools/recovery-fixes/group-recovery-web/`。
+
+- 2026-10-23 时序增量：Windows Chrome、隔离实例，从页面新建双成员群，填写群草稿后在两个 Bot 与群之间切换，返回群时草稿保留且未串入私聊正文。本轮没有发送群消息；切群后旧群请求成功或失败均不覆盖新群消息、草稿，由真实 API 缓存与页面组件回归验证，未在浏览器注入响应延迟。证据 `.tools/verification/frontend-timing/evidence/group-chat/`。
