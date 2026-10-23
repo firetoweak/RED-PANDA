@@ -7,6 +7,7 @@ from pathlib import Path
 
 from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from tests.fixtures.session_worker import is_subagent_request
 
 
 HANDOFF = """## 用户要什么
@@ -96,7 +97,7 @@ class CompactLlm:
             emitted = on_content_delta(response.content)
             if isawaitable(emitted):
                 await emitted
-        used = 10 if any("模型生成的交接摘要" in str(m["content"]) for m in messages) else 60000
+        used = 10 if any(HANDOFF in str(m["content"]) for m in messages) else 60000
         return LLMCallResult(response, LLMUsage(input_tokens=used, output_tokens=5))
 
 
@@ -108,9 +109,9 @@ class ChildCompactLlm(CompactLlm):
                 on_content_delta=on_content_delta,
                 on_reasoning_delta=on_reasoning_delta,
             )
-        if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+        if is_subagent_request(tools):
             has_tools = any(message["role"] == "tool" for message in messages)
-            used = 10 if any("模型生成的交接摘要" in str(m["content"]) for m in messages) else 60000
+            used = 10 if any(HANDOFF in str(m["content"]) for m in messages) else 60000
             while has_tools and (self.workspace / "hold_child").exists() and not (self.workspace / "release_child").exists():
                 await asyncio.sleep(0.02)
             continuing = (

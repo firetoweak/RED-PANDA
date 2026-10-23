@@ -21,7 +21,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal, replay
 from redpanda.runtime.json_values import thaw_value
-from tests.fixtures.session_worker import ProcessLlm, config_for
+from tests.fixtures.session_worker import ProcessLlm, config_for, is_subagent_request
 from tests.fixtures.compact_worker import HANDOFF
 from tests.assistant.test_agent_worktrees_process import tree
 
@@ -49,7 +49,7 @@ class WorktreeLlm(ProcessLlm):
 
     async def chat(self, messages, model, *, tools=None, **kwargs):
         self.requests.append({"messages": messages, "tools": tools})
-        if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]) and "DELETE_CHILD" in str(messages):
+        if is_subagent_request(tools) and "DELETE_CHILD" in str(messages):
             self.child_started.set()
             await self.read_release.wait()
         if any("<self_handoff>" in str(message["content"]) for message in messages):

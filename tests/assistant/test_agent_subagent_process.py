@@ -18,7 +18,7 @@ from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from redpanda.paths import RedPandaHome
 from redpanda.runtime import SqliteJournal
 from tests.assistant.test_agent_worktrees_process import git, tree
-from tests.fixtures.session_worker import ProcessLlm, config_for
+from tests.fixtures.session_worker import ProcessLlm, config_for, is_subagent_request
 
 
 pytestmark = pytest.mark.process
@@ -37,7 +37,7 @@ class DelegatingLlm(ProcessLlm):
         names = [name for _, name in made]
         text = json.dumps(messages, ensure_ascii=False)
         call = None
-        if "你是 RED PANDA 的子 Agent" in messages[0]["content"]:
+        if is_subagent_request(tools):
             if "write_file" not in names:
                 call = ToolCall("w", "write_file", json.dumps({"path": "child.txt", "content": "from child\n"}))
             else:

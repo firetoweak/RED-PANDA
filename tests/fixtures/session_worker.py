@@ -11,6 +11,11 @@ from redpanda.config import AssistantConfig
 from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
+def is_subagent_request(tools):
+    """Child requests cannot delegate, including after their history is compacted."""
+    return not any(tool["function"]["name"] == "delegate" for tool in tools)
+
+
 class ProcessLlm:
     def __init__(self, workspace):
         self.workspace = workspace
@@ -36,12 +41,12 @@ class ProcessLlm:
         text = json.dumps(messages)
         if "CRASH_PROCESS" in text:
             raise RuntimeError("intentional worker crash")
-        if "BLOCK_PROCESS" in text or "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+        if "BLOCK_PROCESS" in text or is_subagent_request(tools):
             (self.workspace / f"blocked-{uuid4().hex}").touch()
             while not (self.workspace / "release").exists():
                 await asyncio.sleep(0.02)
         calls = ()
-        if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]):
+        if is_subagent_request(tools):
             if "READ_THEN_REPORT" in text and not any(
                 m["role"] == "assistant" for m in messages
             ):
@@ -59,7 +64,7 @@ class ProcessLlm:
                 ToolCall(f"delegate-{i}", "delegate", '{"task":"read something"}')
                 for i in range(2)
             )
-        content = "" if calls else ("child done" if "你是 RED PANDA 的子 Agent" in str(messages[0]["content"]) else "done")
+        content = "" if calls else ("child done" if is_subagent_request(tools) else "done")
         if content and on_content_delta is not None:
             emitted = on_content_delta(content)
             if isawaitable(emitted):
