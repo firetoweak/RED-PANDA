@@ -63,7 +63,7 @@ def search_server() -> McpServerRecord:
     return McpServerRecord(
         id=SEARCH_SERVER_ID,
         display_name="Exa Web Search",
-        description="默认网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；连接失败或结果不足时可改用浏览器检索，也可使用用户指定的搜索服务。",
+        description="备用网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；优先使用用户已配置并启用的检索服务，没有或不可用时再用 Exa，最后用浏览器兜底。",
         transport=TransportKind.STREAMABLE_HTTP,
         transport_config=StreamableHttpTransportConfig(url="https://mcp.exa.ai/mcp"),
         enabled=True,

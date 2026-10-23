@@ -1,4 +1,4 @@
-"""实测默认检索；运行 python -m redpanda.mcp.check_web 可随时复查。"""
+"""实测备用 Exa 检索；运行 python -m redpanda.mcp.check_web 可随时复查。"""
 from __future__ import annotations
 
 import asyncio
@@ -25,15 +25,15 @@ async def check_web() -> int:
                     "urls": ["https://www.westlakemuseum.com/"], "maxCharacters": 1500,
                 })
         except McpClientError as exc:
-            print(f"默认 Exa 检索检查失败：{exc}")
+            print(f"备用 Exa 检索检查失败：{exc}")
             return 2
     for label, result in (("搜索", searches), ("正文读取", pages)):
         if result.is_error or not any(
             item.type == "text" and item.text.strip() for item in result.content
         ):
-            print(f"默认 Exa {label}未取得有效正文，请用浏览器检索或配置其他搜索 MCP。")
+            print(f"备用 Exa {label}未取得有效正文，请用浏览器检索或配置其他搜索 MCP。")
             return 2
-    print("默认 Exa 检索检查通过：中文搜索与网页读取均返回内容（仅代表本次连通性，来源质量仍需核实）。")
+    print("备用 Exa 检索检查通过：中文搜索与网页读取均返回内容（仅代表本次连通性，来源质量仍需核实）。")
     return 0
 
 
