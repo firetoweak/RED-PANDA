@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -103,4 +104,13 @@ class SessionStore:
             )
         if agent_colleagues is not None:
             (staging / "agent-creation.json").write_text(json.dumps({"colleagues": agent_colleagues}), encoding="utf-8")
-        os.rename(staging, path.parent)
+        for attempt in range(10):
+            try:
+                os.rename(staging, path.parent)
+                return
+            except PermissionError as error:
+                # Windows denies a directory rename while a reader holds a file
+                # inside it without delete sharing, even after our writes closed.
+                if os.name != "nt" or error.winerror != 5 or attempt == 9:
+                    raise
+                await asyncio.sleep(0.05)
