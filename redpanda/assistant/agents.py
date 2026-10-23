@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -25,6 +25,7 @@ GROUP_ATTENTION = "bot.group_attention"
 GROUP_CREATED = "bot.group_created"
 GROUP_DISSOLVED = "bot.group_dissolved"
 DIRECTION_DECLARED = "bot.direction_declared"
+DIRECTION_SET_BY_USER = "bot.direction_set_by_user"
 COLLEAGUE_JOINED = "bot.colleague_joined"
 COMMUNICATION_LIMIT_REACHED = "bot.communication_limit_reached"
 ROUTINES_UNWATCHED = "bot.routines_unwatched"
@@ -164,6 +165,11 @@ class GroupCreated(_Fact):
 class DirectionDeclared(_Fact):
     name: Text
     direction: Text
+    source: ClassVar[Literal["user", "agent"]] = "agent"
+
+
+class DirectionSetByUser(DirectionDeclared):
+    source: ClassVar[Literal["user", "agent"]] = "user"
 
 
 class ColleagueJoined(_Fact):
@@ -195,6 +201,7 @@ _FACTS = {
     GROUP_CREATED: (GroupCreated, False),
     GROUP_DISSOLVED: (GroupDissolved, False),
     DIRECTION_DECLARED: (DirectionDeclared, False),
+    DIRECTION_SET_BY_USER: (DirectionSetByUser, False),
     COLLEAGUE_JOINED: (ColleagueJoined, False),
     COMMUNICATION_LIMIT_REACHED: (CommunicationLimitReached, False),
     ROUTINES_UNWATCHED: (RoutinesUnwatched, False),
@@ -296,7 +303,7 @@ def project_direction(events, agent: AgentRecord) -> str | None:
             renamed = parse_agent_fact(payload)
             if renamed.session_id == agent.session_id:
                 name = renamed.name
-        if isinstance(payload, DomainFactCommitted) and payload.fact_type == DIRECTION_DECLARED:
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type in {DIRECTION_DECLARED, DIRECTION_SET_BY_USER}:
             declaration = parse_agent_fact(payload)
             if declaration.name == name:
                 direction = declaration.direction
@@ -370,7 +377,9 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     if isinstance(fact, ColleagueJoined):
         return {"colleague": fact.name}
     if isinstance(fact, DirectionDeclared):
-        return {"agent": fact.name, "direction": fact.direction}
+        return {"agent": fact.name, "direction": fact.direction, "source": fact.source,
+                "notice": "The user updated this agent's direction." if fact.source == "user"
+                else "This agent updated its direction."}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
             "It's your turn in this group chat. Reply with a single send_group_message if you have something worth adding, "

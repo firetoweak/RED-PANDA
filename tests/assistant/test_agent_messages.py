@@ -10,7 +10,8 @@ from redpanda.assistant.agent_messages import (
     DECLARE_DIRECTION, LIST_COLLEAGUES, SEND_MESSAGE, message_bindings, recover_message_attempts, send_message,
 )
 from redpanda.assistant.agents import (
-    COMMUNICATION_LIMIT_REACHED, DIRECTION_DECLARED, PRIVATE_MESSAGE, AgentCreated, AgentRecord, fact_arguments, parse_agent_fact,
+    COMMUNICATION_LIMIT_REACHED, DIRECTION_DECLARED, DIRECTION_SET_BY_USER, PRIVATE_MESSAGE, AgentCreated, AgentRecord,
+    agent_fact_for_model, fact_arguments, identity_for_model, parse_agent_fact,
 )
 from redpanda.assistant.conversations import project_conversation
 from redpanda.assistant.host.session_store import SessionStore
@@ -182,6 +183,29 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             result = await send_message(self.transport, "Ada", "one", {"recipient": "Lin", "text": "hi", **extra})
             self.assertEqual(result["code"], "INVALID_ARGUMENT")
         self.assertEqual(await self.messages("Lin"), [])
+
+    async def test_person_and_bot_share_latest_direction_in_context_roster_and_restart(self):
+        binding = message_bindings(self.transport, self.journal("Ada"))[DECLARE_DIRECTION]
+        await binding.handler(AttemptContext("Ada", "first", "attempt-first", 1), {"direction": "负责前端"})
+        await self.host.set_direction_by_user("Ada", "负责测试")
+        events = await self.journal("Ada").snapshot("Ada")
+        latest = [event for event in events if isinstance(event.payload, DomainFactCommitted)
+                  and event.payload.fact_type == DIRECTION_SET_BY_USER][-1]
+        self.assertFalse(latest.payload.requests_decision)
+        self.assertEqual(agent_fact_for_model(latest.payload)["source"], "user")
+        self.assertEqual(identity_for_model(events)["direction"], "负责测试")
+        for session_id in ("Lin", "Third", "Elsewhere"):
+            facts = [event.payload for event in await self.journal(session_id).snapshot(session_id)
+                     if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == DIRECTION_SET_BY_USER]
+            self.assertEqual(facts[-1].data["direction"], "负责测试")
+            self.assertEqual(agent_fact_for_model(facts[-1])["source"], "user")
+        from redpanda.assistant.host.agent_roster import AgentRoster
+        rebuilt = AgentRoster(self.store)
+        self.assertEqual({entry.agent.name: entry.direction for entry in await rebuilt.list()}["Ada"], "负责测试")
+        await binding.handler(AttemptContext("Ada", "second", "attempt-second", 1), {"direction": "负责测试与验收"})
+        colleagues = await self.transport(LIST_COLLEAGUES, "Lin", {})
+        self.assertEqual(next(item["direction"] for item in colleagues["data"]["colleagues"]
+                              if item["name"] == "Ada"), "负责测试与验收")
 
     async def test_tenth_reply_is_allowed_next_is_reported_durably_to_human(self):
         first = await self.send()
