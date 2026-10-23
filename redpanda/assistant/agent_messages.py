@@ -6,7 +6,7 @@ from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from redpanda.assistant.agents import CommunicationLimitReached, DirectionDeclared, fact_arguments, project_agent
+from redpanda.assistant.agents import CommunicationLimitReached, fact_arguments
 from redpanda.runtime import (
     AgentRuntime, CommandOutcome, CommandOutcomeReceived, CommandPhase, EventDraft,
     OutcomeStatus, ToolBinding, replay,
@@ -93,7 +93,7 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
         "description": (
-            "查询同事名字、他们声明的负责方向、各自的工作目录和挂上的项目；未声明时方向为 null。"
+            "查询同事名字、当前负责方向、各自的工作目录和挂上的项目；未设置时方向为 null。"
             "同事挂上的项目在其工作目录的 projects 下，以项目名为子目录。"
             "可以用文件工具只读查看同事工作目录，包括项目里尚未落地的改动，不能在其中写入。"
             "每位同事还带 status 与 since。status 是当前状态：working 正在工作；"
@@ -107,8 +107,9 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": DECLARE_DIRECTION,
         "description": (
-            "记下你负责的方向，同事会看到。在用户认可或修正你的提议后使用；"
-            "方向变化时再次声明，以最新一次为准。"
+            "设置或调整你的长期负责方向，用户和同事都能看到。你可以根据实际工作自行调整，"
+            "无需逐次征求认可；用户也能直接修改，调整时应尊重用户的要求。"
+            "这只说明长期分工，不会授予操作权限。"
         ),
         "parameters": {
             "type": "object",
@@ -209,15 +210,10 @@ def message_bindings(transport, journal):
             parsed = DirectionArguments.model_validate(dict(arguments))
         except ValidationError as error:
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": str(error)}
-        agent = project_agent(await journal.snapshot(context.session_id))
-        declaration = DirectionDeclared(name=agent.name, direction=parsed.direction)
         delivery_id = f"direction:{context.command_id}"
-        # The roster reads this Agent's own timeline; colleagues receive a copy.
-        await AgentRuntime(journal, None, {}).receive_domain_fact(
-            context.session_id, **fact_arguments(declaration, delivery_id=delivery_id))
-        await transport(DECLARE_DIRECTION, context.session_id, {"direction": declaration.direction,
-                                                                 "delivery_id": delivery_id})
-        return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": declaration.direction}}
+        await transport(DECLARE_DIRECTION, context.session_id, {"direction": parsed.direction,
+                                                               "source": "agent", "delivery_id": delivery_id})
+        return {"ok": True, "code": "DIRECTION_DECLARED", "data": {"direction": parsed.direction}}
 
     async def send_file(context, arguments):
         text = arguments.get("text")

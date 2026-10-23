@@ -1,12 +1,12 @@
 # 名册工具
 
-全部长期 Bot 用 `declare_direction` 声明负责方向，用 `list_colleagues` 查询同事。查询给出当前快照，不含自己，也不含 Session、项目坐标或分支名。方向写入声明者自己的时间线，名册与侧栏只显示它自己的最新一次声明。同事加入、以及别人声明方向，会作为不请求决策的事实投进其他长期 Bot 的时间线。没有单独的声明按钮。来源：`redpanda/assistant/agent_messages.py`、`redpanda/assistant/host/agent_messages.py`、`redpanda/assistant/agents.py`、`GET /api/agents`、`web/src/features/sessions/BotRoster.tsx`。
+全部长期 Bot 用 `declare_direction` 自行设置或调整负责方向，人也能在 Bot 资料中直接编辑同一份方向；用 `list_colleagues` 查询同事。查询给出当前快照，不含自己，也不含 Session、项目坐标或分支名。方向写入该 Bot 自己的时间线，名册与侧栏显示最新一次修改。同事加入、以及方向修改，会作为不请求决策的事实投进其他长期 Bot 的时间线。来源：`redpanda/assistant/agent_messages.py`、`redpanda/assistant/host/agent_messages.py`、`redpanda/assistant/agents.py`、`GET /api/agents`、`web/src/features/sessions/BotRoster.tsx`。
 
 ## Sub-features
 
 - `declare`：`declare_direction` 的参数只有 `direction`。侧栏在名字下方显示这句；没有声明时显示 `打开对话，开始协作`。
 - `list`：`list_colleagues` 不接受参数。每位同事有 `name`、`direction`、`directory`、`projects`、`status`、`since`。
-- `roster-facts`：第二位 Agent 创建后，已在的同事收到 `bot.colleague_joined`；对方声明方向后收到 `bot.direction_declared`。两条都不请求决策。
+- `roster-facts`：第二位 Agent 创建后，已在的同事收到 `bot.colleague_joined`；Bot 声明方向后收到 `bot.direction_declared`，用户修改后收到 `bot.direction_set_by_user`，模型可区分修改来源。这些事实都不请求决策。
 - `shared-memory`：所有长期 Bot 用 `read_shared_memory` 查阅、用 `update_shared_memory` 修改同一份正文，最多500字符，含标点、空白和换行，可以为空。修改需要已读的 `version` 和完整 `content`；沿用工具授权。状态在 `$REDPANDA_HOME/state/shared_memory.sqlite`，修改者与来源一起保存。首次工作、内容变化和压缩后，完整正文通过 `bot.shared_memory` / `<shared_memory>` 呈现，不单独唤醒空闲同事。
 
 ## How to get to it (user POV)
@@ -42,7 +42,9 @@ Web 编辑增量：输入500个表情，计数是 `500 / 500` 且可保存；501
 
 ## Gotchas
 
-- 方向是 Agent 自己的声明，不是人在界面上批准的角色。系统不解析对话里的「同意」。
+2026-10-23 共同维护方向增量：真实模型调用 `declare_direction` 自行细化，用户随后在资料中改写；Lin 的真实 `list_colleagues` 与 Ada 不调用工具的回答均采用用户最新方向。页面和重启验证范围见 [Bot 名册](session-sidebar.md)。
+
+- 方向由人和 Bot 共同维护；Bot 调整无需逐次认可，用户修改在上下文中明确标注来源。方向不构成操作授权，系统不解析对话里的「同意」。
 - 同事目录只读，开启全部文件访问后也一样。命令不按路径区分读写，这条判据用 `write_file`，不用 `execute_command`。
 
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：declare_direction 和 list_colleagues 真实调用通过，侧栏显示最新方向；越权写入和非法参数未重验。

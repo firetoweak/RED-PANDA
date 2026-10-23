@@ -74,6 +74,11 @@ class WebChannel:
         self._require_connection(connection_id)
         await self._sessions.delete_agent(session_id)
 
+    async def set_agent_direction(self, connection_id: str, session_id: str, direction: str):
+        self._require_connection(connection_id)
+        await self._sessions.set_direction_by_user(session_id, direction)
+        return await self._queries.agent_entry(session_id)
+
     async def dissolve_group(self, connection_id: str, group_id: str):
         self._require_connection(connection_id)
         await self._sessions.dissolve_group(group_id)

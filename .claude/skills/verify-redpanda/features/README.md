@@ -116,6 +116,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `GET /api/sessions/{id}/commands`、`POST /api/sessions/{id}/commands/{command_id}/stop` | tool-coding-round |
 | `GET /api/sessions/{id}/routines`、`PUT /api/sessions/{id}/routines/{routine_id}/state` | routines |
 | `PUT /api/agents/{id}/name` | session-sidebar |
+| `PUT /api/agents/{id}/direction` | session-sidebar、colleague-tools |
 | `GET /api/inbox` | inbox |
 | `GET/POST /api/groups`、`GET /api/groups/{group_id}`、`POST /api/groups/{group_id}/messages` | group-chat |
 | `POST /api/sessions/{id}/select` | session-sidebar、web-session-chat |
