@@ -49,9 +49,18 @@ export function ConversationTimeline({
     const dockObserver = new ResizeObserver(measureDock);
     dockObserver.observe(area!);
     let previousTop = viewport.scrollTop;
+    const syncFollowing = () => {
+      sticking.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24;
+      onFollowingChange(sticking.current);
+    };
     const stopFollowing = () => {
       sticking.current = false;
-      onFollowingChange(false);
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = requestAnimationFrame(() => {
+        frame.current = null;
+        // 输入意图先暂停跟随，按钮只按浏览器实际滚动后的位置更新。
+        syncFollowing();
+      });
     };
     const onWheel = (event: WheelEvent) => {
       if (!event.ctrlKey && event.deltaY < 0) stopFollowing();
@@ -67,11 +76,11 @@ export function ConversationTimeline({
         const scrollTop = viewport.scrollTop - (viewport.querySelector(".timeline-start")?.clientHeight ?? 0);
         listRef.current?.getState((state) => readingPositions.set(conversationKey, { ...state, scrollTop }));
       }
+      const movedUp = viewport.scrollTop < previousTop;
       const movedDown = viewport.scrollTop > previousTop;
       previousTop = viewport.scrollTop;
-      if (movedDown && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24) {
-        sticking.current = true;
-        onFollowingChange(true);
+      if (movedUp || (movedDown && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 24)) {
+        syncFollowing();
       }
     };
     const onAreaWheel = (event: WheelEvent) => {

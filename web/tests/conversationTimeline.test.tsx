@@ -70,7 +70,7 @@ it("输入区滚轮转给聊天，长文本能自行滚动时保留原生滚动"
   getByTestId("dock").dispatchEvent(wheel);
   expect(wheel.defaultPrevented).toBe(true);
   expect(viewport.scrollTop).toBe(1880);
-  expect(onFollowingChange).toHaveBeenCalledWith(false);
+  await waitFor(() => expect(onFollowingChange).toHaveBeenCalledWith(false));
 
   const draft = getByTestId("draft");
   Object.defineProperties(draft, { scrollHeight: { value: 500 }, clientHeight: { value: 100 } });
@@ -79,6 +79,68 @@ it("输入区滚轮转给聊天，长文本能自行滚动时保留原生滚动"
   draft.dispatchEvent(textWheel);
   expect(textWheel.defaultPrevented).toBe(false);
   expect(viewport.scrollTop).toBe(1880);
+});
+
+it.each(["wheel", "keydown", "pointerdown", "touchstart"])("短会话收到 %s 但未离开底部时保持跟随", async (type) => {
+  const dockRef = createRef<HTMLDivElement>();
+  const onFollowingChange = vi.fn();
+  render(
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 200 }}>
+      <ConversationTimeline
+        turns={[{ key: "short", user: null, communications: [], process: [], active: null, final: null }]}
+        listRef={createRef<VirtuosoHandle>()} wheelAreaRef={dockRef}
+        following onFollowingChange={onFollowingChange} renderTurn={() => <p>最新消息</p>}
+      />
+      <div ref={dockRef} />
+    </VirtuosoMockContext.Provider>,
+  );
+  await screen.findByText("最新消息");
+  const viewport = screen.getByTestId("virtuoso-scroller");
+  Object.defineProperties(viewport, { scrollHeight: { value: 600 }, clientHeight: { value: 600 } });
+  viewport.scrollTop = 0;
+  onFollowingChange.mockClear();
+  act(() => {
+    viewport.dispatchEvent(type === "wheel" ? new WheelEvent(type, { deltaY: -120 })
+      : type === "keydown" ? new KeyboardEvent(type, { key: "PageUp" }) : new Event(type));
+  });
+  await waitFor(() => expect(onFollowingChange).toHaveBeenCalledWith(true));
+  expect(onFollowingChange).not.toHaveBeenCalledWith(false);
+});
+
+it("触摸后实际滚离底部才停止跟随，滚回底部恢复跟随", async () => {
+  const dockRef = createRef<HTMLDivElement>();
+  const onFollowingChange = vi.fn();
+  render(
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 200 }}>
+      <ConversationTimeline
+        turns={[{ key: "scroll", user: null, communications: [], process: [], active: null, final: null }]}
+        listRef={createRef<VirtuosoHandle>()} wheelAreaRef={dockRef}
+        following onFollowingChange={onFollowingChange} renderTurn={() => <p>可滚动历史</p>}
+      />
+      <div ref={dockRef} />
+    </VirtuosoMockContext.Provider>,
+  );
+  await screen.findByText("可滚动历史");
+  const viewport = screen.getByTestId("virtuoso-scroller");
+  Object.defineProperty(viewport, "clientHeight", { value: 600 });
+  act(() => {
+    viewport.scrollTop = 39400;
+    viewport.dispatchEvent(new Event("scroll"));
+  });
+  onFollowingChange.mockClear();
+  act(() => { viewport.dispatchEvent(new Event("touchstart")); });
+  await waitFor(() => expect(onFollowingChange).toHaveBeenCalledWith(true));
+  expect(onFollowingChange).not.toHaveBeenCalledWith(false);
+  act(() => {
+    viewport.scrollTop = 39000;
+    viewport.dispatchEvent(new Event("scroll"));
+  });
+  expect(onFollowingChange).toHaveBeenLastCalledWith(false);
+  act(() => {
+    viewport.scrollTop = 39400;
+    viewport.dispatchEvent(new Event("scroll"));
+  });
+  expect(onFollowingChange).toHaveBeenLastCalledWith(true);
 });
 
 it("离开长会话再返回，恢复历史位置而不是回到开头或最新", async () => {
