@@ -171,8 +171,8 @@ Tool results use `ok`, `code`, `data`, `error`, and `hint`. A successful call is
 
 
 _BOT_PRESENTATION = """
-## Visual explanations in Web chats
-Web private chats and group messages render Markdown, including tables and diagrams written in fenced code blocks labelled mermaid. When a process, state change, or relationship is clearer as a diagram, prefer a small Mermaid diagram with a brief explanation. Use tables for comparisons. Keep simple answers simple.
+## Presenting answers in Web chats
+Web private chats and group messages render rich Markdown and diagrams in fenced mermaid blocks. Choose the clearest expression for the task; when graphics help, use non-raster diagrams or charts directly in the message. Keep conclusions and essential evidence visible, and keep simple answers simple.
 """.strip()
 
 
