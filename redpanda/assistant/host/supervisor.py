@@ -1192,7 +1192,7 @@ class HostSupervisor:
                 self.models.initialize_session(session_id)
 
     async def create_agent(
-        self, *, name: str, workspace_id: str | None = None,
+        self, *, name: str, workspace_id: str | None = None, path: str | None = None,
     ) -> AgentRecord:
         """Create a persistent Bot directory, optionally preparing a coding project."""
         project = None if workspace_id is None else self.workspaces.get(workspace_id)
@@ -1209,6 +1209,8 @@ class HostSupervisor:
                         return await _settle(self._finish_agent_creation(entry.agent))
                     raise AgentNameTaken(f"已有 Agent：{name}")
             # A cancelled request must not leave a worktree without its identity fact.
+            if path is not None:
+                project = self.agent_projects.resolve(path=path)
             return await _settle(self._create_agent(project, session_id, identity))
 
     async def _create_agent(self, project, session_id, identity) -> AgentRecord:

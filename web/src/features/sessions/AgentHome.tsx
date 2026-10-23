@@ -1,12 +1,11 @@
 import { Alert, Button, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
-import { IconArrowRight, IconFolderPlus, IconPlus, IconUsersGroup } from "@tabler/icons-react";
+import { IconArrowRight, IconPlus, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "./AgentStatus";
 import { CreateAgentModal } from "./CreateAgentModal";
-import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
 import { CreateGroupModal } from "../groups/CreateGroupModal";
 import { BotAvatar } from "../conversation/ChatPresentation";
 
@@ -17,11 +16,9 @@ export function AgentHome() {
   const { data: agents = [], isLoading, isError } = useGetAgentsQuery();
   const { data: groups = [] } = useGetGroupsQuery();
   const [creating, setCreating] = useState(false);
-  const [projectCreating, setProjectCreating] = useState(false);
   const [groupCreating, setGroupCreating] = useState(false);
   return <section className="agent-home">
     <header className="page-header"><Text fw={600} size="md">对话</Text><Group gap="xs">
-      <Button variant="subtle" color="gray" size="compact-sm" leftSection={<IconFolderPlus size={15} />} onClick={() => setProjectCreating(true)}>添加代码项目</Button>
       <Button size="compact-sm" leftSection={<IconPlus size={15} />} disabled={connectionId === null} onClick={() => setCreating(true)}>新建 Bot</Button>
     </Group></header>
     <div className="home-scroll"><div className="home-content">
@@ -32,8 +29,7 @@ export function AgentHome() {
       <Group justify="space-between" mt="xl"><Title order={2}>群聊</Title><Button variant="default" size="compact-sm" disabled={connectionId === null || agents.length < 2} onClick={() => setGroupCreating(true)}>新建群聊</Button></Group>
       <div className="home-groups">{groups.map((group) => <Link key={group.group_id} to={`/groups/${encodeURIComponent(group.group_id)}`}><IconUsersGroup size={16} /><span>{group.name}</span><Text size="xs" c="dimmed">{group.members.length} 位成员</Text></Link>)}</div>
     </div></div>
-    <CreateWorkspaceModal opened={projectCreating} onClose={() => setProjectCreating(false)} />
-    <CreateAgentModal opened={creating} workspaceId={null} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); navigate(`/sessions/${encodeURIComponent(id)}`); }} />
+    <CreateAgentModal opened={creating} workspaces={workspaces} connectionId={connectionId} onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); navigate(`/sessions/${encodeURIComponent(id)}`); }} />
     <CreateGroupModal opened={groupCreating} agents={agents} connectionId={connectionId} onClose={() => setGroupCreating(false)} onCreated={(id) => { setGroupCreating(false); navigate(`/groups/${encodeURIComponent(id)}`); }} />
   </section>;
 }

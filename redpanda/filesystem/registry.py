@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 import json
 import os
@@ -23,7 +23,7 @@ from redpanda.filesystem.workspace import (
 )
 
 TASK_ROOT_ID = "project"
-REGISTRY_VERSION = 1
+REGISTRY_VERSION = 2
 WORKSPACE_ID_PREFIX = "workspace-"
 
 
@@ -48,7 +48,6 @@ class WorkspacePathTaken(EnvironmentInputError):
 @dataclass(frozen=True)
 class WorkspaceRecord:
     workspace_id: str
-    name: str
     task_root: Path
     full_access: bool
     created_at: str
@@ -60,8 +59,6 @@ class WorkspaceRecord:
             raise ValueError(
                 f"workspace_id 必须以 {WORKSPACE_ID_PREFIX} 开头"
             )
-        if type(self.name) is not str or not self.name.strip():
-            raise ValueError("工作区 name 必须是非空 string")
         if type(self.full_access) is not bool:
             raise ValueError("full_access 必须是 bool")
         if type(self.created_at) is not str or not self.created_at.strip():
@@ -70,6 +67,10 @@ class WorkspaceRecord:
         if not resolved.is_dir():
             raise ValueError(f"工作区路径不是已存在的目录: {resolved}")
         object.__setattr__(self, "task_root", resolved)
+
+    @property
+    def name(self) -> str:
+        return self.task_root.name or str(self.task_root)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -84,20 +85,18 @@ class WorkspaceRecord:
     def from_dict(cls, value: object) -> "WorkspaceRecord":
         if not isinstance(value, dict) or set(value) != {
             "workspace_id",
-            "name",
             "task_root",
             "full_access",
             "created_at",
         }:
             raise ValueError("workspace 记录字段不匹配")
-        for field in ("workspace_id", "name", "task_root", "created_at"):
+        for field in ("workspace_id", "task_root", "created_at"):
             if type(value[field]) is not str:
                 raise ValueError(f"workspace 记录 {field} 必须是 string")
         if type(value["full_access"]) is not bool:
             raise ValueError("workspace 记录 full_access 必须是 bool")
         return cls(
             workspace_id=value["workspace_id"],
-            name=value["name"],
             task_root=Path(value["task_root"]),
             full_access=value["full_access"],
             created_at=value["created_at"],
@@ -146,7 +145,10 @@ class WorkspaceRegistry:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "version": REGISTRY_VERSION,
-            "workspaces": [record.to_dict() for record in self._workspaces],
+            "workspaces": [
+                {key: value for key, value in record.to_dict().items() if key != "name"}
+                for record in self._workspaces
+            ],
         }
         self.path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -179,7 +181,6 @@ class WorkspaceRegistry:
     def create(
         self,
         *,
-        name: str,
         task_root: Path,
         full_access: bool = False,
     ) -> WorkspaceRecord:
@@ -190,7 +191,6 @@ class WorkspaceRegistry:
             raise WorkspacePathTaken(resolved)
         record = WorkspaceRecord(
             workspace_id=f"{WORKSPACE_ID_PREFIX}{uuid.uuid4().hex}",
-            name=name,
             task_root=resolved,
             full_access=full_access,
             created_at=datetime.now().astimezone().isoformat(),
@@ -202,8 +202,6 @@ class WorkspaceRegistry:
     def register_path(
         self,
         path: Path,
-        *,
-        name: str | None = None,
     ) -> WorkspaceRecord:
         """按启动路径隐式登记：已属于某个工作区则复用，否则新建（名字取目录名）。"""
         existing = self.find_by_path(path)
@@ -211,16 +209,8 @@ class WorkspaceRegistry:
             return existing
         resolved = path.resolve()
         return self.create(
-            name=name or resolved.name or str(resolved),
             task_root=resolved,
         )
-
-    def rename(self, workspace_id: str, name: str) -> WorkspaceRecord:
-        record = self.get(workspace_id)
-        renamed = replace(record, name=name)
-        self._workspaces[self._workspaces.index(record)] = renamed
-        self.save()
-        return renamed
 
     def delete(self, workspace_id: str) -> None:
         """从清单移除一条记录。

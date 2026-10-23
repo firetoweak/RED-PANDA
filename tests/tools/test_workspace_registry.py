@@ -43,7 +43,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
         registry = WorkspaceRegistry.load(self.registry_path)
         project = self.make_project("my-app")
 
-        record = registry.create(name="my-app", task_root=project)
+        record = registry.create(task_root=project)
 
         self.assertTrue(record.workspace_id.startswith("workspace-"))
         self.assertEqual(record.task_root, project.resolve())
@@ -54,18 +54,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
         )
         payload = json.loads(self.registry_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["version"], REGISTRY_VERSION)
-        self.assertEqual(payload["workspaces"][0]["name"], "my-app")
-
-    def test_rename_persists_only_the_display_name(self):
-        registry = WorkspaceRegistry.load(self.registry_path)
-        original = registry.create(
-            name="original", task_root=self.make_project("project"), full_access=True,
-        )
-
-        renamed = registry.rename(original.workspace_id, "新名称")
-
-        self.assertEqual(renamed.to_dict(), {**original.to_dict(), "name": "新名称"})
-        self.assertEqual(WorkspaceRegistry.load(self.registry_path).workspaces, (renamed,))
+        self.assertNotIn("name", payload["workspaces"][0])
+        self.assertEqual(record.name, "my-app")
 
     def test_get_rejects_unknown_workspace(self):
         registry = WorkspaceRegistry.load(self.registry_path)
@@ -75,7 +65,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
 
     def test_contains_answers_whether_the_workspace_is_registered(self):
         registry = WorkspaceRegistry.load(self.registry_path)
-        record = registry.create(name="my-app", task_root=self.make_project("my-app"))
+        record = registry.create(task_root=self.make_project("my-app"))
 
         self.assertTrue(registry.contains(record.workspace_id))
         self.assertFalse(registry.contains("workspace-missing"))
@@ -83,7 +73,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
     def test_delete_removes_the_record_and_persists(self):
         registry = WorkspaceRegistry.load(self.registry_path)
         project = self.make_project("my-app")
-        record = registry.create(name="my-app", task_root=project)
+        record = registry.create(task_root=project)
 
         registry.delete(record.workspace_id)
 
@@ -96,8 +86,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
 
     def test_delete_keeps_the_other_records(self):
         registry = WorkspaceRegistry.load(self.registry_path)
-        kept = registry.create(name="kept", task_root=self.make_project("kept"))
-        dropped = registry.create(name="dropped", task_root=self.make_project("dropped"))
+        kept = registry.create(task_root=self.make_project("kept"))
+        dropped = registry.create(task_root=self.make_project("dropped"))
 
         registry.delete(dropped.workspace_id)
 
@@ -112,18 +102,18 @@ class WorkspaceRegistryTest(unittest.TestCase):
     def test_duplicate_path_is_rejected(self):
         registry = WorkspaceRegistry.load(self.registry_path)
         project = self.make_project("my-app")
-        registry.create(name="my-app", task_root=project)
+        registry.create(task_root=project)
 
         with self.assertRaises(WorkspacePathTaken):
-            registry.create(name="again", task_root=project)
+            registry.create(task_root=project)
 
     def test_nested_path_belongs_to_the_deepest_workspace(self):
         registry = WorkspaceRegistry.load(self.registry_path)
         outer = self.make_project("outer")
         inner = outer / "inner"
         inner.mkdir()
-        outer_record = registry.create(name="outer", task_root=outer)
-        inner_record = registry.create(name="inner", task_root=inner)
+        outer_record = registry.create(task_root=outer)
+        inner_record = registry.create(task_root=inner)
 
         self.assertEqual(
             self.workspace_at(registry, inner).workspace_id,
@@ -150,7 +140,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
         registry = WorkspaceRegistry.load(self.registry_path)
 
         with self.assertRaises(WorkspaceRegistryError):
-            registry.create(name="gone", task_root=self.root / "missing")
+            registry.create(task_root=self.root / "missing")
 
     def test_register_path_names_new_workspace_after_directory(self):
         registry = WorkspaceRegistry.load(self.registry_path)
@@ -165,7 +155,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             WorkspaceRecord(
                 workspace_id="workspace-1",
-                name="gone",
+
                 task_root=self.root / "gone",
                 full_access=False,
                 created_at="2026-09-18T10:00:00+08:00",
@@ -201,7 +191,7 @@ class WorkspaceViewTest(unittest.TestCase):
     def record(self, root: Path, *, full_access: bool) -> WorkspaceRecord:
         return WorkspaceRecord(
             workspace_id="workspace-1",
-            name="project",
+
             task_root=root,
             full_access=full_access,
             created_at="2026-09-18T10:00:00+08:00",

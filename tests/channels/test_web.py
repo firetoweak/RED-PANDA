@@ -128,8 +128,9 @@ class _Sessions:
     def set_model(self, session_id, model):
         return self.models.select(session_id, model)
 
-    async def create_agent(self, *, name, workspace_id):
-        self.calls.append(("create_agent", name, workspace_id))
+    async def create_agent(self, *, name, path):
+        workspace_id = None if path is None else "workspace-old"
+        self.calls.append(("create_agent", name, path))
         if name == "taken":
             raise AgentNameTaken(f"项目内已有 Agent：{name}")
         if name == "nogit":
@@ -552,39 +553,6 @@ class WebFirstSliceTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_workspace_rename_validates_and_trims_the_display_name(self):
-        record = self.workspaces.create(name="demo", task_root=Path(self._directory.name))
-        url = f"/api/workspaces/{record.workspace_id}"
-        for body in ({"name": " "}, {"name": 12}, {"name": "x", "task_root": "other"}):
-            with self.subTest(body=body):
-                self.assertEqual(self.client.patch(url, json=body).status_code, 422)
-        self.assertEqual(self.workspaces.get(record.workspace_id), record)
-
-        response = self.client.patch(url, json={"name": " 新名称 "})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {**record.to_dict(), "name": "新名称"})
-        self.assertEqual(
-            self.client.patch("/api/workspaces/workspace-missing", json={"name": "x"}).status_code,
-            404,
-        )
-
-    def test_deleting_a_workspace_removes_only_the_registry_record(self):
-        task_root = Path(self._directory.name) / "task"
-        task_root.mkdir()
-        record = self.workspaces.create(name="demo", task_root=task_root)
-
-        response = self.client.delete(f"/api/workspaces/{record.workspace_id}")
-
-        self.assertEqual(response.status_code, 204)
-        self.assertEqual(self.workspaces.workspaces, ())
-        self.assertTrue(task_root.is_dir())
-
-    def test_deleting_an_unknown_workspace_is_a_client_error(self):
-        response = self.client.delete("/api/workspaces/workspace-missing")
-
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("workspace-missing", response.json()["detail"])
-
     def test_accept_input_returns_user_message_and_does_not_wait_for_model(self):
         response = self.client.post(
             "/api/sessions/session-old/inputs",
@@ -785,7 +753,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(self.client.get("/api/agents").json(), [])
         created = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
-            "workspace_id": "workspace-old",
+            "path": "C:/project",
             "name": "小熊猫",
         })
         self.assertEqual(created.status_code, 201)
@@ -796,32 +764,32 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(body["direction"], "前端")
         self.assertNotIn("worktree", body)
         self.assertNotIn("branch", body)
-        self.assertEqual(self.sessions.calls[0], ("create_agent", "小熊猫", "workspace-old"))
+        self.assertEqual(self.sessions.calls[0], ("create_agent", "小熊猫", "C:/project"))
         self.assertEqual(self.sessions.calls[1][0], "select")
 
         self.assertEqual(self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
-            "workspace_id": "workspace-old",
+            "path": "C:/project",
             "name": "小熊猫",
             "worktree": r"C:\nope",
         }).status_code, 422)
         padded = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
-            "workspace_id": "workspace-old",
+            "path": "C:/project",
             "name": " 小熊猫",
         })
         self.assertEqual(padded.status_code, 422)
         self.assertIn("空白", json.dumps(padded.json(), ensure_ascii=False))
         taken = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
-            "workspace_id": "workspace-old",
+            "path": "C:/project",
             "name": "taken",
         })
         self.assertEqual(taken.status_code, 409)
         self.assertIn("已有 Agent", taken.json()["detail"])
         missing_git = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
-            "workspace_id": "workspace-old",
+            "path": "C:/project",
             "name": "nogit",
         })
         self.assertEqual(missing_git.status_code, 409)
@@ -928,30 +896,6 @@ class WebFirstSliceTest(unittest.TestCase):
             web_app, "select_directory", side_effect=ValueError("broken protocol")
         ), self.assertRaisesRegex(ValueError, "broken protocol"):
             self.client.post("/api/workspaces/select-directory")
-
-    def test_create_workspace_rejects_missing_directory(self):
-        response = self.client.post(
-            "/api/workspaces",
-            json={
-                "name": "missing",
-                "task_root": str(Path(self._directory.name) / "nope"),
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-
-    def test_create_workspace_rejects_duplicate_path(self):
-        body = {
-            "name": "demo",
-            "task_root": self._directory.name,
-            "full_access": False,
-        }
-        first = self.client.post("/api/workspaces", json=body)
-        second = self.client.post("/api/workspaces", json=body)
-
-        self.assertEqual(first.status_code, 201)
-        self.assertEqual(second.status_code, 409)
-
 
     def test_inbox_returns_pending_authorization_and_control(self):
         response = self.client.get("/api/inbox")

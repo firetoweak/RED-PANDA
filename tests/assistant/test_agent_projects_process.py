@@ -11,7 +11,7 @@ import pytest
 from redpanda.assistant.agent_tools import LAND, LINK, UNLINK, agent_git_bindings
 from redpanda.assistant.agents import PROJECT_LINKED, PROJECT_UNLINKED
 from redpanda.assistant.host.agent_projects import AgentProjects
-from redpanda.assistant.host.agent_roster import AgentRoster
+from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
 from redpanda.runtime import SqliteJournal
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -58,6 +58,20 @@ class AgentProjectsTest(unittest.IsolatedAsyncioTestCase):
     def facts(self, kind):
         return [args[2]["data"] for args in (call.args for call in self.request.await_args_list)
                 if args[0] == "fact" and args[2]["fact_type"] == kind]
+
+    async def test_creation_reuses_a_directory_for_several_bots(self):
+        root = repository(self.root / "shared")
+        first = await self.host.create_agent(name="Ada", path=str(root))
+        second = await self.host.create_agent(name="Lin", path=str(root))
+        project, = self.registry.workspaces
+        self.assertEqual(project.name, root.name)
+        self.assertEqual(first.projects[0].workspace_id, second.projects[0].workspace_id)
+        self.assertNotEqual(first.projects[0].worktree, second.projects[0].worktree)
+        self.assertEqual((Path(second.projects[0].worktree) / "note.txt").read_text(), "initial\n")
+        extra = repository(self.root / "unused")
+        with self.assertRaises(AgentNameTaken):
+            await self.host.create_agent(name="Ada", path=str(extra))
+        self.assertEqual(len(self.registry.workspaces), 1)
 
     async def test_restart_completes_link_and_unlink_at_physical_boundaries(self):
         project = self.registry.register_path(repository(self.root / "alpha"))

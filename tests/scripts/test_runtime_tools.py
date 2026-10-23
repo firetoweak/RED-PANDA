@@ -62,12 +62,42 @@ def test_windows_directory_move_can_use_the_standard_copy_path(tmp_path, monkeyp
     assert (tools.tool_directory(tmp_path, "tool") / "tool.exe").read_bytes() == b"binary"
 
 
+def test_zip_helper_programs_keep_executable_permissions(tmp_path, monkeypatch):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as bundle:
+        bundle.writestr("tool/tool.exe", b"binary")
+        helper = zipfile.ZipInfo("tool/crash-handler")
+        helper.external_attr = 0o100755 << 16
+        bundle.writestr(helper, b"helper")
+    data = stream.getvalue()
+    monkeypatch.setattr(tools, "urlopen", lambda *args, **kwargs: io.BytesIO(data))
+    chmods = []
+    monkeypatch.setattr(Path, "chmod", lambda path, mode: chmods.append((path.name, mode)))
+    tools.install_package(tmp_path, "tool", package(data))
+    assert ("crash-handler", 0o755) in chmods
+
+
 def test_existing_system_tools_do_not_trigger_downloads(tmp_path, monkeypatch):
     monkeypatch.setattr(tools, "packages", lambda root: {name: package(b"") for name in ("node", "fd", "rg", "git")})
     monkeypatch.setattr(tools, "supported_node", lambda: True)
     monkeypatch.setattr(shutil, "which", lambda name: f"system/{name}")
     monkeypatch.setattr(tools, "install_package", lambda *args: pytest.fail("must reuse system tools"))
     tools.prepare(tmp_path)
+
+
+def test_browser_uses_application_install_even_when_system_chrome_exists(tmp_path, monkeypatch):
+    record = package(b"")
+    monkeypatch.setattr(tools, "packages", lambda root: {"chrome": record})
+    monkeypatch.setattr(shutil, "which", lambda name: f"system/{name}")
+    install = []
+    monkeypatch.setattr(tools, "install_package", lambda root, name, package: install.append(name))
+    tools.prepare(tmp_path)
+    assert install == ["chrome"]
+    browser = tools.tool_directory(tmp_path, "chrome") / record["executable"]
+    browser.parent.mkdir(parents=True)
+    browser.touch()
+    tools.prepare(tmp_path)
+    assert install == ["chrome"]
 
 
 def test_missing_tools_are_prepared_before_setup_preflight(monkeypatch):

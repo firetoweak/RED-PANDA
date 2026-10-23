@@ -31,6 +31,14 @@
       "root": ".",
       "bin": "cmd",
       "executable": "git.exe"
+    },
+    "chrome": {
+      "version": "156.0.8078.47",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/win64/chrome-win64.zip",
+      "sha256": "a4e0d57245e167e98a9d465af1e3774d2b4ec9f04e483d19bcd97a6f63cf46dd",
+      "root": "chrome-win64",
+      "bin": ".",
+      "executable": "chrome.exe"
     }
   },
   "linux-x86_64": {
@@ -57,6 +65,14 @@
       "root": "fd-v10.2.0-x86_64-unknown-linux-gnu",
       "bin": ".",
       "executable": "fd"
+    },
+    "chrome": {
+      "version": "156.0.8078.47",
+      "url": "https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.47/linux64/chrome-linux64.zip",
+      "sha256": "e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50",
+      "root": "chrome-linux64",
+      "bin": ".",
+      "executable": "chrome"
     }
   }
 }

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from redpanda.tools.control import ControlApprovalExecution, ControlApprovalProposal
 from redpanda.tools.spec import PydanticParameters, ToolSpec
 from redpanda.mcp.application import McpApplicationService
+from redpanda.mcp.bundled import BROWSER_SERVER_IDS
 from redpanda.mcp.errors import McpInputError, McpRecoveryPreconditionError
 
 
@@ -60,6 +61,8 @@ class McpInstallProposalInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_transport(self) -> "McpInstallProposalInput":
+        if self.server_id in BROWSER_SERVER_IDS:
+            raise ValueError("此 ID 属于产品内置浏览器能力，请为外部 MCP 选择其他 ID。")
         if self.transport == "stdio":
             if self.command is None or not self.command.strip():
                 raise ValueError("stdio proposal 必须提供 command")

@@ -24,6 +24,7 @@ from redpanda.mcp.adapter import (
 )
 from redpanda.mcp.client_manager import McpClientError, McpClientManager, McpToolNotStartedError
 from redpanda.mcp.registry import McpRegistry
+from redpanda.mcp.models import McpServerRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,19 +34,22 @@ class McpDiscoveredTool:
 
 
 class McpToolsetProvider:
-    """目录只读 Registry；真正连接发生在 tool_specs / 工具调用。"""
+    """目录合并产品内置能力与安装登记；加载或调用时才连接。"""
 
     def __init__(
         self,
         registry: McpRegistry,
         client_manager: McpClientManager,
+        *,
+        bundled_servers: tuple[McpServerRecord, ...] = (),
     ) -> None:
         self._registry = registry
         self._client_manager = client_manager
+        self._bundled = {record.id: record for record in bundled_servers}
 
     def descriptors(self, *, read_only_only: bool = False) -> tuple[ToolsetDescriptor, ...]:
         records = tuple(
-            record for record in self._registry.snapshot()
+            record for record in (*self._bundled.values(), *self._registry.snapshot())
             if record.enabled and (not read_only_only or record.read_only)
         )
         descriptors: list[ToolsetDescriptor] = []
@@ -58,7 +62,17 @@ class McpToolsetProvider:
                     revision=record.revision,
                 )
             )
-        return tuple(descriptors)
+        return tuple(sorted(descriptors, key=lambda item: item.id))
+
+    async def _record(self, server_id: str) -> McpServerRecord | None:
+        if server_id in self._bundled:
+            return self._bundled[server_id]
+        return await self._registry.get(server_id)
+
+    def _connection_hint(self, server_id: str) -> str:
+        if server_id in self._bundled:
+            return "内置浏览器连接失败；请报告错误详情。环境未准备好时，请用户在 RED PANDA 源码目录重新运行 scripts/setup.ps1（Windows）或 scripts/setup.sh（Linux）。"
+        return "不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。"
 
     async def tool_specs(self, toolset_id: str) -> tuple[ToolSpec, ...]:
         return tuple(
@@ -70,7 +84,7 @@ class McpToolsetProvider:
         toolset_id: str,
     ) -> tuple[McpDiscoveredTool, ...]:
         server_id = parse_toolset_id(toolset_id)
-        record = await self._registry.get(server_id)
+        record = await self._record(server_id)
         if record is None or not record.enabled:
             raise ToolsetLoadError(
                 "TOOLSET_NOT_FOUND",
@@ -96,7 +110,7 @@ class McpToolsetProvider:
             raise ToolsetLoadError(
                 "MCP_TRANSPORT_ERROR",
                 summary,
-                hint="不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。",
+                hint=self._connection_hint(server_id),
                 data={"server_id": server_id},
             ) from exc
 
@@ -184,7 +198,7 @@ class McpToolsetProvider:
         output_validator: Any | None,
     ):
         async def handler(arguments: dict[str, Any]) -> dict[str, Any]:
-            record = await self._registry.get(record_id)
+            record = await self._record(record_id)
             if record is None or not record.enabled:
                 return {
                     "ok": False,
@@ -222,10 +236,13 @@ class McpToolsetProvider:
                     summary
                 )
                 await self._client_manager.invalidate(record_id)
-                return adapt_transport_error(
+                result = adapt_transport_error(
                     exc, error_summary=summary,
                     not_started=isinstance(exc, McpToolNotStartedError),
                 )
+                if record_id in self._bundled:
+                    result["hint"] += " " + self._connection_hint(record_id)
+                return result
             from mcp.types import InputRequiredResult
 
             if isinstance(result, InputRequiredResult):
