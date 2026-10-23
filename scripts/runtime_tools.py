@@ -67,7 +67,11 @@ def install_package(root: Path, name: str, package: dict) -> None:
         unpacked.mkdir()
         if archive.suffix == ".zip":
             with zipfile.ZipFile(archive) as bundle:
-                bundle.extractall(unpacked)
+                for member in bundle.infolist():
+                    extracted = Path(bundle.extract(member, unpacked))
+                    # ZipFile does not restore Unix executable bits; Chrome has helper programs.
+                    if not member.is_dir() and (member.external_attr >> 16) & 0o111:
+                        extracted.chmod(0o755)
         else:
             with tarfile.open(archive) as bundle:
                 bundle.extractall(unpacked, filter="data")
@@ -99,7 +103,9 @@ def install_linux_packages(names: list[str]) -> None:
 def prepare(root: Path) -> None:
     activate(root)
     for name, package in packages(root).items():
-        if name == "node":
+        if name == "chrome":
+            ready = (tool_directory(root, name) / package["bin"] / package["executable"]).is_file()
+        elif name == "node":
             ready = supported_node() and shutil.which("npm.cmd" if os.name == "nt" else "npm")
         else:
             ready = shutil.which(name) or name == "fd" and shutil.which("fdfind")

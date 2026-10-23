@@ -1,0 +1,9 @@
+{
+  "name": "redpanda-browser-tools",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@playwright/mcp": "0.0.83",
+    "chrome-devtools-mcp": "1.12.0"
+  }
+}

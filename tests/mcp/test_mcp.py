@@ -1102,6 +1102,26 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
 
 @pytest.mark.process
 class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_client_declares_its_task_root_to_the_server(self):
+        with TemporaryDirectory() as directory:
+            home = RedPandaHome(Path(directory) / "home")
+            task_root = Path(directory) / "bot"
+            task_root.mkdir()
+            manager = McpClientManager(
+                McpSecretStore.from_home(home), runtime_root=_runtime_root(home), task_root=task_root,
+            )
+            record = McpServerRecord(
+                id="roots", display_name="Roots", description="", transport=TransportKind.STDIO,
+                transport_config=StdioTransportConfig(
+                    command=sys.executable,
+                    args=(str(Path(__file__).parents[1] / "fixtures/mcp_legacy_stdio_server.py"), "--roots"),
+                ), enabled=True,
+            )
+            async with manager:
+                result = await manager.call_tool(record, "read_client_roots", {})
+                self.assertFalse(result.is_error)
+                self.assertEqual(result.structured_content, {"roots": [task_root.as_uri()]})
+
     async def test_stdio_reuses_state_across_toolset_loads(self):
         with TemporaryDirectory() as directory:
             workspace = RedPandaHome(Path(directory) / ".redpanda")

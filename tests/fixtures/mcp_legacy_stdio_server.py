@@ -39,13 +39,24 @@ for raw_line in sys.stdin:
             }
         )
     elif method == "tools/list":
+        tools = ([{"name": "read_client_roots", "inputSchema": {"type": "object", "properties": {}}}]
+                 if "--roots" in sys.argv else [])
         respond(
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": {"tools": []},
+                "result": {"tools": tools},
             }
         )
+    elif method == "tools/call" and "--roots" in sys.argv:
+        respond({"jsonrpc": "2.0", "id": "roots-request", "method": "roots/list", "params": {}})
+        roots_reply = json.loads(sys.stdin.readline())
+        assert roots_reply["id"] == "roots-request"
+        roots = {"roots": [item["uri"] for item in roots_reply["result"]["roots"]]}
+        respond({
+            "jsonrpc": "2.0", "id": request_id,
+            "result": {"content": [{"type": "text", "text": json.dumps(roots)}], "structuredContent": roots},
+        })
     else:
         respond(
             {

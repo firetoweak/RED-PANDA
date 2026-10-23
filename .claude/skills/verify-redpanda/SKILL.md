@@ -33,7 +33,7 @@ git -C "$SCRATCH_WORKSPACE" -c user.name=verify -c user.email=verify@example.inv
 
 `REDPANDA_HOME` and `SCRATCH_WORKSPACE` are siblings. The personal directory must not sit inside the workspace directory.
 
-Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. `sh scripts/setup.sh` (Linux x64 only; network required) downloads the project Python into `redpanda-env`, then runs `scripts/setup.py` in four steps: it puts pinned Node/rg/fd (and Git when missing) under `.tools/runtime/`, installs Python deps, runs `npm ci` and `npm run build` in `web/`, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone. `setup.py --check` rejects Node outside 22.x (≥22.13) or 24.x. If only the web bundle is stale, rebuilding it alone is enough:
+Install once if `./redpanda-env/bin/python` or `web/dist/index.html` is missing. Re-run setup after updates that change browser dependencies. `sh scripts/setup.sh` (Linux x64 only; network required) downloads the project Python into `redpanda-env`, then runs `scripts/setup.py` in four steps: it prepares pinned application tools and a private Chrome for Testing under `.tools/runtime/`, installs Python deps, runs `npm ci` in `scripts/browser/` and `web/` and builds the web bundle, and initializes whichever personal directory `REDPANDA_HOME` points at. Existing `config.json` and `connections.json` there are left alone. `setup.py --check` checks system command prerequisites and rejects Node outside 22.x (≥22.13) or 24.x; it does not prove the browser MCP dependencies are installed. If only the web bundle is stale, rebuilding it alone is enough:
 
 ```sh
 sh scripts/setup.sh

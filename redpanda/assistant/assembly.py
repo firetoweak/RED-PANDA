@@ -152,7 +152,7 @@ async def build_assistant_assembly(
     )
     home.initialize()
     shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite") if agent is not None else None
-    mcp = build_mcp(home)
+    mcp = build_mcp(home, task_root=workspace.task_root)
     skills = build_skills(
         home,
         diff_summarizer=LlmSkillDiffSummarizer(

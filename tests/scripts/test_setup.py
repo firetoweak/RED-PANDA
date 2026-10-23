@@ -29,13 +29,14 @@ def test_preparation_uses_project_environment_and_configures_only_when_requested
     commands = []
     monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: commands.append((command, kwargs)))
     assert setup.main(arguments) == 0
-    assert len(commands) == 5
+    assert len(commands) == 6
     assert commands[0][0][1:] == ["pip", "install", "--python", setup.sys.executable, "pip"]
     assert commands[1][0][1:] == ["pip", "install", "--python", setup.sys.executable,
                                   "-r", "requirements.lock", "--require-hashes"]
-    assert commands[2][0] == ["npm", "--prefix", "web", "ci"]
-    assert commands[3][0] == ["npm", "--prefix", "web", "run", "build"]
-    assert commands[4][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
+    assert commands[2][0] == ["npm", "--prefix", "scripts/browser", "ci"]
+    assert commands[3][0] == ["npm", "--prefix", "web", "ci"]
+    assert commands[4][0] == ["npm", "--prefix", "web", "run", "build"]
+    assert commands[5][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
     assert all(kwargs == {"cwd": setup.ROOT, "check": True} for _, kwargs in commands)
 
 
@@ -51,7 +52,7 @@ def test_project_preparation_does_not_invoke_rust_or_llvm(monkeypatch):
 
     monkeypatch.setattr(setup.subprocess, "run", run)
     assert setup.main([]) == 0
-    assert len(commands) == 5
+    assert len(commands) == 6
     assert not any("cargo" in part or "rustup" in part for command in commands for part in map(str, command))
 
 
