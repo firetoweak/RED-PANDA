@@ -122,17 +122,6 @@ class AgentAvatarRequest(ConnectionRequest):
     seed: str | None = Field(min_length=1)
 
 
-class CreateExternalConnectionRequest(ConnectionRequest):
-    name: str = Field(min_length=1)
-
-    @field_validator("name")
-    @classmethod
-    def named_collaborator(cls, value):
-        if not value.strip() or value != value.strip():
-            raise ValueError("外部端名字不能为空白或带首尾空白")
-        return value
-
-
 class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
     pass
 
@@ -497,22 +486,22 @@ def create_web_app(
     async def agents(request: Request):
         return await _channel(request).list_agents()
 
-    @app.get("/api/agents/{session_id}/external-connections")
-    async def external_connections(session_id: str, request: Request):
-        return await _channel(request).list_external_connections(session_id)
+    @app.get("/api/external-connections")
+    async def external_connections(request: Request):
+        return await _channel(request).list_external_connections()
 
-    @app.post("/api/agents/{session_id}/external-connections", status_code=201)
-    async def create_external_connection(session_id: str, body: CreateExternalConnectionRequest, request: Request):
-        created = await _channel(request).create_external_connection(body.connection_id, session_id, body.name)
+    @app.post("/api/external-connections", status_code=201)
+    async def create_external_connection(body: ConnectionRequest, request: Request):
+        created = await _channel(request).create_external_connection(body.connection_id)
         return JSONResponse(status_code=201, content={**created, "url": str(request.base_url) + "mcp/"},
                             headers={"Cache-Control": "no-store"})
 
-    @app.delete("/api/agents/{session_id}/external-connections/{external_id}", status_code=204)
-    async def revoke_external_connection(session_id: str, external_id: str, body: ConnectionRequest, request: Request):
+    @app.delete("/api/external-connections/{external_id}", status_code=204)
+    async def revoke_external_connection(external_id: str, body: ConnectionRequest, request: Request):
         try:
-            await _channel(request).revoke_external_connection(body.connection_id, session_id, external_id)
+            await _channel(request).revoke_external_connection(body.connection_id, external_id)
         except ExternalConnectionNotFound:
-            return JSONResponse(status_code=404, content={"detail": "这位 Bot 没有这个接入，可能已撤销。"})
+            return JSONResponse(status_code=404, content={"detail": "没有这份连接配置，可能已撤销。"})
         return Response(status_code=204)
 
     @app.post("/api/agents", status_code=201)

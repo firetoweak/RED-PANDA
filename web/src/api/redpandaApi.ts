@@ -227,27 +227,26 @@ export const redpandaApi = createApi({
         agentRosterEntrySchema.array().parse(value),
       providesTags: ["Agents"],
     }),
-    getExternalConnections: build.query<ExternalConnection[], string>({
-      query: (sessionId) => `/agents/${encodeURIComponent(sessionId)}/external-connections`,
+    getExternalConnections: build.query<ExternalConnection[], void>({
+      query: () => "/external-connections",
       transformResponse: (value: unknown) => externalConnectionSchema.array().parse(value),
-      providesTags: (_result, _error, id) => [{ type: "ExternalConnections", id }],
+      providesTags: ["ExternalConnections"],
     }),
-    createExternalConnection: build.mutation<CreatedExternalConnection, SelectSession & { name: string }>({
-      query: ({ connectionId, sessionId, name }) => ({
-        url: `/agents/${encodeURIComponent(sessionId)}/external-connections`, method: "POST",
-        body: { connection_id: connectionId, name },
+    createExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string }>({
+      query: ({ connectionId }) => ({
+        url: "/external-connections", method: "POST", body: { connection_id: connectionId },
       }),
       transformResponse: (value: unknown) => createdExternalConnectionSchema.parse(value),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
-      invalidatesTags: (_result, error, { sessionId }) => error === undefined ? [{ type: "ExternalConnections", id: sessionId }] : [],
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalConnections"] : [],
     }),
-    revokeExternalConnection: build.mutation<void, SelectSession & { externalId: string }>({
-      query: ({ connectionId, sessionId, externalId }) => ({
-        url: `/agents/${encodeURIComponent(sessionId)}/external-connections/${encodeURIComponent(externalId)}`,
+    revokeExternalConnection: build.mutation<void, { connectionId: string; externalId: string }>({
+      query: ({ connectionId, externalId }) => ({
+        url: `/external-connections/${encodeURIComponent(externalId)}`,
         method: "DELETE", body: { connection_id: connectionId },
       }),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
-      invalidatesTags: (_result, error, { sessionId }) => error === undefined ? [{ type: "ExternalConnections", id: sessionId }] : [],
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalConnections"] : [],
     }),
     deleteAgent: build.mutation<void, SelectSession>({
       query: ({ connectionId, sessionId }) => ({

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
-from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, parse_external
+from redpanda.assistant.external_messages import EXTERNAL_MESSAGE, Feedback, parse_external
 from redpanda.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent, project_direction
 from redpanda.assistant.compact.core import latest_input_tokens
 from redpanda.assistant.attachments import AttachmentGateway, AttachmentStore
@@ -163,8 +163,10 @@ class ExternalMessageItem:
     peer: str
     identity: str
     text: str
-    revision: str | None
-    reference: str | None
+    revision: str
+    reference: str
+    previous_request_id: str | None
+    feedback: Feedback | None
     occurred_at: datetime
 
 
@@ -527,7 +529,7 @@ def project_conversation(
                 peer = external_peers[message.reply_to]
             items.append(ExternalMessageItem("external_message", message.message_id,
                 "received" if message.incoming else "sent", peer, message.identity, message.text,
-                message.revision, message.reference, event.occurred_at))
+                message.revision, message.reference, message.previous_request_id, message.feedback, event.occurred_at))
             continue
         if event.event_id in sent_messages:
             message = sent_messages[event.event_id]

@@ -16,7 +16,7 @@ vi.mock("../src/features/conversation/MarkdownMessage", () => ({
 it("外部消息展示来源、正文和版本，不跳转到同名内部 Bot", () => {
   render(<PrivateMessageNotice message={{ key: "external:1", kind: "private_message", direction: "received",
     peer: "Codex", occurredAt: "2026-10-23T01:00:00Z",
-    external: { identity: "1".repeat(32), text: "请测试这个版本", revision: "a".repeat(40), reference: "PR 1" } }} />);
+    external: { identity: "1".repeat(32), text: "请测试这个版本", revision: "a".repeat(40), reference: "PR 1", previousRequestId: null, feedback: null } }} />);
   expect(screen.getByText("外部协作者")).toBeInTheDocument();
   expect(screen.getByText("请测试这个版本")).toBeInTheDocument();
   expect(screen.getByText("a".repeat(40))).toBeInTheDocument();

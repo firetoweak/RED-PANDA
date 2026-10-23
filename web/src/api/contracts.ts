@@ -104,7 +104,6 @@ export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
 export const externalConnectionSchema = z.object({
   connection_id: z.string().regex(/^[0-9a-f]{32}$/),
-  name: z.string().min(1),
 }).strict();
 export type ExternalConnection = z.infer<typeof externalConnectionSchema>;
 export const createdExternalConnectionSchema = z.object({
@@ -237,6 +236,14 @@ export const workPlanSchema = z.object({
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
 
+export const verificationFeedbackSchema = z.object({
+  kind: z.enum(["progress", "question", "report"]),
+  verdict: z.enum(["passed", "issues_found", "blocked"]).nullable(),
+  tested_revision: z.string().nullable(),
+  evidence: z.array(z.string()),
+}).strict();
+export type VerificationFeedback = z.infer<typeof verificationFeedbackSchema>;
+
 export const conversationViewSchema = z
   .object({
     deleted: z.boolean(),
@@ -253,8 +260,10 @@ export const conversationViewSchema = z
           peer: z.string().min(1),
           identity: z.string().min(1),
           text: z.string().min(1),
-          revision: z.string().nullable(),
-          reference: z.string().nullable(),
+          revision: z.string(),
+          reference: z.string(),
+          previous_request_id: z.string().nullable(),
+          feedback: verificationFeedbackSchema.nullable(),
           occurred_at: z.string().datetime({ offset: true }),
         }).strict(),
         z.object({

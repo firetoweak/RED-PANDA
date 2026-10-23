@@ -6,12 +6,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { redpandaApi } from "../src/api/redpandaApi";
 import type { ExternalConnection } from "../src/api/contracts";
-import { ExternalConnections } from "../src/features/conversation/ExternalConnections";
+import { VerificationAccess } from "../src/features/settings/VerificationAccess";
+import runtimeReducer from "../src/realtime/runtimeSlice";
 
 const stores: ReturnType<typeof createStore>[] = [];
 function createStore() {
   return configureStore({
-    reducer: { [redpandaApi.reducerPath]: redpandaApi.reducer },
+    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    preloadedState: { runtime: { ...runtimeReducer(undefined, { type: "init" }), connectionId: "human" } },
     middleware: (defaults) => defaults().concat(redpandaApi.middleware),
   });
 }
@@ -35,16 +37,16 @@ afterEach(() => {
 
 it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不留在查询或 mutation 中", async () => {
   const store = createStore(); stores.push(store);
-  const item = { connection_id: "a".repeat(32), name: "我的编码端" };
+  const item = { connection_id: "a".repeat(32) };
   let entries: ExternalConnection[] = [];
   const writeText = vi.fn().mockRejectedValueOnce(new Error("clipboard denied")).mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent });
   const removed = vi.fn();
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
-    expect(new URL(request.url).pathname).toMatch(/^\/api\/agents\/ada\/external-connections/);
+    expect(new URL(request.url).pathname).toMatch(/^\/api\/external-connections/);
     if (request.method === "GET") return Response.json(entries);
     if (request.method === "POST") {
-      expect(await request.json()).toEqual({ connection_id: "human", name: item.name });
+      expect(await request.json()).toEqual({ connection_id: "human" });
       entries = [item];
       return Response.json({ connection: item, token: "one-time-secret", url: "http://localhost/mcp/" }, { status: 201 });
     }
@@ -53,13 +55,12 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
     removed(); entries = [];
     return new Response(null, { status: 204 });
   }));
-  render(<Provider store={store}><MantineProvider env="test">
-    <ExternalConnections sessionId="ada" botName="Ada" connectionId="human" />
+  const view = render(<Provider store={store}><MantineProvider env="test">
+    <VerificationAccess />
   </MantineProvider></Provider>);
-  fireEvent.click(screen.getByRole("button", { name: "管理外部接入" }));
-  expect(await screen.findByText("还没有外部接入。创建后即可复制连接配置。")).toBeVisible();
-  fireEvent.change(screen.getByLabelText("接入名称"), { target: { value: item.name } });
-  fireEvent.click(screen.getByRole("button", { name: "创建接入" }));
+  expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
+  expect(screen.queryByLabelText("接入名称")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
   const config = await screen.findByLabelText("MCP 配置（JSON）");
   const value = (config as HTMLTextAreaElement).value;
   expect(JSON.parse(value).mcpServers.red_panda).toEqual({
@@ -71,14 +72,14 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
   fireEvent.click(screen.getByRole("button", { name: "复制配置" }));
   expect(await screen.findByRole("button", { name: "已复制" })).toBeVisible();
   expect(writeText).toHaveBeenLastCalledWith(value);
-  fireEvent.click(screen.getByRole("button", { name: "关闭外部接入" }));
-  fireEvent.click(screen.getByRole("button", { name: "管理外部接入" }));
+  view.unmount();
+  render(<Provider store={store}><MantineProvider env="test"><VerificationAccess /></MantineProvider></Provider>);
   expect(screen.queryByLabelText("MCP 配置（JSON）")).not.toBeInTheDocument();
-  fireEvent.click(await screen.findByRole("button", { name: "撤销 我的编码端" }));
+  fireEvent.click(await screen.findByRole("button", { name: "撤销 连接 aaaaaaaa" }));
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(removed).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "撤销 我的编码端" }));
+  fireEvent.click(screen.getByRole("button", { name: "撤销 连接 aaaaaaaa" }));
   fireEvent.click(screen.getByRole("button", { name: "确认撤销" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "撤销 我的编码端" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "撤销 连接 aaaaaaaa" })).not.toBeInTheDocument());
   expect(removed).toHaveBeenCalledOnce();
 });
