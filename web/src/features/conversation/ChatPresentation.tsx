@@ -1,6 +1,7 @@
 import { ActionIcon, Menu } from "@mantine/core";
 import { IconArrowBackUp, IconCopy, IconX } from "@tabler/icons-react";
 import { createContext, useContext, type ReactElement } from "react";
+import type { AvatarSelection, Avatars } from "../../api/contracts";
 import { botAvatarPath, identityHash } from "./botAvatar";
 
 export type MessageReference = { id: string; author: string; preview: string };
@@ -13,6 +14,7 @@ export const ChatPresentation = createContext<{
 
 /** 名册提供当前名字对应的固定身份；历史中无法关联的名字仍可独立显示。 */
 export const BotIdentities = createContext<ReadonlyMap<string, string>>(new Map());
+export const BotAvatars = createContext<Readonly<Avatars>>({});
 
 function identityColor(seed: string): string {
   return ["blue", "purple", "green", "amber"][identityHash(seed) % 4];
@@ -20,16 +22,27 @@ function identityColor(seed: string): string {
 
 export function useIdentityColor() {
   const identities = useContext(BotIdentities);
-  return (name: string) => identityColor(identities.get(name) ?? name);
+  const avatars = useContext(BotAvatars);
+  return (name: string) => {
+    const id = identities.get(name) ?? name;
+    const avatar = avatars[id];
+    return identityColor(avatar?.kind === "generated" ? avatar.seed : id);
+  };
 }
 
-export function BotAvatar({ name, sessionId, className = "" }: { name: string; sessionId?: string; className?: string }) {
+export function BotAvatar({ name, sessionId, className = "", avatar }: {
+  name: string; sessionId?: string; className?: string; avatar?: AvatarSelection | null;
+}) {
   const identities = useContext(BotIdentities);
-  const seed = sessionId ?? identities.get(name) ?? name;
+  const avatars = useContext(BotAvatars);
+  const id = sessionId ?? identities.get(name) ?? name;
+  const selection = avatar === undefined ? avatars[id] : avatar;
+  const seed = selection?.kind === "generated" ? selection.seed : id;
   return <span className={`agent-avatar ${className}`} data-identity={identityColor(seed)} aria-hidden="true">
-    <svg className="bot-avatar-mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" focusable="false">
-      <path d={botAvatarPath(seed)} />
-    </svg>
+    {selection?.kind === "image" ? <img className="bot-avatar-image" alt="" src={`/api/avatars/images/${encodeURIComponent(selection.attachment_id)}`} />
+      : <svg className="bot-avatar-mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" focusable="false">
+        <path d={botAvatarPath(seed)} />
+      </svg>}
   </span>;
 }
 

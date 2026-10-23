@@ -9,6 +9,10 @@ import {
 } from "../realtime/runtimeSlice";
 import {
   agentRosterEntrySchema,
+  avatarSelectionSchema,
+  avatarsSchema,
+  type AvatarSelection,
+  type Avatars,
   autoAuthorizeSchema,
   backgroundCommandSchema,
   type BackgroundCommand,
@@ -127,7 +131,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars"],
   endpoints: (build) => ({
     getSharedMemory: build.query<SharedMemory, void>({
       query: () => "/shared-memory",
@@ -187,6 +191,31 @@ export const redpandaApi = createApi({
       transformErrorResponse: (response) => response.status === 400
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
       invalidatesTags: (_result, _error, { sessionId }) => [{ type: "SessionModel", id: sessionId }],
+    }),
+    getAvatars: build.query<Avatars, void>({
+      query: () => "/avatars",
+      transformResponse: (value: unknown) => avatarsSchema.parse(value),
+      providesTags: ["Avatars"],
+    }),
+    setAgentAvatar: build.mutation<AvatarSelection | null, SelectSession & { seed: string | null }>({
+      query: ({ connectionId, sessionId, seed }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/avatar`, method: "PUT",
+        body: { connection_id: connectionId, seed },
+      }),
+      transformResponse: (value: unknown) => avatarSelectionSchema.nullable().parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["Avatars"] : [],
+    }),
+    uploadAgentAvatar: build.mutation<AvatarSelection, UploadAttachment>({
+      query: ({ connectionId, sessionId, file }) => {
+        const body = new FormData();
+        body.append("connection_id", connectionId);
+        body.append("file", file);
+        return { url: `/agents/${encodeURIComponent(sessionId)}/avatar/image`, method: "POST", body };
+      },
+      transformResponse: (value: unknown) => avatarSelectionSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["Avatars"] : [],
     }),
     getAgents: build.query<AgentRosterEntry[], void>({
       query: () => "/agents",
@@ -549,6 +578,9 @@ export const {
   useSelectWorkspaceDirectoryMutation,
   useSelectLocalFileMutation,
   useGetAgentsQuery,
+  useGetAvatarsQuery,
+  useSetAgentAvatarMutation,
+  useUploadAgentAvatarMutation,
   useDeleteAgentMutation,
   useDissolveGroupMutation,
   useCreateAgentMutation,

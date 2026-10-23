@@ -13,6 +13,7 @@ import { EditableAgentDirection } from "../sessions/EditableAgentDirection";
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
+import { BotAvatarPicker } from "./BotAvatarPicker";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -34,7 +35,7 @@ export function SessionConversation() {
   const details = agent === undefined ? null : (
     <>
       <div className="agent-details-profile">
-        <BotAvatar name={agent.name} sessionId={agent.session_id} className="agent-details-avatar" />
+        <BotAvatarPicker key={`avatar-${agent.session_id}`} name={agent.name} sessionId={agent.session_id} connectionId={connectionId} />
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>

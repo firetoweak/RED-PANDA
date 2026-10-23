@@ -46,6 +46,7 @@ from redpanda.assistant.sessions import SessionView
 from redpanda.channels.web import app as web_app
 from redpanda.channels.web.app import create_web_app, report_worker_failures
 from redpanda.channels.web.channel import WebChannel
+from redpanda.channels.web.avatars import AvatarStore
 from redpanda.channels.web.directory_picker import DirectoryPickerUnavailable
 from redpanda.channels.web.hub import WebEventHub
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -257,6 +258,9 @@ class WebFirstSliceTest(unittest.TestCase):
         self.models.initialize_session("session-old")
         self.sessions.models = self.models
         self.shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite")
+        self.avatars_path = home.state_root / "web_avatars"
+        self.avatars = AvatarStore(self.avatars_path)
+        self.sessions.agents = SimpleNamespace(by_session=AsyncMock(return_value=SimpleNamespace(deleted=False)))
         self.channel = WebChannel(
             self.sessions,
             self.queries,
@@ -272,13 +276,110 @@ class WebFirstSliceTest(unittest.TestCase):
         )
         self.client = TestClient(
             create_web_app(self.channel, self.hub, workspaces=self.workspaces,
-                           models=self.models, model_llm=self.model_llm, shared_memory=self.shared_memory)
+                           models=self.models, model_llm=self.model_llm, shared_memory=self.shared_memory,
+                           avatars=self.avatars)
         )
         self.client.__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
         self._directory.cleanup()
+
+    def test_avatar_choice_and_reset_survive_store_recreation_and_notify_pages(self):
+        queue = self.hub.subscribe()
+        body = {"connection_id": self.connection.connection_id, "seed": "chosen-shape"}
+        self.assertEqual(self.client.get("/api/avatars").json(), {})
+        response = self.client.put("/api/agents/session-old/avatar", json=body)
+        self.assertEqual(response.status_code, 200)
+        selection = {"kind": "generated", "seed": "chosen-shape"}
+        self.assertEqual(response.json(), selection)
+        self.assertEqual(self.client.get("/api/avatars").json(), {"session-old": selection})
+        self.assertEqual(AvatarStore(self.avatars_path).read()["session-old"].model_dump(), selection)
+        event = queue.get_nowait()
+        self.assertEqual((event.name, event.data), ("avatars_changed", {}))
+        restored = self.client.put("/api/agents/session-old/avatar", json={**body, "seed": None})
+        self.assertEqual(restored.status_code, 200)
+        self.assertIsNone(restored.json())
+        self.assertEqual(AvatarStore(self.avatars_path).read(), {})
+        self.assertEqual(queue.get_nowait().name, "avatars_changed")
+        self.assertEqual(self.sessions.calls, [])
+        self.hub.unsubscribe(queue)
+
+    def test_avatar_image_survives_restart_and_is_not_a_conversation_attachment(self):
+        uploaded = self.client.post("/api/agents/session-old/avatar/image",
+                                    data={"connection_id": self.connection.connection_id},
+                                    files={"file": ("avatar.png", _png_bytes(), "image/png")})
+        self.assertEqual(uploaded.status_code, 201)
+        selection = uploaded.json()
+        self.assertEqual(selection["kind"], "image")
+        restored = AvatarStore(self.avatars_path)
+        self.assertEqual(restored.read()["session-old"].model_dump(), selection)
+        self.assertEqual(restored.image_file(selection["attachment_id"])[0].read_bytes(), _png_bytes())
+        image = self.client.get(f"/api/avatars/images/{selection['attachment_id']}")
+        self.assertEqual((image.status_code, image.headers["content-type"], image.content),
+                         (200, "image/png", _png_bytes()))
+        self.client.put("/api/agents/session-old/avatar", json={
+            "connection_id": self.connection.connection_id, "seed": None,
+        })
+        self.assertEqual(self.client.get(f"/api/avatars/images/{selection['attachment_id']}").content, _png_bytes())
+        sent = self.client.post("/api/sessions/session-old/inputs", json={
+            "connection_id": self.connection.connection_id, "delivery_id": "avatar-is-not-input",
+            "text": "test", "artifact_refs": [selection["attachment_id"]],
+        })
+        self.assertEqual(sent.status_code, 400)
+        self.assertEqual(self.sessions.calls, [])
+        self.assertEqual(self.queries.accepted, [])
+        missing = self.client.get(f"/api/avatars/images/sha256:{'0' * 64}")
+        self.assertEqual(missing.status_code, 404)
+
+    def test_avatar_rejects_invalid_images_without_changing_the_saved_choice(self):
+        body = {"connection_id": self.connection.connection_id, "seed": "keep-this"}
+        self.client.put("/api/agents/session-old/avatar", json=body)
+        queue = self.hub.subscribe()
+        for name, data, mime in (("bad.png", b"not an image", "image/png"),
+                                 ("wrong.jpg", _png_bytes(), "image/jpeg"),
+                                 ("vector.svg", b"<svg/>", "image/svg+xml")):
+            with self.subTest(name=name):
+                response = self.client.post("/api/agents/session-old/avatar/image",
+                                            data={"connection_id": self.connection.connection_id},
+                                            files={"file": (name, data, mime)})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.client.get("/api/avatars").json(), {
+                    "session-old": {"kind": "generated", "seed": "keep-this"},
+                })
+        self.assertTrue(queue.empty())
+        self.hub.unsubscribe(queue)
+
+    def test_avatar_edits_require_an_active_connection_and_an_existing_live_bot(self):
+        for session_id, connection_id, agent, status in (
+            ("session-old", "expired", SimpleNamespace(deleted=False), 409),
+            ("missing", self.connection.connection_id, None, 404),
+            ("deleted", self.connection.connection_id, SimpleNamespace(deleted=True), 410),
+        ):
+            with self.subTest(session_id=session_id):
+                self.sessions.agents.by_session.return_value = agent
+                response = self.client.put(f"/api/agents/{session_id}/avatar",
+                                           json={"connection_id": connection_id, "seed": "new"})
+                self.assertEqual(response.status_code, status)
+                uploaded = self.client.post(f"/api/agents/{session_id}/avatar/image",
+                                            data={"connection_id": connection_id},
+                                            files={"file": ("avatar.png", _png_bytes(), "image/png")})
+                self.assertEqual(uploaded.status_code, status)
+        self.assertFalse(self.avatars_path.exists())
+
+    def test_avatar_selection_write_failure_keeps_the_previous_choice(self):
+        body = {"connection_id": self.connection.connection_id, "seed": "previous"}
+        self.client.put("/api/agents/session-old/avatar", json=body)
+        queue = self.hub.subscribe()
+        with patch("redpanda.channels.web.avatars.write_json", side_effect=OSError("disk unavailable")):
+            with self.assertRaisesRegex(OSError, "disk unavailable"):
+                self.client.post("/api/agents/session-old/avatar/image",
+                                 data={"connection_id": self.connection.connection_id},
+                                 files={"file": ("avatar.png", _png_bytes(), "image/png")})
+        self.assertEqual(AvatarStore(self.avatars_path).read()["session-old"].model_dump(),
+                         {"kind": "generated", "seed": "previous"})
+        self.assertTrue(queue.empty())
+        self.hub.unsubscribe(queue)
 
     def test_user_and_bots_edit_the_same_memory_with_revision_conflicts(self):
         self.assertEqual(self.client.get("/api/shared-memory").json()["content"], "")

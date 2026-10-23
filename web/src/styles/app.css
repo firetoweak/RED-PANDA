@@ -1046,3 +1046,14 @@ time { font-variant-numeric: tabular-nums; }
   .home-intro h1 { font-size: 22px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+
+.bot-avatar-image { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.avatar-edit-trigger { position: relative; display: inline-flex; border-radius: 12px; }
+.avatar-edit-trigger:disabled { cursor: default; }
+.avatar-edit-pencil { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--rp-panel); color: var(--mantine-color-dimmed); border: 1px solid var(--rp-border); }
+.avatar-edit-trigger:hover:not(:disabled) .avatar-edit-pencil { color: var(--mantine-color-text); }
+.avatar-picker-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.avatar-picker-option { display: flex; align-items: center; justify-content: center; padding: 3px; border-radius: 12px; }
+.avatar-picker-option .agent-avatar { width: 46px; height: 46px; border-radius: 10px; }
+.avatar-picker-option:hover:not(:disabled) { background: var(--rp-tile); }
+.avatar-picker-option:disabled { opacity: 0.55; cursor: default; }

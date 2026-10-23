@@ -127,5 +127,9 @@ it("群变化事件让群数据重新读取，调度结束后页面不会停在�
   expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Groups"]));
   listeners.get("auto_authorize_changed")!(new MessageEvent("auto_authorize_changed", { data: "{}" }));
   expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
+  listeners.get("avatars_changed")!(new MessageEvent("avatars_changed", { data: "{}" }));
+  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Avatars"]));
+  listeners.get("connected")!(new MessageEvent("connected", { data: '{"connection_id":"again"}' }));
+  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
   close();
 });

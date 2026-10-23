@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { useAppDispatch } from "./hooks";
-import { useGetAgentsQuery } from "../api/redpandaApi";
-import { BotIdentities } from "../features/conversation/ChatPresentation";
+import { useGetAgentsQuery, useGetAvatarsQuery } from "../api/redpandaApi";
+import { BotAvatars, BotIdentities } from "../features/conversation/ChatPresentation";
 import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
@@ -23,6 +23,7 @@ import { openEventBridge } from "../realtime/eventBridge";
 export function App() {
   const dispatch = useAppDispatch();
   const { data: agents } = useGetAgentsQuery();
+  const { data: avatars = {} } = useGetAvatarsQuery();
   const identities = useMemo(() => new Map(agents?.map((agent) => [agent.name, agent.session_id])), [agents]);
   const [navigationOpened, { close: closeNavigation, toggle: toggleNavigation }] =
     useDisclosure(false);
@@ -69,6 +70,7 @@ export function App() {
 
   return (
     <BotIdentities value={identities}>
+    <BotAvatars value={avatars}>
     <AppShell
       className="app-shell"
       navbar={{
@@ -116,6 +118,7 @@ export function App() {
         </Routes>
       </AppShell.Main>
     </AppShell>
+    </BotAvatars>
     </BotIdentities>
   );
 }

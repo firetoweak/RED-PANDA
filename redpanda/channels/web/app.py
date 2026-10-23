@@ -36,6 +36,7 @@ from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.assistant.inputs import InputConflict
 from redpanda.bootstrap import bootstrap_assistant
 from redpanda.channels.web.channel import WebChannel, WebConnectionInactive, WebInputInvalid
+from redpanda.channels.web.avatars import AvatarImageNotFound, AvatarStore
 from redpanda.channels.web.directory_picker import (
     DirectoryPickerUnavailable,
     select_directory,
@@ -113,6 +114,10 @@ class AgentNameRequest(ConnectionRequest):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+
+class AgentAvatarRequest(ConnectionRequest):
+    seed: str | None = Field(min_length=1)
 
 
 class AgentDirectionRequest(ConnectionRequest, DirectionArguments):
@@ -209,6 +214,7 @@ def create_web_app(
     model_llm=None,
     static_dir: Path | None = None,
     shared_memory: SharedMemoryStore | None = None,
+    avatars: AvatarStore | None = None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
@@ -221,6 +227,7 @@ def create_web_app(
             app.state.model_llm = model_llm
             app.state.workspaces = workspaces
             app.state.shared_memory = shared_memory
+            app.state.avatars = avatars
             yield
             return
         async with bootstrap_assistant(
@@ -247,6 +254,7 @@ def create_web_app(
             app.state.model_llm = assistant.sessions.llm
             app.state.workspaces = assistant.workspaces
             app.state.shared_memory = SharedMemoryStore(assistant.sessions.home.state_root / "shared_memory.sqlite")
+            app.state.avatars = avatars if avatars is not None else AvatarStore(assistant.sessions.home.state_root / "web_avatars")
             failures = asyncio.create_task(
                 report_worker_failures(assistant.sessions, events),
                 name="web-assistant-failure",
@@ -302,6 +310,10 @@ def create_web_app(
     @app.exception_handler(SessionNotFoundError)
     async def session_not_found(_request: Request, error: SessionNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(error)})
+
+    @app.exception_handler(AvatarImageNotFound)
+    async def avatar_image_not_found(_request: Request, _error: AvatarImageNotFound):
+        return JSONResponse(status_code=404, content={"detail": "头像图片不存在"})
 
     @app.exception_handler(AttachmentRejected)
     async def attachment_rejected(_request: Request, error: AttachmentRejected):
@@ -426,6 +438,40 @@ def create_web_app(
     @app.exception_handler(GroupDissolvedError)
     async def group_dissolved(_request: Request, _error: GroupDissolvedError):
         return JSONResponse(status_code=410, content={"detail": "这个群已解散，只能查看历史记录。"})
+
+    @app.get("/api/avatars")
+    async def avatar_selections(request: Request):
+        return request.app.state.avatars.read()
+
+    @app.put("/api/agents/{session_id}/avatar")
+    async def set_agent_avatar(session_id: str, body: AgentAvatarRequest, request: Request):
+        await _channel(request).require_avatar_edit(body.connection_id, session_id)
+        selection = request.app.state.avatars.set_generated(session_id, body.seed)
+        await request.app.state.hub.avatars_changed()
+        return selection
+
+    @app.post("/api/agents/{session_id}/avatar/image", status_code=201)
+    async def upload_avatar_image(
+        session_id: str,
+        request: Request,
+        connection_id: str = Form(),
+        file: UploadFile = File(),
+    ):
+        await _channel(request).require_avatar_edit(connection_id, session_id)
+        mime = (file.content_type or "").split(";", 1)[0].strip().lower()
+        if mime == "image/jpg":
+            mime = "image/jpeg"
+        if mime not in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+            raise AttachmentRejected("头像只支持 PNG、JPEG、WebP 或 GIF 图片")
+        data = await file.read(MAX_SOURCE_BYTES + 1)
+        selection = request.app.state.avatars.save_image(session_id, data, mime)
+        await request.app.state.hub.avatars_changed()
+        return selection
+
+    @app.get("/api/avatars/images/{attachment_id}")
+    async def avatar_image(attachment_id: str, request: Request):
+        path, mime = request.app.state.avatars.image_file(attachment_id)
+        return FileResponse(path, media_type=mime)
 
     @app.get("/api/agents")
     async def agents(request: Request):
