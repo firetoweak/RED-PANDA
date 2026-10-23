@@ -39,7 +39,7 @@ from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.runner import SessionNotFoundError
 from redpanda.model_settings import ModelSettings
 from redpanda.config import write_json
-from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage
+from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage, LLMTransientError
 from redpanda.paths import RedPandaHome
 from redpanda.assistant.inputs import InputConflict
 from redpanda.assistant.sessions import SessionView
@@ -529,6 +529,27 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertNotIn("secret-for-test", response.text)
         status = next(item for item in response.json()["providers"] if item["provider"] == "deepseek")
         self.assertTrue(status["configured"])
+
+    def test_codex_catalog_uses_current_connection_without_saving_settings(self):
+        before = self.models.connections_path.read_bytes()
+        catalog = [{"slug": "actual-id", "display_name": "Actual model", "context_window": 500000,
+                    "supported_reasoning_levels": [{"effort": "high"}], "default_reasoning_level": "high"}]
+        with patch("redpanda.model_settings.list_codex_models", new=AsyncMock(return_value=catalog)) as lookup:
+            response = self.client.get("/api/model-settings/codex-models")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), catalog)
+        lookup.assert_awaited_once_with(json.loads(before)["openai-codex"])
+        self.assertEqual(self.models.connections_path.read_bytes(), before)
+
+    def test_codex_catalog_reports_known_failures_and_exposes_unknown_errors(self):
+        for error in [LLMAuthenticationError("请重新授权"), LLMTransientError("请重试")]:
+            with self.subTest(error=error), patch("redpanda.model_settings.list_codex_models", new=AsyncMock(side_effect=error)):
+                response = self.client.get("/api/model-settings/codex-models")
+                self.assertEqual(response.status_code, 502)
+                self.assertEqual(response.json(), {"detail": str(error)})
+        with patch("redpanda.model_settings.list_codex_models", new=AsyncMock(side_effect=LookupError("unknown"))):
+            with self.assertRaisesRegex(LookupError, "unknown"):
+                self.client.get("/api/model-settings/codex-models")
 
     def test_session_model_selection_and_invalid_model_boundary(self):
         response = self.client.get("/api/sessions/session-old/model")

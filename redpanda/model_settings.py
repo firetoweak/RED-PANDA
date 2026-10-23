@@ -5,7 +5,10 @@ from pathlib import Path
 
 from redpanda.config import config_path, load_app_config, parse_app_config, write_json
 from redpanda.llm.config import initial_connections, load_connections
-from thinllm import PROVIDERS, MissingProviderSetting, resolve_endpoint
+from thinllm import (
+    PROVIDERS, InvalidLLMResponse, LLMProviderError, LLMTransientError,
+    MissingProviderSetting, list_codex_models, resolve_endpoint,
+)
 
 
 class ModelConfigurationError(ValueError):
@@ -13,6 +16,10 @@ class ModelConfigurationError(ValueError):
 
 
 class ModelInUseError(ModelConfigurationError):
+    pass
+
+
+class ModelCatalogUnavailable(RuntimeError):
     pass
 
 
@@ -36,6 +43,15 @@ class ModelSettings:
 
     def config(self):
         return load_app_config(self.path)
+
+    async def codex_models(self) -> list[dict]:
+        connections = load_connections(self.connections_path)
+        try:
+            return await list_codex_models(connections["openai-codex"])
+        except MissingProviderSetting as error:
+            raise ModelConfigurationError(f"请配置 openai-codex.{error.setting}") from error
+        except (LLMProviderError, LLMTransientError, InvalidLLMResponse) as error:
+            raise ModelCatalogUnavailable(str(error)) from error
 
     def require_candidate(self, model: str):
         config = self.config()

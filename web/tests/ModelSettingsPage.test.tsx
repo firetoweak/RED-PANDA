@@ -16,6 +16,7 @@ const { data, save } = vi.hoisted(() => ({
 
 vi.mock("../src/api/redpandaApi", () => ({
   useGetModelSettingsQuery: () => ({ data, isLoading: false }),
+  useGetCodexModelsQuery: () => ({ currentData: undefined, isFetching: false }),
   useSaveModelSettingsMutation: () => [save, { isLoading: false }],
 }));
 vi.mock("../src/app/hooks", () => ({ useAppSelector: () => "connection" }));

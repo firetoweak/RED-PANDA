@@ -10,7 +10,7 @@ Worker 通过 Host LLM port 调用，不能直接连接 Provider。
 
 ## thinllm 与 RED PANDA 的分界
 
-Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `redpanda` 平行的独立包 `thinllm` 中。`thinllm` 不 import `redpanda`；它只回答「给定 `provider/model` 与一份连接设置，怎样发出一次流式调用」。
+Provider 表、流式客户端、调用结果类型和 LLM 错误类型放在与 `redpanda` 平行的独立包 `thinllm` 中。`thinllm` 不 import `redpanda`；它回答「给定 `provider/model` 与一份连接设置，怎样发出一次流式调用」，也拥有供应商提供的型号目录查询。
 
 RED PANDA 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件编码、个人连接设置加载以及面向用户的失败文案。拆分是为了让 Provider 层的膨胀有明确的边界，不是为了单独发布；`thinllm` 不做成通用网关。
 
@@ -19,6 +19,8 @@ RED PANDA 保留 `LLMApi` 协议、Worker LLM Port 与 IPC 编码、图片附件
 模型标识写作 `provider/model`，按第一个 `/` 拆分：前半段选 Provider，后半段原样作为上游模型名。选模型就是选 Provider，RED PANDA 不做路由。
 
 Provider 是项目内置的一张表，不是用户配置。每项只描述接口地址来源、认证要求和该 Provider 已知的协议差异。远程接口地址是项目事实；本地部署地址与凭据从个人数据目录的独立结构化连接文件读取，与用户模型偏好分开。Web 可在连接未配置时启动，选择和调用边界明确报告缺失的必要设置。新增 Provider 意味着加一项表项与对应测试，不开放配置自定义。
+
+型号目录属于供应商事实，按当前连接与账号读取。Web 用目录中的显示名称和能力信息帮助人选择，保存原始型号引用，不把目录元数据复制进个人模型偏好，也不让目录查询进入 Runtime 决策。目录能力按供应商局部接入，当前只用于 Codex；查询失败明确展示，不维护静态型号表兜底。上下文容量描述模型能力，compact 阈值仍是独立的应用策略。
 
 ## 连接生命周期
 
