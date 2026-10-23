@@ -387,6 +387,13 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
             return []
 
         self.model.side_effect = slow
+        async def quiescent(session_id):
+            if session_id == "Ada":
+                await release.wait()
+
+        patcher = patch.object(self.host, "wait_quiescent", AsyncMock(side_effect=quiescent))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         await self.host.agent_groups.post(group.group_id, "大家验收这一版", [])
         await asyncio.wait_for(entered.wait(), 2)
         async with asyncio.timeout(2):

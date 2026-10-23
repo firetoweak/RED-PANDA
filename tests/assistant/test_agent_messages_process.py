@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import pytest
 
@@ -163,7 +164,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("共享资源先协调，交接附验证依据。", json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False))
         self.assertTrue(self.host.failures.empty())
 
-    async def test_group_members_are_called_in_turn_even_after_current_turn_interruption(self):
+    async def test_group_members_receive_calls_even_after_current_turn_interruption(self):
         await self.host.cancel_turn(self.lin.session_id)
         outputs = []
         self.host.sink = lambda *args: outputs.append(args)
@@ -187,6 +188,39 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
             attentions = [e for e in await self.events(agent) if isinstance(e.payload, DomainFactCommitted)
                           and e.payload.fact_type == GROUP_ATTENTION]
             self.assertEqual(len(attentions), 3)
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_group_delivery_continues_while_a_called_member_is_still_deciding(self):
+        group = await self.host.agent_groups.create(name="开发组", members=["Ada", "Lin"])
+        entered, release = asyncio.Event(), asyncio.Event()
+        route = self.host._route
+
+        async def held(operation, session_id, arguments, *, worker=None):
+            if operation == "llm_chat" and session_id == self.ada.session_id:
+                entered.set()
+                await release.wait()
+            return await route(operation, session_id, arguments, worker=worker)
+
+        async def lin_has_replied_to(message_id):
+            return any(message.sender.name == "Lin" and message.reply_to == message_id
+                       for message in await self.host.agent_groups.messages(group.group_id))
+
+        with patch.object(self.host, "_route", side_effect=held):
+            first = await self.host.agent_groups.post(group.group_id, "两位验收第一版", [])
+            try:
+                await asyncio.wait_for(entered.wait(), 30)
+                async with asyncio.timeout(30):
+                    while not await lin_has_replied_to(first.message_id):
+                        await asyncio.sleep(.02)
+                second = await self.host.agent_groups.post(group.group_id, "Lin 再看下一版", ["Lin"])
+                async with asyncio.timeout(30):
+                    while not await lin_has_replied_to(second.message_id):
+                        await asyncio.sleep(.02)
+                self.assertFalse(release.is_set())
+            finally:
+                release.set()
+            for agent in (self.ada, self.lin):
+                await self.settled(agent)
         self.assertTrue(self.host.failures.empty())
 
     async def test_interrupted_recipient_processes_new_peer_message_automatically(self):
