@@ -375,7 +375,7 @@ body.is-resizing-sidebar {
 .content-page-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--rp-border); }
 .content-page-scroll { min-height: 0; }
 .error-details-page .content-page-scroll { padding: 16px; }
-.error-details-page, .subagent-page, .file-changes-page {
+.error-details-page, .subagent-page {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -913,47 +913,25 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
   border-left: 1px solid var(--rp-border-strong);
 }
 
-.changes-counts { display: inline-flex; gap: 6px; margin-left: 8px; font-size: 11px; }
-.changes-added { color: var(--mantine-color-green-6); }
-.changes-removed { color: var(--mantine-color-red-6); }
-.changed-files { display: flex; flex-direction: column; gap: 4px; }
-.changed-file { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--rp-border); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
-.changed-file:hover, .changed-file.is-selected { background: var(--rp-accent-fill); }
-.changed-file-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mantine-font-family-monospace); }
-.file-diff { border: 1px solid var(--rp-border); border-radius: 6px; font: 12px/1.7 var(--mantine-font-family-monospace); }
-.diff-line { display: flex; min-width: max-content; padding-right: 8px; }
-.diff-number { flex: 0 0 45px; text-align: right; padding-right: 8px; color: var(--mantine-color-dimmed); user-select: none; }
-.diff-sign { flex: 0 0 18px; user-select: none; }
-.diff-text { flex: 1; white-space: pre; tab-size: 4; }
-.diff-add { background: light-dark(#edf9ee, #173323); }
-.diff-delete { background: light-dark(#fff0f0, #3b2023); }
-.diff-hunk { background: var(--rp-accent-fill); color: var(--mantine-color-dimmed); }
-
 @media (max-height: 600px) {
   .conversation-intro { padding-block: 20px; }
   .welcome-mascot { width: 90px; }
   .conversation-welcome { gap: 6px; }
 }
 
-.file-changes-body { display: flex; min-height: 0; min-width: 0; }
-.file-changes-diff { flex: 1; display: grid; min-width: 0; min-height: 0; }
-.file-diff-page { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
-.file-diff-scroll { min-height: 0; min-width: 0; }
-.file-diff-pagination { padding: 8px 12px; border-top: 1px solid var(--rp-border); }
-.file-changes-files { display: grid; grid-template-rows: auto minmax(0, 1fr); flex: 0 0 240px; max-width: 35%; min-width: 0; border-left: 1px solid var(--rp-border); background: var(--rp-surface); }
-.file-tree-scroll { min-height: 0; min-width: 0; }
-.file-changes-files .changed-files { padding: 0 6px 12px; }
-.file-tree-group { min-width: 0; }
-.file-tree-group > summary { padding: 6px 2px; cursor: pointer; font-size: 12px; color: var(--mantine-color-dimmed); overflow-wrap: anywhere; }
-.file-tree-group > summary svg { vertical-align: middle; margin-right: 5px; }
-.file-tree-children { padding-left: 10px; }
-.file-changes-files .changed-file { gap: 4px; padding: 7px 5px; border: 0; }
-.file-changes-files .changed-file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-changes-files .changes-counts { flex-shrink: 0; margin-left: 0; }
-.file-change-status { flex-shrink: 0; font: 10px var(--mantine-font-family-monospace); }
-.file-change-added { color: var(--mantine-color-green-6); }
-.file-change-deleted { color: var(--mantine-color-red-6); }
-.file-change-modified { color: var(--rp-accent-text); }
+.editable-agent-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: var(--mantine-radius-xs);
+}
+.editable-agent-name > span { min-width: 0; }
+.editable-agent-name > svg { flex-shrink: 0; color: var(--mantine-color-dimmed); }
+.editable-agent-name:hover > svg { color: var(--mantine-color-text); }
+.editable-agent-name:disabled { cursor: default; }
+.session-header-name .editable-agent-name > span { font-size: 18px; font-weight: 650; }
 
 .routine-list-toggle:hover {
   background: var(--rp-hover);
@@ -1059,6 +1037,7 @@ time { font-variant-numeric: tabular-nums; }
 @media (max-width: 48em) {
   .session-header { min-height: 69px; padding: 12px 14px 12px 58px; gap: 8px; }
   .session-header-name > p:first-child { font-size: 16px; }
+  .session-header-name .editable-agent-name > span { font-size: 16px; }
   .session-header-identity > .agent-avatar { width: 30px; height: 30px; }
   .session-header-identity > .agent-status { display: none; }
   .group-header-members { display: none; }

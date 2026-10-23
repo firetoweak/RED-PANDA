@@ -1,7 +1,7 @@
 """Bot identities and communication facts; no routing or scheduling."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -15,6 +15,7 @@ from redpanda.runtime.json_values import thaw_value
 
 
 AGENT_CREATED = "bot.agent_created"
+AGENT_RENAMED = "bot.agent_renamed"
 PROJECT_LINKED = "bot.project_linked"
 PROJECT_UNLINKED = "bot.project_unlinked"
 PRIVATE_MESSAGE = "bot.private_message"
@@ -58,6 +59,17 @@ class AgentCreated(_Fact):
         if not Path(value).is_absolute():
             raise ValueError("Agent directory 必须是绝对路径")
         return value
+
+
+class AgentRenamed(_Fact):
+    session_id: Text
+    old_name: Text
+    name: Text
+
+    @field_validator("old_name", "name")
+    @classmethod
+    def stable_name(cls, value):
+        return AgentCreated.stable_name(value)
 
 
 class ProjectLinked(_Fact):
@@ -162,6 +174,7 @@ class RoutinesUnwatched(_Fact):
 
 _FACTS = {
     AGENT_CREATED: (AgentCreated, True),
+    AGENT_RENAMED: (AgentRenamed, False),
     PROJECT_LINKED: (ProjectLinked, False),
     PROJECT_UNLINKED: (ProjectUnlinked, False),
     PRIVATE_MESSAGE: (PrivateMessage, True),
@@ -198,10 +211,18 @@ class AgentRecord:
     session_id: str
     identity: AgentCreated
     projects: tuple[ProjectLinked, ...] = ()
+    renamed_names: tuple[str, ...] = ()
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return (self.identity.name, *self.renamed_names)
+
+    def renamed(self, name: str) -> AgentRecord:
+        return replace(self, renamed_names=(*self.renamed_names, name))
 
     @property
     def name(self) -> str:
-        return self.identity.name
+        return self.renamed_names[-1] if self.renamed_names else self.identity.name
 
     @property
     def directory(self) -> Path:
@@ -223,6 +244,12 @@ def project_agent(events) -> AgentRecord | None:
             if creation is not None:
                 raise ValueError("Agent has more than one creation fact")
             creation = AgentRecord(event.session_id, parse_agent_fact(payload))
+        elif isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_RENAMED:
+            renamed = parse_agent_fact(payload)
+            if renamed.session_id == event.session_id:
+                if creation is None or creation.name != renamed.old_name:
+                    raise ValueError("Agent rename differs from its current identity")
+                creation = creation.renamed(renamed.name)
         elif isinstance(payload, DomainFactCommitted) and payload.fact_type == PROJECT_LINKED:
             linked = parse_agent_fact(payload)
             if linked.workspace_id in projects or any(item.name == linked.name for item in projects.values()):
@@ -235,18 +262,23 @@ def project_agent(events) -> AgentRecord | None:
     if creation is not None:
         if creation.directory != bound_directory(events):
             raise ValueError("Agent directory differs from Session directory binding")
-        creation = AgentRecord(creation.session_id, creation.identity, tuple(projects.values()))
+        creation = replace(creation, projects=tuple(projects.values()))
     return creation
 
 
 def project_direction(events, agent: AgentRecord) -> str | None:
     """Colleagues' declarations also reach this timeline; only the Agent's own counts."""
     direction = None
+    name = agent.names[0]
     for event in events:
         payload = event.payload
+        if isinstance(payload, DomainFactCommitted) and payload.fact_type == AGENT_RENAMED:
+            renamed = parse_agent_fact(payload)
+            if renamed.session_id == agent.session_id:
+                name = renamed.name
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == DIRECTION_DECLARED:
             declaration = parse_agent_fact(payload)
-            if declaration.name == agent.name:
+            if declaration.name == name:
                 direction = declaration.direction
     return direction
 
@@ -260,13 +292,20 @@ def identity_for_model(events) -> dict | None:
     direction = project_direction(events, agent)
     if direction is not None:
         shown["direction"] = direction
-    shown["groups"] = [
-        {"group": fact.group, "members": fact.members}
-        for event in events
-        if isinstance(event.payload, DomainFactCommitted)
-        and event.payload.fact_type == GROUP_CREATED
-        for fact in (parse_agent_fact(event.payload),)
-    ]
+    groups = {}
+    renames = []
+    for event in events:
+        if not isinstance(event.payload, DomainFactCommitted):
+            continue
+        if event.payload.fact_type == GROUP_CREATED:
+            fact = parse_agent_fact(event.payload)
+            groups[fact.group] = {"group": fact.group, "members": list(fact.members)}
+        elif event.payload.fact_type == AGENT_RENAMED:
+            renames.append(parse_agent_fact(event.payload))
+    for fact in renames:
+        for group in groups.values():
+            group["members"] = [fact.name if member == fact.old_name else member for member in group["members"]]
+    shown["groups"] = list(groups.values())
     shown["projects"] = [{"project": item.name, "directory": item.worktree} for item in agent.projects]
     shown["notice"] = (
         "这是你的名字、你声明过的负责方向、你所在的群和你挂上的项目；之后的事实可能更新它们。"
@@ -283,6 +322,9 @@ PROJECT_LINKED_NOTICE = (
 def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     """Only observable identities, messages and requested actions reach the model."""
     fact = parse_agent_fact(payload)
+    if isinstance(fact, AgentRenamed):
+        return {"old_name": fact.old_name, "name": fact.name,
+                "notice": "这位 Bot 已改名；之后私信和群聊点名请使用新名字，原有对话和群成员关系继续保留。"}
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
             "你刚成为一位长期 Bot。用 list_colleagues 查看同事的负责方向，避免和他们重复。"

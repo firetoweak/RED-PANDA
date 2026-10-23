@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Button, Drawer, Group, Text, UnstyledButton } from "@mantine/core";
+import { ActionIcon, Alert, Button, Drawer, Group, Text } from "@mantine/core";
 import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
@@ -7,6 +7,7 @@ import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkP
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";
+import { EditableAgentName } from "../sessions/EditableAgentName";
 
 import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
@@ -31,7 +32,7 @@ export function SessionConversation() {
     <>
       <div className="agent-details-profile">
         <BotAvatar name={agent.name} className="agent-details-avatar" />
-        <Text fw={600} size="md">{agent.name}</Text>
+        <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
       <div className="agent-details-section">
@@ -74,11 +75,10 @@ export function SessionConversation() {
       <div className="session-main">
       <header className="page-header session-header">
         {fromGroup === undefined ? null : <ActionIcon component={Link} to={`/groups/${encodeURIComponent(fromGroup.id)}`} aria-label={`返回 ${fromGroup.name}`} title={`返回 ${fromGroup.name}`} variant="subtle" color="gray"><IconArrowLeft size={18} /></ActionIcon>}
-        <Group component={UnstyledButton} gap={10} wrap="nowrap" className="session-header-identity"
-          aria-label={agent?.name ?? "Agent"} aria-expanded={detailsOpened}
-          onClick={() => setDetailsOpened((opened) => !opened)}>
+        <Group gap={10} wrap="nowrap" className="session-header-identity">
           <BotAvatar name={agent?.name ?? "Agent"} />
-          <div className="session-header-name"><Text fw={600} size="sm" truncate>{agent?.name ?? "Agent"}</Text>
+          <div className="session-header-name">{agent === undefined ? <Text fw={600} size="sm">Agent</Text>
+            : <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="sm" />}
             <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>
         </Group>
         {agent === undefined || agent.projects.length === 0 ? null : <span className="session-project-link">

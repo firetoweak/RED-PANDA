@@ -104,6 +104,20 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             await send_message(self.transport, "Ada", await self.command("Ada", "one"),
                                {"recipient": "Lin", "text": "different"})
 
+    async def test_renamed_peer_keeps_replies_and_delivery_receipts(self):
+        first = await self.send()
+        await self.host.rename_agent("Lin", "小林")
+        retried = await self.send()
+        self.assertEqual(retried["data"]["message_id"], first["data"]["message_id"])
+        self.assertEqual(retried["data"]["recipient"], "小林")
+        self.assertEqual(len(await self.messages("Lin")), 1)
+        self.assertEqual((await self.send(recipient="Lin", command="old-address"))["code"], "RECIPIENT_NOT_FOUND")
+        reply = await self.send(sender="Lin", recipient="Ada", command="reply", reply_to=first["data"]["message_id"])
+        self.assertEqual(reply["code"], "DELIVERED")
+        response, = await self.messages("Ada")
+        self.assertEqual(response.sender.name, "小林")
+        self.assertEqual(response.hop, 1)
+
     async def test_known_address_errors_and_same_pair_reply_validation(self):
         for name, code in (("Nobody", "RECIPIENT_NOT_FOUND"), ("Ada", "SELF_MESSAGE")):
             self.assertEqual((await self.send(recipient=name))["code"], code)

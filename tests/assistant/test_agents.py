@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from redpanda.assistant.agents import (
-    AGENT_CREATED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
+    AGENT_CREATED, AGENT_RENAMED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
 )
 from redpanda.assistant.compact.core import window_preamble
@@ -181,6 +181,60 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Path(linked.worktree), agent.directory / "projects" / self.workspace.name)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
         self.assertFalse((self.home.root / "agents.json").exists())
+
+    async def test_rename_keeps_identity_direction_and_group_context_across_restart(self):
+        agent, colleague = await self.create("Ada"), await self.create("Lin")
+        journal = SqliteJournal(self.store.require(agent.session_id))
+        runtime = AgentRuntime(journal, None, {})
+        for i, fact in enumerate((DirectionDeclared(name="Ada", direction="验证"),
+                                  GroupCreated(group="开发组", members=["Ada", "Lin"]))):
+            await runtime.receive_domain_fact(agent.session_id, **fact_arguments(fact, delivery_id=f"setup-{i}"))
+
+        async def accept(_operation, session_id, arguments):
+            await AgentRuntime(SqliteJournal(self.store.require(session_id)), None, {}).receive_domain_fact(
+                session_id, **arguments)
+
+        self.request.side_effect = accept
+        renamed = await self.host.rename_agent(agent.session_id, "测试")
+        self.assertEqual((renamed.session_id, renamed.directory, renamed.projects),
+                         (agent.session_id, agent.directory, agent.projects))
+        rebuilt = AgentRoster(SessionStore(self.store.root))
+        self.assertEqual((await rebuilt.resolve("测试")).name, "测试")
+        with self.assertRaises(AgentNotFound):
+            await rebuilt.resolve("Ada")
+        self.assertEqual(next(entry.direction for entry in await rebuilt.list()
+                              if entry.agent.session_id == agent.session_id), "验证")
+        identity = identity_for_model(await journal.snapshot(agent.session_id))
+        self.assertEqual(identity["name"], "测试")
+        self.assertEqual(identity["groups"], [{"group": "开发组", "members": ["测试", "Lin"]}])
+        notices = [event.payload for event in await SqliteJournal(self.store.require(colleague.session_id)).snapshot(
+            colleague.session_id) if getattr(event.payload, "fact_type", None) == AGENT_RENAMED]
+        self.assertEqual(len(notices), 1)
+        self.assertFalse(notices[0].requests_decision)
+        with self.assertRaises(AgentNameTaken):
+            await self.host.rename_agent(colleague.session_id, "Ada")
+
+    async def test_lost_rename_ack_updates_roster_and_retry_delivers_one_notice(self):
+        agent, colleague = await self.create("Ada"), await self.create("Lin")
+
+        async def accept(_operation, session_id, arguments):
+            await AgentRuntime(SqliteJournal(self.store.require(session_id)), None, {}).receive_domain_fact(
+                session_id, **arguments)
+
+        async def lost(*args):
+            await accept(*args)
+            raise OSError("rename acknowledgement lost")
+
+        self.request.side_effect = lost
+        with self.assertRaises(OSError):
+            await self.host.rename_agent(agent.session_id, "测试")
+        self.assertEqual((await self.host.agents.resolve("测试")).session_id, agent.session_id)
+        self.request.side_effect = accept
+        await self.host.rename_agent(agent.session_id, "测试")
+        await self.host.rename_agent(agent.session_id, "测试")
+        for sid in (agent.session_id, colleague.session_id):
+            events = await SqliteJournal(self.store.require(sid)).snapshot(sid)
+            self.assertEqual(sum(getattr(event.payload, "fact_type", None) == AGENT_RENAMED for event in events), 1)
 
     async def test_a_saved_routine_fires_into_its_owner_timeline_and_asks_for_a_decision(self):
         agent = await self.create()

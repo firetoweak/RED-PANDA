@@ -33,7 +33,8 @@ from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
 from redpanda.assistant.host.llm_port import complete_llm_chat
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.agents import (
-    AGENT_CREATED, AgentCreated, AgentRecord, RoutinesUnwatched, fact_arguments, project_agent,
+    AGENT_CREATED, AGENT_RENAMED, AgentCreated, AgentRecord, AgentRenamed, RoutinesUnwatched,
+    fact_arguments, parse_agent_fact, project_agent,
 )
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
 from redpanda.assistant.host.agent_worktrees import AgentWorktrees, GitWorktree
@@ -219,6 +220,7 @@ class HostSupervisor:
         unfinished = []
         command_sessions = []
         joining = []
+        renames = []
         agent_births = {}
         for path in self.store.journals():
             journal = SqliteJournal(path)
@@ -231,6 +233,9 @@ class HostSupervisor:
             state = replay(session_id, events).state
             agent = project_agent(events)
             if agent is not None:
+                renames.extend(event for event in events if isinstance(event.payload, DomainFactCommitted)
+                               and event.payload.fact_type == AGENT_RENAMED
+                               and event.payload.data["session_id"] == session_id)
                 born = next(event.occurred_at for event in events
                             if isinstance(event.payload, DomainFactCommitted)
                             and event.payload.fact_type == AGENT_CREATED)
@@ -256,6 +261,8 @@ class HostSupervisor:
                               if time < born]
                 write_json(pending, {"colleagues": colleagues})
             await self._finish_agent_creation(agent)
+        for event in renames:
+            await self._notify_rename(event)
         await self.agent_groups.recover()
         for session_id in unfinished:
             await self.resume(session_id)
@@ -1203,9 +1210,9 @@ class HostSupervisor:
         identity = AgentCreated(name=name, directory=str(directory))
         async with self._agent_creation_lock:
             for entry in await self.agents.list():
-                if entry.agent.name == name:
+                if name in entry.agent.names:
                     pending = self.store.require(entry.agent.session_id).parent / "agent-creation.json"
-                    if pending.exists():
+                    if pending.exists() and entry.agent.name == name:
                         return await _settle(self._finish_agent_creation(entry.agent))
                     raise AgentNameTaken(f"已有 Agent：{name}")
             # A cancelled request must not leave a worktree without its identity fact.
@@ -1257,6 +1264,40 @@ class HostSupervisor:
         await self.request("fact", session_id, fact_arguments(identity, delivery_id="created"))
         pending.unlink()
         return agent
+
+    async def rename_agent(self, session_id: str, name: str) -> AgentRecord:
+        async with self._agent_creation_lock:
+            return await _settle(self._rename_agent(session_id, name))
+
+    async def _rename_agent(self, session_id: str, name: str) -> AgentRecord:
+        agent = await self.agents.by_session(session_id)
+        if agent is None:
+            raise AgentNotFound(session_id)
+        fact = AgentRenamed(session_id=session_id, old_name=agent.name, name=name)
+        if any(name in entry.agent.names and entry.agent.session_id != session_id
+               for entry in await self.agents.list()):
+            raise AgentNameTaken(f"这个名字已被其他 Bot 使用：{name}")
+        if name != agent.name:
+            try:
+                await self.request("fact", session_id, fact_arguments(fact, delivery_id=f"rename:{uuid4().hex}"))
+            finally:
+                # A lost acknowledgement must not leave the live roster on the old name.
+                agent = await self.agents.refresh(session_id)
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        latest = next((event for event in reversed(events) if isinstance(event.payload, DomainFactCommitted)
+                       and event.payload.fact_type == AGENT_RENAMED
+                       and event.payload.data["session_id"] == session_id), None)
+        if latest is not None:
+            await self._notify_rename(latest)
+        return agent
+
+    async def _notify_rename(self, event) -> None:
+        agent = await self.agents.by_session(event.session_id)
+        await self.agent_messages._broadcast(agent, parse_agent_fact(event.payload),
+                                            f"renamed:{event.session_id}:{event.event_id}")
+        for group in await self.agent_groups.list():
+            if any(member in agent.names for member in group.members):
+                self.agent_groups._changed(group.group_id)
 
     async def select(self, owner, session_id):
         async with self.selection_locks.setdefault(owner, asyncio.Lock()):

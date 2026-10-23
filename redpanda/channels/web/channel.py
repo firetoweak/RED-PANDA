@@ -65,6 +65,11 @@ class WebChannel:
         await self._sessions.select(connection.owner, record.session_id)
         return await self._queries.agent_entry(record.session_id)
 
+    async def rename_agent(self, connection_id: str, session_id: str, name: str):
+        self._require_connection(connection_id)
+        await self._sessions.rename_agent(session_id, name)
+        return await self._queries.agent_entry(session_id)
+
     async def link_project(self, connection_id: str, session_id: str, workspace_id: str | None, path: str | None):
         self._require_connection(connection_id)
         await self._sessions.link_project_by_user(session_id, workspace_id=workspace_id, path=path)
@@ -86,7 +91,7 @@ class WebChannel:
 
     async def list_groups(self):
         return [{"group_id": group.group_id,
-                 "name": group.name, "members": group.members}
+                 "name": group.name, "members": await self._sessions.agent_groups.member_names(group)}
                 for group in await self._sessions.agent_groups.list()]
 
     async def group(self, group_id: str):
@@ -101,7 +106,8 @@ class WebChannel:
         self._require_connection(connection_id)
         content = self._require_text(text)
         group = await self._sessions.agent_groups.get(group_id)
-        if any(name not in group.members for name in mention):
+        members = await self._sessions.agent_groups.member_names(group)
+        if any(name not in members for name in mention):
             raise WebInputInvalid("只能点名这个群里的成员。")
         await self._sessions.agent_groups.post(group_id, content, mention, delivery_id=delivery_id)
         return await self._sessions.agent_groups.view(group_id)
@@ -150,9 +156,6 @@ class WebChannel:
 
     async def observe_subagent(self, parent_session_id: str, command_id: str):
         return await self._queries.observe_subagent(parent_session_id, command_id)
-
-    async def file_changes(self, session_id: str, *, project=None, path=None, offset=0):
-        return await self._queries.file_changes(session_id, project=project, path=path, offset=offset)
 
     async def select(self, connection_id: str, session_id: str):
         connection = self._require_connection(connection_id)

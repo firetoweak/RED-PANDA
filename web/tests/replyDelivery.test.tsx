@@ -70,7 +70,6 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
       { session_id: "agent-lin", projects: [], name: "Lin", direction: null, activity: "idle", status: "idle" },
     ]);
     if (path.endsWith("/routines") || path.endsWith("/commands")) return Response.json([]);
-    if (path.endsWith("/changes")) return Response.json({ files: [], added: 0, removed: 0 });
     return Response.json(view);
   }));
   const store = configureStore({

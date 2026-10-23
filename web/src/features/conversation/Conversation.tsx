@@ -22,7 +22,6 @@ import { useParams } from "react-router-dom";
 import {
   useAuthorizeCommandMutation,
   useCancelTurnMutation,
-  useGetAgentsQuery,
   useGetConversationQuery,
   useResolveControlMutation,
   useSelectSessionMutation,
@@ -37,7 +36,6 @@ import {
   viewing,
 } from "../../realtime/runtimeSlice";
 import { Composer } from "./Composer";
-import { FileChangesPanel, FileChangesSummary } from "./FileChangesPanel";
 import { createClientId } from "./clientId";
 import { attachmentUrl } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
@@ -72,7 +70,7 @@ import { BotAvatar, ChatPresentation, MessageMenu, type MessageReference } from 
 
 const privateReading = new Map<string, { following: boolean; count: number }>();
 
-type OpenPage = { kind: "changes"; project?: string } | { kind: "subagent"; commandId: string }
+type OpenPage = { kind: "subagent"; commandId: string }
   | { kind: "error"; title: string; message: string };
 
 function turnHasOutput(turn: TimelineTurn, outputId: string): boolean {
@@ -91,8 +89,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const selected = useGetConversationQuery(sessionId, {
     skip: routeSessionId === undefined,
   });
-  const { data: agents = [] } = useGetAgentsQuery();
-  const agentProjects = agents.find((agent) => agent.session_id === sessionId)?.projects ?? [];
   const timelineRef = useRef<VirtuosoHandle>(null);
   const wheelAreaRef = useRef<HTMLDivElement>(null);
   const focusRef = useRef<(outputId: string) => void>(() => {});
@@ -481,13 +477,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
                 : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")} />
         ) : null}
-        {conversation.workspace_id !== null && agentProjects.length === 0 ? (
-          <FileChangesSummary sessionId={sessionId} onOpen={() => setOpenPage({ kind: "changes" })} />
-        ) : null}
-        {agentProjects.map((project) => (
-          <FileChangesSummary key={project.name} sessionId={sessionId} project={project.name}
-            onOpen={() => setOpenPage({ kind: "changes", project: project.name })} />
-        ))}
         <Composer
           sessionId={sessionId}
           workspaceId={conversation.workspace_id}
@@ -513,11 +502,9 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
       </Box>
     </Box>
     {openPage === null ? null : (
-      <ContentPage title={openPage.kind === "changes" ? (openPage.project === undefined ? "文件改动" : `${openPage.project} · 文件改动`)
-        : openPage.kind === "subagent" ? "子 Agent" : `${openPage.title} · 错误详情`}
+      <ContentPage title={openPage.kind === "subagent" ? "子 Agent" : `${openPage.title} · 错误详情`}
         onClose={() => setOpenPage(null)}>
-        {openPage.kind === "changes" ? <FileChangesPanel sessionId={sessionId} project={openPage.project} />
-          : openPage.kind === "subagent" ? <SubagentPanel key={openPage.commandId}
+        {openPage.kind === "subagent" ? <SubagentPanel key={openPage.commandId}
             parentSessionId={sessionId} commandId={openPage.commandId} />
           : <ErrorDetails message={openPage.message} />}
       </ContentPage>

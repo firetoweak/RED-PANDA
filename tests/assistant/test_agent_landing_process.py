@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from redpanda.assistant.agent_tools import LAND, SYNC, agent_git_bindings
-from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.filesystem.registry import WorkspaceRegistry
@@ -155,27 +154,3 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "LAND_FAILED")
         self.assertIn("index.lock", result["data"]["git"])
         self.assertEqual(git(self.integration, "rev-parse", "HEAD"), head)
-
-    async def test_change_review_shows_unlanded_work_without_touching_the_index(self):
-        agent = await self.agent("甲")
-        queries = AssistantQueries(self.host.store, self.host)
-        self.assertEqual(await queries.file_changes(agent.session_id, project=agent.projects[0].name),
-                         {"files": [], "added": 0, "removed": 0})
-        self.change(agent, "note.txt", "initial\ncommitted\n")
-        (tree(agent) / "draft.txt").write_text("one\ntwo\n", encoding="utf-8", newline="\n")
-        status = git(tree(agent), "status", "--porcelain")
-        listed = await queries.file_changes(agent.session_id, project=agent.projects[0].name)
-        detail = await queries.file_changes(agent.session_id, project=agent.projects[0].name, path="note.txt")
-        self.assertEqual([(file["path"], file["status"], file["added"], file["removed"]) for file in listed["files"]],
-                         [("draft.txt", "added", 2, 0), ("note.txt", "modified", 1, 0)])
-        self.assertEqual((listed["added"], listed["removed"]), (3, 0))
-        self.assertEqual(detail["revision"], listed["files"][1]["revision"])
-        self.assertEqual([(line["kind"], line["old_line"], line["new_line"], line["text"]) for line in detail["lines"]],
-                         [("hunk", None, None, "@@ -1 +1,2 @@"), ("context", 1, 1, "initial\n"),
-                          ("add", None, 2, "committed\n")])
-        self.assertIsNone(detail["next_offset"])
-        self.assertIsNone(await queries.file_changes(agent.session_id, project=agent.projects[0].name, path="missing.txt"))
-        self.assertEqual(git(tree(agent), "status", "--porcelain"), status)
-        self.change(agent, "draft.txt", "one\ntwo\n")
-        await self.call(LAND, agent)
-        self.assertEqual((await queries.file_changes(agent.session_id, project=agent.projects[0].name))["files"], [])

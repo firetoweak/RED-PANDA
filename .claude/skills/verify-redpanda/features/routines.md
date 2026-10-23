@@ -1,6 +1,6 @@
 # 例行任务
 
-长期 Agent 用 `save_routine` / `set_routine_state` / `list_routines` 管理自己的例行任务；人在该 Agent 的 `Agent 资料`（点页头名字打开）的 `例行任务` 一节里查看、暂停、恢复与删除。来源：`redpanda/automation/routines.py`（`RoutineStore`、`RoutineClock`、状态 `active`/`paused`/`paused_by_user`/`paused_unwatched`/`deleted`、事实 `automation.routine_due`、表 `routine_fires`）、`redpanda/automation/routine_tool.py`、`redpanda/assistant/host/supervisor.py`（`list_routines`、`routine_fires`、`set_routine_state_by_user`、`schedule_changed`）、`redpanda/channels/web/channel.py`、`web/src/features/conversation/RoutineList.tsx`。存储 `$REDPANDA_HOME/state/routines.sqlite`。
+长期 Agent 用 `save_routine` / `set_routine_state` / `list_routines` 管理自己的例行任务；人在该 Agent 的 `Agent 资料`（点 `显示 Bot 资料` 打开）的 `例行任务` 一节里查看、暂停、恢复与删除。来源：`redpanda/automation/routines.py`（`RoutineStore`、`RoutineClock`、状态 `active`/`paused`/`paused_by_user`/`paused_unwatched`/`deleted`、事实 `automation.routine_due`、表 `routine_fires`）、`redpanda/automation/routine_tool.py`、`redpanda/assistant/host/supervisor.py`（`list_routines`、`routine_fires`、`set_routine_state_by_user`、`schedule_changed`）、`redpanda/channels/web/channel.py`、`web/src/features/conversation/RoutineList.tsx`。存储 `$REDPANDA_HOME/state/routines.sqlite`。
 
 ## Sub-features
 
@@ -17,7 +17,7 @@
 ## How to get to it (user POV)
 
 - 打开一个 Agent 的会话，发 `请用 save_routine 建一个例行任务，名字「检查 PR」，每 10 分钟一次（@every 10m），intent 写「看看有没有新评审」，然后回复 SAVED。`
-- 回复后点页头名字打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。宽屏是标题为 `Bot 资料` 的侧栏；1180px 及以下（73.75em，默认字号）是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
+- 回复后点 `显示 Bot 资料` 打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。宽屏是标题为 `Bot 资料` 的侧栏；1180px 及以下（73.75em，默认字号）是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
 - 要看执行记录，需要至少一次触发。最短间隔 5 分钟；也可以直接往 `routine_fires` 写入一条已触发的记录，并在该会话 Journal 里写下对应的 `automation.routine_due`（投递身份与 `fire_id` 相同），再补上由它开始的一轮回复。
 
 ## Driving it with the browser

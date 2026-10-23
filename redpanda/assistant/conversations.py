@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 
 from redpanda.assistant.control import pending_approval_view, project_control_message
@@ -20,11 +18,10 @@ from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.sessions import SessionView, session_view
 from redpanda.assistant.subagent.subagent import (
     RETURN_FACT, UnreportedChildReturn, project_delegate_intents,
-    project_pending, project_task, project_unreported_returns,
+    project_pending, project_unreported_returns,
 )
 from redpanda.assistant.runner import SessionNotFoundError, pending_authorization_ids
 from redpanda.assistant.workspaces import bound_workspace_id
-from redpanda.tools.results import file_error_message
 from redpanda.runtime import (
     CommandPhase,
     CommandState,
@@ -50,10 +47,6 @@ ToolStatus = Literal[
 SessionActivity = Literal["running", "idle"]
 AgentStatus = Literal["working", "authorization", "waiting", "idle"]
 UNKNOWN_TOOL_ERROR = "执行已开始，但未取得最终结果，原因未知，可能已部分执行"
-
-
-class FileChangesUnavailable(Exception):
-    """无法读取文件变更。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,29 +308,6 @@ class AssistantQueries:
             self._store.require(session_id)
         ).snapshot(session_id)
         return await self._conversation(session_id, events, view=view)
-
-    async def file_changes(self, session_id: str, *, project=None, path=None, offset=0):
-        """A Bot's changes in one project are what it has not landed yet; a task delegated
-        into a project shows what it has not merged into its parent yet."""
-        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
-        trees = self._sessions.agent_worktrees
-        agent = project_agent(events)
-        task = project_task(events)
-        if agent is not None:
-            linked = None if project is None else agent.project(project)
-            if linked is None:
-                raise FileChangesUnavailable("这位 Bot 没有挂这个项目。")
-            root, base = Path(linked.worktree), trees.integration(linked.workspace_id).branch
-        elif task is not None and task.project is not None:
-            parent = project_agent(await SqliteJournal(
-                self._store.require(task.parent_session_id)).snapshot(task.parent_session_id))
-            root, base = trees.child(task.project, session_id).path, parent.project_by_id(task.project).branch
-        else:
-            raise FileChangesUnavailable("只有挂了项目的 Bot 和委派到项目里的任务提供文件变化查看。")
-        try:
-            return await asyncio.to_thread(trees.git.review, root, f"refs/heads/{base}", path=path, offset=offset)
-        except OSError as error:
-            raise FileChangesUnavailable(file_error_message(error)) from error
 
     async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
         state = replay(session_id, events).state
