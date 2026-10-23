@@ -44,10 +44,9 @@ class AgentRoster:
                     agent = project_agent(events)
                     if agent is None:
                         continue
-                    key = agent.name
-                    if key in names:
+                    if names.intersection(agent.names):
                         raise ValueError("duplicate Agent name in persisted roster")
-                    names.add(key)
+                    names.update(agent.names)
                     entries[session_id] = AgentView(agent, project_direction(events, agent))
                 self._entries = entries
             return self._entries
@@ -60,6 +59,21 @@ class AgentRoster:
         """Called once the Agent's own declaration fact is durable."""
         index = await self._index()
         index[session_id] = replace(index[session_id], direction=direction)
+
+    async def refresh(self, session_id: str) -> AgentRecord:
+        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
+        agent = project_agent(events)
+        if agent is None:
+            raise AgentNotFound(session_id)
+        (await self._index())[session_id] = AgentView(agent, project_direction(events, agent))
+        return agent
+
+    async def resolve_recorded(self, name: str) -> AgentRecord:
+        """Resolve names in existing facts; new addresses use resolve instead."""
+        for entry in await self.list():
+            if name in entry.agent.names:
+                return entry.agent
+        raise AgentNotFound(name)
 
     async def set_projects(self, session_id: str, projects) -> None:
         """Called once the Bot's own link or unlink fact is durable."""

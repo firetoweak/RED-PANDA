@@ -1,6 +1,6 @@
 ---
 name: verify-redpanda
-description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, Agent roster and chat, colleague tools, private messages, landing and sync, group chat, tool authorization, and the Agent's Git file changes — and capture proof. Use when changing Web, file review, model settings, or when a change needs a real-app check before it ships."
+description: "Drive RED PANDA (小熊猫) Web the way a user does — workspace, Agent roster and chat, colleague tools, private messages, landing and sync, group chat, tool authorization, and Bot renaming — and capture proof. Use when changing Web, Bot names, model settings, or when a change needs a real-app check before it ships."
 ---
 
 # Verify RED PANDA
@@ -117,8 +117,6 @@ The conversation timeline is a virtual list (react-virtuoso) and dialogs and men
 `curl` is only the read-only confirmation written next to an action. Posting to `/api/workspaces`, `/api/agents`, or `/api/sessions/.../inputs` does not prove the page.
 
 Read `features/README.md`, then the feature file. Drive the entry point that file names. A green `python -m pytest` or `python -m pytest -m process` run is not Web proof. Live model tests (`REDPANDA_RUN_LIVE_TESTS=1 python -m pytest tests/live`) call a real model and still are not the Web page.
-
-For session file review, read `features/session-file-changes.md`. Open the summary above an Agent's composer, then a file in `<project> · 文件改动`; verify the Git diff, line numbers, pagination, and refresh against `GET /api/sessions/<id>/changes?project=<project>`. A Bot without a linked project has no summary. The read-only API also accepts delegated tasks, but their observation page currently has no file-diff entry; other session types get 503. Preparing changed files through a coding round requires `live_model_ready`; a unit test or direct POST does not prove the panel.
 
 Colleague tools, private messages, landing and sync, and group chat are `features/colleague-tools.md`, `features/private-messages.md`, `features/land-and-sync.md`, and `features/group-chat.md`. Drive them from the page those files name. Pending items highlight the corresponding Bot in the sidebar and are handled in that Bot's conversation; there is no standalone inbox page. Communication-limit reports and unattended-routine prompts are covered by `features/inbox.md` and `features/routines.md`.
 

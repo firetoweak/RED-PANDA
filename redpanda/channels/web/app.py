@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal
 
 from anyio import CancelScope
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
@@ -22,7 +22,6 @@ from redpanda.assistant.attachments import (
     is_valid_attachment_id,
 )
 from redpanda.assistant.file_attachments import is_file_attachment_id
-from redpanda.assistant.conversations import FileChangesUnavailable
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
 from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound
 from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
@@ -104,8 +103,7 @@ class ModelTestRequest(ConnectionRequest):
     model: str
 
 
-class CreateAgentRequest(ConnectionRequest):
-    path: str | None = Field(default=None, min_length=1)
+class AgentNameRequest(ConnectionRequest):
     name: str = Field(min_length=1)
 
     @field_validator("name")
@@ -114,6 +112,10 @@ class CreateAgentRequest(ConnectionRequest):
         if value != value.strip():
             raise ValueError("Agent 名字不能以空白开头或结尾")
         return value
+
+
+class CreateAgentRequest(AgentNameRequest):
+    path: str | None = Field(default=None, min_length=1)
 
 
 class LinkProjectRequest(ConnectionRequest):
@@ -414,6 +416,10 @@ def create_web_app(
             body.connection_id, body.path, body.name,
         )
 
+    @app.put("/api/agents/{session_id}/name")
+    async def rename_agent(session_id: str, body: AgentNameRequest, request: Request):
+        return await _channel(request).rename_agent(body.connection_id, session_id, body.name)
+
     @app.post("/api/agents/{session_id}/projects")
     async def link_project(session_id: str, body: LinkProjectRequest, request: Request):
         return await _channel(request).link_project(body.connection_id, session_id, body.workspace_id, body.path)
@@ -471,26 +477,6 @@ def create_web_app(
     @app.put("/api/sessions/{session_id}/routines/{routine_id}/state")
     async def set_routine_state(session_id: str, routine_id: str, body: RoutineStateRequest, request: Request):
         return await _channel(request).set_routine_state(body.connection_id, session_id, routine_id, body.state)
-
-    @app.get("/api/sessions/{session_id}/changes")
-    async def file_changes(session_id: str, request: Request, project: str | None = None, path: str | None = None,
-                           revision: str | None = None, offset: int = Query(default=0, ge=0)):
-        if path is not None:
-            logical = PurePosixPath(path)
-            if (not path or logical.is_absolute() or logical.as_posix() != path
-                    or ".." in logical.parts or path == "." or any(char in path for char in "\\:\0")):
-                raise HTTPException(422, "文件路径必须是工作区内的相对路径。")
-        elif offset or revision is not None:
-            raise HTTPException(422, "续读时必须指定文件。")
-        try:
-            result = await _channel(request).file_changes(session_id, project=project, path=path, offset=offset)
-        except FileChangesUnavailable as error:
-            raise HTTPException(503, str(error)) from error
-        if result is None:
-            raise HTTPException(404, "该文件已没有当前会话的变更，请刷新列表。")
-        if revision is not None and result["revision"] != revision:
-            raise HTTPException(409, "文件变化已更新，请刷新后查看。")
-        return result
 
     @app.get("/api/sessions/{session_id}/subagents/{command_id}")
     async def observe_subagent(session_id: str, command_id: str, request: Request):

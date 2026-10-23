@@ -1,7 +1,6 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 import { z } from "zod";
-import { fileChangesSchema, fileDiffSchema, type FileChanges, type FileDiff } from "./fileChanges";
 
 import {
   bindOwner,
@@ -126,7 +125,7 @@ function putConversation(
 export const redpandaApi = createApi({
   reducerPath: "redpandaApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "FileChanges", "Routines", "AutoAuthorize", "SharedMemory"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory"],
   endpoints: (build) => ({
     getSharedMemory: build.query<SharedMemory, void>({
       query: () => "/shared-memory",
@@ -142,18 +141,6 @@ export const redpandaApi = createApi({
         && typeof response.data === "object" && response.data !== null && "current" in response.data
         ? sharedMemoryConflictSchema.parse(response.data) : response,
       invalidatesTags: ["SharedMemory"],
-    }),
-    getFileChanges: build.query<FileChanges, { sessionId: string; project?: string }>({
-      query: ({ sessionId, project }) => ({
-        url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params: project === undefined ? {} : { project },
-      }),
-      transformResponse: (value: unknown) => fileChangesSchema.parse(value),
-      providesTags: ["FileChanges"],
-    }),
-    getFileDiff: build.query<FileDiff, { sessionId: string; project?: string; path: string; revision: string; offset: number }>({
-      query: ({ sessionId, ...params }) => ({ url: `/sessions/${encodeURIComponent(sessionId)}/changes`, params }),
-      transformResponse: (value: unknown) => fileDiffSchema.parse(value),
-      providesTags: ["FileChanges"],
     }),
     getModelSettings: build.query<ModelSettings, void>({
       query: () => "/model-settings",
@@ -311,6 +298,16 @@ export const redpandaApi = createApi({
         dispatch(bindOwner(data.session_id));
       },
     }),
+    renameAgent: build.mutation<AgentRosterEntry, { connectionId: string; sessionId: string; name: string }>({
+      query: ({ connectionId, sessionId, name }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/name`,
+        method: "PUT",
+        body: { connection_id: connectionId, name },
+      }),
+      transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Agents", "Groups", "Inbox", "Conversation"],
+    }),
     linkProject: build.mutation<
       AgentRosterEntry,
       { connectionId: string; sessionId: string; workspaceId: string | null; path: string | null }
@@ -322,7 +319,7 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
-      invalidatesTags: ["Agents", "Workspaces", "FileChanges"],
+      invalidatesTags: ["Agents", "Workspaces"],
     }),
     unlinkProject: build.mutation<AgentRosterEntry, { connectionId: string; sessionId: string; name: string }>({
       query: ({ connectionId, sessionId, name }) => ({
@@ -332,7 +329,7 @@ export const redpandaApi = createApi({
       }),
       transformResponse: (value: unknown) => agentRosterEntrySchema.parse(value),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
-      invalidatesTags: ["Agents", "FileChanges"],
+      invalidatesTags: ["Agents"],
     }),
     getWorkspaces: build.query<Workspace[], void>({
       query: () => "/workspaces",
@@ -506,10 +503,8 @@ export const {
   useGetRoutinesQuery,
   useGetRoutineFiresQuery,
   useSetRoutineStateMutation,
-  useGetFileChangesQuery,
   useLinkProjectMutation,
   useUnlinkProjectMutation,
-  useGetFileDiffQuery,
   useGetModelSettingsQuery,
   useGetSharedMemoryQuery,
   useSaveSharedMemoryMutation,
@@ -521,6 +516,7 @@ export const {
   useSelectLocalFileMutation,
   useGetAgentsQuery,
   useCreateAgentMutation,
+  useRenameAgentMutation,
   useGetInboxQuery,
   useAnswerAbsenceMutation,
   useGetGroupsQuery,

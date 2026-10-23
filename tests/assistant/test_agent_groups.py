@@ -139,6 +139,32 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                 await self.group(members, name=f"组-{members}")
         self.assertEqual([item.group_id for item in await self.host.agent_groups.list()], [group.group_id])
 
+    async def test_rename_preserves_queued_group_turn_and_current_mentions_after_restart(self):
+        group = await self.group(("Ada", "Lin"))
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def working(session_id):
+            self.calls.append(session_id)
+            if session_id == "Ada":
+                entered.set()
+                await release.wait()
+
+        self.host.wait_quiescent.side_effect = working
+        await self.host.agent_groups.post(group.group_id, "大家看看", [])
+        await entered.wait()
+        await self.host.rename_agent("Lin", "小林")
+        self.assertEqual((await self.host.agent_groups.view(group.group_id))["members"], ["Ada", "小林"])
+        release.set()
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada", "Lin"])
+        self.host.agent_groups = AgentGroups(self.host)
+        await self.host.agent_groups.recover()
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada", "Lin"])
+        await self.host.agent_groups.post(group.group_id, "请小林回复", ["小林"])
+        await self.settled(group)
+        self.assertEqual(self.calls, ["Ada", "Lin", "Lin"])
+
     async def test_restart_completes_partial_delivery_and_preserves_human_request_identity(self):
         group = await self.group()
         deliver = self.host.request.side_effect
@@ -430,3 +456,15 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(await self.facts("Lin", GROUP_MESSAGE)), 2)
         with self.assertRaisesRegex(ValueError, "conflicts"):
             await send(text="改了")
+
+    async def test_group_receipt_replays_after_speaker_and_mentioned_member_rename(self):
+        group = await self.group(("Ada", "Lin"))
+        first = await self.say("Ada", "请核对", origin="human", mention=["Lin"])
+        await self.settled(group)
+        await self.host.rename_agent("Lin", "小林")
+        await self.host.rename_agent("Ada", "艾达")
+        again = await self.say("Ada", "请核对", origin="human", mention=["Lin"])
+        self.assertEqual(first, again)
+        self.assertEqual(len(await self.host.agent_groups.messages(group.group_id)), 1)
+        self.assertEqual((await self.say("Ada", "新发言", origin="human", mention=["Lin"]))["code"],
+                         "INVALID_MENTION")

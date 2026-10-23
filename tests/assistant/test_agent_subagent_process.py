@@ -10,7 +10,6 @@ import unittest
 
 import pytest
 
-from redpanda.assistant.conversations import AssistantQueries
 from redpanda.assistant.host.session_store import SessionStore
 from redpanda.assistant.subagent.subagent import project_delegate_intents
 from redpanda.assistant.host.supervisor import HostSupervisor
@@ -102,12 +101,6 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.project / "child.txt").exists())
         events = await SqliteJournal(self.host.store.require(parent.session_id)).snapshot(parent.session_id)
         [intent] = project_delegate_intents(events)
-        queries = AssistantQueries(self.host.store, self.host)
-        # Merged into the parent, so nothing of the task remains to review.
-        self.assertEqual((await queries.file_changes(intent.child_session_id))["files"], [])
-        self.assertEqual([file["path"] for file in (await queries.file_changes(
-            parent.session_id, project=parent.projects[0].name))["files"]],
-                         ["child.txt"])
         self.assertTrue(self.host.failures.empty())
 
     async def test_conflicts_never_reach_the_parent_and_a_resolving_task_completes_the_merge(self):

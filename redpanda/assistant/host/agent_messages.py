@@ -154,7 +154,7 @@ class AgentMessages:
         if name == sender.name:
             return {"ok": False, "code": "SELF_MESSAGE", "error": "不能给自己发私信。"}
         try:
-            recipient = await self.host.agents.resolve(name)
+            recipient = await self.host.agents.resolve_recorded(name)
         except AgentNotFound:
             return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "没有这位同事。"}
         identity = message_identity(session_id, arguments["command_id"])
@@ -162,19 +162,24 @@ class AgentMessages:
         existing = next(((event, fact) for event, fact in received if fact.message_id == identity), None)
         if existing is not None:
             event, fact = existing
-            if (fact.sender != Speaker(kind="agent", name=sender.name) or fact.recipient != name
+            if (fact.sender.name not in sender.names or fact.recipient not in recipient.names
                     or fact.text != arguments["text"] or fact.reply_to != arguments["reply_to"]
                     or event.delivery.source != "coding_bot" or event.delivery.delivery_id != identity):
                 raise ValueError("persisted message conflicts with its sending Command")
             await self.origins.record(fact.origin, identity)
             return self._delivered(recipient, identity)
+        if name != recipient.name:
+            return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "这位同事已改名，请用 list_colleagues 查看当前名字。"}
+        if recipient.session_id == sender.session_id:
+            return {"ok": False, "code": "SELF_MESSAGE", "error": "不能给自己发私信。"}
         reply_to = arguments["reply_to"]
         previous = None
         if reply_to is not None:
             messages = [*received, *await self._messages(session_id)]
             previous = next((fact for _, fact in messages if fact.message_id == reply_to
                 and fact.sender.kind == "agent"
-                and (fact.sender.name, fact.recipient) in ((sender.name, name), (name, sender.name))), None)
+                and ((fact.sender.name in sender.names and fact.recipient in recipient.names)
+                     or (fact.sender.name in recipient.names and fact.recipient in sender.names))), None)
             if previous is None:
                 return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是你与这位同事之间的私信。"}
         hop = 0 if previous is None else previous.hop + 1

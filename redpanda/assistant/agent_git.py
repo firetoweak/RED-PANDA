@@ -3,11 +3,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -191,35 +189,6 @@ class Git:
             result["limitations"] = ["binary 文件只提供变化摘要，不含正文"] if "Binary files " in patch else []
         return result
 
-    def review(self, root: Path, base: str, *, path: str | None = None, offset: int = 0) -> dict | None:
-        """The worktree's changes, uncommitted ones included, since its merge base with `base`.
-
-        Untracked files are staged into a private copy of the index, so the
-        owner's index and `git status` stay untouched.
-        """
-        fork = self.run(root, "merge-base", base, "HEAD").stdout.decode("ascii").strip()
-        index_path = self.run(root, "rev-parse", "--path-format=absolute", "--git-path", "index").stdout
-        with TemporaryDirectory() as directory:
-            index = {"GIT_INDEX_FILE": str(Path(directory) / "index")}
-            shutil.copyfile(index_path.decode("utf-8").rstrip("\r\n"), index["GIT_INDEX_FILE"])
-            self.run(root, "add", "--all", environment=index)
-            scope = ("--literal-pathspecs", "diff", "--cached", "--no-renames", fork, "--", *([path] if path else []))
-            raw = self.run(root, *scope[:-2], "--raw", "-z", *scope[-2:], environment=index).stdout
-            counts = self.run(root, *scope[:-2], "--numstat", "-z", *scope[-2:], environment=index).stdout
-            patch = (self.run(root, *scope[:-2], "--no-ext-diff", "--no-textconv", *scope[-2:],
-                              environment=index).stdout if path else b"")
-        reviewed = _review_files(raw, counts)
-        files = [file for file, _ in reviewed]
-        if path is None:
-            return dict(files=files, added=sum(file["added"] or 0 for file in files),
-                        removed=sum(file["removed"] or 0 for file in files))
-        if not reviewed:
-            return None
-        lines = _review_lines(patch)
-        file, properties = reviewed[0]
-        return {**file, "properties": properties, "lines": lines[offset:offset + REVIEW_PAGE_LINES],
-                "next_offset": offset + REVIEW_PAGE_LINES if offset + REVIEW_PAGE_LINES < len(lines) else None}
-
     def _is_ancestor(self, root: Path, ancestor: str, descendant: str) -> bool:
         return self.run(root, "merge-base", "--is-ancestor", ancestor, descendant,
                         accepted=(0, 1)).returncode == 0
@@ -237,50 +206,3 @@ def git_error(result: subprocess.CompletedProcess[bytes]) -> str:
 def raise_git(result: subprocess.CompletedProcess[bytes]) -> NoReturn:
     raise subprocess.CalledProcessError(result.returncode, result.args,
                                         output=result.stdout, stderr=result.stderr)
-
-
-REVIEW_PAGE_LINES = 200
-_STATUS = {"A": "added", "D": "deleted", "M": "modified", "T": "modified"}
-
-
-def _review_files(raw: bytes, counts: bytes) -> list[tuple[dict, list[dict]]]:
-    fields = raw.split(b"\0")[:-1]
-    numbers = {}
-    for entry in counts.split(b"\0")[:-1]:
-        added, removed, name = entry.split(b"\t", 2)
-        numbers[name.decode("utf-8")] = (None, None) if added == b"-" else (int(added), int(removed))
-    reviewed = []
-    for header, name in zip(fields[::2], fields[1::2]):
-        old_mode, new_mode, old_oid, new_oid, status = header.decode("ascii")[1:].split(" ")
-        path = name.decode("utf-8")
-        added, removed = numbers[path]
-        file = dict(path=path, status=_STATUS[status[0]], added=added, removed=removed,
-                    binary=added is None)
-        # Blob ids and modes identify this exact difference for page continuation.
-        file["revision"] = sha256(json.dumps([path, old_mode, new_mode, old_oid, new_oid]).encode()).hexdigest()
-        properties = ([dict(text=f"权限：{old_mode} → {new_mode}")]
-                      if status[0] == "M" and old_mode != new_mode else [])
-        reviewed.append((file, properties))
-    return reviewed
-
-
-def _review_lines(patch: bytes) -> list[dict]:
-    rows, old, new = [], None, None
-    for raw_line in patch.split(b"\n")[:-1]:
-        line = raw_line.decode("utf-8", "replace") + "\n"
-        hunk = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", line)
-        if hunk is not None:
-            old, new = int(hunk[1]), int(hunk[2])
-            rows.append(dict(kind="hunk", old_line=None, new_line=None, text=hunk[0]))
-        elif old is None or line.startswith("\\"):
-            continue
-        elif line.startswith("+"):
-            rows.append(dict(kind="add", old_line=None, new_line=new, text=line[1:]))
-            new += 1
-        elif line.startswith("-"):
-            rows.append(dict(kind="delete", old_line=old, new_line=None, text=line[1:]))
-            old += 1
-        else:
-            rows.append(dict(kind="context", old_line=old, new_line=new, text=line[1:]))
-            old, new = old + 1, new + 1
-    return rows

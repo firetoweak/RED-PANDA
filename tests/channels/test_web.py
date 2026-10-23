@@ -639,6 +639,7 @@ class WebFirstSliceTest(unittest.TestCase):
 
         groups = self.sessions.agent_groups = SimpleNamespace(
             list=AsyncMock(return_value=(record,)), create=AsyncMock(side_effect=create),
+            member_names=AsyncMock(return_value=["Ada", "Lin"]),
             get=AsyncMock(side_effect=get), post=AsyncMock(), stop=AsyncMock(),
             view=AsyncMock(return_value={"group_id": "group-1", "messages": []}))
         connection = self.connection.connection_id

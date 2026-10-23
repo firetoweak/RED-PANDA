@@ -40,6 +40,7 @@ class GroupRecord:
 
     @property
     def members(self) -> list[str]:
+        """Names at creation remain the keys of already accepted group turns."""
         return self.created.members
 
 
@@ -143,7 +144,7 @@ class AgentGroups:
         for group in await self.list():
             async with self._group_locks.setdefault(group.group_id, asyncio.Lock()):
                 for name in group.members:
-                    agent = await self.host.agents.resolve(name)
+                    agent = await self.host.agents.resolve_recorded(name)
                     await self.host.request("fact", agent.session_id,
                         fact_arguments(group.created, delivery_id=f"joined:{group.group_id}"))
                 drive = self._drives[group.group_id]
@@ -187,7 +188,9 @@ class AgentGroups:
         drive = self._drives.get(group_id)
         return {
             "group_id": group.group_id, "name": group.name,
-            "members": group.members, "calling": list(drive.waiting) if drive is not None and drive.running else [],
+            "members": await self.member_names(group),
+            "calling": [(await self.host.agents.resolve_recorded(name)).name for name in drive.waiting]
+                       if drive is not None and drive.running else [],
             "messages": [
                 {"message_id": fact.message_id, "sender": fact.sender.name, "text": fact.text,
                  "mentioned_agents": fact.mentioned_agents, "reply_to": fact.reply_to,
@@ -201,6 +204,13 @@ class AgentGroups:
     async def messages(self, group_id: str) -> list[GroupMessage]:
         return [parse_agent_fact(event.payload) for event in await self._journal(group_id).snapshot(group_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == GROUP_MESSAGE]
+
+    async def member_names(self, group: GroupRecord) -> list[str]:
+        return [(await self.host.agents.resolve_recorded(name)).name for name in group.members]
+
+    async def _member_keys(self, group: GroupRecord, names: list[str]) -> list[str]:
+        current = await self.member_names(group)
+        return [group.members[current.index(name)] for name in names]
 
     async def create(self, *, name: str, members: list[str]) -> GroupRecord:
         created = GroupCreated(group=name, members=members)
@@ -222,8 +232,9 @@ class AgentGroups:
         """The group record is the source; member timelines receive copies without deciding."""
         arguments = fact_arguments(message, delivery_id=message.message_id)
         await AgentRuntime(self._journal(group.group_id), None, {}).receive_domain_fact(group.group_id, **arguments)
-        recipients = [await self.host.agents.resolve(name)
-                      for name in group.members if name != message.sender.name]
+        recipients = [await self.host.agents.resolve_recorded(name)
+                      for name in group.members]
+        recipients = [agent for agent in recipients if message.sender.name not in agent.names]
         await asyncio.gather(*(self.host.request("fact", agent.session_id, arguments) for agent in recipients))
         self._changed(group.group_id)
 
@@ -240,7 +251,8 @@ class AgentGroups:
     async def post(self, group_id: str, text: str, mention: list[str], *, delivery_id: str | None = None) -> GroupMessage:
         """A human message starts a new drive, superseding the previous one."""
         group = await self.get(group_id)
-        if any(name not in group.members for name in mention):
+        members = await self.member_names(group)
+        if any(name not in members for name in mention):
             raise ValueError("点名的成员不在这个群里")
         message = GroupMessage(message_id=f"group-message-{delivery_id or uuid4().hex}", sender=Speaker(kind="user", name=None),
                                reply_to=None, text=text, group=group.name, mentioned_agents=mention, origin=None)
@@ -254,7 +266,7 @@ class AgentGroups:
                 self._schedule(previous)
                 return existing
             drive = self._replace_drive(group)
-            drive.queue(None, mention, _Call(message.message_id, message.message_id, 1))
+            drive.queue(None, await self._member_keys(group, mention), _Call(message.message_id, message.message_id, 1))
             drive.outbox[message.message_id] = message
             await self._save(drive, receipt=(message.message_id, True))
             await self._flush(drive)
@@ -301,7 +313,7 @@ class AgentGroups:
 
     async def _call(self, drive: _Drive, name: str, call: _Call) -> None:
         """A turn ends when the member speaks or its triggered work settles."""
-        agent = await self.host.agents.resolve(name)
+        agent = await self.host.agents.resolve_recorded(name)
         delivery_id = f"attention:{drive.group.group_id}:{call.message_id}:{name}"
         events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
         accepted = next((event.event_id for event in events if event.delivery is not None
@@ -366,11 +378,10 @@ class AgentGroups:
                       if group.name == arguments["group"]), None)
         if group is None:
             return {"ok": False, "code": "GROUP_NOT_FOUND", "error": "没有这个群。"}
-        if sender.name not in group.members:
+        members = await self.member_names(group)
+        if sender.name not in members:
             return {"ok": False, "code": "NOT_A_MEMBER", "error": "你不在这个群里。"}
         mention = arguments["mention"]
-        if any(name not in group.members or name == sender.name for name in mention):
-            return {"ok": False, "code": "INVALID_MENTION", "error": "只能点名这个群里的其他成员。"}
         async with self._group_locks.setdefault(group.group_id, asyncio.Lock()):
             drive = await self._load(group)
             await self._flush(drive)
@@ -378,20 +389,24 @@ class AgentGroups:
             identity = arguments["message_id"]
             existing = next((message for message in messages if message.message_id == identity), None)
             if existing is not None:
-                if (existing.sender != Speaker(kind="agent", name=sender.name) or existing.group != group.name
+                if (existing.sender.name not in sender.names or existing.group != group.name
                         or existing.text != arguments["text"] or existing.mentioned_agents != mention
                         or existing.reply_to != arguments["reply_to"]):
                     raise ValueError("persisted group message conflicts with its sending Command")
                 await self._publish(group, existing)
                 self._schedule(drive)
                 return self._delivered(group, identity, await self._receipt(group.group_id, identity))
+            if any(name not in members or name == sender.name for name in mention):
+                return {"ok": False, "code": "INVALID_MENTION", "error": "只能点名这个群里的其他成员。"}
             if arguments["reply_to"] is not None and all(
                     message.message_id != arguments["reply_to"] for message in messages):
                 return {"ok": False, "code": "INVALID_REPLY", "error": "引用的消息必须是这个群里的消息。"}
             refused = await admit(group.name)
             if refused is not None:
                 return refused
-            answered = drive.answering.get((sender.name, arguments["reply_to"]))
+            speaker, = await self._member_keys(group, [sender.name])
+            mentioned = await self._member_keys(group, mention)
+            answered = drive.answering.get((speaker, arguments["reply_to"]))
             if answered is not None and drive.replies[answered.opener] >= MAX_GROUP_REPLIES:
                 return {"ok": False, "code": "GROUP_LIMIT_REACHED",
                         "error": "这次群讨论的回复已达上限；需要某位同事接着处理时可以私信他。"}
@@ -399,18 +414,18 @@ class AgentGroups:
                                    reply_to=arguments["reply_to"], text=arguments["text"], group=group.name,
                                    mentioned_agents=mention, origin=origin)
             if answered is not None:
-                del drive.answering[sender.name, arguments["reply_to"]]
+                del drive.answering[speaker, arguments["reply_to"]]
             # Any speech from a member being called ends the Host's wait for it.
             if answered is None:
-                calls = drive.queue(sender.name, mention, _Call(identity, identity, 1))
+                calls = drive.queue(speaker, mentioned, _Call(identity, identity, 1))
             else:
                 drive.replies[answered.opener] += 1
-                calls = drive.queue(sender.name, mention, _Call(identity, answered.opener, answered.round + 1))
+                calls = drive.queue(speaker, mentioned, _Call(identity, answered.opener, answered.round + 1))
             drive.outbox[identity] = message
             await self._save(drive, receipt=(identity, calls))
             await self._flush(drive)
-            if sender.name in drive.waiting:
-                drive.waiting[sender.name].set()
+            if speaker in drive.waiting:
+                drive.waiting[speaker].set()
             self._schedule(drive)
             return self._delivered(group, identity, calls)
 

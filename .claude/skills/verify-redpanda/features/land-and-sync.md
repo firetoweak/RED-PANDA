@@ -1,6 +1,6 @@
 # 落地与同步
 
-`land_branch` 把 Agent 分支上已经提交的工作合入项目集成分支。`sync_branch` 把集成分支上同事已经落地的工作合进自己的分支。两个工具都只接受 `project`（Bot 挂上的项目名），都不进入待处理条，也不改人当前检出的分支和工作目录。未提交的修改不跟着落地。冲突时落地放弃、集成分支不动；同步则停在冲突状态，留给 Agent 用普通 Git 命令解决或放弃。来源：`redpanda/assistant/agent_tools.py`、`redpanda/assistant/host/agent_worktrees.py`。落地后变化查看变空，见 [session-file-changes.md](./session-file-changes.md)。
+`land_branch` 把 Agent 分支上已经提交的工作合入项目集成分支。`sync_branch` 把集成分支上同事已经落地的工作合进自己的分支。两个工具都只接受 `project`（Bot 挂上的项目名），都不进入待处理条，也不改人当前检出的分支和工作目录。未提交的修改不跟着落地。冲突时落地放弃、集成分支不动；同步则停在冲突状态，留给 Agent 用普通 Git 命令解决或放弃。来源：`redpanda/assistant/agent_tools.py`、`redpanda/assistant/host/agent_worktrees.py`。
 
 Bot 的项目工作树位于其个人目录的 `projects/<挂载项目名>`；以名册 `projects[].directory` 或 `link_project` 返回的目录为准。集成工作树仍在 `$REDPANDA_HOME/state/coding_bot/<sha256(workspace_id) 的前 20 位>/integration`。提交可以直接在 Agent 工作树里用 Git 准备，再请模型单独调用工具；工具只搬已提交的内容。
 
@@ -29,7 +29,7 @@ Bot 的项目工作树位于其个人目录的 `projects/<挂载项目名>`；�
   - (d) 没有新提交时再落地 → `LAND_UNCHANGED`，提示集成分支已经包含全部分支上已提交的工作，集成 HEAD 不变。
 - **未提交的不带走**：`Ada` 落地之后，在它的工作树再写 `draft.txt` 且不提交，然后落地。
   - (a) 结果 `LAND_UNCHANGED`。`integration` 里没有 `draft.txt`。`Ada` 工作树里的未跟踪文件还在。
-  - (b) 变化查看仍能看到 `draft.txt`（尚未落地的工作还在差异里）。
+  - (b) Bot 的工作树里仍保留未提交的 `draft.txt`。
   - (c) 人的 `note.txt` 不变。
   - (d) 把 `draft.txt` 提交后再落地，它才出现在 `integration`。
 - **同步**：`Ada` 已经把 `landed.txt` 落地。请 `Lin` 调用 `sync_branch`。
