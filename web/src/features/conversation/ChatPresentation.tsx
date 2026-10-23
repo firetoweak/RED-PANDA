@@ -1,6 +1,7 @@
 import { ActionIcon, Menu } from "@mantine/core";
 import { IconArrowBackUp, IconCopy, IconX } from "@tabler/icons-react";
 import { createContext, useContext, type ReactElement } from "react";
+import { botAvatarPath, identityHash } from "./botAvatar";
 
 export type MessageReference = { id: string; author: string; preview: string };
 export const ChatPresentation = createContext<{
@@ -10,17 +11,26 @@ export const ChatPresentation = createContext<{
   onJump: (id: string) => void;
 }>({ names: [], quote: null, onQuote: () => {}, onJump: () => {} });
 
-/** 名字决定身份色；头像、作者和正文点名共用这一映射。 */
-export function identityColor(name: string): string {
-  const approved: Record<string, string> = { Atlas: "blue", Nova: "purple", Echo: "green", Mori: "amber" };
-  if (Object.hasOwn(approved, name)) return approved[name];
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.codePointAt(0)!) | 0;
-  return ["blue", "purple", "green", "amber"][(hash >>> 0) % 4];
+/** 名册提供当前名字对应的固定身份；历史中无法关联的名字仍可独立显示。 */
+export const BotIdentities = createContext<ReadonlyMap<string, string>>(new Map());
+
+function identityColor(seed: string): string {
+  return ["blue", "purple", "green", "amber"][identityHash(seed) % 4];
 }
 
-export function BotAvatar({ name, className = "" }: { name: string; className?: string }) {
-  return <span className={`agent-avatar ${className}`} data-identity={identityColor(name)} aria-hidden="true">{name.slice(0, 1)}</span>;
+export function useIdentityColor() {
+  const identities = useContext(BotIdentities);
+  return (name: string) => identityColor(identities.get(name) ?? name);
+}
+
+export function BotAvatar({ name, sessionId, className = "" }: { name: string; sessionId?: string; className?: string }) {
+  const identities = useContext(BotIdentities);
+  const seed = sessionId ?? identities.get(name) ?? name;
+  return <span className={`agent-avatar ${className}`} data-identity={identityColor(seed)} aria-hidden="true">
+    <svg className="bot-avatar-mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" focusable="false">
+      <path d={botAvatarPath(seed)} />
+    </svg>
+  </span>;
 }
 
 export function messageReference(id: string, author: string, text: string): MessageReference {
@@ -47,6 +57,7 @@ export function splitMessageQuote(text: string): { quote: MessageReference | nul
 
 export function MessageQuote({ quote, onRemove }: { quote: MessageReference; onRemove?: () => void }) {
   const { onJump } = useContext(ChatPresentation);
+  const identityColor = useIdentityColor();
   return <div className="message-quote">
     <button type="button" onClick={() => onJump(quote.id)} aria-label={`查看 ${quote.author} 的原消息`}>
       <strong data-identity={identityColor(quote.author)}>{quote.author}</strong>

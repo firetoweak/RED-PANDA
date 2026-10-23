@@ -304,7 +304,7 @@ Bot 私信收发在私聊时间线中使用居中的轻量标识：“已发消�
 
 ## Shapes
 
-Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与输入区边框均为 md（10px），没有沿用原型的 12px composer。搜索、新建 Bot 与过滤容器采用 sm（6px），常规身份头像采用 avatar（9px），小屏消息头像采用 avatar-mobile（7px），资料头像采用 attachment（12px）。点名小底色采用 xs（4px）。引用使用左侧细线与（0 5px 5px 0）圆角；按钮依组件使用小圆角或主题 xl。不要将所有组件统一为胶囊。
+Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与输入区边框均为 md（10px），没有沿用原型的 12px composer。搜索、新建 Bot 与过滤容器采用 sm（6px），Bot 头像使用无五官的抽象线条轮廓与柔和身份底色，不增加人物、职业或表情设定；同一 Bot 的标记不随显示名改变。常规身份头像采用 avatar（9px），小屏消息头像采用 avatar-mobile（7px），资料头像采用 attachment（12px）。点名小底色采用 xs（4px）。引用使用左侧细线与（0 5px 5px 0）圆角；按钮依组件使用小圆角或主题 xl。不要将所有组件统一为胶囊。
 
 ## Components
 

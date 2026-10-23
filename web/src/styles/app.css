@@ -974,6 +974,7 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
 [data-identity] { color: var(--identity); }
 .agent-avatar[data-identity], .message-mention { color: var(--identity); background: var(--identity-bg); }
 .agent-avatar { width: 34px; height: 34px; border-radius: 9px; font-weight: 600; }
+.bot-avatar-mark { display: block; width: 100%; height: 100%; }
 .agent-avatar.agent-details-avatar { width: 48px; height: 48px; border-radius: 12px; }
 .human-avatar { color: var(--rp-human-text); background: var(--rp-human); font-size: 13px; }
 .message-mention { display: inline; padding: 3px 5px; border-radius: 4px; white-space: nowrap; font-size: .93em; }
