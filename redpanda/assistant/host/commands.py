@@ -6,6 +6,7 @@ from pathlib import Path
 from redpanda.assistant.agent_git import identity as git_identity
 from redpanda.assistant.commands import COMMAND_FINISHED, SOURCE, background_commands, completed_commands
 from redpanda.assistant.host.ipc import WorkerFailed
+from redpanda.assistant.host.agent_roster import AgentDeletedError
 from redpanda.execution.command import CommandStartError, ShellNotFoundError
 from redpanda.execution.processes import CommandManager
 from redpanda.runtime import CommandOutcomeReceived, SqliteJournal
@@ -96,6 +97,8 @@ class CommandHost:
                     "source": SOURCE, "fact_type": COMMAND_FINISHED, "delivery_id": identity,
                     "requests_decision": True, "causation_id": initiating_id, "data": data,
                 })
+            except AgentDeletedError:
+                return
             except WorkerFailed:
                 # Journal acceptance is idempotent; retry delivery, never execution.
                 await asyncio.sleep(30)

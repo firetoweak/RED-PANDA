@@ -14,6 +14,10 @@ class AgentNotFound(LookupError):
     pass
 
 
+class AgentDeletedError(LookupError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class AgentView:
     agent: AgentRecord
@@ -70,7 +74,7 @@ class AgentRoster:
 
     async def resolve_recorded(self, name: str) -> AgentRecord:
         """Resolve names in existing facts; new addresses use resolve instead."""
-        for entry in await self.list():
+        for entry in await self.list(include_deleted=True):
             if name in entry.agent.names:
                 return entry.agent
         raise AgentNotFound(name)
@@ -81,8 +85,9 @@ class AgentRoster:
         entry = index[session_id]
         index[session_id] = replace(entry, agent=replace(entry.agent, projects=tuple(projects)))
 
-    async def list(self) -> tuple[AgentView, ...]:
-        return tuple(sorted((await self._index()).values(), key=lambda entry: entry.agent.name))
+    async def list(self, *, include_deleted=False) -> tuple[AgentView, ...]:
+        return tuple(sorted((entry for entry in (await self._index()).values()
+                             if include_deleted or not entry.agent.deleted), key=lambda entry: entry.agent.name))
 
     async def resolve(self, name: str) -> AgentRecord:
         for entry in await self.list():

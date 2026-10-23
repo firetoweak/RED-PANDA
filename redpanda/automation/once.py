@@ -151,6 +151,14 @@ class OneShotSchedules:
                 )
         return code
 
+    def cancel_session(self, session_id: str) -> None:
+        with closing(sqlite3.connect(self.path)) as connection:
+            with connection:
+                connection.execute(
+                    "INSERT OR IGNORE INTO schedule_cancellations "
+                    "SELECT 'deleted:' || schedule_id, session_id, schedule_id, 'CANCELLED' "
+                    "FROM schedules WHERE session_id = ? AND delivered_at IS NULL", (session_id,))
+
     def delivered(self, schedule_id: str) -> None:
         with closing(sqlite3.connect(self.path)) as connection:
             with connection:

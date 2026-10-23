@@ -258,6 +258,11 @@ class CommandManager:
         return [entry.status() for entry in self._commands.values()
                 if entry.session_id == session_id and entry.backgrounded]
 
+    async def stop_session(self, session_id: str) -> None:
+        for entry in tuple(self._commands.values()):
+            if entry.session_id == session_id:
+                await self.stop(session_id, entry.command_id)
+
     async def close(self) -> None:
         async with self._lock:
             self._closed = True

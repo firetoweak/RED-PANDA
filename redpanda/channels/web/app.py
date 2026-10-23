@@ -23,8 +23,8 @@ from redpanda.assistant.attachments import (
 )
 from redpanda.assistant.file_attachments import is_file_attachment_id
 from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
-from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
+from redpanda.assistant.host.agent_groups import GroupDissolvedError, GroupNameTaken, GroupNotFound
+from redpanda.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from redpanda.assistant.host.agent_projects import ProjectLinkRefused
 from redpanda.assistant.host.supervisor import HostSupervisor
 from redpanda.assistant.model_connection import check_model_connection
@@ -406,6 +406,14 @@ def create_web_app(
     async def set_session_model(session_id: str, body: SessionModelRequest, request: Request):
         return _channel(request).set_model(body.connection_id, session_id, body.model)
 
+    @app.exception_handler(AgentDeletedError)
+    async def agent_deleted(_request: Request, _error: AgentDeletedError):
+        return JSONResponse(status_code=410, content={"detail": "这位 Bot 已删除，只能查看历史记录。"})
+
+    @app.exception_handler(GroupDissolvedError)
+    async def group_dissolved(_request: Request, _error: GroupDissolvedError):
+        return JSONResponse(status_code=410, content={"detail": "这个群已解散，只能查看历史记录。"})
+
     @app.get("/api/agents")
     async def agents(request: Request):
         return await _channel(request).list_agents()
@@ -415,6 +423,11 @@ def create_web_app(
         return await _channel(request).create_agent(
             body.connection_id, body.path, body.name,
         )
+
+    @app.delete("/api/agents/{session_id}", status_code=204)
+    async def delete_agent(session_id: str, body: ConnectionRequest, request: Request):
+        await _channel(request).delete_agent(body.connection_id, session_id)
+        return Response(status_code=204)
 
     @app.put("/api/agents/{session_id}/name")
     async def rename_agent(session_id: str, body: AgentNameRequest, request: Request):
@@ -435,6 +448,11 @@ def create_web_app(
     @app.post("/api/groups", status_code=201)
     async def create_group(body: CreateGroupRequest, request: Request):
         return await _channel(request).create_group(body.connection_id, body.name, body.members)
+
+    @app.delete("/api/groups/{group_id}", status_code=204)
+    async def dissolve_group(group_id: str, body: ConnectionRequest, request: Request):
+        await _channel(request).dissolve_group(body.connection_id, group_id)
+        return Response(status_code=204)
 
     @app.get("/api/groups/{group_id}")
     async def group(group_id: str, request: Request):

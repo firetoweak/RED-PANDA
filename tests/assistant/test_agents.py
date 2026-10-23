@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from redpanda.assistant.agents import (
-    AGENT_CREATED, AGENT_RENAMED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
+    AGENT_CREATED, AGENT_DELETED, AGENT_RENAMED, COLLEAGUE_JOINED, DirectionDeclared, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
 )
 from redpanda.assistant.compact.core import window_preamble
@@ -22,7 +22,7 @@ from redpanda.config import write_json
 from redpanda.filesystem.registry import WorkspaceRegistry
 from redpanda.model_settings import ModelConfigurationError, ModelSettings
 from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, SqliteJournal
+from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
 
 
 class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
@@ -68,6 +68,30 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item.workspace_id for item in first.projects], [self.workspace.workspace_id])
         with self.assertRaises(AgentNotFound):
             await self.host.agents.resolve("unknown")
+
+    async def test_deleted_bot_keeps_work_and_history_but_leaves_the_roster_after_restart(self):
+        agent = await self.create("Ada")
+        note = agent.directory / "成果.txt"
+        note.write_text("保留", encoding="utf-8")
+        self.host.automation.register("later", agent.session_id, 3600, "继续工作")
+        self.host.routines.store.save("routine", agent.session_id, routine_id=None,
+                                      name="巡检", intent="检查状态", schedule="@every 10m")
+        await self.host.delete_agent(agent.session_id)
+        await self.host.delete_agent(agent.session_id)
+        self.assertEqual(await self.host.agents.list(), ())
+        rebuilt = AgentRoster(self.store)
+        self.assertEqual(await rebuilt.list(), ())
+        historical = await rebuilt.resolve_recorded("Ada")
+        self.assertTrue(historical.deleted)
+        self.assertEqual(historical.projects, agent.projects)
+        self.assertEqual(note.read_text(encoding="utf-8"), "保留")
+        self.assertIsNone(self.host.next_scheduled_check(agent.session_id))
+        self.assertEqual(self.host.list_routines(agent.session_id), ())
+        events = await SqliteJournal(self.store.require(agent.session_id)).snapshot(agent.session_id)
+        self.assertEqual(sum(isinstance(event.payload, DomainFactCommitted)
+                             and event.payload.fact_type == AGENT_DELETED for event in events), 1)
+        with self.assertRaises(AgentNameTaken):
+            await self.create("Ada")
 
     async def test_creation_wakes_the_new_agent_and_tells_existing_colleagues(self):
         first = await self.create("Ada")

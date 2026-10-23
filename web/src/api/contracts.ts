@@ -139,6 +139,7 @@ export type GroupMessage = z.infer<typeof groupMessageSchema>;
 
 export const groupViewSchema = groupSummarySchema
   .extend({
+    dissolved: z.boolean(),
     calling: z.array(z.string().min(1)),
     messages: z.array(groupMessageSchema),
   })
@@ -217,6 +218,8 @@ export type WorkPlan = z.infer<typeof workPlanSchema>;
 
 export const conversationViewSchema = z
   .object({
+    deleted: z.boolean(),
+    agent_name: z.string().min(1).nullable(),
     session_id: z.string().min(1),
     workspace_id: z.string().min(1).nullable(),
     revision: z.number().int().nonnegative(),

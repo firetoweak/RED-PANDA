@@ -12,6 +12,7 @@ from redpanda.assistant.host.supervisor import HostSupervisor, Worker
 class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):
     async def test_peer_close_does_not_send_abort_back_to_exiting_worker(self):
         host = object.__new__(HostSupervisor)
+        host.lifecycle = SimpleNamespace(is_deleted=AsyncMock(return_value=False))
         host.closed = False
         host.locks = {}
         host._stop_idle = AsyncMock()
@@ -46,6 +47,7 @@ class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):
         for transport_error in (EOFError(), ConnectionResetError(), BrokenPipeError()):
             with self.subTest(error=type(transport_error).__name__):
                 host = object.__new__(HostSupervisor)
+                host.lifecycle = SimpleNamespace(is_deleted=AsyncMock(return_value=False))
                 host.closed = False
                 host.locks = {}
                 host.watchers = set()
@@ -81,6 +83,7 @@ class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_startup_policy_does_not_send_to_a_worker_already_failed(self):
         host = object.__new__(HostSupervisor)
+        host.lifecycle = SimpleNamespace(is_deleted=AsyncMock(return_value=False))
         host.closed = False
         host.locks = {}
         host.workers = {}

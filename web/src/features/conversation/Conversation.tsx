@@ -211,7 +211,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
     setHighlightedKey(turns[index].key);
     timelineRef.current?.scrollToIndex({ index, align: "center" });
   };
-  const running = runtime?.activity === "running";
+  const running = !conversation.deleted && runtime?.activity === "running";
   const lastError = running ? null : runtime?.lastError ?? conversation.session.last_error;
   const compactPhase =
     runtime?.conversationStatus?.compactPhase ?? conversation.compact_phase;
@@ -417,12 +417,12 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
         )}
         <Box>
           <Box className="composer-column">
-            {agentName === undefined ? null : <SessionAttention key={sessionId} sessionId={sessionId} connectionId={connectionId} />}
+            {agentName === undefined || conversation.deleted ? null : <SessionAttention key={sessionId} sessionId={sessionId} connectionId={connectionId} />}
             <PendingActions
               authorizations={conversation.session.pending_authorization_commands}
               control={conversation.session.control_approval}
-              authorizationDisabled={connectionId === null || authorizing.isLoading}
-              controlDisabled={connectionId === null || resolvingControl.isLoading}
+              authorizationDisabled={conversation.deleted || connectionId === null || authorizing.isLoading}
+              controlDisabled={conversation.deleted || connectionId === null || resolvingControl.isLoading}
               onAuthorize={(commandId, approved) => void authorize(commandId, approved)}
               onControl={(approved) => void decideControl(approved)}
             />
@@ -455,7 +455,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
           <ErrorNotice title="执行已停止" message={lastError}
             onOpen={(message) => setOpenPage({ kind: "error", title: "执行已停止", message })}>
             <Button
-              disabled={connectionId === null}
+              disabled={conversation.deleted || connectionId === null}
               loading={retrying.isLoading}
               onClick={() => {
                 if (connectionId === null) {
@@ -477,7 +477,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                 ? requestErrorMessage(retrying.error, "再试失败，请确认后端连接后重试。")
                 : requestErrorMessage(sending.error, "消息发送失败，请确认后端连接后重试。")} />
         ) : null}
-        <Composer
+        {conversation.deleted ? <Text size="sm" c="dimmed" ta="center" py="md">Bot 已删除，此处仅保留聊天记录。</Text> : <Composer
           sessionId={sessionId}
           workspaceId={conversation.workspace_id}
           connectionId={connectionId}
@@ -497,7 +497,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
               sessionId,
             });
           }}
-        />
+        />}
         </Stack>
       </Box>
     </Box>

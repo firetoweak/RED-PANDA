@@ -622,6 +622,19 @@ class WebFirstSliceTest(unittest.TestCase):
             ),
         )
 
+    def test_delete_endpoints_require_a_live_human_connection(self):
+        self.sessions.delete_agent = AsyncMock()
+        self.sessions.dissolve_group = AsyncMock()
+        for path in ("/api/agents/Ada", "/api/groups/team"):
+            self.assertEqual(self.client.request("DELETE", path, json={"connection_id": "gone"}).status_code, 409)
+        self.sessions.delete_agent.assert_not_awaited()
+        self.sessions.dissolve_group.assert_not_awaited()
+        body = {"connection_id": self.connection.connection_id}
+        self.assertEqual(self.client.request("DELETE", "/api/agents/Ada", json=body).status_code, 204)
+        self.assertEqual(self.client.request("DELETE", "/api/groups/team", json=body).status_code, 204)
+        self.sessions.delete_agent.assert_awaited_once_with("Ada")
+        self.sessions.dissolve_group.assert_awaited_once_with("team")
+
     def test_group_endpoints_check_human_input_and_map_known_failures(self):
         record = GroupRecord("group-1", GroupCreated(group="开发组", members=["Ada", "Lin"]))
 
@@ -728,6 +741,7 @@ class WebFirstSliceTest(unittest.TestCase):
 
     def test_a_person_pauses_resumes_and_cancels_an_agents_routine_over_http(self):
         host = SimpleNamespace(routines=RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite")),
+                               lifecycle=SimpleNamespace(is_deleted=AsyncMock(return_value=False)),
                                _emit_schedule_changed=AsyncMock())
         self.sessions.list_routines = partial(HostSupervisor.list_routines, host)
         self.sessions.set_routine_state_by_user = partial(HostSupervisor.set_routine_state_by_user, host)

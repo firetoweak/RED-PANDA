@@ -27,7 +27,7 @@ vi.mock("../src/api/redpandaApi", () => ({
 function group(partial: Partial<GroupView>): GroupView {
   return {
     group_id: "group-1", name: "开发组", members: ["Ada", "Lin"],
-    calling: [], messages: [], ...partial,
+    dissolved: false, calling: [], messages: [], ...partial,
   };
 }
 
@@ -81,6 +81,15 @@ it("群记录区分人和 Agent，显示点名与正在等谁回应", () => {
   expect(screen.getByRole("complementary", { name: "群资料" })).toBeInTheDocument();
   expect(screen.getByText("@Lin")).toBeInTheDocument();
   expect(screen.getByText("正在等 Lin 回应…")).toBeInTheDocument();
+});
+
+it("解散的群保留消息，只读查看", () => {
+  api.group = group({ dissolved: true, messages: [{ message_id: "history", sender: "Ada", text: "已完成的成果",
+    mentioned_agents: [], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
+  renderPage();
+  expect(screen.getByText("已完成的成果")).toBeInTheDocument();
+  expect(screen.getByText("群聊已解散，此处仅保留聊天记录。")).toBeInTheDocument();
+  expect(screen.queryByLabelText("群消息")).not.toBeInTheDocument();
 });
 
 it("发言带上点名", async () => {

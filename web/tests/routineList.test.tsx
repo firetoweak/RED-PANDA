@@ -37,6 +37,7 @@ const conversation = {
     kind: "step", step_id: "step-1", output_id: "event-2", text: "没有新评审。",
     thinking: null, tools: [], occurred_at: "2026-10-20T11:00:20+00:00", files: [],
   }],
+  deleted: false, agent_name: null,
   session: {
     status: "waiting", waiting_for: ["external_fact"], pending_authorization_ids: [],
     pending_authorization_commands: [], should_wake: false, has_open_subagents: false,

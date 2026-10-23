@@ -171,6 +171,8 @@ class ConversationView:
     work_plan_updates: tuple[WorkPlanUpdate, ...] = ()
     context_input_tokens: int | None = None
     subagent_terminals: tuple[UnreportedChildReturn, ...] = ()
+    deleted: bool = False
+    agent_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,7 +258,7 @@ class AssistantQueries:
             session_id = await journal.session_identity()
             events = await journal.snapshot(session_id)
             agent = project_agent(events)
-            if agent is None:
+            if agent is None or agent.deleted:
                 continue
             state = replay(session_id, events).state
             view = session_view(state, control_approval=pending_approval_view(events),
@@ -576,6 +578,7 @@ def project_conversation(
                 )
             )
         items.extend(messages)
+    agent = project_agent(events)
     return ConversationView(
         session_id=session_id,
         workspace_id=bound_workspace_id(events),
@@ -585,6 +588,8 @@ def project_conversation(
         work_plan=project_work_plan(events),
         work_plan_updates=project_work_plan_updates(events),
         context_input_tokens=latest_input_tokens(events),
+        deleted=agent is not None and agent.deleted,
+        agent_name=None if agent is None else agent.name,
     )
 
 

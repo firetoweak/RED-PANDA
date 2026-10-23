@@ -276,6 +276,13 @@ class RoutineStore:
         return _from_row(connection.execute(
             "SELECT * FROM routines WHERE routine_id = ?", (routine_id,)).fetchone())
 
+    def delete_session(self, session_id: str) -> None:
+        with closing(self._connect()) as connection:
+            with connection:
+                connection.execute("UPDATE routines SET state = ?, next_due = NULL WHERE session_id = ?",
+                                   (DELETED, session_id))
+                connection.execute("DELETE FROM absence_watch WHERE session_id = ?", (session_id,))
+
     def list(self, session_id: str | None = None) -> tuple[Routine, ...]:
         sql, values = "SELECT * FROM routines WHERE state != ?", [DELETED]
         if session_id is not None:

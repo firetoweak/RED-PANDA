@@ -53,6 +53,7 @@ const conversation: ConversationView = {
       occurred_at: "2026-09-15T08:00:01+00:00",
     },
   ],
+  deleted: false, agent_name: null,
   session,
 };
 

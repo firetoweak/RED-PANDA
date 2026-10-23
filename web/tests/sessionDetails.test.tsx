@@ -9,6 +9,7 @@ import runtimeReducer from "../src/realtime/runtimeSlice";
 
 vi.mock("../src/features/conversation/Conversation", () => ({ Conversation: () => <p>对话内容</p> }));
 vi.mock("../src/api/redpandaApi", () => ({
+  useGetConversationQuery: () => ({ currentData: undefined }),
   useGetAgentsQuery: () => ({ data: [
     { session_id: "ada", projects: [{ name: "Alpha", workspace_id: "alpha", directory: "C:/bots/ada/projects/Alpha" }],
       name: "Ada", direction: "前端体验", status: "waiting" },

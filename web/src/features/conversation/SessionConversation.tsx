@@ -3,7 +3,7 @@ import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/redpandaApi";
+import { useGetAgentsQuery, useGetConversationQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/redpandaApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";
@@ -17,6 +17,7 @@ export function SessionConversation() {
   const { sessionId } = useParams();
   const fromGroup = (useLocation().state as { fromGroup?: { id: string; name: string } } | null)?.fromGroup;
   const { data: agents = [] } = useGetAgentsQuery();
+  const { currentData: history } = useGetConversationQuery(sessionId ?? "", { skip: sessionId === undefined });
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const { data: groups = [] } = useGetGroupsQuery();
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
@@ -24,6 +25,7 @@ export function SessionConversation() {
   const narrow = useMediaQuery("(max-width: 73.75em)");
   useDidUpdate(() => setDetailsOpened(false), [narrow]);
   const agent = agents.find((item) => item.session_id === sessionId);
+  const name = agent?.name ?? history?.agent_name ?? "Agent";
   const [linking, setLinking] = useState(false);
   const [unlinkProject, unlinking] = useUnlinkProjectMutation();
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
@@ -76,8 +78,8 @@ export function SessionConversation() {
       <header className="page-header session-header">
         {fromGroup === undefined ? null : <ActionIcon component={Link} to={`/groups/${encodeURIComponent(fromGroup.id)}`} aria-label={`返回 ${fromGroup.name}`} title={`返回 ${fromGroup.name}`} variant="subtle" color="gray"><IconArrowLeft size={18} /></ActionIcon>}
         <Group gap={10} wrap="nowrap" className="session-header-identity">
-          <BotAvatar name={agent?.name ?? "Agent"} />
-          <div className="session-header-name">{agent === undefined ? <Text fw={600} size="sm">Agent</Text>
+          <BotAvatar name={name} />
+          <div className="session-header-name">{agent === undefined ? <Text fw={600} size="sm">{name}</Text>
             : <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="sm" />}
             <div className="session-header-subtitle">{agent === undefined ? null : <AgentStatus agent={agent} />}<span>{agent?.direction == null ? "一起交流想法、处理任务" : `· ${agent.direction}`}</span></div></div>
         </Group>
@@ -85,7 +87,7 @@ export function SessionConversation() {
           <IconFolder size={15} /><span>{agent.projects.map((project) => project.name).join("、")}</span></span>}
         <ActionIcon aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
-      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name} agentNames={agents.map((item) => item.name)} /></div>
+      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name ?? history?.agent_name ?? undefined} agentNames={agents.map((item) => item.name)} /></div>
       </div>
       {agent === undefined ? null : narrow ? (
         <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)}
