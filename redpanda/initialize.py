@@ -65,10 +65,15 @@ def configure(home: RedPandaHome) -> ModelConfig:
 
     specification = PROVIDERS[provider]
     connection = dict(connections[provider])
-    connection["api_key"] = _ask(
-        "API Key" + ("（本地服务未启用认证时可留空）" if not specification.api_key_required else ""),
-        connection["api_key"], secret=True, required=specification.api_key_required,
-    )
+    if specification.uses_codex_auth:
+        print("请先使用 codex login 登录 ChatGPT；认证文件由 Codex 管理。")
+        connection["auth_file"] = _ask("Codex auth.json 路径（留空使用 CODEX_HOME 或 ~/.codex）",
+                                       connection["auth_file"])
+    else:
+        connection["api_key"] = _ask(
+            "API Key" + ("（本地服务未启用认证时可留空）" if not specification.api_key_required else ""),
+            connection["api_key"], secret=True, required=specification.api_key_required,
+        )
     if specification.base_url is None:
         while True:
             connection["base_url"] = _ask("服务地址（包含 /v1）", connection["base_url"], required=True)

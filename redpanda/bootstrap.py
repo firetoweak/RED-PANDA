@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from thinllm import ChatCompletionsClient
+from thinllm import create_client
 
 from redpanda.assistant.host.data_root import hold_data_root
 from redpanda.assistant.host.process_env import install_host_environment
@@ -103,7 +103,7 @@ async def bootstrap_assistant(
         models = ModelSettings(home, store.root)
         if app_config is not None:
             models.save(app_config.to_dict())
-        llm = ModelConnections(home.connections_path, client_factory=ChatCompletionsClient)
+        llm = ModelConnections(home.connections_path, client_factory=create_client)
         workspaces = WorkspaceRegistry.load(home.workspaces_path)
         # 只有调用方明确给出路径才登记。TUI 传入启动目录或 --workspace；
         # Web 缺省不从进程 cwd 偷建工作区。

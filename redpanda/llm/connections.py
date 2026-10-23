@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from thinllm import ChatCompletionsClient, Endpoint, resolve_endpoint, MissingProviderSetting
+from thinllm import create_client, Endpoint, resolve_endpoint, MissingProviderSetting
 from redpanda.llm.config import load_connections
 from redpanda.llm.api import LLMAuthenticationError
 
@@ -17,7 +17,7 @@ class _Connection:
 
 
 class ModelConnections:
-    def __init__(self, path: Path, *, client_factory=ChatCompletionsClient):
+    def __init__(self, path: Path, *, client_factory=create_client):
         self.path = path
         self._factory = client_factory
         self._current: dict[str, _Connection] = {}

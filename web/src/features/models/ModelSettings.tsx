@@ -110,6 +110,7 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
       <Paper withBorder p="md" radius="md">
         <Text fw={600}>供应商连接</Text>
         <Text size="sm" c="dimmed" mt={6}>在下方个人连接文件中填写密钥或本地服务地址。保存后，下一次调用直接使用新连接；正在进行的请求继续完成。</Text>
+        <Text size="sm" c="dimmed" mt={4}>openai-codex 复用 Codex 的 ChatGPT 登录；请先运行 codex login。</Text>
         <Text size="sm" ff="monospace" mt="xs" style={{ overflowWrap: "anywhere" }}>{data?.connections_path}</Text>
         <Group mt="md">{data?.providers.map((item) => <Badge key={item.provider} color={item.configured ? "green" : "gray"} variant="light">
           {item.provider} · {item.configured ? "已配置" : "缺少 " + item.missing}

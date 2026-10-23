@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `provider-badges`：`供应商连接` 区按 `PROVIDERS` 顺序列出 `deepseek`、`openai`、`qwen`、`stepfun`、`bigmodel`、`vllm`、`ollama`，每个徽标 `<provider> · 已配置` 或 `<provider> · 缺少 <missing>`。托管供应商缺的是 `api_key`；本地供应商（`vllm`、`ollama`）不要求 key，缺的是 `base_url`。密钥只在 `connections.json` 里，页面不编辑密钥。
+- `provider-badges`：`供应商连接` 区按 `PROVIDERS` 顺序列出 `deepseek`、`openai`、`openai-codex`、`qwen`、`stepfun`、`bigmodel`、`vllm`、`ollama`，每个徽标 `<provider> · 已配置` 或 `<provider> · 缺少 <missing>`。普通托管供应商缺的是 `api_key`；`openai-codex` 只读已有 Codex ChatGPT 登录，缺失时提示 `auth_file` 或 `ChatGPT 登录` 并引导 `codex login`；本地供应商（`vllm`、`ollama`）不要求 key，缺的是 `base_url`。页面不编辑密钥或登录凭据。
 - `candidates`：`候选模型` 表，列 `新会话默认`（Radio，`aria-label` 为 `默认模型 <provider/model>`）、`模型`、`推理程度`、`compact 触发值`、`连接`（`已配置` / `待配置`，`待配置` 只出现在这一列）、`操作`（`测试`、`编辑`、`删除`）。页首 `添加模型`；弹窗标题 `添加模型` / `编辑模型`，字段 `供应商`、`模型名称`、`compact 触发值（输入 tokens）`（最小 1，新模型默认 200000），只有供应商 `stepfun` 且模型名称 `step-5-preview` 时才出现 `推理程度`（`供应商默认`/`低`/`中`/`高`）。弹窗确认按钮 `加入待保存配置`，只改草稿。
 - `save`：`保存配置` → `PUT /api/model-settings`，成功提示 `已保存。默认模型用于新会话；模型参数在下一次决策生效。`，失败显示 `保存失败` Alert；`撤销修改` 把草稿恢复为已保存配置。两个按钮在草稿与已保存一致时禁用。
 - `test`：每行按钮 `测试`（`aria-label` 为 `测试 <provider/model>`）→ `POST /api/model-settings/test`，结果 `测试通过 · N ms` 或 `测试失败 · N ms` 加一行失败原因。
@@ -44,6 +44,7 @@
 ## Gotchas
 
 - 设置 `REDPANDA_CONFIG` 环境变量会让 `config.json` 指向别处（`redpanda/config.py`），验证时确认未设置。
+- `openai-codex` 的 `auth_file` 留空时读取 `CODEX_HOME/auth.json` 或 `~/.codex/auth.json`，徽标只验证登录文件形状。真实权限与额度需要点击 `测试`；测试和配置保存不得复制或改写 token。凭据刷新交给 Codex。
 - `测试` 需要可用连接，`live_model_ready` 为 false 时跳过 `测试` 与发送，只验证配置编辑和禁用状态。
 - `推理程度` 只对 `stepfun/step-5-preview` 开放；其他模型该列显示 `—`，服务端对其他模型传 `reasoning_effort` 直接拒绝。
 - 抽屉打开时每 5 秒轮询 `GET /api/model-settings`；草稿与旧的已保存配置一致时会被新数据覆盖，有未保存修改时保留草稿。
@@ -54,3 +55,5 @@
 2026-10-22 设置抽屉增量：桌面1440×1000与窄屏390×844，通过菜单进入、模型编辑弹窗、阈值草稿跨抽屉保留、撤销和保存；API 确认保存后的阈值为64000。候选表在窄屏内部横向滚动，页面无横向溢出。真实连接测试收到模型空响应，页面原样呈现失败原因；同一模型的真实 Bot 对话成功。删除默认与会话切换模型未重验。证据留在本地 `.tools/verification/settings/evidence/`。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：设置抽屉编辑当前模型阈值，加入待保存配置并保存，GET 确认生效；连接测试、模型切换和表单边界未重验。
+
+- 2026-10-23 Codex 增量（Windows Chrome，隔离 home、真实 Codex 登录）：通过页面添加 `openai-codex/gpt-6.1-sol`、阈值 64000，保存并验证默认配置；登录徽标与真实连接测试通过（6827 ms）。删除与会话切换未重验。证据留在本地 `.tools/verification/codex/`。

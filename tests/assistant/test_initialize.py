@@ -66,6 +66,19 @@ def test_local_model_accepts_empty_key_and_retries_invalid_address(home, monkeyp
     }
 
 
+def test_codex_wizard_reuses_login_without_asking_for_or_copying_secrets(home, tmp_path, monkeypatch):
+    auth_file = tmp_path / "auth.json"
+    write_json(auth_file, {"tokens": {"access_token": "codex-secret", "account_id": "account"}})
+    before = auth_file.read_bytes()
+    inputs(monkeypatch, ["openai-codex", str(auth_file), "test-model", "64000"])
+    monkeypatch.setattr(initialize.getpass, "getpass", lambda _: pytest.fail("must not ask for API key"))
+    profile = initialize.configure(home)
+    assert profile.model == "openai-codex/test-model"
+    assert load_connections(home.connections_path)["openai-codex"] == {"auth_file": str(auth_file)}
+    assert "codex-secret" not in home.connections_path.read_text(encoding="utf-8")
+    assert auth_file.read_bytes() == before
+
+
 def test_editing_existing_model_preserves_key_and_reasoning_effort(home, monkeypatch, capsys):
     previous = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 64000,
                 "reasoning_effort": "high"}

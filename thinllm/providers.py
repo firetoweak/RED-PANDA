@@ -2,6 +2,9 @@
 from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -9,11 +12,13 @@ class Provider:
     base_url: str | None = None
     api_key_required: bool = True
     pads_reasoning_content: bool = False
+    uses_codex_auth: bool = False
 
 
 PROVIDERS = {
     "deepseek": Provider("https://api.deepseek.com/v1", pads_reasoning_content=True),
     "openai": Provider("https://api.openai.com/v1"),
+    "openai-codex": Provider("https://chatgpt.com/backend-api/codex", uses_codex_auth=True),
     "qwen": Provider("https://dashscope.aliyuncs.com/compatible-mode/v1"),
     "stepfun": Provider("https://api.stepfun.com/step_plan/v1"),
     "bigmodel": Provider("https://open.bigmodel.cn/api/paas/v4"),
@@ -54,6 +59,7 @@ class Endpoint:
     base_url: str
     api_key: str | None
     pads_reasoning_content: bool
+    account_id: str | None = None
 
 
 class MissingProviderSetting(ValueError):
@@ -65,6 +71,27 @@ class MissingProviderSetting(ValueError):
 def resolve_endpoint(model: str, connection: Mapping[str, str]) -> Endpoint:
     name = model.partition("/")[0]
     provider = PROVIDERS[name]
+    if provider.uses_codex_auth:
+        path = Path(connection["auth_file"]).expanduser() if connection["auth_file"].strip() else (
+            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+        )
+        try:
+            auth = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError as error:
+            raise MissingProviderSetting("auth_file（请先运行 codex login）") from error
+        if type(auth) is not dict:
+            raise ValueError(f"Codex 认证文件必须是对象：{path}")
+        if auth.get("auth_mode") not in (None, "chatgpt"):
+            raise MissingProviderSetting("ChatGPT 登录（请运行 codex login）")
+        tokens = auth.get("tokens")
+        if tokens is None:
+            raise MissingProviderSetting("ChatGPT 登录（请运行 codex login）")
+        if type(tokens) is not dict or any(
+            type(tokens.get(key)) is not str or not tokens[key].strip()
+            for key in ("access_token", "account_id")
+        ):
+            raise ValueError(f"Codex 认证文件缺少有效的 access_token/account_id：{path}")
+        return Endpoint(name, provider.base_url, tokens["access_token"], False, tokens["account_id"])
     base_url = provider.base_url
     if base_url is None:
         base_url = connection["base_url"].strip()
