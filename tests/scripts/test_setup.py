@@ -1,3 +1,5 @@
+from subprocess import CompletedProcess
+
 import pytest
 
 from scripts import setup
@@ -27,9 +29,9 @@ def test_preparation_uses_project_environment_and_configures_only_when_requested
     monkeypatch.setattr(setup.runtime_tools, "prepare", lambda root: None)
     monkeypatch.setattr(setup.shutil, "which", lambda _: "npm")
     commands = []
-    monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: commands.append((command, kwargs)))
+    monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: (commands.append((command, kwargs)) or CompletedProcess(command, 0)))
     assert setup.main(arguments) == 0
-    assert len(commands) == 6
+    assert len(commands) == 7
     assert commands[0][0][1:] == ["pip", "install", "--python", setup.sys.executable, "pip"]
     assert commands[1][0][1:] == ["pip", "install", "--python", setup.sys.executable,
                                   "-r", "requirements.lock", "--require-hashes"]
@@ -37,7 +39,8 @@ def test_preparation_uses_project_environment_and_configures_only_when_requested
     assert commands[3][0] == ["npm", "--prefix", "web", "ci"]
     assert commands[4][0] == ["npm", "--prefix", "web", "run", "build"]
     assert commands[5][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
-    assert all(kwargs == {"cwd": setup.ROOT, "check": True} for _, kwargs in commands)
+    assert commands[6] == ([setup.sys.executable, "-m", "redpanda.mcp.check_web"], {"cwd": setup.ROOT})
+    assert all(kwargs == {"cwd": setup.ROOT, "check": True} for _, kwargs in commands[:6])
 
 
 def test_project_preparation_does_not_invoke_rust_or_llvm(monkeypatch):
@@ -49,10 +52,11 @@ def test_project_preparation_does_not_invoke_rust_or_llvm(monkeypatch):
 
     def run(command, **kwargs):
         commands.append(command)
+        return CompletedProcess(command, 0)
 
     monkeypatch.setattr(setup.subprocess, "run", run)
     assert setup.main([]) == 0
-    assert len(commands) == 6
+    assert len(commands) == 7
     assert not any("cargo" in part or "rustup" in part for command in commands for part in map(str, command))
 
 
