@@ -996,6 +996,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             e.event_id for e in before if isinstance(e.payload, DispatchAttemptStarted)
         )
         await asyncio.wait_for(self.host.resume(CHILD), 30)
+        self.assertFalse((self.root / "resumed-before-recovery").exists())
         await until(lambda: not self.host.workers and not self.host.watchers)
         after = await journal.snapshot(CHILD)
         self.assertEqual(after[:len(before)], before)

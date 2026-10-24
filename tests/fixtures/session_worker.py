@@ -111,9 +111,34 @@ def cancellable_config(workspace: Path):
 
 def interrupted_read_config(workspace: Path):
     from konden.assistant.host import worker
+    from konden.assistant.host.ipc import PipePeer
+    from konden.assistant.sessions import AssistantSessions
+    from konden.assistant.subagent.subagent import project_parent
     from konden.runtime import ToolBinding
 
     build = worker.build_assistant_assembly
+    record_return = worker.record_interrupted_return
+    handle = PipePeer._handle
+    resume = AssistantSessions.resume
+    resume_received = asyncio.Event()
+    recovery_finished = asyncio.Event()
+
+    async def receive_resume(peer, request_id, operation, session_id, arguments):
+        if operation == "resume":
+            resume_received.set()
+        return await handle(peer, request_id, operation, session_id, arguments)
+
+    async def recover(journal, session_id):
+        if (workspace / "read-started").exists() and project_parent(await journal.snapshot(session_id)) is not None:
+            # Force the incoming resume to overlap this child's startup recovery.
+            await resume_received.wait()
+        await record_return(journal, session_id)
+        recovery_finished.set()
+
+    async def observe_resume(sessions, session_id):
+        if not recovery_finished.is_set():
+            (workspace / "resumed-before-recovery").touch()
+        return await resume(sessions, session_id)
 
     async def read(context, arguments):
         marker = workspace / "read-started"
@@ -130,6 +155,9 @@ def interrupted_read_config(workspace: Path):
         return result
 
     worker.build_assistant_assembly = assembly
+    worker.record_interrupted_return = recover
+    PipePeer._handle = receive_resume
+    AssistantSessions.resume = observe_resume
     return config_for(workspace)
 
 

@@ -76,6 +76,9 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         nonlocal revision, active_requests, advertised, advertised_busy
         assert target == session_id
         await ready.wait()
+        if operation == "resume":
+            # Rehydration must observe returns recorded by startup recovery.
+            await recovery_complete.wait()
         active_requests += 1
         revision += 1
         try:
