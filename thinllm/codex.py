@@ -1,7 +1,4 @@
-"""Codex Responses wire adapter with per-request credential renewal.
-
-Protocol reference: HKUDS/nanobot's OpenAICodexProvider and ResponsesBackend.
-"""
+"""Codex Responses wire adapter with per-request credential renewal."""
 from __future__ import annotations
 
 import json
