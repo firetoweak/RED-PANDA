@@ -226,7 +226,7 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" })); });
   queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "waiting" })];
   view.rerender(sidebar());
-  expect(screen.getByLabelText("等人回话")).toHaveClass("activity-dot-idle");
+  expect(screen.getByLabelText("等人回话")).toHaveClass("activity-dot-waiting");
 });
 
 it("点 Agent 打开它的会话", () => {

@@ -19,6 +19,7 @@ export function ColorSchemeSwitcher() {
       <Menu.Target>
         <ActionIcon
           aria-label="外观"
+          title="外观"
           className="color-scheme-trigger"
           radius="md"
           size="lg"

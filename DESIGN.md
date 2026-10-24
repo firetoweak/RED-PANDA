@@ -91,11 +91,6 @@ typography:
     fontSize: 11px
     fontWeight: 400
     lineHeight: 1.5
-  new-bot:
-    fontFamily: '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif'
-    fontSize: 13px
-    fontWeight: 600
-    lineHeight: 1
   code:
     fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace'
     fontSize: 12px
@@ -127,14 +122,11 @@ spacing:
   step-44: 44px
   step-56: 56px
 components:
-  button-new-bot-light:
-    backgroundColor: '{colors.canvas-light}'
-    textColor: '{colors.text-light}'
-    typography: '{typography.new-bot}'
-    rounded: '{rounded.md}'
-    padding: 0 12px
-    height: 40px
-    width: 100%
+  button-toolbar-light:
+    backgroundColor: transparent
+    textColor: '{colors.dimmed-light}'
+    rounded: '{rounded.sm}'
+    size: 32px
   button-send-light:
     backgroundColor: '{colors.text-light}'
     textColor: '{colors.canvas-light}'
@@ -177,14 +169,11 @@ components:
     textColor: '{colors.text-light}'
     rounded: '{rounded.md}'
     padding: 0px
-  button-new-bot-dark:
-    backgroundColor: '{colors.canvas-dark}'
-    textColor: '{colors.text-dark}'
-    typography: '{typography.new-bot}'
-    rounded: '{rounded.md}'
-    padding: 0 12px
-    height: 40px
-    width: 100%
+  button-toolbar-dark:
+    backgroundColor: transparent
+    textColor: '{colors.dimmed-dark}'
+    rounded: '{rounded.sm}'
+    size: 32px
   button-send-dark:
     backgroundColor: '{colors.text-dark}'
     textColor: '{colors.canvas-dark}'
@@ -275,7 +264,7 @@ components:
 
 - **Title:** 聊天标题使用 title，小屏使用 title-mobile；正文中标题维持正文字号、较重字重（650），行高（1.5），上下节奏（1.6em / .7em）。
 - **Body:** 正文使用 body，小屏使用 body-mobile；段落与列表行高（1.85）。长气泡桌面上限为 min(calc(100% - 84px), calc(72ch + 32px))，正文和底色受同一宽度限制。
-- **Label / Author / Metadata:** 普通导航标签、作者和时间分别使用 label、author、metadata；时间使用等宽数字。新建 Bot 使用独立的 new-bot 角色。
+- **Label / Author / Metadata:** 普通导航标签、作者和时间分别使用 label、author、metadata；时间使用等宽数字。侧栏操作使用图标工具栏。
 - **Code:** pre 使用 code；保留空白、不强行折行，在自身容器内横向滚动。正文图片及 SVG 限制在容器宽度内。
 
 **The One Bubble Measure Rule.** 长消息的整块气泡受正文行宽与可用空间共同限制；不要让代码或 diff 扩大整块底色。
@@ -286,9 +275,9 @@ Bot 私信收发在私聊时间线中使用居中的轻量标识：“已发消�
 
 ## Layout
 
-应用填满视口高度（100dvh），页面本身不纵向滚动；对话、名册与资料区各自滚动。最小页面宽度（320px）。桌面侧栏默认（282px），可拖动到（220–520px），内边距（20px 16px 15px）。顶部先新建 Bot，再搜索、对话过滤和混合名册；底部以设置菜单打开模型配置和共同记忆抽屉，保留主题切换。
+应用填满视口高度（100dvh），页面本身不纵向滚动；对话、名册与资料区各自滚动。最小页面宽度（320px）。桌面侧栏默认（282px），可拖动到（220–520px），内边距（20px 16px 15px）。顶部是所有对话、新建 Bot、新建群聊与新建分组的图标工具栏，其下是搜索、图标筛选和混合名册。底部保留设置、外观、连接图标与自动放行短标签；连接正常时不常显说明，连接异常时显示文字。
 
-消息列表与输入区共用居中的读写宽列，上限（1040px），空间不足时两侧合计留白（48px）；Bot 靠左、人的消息靠右，气泡继续限制正文行宽。群消息间隔（26px），私聊 turn 底部间距（26px），turn 内部间隔（24px）。私聊省去重复署名，思考／执行入口位于正文后，时间靠这行最右侧，不再显示发送状态；引用与复制收进消息右键菜单（触屏长按），用户消息同样在正文外右对齐时间，不显示耗时；群聊保留末尾作者以区分发言者。头像靠消息末尾对齐，展开内容才使用详情宽度。输入框下不再单列快捷键与授权提示。气泡与头像间距（12px）。写入区与消息列表共享宽度上限（1040px）；群聊与私聊共用框体和文字风格。私聊输入区从单行（48px）开始，加号在最前、模型与发送在最后；文本自动向上扩展到七行后内部滚动，附件与引用在上方单列，自动放行位于侧栏设置旁，适用于所有现有和新建会话。群聊收起时文本区（34px）、padding（9px 14px 0），工具栏 padding（0 10px 5px），整框约（70.6px）；长于90字符、换行或引用时展开。群聊展开态文本区至少（76px）、padding（14px 16px 5px），工具栏 padding（5px 10px 9px），最多自动扩至七行。右下角统一为（66×30px）「发送 ↑」按钮，6px 圆角；私聊保留附件、授权、模型与停止/继续。
+消息列表与输入区共用居中的读写宽列，上限（1040px），空间不足时两侧合计留白（48px）；Bot 靠左、人的消息靠右，气泡继续限制正文行宽。群消息间隔（26px），私聊 turn 底部间距（26px），turn 内部间隔（24px）。私聊省去重复署名，思考／执行入口位于正文后，时间靠这行最右侧，不再显示发送状态；引用与复制收进消息右键菜单（触屏长按），用户消息同样在正文外右对齐时间，不显示耗时；群聊保留末尾作者以区分发言者。头像靠消息末尾对齐，展开内容才使用详情宽度。输入框下不再单列快捷键与授权提示。气泡与头像间距（12px）。写入区与消息列表共享宽度上限（1040px）；群聊与私聊共用框体和文字风格。私聊输入区从单行（48px）开始，加号在最前、模型与发送在最后；文本自动向上扩展到七行后内部滚动，附件与引用在上方单列，自动放行位于侧栏设置旁，适用于所有现有和新建会话。群聊收起时文本区（34px）、padding（9px 14px 0），工具栏 padding（0 10px 5px），整框约（70.6px）；长于90字符、换行或引用时展开。群聊展开态文本区至少（76px）、padding（14px 16px 5px），工具栏 padding（5px 10px 9px），最多自动扩至七行。右下角统一为（32×32px）圆形上箭头按钮；私聊保留附件、授权、模型与停止/继续。
 
 头部桌面最小高度（77px）、内边距（0 29px）。资料区为可选次级面板，普通桌面宽（264px），1700px 起为（290px）；标题区与聊天顶栏等高，资料身份与各功能分区使用一致的左右留白。1180px 及以下改为不挤占聊天列的抽屉，宽度不超过（292px）或视口的 85%。文件查看仍在 64em 以下占满剩余主区域。
 
@@ -310,7 +299,7 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Buttons
 
-新建 Bot 为全宽 40px、13px 字、6px 圆角按钮。私聊与群聊发送均使用 32px 圆形纯图标按钮，中心为上箭头，不显示文字；保留可访问名称与悬停提示，私聊运行时提示打断当前执行并发送。默认使用专用前景和背景，disabled 保留同色并降低至 .4，加载指示沿用按钮前景色。次级操作为细线 SVG 图标和弱悬停底色，保留可读标签。
+侧栏工具栏使用 32px 图标按钮，6px 圆角；新建 Bot 的图标保留陶土色，其余使用次要前景。私聊与群聊发送均使用 32px 圆形纯图标按钮，中心为上箭头，不显示文字；保留可访问名称与悬停提示，私聊运行时提示打断当前执行并发送。默认使用专用前景和背景，disabled 保留同色并降低至 .4，加载指示沿用按钮前景色。思考入口使用脑形图标，执行入口使用工具图标与工具次数；运行时显示旋转指示，展开态保留底色提示，完整步骤与正文留在展开内容中。
 
 ### Chips
 
@@ -328,7 +317,7 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Navigation
 
-名册行最小高度（58px）、内边距（10px 11px），默认透明，hover / focus-within 加薄层，选中使用 tile。常规溢出操作在 hover / focus-within 显示，触摸环境直接显示。搜索、过滤、Bot 与群聊共享这一列；侧栏不恢复品牌块与个人工作区标题。
+名册行最小高度（58px）、内边距（10px 11px），默认透明，hover / focus-within 加薄层，选中使用 tile。常规溢出操作在 hover / focus-within 显示，触摸环境直接显示。搜索、过滤、Bot 与群聊共享这一列；侧栏不恢复品牌块与个人工作区标题。筛选用图标呈现全部、群聊与 Bot，保留可访问名称与悬停说明。Bot 状态在各处统一为空闲空心点、等人回话气泡、执行中转圈、需要处理叹号；形状与颜色共同表达状态，悬停可读完整含义。
 
 ### Browser Interaction
 

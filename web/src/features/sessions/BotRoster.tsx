@@ -121,7 +121,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
         {sectionAgents.map((agent) => renderRow(`agent:${agent.session_id}`, agent.name, agent.session_id === sessionId,
           `/sessions/${encodeURIComponent(agent.session_id)}`, <Tooltip label={agent.name} openDelay={700} position="right">
             <Group gap={10} wrap="nowrap">
-              <span className="sidebar-agent-avatar"><BotAvatar name={agent.name} sessionId={agent.session_id} className="agent-avatar-small" /><AgentStatus agent={agent} compact attention={attentionSessionIds.has(agent.session_id)} /></span>
+              <span className="sidebar-agent-avatar"><BotAvatar name={agent.name} sessionId={agent.session_id} className="agent-avatar-small" /><AgentStatus agent={agent} attention={attentionSessionIds.has(agent.session_id)} /></span>
               <Stack className="sidebar-agent-identity" gap={2}>
                 <Text className="session-title" fz={13} truncate>{agent.name}</Text>
               </Stack>
