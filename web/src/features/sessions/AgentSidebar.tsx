@@ -1,5 +1,5 @@
 import { ActionIcon, AppShell, Group, ScrollArea, SegmentedControl, Stack, Text, TextInput, Tooltip, VisuallyHidden } from "@mantine/core";
-import { IconFolderPlus, IconMessages, IconPlugConnected, IconPlugConnectedX, IconRobot, IconSearch, IconUserPlus, IconUsersGroup, IconUsersPlus, IconX } from "@tabler/icons-react";
+import { IconFolderPlus, IconMessageCircle, IconMessages, IconPlugConnected, IconPlugConnectedX, IconSearch, IconUserPlus, IconUsersGroup, IconUsersPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { useGetAgentsQuery, useGetGroupsQuery, useGetInboxQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
@@ -61,7 +61,7 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
       <SegmentedControl className="sidebar-filter" aria-label="对话类型" fullWidth size="xs" mb={10} value={filter} onChange={setFilter} data={[
         { value: "all", label: <Tooltip label="全部"><span className="sidebar-filter-option"><IconMessages aria-hidden="true" size={17} /><VisuallyHidden>全部</VisuallyHidden></span></Tooltip> },
         { value: "groups", label: <Tooltip label="群聊"><span className="sidebar-filter-option"><IconUsersGroup aria-hidden="true" size={17} /><VisuallyHidden>群聊</VisuallyHidden></span></Tooltip> },
-        { value: "bots", label: <Tooltip label="Bot"><span className="sidebar-filter-option"><IconRobot aria-hidden="true" size={17} /><VisuallyHidden>Bot</VisuallyHidden></span></Tooltip> },
+        { value: "bots", label: <Tooltip label="Bot"><span className="sidebar-filter-option"><IconMessageCircle aria-hidden="true" size={17} /><VisuallyHidden>Bot</VisuallyHidden></span></Tooltip> },
       ]} />
       <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => filter !== "groups" && agent.name.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => filter !== "bots" && chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== "" || filter !== "all"} onOpen={open} creatingSection={sectionCreating} onCloseSection={() => setSectionCreating(false)} /></ScrollArea>
     </AppShell.Section>
