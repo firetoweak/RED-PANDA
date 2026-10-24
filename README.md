@@ -92,4 +92,4 @@ Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用
 
 ## 许可证
 
-当前仓库尚未添加 `LICENSE`，许可证待确定。
+本项目采用 [MIT License](LICENSE)。
