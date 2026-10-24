@@ -179,9 +179,7 @@ body {
 .session-project-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-project-link:hover { color: var(--mantine-color-text); }
 .session-page-body { flex: 1; min-height: 0; }
-.composer-send { flex-shrink: 0; height: 30px; min-height: 30px; padding: 0 11px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; background: var(--rp-button); color: var(--rp-button-text); }
-.composer-send .mantine-Button-inner { gap: 7px; }
-.composer-send .mantine-Button-section { margin: 0; }
+.composer-send { flex-shrink: 0; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--rp-button); color: var(--rp-button-text); }
 .composer-send:disabled { background: var(--rp-button); color: var(--rp-button-text); opacity: .4; }
 .composer-send:hover:not(:disabled) { background: var(--rp-button); opacity: .88; }
 .agent-card:focus-visible, .home-groups a:focus-visible, .session-project-link:focus-visible { outline: 2px solid var(--rp-accent-ring); outline-offset: 3px; }
@@ -908,9 +906,6 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
   .private-composer .composer-model { max-width: 90px; }
   .private-composer .composer-trailing { gap: 4px; }
   .private-composer .composer-workspace { display: none; }
-  .private-composer .composer-send { width: 32px; min-width: 32px; padding-inline: 0; }
-  .private-composer .composer-send .mantine-Button-label { display: none; }
-  .private-composer .composer-send .mantine-Button-section { margin: 0; }
 }
 
 .work-plan-toggle {

@@ -139,7 +139,7 @@ components:
     backgroundColor: '{colors.text-light}'
     textColor: '{colors.canvas-light}'
     rounded: '{rounded.xl}'
-    size: 30px
+    size: 32px
   input-search-light:
     backgroundColor: '{colors.canvas-light}'
     textColor: '{colors.text-light}'
@@ -189,7 +189,7 @@ components:
     backgroundColor: '{colors.text-dark}'
     textColor: '{colors.canvas-dark}'
     rounded: '{rounded.xl}'
-    size: 30px
+    size: 32px
   input-search-dark:
     backgroundColor: '{colors.canvas-dark}'
     textColor: '{colors.text-dark}'
@@ -294,7 +294,7 @@ Bot 私信收发在私聊时间线中使用居中的轻量标识：“已发消�
 
 新建 Bot、群聊、分组和模型编辑沿用同一弹窗尺度：默认居中、宽（460px）、内容留白（22px）；长表单在弹窗内部滚动，保留现有字段与交互。表单弹窗优先于资料抽屉；窗口跨越资料栏断点时收起资料，避免自动出现的抽屉打断正在填写的表单。设置菜单共用右侧抽屉外壳，模型配置和共同记忆各自保留草稿；切换内容或关闭抽屉不提交修改。
 
-48em 以下折叠侧栏并显示左上菜单；头部最小高度（69px），内边距（12px 14px 12px 58px）。消息容器宽度改为 calc(100% - 28px)，头像（27px）、间距（8px），气泡上限 calc(100% - 51px)、内边距（10px 12px 12px）；写入区左右留白（14px）。消息操作通过右键或长按菜单触达，正文仍可选择复制。窄屏私聊发送按钮只保留箭头，模型标签收窄，为输入文字留出空间。spacing tokens 记录实际复用步长，不要求所有空间都落在单一倍数网格。
+48em 以下折叠侧栏并显示左上菜单；头部最小高度（69px），内边距（12px 14px 12px 58px）。消息容器宽度改为 calc(100% - 28px)，头像（27px）、间距（8px），气泡上限 calc(100% - 51px)、内边距（10px 12px 12px）；写入区左右留白（14px）。消息操作通过右键或长按菜单触达，正文仍可选择复制。发送按钮与桌面一致使用圆形上箭头，模型标签收窄，为输入文字留出空间。spacing tokens 记录实际复用步长，不要求所有空间都落在单一倍数网格。
 
 ## Elevation & Depth
 
@@ -310,7 +310,7 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Buttons
 
-新建 Bot 为全宽 40px、13px 字、6px 圆角按钮。发送沿用 A 原稿的文字加上箭头按钮，默认使用专用前景和背景，disabled 保留同色并降低至 .4；不使用圆形纯图标按钮。次级操作为细线 SVG 图标和弱悬停底色，保留可读标签。
+新建 Bot 为全宽 40px、13px 字、6px 圆角按钮。私聊与群聊发送均使用 32px 圆形纯图标按钮，中心为上箭头，不显示文字；保留可访问名称与悬停提示，私聊运行时提示打断当前执行并发送。默认使用专用前景和背景，disabled 保留同色并降低至 .4，加载指示沿用按钮前景色。次级操作为细线 SVG 图标和弱悬停底色，保留可读标签。
 
 ### Chips
 
