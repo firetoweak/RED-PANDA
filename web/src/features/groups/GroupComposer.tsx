@@ -1,4 +1,4 @@
-import { ActionIcon, Button, Group, Text, Textarea } from "@mantine/core";
+import { ActionIcon, Group, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconAt, IconArrowUp } from "@tabler/icons-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { ChatPresentation, MessageQuote, splitMessageQuote, withMessageQuote } from "../conversation/ChatPresentation";
@@ -62,8 +62,12 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
           {mention.length === 0 ? "群消息 · 点名可选" : `发送给 ${mention.map((name) => `@${name}`).join("、")}`}
         </Text>
       </Group>
-      <Button className="composer-send" aria-label="发送到群" disabled={!canSend} loading={posting}
-        onClick={() => void send()} rightSection={<IconArrowUp size={13} stroke={1.7} />}>发送</Button>
+      <Tooltip label="发送到群">
+        <ActionIcon className="composer-send" aria-label="发送到群" disabled={!canSend} loading={posting}
+          loaderProps={{ color: "var(--rp-button-text)" }} radius="xl" size={32} onClick={() => void send()}>
+          <IconArrowUp aria-hidden="true" size={18} stroke={2} />
+        </ActionIcon>
+      </Tooltip>
     </Group>
   </div>;
 }

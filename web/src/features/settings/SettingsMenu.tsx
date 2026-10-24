@@ -1,4 +1,4 @@
-import { Box, Button, Drawer, Menu } from "@mantine/core";
+import { ActionIcon, Box, Drawer, Menu } from "@mantine/core";
 import { IconAdjustments, IconBrain, IconPlugConnected, IconSettings } from "@tabler/icons-react";
 import { useState } from "react";
 import { ModelSettings } from "../models/ModelSettings";
@@ -17,7 +17,7 @@ export function SettingsMenu({ onOpen }: { onOpen: () => void }) {
   }
   return <>
     <Menu position="top-start" withinPortal>
-      <Menu.Target><Button variant="subtle" leftSection={<IconSettings size={17} />}>设置</Button></Menu.Target>
+      <Menu.Target><ActionIcon aria-label="设置" title="设置" className="settings-trigger" variant="subtle" color="gray" size={32}><IconSettings size={18} /></ActionIcon></Menu.Target>
       <Menu.Dropdown>
         <Menu.Item leftSection={<IconAdjustments size={16} />} onClick={() => open("models")}>模型配置</Menu.Item>
         <Menu.Item leftSection={<IconBrain size={16} />} onClick={() => open("memory")}>共同记忆</Menu.Item>

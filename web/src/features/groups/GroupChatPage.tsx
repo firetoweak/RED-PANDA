@@ -125,7 +125,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
             const identity = <>
               <BotAvatar name={name} sessionId={sessionOf(name)} />
               <div className="group-member-identity"><Text fz={13} fw={500} truncate>{name}</Text></div>
-              {agent === undefined ? null : <AgentStatus agent={agent} compact />}
+              {agent === undefined ? null : <AgentStatus agent={agent} />}
             </>;
             return agent === undefined ? <div className="group-member" key={name}>{identity}</div> : (
               <Link className="group-member" key={name} aria-label={`查看 ${name} 的会话`}

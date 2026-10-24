@@ -5,7 +5,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 ## Sub-features
 
 - `deliver`：送达后对方 journal 有 `bot.private_message`，并因此开始一轮决策。
-- `notice`：私聊时间线用“已发消息给 / 消息来自”标明实际收发，对方名字可打开私聊，刷新后仍可见。
+- `notice`：私聊时间线用右上 / 左下箭头标明实际发出 / 收到；可访问名称与悬停说明保留“已发消息给 / 消息来自”，对方名字可打开私聊，刷新后仍可见。
 - `after-interruption`：收件人当前轮被打断后，新的私信仍自动触发处理。
 - `reject`：发给自己、名册中没有这个名字、引用不属于这两人，都是已知失败。
 - `limit`：显式回复链超过 10 跳，或同一源头驱动的 Agent 消息超过 20 条，拒绝发送，并在发送方与人的这一轮里写明已达上限。
@@ -21,7 +21,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 
 - **送达**：请 `Ada` `send_message`，`recipient` 为 `Lin`，正文为一句确定的话，不带 `reply_to`。
   - (a) 结果 `code` 为 `DELIVERED`，`data.notice` 为 `已送达；不等待对方回复。`。`Lin` 的 journal 有 `bot.private_message`，`text` 是这句，`requests_decision` 为 true。`GET /api/sessions/<Lin>` 随后出现处理步骤与直接给人看的普通回复。
-  - (b) `Ada` 时间线显示“已发消息给 Lin”，`Lin` 时间线显示“消息来自 Ada”；名字带小头像和身份色，点击可进入对方私聊。工具卡名为 `send_message`，徽标 `完成`。`Lin` 的普通结尾直接显示为给人的回复；它不会自动私信回 `Ada`。刷新后收发标识不丢失、不重复。
+  - (b) `Ada` 时间线显示右上箭头与 `Lin`，`Lin` 时间线显示左下箭头与 `Ada`；方向图标的可访问名称分别为“已发消息给”和“消息来自”，悬停说明包含完整方向、名字与时间。名字带小头像和身份色，点击可进入对方私聊。工具卡名为 `send_message`，徽标 `完成`。`Lin` 的普通结尾直接显示为给人的回复；它不会自动私信回 `Ada`。刷新后收发标识不丢失、不重复。
   - (c) 人检出目录的 `note.txt` 不变。`GET /api/inbox` 不因这条私信多出条目。发送方不等 `Lin` 回完才结束这次工具调用。
   - (d) 见下方拒绝路径。
 - **打断后的收件人**：在 `Lin` 执行时点 `停止`，再请 `Ada` 发另一句。
@@ -29,7 +29,7 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
   - (b) `GET /api/inbox` 不产生会话停止通知；原有当前轮取消事实保留。
 - **拒绝**：分别请 `Ada` 发给自己、发给名册不存在的名字，以及用一个不属于这两人的 `reply_to`。关联不同代码项目的 Bot 可以正常互发私信。
   - (a) 三次结果依次为 `SELF_MESSAGE` / `RECIPIENT_NOT_FOUND` / `INVALID_REPLY`，错误依次为 `不能给自己发私信。`、`没有这位同事。`、`引用的消息必须是你与这位同事之间的私信。`。收件人 journal 不新增 `bot.private_message`。
-  - (b) 工具卡仍是 `send_message`，徽标 `完成`；不会为被拒绝的发送新增“已发消息给”标识。
+  - (b) 工具卡仍是 `send_message`，徽标 `完成`；不会为被拒绝的发送新增发出箭头标识。
   - (c) 已有私信不变。
   - (d) 空白 `recipient` 或 `text` → `INVALID_ARGUMENT`，同样不投递。
 - **上限**：沿 `reply_to` 把同一条交流回复到第 11 跳（第 1 条不算跳），或让同一条人的消息驱动超过 20 条 Agent 消息（私信与群发言合计数）。
@@ -71,3 +71,5 @@ Agent 用 `send_message` 按全局名册中同事的名字发私信。参数是 
 - 历史（会话暂停机制现已移除）：2026-10-23 执行停止更名验证：Windows Chrome、隔离 home、真实 DeepSeek；页面点击停止后 `session.execution_stopped=true`，同事私信仍送达但收件人不推进；待处理事项 `kind=stopped` 显示「执行已停止，有未处理的消息。继续后才会处理。」。点击继续后标记清除并处理输入。例行任务暂停状态未改，群聊与子任务页面本轮未重验。证据 `.tools/recovery-fixes/stop-rename-web/`。
 
 - 2026-10-23 移除持久暂停验证：Windows Chrome、隔离 home、真实 DeepSeek：页面打断控制恢复 Bot，再从恢复验证 Bot 发新私信；结果为已送达、不等待回复，收件人自动产生新决策。没有会话停止字段、待处理停止项或继续入口。回复内容由模型决定；群消息打断后参与由进程回归覆盖，未重验群聊 Web。证据 `.tools/recovery-fixes/remove-stop-web/`。
+
+2026-10-25 图标化增量：隔离 home、零代码项目、本地固定回复，通过页面驱动墨竹与松风的实际私信往返；双方的方向箭头、头像与名字、名字跳转及刷新保留通过。1064×956 明暗主题和 390×844 深色窄屏无横向溢出。既有外部协作者组件回归通过；真实供应商、拒绝、交流上限和打断后收信本轮未重验。证据 `.tools/pure-black-night/evidence/cooperation-plan/`。

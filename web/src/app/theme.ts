@@ -4,7 +4,7 @@ export const theme = createTheme({
   primaryColor: "ember",
   primaryShade: { light: 7, dark: 5 },
   colors: {
-    dark: ["#e4e5e9", "#cbd0da", "#a0a6b2", "#969eac", "#626a78", "#3a3e48", "#282b32", "#202227", "#1c1e23", "#191b20"],
+    dark: ["#ededed", "#d4d4d4", "#a3a3a3", "#929292", "#737373", "#454545", "#242424", "#111111", "#080808", "#000000"],
     ember: [
       "#fff3ec",
       "#ffe4d4",

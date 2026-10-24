@@ -120,7 +120,7 @@ Read `features/README.md`, then the feature file. Drive the entry point that fil
 
 Colleague tools, private messages, landing and sync, and group chat are `features/colleague-tools.md`, `features/private-messages.md`, `features/land-and-sync.md`, and `features/group-chat.md`. Drive them from the page those files name. Pending items highlight the corresponding Bot in the sidebar and are handled in that Bot's conversation; there is no standalone inbox page. Communication-limit reports and unattended-routine prompts are covered by `features/inbox.md` and `features/routines.md`.
 
-Wait until the sidebar text is `已连接`. `正在连接…` means the event stream is not up; run Doctor again instead of typing.
+Wait until the sidebar connection indicator has role `status` and accessible name `已连接`. A connecting indicator and visible `正在连接…` text mean the page is not ready; run Doctor again instead of typing.
 
 ## Evidence
 

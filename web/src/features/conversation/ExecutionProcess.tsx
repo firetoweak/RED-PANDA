@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
   ThemeIcon,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import {
@@ -20,7 +21,7 @@ import {
   IconChevronRight,
   IconCode,
   IconEye,
-  IconSparkles,
+  IconTool,
   IconX,
 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
@@ -80,7 +81,7 @@ export function ExecutionProcess({
       {subagentTasks.length === 0 ? null : (
         <Group className="subagent-turn-marker" gap="xs" aria-label="本轮子 Agent 任务">
           <Badge variant="light" leftSection={<IconArrowFork size={13} />}>
-            子 Agent · {subagentTasks.length}
+            <span aria-label={`子 Agent · ${subagentTasks.length}`}>{subagentTasks.length}</span>
           </Badge>
           {subagentTasks.map((tool) => {
             const task = subagentTask(tool) ?? tool.commandId;
@@ -94,26 +95,17 @@ export function ExecutionProcess({
           })}
         </Group>
       )}
-      <UnstyledButton
-        aria-expanded={opened}
-        className="execution-toggle"
-        onClick={() => setOpened((value) => !value)}
-      >
-        <Group justify="space-between" wrap="nowrap" gap="xs">
-          <Group gap={8} wrap="nowrap">
-            <ThemeIcon color="gray" radius="sm" size={22} variant="light">
-              {running ? <Loader color="ember" size={12} /> : <IconSparkles size={13} />}
-            </ThemeIcon>
-            <Text fw={600} size="sm">
-              执行过程
-            </Text>
-            <Text c="dimmed" fz={11}>
-              {steps.length} 步 · {toolCount} 次工具
-            </Text>
-          </Group>
-          {opened ? <IconChevronDown size={15} /> : <IconChevronRight size={15} />}
-        </Group>
-      </UnstyledButton>
+      <Tooltip label={`${opened ? "收起" : "查看"}执行过程 · ${steps.length} 步 · ${toolCount} 次工具${running ? " · 运行中" : ""}`} events={{ hover: true, focus: true, touch: false }}>
+        <UnstyledButton
+          aria-label={`执行过程 · ${steps.length} 步 · ${toolCount} 次工具`}
+          aria-expanded={opened}
+          className="execution-toggle"
+          onClick={() => setOpened((value) => !value)}
+        >
+          {running ? <Loader color="ember" size={14} /> : <IconTool aria-hidden="true" size={16} />}
+          {toolCount === 0 ? null : <span className="process-count" aria-hidden="true">{toolCount}</span>}
+        </UnstyledButton>
+      </Tooltip>
       <Collapse expanded={opened}>
         <Stack className="execution-steps" gap={4}>
           {steps.map((step, index) => (

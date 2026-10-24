@@ -39,6 +39,21 @@ def linked_project(messages):
     return None, None
 
 
+def delayed_memory_sync_config(root):
+    from redpanda.assistant import assembly
+
+    sync = assembly.sync_shared_memory
+
+    async def delayed(*args):
+        (root / "memory-sync-started").touch()
+        while not (root / "release-memory-sync").exists():
+            await asyncio.sleep(0.01)
+        return await sync(*args)
+
+    assembly.sync_shared_memory = delayed
+    return config_for(root)
+
+
 class WorktreeLlm(ProcessLlm):
     def __init__(self, root):
         super().__init__(root)
@@ -54,7 +69,13 @@ class WorktreeLlm(ProcessLlm):
             await self.read_release.wait()
         if any("<self_handoff>" in str(message["content"]) for message in messages):
             return LLMCallResult(LLMResponse(content=HANDOFF), LLMUsage(input_tokens=10, output_tokens=5))
-        last_input = max((i for i, message in enumerate(messages) if message["role"] == "user"), default=-1)
+        # Context snapshots also use user messages; only scenario instructions drive this stub.
+        last_input = max((i for i, message in enumerate(messages)
+                          if message["role"] == "user" and isinstance(message["content"], str)
+                          and (message["content"].startswith("WRITE_AGENT_")
+                               or message["content"] in {
+                                   "FINISH_AGENT", "LAND_AGENT", "DELEGATE_FOR_DELETE", "READ_AGENT",
+                               })), default=-1)
         text = messages[last_input]["content"] if last_input >= 0 else ""
         results = {call["function"]["name"] for message in messages[last_input + 1:]
                    for call in message.get("tool_calls", ())}
@@ -273,16 +294,21 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             llm = WorktreeLlm(root)
 
             def host():
-                return HostSupervisor(store, partial(config_for, root), home, None, llm=llm)
+                return HostSupervisor(store, partial(delayed_memory_sync_config, root), home, None, llm=llm)
 
             current = host()
             try:
                 agent = await current.create_agent(name="Notes")
+                async with asyncio.timeout(30):
+                    while not (root / "memory-sync-started").exists():
+                        await asyncio.sleep(0.01)
                 self.assertEqual(agent.projects, ())
                 self.assertEqual(WorkspaceRegistry.load(home.workspaces_path).workspaces, ())
                 await current.select("page", agent.session_id)
                 await current.set_auto_authorize(True)
                 await current.receive_user_message(agent.session_id, "WRITE_AGENT_0", delivery_id="write")
+                # Reproduce a context snapshot arriving after the user's first instruction.
+                (root / "release-memory-sync").touch()
                 await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                 self.assertEqual((agent.directory / "note.txt").read_text(), "WRITE_AGENT_0")
                 self.assertEqual((agent.directory / "command.txt").read_text().strip(), "command-ok")

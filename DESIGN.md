@@ -23,17 +23,17 @@ colors:
   identity-green-bg-light: '#e4f1eb'
   identity-amber-light: '#90630c'
   identity-amber-bg-light: '#fff1cf'
-  canvas-dark: '#202227'
-  sidebar-dark: '#191b20'
-  surface-dark: '#282b32'
-  bubble-dark: '#2b3545'
-  tile-dark: '#30343d'
-  border-dark: '#32353e'
-  border-strong-dark: '#444955'
-  hover-dark: '#292c33'
-  placeholder-dark: '#a0a6b2'
-  text-dark: '#e4e5e9'
-  dimmed-dark: '#a0a6b2'
+  canvas-dark: '#000000'
+  sidebar-dark: '#000000'
+  surface-dark: '#111111'
+  bubble-dark: '#1c1c1c'
+  tile-dark: '#242424'
+  border-dark: '#242424'
+  border-strong-dark: '#3d3d3d'
+  hover-dark: '#191919'
+  placeholder-dark: '#a3a3a3'
+  text-dark: '#ededed'
+  dimmed-dark: '#a3a3a3'
   accent-text-dark: '#ffa078'
   accent-ring-dark: rgba(247, 123, 76, 0.5)
   identity-blue-dark: '#acc7ff'
@@ -44,13 +44,13 @@ colors:
   identity-green-bg-dark: '#263e35'
   identity-amber-dark: '#efd18e'
   identity-amber-bg-dark: '#443a29'
-  composer-dark: '#25282e'
-  panel-dark: '#1c1e23'
-  composer-focus-dark: '#8896ad'
-  button-dark: '#dce1e9'
-  button-text-dark: '#20242b'
-  human-dark: '#3a352f'
-  human-text-dark: '#ded0be'
+  composer-dark: '#141414'
+  panel-dark: '#000000'
+  composer-focus-dark: '#777777'
+  button-dark: '#ededed'
+  button-text-dark: '#111111'
+  human-dark: '#242424'
+  human-text-dark: '#d4d4d4'
   composer-light: '#ffffff'
   panel-light: '#fafbfc'
   composer-focus-light: '#9ca8b9'
@@ -91,11 +91,6 @@ typography:
     fontSize: 11px
     fontWeight: 400
     lineHeight: 1.5
-  new-bot:
-    fontFamily: '"Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif'
-    fontSize: 13px
-    fontWeight: 600
-    lineHeight: 1
   code:
     fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace'
     fontSize: 12px
@@ -127,19 +122,16 @@ spacing:
   step-44: 44px
   step-56: 56px
 components:
-  button-new-bot-light:
-    backgroundColor: '{colors.canvas-light}'
-    textColor: '{colors.text-light}'
-    typography: '{typography.new-bot}'
-    rounded: '{rounded.md}'
-    padding: 0 12px
-    height: 40px
-    width: 100%
+  button-toolbar-light:
+    backgroundColor: transparent
+    textColor: '{colors.dimmed-light}'
+    rounded: '{rounded.sm}'
+    size: 32px
   button-send-light:
     backgroundColor: '{colors.text-light}'
     textColor: '{colors.canvas-light}'
     rounded: '{rounded.xl}'
-    size: 30px
+    size: 32px
   input-search-light:
     backgroundColor: '{colors.canvas-light}'
     textColor: '{colors.text-light}'
@@ -177,19 +169,16 @@ components:
     textColor: '{colors.text-light}'
     rounded: '{rounded.md}'
     padding: 0px
-  button-new-bot-dark:
-    backgroundColor: '{colors.canvas-dark}'
-    textColor: '{colors.text-dark}'
-    typography: '{typography.new-bot}'
-    rounded: '{rounded.md}'
-    padding: 0 12px
-    height: 40px
-    width: 100%
+  button-toolbar-dark:
+    backgroundColor: transparent
+    textColor: '{colors.dimmed-dark}'
+    rounded: '{rounded.sm}'
+    size: 32px
   button-send-dark:
     backgroundColor: '{colors.text-dark}'
     textColor: '{colors.canvas-dark}'
     rounded: '{rounded.xl}'
-    size: 30px
+    size: 32px
   input-search-dark:
     backgroundColor: '{colors.canvas-dark}'
     textColor: '{colors.text-dark}'
@@ -235,9 +224,9 @@ components:
 
 **Creative North Star: "轻盈协作"**
 
-以用户已选定的「轻盈协作」为视觉北极星：白色与中性炭灰承托对话，浅气泡区分消息，身份色帮助在长报告中找到同事。界面克制、清楚，保留正文的阅读节奏。
+以用户已选定的「轻盈协作」为视觉北极星：亮色使用白色，夜间使用纯黑底色与中性灰气泡承托对话，身份色帮助在长报告中找到同事。界面克制、清楚，保留正文的阅读节奏。
 
-当前实现使用本机中文无衬线字体、细线 SVG 图标、小圆角与轻边界。明暗主题共用布局和身份关系；陶土色出现在部分操作与定位状态，蓝色承担全局键盘焦点和文字选择。
+当前实现使用本机中文无衬线字体、细线 SVG 图标、小圆角与轻边界。明暗主题共用布局和身份关系；陶土色出现在部分操作与定位状态，夜间的键盘焦点、光标与文字选择使用中性灰，亮色沿用身份蓝。
 
 本文件记录已落地的 React / Mantine 界面；具体页面的构图与操作模式保留在对应 surface brief。品牌图片沿用仓库已有的 assets/brand/red-panda-mark-pixel.png（favicon / 回退头像）与 red-panda-full.png（空私聊欢迎）；其已有来源随原资产保留，本次没有生成或替换图片，侧栏不展示品牌图。
 
@@ -253,7 +242,7 @@ components:
 
 ### Primary
 
-陶土操作色来自现有 ember 色阶：用于新建图标、部分辅助操作、未读与引用定位。发送按钮采用正文色与画布色反转，不把整个页面铺成品牌色。焦点与文字选择使用身份蓝。
+陶土操作色来自现有 ember 色阶：用于新建图标、部分辅助操作、未读与引用定位。发送按钮采用正文色与画布色反转，不把整个页面铺成品牌色。夜间的焦点与文字选择使用中性灰，身份蓝仅承担 Bot 识别。
 
 ### Secondary
 
@@ -263,7 +252,7 @@ components:
 
 ### Neutral
 
-聊天底色、侧栏、Bot 气泡、人类气泡与选中底色分别对应 canvas、sidebar、surface、bubble、tile。正文与次要文字分层；边界与悬停使用来源中的半透明色，不另造不透明近似。占位文字独立于 disabled 样式；浅色和深色采用 placeholder tokens，最终评审记录的对应底色对比度约为 4.67:1 和 6.51:1。
+聊天底色、侧栏、Bot 气泡、人类气泡与选中底色分别对应 canvas、sidebar、surface、bubble、tile。正文与次要文字分层；边界与悬停使用主题中的色值。占位文字独立于 disabled 样式；浅色和深色采用 placeholder tokens，输入区对应底色的对比度约为 4.67:1 和 7.30:1。
 
 ## Typography
 
@@ -275,26 +264,28 @@ components:
 
 - **Title:** 聊天标题使用 title，小屏使用 title-mobile；正文中标题维持正文字号、较重字重（650），行高（1.5），上下节奏（1.6em / .7em）。
 - **Body:** 正文使用 body，小屏使用 body-mobile；段落与列表行高（1.85）。长气泡桌面上限为 min(calc(100% - 84px), calc(72ch + 32px))，正文和底色受同一宽度限制。
-- **Label / Author / Metadata:** 普通导航标签、作者和时间分别使用 label、author、metadata；时间使用等宽数字。新建 Bot 使用独立的 new-bot 角色。
+- **Label / Author / Metadata:** 普通导航标签、作者和时间分别使用 label、author、metadata；时间使用等宽数字。侧栏操作使用图标工具栏。
 - **Code:** pre 使用 code；保留空白、不强行折行，在自身容器内横向滚动。正文图片及 SVG 限制在容器宽度内。
 
 **The One Bubble Measure Rule.** 长消息的整块气泡受正文行宽与可用空间共同限制；不要让代码或 diff 扩大整块底色。
 
 群聊与私聊的背景框只包正文，作者和时间放在框外下方。群聊保留 Bot 作者链接，时间靠该行最右侧；人的消息不重复显示“你”。头像贴近正文末尾，宽度和内边距共用同一套样式。
 
-Bot 私信收发在私聊时间线中使用居中的轻量标识：“已发消息给”或“消息来自”，搭配对方的小头像与身份色名字，名字可打开对应私聊。标识来自实际收发记录，发送失败不显示送达标识；与正文气泡、执行过程区分。
+Bot 私信收发在私聊时间线中使用居中的方向箭头：右上箭头表示发出，左下箭头表示收到，搭配对方的小头像与身份色名字，名字可打开对应私聊。悬停说明与可访问名称保留完整收发含义。标识来自实际收发记录，发送失败不显示送达标识；外部协作者的身份、版本和验证报告仍用文字明确表达。
+
+工作计划以目标文字、完成数量和连续步骤节点呈现；空心圆、圆点和勾选分别表示待做、进行中与已完成，悬停可读事项，展开后显示完整事项与状态图标。节点保持静态，旁边保留“模型标记”，不将计划状态当作实际执行状态；执行停止单独提示，必要说明不折叠。未完成计划留在输入框上方，全部完成后以勾选图标归档到对应轮次。
 
 ## Layout
 
-应用填满视口高度（100dvh），页面本身不纵向滚动；对话、名册与资料区各自滚动。最小页面宽度（320px）。桌面侧栏默认（282px），可拖动到（220–520px），内边距（20px 16px 15px）。顶部先新建 Bot，再搜索、对话过滤和混合名册；底部以设置菜单打开模型配置和共同记忆抽屉，保留主题切换。
+应用填满视口高度（100dvh），页面本身不纵向滚动；对话、名册与资料区各自滚动。最小页面宽度（320px）。桌面侧栏默认（282px），可拖动到（220–520px），内边距（20px 16px 15px）。顶部是所有对话、新建 Bot、新建群聊与新建分组的图标工具栏，其下是搜索、图标筛选和混合名册。底部保留设置、外观、连接图标与自动放行短标签；连接正常时不常显说明，连接异常时显示文字。
 
-消息列表与输入区共用居中的读写宽列，上限（1040px），空间不足时两侧合计留白（48px）；Bot 靠左、人的消息靠右，气泡继续限制正文行宽。群消息间隔（26px），私聊 turn 底部间距（26px），turn 内部间隔（24px）。私聊省去重复署名，思考／执行入口位于正文后，时间靠这行最右侧，不再显示发送状态；引用与复制收进消息右键菜单（触屏长按），用户消息同样在正文外右对齐时间，不显示耗时；群聊保留末尾作者以区分发言者。头像靠消息末尾对齐，展开内容才使用详情宽度。输入框下不再单列快捷键与授权提示。气泡与头像间距（12px）。写入区与消息列表共享宽度上限（1040px）；群聊与私聊共用框体和文字风格。私聊输入区从单行（48px）开始，加号在最前、模型与发送在最后；文本自动向上扩展到七行后内部滚动，附件与引用在上方单列，自动放行位于侧栏设置旁，适用于所有现有和新建会话。群聊收起时文本区（34px）、padding（9px 14px 0），工具栏 padding（0 10px 5px），整框约（70.6px）；长于90字符、换行或引用时展开。群聊展开态文本区至少（76px）、padding（14px 16px 5px），工具栏 padding（5px 10px 9px），最多自动扩至七行。右下角统一为（66×30px）「发送 ↑」按钮，6px 圆角；私聊保留附件、授权、模型与停止/继续。
+消息列表与输入区共用居中的读写宽列，上限（1040px），空间不足时两侧合计留白（48px）；Bot 靠左、人的消息靠右，气泡继续限制正文行宽。群消息间隔（26px），私聊 turn 底部间距（26px），turn 内部间隔（24px）。私聊省去重复署名，思考／执行入口位于正文后，时间靠这行最右侧，不再显示发送状态；引用与复制收进消息右键菜单（触屏长按），用户消息同样在正文外右对齐时间，不显示耗时；群聊保留末尾作者以区分发言者。头像靠消息末尾对齐，展开内容才使用详情宽度。输入框下不再单列快捷键与授权提示。气泡与头像间距（12px）。写入区与消息列表共享宽度上限（1040px）；群聊与私聊共用框体和文字风格。私聊输入区从单行（48px）开始，加号在最前、模型与发送在最后；文本自动向上扩展到七行后内部滚动，附件与引用在上方单列，自动放行位于侧栏设置旁，适用于所有现有和新建会话。群聊收起时文本区（34px）、padding（9px 14px 0），工具栏 padding（0 10px 5px），整框约（70.6px）；长于90字符、换行或引用时展开。群聊展开态文本区至少（76px）、padding（14px 16px 5px），工具栏 padding（5px 10px 9px），最多自动扩至七行。右下角统一为（32×32px）圆形上箭头按钮；私聊保留附件、授权、模型与停止/继续。
 
 头部桌面最小高度（77px）、内边距（0 29px）。资料区为可选次级面板，普通桌面宽（264px），1700px 起为（290px）；标题区与聊天顶栏等高，资料身份与各功能分区使用一致的左右留白。1180px 及以下改为不挤占聊天列的抽屉，宽度不超过（292px）或视口的 85%。文件查看仍在 64em 以下占满剩余主区域。
 
 新建 Bot、群聊、分组和模型编辑沿用同一弹窗尺度：默认居中、宽（460px）、内容留白（22px）；长表单在弹窗内部滚动，保留现有字段与交互。表单弹窗优先于资料抽屉；窗口跨越资料栏断点时收起资料，避免自动出现的抽屉打断正在填写的表单。设置菜单共用右侧抽屉外壳，模型配置和共同记忆各自保留草稿；切换内容或关闭抽屉不提交修改。
 
-48em 以下折叠侧栏并显示左上菜单；头部最小高度（69px），内边距（12px 14px 12px 58px）。消息容器宽度改为 calc(100% - 28px)，头像（27px）、间距（8px），气泡上限 calc(100% - 51px)、内边距（10px 12px 12px）；写入区左右留白（14px）。消息操作通过右键或长按菜单触达，正文仍可选择复制。窄屏私聊发送按钮只保留箭头，模型标签收窄，为输入文字留出空间。spacing tokens 记录实际复用步长，不要求所有空间都落在单一倍数网格。
+48em 以下折叠侧栏并显示左上菜单；头部最小高度（69px），内边距（12px 14px 12px 58px）。消息容器宽度改为 calc(100% - 28px)，头像（27px）、间距（8px），气泡上限 calc(100% - 51px)、内边距（10px 12px 12px）；写入区左右留白（14px）。消息操作通过右键或长按菜单触达，正文仍可选择复制。发送按钮与桌面一致使用圆形上箭头，模型标签收窄，为输入文字留出空间。spacing tokens 记录实际复用步长，不要求所有空间都落在单一倍数网格。
 
 ## Elevation & Depth
 
@@ -310,7 +301,7 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Buttons
 
-新建 Bot 为全宽 40px、13px 字、6px 圆角按钮。发送沿用 A 原稿的文字加上箭头按钮，默认使用专用前景和背景，disabled 保留同色并降低至 .4；不使用圆形纯图标按钮。次级操作为细线 SVG 图标和弱悬停底色，保留可读标签。
+侧栏工具栏使用 32px 图标按钮，6px 圆角；新建 Bot 的图标保留陶土色，其余使用次要前景。私聊与群聊发送均使用 32px 圆形纯图标按钮，中心为上箭头，不显示文字；保留可访问名称与悬停提示，私聊运行时提示打断当前执行并发送。默认使用专用前景和背景，disabled 保留同色并降低至 .4，加载指示沿用按钮前景色。思考入口使用脑形图标，执行入口使用工具图标与工具次数；运行时显示旋转指示，展开态保留底色提示，完整步骤与正文留在展开内容中。
 
 ### Chips
 
@@ -328,11 +319,11 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Navigation
 
-名册行最小高度（58px）、内边距（10px 11px），默认透明，hover / focus-within 加薄层，选中使用 tile。常规溢出操作在 hover / focus-within 显示，触摸环境直接显示。搜索、过滤、Bot 与群聊共享这一列；侧栏不恢复品牌块与个人工作区标题。
+名册行最小高度（58px）、内边距（10px 11px），默认透明，hover / focus-within 加薄层，选中使用 tile。常规溢出操作在 hover / focus-within 显示，触摸环境直接显示。搜索、过滤、Bot 与群聊共享这一列；侧栏不恢复品牌块与个人工作区标题。筛选用图标呈现全部、群聊与 Bot，保留可访问名称与悬停说明。Bot 状态在各处统一为空闲空心点、等人回话气泡、执行中转圈、需要处理叹号；形状与颜色共同表达状态，悬停可读完整含义。
 
 ### Browser Interaction
 
-全局文字选择为身份蓝的前景与底色；键盘 focus-visible 为（2px）身份蓝外框，偏移（3px）。部分已有链接的更具体规则保留陶土定位环；引用目标同样使用陶土环。textarea 的 caret 使用身份蓝。所有原生滚动条声明 thin、强调边界色拇指与透明轨道，虚拟时间线另保留 stable gutter；Mantine ScrollArea 名册为 hover 显示。侧栏拖动时使用 col-resize 且暂时禁止选字。
+夜间的全局文字选择使用中性灰前景与底色；键盘 focus-visible 为（2px）中性灰外框，偏移（3px），textarea 的 caret 同样使用中性灰。亮色保留原有身份蓝。部分已有链接的更具体规则保留陶土定位环；引用目标同样使用陶土环。所有原生滚动条声明 thin、强调边界色拇指与透明轨道，虚拟时间线另保留 stable gutter；Mantine ScrollArea 名册为 hover 显示。侧栏拖动时使用 col-resize 且暂时禁止选字。
 
 主界面切换过渡（180ms），拖动侧栏时关闭；轻量背景过渡（150ms ease-out）、操作显隐（120ms ease）、活动指示旋转（0.8s linear infinite）。prefers-reduced-motion 关闭该旋转和卡片过渡，并强制 scroll-behavior: auto，不额外添加动画。
 

@@ -11,7 +11,7 @@ export function ColorSchemeSwitcher() {
     }
     themeColor.setAttribute(
       "content",
-      colorScheme === "light" ? "#ffffff" : "#181818",
+      colorScheme === "light" ? "#ffffff" : "#000000",
     );
   }, [colorScheme]);
   return (
@@ -19,6 +19,7 @@ export function ColorSchemeSwitcher() {
       <Menu.Target>
         <ActionIcon
           aria-label="外观"
+          title="外观"
           className="color-scheme-trigger"
           radius="md"
           size="lg"
