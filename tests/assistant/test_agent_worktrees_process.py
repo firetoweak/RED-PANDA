@@ -16,11 +16,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.assistant.host.agent_projects import ProjectLinkRefused
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
+from konden.assistant.host.agent_projects import ProjectLinkRefused
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
 
 
 pytestmark = pytest.mark.process
@@ -34,7 +34,7 @@ def test_internal_git_descendants_exit_when_the_owner_is_killed(tmp_path):
                       "while True:\n with Path('writes').open('a') as f: f.write('write\\n')\n time.sleep(.03)\n")
     command = "!" + shlex.join([Path(sys.executable).as_posix(), script.as_posix()])
     code = ("import os,sys\nfrom pathlib import Path\n"
-            "from redpanda.assistant.agent_git import Git\n"
+            "from konden.assistant.agent_git import Git\n"
             "root=Path(sys.argv[1]); (root/'owner.pid').write_text(str(os.getpid()))\n"
             "Git(os.environ).run(root,'-c',sys.argv[2],'owned-writer')\n")
     owner = subprocess.Popen([sys.executable, "-c", code, str(tmp_path), f"alias.owned-writer={command}"],
@@ -87,7 +87,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         (self.project / "note.txt").write_text("initial\n", encoding="utf-8")
         git(self.project, "add", "note.txt")
         git(self.project, "commit", "-m", "initial")
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         self.registry = WorkspaceRegistry.load(self.home.workspaces_path)
         self.workspace = self.registry.register_path(self.project)
         self.store = SessionStore(self.home.runtime_sessions_root)
@@ -103,7 +103,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.host.close()
 
-    async def create(self, name="小熊猫", workspace=None):
+    async def create(self, name="konden", workspace=None):
         return await self.host.create_agent(name=name, workspace_id=(workspace or self.workspace).workspace_id)
 
     async def test_restart_and_new_agents_use_integration_without_resetting_human_checkout(self):
@@ -178,12 +178,12 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.host.agent_worktrees.root.exists())
 
     async def test_data_directory_inside_the_human_checkout_is_rejected(self):
-        home = RedPandaHome(self.project / "app-data")
+        home = KondenHome(self.project / "app-data")
         host = HostSupervisor(SessionStore(home.runtime_sessions_root), None, home, None,
                               llm=None, workspaces=self.registry)
         try:
             with self.assertRaisesRegex(ProjectLinkRefused, "数据目录"):
-                await host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+                await host.create_agent(name="konden", workspace_id=self.workspace.workspace_id)
             self.assertFalse(host.agent_worktrees.root.exists())
             self.assertEqual(await host.agents.list(), ())
         finally:
@@ -238,7 +238,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
         (self.project / ".gitattributes").write_text("note.txt filter=unavailable\n", encoding="utf-8")
         git(self.project, "add", ".gitattributes")
         git(self.project, "commit", "-m", "checkout filter")
-        git(self.project, "config", "filter.unavailable.smudge", "redpanda-filter-that-does-not-exist")
+        git(self.project, "config", "filter.unavailable.smudge", "konden-filter-that-does-not-exist")
         git(self.project, "config", "filter.unavailable.required", "true")
         before = git(self.project, "worktree", "list", "--porcelain")
         with self.assertRaises(subprocess.CalledProcessError):
@@ -275,7 +275,7 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
             release.set()
             with self.assertRaises(asyncio.CancelledError):
                 await creation
-        agent = await self.host.agents.resolve("小熊猫")
+        agent = await self.host.agents.resolve("konden")
         self.assertTrue(tree(agent).is_dir())
         self.assertEqual(git(tree(agent), "symbolic-ref", "--short", "HEAD"), agent.projects[0].branch)
 
@@ -296,11 +296,11 @@ class AgentWorktreeTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_two_data_roots_have_distinct_integration_branches(self):
         first = await self.create()
-        home = RedPandaHome(self.root / "other-home")
+        home = KondenHome(self.root / "other-home")
         store = SessionStore(home.runtime_sessions_root)
         other = HostSupervisor(store, None, home, None, llm=None, workspaces=self.registry)
         try:
-            second = await other.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+            second = await other.create_agent(name="konden", workspace_id=self.workspace.workspace_id)
             self.assertNotEqual(tree(first), tree(second))
             self.assertNotEqual(self.host.agent_worktrees.integration(self.workspace.workspace_id).branch,
                                 other.agent_worktrees.integration(self.workspace.workspace_id).branch)

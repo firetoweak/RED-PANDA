@@ -3,9 +3,9 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from redpanda.cli.models import CliHealth, CliRecord, CliSourceRef, utc_now
-from redpanda.cli.registry import CliRegistry
-from redpanda.cli.runtime import (
+from konden.cli.models import CliHealth, CliRecord, CliSourceRef, utc_now
+from konden.cli.registry import CliRegistry
+from konden.cli.runtime import (
     CLI_DESCRIPTION_OMITTED,
     LOAD_CLI,
     CliToolCatalog,

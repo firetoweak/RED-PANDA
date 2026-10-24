@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from redpanda.cli.composition import build_cli
-from redpanda.cli.installer import resolve_cli_path
-from redpanda.cli.runtime import LOAD_CLI, LoadCliInput
-from redpanda.paths import RedPandaHome
+from konden.cli.composition import build_cli
+from konden.cli.installer import resolve_cli_path
+from konden.cli.runtime import LOAD_CLI, LoadCliInput
+from konden.paths import KondenHome
 
 pytestmark = pytest.mark.process
 
@@ -25,7 +25,7 @@ pytestmark = pytest.mark.process
 class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.home = RedPandaHome(Path(self.temporary.name) / ".redpanda")
+        self.home = KondenHome(Path(self.temporary.name) / ".konden")
         self.home.initialize()
         self.assembly = build_cli(self.home)
 
@@ -66,7 +66,7 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
         """PATH 目录新增后，无需重启即可解析到其中的命令。"""
         bin_dir = Path(self.temporary.name) / "freshbin"
         bin_dir.mkdir()
-        shim = bin_dir / "redpanda-fake-cli.cmd"
+        shim = bin_dir / "konden-fake-cli.cmd"
         shim.write_text(
             "@echo off\r\n"
             "if \"%1\"==\"--version\" (echo fake-cli 9.9.1 & exit /b 0)\r\n"
@@ -96,7 +96,7 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
                     value_type,
                     (original + ";" if original else "") + str(bin_dir),
                 )
-                resolved = resolve_cli_path("redpanda-fake-cli")
+                resolved = resolve_cli_path("konden-fake-cli")
                 # PATHEXT casing and 8.3 short paths (RUNNER~1) may differ; compare by identity.
                 self.assertTrue(
                     os.path.samefile(resolved, shim),

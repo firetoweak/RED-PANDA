@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { InboxItem } from "../src/api/contracts";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import { SessionAttention } from "../src/features/conversation/SessionAttention";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
@@ -36,8 +36,8 @@ it("对话只处理所属 Bot 的通知，例行任务决定沿用原接口并�
     return Response.json(inbox);
   }));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(kondenApi.middleware),
   });
   const view = render(<Provider store={store}><MantineProvider env="test">
     <SessionAttention sessionId="ada" connectionId={null} />
@@ -57,5 +57,5 @@ it("对话只处理所属 Bot 的通知，例行任务决定沿用原接口并�
   await waitFor(() => expect(screen.queryByText("要让 Ada 的例行任务继续吗？")).not.toBeInTheDocument());
   expect(screen.getByText(/请调整交流方向/)).toBeInTheDocument();
   cleanup();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });

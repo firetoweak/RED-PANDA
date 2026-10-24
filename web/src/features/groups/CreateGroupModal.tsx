@@ -2,7 +2,7 @@ import { Alert, Button, Modal, MultiSelect, Stack, TextInput } from "@mantine/co
 import { useEffect, useState } from "react";
 
 import type { AgentRosterEntry } from "../../api/contracts";
-import { useCreateGroupMutation } from "../../api/redpandaApi";
+import { useCreateGroupMutation } from "../../api/kondenApi";
 
 const MIN_MEMBERS = 2;
 const MAX_MEMBERS = 6;

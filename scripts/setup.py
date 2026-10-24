@@ -58,14 +58,14 @@ def main(argv: list[str] | None = None) -> int:
     subprocess.run([npm, "--prefix", "web", "ci"], cwd=ROOT, check=True)
     subprocess.run([npm, "--prefix", "web", "run", "build"], cwd=ROOT, check=True)
     print("[4/4] 初始化配置", flush=True)
-    initialize = [sys.executable, "-m", "redpanda.initialize"]
+    initialize = [sys.executable, "-m", "konden.initialize"]
     if args.configure:
         initialize.append("--configure")
     subprocess.run(initialize, cwd=ROOT, check=True)
     print("检查备用 Exa 网上检索（会向 Exa 发送公开测试查询）", flush=True)
-    web_check = subprocess.run([sys.executable, "-m", "redpanda.mcp.check_web"], cwd=ROOT)
+    web_check = subprocess.run([sys.executable, "-m", "konden.mcp.check_web"], cwd=ROOT)
     if web_check.returncode == 2:
-        print("备用 Exa 本次未通过；浏览器能力已准备，可用其检索，或配置其他搜索 MCP。复查：python -m redpanda.mcp.check_web")
+        print("备用 Exa 本次未通过；浏览器能力已准备，可用其检索，或配置其他搜索 MCP。复查：python -m konden.mcp.check_web")
     elif web_check.returncode:
         web_check.check_returncode()
     print("运行环境准备完成。使用 scripts/start.ps1 或 scripts/start.sh 启动，在网页侧栏配置模型。")

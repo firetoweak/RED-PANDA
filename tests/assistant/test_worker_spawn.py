@@ -19,7 +19,7 @@ from multiprocessing import get_context
 from pathlib import Path
 import sys
 
-from redpanda.assistant.host.spawn import start_worker
+from konden.assistant.host.spawn import start_worker
 from tests.fixtures.spawn_target import write_marker
 
 marker = Path(sys.argv[1])
@@ -44,7 +44,7 @@ from multiprocessing import get_context
 from pathlib import Path
 import sys
 
-from redpanda.assistant.host.spawn import start_worker
+from konden.assistant.host.spawn import start_worker
 from tests.fixtures.spawn_target import write_path
 
 marker = Path(sys.argv[1])
@@ -68,7 +68,7 @@ if process.is_alive():
 class WorkerSpawnTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "需要 Windows 句柄继承")
     def test_worker_does_not_keep_unrelated_inheritable_pipe_open(self) -> None:
-        from redpanda.assistant.host.spawn import _windows_nul_stdio
+        from konden.assistant.host.spawn import _windows_nul_stdio
 
         read_fd, write_fd = os.pipe()
         captured = []
@@ -91,7 +91,7 @@ class WorkerSpawnTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "需要 Windows 进程启动")
     def test_worker_stdio_redirect_does_not_capture_other_threads_subprocesses(self) -> None:
         from concurrent.futures import ThreadPoolExecutor
-        from redpanda.assistant.host.spawn import _windows_nul_stdio
+        from konden.assistant.host.spawn import _windows_nul_stdio
 
         with ThreadPoolExecutor(max_workers=1) as pool:
             with _windows_nul_stdio():

@@ -1,6 +1,6 @@
 import { Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { useState } from "react";
-import { useDeleteAgentMutation, useDissolveGroupMutation } from "../../api/redpandaApi";
+import { useDeleteAgentMutation, useDissolveGroupMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
 export type RemovalTarget = { kind: "agent" | "group"; id: string; name: string };

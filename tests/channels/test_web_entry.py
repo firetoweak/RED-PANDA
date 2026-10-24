@@ -14,8 +14,8 @@ import pytest
 import uvicorn
 
 import web_chat
-from redpanda.channels.web.app import create_web_app
-from redpanda.channels.web.channel import WebChannel
+from konden.channels.web.app import create_web_app
+from konden.channels.web.channel import WebChannel
 
 
 @pytest.mark.process

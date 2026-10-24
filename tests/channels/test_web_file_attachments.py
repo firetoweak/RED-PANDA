@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.channels.web.app import create_web_app
-from redpanda.channels.web.channel import WebChannel
-from redpanda.channels.web.hub import WebEventHub
+from konden.assistant.attachments import AttachmentGateway
+from konden.channels.web.app import create_web_app
+from konden.channels.web.channel import WebChannel
+from konden.channels.web.hub import WebEventHub
 from tests.channels.test_web import _Queries, _Sessions
 
 
@@ -47,7 +47,7 @@ class WebFileAttachmentsTest(unittest.TestCase):
             channel = WebChannel(sessions, queries, gateway)
             connection = channel.connect()
             with TestClient(create_web_app(channel, WebEventHub())) as client, patch(
-                "redpanda.channels.web.channel.select_file", return_value=live,
+                "konden.channels.web.channel.select_file", return_value=live,
             ) as picker:
                 response = client.post(
                     "/api/sessions/source/attachments/select",

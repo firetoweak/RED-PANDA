@@ -1,1 +1,0 @@
-"""RED PANDA product package."""

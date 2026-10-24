@@ -4,10 +4,10 @@ from tempfile import TemporaryDirectory
 
 from mcp.types import CallToolRequest, CallToolRequestParams
 
-from redpanda.assistant.attachments import AttachmentStore
-from redpanda.assistant.mcp import _loaded_from_spec
-from redpanda.runtime.model import InvokeTool
-from redpanda.tools.spec import JsonSchemaParameters, ToolSpec
+from konden.assistant.attachments import AttachmentStore
+from konden.assistant.mcp import _loaded_from_spec
+from konden.runtime.model import InvokeTool
+from konden.tools.spec import JsonSchemaParameters, ToolSpec
 
 
 class McpArgumentsTest(unittest.IsolatedAsyncioTestCase):

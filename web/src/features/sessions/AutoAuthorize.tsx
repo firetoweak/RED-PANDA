@@ -1,5 +1,5 @@
 import { Stack, Switch, Text, Tooltip } from "@mantine/core";
-import { useGetAutoAuthorizeQuery, useSetAutoAuthorizeMutation } from "../../api/redpandaApi";
+import { useGetAutoAuthorizeQuery, useSetAutoAuthorizeMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
 export function AutoAuthorize() {

@@ -5,21 +5,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from redpanda.assistant.conversations import AssistantQueries
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.workspaces import (
+from konden.assistant.conversations import AssistantQueries
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.workspaces import (
     SESSION_WORKSPACE_FACT,
     bound_workspace,
     bound_workspace_id,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     DeliveryIdentity,
     DomainFactCommitted,
     EventDraft,
     SqliteJournal,
     UserMessageReceived,
 )
-from redpanda.filesystem.registry import WorkspaceRegistry
+from konden.filesystem.registry import WorkspaceRegistry
 
 
 async def _append_user_message(store, session_id: str, text: str) -> None:
@@ -48,7 +48,7 @@ class _IdleSessions:
         return None
 
     def conversation_status(self, session_id: str):
-        from redpanda.assistant.compact.store import ConversationStatus
+        from konden.assistant.compact.store import ConversationStatus
 
         return ConversationStatus(session_id, session_id, 0, None)
 

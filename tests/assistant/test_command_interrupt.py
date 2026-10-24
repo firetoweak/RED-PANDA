@@ -6,12 +6,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.assistant.context.projection import ModelContextProjector, outcome_text
+from konden.assistant.context.projection import ModelContextProjector, outcome_text
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.control import AssistantControlPlane
-from redpanda.assistant.decision import with_command_interrupts
-from redpanda.assistant.runner import SessionScheduler
-from redpanda.runtime import (
+from konden.assistant.control import AssistantControlPlane
+from konden.assistant.decision import with_command_interrupts
+from konden.assistant.runner import SessionScheduler
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
@@ -23,21 +23,21 @@ from redpanda.runtime import (
     ToolBinding,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.filesystem import FileAccess
-from redpanda.execution.api import CommandEnvironment
-from redpanda.execution.command import CapturedOutput, CommandResult
-from redpanda.filesystem.workspace import (
+from konden.filesystem import FileAccess
+from konden.execution.api import CommandEnvironment
+from konden.execution.command import CapturedOutput, CommandResult
+from konden.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from redpanda.tools.builtin.command_execution import (
+from konden.tools.builtin.command_execution import (
     CommandInput,
     create_command_execution_spec,
 )
-from redpanda.tools.builtin.command_interrupts import (
+from konden.tools.builtin.command_interrupts import (
     CommandInterrupts,
     run_interruptible,
 )

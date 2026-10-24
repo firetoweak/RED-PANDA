@@ -3,7 +3,7 @@ import { IconFolderOpen } from "@tabler/icons-react";
 import { useId } from "react";
 
 import type { Workspace } from "../../api/contracts";
-import { useSelectWorkspaceDirectoryMutation } from "../../api/redpandaApi";
+import { useSelectWorkspaceDirectoryMutation } from "../../api/kondenApi";
 
 export function ProjectDirectoryInput({
   label, value, onChange, workspaces, disabled, onSelectingChange,

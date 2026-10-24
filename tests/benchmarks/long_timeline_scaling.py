@@ -22,13 +22,13 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from redpanda.assistant.agents import AgentCreated, PrivateMessage, Speaker, fact_arguments
+from konden.assistant.agents import AgentCreated, PrivateMessage, Speaker, fact_arguments
 from types import SimpleNamespace
 
-from redpanda.assistant.host.agent_messages import OriginUsage
-from redpanda.assistant.host.agent_roster import AgentRoster
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import AgentRuntime, SqliteJournal, replay
+from konden.assistant.host.agent_messages import OriginUsage
+from konden.assistant.host.agent_roster import AgentRoster
+from konden.assistant.host.session_store import SessionStore
+from konden.runtime import AgentRuntime, SqliteJournal, replay
 
 
 async def build(root: Path, agents: int, events: int, extra: int) -> SessionStore:

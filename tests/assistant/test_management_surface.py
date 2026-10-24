@@ -6,21 +6,21 @@ from tempfile import TemporaryDirectory
 
 from pydantic import BaseModel, ConfigDict
 
-from redpanda.assistant.artifacts import FileArtifactGateway
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.assistant.management import (
+from konden.assistant.artifacts import FileArtifactGateway
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.assistant.management import (
     LOAD_MANAGEMENT_TOOLS,
     ManagementDomain,
     ManagementSurface,
     ResidentTool,
 )
-from redpanda.assistant.context.projection import ModelContextSettings
+from konden.assistant.context.projection import ModelContextSettings
 from tests.session_scheduler import settle_session
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.state import DecisionFrame
-from redpanda.tools.control import ControlApprovalExecution, ControlOperation
-from redpanda.tools.spec import PydanticParameters, ToolSpec
+from konden.runtime.state import DecisionFrame
+from konden.tools.control import ControlApprovalExecution, ControlOperation
+from konden.tools.spec import PydanticParameters, ToolSpec
 
 
 class EmptyInput(BaseModel):
@@ -174,11 +174,11 @@ class ManagementProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_loaded_skill_map_describes_every_registered_operation(self):
-        from redpanda.paths import RedPandaHome
-        from redpanda.skills.composition import build_skills
+        from konden.paths import KondenHome
+        from konden.skills.composition import build_skills
 
         with TemporaryDirectory() as directory:
-            assembly = build_skills(RedPandaHome(Path(directory) / "home"))
+            assembly = build_skills(KondenHome(Path(directory) / "home"))
             resident = tuple(
                 ResidentTool(spec.name, spec.description)
                 for spec in assembly.tool_catalog.tool_specs()

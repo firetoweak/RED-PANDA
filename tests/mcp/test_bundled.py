@@ -5,17 +5,17 @@ from unittest.mock import AsyncMock
 
 from mcp.types import Tool
 
-from redpanda.mcp.approval import McpInstallProposalInput
-from redpanda.mcp.bundled import BROWSER_SERVER_IDS, BUILTIN_SERVER_IDS
-from redpanda.mcp.client_manager import McpClientError
-from redpanda.mcp.composition import build_mcp
-from redpanda.mcp.errors import McpConfigurationError
-from redpanda.mcp.toolsets import ToolsetLoadError
-from redpanda.paths import RedPandaHome
+from konden.mcp.approval import McpInstallProposalInput
+from konden.mcp.bundled import BROWSER_SERVER_IDS, BUILTIN_SERVER_IDS
+from konden.mcp.client_manager import McpClientError
+from konden.mcp.composition import build_mcp
+from konden.mcp.errors import McpConfigurationError
+from konden.mcp.toolsets import ToolsetLoadError
+from konden.paths import KondenHome
 
 
 def test_browser_catalog_is_available_without_installation_or_connection(tmp_path):
-    home = RedPandaHome(tmp_path)
+    home = KondenHome(tmp_path)
     assembly = build_mcp(home)
     provider = assembly.toolset_provider
     assert {item.id for item in provider.descriptors()} == {
@@ -30,7 +30,7 @@ class BundledBrowserTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.assembly = build_mcp(RedPandaHome(Path(temporary.name)))
+        self.assembly = build_mcp(KondenHome(Path(temporary.name)))
 
     async def asyncTearDown(self):
         await self.assembly.client_manager.aclose()

@@ -2,20 +2,20 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from redpanda import bootstrap
-from redpanda.automation.once import OneShotSchedules, TIME_REACHED
-from redpanda.config import AppConfig
-from redpanda.paths import RedPandaHome
+from konden import bootstrap
+from konden.automation.once import OneShotSchedules, TIME_REACHED
+from konden.config import AppConfig
+from konden.paths import KondenHome
 
 
 def test_overdue_clock_waits_for_startup_recovery(tmp_path, monkeypatch):
-    home = RedPandaHome(tmp_path / "home")
+    home = KondenHome(tmp_path / "home")
     home.initialize()
     OneShotSchedules(home.state_root / "automation.sqlite").register(
         "due", "bot", 1, "observe", started_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
-    monkeypatch.setenv("REDPANDA_HOME", str(home.root))
-    monkeypatch.setenv("REDPANDA_CONFIG", str(home.config_path))
+    monkeypatch.setenv("KONDEN_HOME", str(home.root))
+    monkeypatch.setenv("KONDEN_CONFIG", str(home.config_path))
     monkeypatch.setattr(bootstrap, "install_host_environment", lambda: None)
     monkeypatch.setattr(bootstrap, "install_timing_logging", lambda: None)
 

@@ -5,8 +5,8 @@ from inspect import isawaitable
 import json
 from pathlib import Path
 
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from tests.fixtures.session_worker import is_subagent_request
 
 
@@ -44,7 +44,7 @@ class CompactLlm:
                 )
             (self.workspace / "compact_started").touch()
             if (self.workspace / "fail_compact").exists():
-                from redpanda.llm.api import LLMProviderError
+                from konden.llm.api import LLMProviderError
 
                 raise LLMProviderError("compactor provider failed")
             if (self.workspace / "invalid_handoff").exists():
@@ -158,8 +158,8 @@ def child_config_for(workspace: Path):
 
 
 def tool_config(workspace: Path):
-    from redpanda.assistant.host import worker
-    from redpanda.runtime import ToolBinding
+    from konden.assistant.host import worker
+    from konden.runtime import ToolBinding
 
     build = worker.build_assistant_assembly
 

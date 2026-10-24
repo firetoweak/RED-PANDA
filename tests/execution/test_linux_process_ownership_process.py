@@ -11,7 +11,7 @@ import textwrap
 
 import pytest
 
-from redpanda.execution.processes import CommandManager
+from konden.execution.processes import CommandManager
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform != "linux", reason="Linux ownership")]
 
@@ -61,7 +61,7 @@ def test_host_kill_closes_control_pipes_and_reclaims_each_tree(tmp_path, kill_gr
         import asyncio,json,os,sys
         from pathlib import Path
         sys.path.insert(0,{str(root)!r})
-        from redpanda.execution.processes import CommandManager
+        from konden.execution.processes import CommandManager
         async def main():
             manager=CommandManager(Path('logs'),os.environ)
             entries=[]

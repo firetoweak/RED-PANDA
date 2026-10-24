@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from collections.abc import Mapping
 
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from tests.session_scheduler import settle_session
-from redpanda.assistant.toolsets import (
+from konden.assistant.toolsets import (
     LOAD_TOOLSET,
     LoadedTool,
     LoadedToolSnapshot,
@@ -14,7 +14,7 @@ from redpanda.assistant.toolsets import (
     ToolsetLoadError,
     load_toolset_binding,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,

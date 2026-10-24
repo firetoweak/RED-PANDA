@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx2
 
-from redpanda.mcp.client_manager import (
+from konden.mcp.client_manager import (
     ManagedMcpConnection, McpClientManager, McpSdkError, _SdkConnectionOwner,
     _is_transport_failure,
 )
-from redpanda.mcp.models import RuntimeAvailability
-from redpanda.mcp.toolset_provider import McpToolsetProvider
+from konden.mcp.models import RuntimeAvailability
+from konden.mcp.toolset_provider import McpToolsetProvider
 from tests.mcp.test_mcp import _stdio_record
 
 

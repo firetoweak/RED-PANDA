@@ -13,14 +13,14 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.host.agent_roster import AgentDeletedError
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import SqliteJournal, replay
-from redpanda.runtime.json_values import thaw_value
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.host.agent_roster import AgentDeletedError
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
+from konden.runtime import SqliteJournal, replay
+from konden.runtime.json_values import thaw_value
 from tests.fixtures.session_worker import ProcessLlm, config_for, is_subagent_request
 from tests.fixtures.compact_worker import HANDOFF
 from tests.assistant.test_agent_worktrees_process import tree
@@ -40,7 +40,7 @@ def linked_project(messages):
 
 
 def delayed_memory_sync_config(root):
-    from redpanda.assistant import assembly
+    from konden.assistant import assembly
 
     sync = assembly.sync_shared_memory
 
@@ -123,7 +123,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
     async def test_delete_stops_the_worker_and_command_and_restart_keeps_it_read_only(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             home.initialize()
             store = SessionStore(home.runtime_sessions_root)
             llm = WorktreeLlm(root)
@@ -181,7 +181,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             original_global_config = global_config.read_bytes()
             (project / "note.txt").write_text("human-uncommitted")
             original_status = git("status", "--porcelain").stdout
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             store = SessionStore(home.runtime_sessions_root)
             workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(project)
             llm = WorktreeLlm(root)
@@ -222,7 +222,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                     self.assertNotEqual(committed, base)
                     self.assertEqual(git("show", "-s", "--format=%an%n%ae%n%cn%n%ce",
                                          agents[0].projects[0].branch).stdout.decode().splitlines(),
-                                     ["同事0", "bot@redpanda.local", "同事0", "bot@redpanda.local"])
+                                     ["同事0", "bot@konden.local", "同事0", "bot@konden.local"])
                     self.assertEqual(git("show", f"{agents[0].projects[0].branch}:note.txt").stdout.decode(), "WRITE_AGENT_0")
                     self.assertEqual(git("diff", "--name-only", base.decode().strip(),
                                          agents[0].projects[0].branch).stdout.decode().splitlines(), ["command.txt", "note.txt"])
@@ -289,7 +289,7 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
     async def test_bot_directory_survives_host_restart_and_compaction_without_project(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             store = SessionStore(home.runtime_sessions_root)
             llm = WorktreeLlm(root)
 

@@ -9,17 +9,17 @@ import unittest
 
 from PIL import Image
 
-from redpanda.assistant.attachments import AttachmentGateway
+from konden.assistant.attachments import AttachmentGateway
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.context.projection import (
+from konden.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
 )
 from tests.fixtures.projection import project_chat_messages
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.runtime import (
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.runtime import (
     AgentRuntime,
     InvokeTool,
     ModelDecision,

@@ -5,12 +5,12 @@ import unittest
 from collections.abc import Awaitable, Callable
 
 from tests.fixtures.projection import project_chat_messages
-from redpanda.assistant.control import AssistantControlPlane
+from konden.assistant.control import AssistantControlPlane
 from tests.fixtures.projection import decision_from_llm
-from redpanda.assistant.runner import SessionScheduler
-from redpanda.llm.api import InvalidLLMResponse, LLMProviderError
-from redpanda.llm.api import LLMResponse, ToolCall
-from redpanda.runtime import (
+from konden.assistant.runner import SessionScheduler
+from konden.llm.api import InvalidLLMResponse, LLMProviderError
+from konden.llm.api import LLMResponse, ToolCall
+from konden.runtime import (
     AgentRuntime,
     CommandAuthorized,
     InvokeTool,
@@ -20,8 +20,8 @@ from redpanda.runtime import (
     UserMessageReceived,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.model import argument_rejection
-from redpanda.runtime.state import DecisionFrame, StateProjector
+from konden.runtime.model import argument_rejection
+from konden.runtime.state import DecisionFrame, StateProjector
 from tests.session_scheduler import SettlingScheduler
 
 

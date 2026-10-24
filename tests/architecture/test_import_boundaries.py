@@ -5,18 +5,18 @@ from pathlib import Path
 import unittest
 
 
-RUNTIME_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "runtime"
-ASSISTANT_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "assistant"
-LLM_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "llm"
-MCP_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "mcp"
-SKILLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "skills"
-CLI_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "cli"
-TOOLS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "tools"
-FILESYSTEM_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "filesystem"
-EXECUTION_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "execution"
-CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "redpanda" / "channels"
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "config.py"
-BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "redpanda" / "bootstrap.py"
+RUNTIME_ROOT = Path(__file__).resolve().parents[2] / "konden" / "runtime"
+ASSISTANT_ROOT = Path(__file__).resolve().parents[2] / "konden" / "assistant"
+LLM_ROOT = Path(__file__).resolve().parents[2] / "konden" / "llm"
+MCP_ROOT = Path(__file__).resolve().parents[2] / "konden" / "mcp"
+SKILLS_ROOT = Path(__file__).resolve().parents[2] / "konden" / "skills"
+CLI_ROOT = Path(__file__).resolve().parents[2] / "konden" / "cli"
+TOOLS_ROOT = Path(__file__).resolve().parents[2] / "konden" / "tools"
+FILESYSTEM_ROOT = Path(__file__).resolve().parents[2] / "konden" / "filesystem"
+EXECUTION_ROOT = Path(__file__).resolve().parents[2] / "konden" / "execution"
+CHANNELS_ROOT = Path(__file__).resolve().parents[2] / "konden" / "channels"
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "konden" / "config.py"
+BOOTSTRAP_PATH = Path(__file__).resolve().parents[2] / "konden" / "bootstrap.py"
 THINLLM_ROOT = Path(__file__).resolve().parents[2] / "thinllm"
 
 
@@ -60,7 +60,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             leaked = sorted(
                 _imports_any(
                     modules,
-                    {"redpanda.assistant", "redpanda.runtime"},
+                    {"konden.assistant", "konden.runtime"},
                 )
             )
             if leaked:
@@ -73,12 +73,12 @@ class LayerImportBoundaryTest(unittest.TestCase):
         # CLI consumes command execution and tool contracts.
         offenders: list[str] = []
         forbidden = {
-            "redpanda.assistant",
-            "redpanda.channels",
-            "redpanda.llm",
-            "redpanda.mcp",
-            "redpanda.runtime",
-            "redpanda.skills",
+            "konden.assistant",
+            "konden.channels",
+            "konden.llm",
+            "konden.mcp",
+            "konden.runtime",
+            "konden.skills",
         }
         for path in sorted(CLI_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
@@ -96,7 +96,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             leaked = sorted(
                 _imports_any(
                     modules,
-                    {"redpanda.assistant", "redpanda.runtime"},
+                    {"konden.assistant", "konden.runtime"},
                 )
             )
             if leaked:
@@ -117,13 +117,13 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 _imports_any(
                     modules,
                     {
-                        "redpanda.assistant",
-                        "redpanda.channels",
-                        "redpanda.cli",
-                        "redpanda.mcp",
-                        "redpanda.runtime",
-                        "redpanda.skills",
-                        "redpanda.tools",
+                        "konden.assistant",
+                        "konden.channels",
+                        "konden.cli",
+                        "konden.mcp",
+                        "konden.runtime",
+                        "konden.skills",
+                        "konden.tools",
                     },
                 )
             )
@@ -139,8 +139,8 @@ class LayerImportBoundaryTest(unittest.TestCase):
             unexpected = sorted(
                 module
                 for module in _imported_modules(path)
-                if module.startswith("redpanda.llm.")
-                and module != "redpanda.llm.api"
+                if module.startswith("konden.llm.")
+                and module != "konden.llm.api"
             )
             if unexpected:
                 offenders.append(
@@ -152,10 +152,10 @@ class LayerImportBoundaryTest(unittest.TestCase):
         self.assertNotIn("thinllm", _imported_modules(CONFIG_PATH))
         self.assertIn("thinllm", _imported_modules(BOOTSTRAP_PATH))
 
-    def test_thinllm_does_not_import_redpanda(self):
+    def test_thinllm_does_not_import_konden(self):
         offenders: list[str] = []
         for path in sorted(THINLLM_ROOT.rglob("*.py")):
-            leaked = sorted(_imports_any(_imported_modules(path), {"redpanda"}))
+            leaked = sorted(_imports_any(_imported_modules(path), {"konden"}))
             if leaked:
                 offenders.append(
                     f"{path.relative_to(THINLLM_ROOT)}: {', '.join(leaked)}"
@@ -165,7 +165,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_worker_config_does_not_construct_the_concrete_llm_client(self):
         import inspect
 
-        from redpanda.bootstrap import worker_config
+        from konden.bootstrap import worker_config
 
         self.assertNotIn("ChatCompletionsClient", inspect.getsource(worker_config))
 
@@ -186,18 +186,18 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_channels_do_not_import_runtime_or_infrastructure_layers(self):
         offenders: list[str] = []
         forbidden = {
-            "redpanda.llm",
-            "redpanda.runtime",
-            "redpanda.tools",
+            "konden.llm",
+            "konden.runtime",
+            "konden.tools",
         }
         # Channels consume workspace registration, never execution or file internals.
-        allowed_filesystem = {"redpanda.filesystem.registry"}
+        allowed_filesystem = {"konden.filesystem.registry"}
         for path in sorted(CHANNELS_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
             leaked = sorted(_imports_any(modules, forbidden))
             leaked += sorted(
                 module
-                for module in _imports_any(modules, {"redpanda.filesystem", "redpanda.execution"})
+                for module in _imports_any(modules, {"konden.filesystem", "konden.execution"})
                 if module not in allowed_filesystem
             )
             if leaked:
@@ -209,28 +209,28 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_assistant_uses_only_its_explicit_tool_ports(self):
         allowed = {
             "builtin_tools.py": {
-                "redpanda.tools.builtin",
-                "redpanda.tools.executor",
-                "redpanda.tools.registry",
+                "konden.tools.builtin",
+                "konden.tools.executor",
+                "konden.tools.registry",
             },
-            "conversations.py": {"redpanda.tools.results"},
-            "decision.py": {"redpanda.tools.builtin"},
-            "runner.py": {"redpanda.tools.builtin"},
-            "cli.py": {"redpanda.tools.spec"},
-            "skills.py": {"redpanda.tools.spec"},
-            "tool_results.py": {"redpanda.tools.control"},
+            "conversations.py": {"konden.tools.results"},
+            "decision.py": {"konden.tools.builtin"},
+            "runner.py": {"konden.tools.builtin"},
+            "cli.py": {"konden.tools.spec"},
+            "skills.py": {"konden.tools.spec"},
+            "tool_results.py": {"konden.tools.control"},
             "work_plan.py": {
-                "redpanda.tools.executor",
-                "redpanda.tools.registry",
-                "redpanda.tools.spec",
+                "konden.tools.executor",
+                "konden.tools.registry",
+                "konden.tools.spec",
             },
             "control.py": {
-                "redpanda.tools.control",
-                "redpanda.tools.spec",
+                "konden.tools.control",
+                "konden.tools.spec",
             },
             "management.py": {
-                "redpanda.tools.control",
-                "redpanda.tools.spec",
+                "konden.tools.control",
+                "konden.tools.spec",
             },
         }
         offenders: list[str] = []
@@ -239,7 +239,7 @@ class LayerImportBoundaryTest(unittest.TestCase):
             actual = {
                 module
                 for module in _imported_modules(path)
-                if module == "redpanda.tools" or module.startswith("redpanda.tools.")
+                if module == "konden.tools" or module.startswith("konden.tools.")
             }
             unexpected = sorted(actual - allowed.get(relative, set()))
             if unexpected:
@@ -249,13 +249,13 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_tools_do_not_import_runtime_or_product_layers(self):
         offenders: list[str] = []
         forbidden = {
-            "redpanda.assistant",
-            "redpanda.channels",
-            "redpanda.cli",
-            "redpanda.llm",
-            "redpanda.mcp",
-            "redpanda.runtime",
-            "redpanda.skills",
+            "konden.assistant",
+            "konden.channels",
+            "konden.cli",
+            "konden.llm",
+            "konden.mcp",
+            "konden.runtime",
+            "konden.skills",
         }
         for path in sorted(TOOLS_ROOT.rglob("*.py")):
             modules = _imported_modules(path)
@@ -273,9 +273,9 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 _imports_any(
                     _imported_modules(path),
                     {
-                        "redpanda.execution.local",
-                        "redpanda.execution.process_win",
-                        "redpanda.execution.process_posix",
+                        "konden.execution.local",
+                        "konden.execution.process_win",
+                        "konden.execution.process_posix",
                     },
                 )
             )
@@ -293,12 +293,12 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 {
                     module
                     for module in modules
-                    if module == "redpanda"
+                    if module == "konden"
                     or (
-                        module.startswith("redpanda.")
+                        module.startswith("konden.")
                         and not (
-                            module == "redpanda.runtime"
-                            or module.startswith("redpanda.runtime.")
+                            module == "konden.runtime"
+                            or module.startswith("konden.runtime.")
                         )
                     )
                 }
@@ -318,8 +318,8 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 continue
             implementations = sorted(
                 module for module in _imported_modules(path)
-                if module.startswith("redpanda.filesystem.")
-                and module not in {"redpanda.filesystem.workspace", "redpanda.filesystem.registry"}
+                if module.startswith("konden.filesystem.")
+                and module not in {"konden.filesystem.workspace", "konden.filesystem.registry"}
             )
             if implementations:
                 offenders.append(f"{path}: {', '.join(implementations)}")
@@ -328,17 +328,17 @@ class LayerImportBoundaryTest(unittest.TestCase):
     def test_file_and_execution_capabilities_are_independent(self):
         offenders: list[str] = []
         forbidden = {
-            "redpanda.assistant",
-            "redpanda.channels",
-            "redpanda.cli",
-            "redpanda.llm",
-            "redpanda.mcp",
-            "redpanda.runtime",
-            "redpanda.skills",
-            "redpanda.tools",
+            "konden.assistant",
+            "konden.channels",
+            "konden.cli",
+            "konden.llm",
+            "konden.mcp",
+            "konden.runtime",
+            "konden.skills",
+            "konden.tools",
         }
-        for capability, other in ((FILESYSTEM_ROOT, "redpanda.execution"),
-                                  (EXECUTION_ROOT, "redpanda.filesystem")):
+        for capability, other in ((FILESYSTEM_ROOT, "konden.execution"),
+                                  (EXECUTION_ROOT, "konden.filesystem")):
             for path in capability.rglob("*.py"):
                 leaked = sorted(_imports_any(_imported_modules(path), forbidden | {other}))
                 if leaked:

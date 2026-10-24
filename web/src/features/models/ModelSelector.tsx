@@ -1,6 +1,6 @@
 import { Alert, Button, Menu, Stack } from "@mantine/core";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
-import { useGetModelSettingsQuery, useGetSessionModelQuery, useSetSessionModelMutation } from "../../api/redpandaApi";
+import { useGetModelSettingsQuery, useGetSessionModelQuery, useSetSessionModelMutation } from "../../api/kondenApi";
 
 export function ModelSelector({ sessionId, connectionId }: { sessionId: string; connectionId: string | null }) {
   const { data: settings, error: settingsError } = useGetModelSettingsQuery(undefined, { pollingInterval: 5000 });

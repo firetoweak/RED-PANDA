@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.cli.approval import (
+from konden.cli.approval import (
     CLI_INSTALL_ACTION,
     CLI_UNINSTALL_ACTION,
     CliInstallApprovalHandler,
@@ -12,9 +12,9 @@ from redpanda.cli.approval import (
     CliInstallProposalInput,
     CliIdProposalInput,
 )
-from redpanda.cli.application import CliApplicationService
-from redpanda.paths import RedPandaHome
-from redpanda.tools.control import ControlApprovalProposal, ControlPreparationFailure
+from konden.cli.application import CliApplicationService
+from konden.paths import KondenHome
+from konden.tools.control import ControlApprovalProposal, ControlPreparationFailure
 from tests.cli.fakes import FakeExecutor, make_result
 
 
@@ -22,7 +22,7 @@ class CliInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = RedPandaHome(root / ".redpanda")
+        self.home = KondenHome(root / ".konden")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()
@@ -59,7 +59,7 @@ class CliInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
         result = await self.propose.handler(CliInstallProposalInput(
             name="rg",
             description="Fast text search",
-            locator="redpanda-missing-cli",
+            locator="konden-missing-cli",
         ))
         self.assertIsInstance(result, ControlPreparationFailure)
         self.assertFalse(result.result["ok"])
@@ -95,7 +95,7 @@ class CliUninstallApprovalTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = RedPandaHome(root / ".redpanda")
+        self.home = KondenHome(root / ".konden")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()

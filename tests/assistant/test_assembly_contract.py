@@ -7,11 +7,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import DecisionCancelled, StepCommitted
+from konden.assistant.assembly import build_assistant_assembly
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from konden.paths import KondenHome
+from konden.runtime import DecisionCancelled, StepCommitted
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
@@ -86,11 +86,11 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             journal = MemoryJournal()
             with (
                 patch(
-                    "redpanda.assistant.assembly.RedPandaHome.default",
-                    return_value=RedPandaHome(root / ".redpanda"),
+                    "konden.assistant.assembly.KondenHome.default",
+                    return_value=KondenHome(root / ".konden"),
                 ),
                 patch(
-                    "redpanda.assistant.assembly.runtime_data_root",
+                    "konden.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -151,11 +151,11 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             delivered = []
             with (
                 patch(
-                    "redpanda.assistant.assembly.RedPandaHome.default",
-                    return_value=RedPandaHome(root / ".redpanda"),
+                    "konden.assistant.assembly.KondenHome.default",
+                    return_value=KondenHome(root / ".konden"),
                 ),
                 patch(
-                    "redpanda.assistant.assembly.runtime_data_root",
+                    "konden.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):
@@ -208,17 +208,17 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             workspace = root / "workspace"
             workspace.mkdir()
-            home = RedPandaHome(root / ".redpanda")
+            home = KondenHome(root / ".konden")
             delivered: list[tuple[str, str]] = []
             failed: list[tuple[str, str]] = []
             activity: list[tuple[str, bool]] = []
             with (
                 patch(
-                    "redpanda.assistant.assembly.RedPandaHome.default",
+                    "konden.assistant.assembly.KondenHome.default",
                     return_value=home,
                 ),
                 patch(
-                    "redpanda.assistant.assembly.runtime_data_root",
+                    "konden.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):

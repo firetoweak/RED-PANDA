@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime, DecisionCancelled, InvokeTool, ModelDecision, RuntimeStatus,
     SqliteJournal, StateProjector, StepClaimRequest, StepCommitted, StepContinuationCancelled,
 )

@@ -3,7 +3,7 @@ import { useClipboard } from "@mantine/hooks";
 import { useState } from "react";
 
 import type { CreatedExternalConnection } from "../../api/contracts";
-import { useCreateExternalConnectionMutation, useGetExternalConnectionsQuery, useRevokeExternalConnectionMutation } from "../../api/redpandaApi";
+import { useCreateExternalConnectionMutation, useGetExternalConnectionsQuery, useRevokeExternalConnectionMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
 export function VerificationAccess() {
@@ -17,7 +17,7 @@ export function VerificationAccess() {
   const clipboard = useClipboard();
   const busy = creating.isLoading || revoking.isLoading;
   const config = created === null ? "" : JSON.stringify({ mcpServers: {
-    red_panda: { url: created.url, headers: { Authorization: `Bearer ${created.token}` } },
+    konden: { url: created.url, headers: { Authorization: `Bearer ${created.token}` } },
   } }, null, 2);
 
   async function create() {
@@ -50,7 +50,7 @@ export function VerificationAccess() {
   }
 
   return <Stack gap="md">
-    <Text size="sm">把连接配置添加到你使用的编码工具。完成修改后，编码端交付需求和明确版本，由 RED PANDA 团队独立验证，再把问题与证据交回原会话。</Text>
+    <Text size="sm">把连接配置添加到你使用的编码工具。完成修改后，编码端交付需求和明确版本，由 konden 团队独立验证，再把问题与证据交回原会话。</Text>
     <Text size="sm" c="dimmed">同一配置可以复用。编码会话自动领取身份，并从同事名单选择验证对象；用户无需取名或指定固定交接人。</Text>
     {created === null ? <Group justify="flex-start">
       <Button loading={creating.isLoading} disabled={connectionId === null || busy} onClick={() => void create()}>生成连接配置</Button>

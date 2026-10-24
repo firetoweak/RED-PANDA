@@ -7,15 +7,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.automation.once import OneShotClock, OneShotSchedules
-from redpanda.automation.recovery import recover_schedule_attempts
-from redpanda.automation.tool import CANCEL_SCHEDULE, cancel_schedule_binding
-from redpanda.runtime import (
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.automation.once import OneShotClock, OneShotSchedules
+from konden.automation.recovery import recover_schedule_attempts
+from konden.automation.tool import CANCEL_SCHEDULE, cancel_schedule_binding
+from konden.runtime import (
     AgentRuntime, CommandOutcomeReceived, CommandPhase, InvokeTool,
     ModelDecision, SqliteJournal,
 )
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.runtime.dispatcher import AttemptContext
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.session_scheduler import SettlingScheduler
 

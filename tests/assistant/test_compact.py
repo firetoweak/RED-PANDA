@@ -11,18 +11,18 @@ import unittest
 import pytest
 from PIL import Image
 
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.assistant.compact.core import (
+from konden.assistant.attachments import AttachmentGateway
+from konden.assistant.compact.core import (
     WINDOW,
 )
-from redpanda.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
-from redpanda.assistant.artifacts import FileArtifactGateway
-from redpanda.paths import RedPandaHome
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
+from konden.assistant.subagent.subagent import DelegateIntent, task_fact_arguments
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+from konden.assistant.artifacts import FileArtifactGateway
+from konden.paths import KondenHome
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.runtime import SqliteJournal, StepCommitted, DomainFactCommitted
 from tests.fixtures.compact_worker import CompactLlm, child_config_for, config_for, HANDOFF
 
 pytestmark = pytest.mark.process
@@ -39,7 +39,7 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         self.temp = TemporaryDirectory()
         self.root = Path(self.temp.name) / "project"
         self.root.mkdir()
-        self.home = RedPandaHome(Path(self.temp.name) / "home")
+        self.home = KondenHome(Path(self.temp.name) / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path

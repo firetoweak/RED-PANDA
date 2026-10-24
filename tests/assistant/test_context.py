@@ -8,24 +8,24 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from redpanda.assistant.agents import (
+from konden.assistant.agents import (
     AgentCreated,
     PrivateMessage,
     Speaker,
     fact_arguments,
 )
-from redpanda.assistant.artifacts import (
+from konden.assistant.artifacts import (
     FileArtifactStore,
 )
-from redpanda.assistant.compact.core import CompactContext
-from redpanda.assistant.context.projection import (
+from konden.assistant.compact.core import CompactContext
+from konden.assistant.context.projection import (
     ModelContextProjector,
     ModelContextSettings,
     externalize_payload,
 )
-from redpanda.assistant.decision import bind_executor_tools
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.runtime import (
+from konden.assistant.decision import bind_executor_tools
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.runtime import (
     AgentRuntime,
     CommandOutcome,
     InvokeTool,
@@ -35,8 +35,8 @@ from redpanda.runtime import (
     StateProjector,
     ToolBinding,
 )
-from redpanda.runtime.dispatcher import AttemptContext, ToolTerminal
-from redpanda.runtime.model import MAX_JSON_VALUE_BYTES
+from konden.runtime.dispatcher import AttemptContext, ToolTerminal
+from konden.runtime.model import MAX_JSON_VALUE_BYTES
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from tests.fixtures.memory_journal import MemoryJournal
@@ -117,8 +117,8 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["data"]["child_session_id"], child_id)
 
     async def test_schedule_trigger_times_reach_the_model_in_local_time(self):
-        from redpanda.automation.once import TIME_REACHED
-        from redpanda.automation.routines import ROUTINE_DUE
+        from konden.automation.once import TIME_REACHED
+        from konden.automation.routines import ROUTINE_DUE
 
         runtime = AgentRuntime(MemoryJournal(), None, {}, SequentialIds())
         await runtime.create_session(self.SESSION)
@@ -135,7 +135,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
             def astimezone(self, tz=None):
                 return super().astimezone(local if tz is None else tz)
 
-        with patch("redpanda.assistant.context.projection.datetime", LocalDateTime, create=True):
+        with patch("konden.assistant.context.projection.datetime", LocalDateTime, create=True):
             messages = project_chat_messages(events, StateProjector().project_visible(self.SESSION, events))
         shown = json.dumps(messages, ensure_ascii=False)
         self.assertEqual(shown.count("2026-10-19T07:00:00+08:00"), 4)
@@ -613,7 +613,7 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(prepared.age_dehydrated_command_ids, ())
 
     async def test_control_results_and_agent_creation_open_new_protection_windows(self):
-        from redpanda.assistant.control import (
+        from konden.assistant.control import (
             CONTROL_CONCLUDED,
             CONTROL_FAILED,
             CONTROL_PREPARATION_FAILED,

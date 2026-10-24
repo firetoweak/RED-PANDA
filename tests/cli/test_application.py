@@ -4,14 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from redpanda.cli.application import CliApplicationService
-from redpanda.cli.errors import (
+from konden.cli.application import CliApplicationService
+from konden.cli.errors import (
     CliAlreadyInstalledError,
     CliInputError,
     CliNotFoundError,
     CliSourceError,
 )
-from redpanda.paths import RedPandaHome
+from konden.paths import KondenHome
 from tests.cli.fakes import FakeExecutor, make_result
 
 
@@ -19,7 +19,7 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = RedPandaHome(root / ".redpanda")
+        self.home = KondenHome(root / ".konden")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()
@@ -94,7 +94,7 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
     async def test_command_name_not_on_path_is_source_error(self):
         with self.assertRaises(CliSourceError):
             await self.service.prepare_install(
-                "rg", "Fast text search", "redpanda-missing-cli"
+                "rg", "Fast text search", "konden-missing-cli"
             )
 
     async def test_install_frozen_rejects_vanished_candidate_path(self):
@@ -143,7 +143,7 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
 
         first = place_rg("path1")
         with patch(
-            "redpanda.cli.installer.latest_persistent_path",
+            "konden.cli.installer.latest_persistent_path",
             return_value=str(first.parent),
         ):
             candidate = await self.service.prepare_install(
@@ -159,7 +159,7 @@ class CliApplicationTest(unittest.IsolatedAsyncioTestCase):
         )
         moved = place_rg("path2")
         with patch(
-            "redpanda.cli.installer.latest_persistent_path",
+            "konden.cli.installer.latest_persistent_path",
             return_value=str(moved.parent),
         ):
             repaired = await self.service.repair(

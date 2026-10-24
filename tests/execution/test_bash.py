@@ -11,12 +11,12 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.execution.command import CaptureLimit, ShellNotFoundError
-from redpanda.execution.local.bash import (
+from konden.execution.command import CaptureLimit, ShellNotFoundError
+from konden.execution.local.bash import (
     BashCommandEnvironmentPolicy,
     BashCommandRunner,
 )
-from redpanda.execution.local.provider import create_local_command_environment
+from konden.execution.local.provider import create_local_command_environment
 
 
 BASH = shutil.which("bash") if os.name == "posix" else None
@@ -53,7 +53,7 @@ class BashCommandEnvironmentPolicyTest(unittest.TestCase):
 class BashDiscoveryTest(unittest.TestCase):
     def test_discovers_bash(self):
         with patch(
-            "redpanda.execution.local.bash.shutil.which",
+            "konden.execution.local.bash.shutil.which",
             return_value="/usr/bin/bash",
         ):
             runner = BashCommandRunner()
@@ -62,7 +62,7 @@ class BashDiscoveryTest(unittest.TestCase):
 
     def test_fails_when_bash_is_unavailable(self):
         with patch(
-            "redpanda.execution.local.bash.shutil.which",
+            "konden.execution.local.bash.shutil.which",
             return_value=None,
         ):
             with self.assertRaisesRegex(ShellNotFoundError, "bash"):
@@ -72,9 +72,9 @@ class BashDiscoveryTest(unittest.TestCase):
 class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
     def test_selects_bash_for_non_windows(self):
         with (
-            patch("redpanda.execution.local.provider.os.name", "other"),
+            patch("konden.execution.local.provider.os.name", "other"),
             patch(
-                "redpanda.execution.local.bash.BashCommandRunner"
+                "konden.execution.local.bash.BashCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "/usr/bin/bash"
@@ -86,9 +86,9 @@ class LocalEnvironmentProviderSelectionTest(unittest.TestCase):
 
     def test_selects_powershell_for_windows(self):
         with (
-            patch("redpanda.execution.local.provider.os.name", "nt"),
+            patch("konden.execution.local.provider.os.name", "nt"),
             patch(
-                "redpanda.execution.local.powershell.PowerShellCommandRunner"
+                "konden.execution.local.powershell.PowerShellCommandRunner"
             ) as runner_type,
         ):
             runner_type.return_value.executable = "C:/PowerShell/7/pwsh.exe"
@@ -109,10 +109,10 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
         source["JAVA_HOME"] = "/other/jdk"
         with (
             patch.dict(os.environ, {"PATH": "/product/bin", "JAVA_HOME": "/product/jdk"}),
-            patch("redpanda.execution.local.bash.shutil.which", return_value="/usr/bin/bash"),
+            patch("konden.execution.local.bash.shutil.which", return_value="/usr/bin/bash"),
             patch(
-                "redpanda.execution.local.owned_command.Running" if sys.platform == "linux"
-                else "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
+                "konden.execution.local.owned_command.Running" if sys.platform == "linux"
+                else "konden.execution.local.bash.asyncio.create_subprocess_exec",
                 side_effect=RuntimeError("stop after environment capture"),
             ) as spawn,
             self.assertRaisesRegex(RuntimeError, "stop after environment capture"),
@@ -127,12 +127,12 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "redpanda.execution.local.bash.shutil.which",
+                "konden.execution.local.bash.shutil.which",
                 return_value="/usr/bin/bash",
             ),
             patch(
-                "redpanda.execution.local.owned_command.Running" if sys.platform == "linux"
-                else "redpanda.execution.local.bash.asyncio.create_subprocess_exec",
+                "konden.execution.local.owned_command.Running" if sys.platform == "linux"
+                else "konden.execution.local.bash.asyncio.create_subprocess_exec",
                 side_effect=RuntimeError("internal bug"),
             ),
         ):
@@ -226,7 +226,7 @@ class BashCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_bash_is_an_expected_boundary_error(self):
         runner = BashCommandRunner(
-            executable="missing-bash-for-redpanda-test"
+            executable="missing-bash-for-konden-test"
         )
 
         with self.assertRaisesRegex(FileNotFoundError, "未找到 Shell"):

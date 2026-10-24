@@ -6,14 +6,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.compact.core import CompactBoundary, save_document
-from redpanda.assistant.loop_guard import NOTICE, LoopGuard, committed_notice
-from redpanda.assistant.loop_guard_strategies import Action, ConsecutiveActions
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import (
+from konden.assistant.assembly import build_assistant_assembly
+from konden.assistant.compact.core import CompactBoundary, save_document
+from konden.assistant.loop_guard import NOTICE, LoopGuard, committed_notice
+from konden.assistant.loop_guard_strategies import Action, ConsecutiveActions
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
+from konden.runtime import (
     DomainFactCommitted,
     Event,
     InvokeTool,
@@ -23,9 +23,9 @@ from redpanda.runtime import (
     StepCommitted,
     UserMessageReceived,
 )
-from redpanda.runtime.codec import EVENT_SCHEMA_VERSION
-from redpanda.runtime.json_values import thaw_value
-from redpanda.runtime.model import Command, Step
+from konden.runtime.codec import EVENT_SCHEMA_VERSION
+from konden.runtime.json_values import thaw_value
+from konden.runtime.model import Command, Step
 from tests.fixtures.projection import project_chat_messages
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import settle_session
@@ -101,8 +101,8 @@ class LoopGuardTest(unittest.TestCase):
         self.assertIsNone(LoopGuard().inspect((event(2, ("a", "b", "a", "b", "a", "b")),), 2))
 
     def test_control_results_and_agent_creation_restart_continuous_action_count(self):
-        from redpanda.assistant.agents import AGENT_CREATED
-        from redpanda.assistant.control import (
+        from konden.assistant.agents import AGENT_CREATED
+        from konden.assistant.control import (
             CONTROL_CONCLUDED,
             CONTROL_FAILED,
             CONTROL_PREPARATION_FAILED,
@@ -158,7 +158,7 @@ class LoopGuardIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 AssistantConfig("test", 200000, llm),
                 lambda *args: None, journal, session_id="s",
                 workspace=workspace_record(root),
-                home=RedPandaHome(root / "home"),
+                home=KondenHome(root / "home"),
             )
             try:
                 await assembly.runtime.receive_user_message("s", "read", delivery_id="u")

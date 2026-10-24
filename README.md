@@ -36,7 +36,7 @@
 支持 **Windows x64** 与 **Linux x64（glibc 2.35+）**，暂不支持 macOS。
 
 ```sh
-git clone https://github.com/firetoweak/RED-PANDA.git konden
+git clone https://github.com/firetoweak/konden.git konden
 cd konden
 ```
 

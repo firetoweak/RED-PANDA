@@ -102,7 +102,7 @@ manifest 域重新解析路径并重跑体检。
 
 ### 安装源
 
-第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，RED PANDA 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 切片届时与 install profile（长超时、非交互、复用同一命令执行实现、不做 UAC 提权）和候选冻结一起设计。
+第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，konden 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 切片届时与 install profile（长超时、非交互、复用同一命令执行实现、不做 UAC 提权）和候选冻结一起设计。
 
 ## 不做
 

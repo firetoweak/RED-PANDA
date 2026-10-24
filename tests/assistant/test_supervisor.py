@@ -10,16 +10,16 @@ import unittest
 
 import pytest
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.subagent.subagent import (
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.subagent.subagent import (
     DelegateIntent,
     project_delegations,
     project_reclaimed,
     task_fact_arguments,
 )
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import SqliteJournal
+from konden.paths import KondenHome
+from konden.runtime import SqliteJournal
 from tests.fixtures.session_worker import (
     CancellableProcessLlm,
     ProcessLlm,
@@ -54,10 +54,10 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_large_cli_catalog_does_not_crash_worker_or_hide_registered_clis(self):
         from dataclasses import replace
 
-        from redpanda.assistant.catalog import project_catalog
-        from redpanda.cli.registry import CliRegistry
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-        from redpanda.runtime import CommandOutcomeReceived
+        from konden.assistant.catalog import project_catalog
+        from konden.cli.registry import CliRegistry
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from konden.runtime import CommandOutcomeReceived
         from tests.cli.test_runtime import make_record
 
         registry = CliRegistry(self.home.clis_root)
@@ -107,9 +107,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_web_can_reject_journal_authorization_after_host_restart(self):
         from types import SimpleNamespace
         from unittest.mock import AsyncMock
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.channels.web.channel import WebChannel
-        from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, ToolBinding
+        from konden.assistant.conversations import AssistantQueries
+        from konden.channels.web.channel import WebChannel
+        from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, ToolBinding
 
         sid = "authorization-restart"
         await self.host.create(sid, self.workspace.workspace_id)
@@ -146,7 +146,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
     async def persist_child(self):
         from datetime import datetime, timezone
-        from redpanda.runtime.events import (
+        from konden.runtime.events import (
             DomainFactCommitted,
             EventDraft,
             DeliveryIdentity,
@@ -173,7 +173,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         return journal
 
     async def assert_failure_report(self, message):
-        from redpanda.runtime import DomainFactCommitted
+        from konden.runtime import DomainFactCommitted
 
         failure = await asyncio.wait_for(self.host.wait_failure(), 30)
         self.assertEqual(failure.failure.exception_type, "builtins.RuntimeError")
@@ -190,7 +190,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(message, reports[0].data["failure"])
 
     async def test_failed_reader_still_reports_and_exits(self):
-        from redpanda.assistant.host.ipc import WorkerFailed
+        from konden.assistant.host.ipc import WorkerFailed
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.persist_child()
@@ -202,7 +202,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_failure_report("application request failed")
 
     async def test_invalid_authorization_requests_do_not_fail_worker(self):
-        from redpanda.assistant.authorization import (
+        from konden.assistant.authorization import (
             AuthorizationConflict,
             AuthorizationTargetNotFound,
         )
@@ -227,8 +227,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_conflicting_input_replay_preserves_worker_and_original_message(self):
-        from redpanda.assistant.inputs import InputConflict
-        from redpanda.runtime import UserMessageReceived
+        from konden.assistant.inputs import InputConflict
+        from konden.runtime import UserMessageReceived
 
         sid = "input-replay"
         await self.host.create(sid, self.workspace.workspace_id)
@@ -278,7 +278,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("parent", "done"), self.output)
 
     async def assert_startup_failure(self, stage):
-        from redpanda.assistant.host.ipc import WorkerFailed
+        from konden.assistant.host.ipc import WorkerFailed
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.persist_child()
@@ -291,12 +291,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_startup_failure("config")
 
     async def asyncSetUp(self):
-        from redpanda.filesystem.registry import WorkspaceRegistry
+        from konden.filesystem.registry import WorkspaceRegistry
 
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name) / "project"
         self.root.mkdir()
-        self.home = RedPandaHome(Path(self.directory.name) / "home")
+        self.home = KondenHome(Path(self.directory.name) / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.workspace = WorkspaceRegistry.load(
             self.home.workspaces_path
@@ -370,9 +370,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                 await self.host.close()
 
     async def test_model_failure_survives_query_and_selection_then_retries_without_repeating_tool(self):
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.llm.api import LLMAuthenticationError, LLMTransientError, LLMProviderError, LLMCallResult, LLMResponse, LLMUsage, ToolCall
-        from redpanda.runtime.events import UserMessageReceived, CommandOutcomeReceived, StepCommitted
+        from konden.assistant.conversations import AssistantQueries
+        from konden.llm.api import LLMAuthenticationError, LLMTransientError, LLMProviderError, LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from konden.runtime.events import UserMessageReceived, CommandOutcomeReceived, StepCommitted
 
         (self.root / "input.txt").write_text("evidence", encoding="utf-8")
         for index, error in enumerate((LLMAuthenticationError("401"), LLMTransientError("429 exhausted"),
@@ -423,7 +423,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                                      and event.payload.command_id in read_commands for event in events), 1)
 
     async def test_child_stream_crosses_worker_boundary_only_to_observer(self):
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
 
         observed, thoughts = [], []
 
@@ -490,7 +490,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.activities[-1], ("one", "idle"))
 
     async def test_decision_cancel_is_cooperative_and_durable_across_worker_boundary(self):
-        from redpanda.runtime import DecisionCancelled
+        from konden.runtime import DecisionCancelled
 
         self.host.config_factory = partial(cancellable_config, self.root)
         self.host.llm = CancellableProcessLlm(self.root)
@@ -512,7 +512,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(events[-1].payload, DecisionCancelled)
 
     async def test_cancel_parent_reclaims_all_children_and_later_input_can_continue(self):
-        from redpanda.assistant.subagent.subagent import project_pending, project_returned
+        from konden.assistant.subagent.subagent import project_pending, project_returned
 
         await self.host.create(PARENT, self.workspace.workspace_id)
         await self.host.select("web", PARENT)
@@ -541,9 +541,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_interrupt_input_cancels_old_decision_and_replay_preserves_new_work(self):
-        from redpanda.assistant.inputs import InputConflict
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
-        from redpanda.runtime import DecisionCancelled, UserMessageReceived
+        from konden.assistant.inputs import InputConflict
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
+        from konden.runtime import DecisionCancelled, UserMessageReceived
 
         started, cancelled, redirected, release = (asyncio.Event() for _ in range(4))
 
@@ -586,8 +586,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_interrupt_input_preserves_children_for_parent_to_reclaim_selectively(self):
-        from redpanda.assistant.subagent.subagent import project_pending, project_returned
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from konden.assistant.subagent.subagent import project_pending, project_returned
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
         deciding, release = asyncio.Event(), asyncio.Event()
 
@@ -650,11 +650,11 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_instruction_redirects_child_once_even_after_parent_crash(self):
-        from redpanda.assistant.subagent.subagent import (
+        from konden.assistant.subagent.subagent import (
             INSTRUCT, INSTRUCTION_FACT, project_pending, project_returned,
         )
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-        from redpanda.runtime import DomainFactCommitted, UserMessageReceived
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from konden.runtime import DomainFactCommitted, UserMessageReceived
 
         old_started, old_cancelled, redirected, release, accepted = (asyncio.Event() for _ in range(5))
         observed = []
@@ -762,12 +762,12 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_parent_can_ask_twice_and_child_reply_recovery_does_not_finish_task(self):
-        from redpanda.assistant.subagent.subagent import (
+        from konden.assistant.subagent.subagent import (
             REPLY_FACT, CLOSED_FACT, RETURN_FACT,
             project_pending, project_returned,
         )
-        from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-        from redpanda.runtime import DomainFactCommitted, UserMessageReceived, replay
+        from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+        from konden.runtime import DomainFactCommitted, UserMessageReceived, replay
 
         started, accepted, continued_one, continued_two, finish = (asyncio.Event() for _ in range(5))
 
@@ -890,9 +890,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_failed_selection_keeps_previous_owner_mapping(self):
         from datetime import datetime, timezone
 
-        from redpanda.assistant.host.ipc import WorkerFailed
-        from redpanda.runtime import UserMessageReceived
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.assistant.host.ipc import WorkerFailed
+        from konden.runtime import UserMessageReceived
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         await self.host.create("old", self.workspace.workspace_id)
         await self.host.select("cli", "old")
@@ -944,8 +944,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         )
         await until(lambda: len(list(self.root.glob("blocked-*"))) == 2)
         await until(lambda: "parent" not in self.host.workers)
-        from redpanda.assistant.sessions import session_view
-        from redpanda.runtime import replay
+        from konden.assistant.sessions import session_view
+        from konden.runtime import replay
 
         before = await SqliteJournal(self.store.require("parent")).snapshot("parent")
         self.assertFalse(session_view(replay("parent", before).state).should_wake)
@@ -976,7 +976,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_recovery_preserves_unfinished_read_and_reports_once(self):
-        from redpanda.runtime import DispatchAttemptStarted
+        from konden.runtime import DispatchAttemptStarted
 
         self.host.config_factory = partial(interrupted_read_config, self.root)
         (self.root / "release").touch()
@@ -1001,8 +1001,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after[:len(before)], before)
         self.assertIn(started, {e.event_id for e in after})
         self.assertFalse((self.root / "read-retried").exists())
-        from redpanda.runtime import CommandPhase, DomainFactCommitted, StateProjector
-        from redpanda.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
+        from konden.runtime import CommandPhase, DomainFactCommitted, StateProjector
+        from konden.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
         state = StateProjector().project(CHILD, after).state
         self.assertEqual(state.commands[0].phase, CommandPhase.UNKNOWN)
         self.assertEqual(sum(
@@ -1026,8 +1026,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_child_unexpected_crash_is_reported_then_still_exposed(self):
-        from redpanda.runtime import DomainFactCommitted
-        from redpanda.assistant.subagent.subagent import CLOSED_FACT
+        from konden.runtime import DomainFactCommitted
+        from konden.assistant.subagent.subagent import CLOSED_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(
@@ -1050,8 +1050,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Traceback", report.data["failure"])
 
     async def test_parent_reclaim_stops_child_and_does_not_resume_it(self):
-        from redpanda.runtime import DomainFactCommitted
-        from redpanda.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
+        from konden.runtime import DomainFactCommitted
+        from konden.assistant.subagent.subagent import CLOSED_FACT, RETURN_FACT
 
         await self.host.create("parent", self.workspace.workspace_id)
         await self.host._route(

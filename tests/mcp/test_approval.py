@@ -4,14 +4,14 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from redpanda.mcp.application import McpApplicationService
-from redpanda.mcp.client_manager import McpClientManager
-from redpanda.mcp.registry import McpRegistry
-from redpanda.mcp.secrets import McpSecretStore
-from redpanda.paths import RedPandaHome
-from redpanda.tools.control import ControlApprovalProposal
-from redpanda.tools.spec import ToolArgumentsError
-from redpanda.mcp.approval import (
+from konden.mcp.application import McpApplicationService
+from konden.mcp.client_manager import McpClientManager
+from konden.mcp.registry import McpRegistry
+from konden.mcp.secrets import McpSecretStore
+from konden.paths import KondenHome
+from konden.tools.control import ControlApprovalProposal
+from konden.tools.spec import ToolArgumentsError
+from konden.mcp.approval import (
     MCP_INSTALL_ACTION,
     MCP_RECOVER_ACTION,
     MCP_REMOVE_ACTION,
@@ -24,9 +24,9 @@ from redpanda.mcp.approval import (
     create_mcp_remove_proposal_spec,
     create_mcp_update_proposal_spec,
 )
-from redpanda.mcp.errors import McpRecoveryPreconditionError
-from redpanda.mcp.models import McpServerRuntimeState, RuntimeAvailability
-from redpanda.mcp.console import McpConsoleAdapter
+from konden.mcp.errors import McpRecoveryPreconditionError
+from konden.mcp.models import McpServerRuntimeState, RuntimeAvailability
+from konden.mcp.console import McpConsoleAdapter
 
 
 class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
@@ -69,7 +69,7 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         request = await spec.handler(input_data)
 
         with TemporaryDirectory() as directory:
-            home = RedPandaHome(Path(directory) / ".redpanda")
+            home = KondenHome(Path(directory) / ".konden")
             home.initialize()
             secrets = McpSecretStore.from_home(home)
             service = McpApplicationService(

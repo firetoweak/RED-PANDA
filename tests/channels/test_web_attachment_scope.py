@@ -5,12 +5,12 @@ from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.channels.web.app import create_web_app
-from redpanda.channels.web.channel import WebChannel
-from redpanda.channels.web.hub import WebEventHub
-from redpanda.runtime import (
+from konden.assistant.attachments import AttachmentGateway
+from konden.assistant.host.session_store import SessionStore
+from konden.channels.web.app import create_web_app
+from konden.channels.web.channel import WebChannel
+from konden.channels.web.hub import WebEventHub
+from konden.runtime import (
     AgentRuntime,
     InvokeTool,
     ModelDecision,

@@ -7,11 +7,11 @@ import sys
 from functools import partial
 from pathlib import Path
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
 from tests.fixtures.session_worker import config_for
 
 
@@ -34,7 +34,7 @@ class ObservingCommandLlm:
 
 
 async def main(root):
-    home = RedPandaHome(root / "home")
+    home = KondenHome(root / "home")
     home.initialize()
     registry = WorkspaceRegistry.load(home.workspaces_path)
     store = SessionStore(home.runtime_sessions_root)

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock
-from redpanda.tools.builtin.background_commands import create_command_specs
-from redpanda.tools.spec import ToolArgumentsError
+from konden.tools.builtin.background_commands import create_command_specs
+from konden.tools.spec import ToolArgumentsError
 
 
 def test_command_output_schema_rejects_negative_cursors_and_extra_fields():

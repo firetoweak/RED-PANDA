@@ -6,12 +6,12 @@ import unittest
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from redpanda.assistant.catalog import CatalogSkill
-from redpanda.assistant.context.projection import ModelContextSettings
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.assistant.skills import SkillToolAdapter
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import (
+from konden.assistant.catalog import CatalogSkill
+from konden.assistant.context.projection import ModelContextSettings
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.assistant.skills import SkillToolAdapter
+from konden.paths import KondenHome
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,
@@ -19,9 +19,9 @@ from redpanda.runtime import (
     RuntimeStatus,
     StepCommitted,
 )
-from redpanda.runtime.state import DecisionFrame
-from redpanda.skills.application import SkillApplicationService
-from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from konden.runtime.state import DecisionFrame
+from konden.skills.application import SkillApplicationService
+from konden.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.session_scheduler import settle_session
@@ -79,7 +79,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.workspace = RedPandaHome(root / ".redpanda")
+        self.workspace = KondenHome(root / ".konden")
         self.workspace.initialize()
         source = root / "source"
         write_skill(
@@ -116,7 +116,7 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.temporary.cleanup()
 
     async def test_bundled_skills_are_available_without_installation_or_project(self):
-        home = RedPandaHome(Path(self.temporary.name) / "empty-home")
+        home = KondenHome(Path(self.temporary.name) / "empty-home")
         home.initialize()
         service = SkillApplicationService(home)
         adapter = SkillToolAdapter(

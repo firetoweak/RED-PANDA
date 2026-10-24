@@ -1,8 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
-from redpanda.filesystem import FileAccess
-from redpanda.filesystem.workspace import (
+from konden.filesystem import FileAccess
+from konden.filesystem.workspace import (
     EnvironmentLocation,
     FilesystemPermission,
     PathOutsideWorkspaceView,

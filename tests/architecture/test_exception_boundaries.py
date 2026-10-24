@@ -9,11 +9,11 @@ ROOT = Path(__file__).resolve().parents[2]
 BROAD = {"Exception", "BaseException"}
 # 宽泛捕获且不再抛出，等于把未知异常降级为普通结果；只允许在登记的边界这样做。
 BOUNDARIES = {
-    "redpanda/assistant/host/llm_port.py::complete_llm_chat": "LLM 调用失败编码后跨进程交还调用方",
-    "redpanda/assistant/host/supervisor.py::_watch": "Worker 失败归 Worker 边界，转为 WorkerFailed",
-    "redpanda/mcp/client_manager.py::aclose": "逐个关闭连接，收集后合并抛出",
-    "redpanda/tools/builtin/command_interrupts.py::wait": "收集各命令失败，由调用方抛出",
-    "redpanda/tools/executor.py::_execute_spec": "handler 异常作为工具错误交给模型，不打崩 Worker",
+    "konden/assistant/host/llm_port.py::complete_llm_chat": "LLM 调用失败编码后跨进程交还调用方",
+    "konden/assistant/host/supervisor.py::_watch": "Worker 失败归 Worker 边界，转为 WorkerFailed",
+    "konden/mcp/client_manager.py::aclose": "逐个关闭连接，收集后合并抛出",
+    "konden/tools/builtin/command_interrupts.py::wait": "收集各命令失败，由调用方抛出",
+    "konden/tools/executor.py::_execute_spec": "handler 异常作为工具错误交给模型，不打崩 Worker",
 }
 
 
@@ -39,7 +39,7 @@ class ExceptionBoundaryTest(unittest.TestCase):
     def test_broad_except_reraises_outside_declared_boundaries(self):
         offenders = []
         declared = set()
-        for package in ("redpanda", "thinllm"):
+        for package in ("konden", "thinllm"):
             for path in sorted((ROOT / package).rglob("*.py")):
                 relative = path.relative_to(ROOT).as_posix()
                 for function, line in _swallowing_handlers(path):

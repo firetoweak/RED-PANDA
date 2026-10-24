@@ -7,13 +7,13 @@ import re
 
 import pytest
 
-from redpanda import bootstrap
-from redpanda.paths import RedPandaHome
+from konden import bootstrap
+from konden.paths import KondenHome
 
 
 @pytest.mark.parametrize("with_project", [False, True])
 def test_fresh_entry_refuses_a_data_root_with_agents(tmp_path, monkeypatch, with_project):
-    home = RedPandaHome(tmp_path / "home")
+    home = KondenHome(tmp_path / "home")
     directory = (
         home.agent_worktrees_root / "project" / "agent"
         if with_project
@@ -25,7 +25,7 @@ def test_fresh_entry_refuses_a_data_root_with_agents(tmp_path, monkeypatch, with
     home.runtime_sessions_root.mkdir(parents=True)
     journal = home.runtime_sessions_root / "agent.jsonl"
     journal.write_bytes(b"keep bot conversation")
-    monkeypatch.setenv("REDPANDA_HOME", str(home.root))
+    monkeypatch.setenv("KONDEN_HOME", str(home.root))
     monkeypatch.setattr(bootstrap, "install_host_environment", lambda: None)
     monkeypatch.setattr(bootstrap, "install_timing_logging", lambda: None)
 

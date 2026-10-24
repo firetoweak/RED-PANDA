@@ -2,7 +2,7 @@ import { ActionIcon, Group, Text } from "@mantine/core";
 import { IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 
-const WIDTH_KEY = "redpanda.contentPageWidth";
+const WIDTH_KEY = "konden.contentPageWidth";
 const MIN_WIDTH = 320;
 const MIN_CONVERSATION_WIDTH = 480;
 const DEFAULT_WIDTH = 640;

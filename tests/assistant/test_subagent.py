@@ -5,13 +5,13 @@ from collections.abc import Awaitable
 import unittest
 from types import SimpleNamespace
 
-from redpanda.assistant.control import AssistantControlPlane
-from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
-from redpanda.assistant.context.projection import ModelContextProjector
-from redpanda.assistant.delivery import PreviewEmitter, ensure_deliver
-from redpanda.assistant.loop_guard import LoopGuard
+from konden.assistant.control import AssistantControlPlane
+from konden.assistant.decision import JournalBackedLlmDecisionMaker
+from konden.assistant.context.projection import ModelContextProjector
+from konden.assistant.delivery import PreviewEmitter, ensure_deliver
+from konden.assistant.loop_guard import LoopGuard
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.subagent.subagent import (
+from konden.assistant.subagent.subagent import (
     DELEGATE,
     INSTRUCT,
     LIST_SUBAGENTS,
@@ -30,7 +30,7 @@ from redpanda.assistant.subagent.subagent import (
     closed_arguments,
     return_data,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     CommandPhase,
@@ -41,8 +41,8 @@ from redpanda.runtime import (
     ToolBinding,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.dispatcher import AttemptContext
-from redpanda.runtime.state import DecisionFrame
+from konden.runtime.dispatcher import AttemptContext
+from konden.runtime.state import DecisionFrame
 from tests.assistant.test_runner import SequentialIds
 from tests.session_scheduler import SettlingScheduler
 
@@ -473,7 +473,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         transport.assert_not_awaited()
 
     async def test_external_schemas_bypass_builtin_name_filter(self):
-        from redpanda.assistant.toolsets import ToolSurface
+        from konden.assistant.toolsets import ToolSurface
         from tests.assistant.test_toolsets import FakeEchoProvider
 
         surface = ToolSurface(providers=(FakeEchoProvider(),), base_schemas=[

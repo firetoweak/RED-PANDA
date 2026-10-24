@@ -12,9 +12,9 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from tests.fixtures.artifacts import MemoryArtifactGateway, MemoryArtifactStore
-from redpanda.assistant.context.projection import ModelContextProjector
+from konden.assistant.context.projection import ModelContextProjector
 from tests.fixtures.projection import project_chat_messages
-from redpanda.assistant.control import (
+from konden.assistant.control import (
     CONTROL_APPROVED,
     CONTROL_CONCLUDED,
     CONTROL_EXECUTION_STARTED,
@@ -31,13 +31,13 @@ from redpanda.assistant.control import (
     project_control_message,
     project_pending_approval,
 )
-from redpanda.assistant.decision import JournalBackedLlmDecisionMaker
-from redpanda.assistant.delivery import PreviewEmitter, deliver_binding
-from redpanda.assistant.loop_guard import LoopGuard
-from redpanda.assistant.sessions import AssistantSessions
-from redpanda.assistant.toolsets import ToolSurface
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.runtime import (
+from konden.assistant.decision import JournalBackedLlmDecisionMaker
+from konden.assistant.delivery import PreviewEmitter, deliver_binding
+from konden.assistant.loop_guard import LoopGuard
+from konden.assistant.sessions import AssistantSessions
+from konden.assistant.toolsets import ToolSurface
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.runtime import (
     AgentRuntime,
     DomainFactCommitted,
     LeaseLostError,
@@ -45,14 +45,14 @@ from redpanda.runtime import (
     StepCommitted,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.json_values import thaw_value
-from redpanda.tools.control import (
+from konden.runtime.json_values import thaw_value
+from konden.tools.control import (
     ControlApprovalExecution,
     ControlApprovalProposal,
     ControlOperation,
     ControlPreparationFailure,
 )
-from redpanda.tools.spec import PydanticParameters, ToolSpec
+from konden.tools.spec import PydanticParameters, ToolSpec
 from tests.session_scheduler import settle_session
 
 
@@ -258,7 +258,7 @@ def _sessions(runtime, control, scheduler=None) -> AssistantSessions:
 
 
 def _recovery_config(workspace):
-    from redpanda.assistant.host import worker
+    from konden.assistant.host import worker
     from tests.fixtures.session_worker import config_for
 
     class Handler(ApprovalHandler):
@@ -281,17 +281,17 @@ def _recovery_config(workspace):
 @pytest.mark.process
 class StartupControlRecoveryTest(unittest.IsolatedAsyncioTestCase):
     async def test_startup_resumes_committed_control_work_with_no_automatic_retry(self):
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.assistant.host.supervisor import HostSupervisor
-        from redpanda.assistant.sessions import session_view
-        from redpanda.paths import RedPandaHome
-        from redpanda.runtime import SqliteJournal, replay
+        from konden.assistant.host.session_store import SessionStore
+        from konden.assistant.host.supervisor import HostSupervisor
+        from konden.assistant.sessions import session_view
+        from konden.paths import KondenHome
+        from konden.runtime import SqliteJournal, replay
         from tests.assistant.test_supervisor import until
         from tests.fixtures.session_worker import ProcessLlm
 
         with TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             store = SessionStore(home.runtime_sessions_root)
 
             def host():

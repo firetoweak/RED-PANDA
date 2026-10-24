@@ -7,19 +7,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from redpanda.assistant.attachments import (
+from konden.assistant.attachments import (
     AttachmentGateway,
     AttachmentRejected,
     MAX_SOURCE_BYTES,
 )
-from redpanda.assistant.builtin_tools import build_builtin_tools
+from konden.assistant.builtin_tools import build_builtin_tools
 from tests.fixtures.projection import project_chat_messages
-from redpanda.assistant.conversations import project_conversation
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.sessions import SessionView
-from redpanda.runtime import AgentRuntime, StateProjector
+from konden.assistant.conversations import project_conversation
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.sessions import SessionView
+from konden.runtime import AgentRuntime, StateProjector
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.filesystem.registry import WorkspaceRecord
+from konden.filesystem.registry import WorkspaceRecord
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 

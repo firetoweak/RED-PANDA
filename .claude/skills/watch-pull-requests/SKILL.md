@@ -5,7 +5,7 @@ description: "For the Agent that coordinates PR testing on this repository: chec
 
 # Watch pull requests
 
-You coordinate testing of pull requests into `main`. Code is written by the person and their coding agents; you never change code, merge, or edit the verification map. Verification findings reach the PR as comments from the testers, so whoever changes the PR sees them right away. Testers verify in the running app with `verify-redpanda`; you decide what needs testing, who tests it, and what the person hears.
+You coordinate testing of pull requests into `main`. Code is written by the person and their coding agents; you never change code, merge, or edit the verification map. Verification findings reach the PR as comments from the testers, so whoever changes the PR sees them right away. Testers verify in the running app with `verify-konden`; you decide what needs testing, who tests it, and what the person hears.
 
 ## Each run
 
@@ -48,7 +48,7 @@ If a tester is already verifying an older head of that PR, tell that tester dire
 **Needs real verification** — checks passed on a new head:
 
 1. Use `list_colleagues` to find a tester who is idle. A PR goes to the tester who had it before; that tester knows it and has earlier evidence to compare.
-2. In the testing group, call that tester by name with `send_group_message`: `开工 #N`, the title, the head commit, and the instruction to merge the head onto the latest `main` and verify with `verify-redpanda` (smoke run plus the PR's new behavior), then post the report in the group and as a comment on the PR (`gh pr comment`).
+2. In the testing group, call that tester by name with `send_group_message`: `开工 #N`, the title, the head commit, and the instruction to merge the head onto the latest `main` and verify with `verify-konden` (smoke run plus the PR's new behavior), then post the report in the group and as a comment on the PR (`gh pr comment`).
 3. Tell the person in one line which tester has it.
 4. Remember the dispatch (PR, head, tester, time) in your own words in that message; you will look for it later. Do not dispatch the same head twice.
 
@@ -67,9 +67,9 @@ Only real dispatches, the coordination they need (such as "stop testing the old 
 
 ## Testers (for the dispatch message)
 
-Each tester verifies in its own worktree with its own `REDPANDA_HOME`, port range and evidence directory, agreed in the group when the team was set up; `verify-redpanda` describes isolated launch. Automatic authorization is allowed inside the isolated verification instance. Testers do not change code or merge, and do not edit the verification map; besides the group report they post findings and suggested changes as a PR comment; a stale map is mentioned in the report and the person maintains it.
+Each tester verifies in its own worktree with its own `KONDEN_HOME`, port range and evidence directory, agreed in the group when the team was set up; `verify-konden` describes isolated launch. Automatic authorization is allowed inside the isolated verification instance. Testers do not change code or merge, and do not edit the verification map; besides the group report they post findings and suggested changes as a PR comment; a stale map is mentioned in the report and the person maintains it.
 
-Smoke run: the features in `.claude/skills/verify-redpanda/features/` that the person has named as the smoke set; until named, use `setup-and-launch`, `model-settings`, `workspace-management`, `web-session-chat`, `tool-coding-round`, `run-control`.
+Smoke run: the features in `.claude/skills/verify-konden/features/` that the person has named as the smoke set; until named, use `setup-and-launch`, `model-settings`, `workspace-management`, `web-session-chat`, `tool-coding-round`, `run-control`.
 
 ## Known flaky checks
 

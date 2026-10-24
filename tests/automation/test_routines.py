@@ -10,11 +10,11 @@ import unittest
 from datetime import timedelta
 from unittest.mock import patch
 
-from redpanda.automation.routines import (
+from konden.automation.routines import (
     ACTIVE, PAUSED, PAUSED_BY_USER, RoutineStore,
 )
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.runtime import AgentRuntime, SqliteJournal
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.runtime import AgentRuntime, SqliteJournal
 
 
 class RoutineStoreTest(unittest.TestCase):
@@ -115,7 +115,7 @@ class RoutineStoreTest(unittest.TestCase):
         anchor = routine.next_due
         for lateness, intervals in ((timedelta(milliseconds=7), 1),
                                     (timedelta(minutes=12, milliseconds=13), 3)):
-            with patch("redpanda.automation.routines.datetime") as clock:
+            with patch("konden.automation.routines.datetime") as clock:
                 clock.now.return_value = routine.next_due + lateness
                 # Stored values still decode through the real datetime type.
                 from datetime import datetime

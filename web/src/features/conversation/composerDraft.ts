@@ -1,7 +1,7 @@
 type SavedDraft = { text: string };
 
 function key(sessionId: string): string {
-  return `redpanda.composerDraft.${sessionId}`;
+  return `konden.composerDraft.${sessionId}`;
 }
 
 function read(sessionId: string): SavedDraft {

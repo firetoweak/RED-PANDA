@@ -5,8 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from redpanda.config import INITIAL_CONFIG, load_app_config
-from redpanda.llm.config import ModelConfig
+from konden.config import INITIAL_CONFIG, load_app_config
+from konden.llm.config import ModelConfig
 
 
 class AppConfigTest(unittest.TestCase):
@@ -37,11 +37,11 @@ class AppConfigTest(unittest.TestCase):
     def test_first_run_creates_empty_model_configuration(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
-            expected_path = home / ".redpanda" / "config.json"
+            expected_path = home / ".konden" / "config.json"
 
             with (
                 patch.dict(os.environ, {}, clear=True),
-                patch("redpanda.paths.Path.home", return_value=home),
+                patch("konden.paths.Path.home", return_value=home),
             ):
                 config = load_app_config()
 
@@ -52,16 +52,16 @@ class AppConfigTest(unittest.TestCase):
         self.assertIsNone(config.default)
         self.assertEqual(config.models, ())
 
-    def test_loads_default_config_from_redpanda_home(self):
+    def test_loads_default_config_from_konden_home(self):
         with TemporaryDirectory() as directory:
             home = Path(directory)
-            config_path = home / ".redpanda" / "config.json"
+            config_path = home / ".konden" / "config.json"
             config_path.parent.mkdir()
             self._write_config(config_path, self._data())
 
             with (
                 patch.dict(os.environ, {}, clear=True),
-                patch("redpanda.paths.Path.home", return_value=home),
+                patch("konden.paths.Path.home", return_value=home),
             ):
                 config = load_app_config()
 
@@ -75,7 +75,7 @@ class AppConfigTest(unittest.TestCase):
 
             with patch.dict(
                 os.environ,
-                {"REDPANDA_CONFIG": str(path.with_name("missing.json"))},
+                {"KONDEN_CONFIG": str(path.with_name("missing.json"))},
             ):
                 config = load_app_config(path)
 
@@ -86,7 +86,7 @@ class AppConfigTest(unittest.TestCase):
             path = Path(directory) / "config.json"
             self._write_config(path, self._data())
 
-            with patch.dict(os.environ, {"REDPANDA_CONFIG": str(path)}):
+            with patch.dict(os.environ, {"KONDEN_CONFIG": str(path)}):
                 config = load_app_config()
 
         self.assertEqual(config.default_model, "deepseek/model")

@@ -10,13 +10,13 @@ import unittest
 
 import pytest
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.subagent.subagent import project_delegate_intents
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import SqliteJournal
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.subagent.subagent import project_delegate_intents
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
+from konden.runtime import SqliteJournal
 from tests.assistant.test_agent_worktrees_process import git, tree
 from tests.fixtures.session_worker import ProcessLlm, config_for, is_subagent_request
 
@@ -73,7 +73,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         (self.project / "note.txt").write_text("initial\n", encoding="utf-8")
         git(self.project, "add", "note.txt")
         git(self.project, "commit", "-m", "initial")
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         registry = WorkspaceRegistry.load(self.home.workspaces_path)
         self.workspace = registry.register_path(self.project)
         self.llm = DelegatingLlm(self.root)
@@ -85,7 +85,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         await self.host.close()
 
     async def test_child_works_in_its_own_branch_and_merges_into_the_parent_without_approval(self):
-        parent = await self.host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+        parent = await self.host.create_agent(name="konden", workspace_id=self.workspace.workspace_id)
         await self.host.select("page", parent.session_id)
         await self.host.receive_user_message(parent.session_id, "DELEGATE_WORK", delivery_id="work")
         async with asyncio.timeout(60):
@@ -94,7 +94,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.05)
             await self.host.wait_quiescent(parent.session_id)
         self.assertEqual((tree(parent) / "child.txt").read_text(encoding="utf-8"), "from child\n")
-        self.assertEqual(git(tree(parent), "log", "-1", "--format=%an", "--", "child.txt"), "小熊猫")
+        self.assertEqual(git(tree(parent), "log", "-1", "--format=%an", "--", "child.txt"), "konden")
         self.assertEqual(git(tree(parent), "status", "--porcelain"), "")
         self.assertFalse((self.home.state_root / "workspace_views").exists())
         self.assertFalse((self.home.state_root / "subagent_worktrees").exists())
@@ -104,7 +104,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.host.failures.empty())
 
     async def test_conflicts_never_reach_the_parent_and_a_resolving_task_completes_the_merge(self):
-        parent = await self.host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+        parent = await self.host.create_agent(name="konden", workspace_id=self.workspace.workspace_id)
         trees = self.host.agent_worktrees
         project = self.host.workspaces.get(self.workspace.workspace_id)
         first, second = f"{parent.session_id}/sub-1", f"{parent.session_id}/sub-2"
@@ -140,7 +140,7 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(git(self.project, "status", "--porcelain"), "")
 
     async def test_git_failure_while_fixing_a_returned_result_comes_back_with_git_own_words(self):
-        parent = await self.host.create_agent(name="小熊猫", workspace_id=self.workspace.workspace_id)
+        parent = await self.host.create_agent(name="konden", workspace_id=self.workspace.workspace_id)
         trees = self.host.agent_worktrees
         task = f"{parent.session_id}/sub-1"
         linked, = parent.projects

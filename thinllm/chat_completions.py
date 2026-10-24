@@ -70,7 +70,7 @@ class ChatCompletionsClient:
         if endpoint.api_key is not None:
             headers["Authorization"] = f"Bearer {endpoint.api_key}"
         if endpoint.account_id is not None:
-            headers.update({"ChatGPT-Account-Id": endpoint.account_id, "originator": "redpanda"})
+            headers.update({"ChatGPT-Account-Id": endpoint.account_id, "originator": "konden"})
         self._client = httpx.AsyncClient(
             base_url=f"{endpoint.base_url}/",
             headers=headers,

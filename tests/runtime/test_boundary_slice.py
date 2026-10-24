@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandAuthorized,
     CommandPhase,
@@ -27,7 +27,7 @@ from redpanda.runtime import (
     replay,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.model import AuthorizationPolicy
+from konden.runtime.model import AuthorizationPolicy
 from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 

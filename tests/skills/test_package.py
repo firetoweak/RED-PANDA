@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.skills.models import SkillPackageLimits
-from redpanda.skills.package import (
+from konden.skills.models import SkillPackageLimits
+from konden.skills.package import (
     LocalSkillPackageReader,
     SkillPackageError,
     validate_relative_skill_path,

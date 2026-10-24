@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import type { ExternalConnection } from "../src/api/contracts";
 import { VerificationAccess } from "../src/features/settings/VerificationAccess";
 import runtimeReducer from "../src/realtime/runtimeSlice";
@@ -12,9 +12,9 @@ import runtimeReducer from "../src/realtime/runtimeSlice";
 const stores: ReturnType<typeof createStore>[] = [];
 function createStore() {
   return configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
     preloadedState: { runtime: { ...runtimeReducer(undefined, { type: "init" }), connectionId: "human" } },
-    middleware: (defaults) => defaults().concat(redpandaApi.middleware),
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
   });
 }
 beforeEach(() => {
@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  for (const store of stores.splice(0)) store.dispatch(redpandaApi.util.resetApiState());
+  for (const store of stores.splice(0)) store.dispatch(kondenApi.util.resetApiState());
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "fonts");
 });
@@ -63,7 +63,7 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
   fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
   const config = await screen.findByLabelText("MCP 配置（JSON）");
   const value = (config as HTMLTextAreaElement).value;
-  expect(JSON.parse(value).mcpServers.red_panda).toEqual({
+  expect(JSON.parse(value).mcpServers.konden).toEqual({
     url: "http://localhost/mcp/", headers: { Authorization: "Bearer one-time-secret" },
   });
   await waitFor(() => expect(JSON.stringify(store.getState())).not.toContain("one-time-secret"));

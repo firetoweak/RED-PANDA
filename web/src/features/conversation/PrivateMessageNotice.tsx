@@ -1,7 +1,7 @@
 import { IconArrowDownLeft, IconArrowUpRight } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 
-import { useGetAgentsQuery } from "../../api/redpandaApi";
+import { useGetAgentsQuery } from "../../api/kondenApi";
 import { BotAvatar, useIdentityColor } from "./ChatPresentation";
 import { formatMessageTime } from "./messageTime";
 import type { VisiblePrivateMessage } from "./visibleTimeline";

@@ -4,13 +4,13 @@
 
 ## 目的
 
-用「调查 HelperMe 自身架构」这个真实任务，检验 **Parent 侧委派策略**（拆分粒度、任务描述里的绝对路径与兜底规则、是否给出读取预算）对子 Agent 成败的影响。
+用「调查 konden 自身架构」这个真实任务，检验 **Parent 侧委派策略**（拆分粒度、任务描述里的绝对路径与兜底规则、是否给出读取预算）对子 Agent 成败的影响。
 
 这是 Parent 行为实验：全程只读，不涉及 Runtime、Journal 或任何代码改动，被调查的文件也没有被改。
 
 ## 环境
 
-- 平台：Windows；仓库根 `D:\work\helpMe\helperMe`
+- 平台：Windows；仓库根 `D:\work\helpMe\konden`
 - 子 Agent 能力面：只读白名单（`READONLY_TOOL_NAMES`），实测可用为 `glob` / `grep` / `read_file` 一类；`execute_command` 不在白名单内
 - 子 Agent 模型输入预算：180000（由越界报错读出）
 - 委派 8 次，分 3 批；同批在同一决策内并行发出
@@ -45,7 +45,7 @@
 批 1 把「工具 + Skill + MCP + 沙箱」四个目录压成一个任务，且没给任何读取量约束。子 Agent 不知道自己的预算余量，自由读到越界：
 
 ```
-helperme.assistant.context.projection.ModelContextBudgetExceeded:
+konden.assistant.context.projection.ModelContextBudgetExceeded:
 模型输入估算 182052 超过预算 180000
 ```
 
@@ -57,7 +57,7 @@ helperme.assistant.context.projection.ModelContextBudgetExceeded:
 
 ### 2. 换了靶子 ×1 —— 错误路径触发的最坏结果
 
-批 2 的任务把路径多写了一层（`D:\work\helpMe\helperMe\helperMe\helperme\tools`，正确应为 `D:\work\helpMe\helperMe\helperme\tools`）。子 Agent glob 全 NOT_FOUND 后：
+批 2 的任务把路径多写了一层（`D:\work\helpMe\konden\konden\konden\tools`，正确应为 `D:\work\helpMe\konden\konden\tools`）。子 Agent glob 全 NOT_FOUND 后：
 
 - **没有**报告"路径不存在"；
 - **没有**向 Parent 要求澄清；

@@ -4,12 +4,12 @@ import unittest
 
 from pydantic import BaseModel
 
-from redpanda.assistant.builtin_tools import BuiltinToolRunner
-from redpanda.runtime import InvokeTool
-from redpanda.tools.builtin import CommandInterrupts
-from redpanda.tools.executor import ToolsExecutor
-from redpanda.tools.registry import ToolRegistry
-from redpanda.tools.spec import pydantic_tool_spec
+from konden.assistant.builtin_tools import BuiltinToolRunner
+from konden.runtime import InvokeTool
+from konden.tools.builtin import CommandInterrupts
+from konden.tools.executor import ToolsExecutor
+from konden.tools.registry import ToolRegistry
+from konden.tools.spec import pydantic_tool_spec
 
 
 class _NestedItem(BaseModel):

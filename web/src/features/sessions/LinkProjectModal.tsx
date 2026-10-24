@@ -1,7 +1,7 @@
 import { Alert, Button, Modal, Stack } from "@mantine/core";
 import { useState } from "react";
 
-import { useLinkProjectMutation } from "../../api/redpandaApi";
+import { useLinkProjectMutation } from "../../api/kondenApi";
 import type { AgentRosterEntry, Workspace } from "../../api/contracts";
 import { ProjectDirectoryInput } from "./ProjectDirectoryInput";
 

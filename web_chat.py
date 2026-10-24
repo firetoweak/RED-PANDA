@@ -5,8 +5,8 @@ from pathlib import Path
 
 import uvicorn
 
-from redpanda.channels.web import create_web_app
-from redpanda.assistant.host.process_env import host_process_environment
+from konden.channels.web import create_web_app
+from konden.assistant.host.process_env import host_process_environment
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "web" / "dist"

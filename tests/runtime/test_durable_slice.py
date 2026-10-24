@@ -5,11 +5,11 @@ import unittest
 from pathlib import Path
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.context.projection import ModelContextSettings
-from redpanda.assistant.management import ManagementSurface
-from redpanda.assistant.sessions import AssistantSessions
-from redpanda.assistant.toolsets import ToolSurface
-from redpanda.runtime import (
+from konden.assistant.context.projection import ModelContextSettings
+from konden.assistant.management import ManagementSurface
+from konden.assistant.sessions import AssistantSessions
+from konden.assistant.toolsets import ToolSurface
+from konden.runtime import (
     AgentRuntime,
     CommandPhase,
     DispatchAttemptStarted,

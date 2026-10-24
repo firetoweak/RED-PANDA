@@ -18,7 +18,7 @@ PROCESS_GROUP_PATHS = {
 
 
 collect_ignore = []
-if os.environ.get("REDPANDA_RUN_LIVE_TESTS") != "1":
+if os.environ.get("KONDEN_RUN_LIVE_TESTS") != "1":
     collect_ignore.append("live")
 
 
@@ -66,9 +66,9 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_redpanda_home(monkeypatch):
-    """测试进程可能由一个设了 REDPANDA_HOME 的 RED PANDA 实例派生。"""
-    monkeypatch.delenv("REDPANDA_HOME", raising=False)
+def _isolate_konden_home(monkeypatch):
+    """测试进程可能由一个设了 KONDEN_HOME 的 konden 实例派生。"""
+    monkeypatch.delenv("KONDEN_HOME", raising=False)
 
 
 def pytest_report_header(config):
@@ -82,4 +82,4 @@ def pytest_report_header(config):
         layer = "live"
     else:
         layer = "default（混合收集时不含 process）"
-    return f"redpanda tests: {layer}"
+    return f"konden tests: {layer}"

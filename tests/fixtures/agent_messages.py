@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import os
 
-from redpanda.assistant.agent_messages import SEND_MESSAGE
-from redpanda.runtime import ToolBinding
+from konden.assistant.agent_messages import SEND_MESSAGE
+from konden.runtime import ToolBinding
 from tests.fixtures.session_worker import config_for
 
 
 def interrupted_send_config(root, when):
-    from redpanda.assistant.host import worker
+    from konden.assistant.host import worker
 
     build = worker.build_assistant_assembly
 

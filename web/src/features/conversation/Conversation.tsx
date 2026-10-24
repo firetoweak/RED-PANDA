@@ -27,9 +27,9 @@ import {
   useSelectSessionMutation,
   useSendInputMutation,
   useRetryTurnMutation,
-} from "../../api/redpandaApi";
+} from "../../api/kondenApi";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
-import { redPandaMark } from "../../app/brand";
+import { kondenMark } from "../../app/brand";
 import { ConversationWelcome } from "../../app/ConversationWelcome";
 import {
   controlNotice,
@@ -298,11 +298,11 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                       component="article"
                       className={`message message-assistant${quotedMessage === reply.key ? " is-quote-target" : ""}`}
                       data-message-id={reply.key}
-                      aria-label={`${agentName ?? "RED PANDA"} 的回复`}
+                      aria-label={`${agentName ?? "konden"} 的回复`}
                       key={reply.key}
                     >
                         <AssistantAvatar name={agentName} />
-                        <MessageMenu id={reply.key} author={agentName ?? "RED PANDA"} text={reply.text}>
+                        <MessageMenu id={reply.key} author={agentName ?? "konden"} text={reply.text}>
                         <Stack className="assistant-reply" gap={6} tabIndex={0}>
                           <MarkdownMessage
                             content={reply.text}
@@ -517,7 +517,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
 function AssistantAvatar({ name }: { name?: string }) {
   const { sessionId } = useParams();
   return name === undefined
-    ? <img className="assistant-mark" src={redPandaMark} alt="RED PANDA" width={28} height={28} />
+    ? <img className="assistant-mark" src={kondenMark} alt="konden" width={28} height={28} />
     : <BotAvatar name={name} sessionId={sessionId} />;
 }
 

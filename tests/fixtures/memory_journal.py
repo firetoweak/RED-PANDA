@@ -6,8 +6,8 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 
-from redpanda.runtime.codec import EVENT_SCHEMA_VERSION, delivery_fingerprint
-from redpanda.runtime.events import (
+from konden.runtime.codec import EVENT_SCHEMA_VERSION, delivery_fingerprint
+from konden.runtime.events import (
     AttemptOrphaned,
     CommandAuthorized,
     CommandOutcomeReceived,
@@ -22,11 +22,11 @@ from redpanda.runtime.events import (
     StepCommitted,
     UserMessageReceived,
 )
-from redpanda.runtime.model import (
+from konden.runtime.model import (
     CanonicalState,
     Command,
 )
-from redpanda.runtime.journal.api import (
+from konden.runtime.journal.api import (
     AppendResult,
     AttemptTerminalConflict,
     DeliveryConflictError,

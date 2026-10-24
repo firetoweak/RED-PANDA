@@ -3,7 +3,7 @@ import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { useGetAgentsQuery, useGetConversationQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/redpandaApi";
+import { useGetAgentsQuery, useGetConversationQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";

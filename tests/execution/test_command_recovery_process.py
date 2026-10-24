@@ -6,11 +6,11 @@ import sys
 
 import pytest
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
 from tests.fixtures.session_worker import config_for
 from tests.execution.test_host_process_process import shell, until
 
@@ -22,7 +22,7 @@ def test_worker_loss_recovers_actual_command_without_reexecution(tmp_path, at_re
     async def scenario():
         root = tmp_path / "project"
         root.mkdir()
-        home = RedPandaHome(tmp_path / "home")
+        home = KondenHome(tmp_path / "home")
         store = SessionStore(home.runtime_sessions_root)
         workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(root)
         results = []
@@ -95,7 +95,7 @@ def test_foreground_cancel_stops_writer_and_does_not_continue(tmp_path):
     async def scenario():
         root = tmp_path / "project"
         root.mkdir()
-        home = RedPandaHome(tmp_path / "home")
+        home = KondenHome(tmp_path / "home")
         store = SessionStore(home.runtime_sessions_root)
         workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(root)
         output = []
@@ -122,7 +122,7 @@ def test_foreground_cancel_stops_writer_and_does_not_continue(tmp_path):
             await asyncio.sleep(.15)
             assert (root / "writes").read_bytes() == captured
             assert not output
-            from redpanda.runtime import CommandOutcomeReceived, SqliteJournal
+            from konden.runtime import CommandOutcomeReceived, SqliteJournal
             events = await SqliteJournal(store.require("a")).snapshot("a")
             outcomes = [event.payload.outcome.value for event in events if isinstance(event.payload, CommandOutcomeReceived)]
             assert outcomes[-1]["code"] == "COMMAND_INTERRUPTED"

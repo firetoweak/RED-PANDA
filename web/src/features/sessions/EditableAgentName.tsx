@@ -1,7 +1,7 @@
 import { Button, Group, Popover, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useState } from "react";
-import { useRenameAgentMutation } from "../../api/redpandaApi";
+import { useRenameAgentMutation } from "../../api/kondenApi";
 import type { AgentRosterEntry } from "../../api/contracts";
 
 export function EditableAgentName({ agent, connectionId, size }: {

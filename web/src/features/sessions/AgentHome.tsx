@@ -2,7 +2,7 @@ import { Alert, Button, Group, Skeleton, Stack, Text, Title } from "@mantine/cor
 import { IconArrowRight, IconPlus, IconUsersGroup } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
+import { useGetAgentsQuery, useGetGroupsQuery, useGetWorkspacesQuery } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "./AgentStatus";
 import { CreateAgentModal } from "./CreateAgentModal";

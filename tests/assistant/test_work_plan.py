@@ -7,20 +7,20 @@ import unittest
 import pytest
 from pydantic import ValidationError
 
-from redpanda.assistant.context.projection import ModelContextProjector
+from konden.assistant.context.projection import ModelContextProjector
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.compact.core import MODEL_USAGE
-from redpanda.assistant.conversations import project_conversation
-from redpanda.assistant.sessions import SessionView
-from redpanda.assistant.work_plan import (
+from konden.assistant.compact.core import MODEL_USAGE
+from konden.assistant.conversations import project_conversation
+from konden.assistant.sessions import SessionView
+from konden.assistant.work_plan import (
     UPDATE_PLAN, WORK_PLAN_CONTEXT, project_work_plan, update_plan_binding,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     Command, CommandOutcome, CommandOutcomeReceived, DispatchAttemptStarted,
     Event, InvokeTool, ModelDecision, OutcomeStatus, StateProjector, Step,
     StepCommitted, UserMessageReceived,
 )
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.runtime.dispatcher import AttemptContext
 
 
 PLAN = {

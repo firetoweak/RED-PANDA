@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.assistant.agent_tools import LAND, SYNC, agent_git_bindings
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.assistant.agent_tools import LAND, SYNC, agent_git_bindings
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
+from konden.runtime.dispatcher import AttemptContext
 from tests.assistant.test_agent_worktrees_process import git, tree
 
 
@@ -33,7 +33,7 @@ class AgentLandingTest(unittest.IsolatedAsyncioTestCase):
         (self.project / "note.txt").write_text("initial\n", encoding="utf-8", newline="\n")
         git(self.project, "add", "note.txt")
         git(self.project, "commit", "-m", "initial")
-        home = RedPandaHome(root / "home")
+        home = KondenHome(root / "home")
         registry = WorkspaceRegistry.load(home.workspaces_path)
         self.workspace = registry.register_path(self.project)
         self.host = HostSupervisor(SessionStore(home.runtime_sessions_root), None, home, None,

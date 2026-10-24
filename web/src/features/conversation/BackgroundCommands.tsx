@@ -1,7 +1,7 @@
 import { Badge, Button, Group, Paper, Stack, Text, UnstyledButton } from "@mantine/core";
 import { useState } from "react";
 import type { BackgroundCommand } from "../../api/contracts";
-import { useGetBackgroundCommandsQuery, useStopBackgroundCommandMutation } from "../../api/redpandaApi";
+import { useGetBackgroundCommandsQuery, useStopBackgroundCommandMutation } from "../../api/kondenApi";
 
 const LABEL = { running: "运行中", completed: "已结束", stopped: "已停止", unknown: "结果未知" };
 
