@@ -1,71 +1,95 @@
+# konden
+
 <p align="center">
-  <img src="assets/brand/red-panda-full.png" width="240" alt="RED PANDA 折纸小熊猫">
+  <img src="assets/brand/konden-social-preview-v1.png" width="1280" alt="konden — 你的 AI 团队，持续协作。独立验证、持续跟进、随时介入。">
 </p>
 
-<h1 align="center">RED PANDA</h1>
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#独立验证接入mcp">接入编码工具</a> ·
+  <a href="docs/README.md">文档</a>
+</p>
 
-<p align="center">让你正在使用的原生编码工具，与一支长期 Bot 团队协作。</p>
+**一支长期协作的 AI 团队，接上你正在进行的工作。**
+
+你照常在 Codex、Claude Code、Cursor 等原生工具里开发。konden 提供一支有名字、能互相交流的 Bot 团队，承担独立验证与持续跟进，减少你重复说明背景、转交报告和推动下一步的工作。
+
+每位 Bot 都有自己的持久工作目录，通过私信和群聊协作。你设定目标、决定授权，也可以随时加入讨论、调整方向。编码是当前优先做好的场景；分析资料、讨论想法同样可以开展，代码项目按需关联。
 
 > [!WARNING]
-> 项目持续演进，**近期会频繁更新**。功能、界面和本地数据格式都可能发生不兼容的变化，不保留旧版兼容。产品定位见 [PRODUCT.md](PRODUCT.md)，演进方向见 [Coding Bot](docs/架构/CodingBot/方向.md)。
+> 项目处于快速迭代阶段，功能、界面和本地数据格式可能发生不兼容的变化。当前产品定位见 [PRODUCT.md](PRODUCT.md)，后续方向见 [Coding Bot](docs/架构/CodingBot/方向.md)。
 
-你继续在 Codex、Claude Code、Cursor 等原生工具里开发，RED PANDA 提供一支可以通过 MCP 联系的长期 Bot 团队，减少你重复说明背景、发起验证、转交反馈和协调成员的工作。当前聚焦独立验证：把需求与明确版本交给团队，从真实用户操作和边界条件出发取证，将可行动的反馈交回原编码会话，修复后继续复验。原生客户端需要主动等待和处理反馈，具体用法与边界见下方[独立验证接入](#独立验证接入mcp)。
+## 从独立验证开始
 
-Bot 以名字维持身份，各有持久工作目录，通过私信与群聊讨论、分工和跟进。人负责目标、授权与最终取舍；代码项目按需关联，分析资料与讨论想法同样可以独立开展。用户保留原生开发体验，RED PANDA 不接管外部编码工具的会话与执行生命周期。核心用户价值与产品边界见 [PRODUCT.md](PRODUCT.md)。
+写代码的智能体完成修改、自测并提交 PR 后，另一个团队从需求和真实用户操作出发验证结果：
+
+```text
+交付需求与版本 → 独立验证并取证 → 原编码会话取得反馈、修复 → 新版本复验
+```
+
+验证团队交回复现步骤、预期与实际表现、证据和实际测试版本。你可以在 Web 中查看成员的讨论与执行过程，也可以随时介入。自测和 CI 通过是参考，实际验证结果由团队另行取证。
+
+原编码会话需要保持运行，主动等待和处理反馈。当前接入用于本机，不会在客户端结束后自动唤醒它。完整场景与边界见[产品定位](PRODUCT.md)。
 
 ## 快速开始
 
-支持 Windows x64 与 Linux x64（glibc 2.35+），暂不支持 macOS。
+支持 **Windows x64** 与 **Linux x64（glibc 2.35+）**，暂不支持 macOS。
 
 ```sh
-git clone https://github.com/firetoweak/RED-PANDA.git
-cd RED-PANDA
+git clone https://github.com/firetoweak/RED-PANDA.git konden
+cd konden
 ```
 
-准备运行环境，再启动：
+先准备环境，再启动。选择与你的系统对应的一组命令：
 
-| | Windows（PowerShell） | Linux |
-| --- | --- | --- |
-| 准备 | `.\scripts\setup.ps1` | `sh scripts/setup.sh` |
-| 启动 | `.\scripts\start.ps1` | `sh scripts/start.sh` |
+**Windows（PowerShell）**
 
-准备脚本会补齐运行所需的 Python、Node.js 等工具，不修改系统 PATH，也不需要预装 Python、Rust 或 Docker。启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，再新建 Bot 开始使用；需要在代码项目中执行任务时，再关联已有首个提交的 Git 仓库。
+```powershell
+.\scripts\setup.ps1
+.\scripts\start.ps1
+```
 
-每个 Bot 默认可按需加载 Chrome DevTools MCP 与 Playwright，进行网页调试、浏览器操作和真实流程验证。准备脚本会安装这两项能力及应用专用的 Chrome；更新已有环境后重新运行准备脚本即可。各连接使用独立的无头浏览器，关闭后不保留登录状态。
+**Linux**
 
-网上检索默认优先使用用户已配置并启用的搜索 MCP（如 Tavily），没有或不可用时再用内置 Exa，最后使用浏览器兜底。Exa 搜索与正文读取无需 API Key，免费服务有限流。检索 Skill 提供来源核实与浏览器兜底指引。准备脚本会发送公开查询检查备用 Exa 的搜索和网页读取；可用 `python -m redpanda.mcp.check_web` 随时复查，本次检查不代表长期可用保证。
+```sh
+sh scripts/setup.sh
+sh scripts/start.sh
+```
 
-安装参数、平台要求、终端入口与数据位置见[运行指南](docs/运行指南.md)。
+准备脚本会补齐 Python、Node.js 等运行工具，不修改系统 PATH；无需预装 Python、Rust 或 Docker。
+
+启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，再新建 Bot、说明你希望它承担的工作。需要处理代码时，再关联已有首个提交的 Git 仓库。
+
+Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用专用 Chrome，进行浏览器操作与真实流程验证。搜索优先使用你已启用的搜索 MCP，其次使用内置 Exa；配置、准备检查、数据位置与其他入口见[运行指南](docs/运行指南.md)。
 
 ## 独立验证接入（MCP）
 
-启动 Web，从「设置」→「外部验证接入」生成并复制连接配置，添加到你使用的编码工具。无需给外部智能体取名或选择固定交接人。凭据只在生成时显示，关闭设置前请保存；遗失后撤销并重新生成。目前用于本机连接。
+1. 在 konden 中创建负责验证的 Bot，说明分工与验收要求。
+2. 打开「设置」→「外部验证接入」，生成连接配置，添加到你使用的原生编码工具。凭据只显示一次，请在关闭设置前保存。
+3. 让编码智能体交付需求、PR 或仓库引用与完整提交号，并在当前会话中等待反馈、处理问题和请求复验。
 
-创建负责验证的 Bot 并说明分工。编码端首次调用 `get_context` 自动领取当前聊天的 `identity`、查看同事分工，随后用 `request_verification` 交付验收需求、`reference`（PR 或可获取该版本的仓库/成果引用）、`revision`（完整提交号），并按分工选择 `recipient`。同一配置可以供多个聊天复用，各聊天分别领取身份；重连沿用原身份。
+可以这样向编码智能体说明任务：
 
-原编码会话接着用 `read_feedback` 等待并按 `next_cursor` 续读。验证 Bot 从真实用户行为与边界独立取证，用 `reply_external_message` 区分进度、问题和最终报告。报告给出通过、发现问题或受阻，实际测试版本与证据；自测或 CI 绿灯不能替代验证。编码端收到问题后修复，以新版本、新 `delivery_id` 和 `previous_request_id` 请求复验；复验省略收件人时沿用原同事。网络重试保持原身份、提交标识与内容。
+> 请通过已连接的 konden 验证工具，把这个 PR 和当前完整提交号交给验证同事。说明验收需求与预期行为，在当前会话中等待验证报告；发现问题后修复，再交付新版本复验。
 
-接入允许团队在已有协作范围内交换验证任务与结果，外部请求不能代你批准命令或读取无关私聊。共用凭据下的聊天身份用于分流，不是权限隔离。全局设置可撤销该连接配置，所有使用它的聊天立即失去收发能力，既有验证记录继续显示在 Bot 时间线。客户端需在当前会话主动等待和处理反馈；本入口不负责在客户端结束后自动唤醒它。
+编码端会先通过 `get_context` 领取身份、查看同事分工，再调用 `request_verification` 交付版本，用 `read_feedback` 等待结果。进度消息和空结果都不表示通过。
 
-## 开发
+连接配置可复用于多个聊天，各聊天分别领取身份。共用凭据下的身份用于分流，不提供权限隔离；外部请求也不能代你批准命令或读取无关私聊。工具调用、复验与撤销方式见[独立验证接入指南](docs/独立验证.md)。
 
-- 热重载启动：`scripts/dev.ps1` / `scripts/dev.sh`
-- 测试：`python -m pytest`；前端 `npm --prefix web test`
-- 与 CI 相同的本地验证：`python scripts/ci.py`
+## 开发与文档
 
-详见[开发指南](docs/开发指南.md)。
-
-## 文档
+开发启动使用 `scripts/dev.ps1` / `scripts/dev.sh`。本地完整验证使用 `python scripts/ci.py`，具体环境与测试分层见[开发指南](docs/开发指南.md)。
 
 | 想了解什么 | 从这里开始 |
 | --- | --- |
-| 产品解决什么问题、当前聚焦场景与边界 | [产品定位](PRODUCT.md) |
-| 安装参数、其他入口与数据位置 | [运行指南](docs/运行指南.md) |
-| 开发与测试 | [开发指南](docs/开发指南.md) |
+| 产品解决的问题、当前场景与边界 | [产品定位](PRODUCT.md) |
+| 安装参数、运行环境与数据位置 | [运行指南](docs/运行指南.md) |
+| 原生编码工具接入独立验证 | [独立验证接入指南](docs/独立验证.md) |
 | 模型连接与切换 | [模型配置](docs/模型配置.md) |
-| 设计与架构 | [架构方向](docs/项目架构方向.md) · [架构总览](docs/架构/总览.md) |
+| 源码开发与测试 | [开发指南](docs/开发指南.md) |
+| 设计取舍与演进 | [架构方向](docs/项目架构方向.md) · [架构总览](docs/架构/总览.md) |
 | 全部文档 | [文档索引](docs/README.md) |
 
 ## 许可证
 
-当前仓库尚未添加 `LICENSE`，许可证待确定。
+本项目采用 [MIT License](LICENSE)。
