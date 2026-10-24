@@ -23,17 +23,17 @@ colors:
   identity-green-bg-light: '#e4f1eb'
   identity-amber-light: '#90630c'
   identity-amber-bg-light: '#fff1cf'
-  canvas-dark: '#202227'
-  sidebar-dark: '#191b20'
-  surface-dark: '#282b32'
-  bubble-dark: '#2b3545'
-  tile-dark: '#30343d'
-  border-dark: '#32353e'
-  border-strong-dark: '#444955'
-  hover-dark: '#292c33'
-  placeholder-dark: '#a0a6b2'
-  text-dark: '#e4e5e9'
-  dimmed-dark: '#a0a6b2'
+  canvas-dark: '#000000'
+  sidebar-dark: '#000000'
+  surface-dark: '#111111'
+  bubble-dark: '#1c1c1c'
+  tile-dark: '#242424'
+  border-dark: '#242424'
+  border-strong-dark: '#3d3d3d'
+  hover-dark: '#191919'
+  placeholder-dark: '#a3a3a3'
+  text-dark: '#ededed'
+  dimmed-dark: '#a3a3a3'
   accent-text-dark: '#ffa078'
   accent-ring-dark: rgba(247, 123, 76, 0.5)
   identity-blue-dark: '#acc7ff'
@@ -44,13 +44,13 @@ colors:
   identity-green-bg-dark: '#263e35'
   identity-amber-dark: '#efd18e'
   identity-amber-bg-dark: '#443a29'
-  composer-dark: '#25282e'
-  panel-dark: '#1c1e23'
-  composer-focus-dark: '#8896ad'
-  button-dark: '#dce1e9'
-  button-text-dark: '#20242b'
-  human-dark: '#3a352f'
-  human-text-dark: '#ded0be'
+  composer-dark: '#141414'
+  panel-dark: '#000000'
+  composer-focus-dark: '#777777'
+  button-dark: '#ededed'
+  button-text-dark: '#111111'
+  human-dark: '#242424'
+  human-text-dark: '#d4d4d4'
   composer-light: '#ffffff'
   panel-light: '#fafbfc'
   composer-focus-light: '#9ca8b9'
@@ -235,9 +235,9 @@ components:
 
 **Creative North Star: "轻盈协作"**
 
-以用户已选定的「轻盈协作」为视觉北极星：白色与中性炭灰承托对话，浅气泡区分消息，身份色帮助在长报告中找到同事。界面克制、清楚，保留正文的阅读节奏。
+以用户已选定的「轻盈协作」为视觉北极星：亮色使用白色，夜间使用纯黑底色与中性灰气泡承托对话，身份色帮助在长报告中找到同事。界面克制、清楚，保留正文的阅读节奏。
 
-当前实现使用本机中文无衬线字体、细线 SVG 图标、小圆角与轻边界。明暗主题共用布局和身份关系；陶土色出现在部分操作与定位状态，蓝色承担全局键盘焦点和文字选择。
+当前实现使用本机中文无衬线字体、细线 SVG 图标、小圆角与轻边界。明暗主题共用布局和身份关系；陶土色出现在部分操作与定位状态，夜间的键盘焦点、光标与文字选择使用中性灰，亮色沿用身份蓝。
 
 本文件记录已落地的 React / Mantine 界面；具体页面的构图与操作模式保留在对应 surface brief。品牌图片沿用仓库已有的 assets/brand/red-panda-mark-pixel.png（favicon / 回退头像）与 red-panda-full.png（空私聊欢迎）；其已有来源随原资产保留，本次没有生成或替换图片，侧栏不展示品牌图。
 
@@ -253,7 +253,7 @@ components:
 
 ### Primary
 
-陶土操作色来自现有 ember 色阶：用于新建图标、部分辅助操作、未读与引用定位。发送按钮采用正文色与画布色反转，不把整个页面铺成品牌色。焦点与文字选择使用身份蓝。
+陶土操作色来自现有 ember 色阶：用于新建图标、部分辅助操作、未读与引用定位。发送按钮采用正文色与画布色反转，不把整个页面铺成品牌色。夜间的焦点与文字选择使用中性灰，身份蓝仅承担 Bot 识别。
 
 ### Secondary
 
@@ -263,7 +263,7 @@ components:
 
 ### Neutral
 
-聊天底色、侧栏、Bot 气泡、人类气泡与选中底色分别对应 canvas、sidebar、surface、bubble、tile。正文与次要文字分层；边界与悬停使用来源中的半透明色，不另造不透明近似。占位文字独立于 disabled 样式；浅色和深色采用 placeholder tokens，最终评审记录的对应底色对比度约为 4.67:1 和 6.51:1。
+聊天底色、侧栏、Bot 气泡、人类气泡与选中底色分别对应 canvas、sidebar、surface、bubble、tile。正文与次要文字分层；边界与悬停使用主题中的色值。占位文字独立于 disabled 样式；浅色和深色采用 placeholder tokens，输入区对应底色的对比度约为 4.67:1 和 7.30:1。
 
 ## Typography
 
@@ -332,7 +332,7 @@ Mantine 的半径尺度为 xs / sm / md / lg / xl，默认 md。实际气泡与�
 
 ### Browser Interaction
 
-全局文字选择为身份蓝的前景与底色；键盘 focus-visible 为（2px）身份蓝外框，偏移（3px）。部分已有链接的更具体规则保留陶土定位环；引用目标同样使用陶土环。textarea 的 caret 使用身份蓝。所有原生滚动条声明 thin、强调边界色拇指与透明轨道，虚拟时间线另保留 stable gutter；Mantine ScrollArea 名册为 hover 显示。侧栏拖动时使用 col-resize 且暂时禁止选字。
+夜间的全局文字选择使用中性灰前景与底色；键盘 focus-visible 为（2px）中性灰外框，偏移（3px），textarea 的 caret 同样使用中性灰。亮色保留原有身份蓝。部分已有链接的更具体规则保留陶土定位环；引用目标同样使用陶土环。所有原生滚动条声明 thin、强调边界色拇指与透明轨道，虚拟时间线另保留 stable gutter；Mantine ScrollArea 名册为 hover 显示。侧栏拖动时使用 col-resize 且暂时禁止选字。
 
 主界面切换过渡（180ms），拖动侧栏时关闭；轻量背景过渡（150ms ease-out）、操作显隐（120ms ease）、活动指示旋转（0.8s linear infinite）。prefers-reduced-motion 关闭该旋转和卡片过渡，并强制 scroll-behavior: auto，不额外添加动画。
 

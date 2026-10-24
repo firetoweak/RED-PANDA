@@ -11,7 +11,7 @@ export function ColorSchemeSwitcher() {
     }
     themeColor.setAttribute(
       "content",
-      colorScheme === "light" ? "#ffffff" : "#181818",
+      colorScheme === "light" ? "#ffffff" : "#000000",
     );
   }, [colorScheme]);
   return (
