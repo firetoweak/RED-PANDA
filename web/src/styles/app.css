@@ -563,6 +563,7 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 
 .assistant-turn { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .private-message-notice { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; color: var(--mantine-color-dimmed); font-size: 12px; line-height: 1.6; }
+.private-message-direction { display: inline-flex; align-items: center; flex-shrink: 0; }
 .external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
 .external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
 .external-message-version { color: var(--mantine-color-dimmed); font-size: 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
@@ -908,11 +909,28 @@ a.group-member:focus-visible { outline: 2px solid var(--rp-accent-ring); }
   padding: 10px 12px;
 }
 
+.work-plan-heading { min-width: 0; }
+.work-plan-heading > p { min-width: 0; }
+.work-plan-symbol { display: inline-flex; flex-shrink: 0; color: var(--rp-accent-text); }
+.work-plan-count { color: var(--mantine-color-dimmed); font-size: 12px; font-variant-numeric: tabular-nums; }
+.work-plan-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 7px; }
+.work-plan-origin { color: var(--mantine-color-dimmed); font-size: 10px; }
+.work-plan-track { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 0; min-width: 0; }
+.work-plan-track-item, .work-plan-marker { display: inline-flex; align-items: center; flex-shrink: 0; color: var(--mantine-color-dimmed); }
+.work-plan-track-item:not(:last-child)::after { content: ""; width: 14px; height: 1px; margin-inline: 4px; background: var(--rp-border-strong); }
+.work-plan-track-item[data-status="in_progress"], .work-plan-marker[data-status="in_progress"] { color: var(--rp-accent-text); }
+.work-plan-track-item[data-status="completed"], .work-plan-marker[data-status="completed"] { color: var(--mantine-color-text); }
+.work-plan-stopped { display: inline-flex; align-items: center; gap: 4px; color: var(--mantine-color-dimmed); font-size: 11px; }
+.work-plan-steps { display: flex; flex-direction: column; gap: 0; list-style: none; margin: 0; padding: 0 12px 10px; }
+.work-plan-steps > li { display: flex; align-items: flex-start; gap: 10px; position: relative; padding-block: 4px 9px; }
+.work-plan-steps > li:not(:last-child)::before { content: ""; position: absolute; left: 7px; top: 22px; bottom: 0; width: 1px; background: var(--rp-border-strong); }
+.work-plan-marker { margin-top: 2px; }
+.work-plan-steps > li > p { min-width: 0; }
+
 .work-plan {
   width: 100%;
-  background: var(--rp-accent-fill);
+  background: var(--rp-surface);
   border-color: var(--rp-border);
-  border-left: 1px solid var(--rp-border-strong);
 }
 
 @media (max-height: 600px) {

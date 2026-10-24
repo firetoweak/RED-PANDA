@@ -1,3 +1,4 @@
+import { IconArrowDownLeft, IconArrowUpRight } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 
 import { useGetAgentsQuery } from "../../api/redpandaApi";
@@ -11,9 +12,11 @@ export function PrivateMessageNotice({ message }: { message: VisiblePrivateMessa
   const identityColor = useIdentityColor();
   const peer = message.external === undefined ? agents.find((agent) => agent.name === message.peer) : undefined;
   const identity = <><BotAvatar name={message.peer} sessionId={peer?.session_id} /><span>{message.peer}</span></>;
-  const notice = <div className="private-message-notice" title={formatMessageTime(message.occurredAt).full}>
+  const direction = message.direction === "sent" ? "已发消息给" : "消息来自";
+  const DirectionIcon = message.direction === "sent" ? IconArrowUpRight : IconArrowDownLeft;
+  const notice = <div className="private-message-notice" title={`${direction} ${message.peer} · ${formatMessageTime(message.occurredAt).full}`}>
     {message.external === undefined ? null : <span>外部协作者</span>}
-    <span>{message.direction === "sent" ? "已发消息给" : "消息来自"}</span>
+    <span className="private-message-direction" role="img" aria-label={direction}><DirectionIcon aria-hidden="true" size={17} /></span>
     {peer === undefined
       ? <span className="private-message-peer" data-identity={identityColor(message.peer)}>{identity}</span>
       : <Link className="private-message-peer" data-identity={identityColor(message.peer)}
