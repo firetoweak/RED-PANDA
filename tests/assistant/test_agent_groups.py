@@ -8,17 +8,17 @@ from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 
-from redpanda.assistant.agent_messages import SEND_GROUP_MESSAGE
-from redpanda.assistant.agents import (
+from konden.assistant.agent_messages import SEND_GROUP_MESSAGE
+from konden.assistant.agents import (
     GROUP_ATTENTION, GROUP_CREATED, GROUP_MESSAGE, AgentCreated, fact_arguments, parse_agent_fact,
 )
-from redpanda.assistant.host.agent_groups import AgentGroups, GroupDissolvedError, GroupNameTaken
-from redpanda.assistant.host.agent_roster import AgentNotFound
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
+from konden.assistant.host.agent_groups import AgentGroups, GroupDissolvedError, GroupNameTaken
+from konden.assistant.host.agent_roster import AgentNotFound
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 
@@ -33,7 +33,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         registry = WorkspaceRegistry.load(self.home.workspaces_path)
         project, other = self.root / "project", self.root / "other"
@@ -307,7 +307,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
                     [{"group": "开发组", "text": "再补充", "mention": ["Lin"], "reply_to": ANSWER}]))
         lin = iter(([{"group": "开发组", "text": "收到", "mention": ["Ada"], "reply_to": ANSWER}],))
         self.speeches = {"Ada": lambda: next(ada, []), "Lin": lambda: next(lin, [])}
-        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_REPLIES", 2):
+        with patch("konden.assistant.host.agent_groups.MAX_GROUP_REPLIES", 2):
             await self.host.agent_groups.post(group.group_id, "Ada 先说", ["Ada"])
             await self.settled(group)
         self.assertEqual([[result["code"] for result in work.result()] for work in self.work],
@@ -321,7 +321,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         lin = iter(([{"group": "开发组", "text": "开工", "reply_to": ANSWER},
                      {"group": "开发组", "text": "报告：通过", "mention": ["Ada"]}],))
         self.speeches = {"Lin": lambda: next(lin, [])}
-        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+        with patch("konden.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
             await self.host.agent_groups.post(group.group_id, "Lin 去跑测试", ["Lin"])
             await self.settled(group)
         acknowledged, reported = self.work[0].result()
@@ -424,7 +424,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_speech_answers_a_call_only_by_quoting_it_and_only_once(self):
         group = await self.group()
-        with patch("redpanda.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
+        with patch("konden.assistant.host.agent_groups.MAX_GROUP_ROUNDS", 1):
             asked = await self.host.agent_groups.post(group.group_id, "Lin 看看", ["Lin"])
             await self.settled(group)
             other = await self.say("Third", "顺便一提", origin="routine", mention=["Ada"])

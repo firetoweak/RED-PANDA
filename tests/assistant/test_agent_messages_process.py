@@ -11,17 +11,17 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.agent_messages import SEND_GROUP_MESSAGE, SEND_MESSAGE
-from redpanda.assistant.agents import (
+from konden.assistant.agent_messages import SEND_GROUP_MESSAGE, SEND_MESSAGE
+from konden.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
 )
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, project_shared_memory
-from redpanda.automation.routines import RoutineFire
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, replay
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, project_shared_memory
+from konden.automation.routines import RoutineFire
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, replay
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.assistant.test_supervisor import until
 from tests.fixtures.agent_messages import interrupted_send_config
@@ -80,7 +80,7 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.llm = MessagingLlm(self.root)
         self.host = self.new_host()

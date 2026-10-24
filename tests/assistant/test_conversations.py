@@ -3,14 +3,14 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
-from redpanda.assistant.conversations import (
+from konden.assistant.conversations import (
     UNKNOWN_TOOL_ERROR,
     project_conversation,
 )
-from redpanda.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
-from redpanda.assistant.compact.core import MODEL_USAGE, WINDOW
-from redpanda.assistant.sessions import SessionView
-from redpanda.runtime import (
+from konden.assistant.work_plan import UPDATE_PLAN, project_work_plan_updates
+from konden.assistant.compact.core import MODEL_USAGE, WINDOW
+from konden.assistant.sessions import SessionView
+from konden.runtime import (
     Command,
     CommandOutcome,
     CommandOutcomeReceived,
@@ -79,7 +79,7 @@ def canonical_step_event(events, event_id, content, commands, metadata=None):
 
 class ConversationProjectionTest(unittest.TestCase):
     def test_private_message_notices_follow_received_facts_and_delivered_outcomes(self):
-        from redpanda.assistant.agents import PRIVATE_MESSAGE
+        from konden.assistant.agents import PRIVATE_MESSAGE
 
         send = Command("send-1", InvokeTool("send_message", (
             ("recipient", "Ada"), ("text", "请检查代码"), ("reply_to", None),
@@ -377,7 +377,7 @@ class Idle:
         return None
 
     def conversation_status(self, session_id):
-        from redpanda.assistant.compact.store import ConversationStatus
+        from konden.assistant.compact.store import ConversationStatus
 
         return ConversationStatus(session_id, session_id, 0, None)
 
@@ -396,10 +396,10 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import SqliteJournal
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.assistant.conversations import AssistantQueries
+        from konden.assistant.host.session_store import SessionStore
+        from konden.runtime import SqliteJournal
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
@@ -422,18 +422,18 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from redpanda.assistant.agents import AGENT_CREATED
-        from redpanda.assistant.compact.core import MODEL_USAGE
-        from redpanda.assistant.control import (
+        from konden.assistant.agents import AGENT_CREATED
+        from konden.assistant.compact.core import MODEL_USAGE
+        from konden.assistant.control import (
             CONTROL_PROPOSED, CONTROL_REQUEST_METADATA, CONTROL_SOURCE,
         )
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import (
+        from konden.assistant.conversations import AssistantQueries
+        from konden.assistant.host.session_store import SessionStore
+        from konden.runtime import (
             Command, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal,
             StateProjector, Step, StepClaimRequest, StepCommitted,
         )
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         async def wake(store, session_id: str, payload: DomainFactCommitted, source: str) -> None:
             await SqliteJournal(store.require(session_id)).accept_delivery(
@@ -606,12 +606,12 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from redpanda.assistant.agent_messages import LIMIT_NOTICE
-        from redpanda.assistant.agents import AGENT_CREATED, CommunicationLimitReached, fact_arguments
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import DomainFactCommitted, SqliteJournal, UserMessageReceived
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.assistant.agent_messages import LIMIT_NOTICE
+        from konden.assistant.agents import AGENT_CREATED, CommunicationLimitReached, fact_arguments
+        from konden.assistant.conversations import AssistantQueries
+        from konden.assistant.host.session_store import SessionStore
+        from konden.runtime import DomainFactCommitted, SqliteJournal, UserMessageReceived
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
@@ -652,15 +652,15 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
         from pathlib import Path
         from tempfile import TemporaryDirectory
 
-        from redpanda.assistant.control import (
+        from konden.assistant.control import (
             CONTROL_PROPOSED,
             CONTROL_REQUEST_METADATA,
             CONTROL_SOURCE,
         )
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.runtime import DomainFactCommitted, SqliteJournal, StepClaimRequest
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.assistant.conversations import AssistantQueries
+        from konden.assistant.host.session_store import SessionStore
+        from konden.runtime import DomainFactCommitted, SqliteJournal, StepClaimRequest
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         class Host:
             def activity(self, session_id):
@@ -673,7 +673,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
                 return None
 
             def conversation_status(self, session_id):
-                from redpanda.assistant.compact.store import ConversationStatus
+                from konden.assistant.compact.store import ConversationStatus
 
                 return ConversationStatus(session_id, session_id, 2, "failed")
 

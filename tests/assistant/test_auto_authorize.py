@@ -7,8 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, call, patch
 
-from redpanda.assistant.host.auto_authorize import AutoAuthorizeStore
-from redpanda.assistant.host.supervisor import HostSupervisor
+from konden.assistant.host.auto_authorize import AutoAuthorizeStore
+from konden.assistant.host.supervisor import HostSupervisor
 
 
 class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
@@ -27,7 +27,7 @@ class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(policy.enabled)
             policy.set(False)
             self.assertFalse(AutoAuthorizeStore(root).enabled)
-            with patch("redpanda.assistant.host.auto_authorize.write_json") as write:
+            with patch("konden.assistant.host.auto_authorize.write_json") as write:
                 policy.set(False)
             write.assert_not_called()
 
@@ -36,7 +36,7 @@ class HostAutoAuthorizeTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory)
             policy = AutoAuthorizeStore(root)
             policy.set(False)
-            with patch("redpanda.config.os.replace", side_effect=OSError("disk failure")):
+            with patch("konden.config.os.replace", side_effect=OSError("disk failure")):
                 with self.assertRaisesRegex(OSError, "disk failure"):
                     policy.set(True)
             self.assertFalse(policy.enabled)

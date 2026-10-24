@@ -8,14 +8,14 @@ import sys
 
 import pytest
 
-from redpanda.cli.registry import CliRegistry
+from konden.cli.registry import CliRegistry
 
 pytestmark = pytest.mark.process
 
 _WRITER = """
 import asyncio, sys, time
 from pathlib import Path
-from redpanda.cli.registry import CliRegistry
+from konden.cli.registry import CliRegistry
 from tests.cli.test_registry import make_record
 
 root, start, prefix = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]

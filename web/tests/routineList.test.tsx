@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { Routine } from "../src/api/contracts";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import { RoutineList } from "../src/features/conversation/RoutineList";
 import { registerTimelineFocus } from "../src/features/conversation/timelineFocus";
 import runtimeReducer from "../src/realtime/runtimeSlice";
@@ -67,8 +67,8 @@ function renderList(onOpenTimeline?: () => void) {
     return Response.json(conversation);
   }));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(kondenApi.middleware),
   });
   render(
     <Provider store={store}><MantineProvider env="test">
@@ -104,7 +104,7 @@ it("列表用可读安排显示上次和下次，暂停、恢复与二次确认�
     ["/api/sessions/agent/routines/r-pr/state", { connection_id: "connection", state: "deleted" }],
   ]));
   cleanup();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it("点开例行任务能看到完整意图和倒序的执行记录，已出现在时间线上的一次可以跳过去", async () => {
@@ -126,5 +126,5 @@ it("点开例行任务能看到完整意图和倒序的执行记录，已出现�
   expect(screen.getByText("每 10 分钟")).toBeInTheDocument();
   unregister();
   cleanup();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });

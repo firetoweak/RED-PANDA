@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from redpanda.assistant.host.process_env import (
+from konden.assistant.host.process_env import (
     host_process_environment,
     install_host_environment,
     user_session_environment,
@@ -16,14 +16,14 @@ from redpanda.assistant.host.process_env import (
 
 class HostProcessEnvironmentTest(unittest.TestCase):
     def setUp(self):
-        product_tools = patch("redpanda.assistant.host.process_env.application_tool_paths", return_value=[])
+        product_tools = patch("konden.assistant.host.process_env.application_tool_paths", return_value=[])
         self.addCleanup(product_tools.stop)
         product_tools.start()
 
     def test_application_tools_do_not_change_the_command_environment_source(self):
         original = {"PATH": "/workspace/tools", "FOO": "bar"}
-        with patch("redpanda.assistant.host.process_env.application_tool_paths", return_value=["/application/tools"]), \
-             patch("redpanda.assistant.host.process_env.user_session_environment", return_value=None):
+        with patch("konden.assistant.host.process_env.application_tool_paths", return_value=["/application/tools"]), \
+             patch("konden.assistant.host.process_env.user_session_environment", return_value=None):
             product = host_process_environment(original)
         self.assertEqual(product["PATH"].split(os.pathsep), ["/application/tools", "/workspace/tools"])
         self.assertEqual(original, {"PATH": "/workspace/tools", "FOO": "bar"})
@@ -44,7 +44,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
             "PATHEXT": ".COM;.EXE",
         }
         with patch(
-            "redpanda.assistant.host.process_env.user_session_environment",
+            "konden.assistant.host.process_env.user_session_environment",
             return_value=session,
         ):
             built = host_process_environment(
@@ -62,7 +62,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
 
     def test_fills_missing_identity_variable_from_user_session(self):
         with patch(
-            "redpanda.assistant.host.process_env.user_session_environment",
+            "konden.assistant.host.process_env.user_session_environment",
             return_value={"PATH": r"C:\Windows", "PATHEXT": ".EXE"},
         ):
             built = host_process_environment({"PATH": r"C:\Windows"})
@@ -72,7 +72,7 @@ class HostProcessEnvironmentTest(unittest.TestCase):
     def test_leaves_environment_unchanged_when_no_session_block(self):
         current = {"PATH": "/usr/bin", "FOO": "bar"}
         with patch(
-            "redpanda.assistant.host.process_env.user_session_environment",
+            "konden.assistant.host.process_env.user_session_environment",
             return_value=None,
         ):
             built = host_process_environment(current)
@@ -84,15 +84,15 @@ class HostProcessEnvironmentTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "rg.exe"
             executable.touch()
-            with patch.dict(os.environ, {"PATH": directory, "REDPANDA_TEST": "current"}):
+            with patch.dict(os.environ, {"PATH": directory, "KONDEN_TEST": "current"}):
                 with patch(
-                    "redpanda.assistant.host.process_env.user_session_environment",
-                    return_value={"Path": r"C:\Windows", "RedPanda_Test": "session"},
+                    "konden.assistant.host.process_env.user_session_environment",
+                    return_value={"Path": r"C:\Windows", "Konden_Test": "session"},
                 ):
                     install_host_environment()
 
                 self.assertEqual(Path(shutil.which("rg")), executable)
-                self.assertEqual(os.environ["REDPANDA_TEST"], "current")
+                self.assertEqual(os.environ["KONDEN_TEST"], "current")
                 self.assertEqual(os.environ["PATH"].split(os.pathsep)[0], directory)
                 self.assertIn(r"C:\Windows", os.environ["PATH"].split(os.pathsep))
 

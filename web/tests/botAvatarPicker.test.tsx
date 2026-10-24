@@ -3,7 +3,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { redpandaApi, useGetAvatarsQuery } from "../src/api/redpandaApi";
+import { kondenApi, useGetAvatarsQuery } from "../src/api/kondenApi";
 import { BotAvatarPicker } from "../src/features/conversation/BotAvatarPicker";
 import { BotAvatars } from "../src/features/conversation/ChatPresentation";
 import runtimeReducer from "../src/realtime/runtimeSlice";
@@ -12,8 +12,8 @@ const multipartBodies = new WeakMap<Request, FormData>();
 const stores: ReturnType<typeof createStore>[] = [];
 function createStore() {
   return configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (defaults) => defaults().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
   });
 }
 beforeEach(() => {
@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  for (const store of stores.splice(0)) store.dispatch(redpandaApi.util.resetApiState());
+  for (const store of stores.splice(0)) store.dispatch(kondenApi.util.resetApiState());
   vi.unstubAllGlobals();
 });
 function showPicker() {
@@ -56,7 +56,7 @@ it("保存失败保留原头像与候选，显示原因，重试成功才更新�
     return Response.json(selected);
   }));
   const { store } = showPicker();
-  await waitFor(() => expect(redpandaApi.endpoints.getAvatars.select()(store.getState()).data?.ada).toEqual(selected));
+  await waitFor(() => expect(kondenApi.endpoints.getAvatars.select()(store.getState()).data?.ada).toEqual(selected));
   const trigger = screen.getByRole("button", { name: "修改 Ada 的头像" });
   const original = trigger.querySelector("path")!.getAttribute("d");
   fireEvent.click(trigger);
@@ -97,7 +97,7 @@ it("上传头像使用独立图片接口，恢复默认删除界面覆盖项", a
     return Response.json(null);
   }));
   const { store } = showPicker();
-  await waitFor(() => expect(redpandaApi.endpoints.getAvatars.select()(store.getState()).isSuccess).toBe(true));
+  await waitFor(() => expect(kondenApi.endpoints.getAvatars.select()(store.getState()).isSuccess).toBe(true));
   const trigger = screen.getByRole("button", { name: "修改 Ada 的头像" });
   fireEvent.click(trigger);
   expect(screen.getByRole("button", { name: "恢复默认" })).toBeDisabled();
@@ -109,5 +109,5 @@ it("上传头像使用独立图片接口，恢复默认删除界面覆盖项", a
   fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
   await waitFor(() => expect(trigger.querySelector("img")).toBeNull());
   expect(trigger.querySelector("path")).not.toBeNull();
-  expect(redpandaApi.endpoints.getAvatars.select()(store.getState()).data).toEqual({});
+  expect(kondenApi.endpoints.getAvatars.select()(store.getState()).data).toEqual({});
 });

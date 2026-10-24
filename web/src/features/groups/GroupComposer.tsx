@@ -64,7 +64,7 @@ export function GroupComposer({ groupId, groupName, members, connected, posting,
       </Group>
       <Tooltip label="发送到群">
         <ActionIcon className="composer-send" aria-label="发送到群" disabled={!canSend} loading={posting}
-          loaderProps={{ color: "var(--rp-button-text)" }} radius="xl" size={32} onClick={() => void send()}>
+          loaderProps={{ color: "var(--konden-button-text)" }} radius="xl" size={32} onClick={() => void send()}>
           <IconArrowUp aria-hidden="true" size={18} stroke={2} />
         </ActionIcon>
       </Tooltip>

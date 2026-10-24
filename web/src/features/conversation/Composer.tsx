@@ -29,7 +29,7 @@ import {
   useGetWorkspacesQuery,
   useSelectLocalFileMutation,
   useUploadAttachmentMutation,
-} from "../../api/redpandaApi";
+} from "../../api/kondenApi";
 import { ModelSelector } from "../models/ModelSelector";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
@@ -447,7 +447,7 @@ export function Composer({
                 aria-label={running ? "打断并发送" : "发送"}
                 disabled={!canSend}
                 loading={sending}
-                loaderProps={{ color: "var(--rp-button-text)" }}
+                loaderProps={{ color: "var(--konden-button-text)" }}
                 radius="xl"
                 size={32}
                 type="submit"
@@ -480,7 +480,7 @@ function ContextRing({ used, limit }: { used: number | null; limit: number }) {
         cy="7"
         fill="none"
         r={radius}
-        stroke="var(--rp-ring-track)"
+        stroke="var(--konden-ring-track)"
         strokeWidth="2"
       />
       <circle

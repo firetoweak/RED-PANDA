@@ -6,21 +6,21 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.agent_messages import (
+from konden.assistant.agent_messages import (
     LIST_COLLEAGUES, SEND_MESSAGE, message_bindings, recover_message_attempts, send_message,
 )
-from redpanda.assistant.agents import (
+from konden.assistant.agents import (
     COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, AgentCreated, AgentRecord,
     fact_arguments, parse_agent_fact,
 )
-from redpanda.assistant.conversations import project_conversation
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.sessions import session_view
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding, replay
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.assistant.conversations import project_conversation
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.sessions import session_view
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding, replay
+from konden.runtime.dispatcher import AttemptContext
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 
@@ -28,7 +28,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         project = self.root / "project"
         project.mkdir()
@@ -242,7 +242,7 @@ class AgentMessagesTest(unittest.IsolatedAsyncioTestCase):
             InvokeTool(SEND_MESSAGE, (("recipient", "Lin"), ("text", f"任务{index}"))) for index in range(4)))
         await AgentRuntime(self.journal("Ada"), None, {}).receive_user_message("Ada", "分头去做", delivery_id="human")
         commands = await decide("Ada", lambda _: ModelDecision(content="你好"), tasks)
-        with patch("redpanda.assistant.host.agent_messages.MAX_MESSAGES_PER_ORIGIN", 3):
+        with patch("konden.assistant.host.agent_messages.MAX_MESSAGES_PER_ORIGIN", 3):
             codes = [(await send_message(self.transport, "Ada", command.command_id,
                                          {"recipient": recipient, "text": "新话题"}))["code"]
                      for command, recipient in zip(commands, ("Lin", "Third", "Lin", "Third"))]

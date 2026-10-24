@@ -3,17 +3,17 @@ from __future__ import annotations
 
 from typing import AbstractSet
 
-from redpanda.assistant.attachments import AttachmentStore
-from redpanda.assistant.context.projection import (
+from konden.assistant.attachments import AttachmentStore
+from konden.assistant.context.projection import (
     _externalized_meta,
     _translate_visible_events,
 )
-from redpanda.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
-from redpanda.assistant.decision import _invoke_requests
-from redpanda.llm.api import LLMResponse
-from redpanda.runtime import ModelDecision
-from redpanda.runtime.events import Event
-from redpanda.runtime.model import DecisionState
+from konden.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
+from konden.assistant.decision import _invoke_requests
+from konden.llm.api import LLMResponse
+from konden.runtime import ModelDecision
+from konden.runtime.events import Event
+from konden.runtime.model import DecisionState
 
 
 def project_chat_messages(

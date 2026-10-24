@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import SqliteJournal
+from konden.assistant.host.session_store import SessionStore
+from konden.runtime import SqliteJournal
 
 
 class SessionStoreListingTest(unittest.IsolatedAsyncioTestCase):
@@ -28,7 +28,7 @@ class SessionStoreListingTest(unittest.IsolatedAsyncioTestCase):
                         return rename(source, target)
                 return rename(source, target)
 
-            with patch("redpanda.assistant.host.session_store.os.rename", side_effect=briefly_read):
+            with patch("konden.assistant.host.session_store.os.rename", side_effect=briefly_read):
                 await store.create("created", workspace_id="workspace-1", agent_colleagues=("peer",))
 
             journal = SqliteJournal(store.require("created"))
@@ -44,8 +44,8 @@ class SessionStoreListingTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(winerror=winerror), tempfile.TemporaryDirectory() as directory:
                 store = SessionStore(Path(directory))
                 error = PermissionError(errno.EACCES, "rename denied", None, winerror)
-                with (patch("redpanda.assistant.host.session_store.os.rename", side_effect=error) as rename,
-                      patch("redpanda.assistant.host.session_store.asyncio.sleep", new_callable=AsyncMock),
+                with (patch("konden.assistant.host.session_store.os.rename", side_effect=error) as rename,
+                      patch("konden.assistant.host.session_store.asyncio.sleep", new_callable=AsyncMock),
                       self.assertRaises(PermissionError) as caught):
                     await store.create("denied")
                 self.assertIs(caught.exception, error)

@@ -11,7 +11,7 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock("../src/features/models/ModelSettings", () => ({ ModelSettings: () => <div>模型配置内容</div> }));
 vi.mock("../src/app/hooks", () => ({ useAppSelector: () => "connection" }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetSharedMemoryQuery: () => ({ data: state.data, error: state.error, refetch: state.refetch }),
   useSaveSharedMemoryMutation: () => [state.save, { isLoading: false, error: undefined, reset: state.reset }],
 }));

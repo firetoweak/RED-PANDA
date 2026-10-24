@@ -12,15 +12,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.filesystem import FileAccess
-from redpanda.filesystem.workspace import (
+from konden.filesystem import FileAccess
+from konden.filesystem.workspace import (
     FilesystemPermission,
     PermissionBinding,
     RootBinding,
     WorkspaceScope,
     WorkspaceViewSnapshot,
 )
-from redpanda.tools.builtin.file_read import (
+from konden.tools.builtin.file_read import (
     GlobInput,
     GrepInput,
     ReadFileInput,
@@ -89,9 +89,9 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
                 )
                 proc.terminate = lambda: setattr(proc, "returncode", -15)
                 with (
-                    patch("redpanda.tools.builtin.file_read.shutil.which", return_value=name),
-                    patch("redpanda.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
-                    patch("redpanda.tools.builtin.file_read.asyncio.timeout", side_effect=lambda _: timeout(0)) as deadline,
+                    patch("konden.tools.builtin.file_read.shutil.which", return_value=name),
+                    patch("konden.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
+                    patch("konden.tools.builtin.file_read.asyncio.timeout", side_effect=lambda _: timeout(0)) as deadline,
                 ):
                     result = await _handlers(Path(directory))[name].handler(raw)
                 deadline.assert_called_once_with(raw.timeout_seconds)
@@ -111,7 +111,7 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_glob_missing_dependency_is_an_explicit_failure(self):
         with tempfile.TemporaryDirectory() as directory:
-            with patch("redpanda.tools.builtin.file_read.shutil.which", return_value=None):
+            with patch("konden.tools.builtin.file_read.shutil.which", return_value=None):
                 result = await _handlers(Path(directory))["glob"].handler(GlobInput(pattern="*"))
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "GLOB_NOT_FOUND")
@@ -124,8 +124,8 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
                 communicate=AsyncMock(return_value=(b"./visible.py\0", b"permission denied")),
             )
             with (
-                patch("redpanda.tools.builtin.file_read.shutil.which", return_value="fd"),
-                patch("redpanda.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
+                patch("konden.tools.builtin.file_read.shutil.which", return_value="fd"),
+                patch("konden.tools.builtin.file_read.asyncio.create_subprocess_exec", return_value=proc),
             ):
                 result = await _handlers(Path(directory))["glob"].handler(GlobInput(pattern="*"))
         self.assertFalse(result["ok"])
@@ -148,9 +148,9 @@ class ReadFilePagingTest(unittest.IsolatedAsyncioTestCase):
                 resolved.append(path)
                 return resolve(path, *args, **kwargs)
             with (
-                patch("redpanda.tools.builtin.file_read._fd_entries",
+                patch("konden.tools.builtin.file_read._fd_entries",
                       return_value={"ok": True, "entries": discovered}),
-                patch("redpanda.tools.builtin.file_read.shutil.which", return_value="fd"),
+                patch("konden.tools.builtin.file_read.shutil.which", return_value="fd"),
                 patch.object(Path, "resolve", checked),
             ):
                 result = await _handlers(root)["glob"].handler(

@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from redpanda.assistant.agent_tools import LAND, LINK, UNLINK, agent_git_bindings
-from redpanda.assistant.agents import PROJECT_LINKED, PROJECT_UNLINKED
-from redpanda.assistant.host.agent_projects import AgentProjects
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentRoster
-from redpanda.runtime import SqliteJournal
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.assistant.agent_tools import LAND, LINK, UNLINK, agent_git_bindings
+from konden.assistant.agents import PROJECT_LINKED, PROJECT_UNLINKED
+from konden.assistant.host.agent_projects import AgentProjects
+from konden.assistant.host.agent_roster import AgentNameTaken, AgentRoster
+from konden.runtime import SqliteJournal
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
+from konden.runtime.dispatcher import AttemptContext
 from tests.assistant.test_agent_worktrees_process import git
 
 
@@ -39,7 +39,7 @@ class AgentProjectsTest(unittest.IsolatedAsyncioTestCase):
         self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
-        home = RedPandaHome(self.root / "home")
+        home = KondenHome(self.root / "home")
         self.registry = WorkspaceRegistry.load(home.workspaces_path)
         self.host = HostSupervisor(SessionStore(home.runtime_sessions_root), None, home, None,
                                    llm=None, workspaces=self.registry)

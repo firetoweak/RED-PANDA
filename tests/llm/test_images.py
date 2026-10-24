@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from redpanda.llm.images import encode_images
+from konden.llm.images import encode_images
 
 
 class EncodeImagesTest(unittest.TestCase):

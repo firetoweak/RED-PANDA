@@ -10,14 +10,14 @@ from PIL import Image
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.layout import HSplit, Window
 from prompt_toolkit.output import DummyOutput
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.assistant.compact.store import ConversationStatus
+from konden.assistant.attachments import AttachmentGateway
+from konden.assistant.compact.store import ConversationStatus
 
-from redpanda.channels.tui.images import ConsoleMessage, ImagePaste
+from konden.channels.tui.images import ConsoleMessage, ImagePaste
 
 
 def _console():
-    from redpanda.channels.tui.console import (
+    from konden.channels.tui.console import (
         _BottomAnchoredPromptSession,
         _ContextMeter,
         read_console_input,
@@ -41,7 +41,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
                 data = ""
 
             with patch(
-                "redpanda.channels.tui.images.ImageGrab.grabclipboard",
+                "konden.channels.tui.images.ImageGrab.grabclipboard",
                 return_value=Image.new("RGB", (8, 8)),
             ):
                 paste.paste(_Event())
@@ -70,7 +70,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(prompt.preferred_height(80, 24).max, 3)
 
     def test_streaming_output_renders_in_layout_until_final_delivery(self):
-        from redpanda.channels.tui.console import _StreamingConsoleOutput
+        from konden.channels.tui.console import _StreamingConsoleOutput
 
         rendered = []
         written = []
@@ -94,7 +94,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rendered[-1], "")
 
     def test_aborted_stream_is_written_once_with_marker(self):
-        from redpanda.channels.tui.console import _StreamingConsoleOutput
+        from konden.channels.tui.console import _StreamingConsoleOutput
 
         written = []
         output = _StreamingConsoleOutput(lambda: None, written.append)
@@ -156,7 +156,7 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             EOFError,
         )
 
-        with patch("redpanda.channels.tui.console.patch_stdout") as patched:
+        with patch("konden.channels.tui.console.patch_stdout") as patched:
             await read_console_input(queue, session)
 
         patched.assert_called_once_with()

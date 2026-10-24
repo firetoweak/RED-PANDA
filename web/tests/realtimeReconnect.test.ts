@@ -1,6 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { afterEach, expect, it, vi } from "vitest";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import { openEventBridge } from "../src/realtime/eventBridge";
 import type { ConversationView } from "../src/api/contracts";
 import { visibleTimeline } from "../src/features/conversation/visibleTimeline";
@@ -23,8 +23,8 @@ it.each([0, 1, 2, 3, 4])("重连后最终快照插在第 %i 个流事件前，�
   });
   vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (defaults) => defaults().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
   });
   const close = openEventBridge(store.dispatch);
   const emit = (name: string, payload: object = {}) => listeners.get(name)!(new MessageEvent(name, { data: JSON.stringify(payload) }));
@@ -77,7 +77,7 @@ it.each([0, 1, 2, 3, 4])("重连后最终快照插在第 %i 个流事件前，�
   expect(store.getState().runtime.sessions.Ada.committed).toEqual({ output: "完整回复" });
   expect(visibleReplies()).toMatchObject([{ outputId: "output", text: "完整回复" }]);
   close();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔接", () => {
@@ -87,8 +87,8 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
     close() {}
   });
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(kondenApi.middleware),
   });
   const close = openEventBridge(store.dispatch);
   const emit = (name: string, payload: object = {}) => listeners.get(name)!(new MessageEvent(name, { data: JSON.stringify(payload) }));
@@ -112,7 +112,7 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   expect(store.getState().runtime.sessions.child.committed.output).toBe("补齐前缀后续");
   expect(store.getState().runtime.sessions.child.activePreview).toBeNull();
   close();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it("群变化事件让群数据重新读取，调度结束后页面不会停在旧的等待状态", () => {
@@ -124,12 +124,12 @@ it("群变化事件让群数据重新读取，调度结束后页面不会停在�
   const dispatch = vi.fn();
   const close = openEventBridge(dispatch);
   listeners.get("group_changed")!(new MessageEvent("group_changed", { data: JSON.stringify({ group_id: "group-1" }) }));
-  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Groups"]));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Groups"]));
   listeners.get("auto_authorize_changed")!(new MessageEvent("auto_authorize_changed", { data: "{}" }));
-  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
   listeners.get("avatars_changed")!(new MessageEvent("avatars_changed", { data: "{}" }));
-  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Avatars"]));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Avatars"]));
   listeners.get("connected")!(new MessageEvent("connected", { data: '{"connection_id":"again"}' }));
-  expect(dispatch).toHaveBeenCalledWith(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
   close();
 });

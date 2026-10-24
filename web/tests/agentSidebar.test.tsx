@@ -34,14 +34,14 @@ const queries = vi.hoisted(() => ({
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   renameWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
-  createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve(agent({ session_id: "agent-new", name: "小熊猫" })) })),
+  createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve(agent({ session_id: "agent-new", name: "konden" })) })),
   groups: [] as GroupSummary[],
   setAutoAuthorize: vi.fn(),
   createGroup: vi.fn(() => ({ unwrap: () => Promise.resolve({ group_id: "group-new" }) })),
   deleteAgent: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   dissolveGroup: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
 }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useDeleteAgentMutation: () => [queries.deleteAgent, { isLoading: false }],
   useDissolveGroupMutation: () => [queries.dissolveGroup, { isLoading: false }],
   useGetAutoAuthorizeQuery: () => ({ data: { enabled: false } }),
@@ -100,7 +100,7 @@ function browserStubs() {
 
 afterEach(() => {
   cleanup(); queries.inbox = []; vi.unstubAllGlobals();
-  Object.keys(window.localStorage).filter((key) => key.startsWith("redpanda.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
+  Object.keys(window.localStorage).filter((key) => key.startsWith("konden.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
 });
 
 it("删除 Bot 要确认，失败保留弹窗，成功后离开被删除的会话", async () => {
@@ -183,13 +183,13 @@ it("名册分组覆盖所有 Bot，搜索展开但不改写折叠偏好", async 
   queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" }), agent({ session_id: "lin", name: "Lin", workspace_id: "other" })];
   queries.groups = [];
   const stored = { sections: [{ id: "dev", name: "研发", collapsed: true }], assignments: { "agent:ada": "dev" }, ungroupedCollapsed: false };
-  window.localStorage.setItem("redpanda.sidebarGroups", JSON.stringify(stored));
+  window.localStorage.setItem("konden.sidebarGroups", JSON.stringify(stored));
   renderSidebar("/");
   expect(within(screen.getByRole("region", { name: "名册的分组 未分组" })).getByRole("button", { name: "Lin", exact: true })).toBeInTheDocument();
   fireEvent.change(screen.getByRole("textbox", { name: "搜索 Bot 或群聊" }), { target: { value: "Ada" } });
   expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "true");
   expect(await screen.findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
-  expect(JSON.parse(window.localStorage.getItem("redpanda.sidebarGroups")!).sections[0].collapsed).toBe(true);
+  expect(JSON.parse(window.localStorage.getItem("konden.sidebarGroups")!).sections[0].collapsed).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
   expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "false");
 });
@@ -198,7 +198,7 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   browserStubs();
   queries.workspaces = [workspace("workspace", "工作区")];
   queries.agents = [agent({
-    session_id: "parent", name: "小熊猫", status: "working", activity: "idle",
+    session_id: "parent", name: "konden", status: "working", activity: "idle",
   })];
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" }));
@@ -210,21 +210,21 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
   const view = render(sidebar());
   expect(screen.getByLabelText("干活")).toHaveClass("activity-dot-running");
 
-  queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "idle" })];
+  queries.agents = [agent({ session_id: "parent", name: "konden", status: "idle" })];
   view.rerender(sidebar());
   expect(screen.getByLabelText("空闲")).toHaveClass("activity-dot-idle");
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "running" })); });
   expect(screen.getByLabelText("干活")).toHaveClass("activity-dot-running");
 
-  queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "authorization" })];
+  queries.agents = [agent({ session_id: "parent", name: "konden", status: "authorization" })];
   view.rerender(sidebar());
   expect(screen.getByLabelText("等授权")).toHaveClass("activity-dot-attention");
   act(() => { store.dispatch(viewing("parent")); });
   expect(screen.getByLabelText("等授权")).toHaveClass("activity-dot-attention");
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" })); });
-  queries.agents = [agent({ session_id: "parent", name: "小熊猫", status: "waiting" })];
+  queries.agents = [agent({ session_id: "parent", name: "konden", status: "waiting" })];
   view.rerender(sidebar());
   expect(screen.getByLabelText("等人回话")).toHaveClass("activity-dot-waiting");
 });
@@ -232,9 +232,9 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
 it("点 Agent 打开它的会话", () => {
   browserStubs();
   queries.workspaces = [workspace("workspace", "项目")];
-  queries.agents = [agent({ session_id: "agent-1", name: "小熊猫" })];
+  queries.agents = [agent({ session_id: "agent-1", name: "konden" })];
   renderSidebar("/");
-  fireEvent.click(screen.getByRole("button", { name: "小熊猫" }));
+  fireEvent.click(screen.getByRole("button", { name: "konden" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
 });
 

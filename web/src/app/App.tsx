@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { useAppDispatch } from "./hooks";
-import { useGetAgentsQuery, useGetAvatarsQuery } from "../api/redpandaApi";
+import { useGetAgentsQuery, useGetAvatarsQuery } from "../api/kondenApi";
 import { BotAvatars, BotIdentities } from "../features/conversation/ChatPresentation";
 import {
   MAX_SIDEBAR_WIDTH,

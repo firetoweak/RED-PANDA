@@ -2,7 +2,7 @@ import { ActionIcon, AppShell, Group, ScrollArea, SegmentedControl, Stack, Text,
 import { IconFolderPlus, IconMessageCircle, IconMessages, IconPlugConnected, IconPlugConnectedX, IconSearch, IconUserPlus, IconUsersGroup, IconUsersPlus, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
-import { useGetAgentsQuery, useGetGroupsQuery, useGetInboxQuery, useGetWorkspacesQuery } from "../../api/redpandaApi";
+import { useGetAgentsQuery, useGetGroupsQuery, useGetInboxQuery, useGetWorkspacesQuery } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { ColorSchemeSwitcher } from "../../app/ColorSchemeSwitcher";
 import { CreateGroupModal } from "../groups/CreateGroupModal";

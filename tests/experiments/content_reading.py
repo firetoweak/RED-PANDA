@@ -14,15 +14,15 @@ import time
 import types
 
 from thinllm import ChatCompletionsClient
-from redpanda.config import load_app_config
-from redpanda.llm.config import load_endpoint
+from konden.config import load_app_config
+from konden.llm.config import load_endpoint
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant import content
-from redpanda.assistant.context import projection
-from redpanda.assistant.compact import core
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, StateProjector, ToolBinding
+from konden.assistant import content
+from konden.assistant.context import projection
+from konden.assistant.compact import core
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, StateProjector, ToolBinding
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.runtime.dispatcher import AttemptContext
 from tests.session_scheduler import settle_session
 
 
@@ -154,7 +154,7 @@ async def main():
     parser.add_argument("--cases", nargs="+", default=["medium", "known", "browse", "compact"], choices=["medium", "known", "browse", "compact"])
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    old = {name: baseline_module(f"redpanda/assistant/{path}.py", f"content_baseline_{name}") for name, path in
+    old = {name: baseline_module(f"konden/assistant/{path}.py", f"content_baseline_{name}") for name, path in
            (("artifacts", "artifacts"), ("projection", "context/projection"), ("core", "compact/core"))} if "baseline" in args.variants else {}
     config = load_app_config()
     summaries = []

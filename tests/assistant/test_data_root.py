@@ -7,8 +7,8 @@ import sys
 
 import pytest
 
-from redpanda.assistant.host.data_root import DataRootInUse, hold_data_root
-from redpanda.paths import RedPandaHome
+from konden.assistant.host.data_root import DataRootInUse, hold_data_root
+from konden.paths import KondenHome
 
 
 pytestmark = pytest.mark.process
@@ -16,16 +16,16 @@ pytestmark = pytest.mark.process
 _HOLDER = """
 import os, sys, time
 from pathlib import Path
-from redpanda.assistant.host.data_root import hold_data_root
-from redpanda.paths import RedPandaHome
-with hold_data_root(RedPandaHome(Path(sys.argv[1]))):
+from konden.assistant.host.data_root import hold_data_root
+from konden.paths import KondenHome
+with hold_data_root(KondenHome(Path(sys.argv[1]))):
     print(os.getpid(), flush=True)
     time.sleep(120)
 """
 
 
 def test_second_host_is_refused_until_the_holder_dies(tmp_path):
-    home = RedPandaHome(tmp_path / "home")
+    home = KondenHome(tmp_path / "home")
     holder = subprocess.Popen(
         [sys.executable, "-c", _HOLDER, str(home.root)],
         stdout=subprocess.PIPE,

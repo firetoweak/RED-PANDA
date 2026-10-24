@@ -1,10 +1,10 @@
 import asyncio
 import unittest
 
-from redpanda.assistant.subagent.subagent import (
+from konden.assistant.subagent.subagent import (
     RETURN_FACT, TASK_FACT, persist_return, record_interrupted_return, return_data,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandPhase,
     DomainFactCommitted,

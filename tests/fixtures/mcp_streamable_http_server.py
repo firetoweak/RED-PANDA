@@ -5,7 +5,7 @@ import argparse
 from mcp.server import MCPServer
 
 
-server = MCPServer("redpanda-streamable-http-fixture", log_level="ERROR")
+server = MCPServer("konden-streamable-http-fixture", log_level="ERROR")
 
 
 @server.tool()

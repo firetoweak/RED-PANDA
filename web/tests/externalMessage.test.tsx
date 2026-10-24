@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 
 import { PrivateMessageNotice } from "../src/features/conversation/PrivateMessageNotice";
 
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetAgentsQuery: () => ({ data: [{ name: "Codex", session_id: "internal-bot" }] }),
 }));
 vi.mock("../src/features/conversation/ChatPresentation", () => ({

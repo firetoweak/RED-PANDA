@@ -3,11 +3,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 
-from redpanda.assistant.conversations import AssistantQueries
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.assistant.subagent.subagent import DELEGATE, child_session_id, persist_return, return_data
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
+from konden.assistant.conversations import AssistantQueries
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.runner import SessionNotFoundError
+from konden.assistant.subagent.subagent import DELEGATE, child_session_id, persist_return, return_data
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

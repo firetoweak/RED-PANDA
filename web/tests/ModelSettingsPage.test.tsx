@@ -14,7 +14,7 @@ const { data, save } = vi.hoisted(() => ({
   save: vi.fn(),
 }));
 
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetModelSettingsQuery: () => ({ data, isLoading: false }),
   useGetCodexModelsQuery: () => ({ currentData: undefined, isFetching: false }),
   useSaveModelSettingsMutation: () => [save, { isLoading: false }],

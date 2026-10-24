@@ -37,7 +37,7 @@ try {
         throw "Failed to install project Python $pythonVersion."
     }
 
-    $environmentDir = Join-Path $projectRoot "redpanda-env"
+    $environmentDir = Join-Path $projectRoot "konden-env"
     $python = Join-Path $environmentDir "Scripts\python.exe"
     $createEnvironment = -not (Test-Path -LiteralPath $python -PathType Leaf)
     if (-not $createEnvironment) {
@@ -58,7 +58,7 @@ try {
     $basePrefix = & $python -c "import sys; print(sys.base_prefix)"
     $pythonRoot = [System.IO.Path]::GetFullPath($managedPythonDir).TrimEnd('\') + '\'
     if ($LASTEXITCODE -ne 0 -or $environmentPythonVersion -ne $pythonVersion -or -not $basePrefix.StartsWith($pythonRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "redpanda-env is not using the project Python. Delete redpanda-env and run this script again."
+        throw "konden-env is not using the project Python. Delete konden-env and run this script again."
     }
 
     $setupArgs = @()

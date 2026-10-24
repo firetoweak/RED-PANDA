@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 import traceback
 
-from redpanda.llm.api import (
+from konden.llm.api import (
     InvalidLLMResponse,
     LLMRemoteError,
     LLMTransientError,
@@ -12,7 +12,7 @@ from redpanda.llm.api import (
     encode_llm_error,
     encode_llm_result,
 )
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 class LlmCodecTest(unittest.TestCase):

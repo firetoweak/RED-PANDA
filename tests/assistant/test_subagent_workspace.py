@@ -1,6 +1,6 @@
 import asyncio
 
-from redpanda.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
+from konden.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
 from tests.fixtures.workspaces import workspace_record
 
 

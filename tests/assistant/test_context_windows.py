@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock
 
 from PIL import Image
 
-from redpanda.assistant.artifacts import FileArtifactGateway
+from konden.assistant.artifacts import FileArtifactGateway
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.assistant.compact.core import (
+from konden.assistant.attachments import AttachmentGateway
+from konden.assistant.compact.core import (
     CompactBoundary,
     CompactContext,
     HANDOFF_PREFIX,
@@ -22,12 +22,12 @@ from redpanda.assistant.compact.core import (
     frozen_bundle,
     save_document,
 )
-from redpanda.assistant.context.projection import ModelContextProjector
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
+from konden.assistant.context.projection import ModelContextProjector
+from konden.assistant.host.session_store import SessionStore
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.assistant.toolsets import ToolSurface
-from redpanda.assistant.workspaces import SESSION_WORKSPACE_FACT
+from konden.assistant.toolsets import ToolSurface
+from konden.assistant.workspaces import SESSION_WORKSPACE_FACT
 from tests.assistant.test_toolsets import FakeEchoProvider
 from tests.session_scheduler import settle_session
 

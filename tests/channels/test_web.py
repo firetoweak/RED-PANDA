@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from redpanda.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 
 import asyncio
 import json
@@ -17,13 +17,13 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from redpanda.assistant.attachments import AttachmentGateway
-from redpanda.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
-from redpanda.assistant.host.ipc import ProcessFailure, WorkerFailed
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.automation.routines import RoutineClock, RoutineStore
-from redpanda.assistant.agents import AgentCreated, AgentRecord
-from redpanda.assistant.conversations import (
+from konden.assistant.attachments import AttachmentGateway
+from konden.assistant.authorization import AuthorizationConflict, AuthorizationTargetNotFound
+from konden.assistant.host.ipc import ProcessFailure, WorkerFailed
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.automation.routines import RoutineClock, RoutineStore
+from konden.assistant.agents import AgentCreated, AgentRecord
+from konden.assistant.conversations import (
     AgentProjectView,
     AgentRosterEntry,
     AuthorizationInboxItem,
@@ -32,24 +32,24 @@ from redpanda.assistant.conversations import (
     UserItem,
     project_agent_status,
 )
-from redpanda.assistant.host.agent_groups import GroupNameTaken, GroupNotFound, GroupRecord
-from redpanda.assistant.agents import GroupCreated
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
-from redpanda.assistant.host.agent_projects import ProjectLinkRefused
-from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.model_settings import ModelSettings
-from redpanda.config import write_json
-from redpanda.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage, LLMTransientError
-from redpanda.paths import RedPandaHome
-from redpanda.assistant.inputs import InputConflict
-from redpanda.assistant.sessions import SessionView
-from redpanda.channels.web import app as web_app
-from redpanda.channels.web.app import create_web_app, report_worker_failures
-from redpanda.channels.web.channel import WebChannel
-from redpanda.channels.web.avatars import AvatarStore
-from redpanda.channels.web.directory_picker import DirectoryPickerUnavailable
-from redpanda.channels.web.hub import WebEventHub
-from redpanda.filesystem.registry import WorkspaceRegistry
+from konden.assistant.host.agent_groups import GroupNameTaken, GroupNotFound, GroupRecord
+from konden.assistant.agents import GroupCreated
+from konden.assistant.host.agent_roster import AgentNameTaken, AgentNotFound
+from konden.assistant.host.agent_projects import ProjectLinkRefused
+from konden.assistant.runner import SessionNotFoundError
+from konden.model_settings import ModelSettings
+from konden.config import write_json
+from konden.llm.api import LLMAuthenticationError, LLMCallResult, LLMResponse, LLMUsage, LLMTransientError
+from konden.paths import KondenHome
+from konden.assistant.inputs import InputConflict
+from konden.assistant.sessions import SessionView
+from konden.channels.web import app as web_app
+from konden.channels.web.app import create_web_app, report_worker_failures
+from konden.channels.web.channel import WebChannel
+from konden.channels.web.avatars import AvatarStore
+from konden.channels.web.directory_picker import DirectoryPickerUnavailable
+from konden.channels.web.hub import WebEventHub
+from konden.filesystem.registry import WorkspaceRegistry
 
 
 MODEL_CONFIG = {"model": {"default": "deepseek/test-model", "candidates": [
@@ -252,7 +252,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self._directory = TemporaryDirectory()
         self.queries = _Queries()
         self.sessions = _Sessions(self.queries)
-        home = RedPandaHome(Path(self._directory.name))
+        home = KondenHome(Path(self._directory.name))
         write_json(home.config_path, MODEL_CONFIG)
         self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
         self.models.initialize_session("session-old")
@@ -371,7 +371,7 @@ class WebFirstSliceTest(unittest.TestCase):
         body = {"connection_id": self.connection.connection_id, "seed": "previous"}
         self.client.put("/api/agents/session-old/avatar", json=body)
         queue = self.hub.subscribe()
-        with patch("redpanda.channels.web.avatars.write_json", side_effect=OSError("disk unavailable")):
+        with patch("konden.channels.web.avatars.write_json", side_effect=OSError("disk unavailable")):
             with self.assertRaisesRegex(OSError, "disk unavailable"):
                 self.client.post("/api/agents/session-old/avatar/image",
                                  data={"connection_id": self.connection.connection_id},
@@ -635,7 +635,7 @@ class WebFirstSliceTest(unittest.TestCase):
         before = self.models.connections_path.read_bytes()
         catalog = [{"slug": "actual-id", "display_name": "Actual model", "context_window": 500000,
                     "supported_reasoning_levels": [{"effort": "high"}], "default_reasoning_level": "high"}]
-        with patch("redpanda.model_settings.list_codex_models", new=AsyncMock(return_value=catalog)) as lookup:
+        with patch("konden.model_settings.list_codex_models", new=AsyncMock(return_value=catalog)) as lookup:
             response = self.client.get("/api/model-settings/codex-models")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), catalog)
@@ -644,11 +644,11 @@ class WebFirstSliceTest(unittest.TestCase):
 
     def test_codex_catalog_reports_known_failures_and_exposes_unknown_errors(self):
         for error in [LLMAuthenticationError("请重新授权"), LLMTransientError("请重试")]:
-            with self.subTest(error=error), patch("redpanda.model_settings.list_codex_models", new=AsyncMock(side_effect=error)):
+            with self.subTest(error=error), patch("konden.model_settings.list_codex_models", new=AsyncMock(side_effect=error)):
                 response = self.client.get("/api/model-settings/codex-models")
                 self.assertEqual(response.status_code, 502)
                 self.assertEqual(response.json(), {"detail": str(error)})
-        with patch("redpanda.model_settings.list_codex_models", new=AsyncMock(side_effect=LookupError("unknown"))):
+        with patch("konden.model_settings.list_codex_models", new=AsyncMock(side_effect=LookupError("unknown"))):
             with self.assertRaisesRegex(LookupError, "unknown"):
                 self.client.get("/api/model-settings/codex-models")
 
@@ -801,12 +801,12 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(groups.post.await_count, 1)
 
     def test_routine_fires_are_newest_first_and_point_at_the_delivered_fact(self):
-        from redpanda.assistant.conversations import AssistantQueries
-        from redpanda.assistant.host.session_store import SessionStore
-        from redpanda.automation.once import SOURCE as AUTOMATION_SOURCE
-        from redpanda.automation.routines import ROUTINE_DUE
-        from redpanda.runtime import DomainFactCommitted, SqliteJournal
-        from redpanda.runtime.events import DeliveryIdentity, EventDraft
+        from konden.assistant.conversations import AssistantQueries
+        from konden.assistant.host.session_store import SessionStore
+        from konden.automation.once import SOURCE as AUTOMATION_SOURCE
+        from konden.automation.routines import ROUTINE_DUE
+        from konden.runtime import DomainFactCommitted, SqliteJournal
+        from konden.runtime.events import DeliveryIdentity, EventDraft
 
         clock = RoutineClock(RoutineStore(Path(self._directory.name) / "routines.sqlite"))
         host = SimpleNamespace(routines=clock)
@@ -816,7 +816,7 @@ class WebFirstSliceTest(unittest.TestCase):
             intent="看看有没有新评审。", schedule="@every 10m",
         )
         routine_id = saved["data"]["routine_id"]
-        with patch("redpanda.automation.routines.datetime") as frozen:
+        with patch("konden.automation.routines.datetime") as frozen:
             frozen.fromisoformat = datetime.fromisoformat
             frozen.now.return_value = datetime(2026, 10, 20, 10, 0, tzinfo=timezone.utc)
             first = clock.store.fire(clock.store.list("session-old")[0])
@@ -891,28 +891,28 @@ class WebFirstSliceTest(unittest.TestCase):
         created = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
             "path": "C:/project",
-            "name": "小熊猫",
+            "name": "konden",
         })
         self.assertEqual(created.status_code, 201)
         body = created.json()
-        self.assertEqual(body["name"], "小熊猫")
+        self.assertEqual(body["name"], "konden")
         self.assertEqual(body["projects"], [{"name": "old", "workspace_id": "workspace-old", "directory": "C:/bots/old"}])
         self.assertEqual(body["status"], "waiting")
         self.assertNotIn("worktree", body)
         self.assertNotIn("branch", body)
-        self.assertEqual(self.sessions.calls[0], ("create_agent", "小熊猫", "C:/project"))
+        self.assertEqual(self.sessions.calls[0], ("create_agent", "konden", "C:/project"))
         self.assertEqual(self.sessions.calls[1][0], "select")
 
         self.assertEqual(self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
             "path": "C:/project",
-            "name": "小熊猫",
+            "name": "konden",
             "worktree": r"C:\nope",
         }).status_code, 422)
         padded = self.client.post("/api/agents", json={
             "connection_id": self.connection.connection_id,
             "path": "C:/project",
-            "name": " 小熊猫",
+            "name": " konden",
         })
         self.assertEqual(padded.status_code, 422)
         self.assertIn("空白", json.dumps(padded.json(), ensure_ascii=False))
@@ -977,7 +977,7 @@ class WebFirstSliceTest(unittest.TestCase):
         selected.write_text("x")
         for choice in (selected, None):
             with self.subTest(choice=choice), patch(
-                "redpanda.channels.web.channel.select_file", return_value=choice
+                "konden.channels.web.channel.select_file", return_value=choice
             ):
                 response = self.client.post("/api/sessions/session-old/attachments/select",
                     json={"connection_id": self.connection.connection_id})
@@ -995,7 +995,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/sessions/session-old/inputs", json=body).status_code, 422)
         body.update(connection_id="expired", text="hello")
         self.assertEqual(self.client.post("/api/sessions/session-old/inputs", json=body).status_code, 409)
-        with patch("redpanda.channels.web.channel.select_file") as picker:
+        with patch("konden.channels.web.channel.select_file") as picker:
             self.assertEqual(self.client.post("/api/sessions/session-old/attachments/select",
                 json={"connection_id": "expired"}).status_code, 409)
             picker.assert_not_called()

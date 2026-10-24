@@ -2,7 +2,7 @@ import { Alert, Button, FileButton, Group, Popover, Stack, Text, UnstyledButton 
 import { IconPencil, IconRefresh, IconUpload } from "@tabler/icons-react";
 import { useContext, useRef, useState } from "react";
 import type { AvatarSelection } from "../../api/contracts";
-import { redpandaApi, useSetAgentAvatarMutation, useUploadAgentAvatarMutation } from "../../api/redpandaApi";
+import { kondenApi, useSetAgentAvatarMutation, useUploadAgentAvatarMutation } from "../../api/kondenApi";
 import { useAppDispatch } from "../../app/hooks";
 import { BotAvatar, BotAvatars } from "./ChatPresentation";
 
@@ -31,7 +31,7 @@ export function BotAvatarPicker({ name, sessionId, connectionId }: {
       const selection: AvatarSelection | null = value instanceof File
         ? await uploadAvatar({ connectionId, sessionId, file: value }).unwrap()
         : await setAvatar({ connectionId, sessionId, seed: value }).unwrap();
-      dispatch(redpandaApi.util.updateQueryData("getAvatars", undefined, (current) => {
+      dispatch(kondenApi.util.updateQueryData("getAvatars", undefined, (current) => {
         if (selection === null) delete current[sessionId];
         else current[sessionId] = selection;
       }));

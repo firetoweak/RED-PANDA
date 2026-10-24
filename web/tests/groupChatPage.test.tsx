@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({
   group: undefined as GroupView | undefined,
   post: vi.fn((_args: { deliveryId: string }) => ({ unwrap: () => Promise.resolve() })),
 }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetGroupQuery: () => ({ data: api.group, error: undefined }),
   useGetWorkspacesQuery: () => ({ data: [{ workspace_id: "workspace", name: "当前项目", task_root: "/project" }] }),
   useGetAgentsQuery: () => ({ data: [{
@@ -209,7 +209,7 @@ it("切换对话分别保留群草稿和引用，发送后清除", async () => {
   expect(screen.getByRole("button", { name: "取消引用" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
   await waitFor(() => expect(screen.getByLabelText("群消息")).toHaveValue(""));
-  expect(localStorage.getItem("redpanda.composerDraft.group:group-1")).toBeNull();
+  expect(localStorage.getItem("konden.composerDraft.group:group-1")).toBeNull();
 });
 
 it("正文点名与头像同色，代码和邮箱保持原文", () => {
@@ -230,7 +230,7 @@ it("发送请求未结束时离开群聊，成功后不恢复已发送草稿", a
   fireEvent.click(screen.getByRole("button", { name: "发送到群" }));
   page.unmount();
   complete();
-  await waitFor(() => expect(localStorage.getItem("redpanda.composerDraft.group:group-1")).toBeNull());
+  await waitFor(() => expect(localStorage.getItem("konden.composerDraft.group:group-1")).toBeNull());
   renderPage();
   expect(screen.getByLabelText("群消息")).toHaveValue("");
 });

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from redpanda.assistant.artifacts import (
+from konden.assistant.artifacts import (
     ArtifactChunk,
     ArtifactNotFoundError,
     ArtifactOffsetOutOfRangeError,

@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from redpanda.assistant.agents import AgentCreated, ProjectLinked, fact_arguments
-from redpanda.assistant.host.agent_projects import AgentProjects
-from redpanda.assistant.host.agent_roster import AgentRoster
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.runtime import AgentRuntime, SqliteJournal
+from konden.assistant.agents import AgentCreated, ProjectLinked, fact_arguments
+from konden.assistant.host.agent_projects import AgentProjects
+from konden.assistant.host.agent_roster import AgentRoster
+from konden.assistant.host.session_store import SessionStore
+from konden.runtime import AgentRuntime, SqliteJournal
 
 
 class ProjectLinkAcknowledgementTest(unittest.IsolatedAsyncioTestCase):

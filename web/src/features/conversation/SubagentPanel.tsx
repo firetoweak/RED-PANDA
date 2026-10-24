@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Center, Group, Loader, Paper, ScrollArea, Stack, 
 import { IconArrowDown, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import { useState } from "react";
 
-import { useObserveSubagentQuery } from "../../api/redpandaApi";
+import { useObserveSubagentQuery } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { StepDisclosure } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";

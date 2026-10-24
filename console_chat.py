@@ -6,8 +6,8 @@ import os
 import sys
 from pathlib import Path
 
-from redpanda.config import CONFIG_PATH_ENV
-from redpanda.paths import HOME_PATH_ENV
+from konden.config import CONFIG_PATH_ENV
+from konden.paths import HOME_PATH_ENV
 
 
 async def async_main(argv: list[str] | None = None) -> None:
@@ -22,7 +22,7 @@ async def async_main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--home",
         type=Path,
-        default=Path.home() / ".redpanda-tui",
+        default=Path.home() / ".konden-tui",
         help="TUI 自己的数据目录，与 Web 的数据互不相干",
     )
     args = parser.parse_args(argv)
@@ -31,8 +31,8 @@ async def async_main(argv: list[str] | None = None) -> None:
     os.environ[HOME_PATH_ENV] = str(args.home)
     os.environ.pop(CONFIG_PATH_ENV, None)
 
-    from redpanda.channels.tui.console import run_runtime_console
-    from redpanda.initialize import configure, initialize, needs_configuration
+    from konden.channels.tui.console import run_runtime_console
+    from konden.initialize import configure, initialize, needs_configuration
 
     home = initialize()
     if needs_configuration(home):

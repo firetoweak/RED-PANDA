@@ -118,7 +118,7 @@ def changes(previous: dict | None, current: dict) -> list[dict[str, object]]:
 
 
 def state_path() -> Path:
-    git_path = subprocess.run(("git", "rev-parse", "--git-path", "redpanda-watch-prs.json"), check=True,
+    git_path = subprocess.run(("git", "rev-parse", "--git-path", "konden-watch-prs.json"), check=True,
                               capture_output=True, text=True).stdout.strip()
     return Path(git_path)
 

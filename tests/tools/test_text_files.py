@@ -7,12 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from redpanda.filesystem import read_text, replace_text, write_text
-from redpanda.filesystem.workspace import (
+from konden.filesystem import read_text, replace_text, write_text
+from konden.filesystem.workspace import (
     FileAccess, PermissionBinding, RootBinding, WorkspaceScope, WorkspaceViewSnapshot,
 )
-from redpanda.tools.builtin.file_manage import create_file_manage_specs
-from redpanda.tools.builtin.file_write import create_file_write_specs
+from konden.tools.builtin.file_manage import create_file_manage_specs
+from konden.tools.builtin.file_write import create_file_write_specs
 
 
 @pytest.mark.parametrize("source", [b"left\nTARGET\nright\n", b"left\r\nTARGET\r\nright\r\n",

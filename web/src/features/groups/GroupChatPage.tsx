@@ -12,7 +12,7 @@ import {
   useGetAgentsQuery,
   useGetGroupQuery,
   usePostGroupMessageMutation,
-} from "../../api/redpandaApi";
+} from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
@@ -96,7 +96,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
     }
     setFailure(null);
     try {
-      const key = `redpanda.groupPending.${groupId}`;
+      const key = `konden.groupPending.${groupId}`;
       const saved = localStorage.getItem(key);
       const previous = saved === null ? null : z.object({ content: z.string(), deliveryId: z.string().min(1) }).parse(JSON.parse(saved));
       const content = JSON.stringify([text, mention]);

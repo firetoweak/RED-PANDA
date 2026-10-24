@@ -13,10 +13,10 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import patch
 
-from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from redpanda.paths import RedPandaHome
+from konden.assistant.assembly import build_assistant_assembly
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from konden.paths import KondenHome
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.fixtures.workspaces import workspace_record
 
@@ -63,11 +63,11 @@ class ExposedToolSurfaceTests(unittest.IsolatedAsyncioTestCase):
             workspace.mkdir()
             with (
                 patch(
-                    "redpanda.assistant.assembly.RedPandaHome.default",
-                    return_value=RedPandaHome(root / ".redpanda"),
+                    "konden.assistant.assembly.KondenHome.default",
+                    return_value=KondenHome(root / ".konden"),
                 ),
                 patch(
-                    "redpanda.assistant.assembly.runtime_data_root",
+                    "konden.assistant.assembly.runtime_data_root",
                     return_value=root / "runtime",
                 ),
             ):

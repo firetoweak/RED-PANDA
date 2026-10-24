@@ -7,7 +7,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { ConversationView } from "../src/api/contracts";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import { Conversation } from "../src/features/conversation/Conversation";
 import type { ConversationTimeline } from "../src/features/conversation/ConversationTimeline";
 import runtimeReducer, {
@@ -74,8 +74,8 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
     return Response.json(view);
   }));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(kondenApi.middleware),
   });
   store.dispatch(connected("connection"));
   render(
@@ -110,5 +110,5 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(store.getState().runtime.sessions.agent.unread).toBe(1);
   expect(screen.getByText(/正文写完了/)).toBeVisible();
   cleanup();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });

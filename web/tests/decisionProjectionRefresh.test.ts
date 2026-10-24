@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import type { AppDispatch } from "../src/app/store";
 import { openEventBridge } from "../src/realtime/eventBridge";
 
@@ -21,7 +21,7 @@ it("refreshes committed projections when the next model call starts, before any 
       data: JSON.stringify({ session_id: "s", output_id: "decision" }),
     }));
     expect(dispatch.mock.calls.map(([action]) => action)).toContainEqual(
-      redpandaApi.util.invalidateTags([{ type: "Conversation", id: "s" }]),
+      kondenApi.util.invalidateTags([{ type: "Conversation", id: "s" }]),
     );
   } finally {
     close();

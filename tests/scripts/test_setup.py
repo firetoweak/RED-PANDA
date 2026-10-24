@@ -38,8 +38,8 @@ def test_preparation_uses_project_environment_and_configures_only_when_requested
     assert commands[2][0] == ["npm", "--prefix", "scripts/browser", "ci"]
     assert commands[3][0] == ["npm", "--prefix", "web", "ci"]
     assert commands[4][0] == ["npm", "--prefix", "web", "run", "build"]
-    assert commands[5][0] == [setup.sys.executable, "-m", "redpanda.initialize"] + (["--configure"] if configure else [])
-    assert commands[6] == ([setup.sys.executable, "-m", "redpanda.mcp.check_web"], {"cwd": setup.ROOT})
+    assert commands[5][0] == [setup.sys.executable, "-m", "konden.initialize"] + (["--configure"] if configure else [])
+    assert commands[6] == ([setup.sys.executable, "-m", "konden.mcp.check_web"], {"cwd": setup.ROOT})
     assert all(kwargs == {"cwd": setup.ROOT, "check": True} for _, kwargs in commands[:6])
 
 

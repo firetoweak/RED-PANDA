@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor, Worker
-from redpanda.assistant.subagent.subagent import (
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor, Worker
+from konden.assistant.subagent.subagent import (
     DELEGATE,
     DelegateIntent,
     child_session_id,
@@ -19,8 +19,8 @@ from redpanda.assistant.subagent.subagent import (
     return_data,
     task_fact_arguments,
 )
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import (
+from konden.paths import KondenHome
+from konden.runtime import (
     CommandPhase,
     replay,
     AgentRuntime,
@@ -30,8 +30,8 @@ from redpanda.runtime import (
     ToolBinding,
     UserMessageReceived,
 )
-from redpanda.runtime.events import DeliveryIdentity, EventDraft
-from redpanda.filesystem.registry import WorkspaceRegistry
+from konden.runtime.events import DeliveryIdentity, EventDraft
+from konden.filesystem.registry import WorkspaceRegistry
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 
@@ -83,7 +83,7 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
     async def test_select_waiting_session_binds_owner_without_starting_worker(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             home.initialize()
             task_root = root / "workspace"
             task_root.mkdir()
@@ -117,7 +117,7 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
     async def test_startup_recovers_unknown_commands_and_ignores_legacy_stop_flags(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             home.initialize()
             task_root = root / "workspace"
             task_root.mkdir()
@@ -214,7 +214,7 @@ class QuiescentDespiteUnreportedChildTest(unittest.IsolatedAsyncioTestCase):
     async def test_returned_child_does_not_block_quiescence(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             home.initialize()
             task_root = root / "workspace"
             task_root.mkdir()

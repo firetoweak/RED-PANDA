@@ -1,5 +1,5 @@
 ---
-name: RED PANDA
+name: konden
 description: 轻盈协作：以清楚的身份与克制的明暗界面承托长期对话。
 colors:
   canvas-light: '#ffffff'
@@ -218,7 +218,7 @@ components:
     padding: 0px
 ---
 
-# Design System: RED PANDA
+# Design System: konden
 
 ## Overview
 
@@ -228,7 +228,7 @@ components:
 
 当前实现使用本机中文无衬线字体、细线 SVG 图标、小圆角与轻边界。明暗主题共用布局和身份关系；陶土色出现在部分操作与定位状态，夜间的键盘焦点、光标与文字选择使用中性灰，亮色沿用身份蓝。
 
-本文件记录已落地的 React / Mantine 界面；具体页面的构图与操作模式保留在对应 surface brief。品牌图片沿用仓库已有的 assets/brand/red-panda-mark-pixel.png（favicon / 回退头像）与 red-panda-full.png（空私聊欢迎）；其已有来源随原资产保留，本次没有生成或替换图片，侧栏不展示品牌图。
+本文件记录已落地的 React / Mantine 界面；具体页面的构图与操作模式保留在对应 surface brief。品牌标志使用 assets/brand/konden-mark.svg（favicon 与空私聊欢迎），README 头图使用 assets/brand/konden-social-preview-v1.png；侧栏不展示品牌图。
 
 **Key Characteristics:**
 - 明暗共用的灰阶聊天工作面
@@ -289,7 +289,7 @@ Bot 私信收发在私聊时间线中使用居中的方向箭头：右上箭头�
 
 ## Elevation & Depth
 
-主要依靠明度、浅底与细边界区分层次。消息气泡没有阴影与描边；两套输入区沿用 A 原稿的轻投影（0 3px 12px #202e4510），聚焦使用专用边线色与轻状态环（0 0 0 2px #8b9bb00c）。成员点名菜单使用（0 6px 24px var(--rp-shadow)），回到最新提示使用（0 3px 12px var(--rp-shadow)）；编辑消息保留现有（0 0 0 1px var(--rp-accent-glow)）状态环。确切阴影来源与动效记录在 sidecar。
+主要依靠明度、浅底与细边界区分层次。消息气泡没有阴影与描边；两套输入区沿用 A 原稿的轻投影（0 3px 12px #202e4510），聚焦使用专用边线色与轻状态环（0 0 0 2px #8b9bb00c）。成员点名菜单使用（0 6px 24px var(--konden-shadow)），回到最新提示使用（0 3px 12px var(--konden-shadow)）；编辑消息保留现有（0 0 0 1px var(--konden-accent-glow)）状态环。确切阴影来源与动效记录在 sidecar。
 
 **The Flat Reading Surface Rule.** 静态气泡保持无描边、无投影；阴影按实际组件逐项记录，不推导成所有容器通用的浮卡样式。
 

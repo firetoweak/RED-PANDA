@@ -12,7 +12,7 @@ const { upload, selectLocal } = vi.hoisted(() => ({
   upload: vi.fn(),
   selectLocal: vi.fn(),
 }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetSessionModelQuery: () => ({ data: {
     selected: { model: "deepseek/test", compact_threshold_tokens: 200000 }, effective: null, pending: true,
   } }),
@@ -70,7 +70,7 @@ it("私聊从名册筛选并用完整名字补全，Enter 先选候选再发送"
 });
 
 it("私聊点名支持中文输入法、鼠标和光标处替换，保留后文与引用", () => {
-  localStorage.setItem("redpanda.composerDraft.session", JSON.stringify({ text: "> [Ada](#message:original)\n> @C++ 的原话\n\n" }));
+  localStorage.setItem("konden.composerDraft.session", JSON.stringify({ text: "> [Ada](#message:original)\n> @C++ 的原话\n\n" }));
   const { onSend } = showComposer();
   const input = screen.getByLabelText("消息") as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: "请@李 看一下" } });

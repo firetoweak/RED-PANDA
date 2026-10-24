@@ -4,13 +4,13 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 
-from redpanda.assistant.compact.core import window_preamble
-from redpanda.assistant.shared_memory import (
+from konden.assistant.compact.core import window_preamble
+from konden.assistant.shared_memory import (
     READ_SHARED_MEMORY, SHARED_MEMORY, UPDATE_SHARED_MEMORY,
     SharedMemoryStore, UpdateSharedMemory, project_shared_memory,
     shared_memory_bindings, sync_shared_memory,
 )
-from redpanda.runtime import AgentRuntime, StateProjector
+from konden.runtime import AgentRuntime, StateProjector
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.fixtures.projection import project_chat_messages
 

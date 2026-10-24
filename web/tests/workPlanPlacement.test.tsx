@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ConversationView, WorkPlan } from "../src/api/contracts";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import { Conversation } from "../src/features/conversation/Conversation";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 import type { ComponentProps } from "react";
@@ -59,8 +59,8 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
   };
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(view)));
   const store = configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(kondenApi.middleware),
   });
   render(<Provider store={store}><MantineProvider>
     <MemoryRouter initialEntries={["/sessions/session"]}>
@@ -82,10 +82,10 @@ it("已完成计划留在对应回复之后，新计划固定在输入区域且�
         occurred_at: "2026-10-03T00:01:01Z", tools: [] },
     ],
   };
-  await act(async () => { await store.dispatch(redpandaApi.util.upsertQueryData("getConversation", "session", next)); });
+  await act(async () => { await store.dispatch(kondenApi.util.upsertQueryData("getConversation", "session", next)); });
   const currentPanel = await screen.findByRole("button", { name: "当前计划" });
   expect(document.querySelector(".composer-dock")).toContainElement(currentPanel);
   expect(firstTurn).toContainElement(screen.getByRole("button", { name: "已完成计划" }));
   cleanup();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });

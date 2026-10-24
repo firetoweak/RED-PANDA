@@ -7,9 +7,9 @@ import shutil
 import sys
 import tempfile
 
-from redpanda.paths import RedPandaHome
-from redpanda.skills.application import SkillApplicationService
-from redpanda.skills.models import SkillSourceRef
+from konden.paths import KondenHome
+from konden.skills.application import SkillApplicationService
+from konden.skills.models import SkillSourceRef
 
 
 SOURCE = SkillSourceRef(
@@ -19,9 +19,9 @@ SOURCE = SkillSourceRef(
 
 
 async def run() -> dict:
-    temporary = Path(tempfile.mkdtemp(prefix="redpanda-remote-skill-"))
+    temporary = Path(tempfile.mkdtemp(prefix="konden-remote-skill-"))
     try:
-        workspace = RedPandaHome(temporary / ".redpanda")
+        workspace = KondenHome(temporary / ".konden")
         workspace.initialize()
         service = SkillApplicationService(workspace)
         record = await service.install_source(SOURCE)

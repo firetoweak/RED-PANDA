@@ -12,12 +12,12 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.host.command_port import WorkerCommandPort
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.execution.processes import CommandManager
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.paths import RedPandaHome
+from konden.assistant.host.command_port import WorkerCommandPort
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.execution.processes import CommandManager
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.paths import KondenHome
 from tests.fixtures.session_worker import ProcessLlm, config_for
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="Windows or Linux owned processes")]
@@ -84,7 +84,7 @@ def test_descendant_outlives_shell_until_owner_stops_job(tmp_path):
             entry = await manager.execute("a", "tree", shell(sys.executable, "-c", code), tmp_path, 0)
             async def ready():
                 if os.name == "nt":
-                    from redpanda.execution.process_win import wait_object
+                    from konden.execution.process_win import wait_object
                     exited = wait_object(manager._commands[entry["command_id"]].running.info.process, 0) == 0
                 else:
                     owned = manager._commands[entry["command_id"]]
@@ -105,11 +105,11 @@ def test_descendant_outlives_shell_until_owner_stops_job(tmp_path):
 def test_cancelled_worker_leaves_created_command_queryable(tmp_path):
     import threading
     if os.name == "nt":
-        from redpanda.execution.process_win import Running
-        module = "redpanda.execution.process_win"
+        from konden.execution.process_win import Running
+        module = "konden.execution.process_win"
     else:
-        from redpanda.execution.process_linux import Running
-        module = "redpanda.execution.process_linux"
+        from konden.execution.process_linux import Running
+        module = "konden.execution.process_linux"
     async def scenario():
         manager = CommandManager(tmp_path / "logs", os.environ)
         spawned, release = threading.Event(), threading.Event()
@@ -145,10 +145,10 @@ def test_cancelled_worker_leaves_created_command_queryable(tmp_path):
 
 @pytest.mark.parametrize("completion", ["stop", "exit"])
 def test_host_port_survives_worker_retirement(tmp_path, completion):
-    from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+    from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
     async def scenario():
         root = tmp_path / "project"; root.mkdir()
-        home = RedPandaHome(tmp_path / "home")
+        home = KondenHome(tmp_path / "home")
         store = SessionStore(home.runtime_sessions_root)
         workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(root)
         output = []
@@ -194,7 +194,7 @@ def test_host_port_survives_worker_retirement(tmp_path, completion):
                 await replacement_port.stop(entry["command_id"])
             else:
                 (root / "finish").touch()
-            from redpanda.runtime import DomainFactCommitted, SqliteJournal
+            from konden.runtime import DomainFactCommitted, SqliteJournal
             journal = SqliteJournal(store.require("a"))
             async def notified():
                 events = await journal.snapshot("a")
@@ -216,9 +216,9 @@ def test_host_port_survives_worker_retirement(tmp_path, completion):
 
 @pytest.mark.parametrize("launcher", ["node", "npm"])
 def test_host_server_observes_file_edits(tmp_path, launcher):
-    from redpanda.assistant.assembly import build_assistant_assembly
-    from redpanda.runtime import SqliteJournal
-    from redpanda.runtime.dispatcher import AttemptContext
+    from konden.assistant.assembly import build_assistant_assembly
+    from konden.runtime import SqliteJournal
+    from konden.runtime.dispatcher import AttemptContext
     node = shutil.which("node")
     assert node is not None, "Node.js required for development server verification"
     npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
@@ -228,7 +228,7 @@ def test_host_server_observes_file_edits(tmp_path, launcher):
         (root / "value.txt").write_text("BASE")
         shutil.copyfile(Path(__file__).parents[1] / "fixtures" / "host_watch_server.cjs", root / "server.cjs")
         (root / "package.json").write_text(json.dumps({"scripts": {"dev": "node server.cjs"}}))
-        home = RedPandaHome(tmp_path / "home")
+        home = KondenHome(tmp_path / "home")
         store = SessionStore(home.runtime_sessions_root)
         workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(root)
         host = HostSupervisor(store, partial(config_for, root), home, lambda *args: None, llm=ProcessLlm(root))

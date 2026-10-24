@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import httpx
 
-from redpanda.config import write_json
-from redpanda.llm.config import initial_connections
-from redpanda.llm.connections import ModelConnections
-from redpanda.llm.api import LLMAuthenticationError
+from konden.config import write_json
+from konden.llm.config import initial_connections
+from konden.llm.connections import ModelConnections
+from konden.llm.api import LLMAuthenticationError
 
 
 class ConnectionsTest(unittest.IsolatedAsyncioTestCase):

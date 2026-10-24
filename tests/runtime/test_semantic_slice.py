@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     CommandPhase,

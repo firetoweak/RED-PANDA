@@ -2,16 +2,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.cli.application import CliApplicationService
-from redpanda.cli.management_tools import (
+from konden.cli.application import CliApplicationService
+from konden.cli.management_tools import (
     INSPECT_CLI,
     LIST_INSTALLED_CLIS,
     TEST_CLI,
     CliIdInput,
     create_cli_management_specs,
 )
-from redpanda.paths import RedPandaHome
-from redpanda.tools.spec import EmptyInput
+from konden.paths import KondenHome
+from konden.tools.spec import EmptyInput
 from tests.cli.fakes import FakeExecutor, make_result
 
 
@@ -19,7 +19,7 @@ class CliManagementToolsTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
-        self.home = RedPandaHome(root / ".redpanda")
+        self.home = KondenHome(root / ".konden")
         self.home.initialize()
         self.executable = root / "bin" / "rg.exe"
         self.executable.parent.mkdir()

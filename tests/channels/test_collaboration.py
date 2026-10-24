@@ -6,17 +6,17 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from redpanda.assistant.agents import AgentCreated, fact_arguments
-from redpanda.assistant.conversations import project_conversation
-from redpanda.assistant.external_messages import REPLY_EXTERNAL, ReplyExternal
-from redpanda.assistant.host.external_messages import ExternalMessages
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.sessions import session_view
-from redpanda.channels.web.app import create_web_app
-from redpanda.channels.web.channel import WebChannel
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, SqliteJournal, replay
+from konden.assistant.agents import AgentCreated, fact_arguments
+from konden.assistant.conversations import project_conversation
+from konden.assistant.external_messages import REPLY_EXTERNAL, ReplyExternal
+from konden.assistant.host.external_messages import ExternalMessages
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.sessions import session_view
+from konden.channels.web.app import create_web_app
+from konden.channels.web.channel import WebChannel
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, SqliteJournal, replay
 
 
 IDENTITY = "1" * 32
@@ -26,7 +26,7 @@ REQUEST = dict(identity=IDENTITY, recipient="协调员", text="输入不能为�
 
 @pytest.fixture
 def collaboration(tmp_path):
-    home = RedPandaHome(tmp_path / "home")
+    home = KondenHome(tmp_path / "home")
     store = SessionStore(home.runtime_sessions_root)
     host = HostSupervisor(store, None, home, None, llm=None)
 

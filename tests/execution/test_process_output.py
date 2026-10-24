@@ -1,4 +1,4 @@
-from redpanda.execution.processes import read_output
+from konden.execution.processes import read_output
 
 
 def test_output_cursor_preserves_split_utf8_and_terminal_filter(tmp_path):

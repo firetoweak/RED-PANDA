@@ -12,7 +12,7 @@ const queries = vi.hoisted(() => ({
   failed: false,
   createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve({ session_id: "new-agent" }) })),
 }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetWorkspacesQuery: () => ({ isError: queries.failed, data: queries.failed ? undefined : [
     { workspace_id: "alpha", name: "Alpha", task_root: "C:/alpha", full_access: false, created_at: "2026-10-20" },
     { workspace_id: "beta", name: "Beta", task_root: "C:/beta", full_access: false, created_at: "2026-10-20" },

@@ -8,7 +8,7 @@ import { SessionConversation } from "../src/features/conversation/SessionConvers
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
 vi.mock("../src/features/conversation/Conversation", () => ({ Conversation: () => <p>对话内容</p> }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetConversationQuery: () => ({ currentData: undefined }),
   useGetAgentsQuery: () => ({ data: [
     { session_id: "ada", projects: [{ name: "Alpha", workspace_id: "alpha", directory: "C:/bots/ada/projects/Alpha" }],

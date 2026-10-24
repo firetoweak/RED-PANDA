@@ -6,15 +6,15 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.agents import ROUTINES_UNWATCHED
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.assistant.agent_messages import SEND_FILE
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME
-from redpanda.automation.absence import ASK_GRACE, UNREAD_REPORTS, counts_since, next_absence_action
-from redpanda.automation.routines import ACTIVE, PAUSED_BY_USER, PAUSED_UNWATCHED, ROUTINE_DUE, RoutineStore
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
+from konden.assistant.agents import ROUTINES_UNWATCHED
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.agent_messages import SEND_FILE
+from konden.assistant.delivery import DELIVER_TOOL_NAME
+from konden.automation.absence import ASK_GRACE, UNREAD_REPORTS, counts_since, next_absence_action
+from konden.automation.routines import ACTIVE, PAUSED_BY_USER, PAUSED_UNWATCHED, ROUTINE_DUE, RoutineStore
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, ToolBinding
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.session_scheduler import settle_session
@@ -100,7 +100,7 @@ class AbsenceReviewTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(root / "home")
+        self.home = KondenHome(root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None)
         self.requests = patch.object(self.host, "request", AsyncMock())
@@ -119,7 +119,7 @@ class AbsenceReviewTest(unittest.IsolatedAsyncioTestCase):
         routine_id = saved["data"]["routine_id"]
         away = NOW - timedelta(hours=13)
         self.host.routines.store.note_disconnected(away)
-        with patch("redpanda.assistant.host.supervisor.counts_since", return_value=(UNREAD_REPORTS, UNREAD_REPORTS)):
+        with patch("konden.assistant.host.supervisor.counts_since", return_value=(UNREAD_REPORTS, UNREAD_REPORTS)):
             await self.host.review_absence(NOW)
             self.assertEqual(self.host.routines.store.watch(agent.session_id).phase, "asked")
             await self.host.review_absence(NOW + ASK_GRACE)

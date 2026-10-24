@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     AttemptOrphaned,
     CommandPhase,
@@ -17,7 +17,7 @@ from redpanda.runtime import (
     ToolBinding,
 )
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.journal.api import LeaseLostError, StepClaimRequest
+from konden.runtime.journal.api import LeaseLostError, StepClaimRequest
 from tests.assistant.test_runner import ScriptedDecisionMaker
 
 

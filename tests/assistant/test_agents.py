@@ -7,29 +7,29 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from redpanda.assistant.agents import (
+from konden.assistant.agents import (
     AGENT_CREATED, AGENT_DELETED, AGENT_RENAMED, COLLEAGUE_JOINED, GroupCreated, fact_arguments,
     identity_for_model, project_agent,
 )
-from redpanda.assistant.compact.core import window_preamble
-from redpanda.automation.routine_tool import SAVE_ROUTINE, SET_ROUTINE_STATE
-from redpanda.automation.routines import PAUSED_BY_USER, ROUTINE_DUE
-from redpanda.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
-from redpanda.assistant.host.agent_worktrees import GitWorktree
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor, Worker
-from redpanda.config import write_json
-from redpanda.filesystem.registry import WorkspaceRegistry
-from redpanda.model_settings import ModelConfigurationError, ModelSettings
-from redpanda.paths import RedPandaHome
-from redpanda.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
+from konden.assistant.compact.core import window_preamble
+from konden.automation.routine_tool import SAVE_ROUTINE, SET_ROUTINE_STATE
+from konden.automation.routines import PAUSED_BY_USER, ROUTINE_DUE
+from konden.assistant.host.agent_roster import AgentNameTaken, AgentNotFound, AgentRoster
+from konden.assistant.host.agent_worktrees import GitWorktree
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor, Worker
+from konden.config import write_json
+from konden.filesystem.registry import WorkspaceRegistry
+from konden.model_settings import ModelConfigurationError, ModelSettings
+from konden.paths import KondenHome
+from konden.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
 
 
 class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         self.root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(self.root / "home")
+        self.home = KondenHome(self.root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.project = self.root / "project"
         self.project.mkdir()
@@ -50,7 +50,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         await self.host.close()
         self.directory.cleanup()
 
-    async def create(self, name="小熊猫", workspace=None):
+    async def create(self, name="konden", workspace=None):
         return await self.host.create_agent(
             name=name, workspace_id=(workspace or self.workspace).workspace_id,
         )
@@ -64,7 +64,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         other = self.registry.register_path(other_project)
         with self.assertRaises(AgentNameTaken):
             await self.create(workspace=other)
-        first = await self.host.agents.resolve("小熊猫")
+        first = await self.host.agents.resolve("konden")
         self.assertEqual([item.workspace_id for item in first.projects], [self.workspace.workspace_id])
         with self.assertRaises(AgentNotFound):
             await self.host.agents.resolve("unknown")
@@ -126,7 +126,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         rebuilt = AgentRoster(SessionStore(self.store.root))
         entries = await rebuilt.list()
         self.assertEqual(len(entries), 2)
-        agent = await rebuilt.resolve("小熊猫")
+        agent = await rebuilt.resolve("konden")
         self.assertEqual(await self.create(), agent)
         sent = [(sid, args["fact_type"]) for _, sid, args in
                 (call.args for call in self.request.await_args_list)]
@@ -178,7 +178,7 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
             await self.host.resume_unfinished_sessions()
         for colleague in (first, second):
             events = await SqliteJournal(self.store.require(colleague.session_id)).snapshot(colleague.session_id)
-            from redpanda.runtime import DomainFactCommitted
+            from konden.runtime import DomainFactCommitted
             notices = [event for event in events if isinstance(event.payload, DomainFactCommitted)
                        and event.payload.fact_type == COLLEAGUE_JOINED and event.payload.data["name"] == "Lin"]
             self.assertEqual(len(notices), 1)

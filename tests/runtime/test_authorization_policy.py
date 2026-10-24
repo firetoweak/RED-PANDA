@@ -4,15 +4,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
-from redpanda.runtime import (
+from konden.runtime import (
     CommandOutcomeReceived,
     InvokeTool,
     ModelDecision,
     RuntimeStatus,
     SqliteJournal,
 )
-from redpanda.runtime.dispatcher import DispatchStartResult, ToolBinding
-from redpanda.runtime.model import rejected_tool_arguments
+from konden.runtime.dispatcher import DispatchStartResult, ToolBinding
+from konden.runtime.model import rejected_tool_arguments
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
 

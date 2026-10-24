@@ -7,7 +7,7 @@ import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import type { ConversationView, GroupView } from "../src/api/contracts";
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import type { ConversationTimeline } from "../src/features/conversation/ConversationTimeline";
 import { SessionConversation } from "../src/features/conversation/SessionConversation";
 import { GroupChatPage } from "../src/features/groups/GroupChatPage";
@@ -50,8 +50,8 @@ function deferred() {
 
 function createStore() {
   return configureStore({
-    reducer: { runtime: runtimeReducer, [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (defaults) => defaults().concat(redpandaApi.middleware),
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
   });
 }
 
@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  for (const store of stores.splice(0)) store.dispatch(redpandaApi.util.resetApiState());
+  for (const store of stores.splice(0)) store.dispatch(kondenApi.util.resetApiState());
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "fonts");
   localStorage.clear();
@@ -110,15 +110,15 @@ it.each(["query-last", "mutation-last"])("较新快照不被旧响应覆盖：%s
     kind: "step", step_id: "step-final", output_id: "output-final", text: "最终回复",
     thinking: null, tools: [], files: [], occurred_at: "2026-10-23T00:00:01Z",
   });
-  const query = store.dispatch(redpandaApi.endpoints.getConversation.initiate("Ada"));
-  const mutation = store.dispatch(redpandaApi.endpoints.sendInput.initiate({
+  const query = store.dispatch(kondenApi.endpoints.getConversation.initiate("Ada"));
+  const mutation = store.dispatch(kondenApi.endpoints.sendInput.initiate({
     connectionId: "connection", sessionId: "Ada", deliveryId: "delivery", text: "你好", artifactRefs: [], interrupt: false,
   }));
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   if (order === "query-last") {
     send.resolve(Response.json(newer));
     await mutation.unwrap();
-    await waitFor(() => expect(redpandaApi.endpoints.getConversation.select("Ada")(store.getState()).data?.revision).toBe(5));
+    await waitFor(() => expect(kondenApi.endpoints.getConversation.select("Ada")(store.getState()).data?.revision).toBe(5));
     get.resolve(Response.json(older));
   } else {
     get.resolve(Response.json(newer));
@@ -126,7 +126,7 @@ it.each(["query-last", "mutation-last"])("较新快照不被旧响应覆盖：%s
     send.resolve(Response.json(older));
   }
   await Promise.all([query, mutation]);
-  await waitFor(() => expect(redpandaApi.endpoints.getConversation.select("Ada")(store.getState()).data).toEqual(newer));
+  await waitFor(() => expect(kondenApi.endpoints.getConversation.select("Ada")(store.getState()).data).toEqual(newer));
 });
 
 it("旧连接的选择确认晚到，不能重新绑定已经失效的连接", async () => {
@@ -137,7 +137,7 @@ it("旧连接的选择确认晚到，不能重新绑定已经失效的连接", a
   vi.stubGlobal("fetch", fetch);
   store.dispatch(connected("old"));
   store.dispatch(viewing("Ada"));
-  const request = store.dispatch(redpandaApi.endpoints.selectSession.initiate({ connectionId: "old", sessionId: "Ada" }));
+  const request = store.dispatch(kondenApi.endpoints.selectSession.initiate({ connectionId: "old", sessionId: "Ada" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
   store.dispatch(disconnected());
   store.dispatch(connected("new"));
@@ -173,7 +173,7 @@ it.each(["success", "failure"])("切换 Bot 和群之后，旧 Bot 请求%s不�
     throw new Error(`Unexpected request: ${request.method} ${path}`);
   }));
   store.dispatch(connected("connection"));
-  const oldQuery = store.dispatch(redpandaApi.endpoints.getConversation.initiate("Ada"));
+  const oldQuery = store.dispatch(kondenApi.endpoints.getConversation.initiate("Ada"));
   render(<Provider store={store}><MantineProvider env="test">
     <MemoryRouter initialEntries={["/sessions/Ada"]}>
       <nav><Link to="/sessions/Lin">打开 Lin</Link><Link to="/groups/team">打开群</Link></nav>
@@ -221,7 +221,7 @@ it.each(["success", "failure"])("切换群后，旧群请求%s不覆盖新群的
     throw new Error(`Unexpected request: ${request.method} ${path}`);
   }));
   store.dispatch(connected("connection"));
-  const oldQuery = store.dispatch(redpandaApi.endpoints.getGroup.initiate("old"));
+  const oldQuery = store.dispatch(kondenApi.endpoints.getGroup.initiate("old"));
   render(<Provider store={store}><MantineProvider env="test">
     <MemoryRouter initialEntries={["/groups/old"]}>
       <Link to="/groups/new">切换群</Link>

@@ -42,7 +42,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
   onCloseSection?: () => void;
 }) {
   const [organization, setOrganization] = useLocalStorage<Organization>({
-    key: "redpanda.sidebarGroups",
+    key: "konden.sidebarGroups",
     defaultValue: EMPTY_ORGANIZATION,
     getInitialValueInEffect: false,
     deserialize: deserializeOrganization,

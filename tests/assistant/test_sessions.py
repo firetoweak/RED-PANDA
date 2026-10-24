@@ -7,18 +7,18 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.context.projection import ModelContextSettings
-from redpanda.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
-from redpanda.assistant.management import ManagementSurface
-from redpanda.assistant.runner import SessionNotFoundError
-from redpanda.assistant.sessions import AssistantSessions, SessionView
-from redpanda.assistant.subagent.subagent import DELEGATE, CLOSED_FACT, child_session_id
-from redpanda.assistant.toolsets import (
+from konden.assistant.context.projection import ModelContextSettings
+from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
+from konden.assistant.management import ManagementSurface
+from konden.assistant.runner import SessionNotFoundError
+from konden.assistant.sessions import AssistantSessions, SessionView
+from konden.assistant.subagent.subagent import DELEGATE, CLOSED_FACT, child_session_id
+from konden.assistant.toolsets import (
     LOAD_TOOLSET,
     ToolSurface,
     load_toolset_binding,
 )
-from redpanda.runtime import (
+from konden.runtime import (
     AgentRuntime,
     CommandPhase,
     InvokeTool,

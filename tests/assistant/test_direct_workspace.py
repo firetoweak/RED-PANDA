@@ -8,19 +8,19 @@ import unittest
 from tempfile import TemporaryDirectory
 from functools import partial
 
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.filesystem.registry import WorkspaceRegistry
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.filesystem.registry import WorkspaceRegistry
 from tests.fixtures.session_worker import config_for
 
 import pytest
 
-from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from redpanda.paths import RedPandaHome
+from konden.assistant.assembly import build_assistant_assembly
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from konden.paths import KondenHome
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.runtime.dispatcher import AttemptContext
+from konden.runtime.dispatcher import AttemptContext
 from tests.fixtures.workspaces import workspace_record
 from tests.session_scheduler import SettlingScheduler
 
@@ -42,7 +42,7 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
             root = Path(directory).resolve()
             workspace = root / "workspace"
             workspace.mkdir()
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             llm = CapturingLlm()
             assembly = await build_assistant_assembly(
                 AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=llm),
@@ -94,7 +94,7 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
             git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
             worktree = root / "agent"
             git("worktree", "add", "-b", "agent", str(worktree))
-            home = RedPandaHome(root / "home")
+            home = KondenHome(root / "home")
             store = SessionStore(home.runtime_sessions_root)
             registered = WorkspaceRegistry.load(home.workspaces_path).register_path(worktree)
             host = HostSupervisor(store, partial(config_for, worktree), home, None, llm=CapturingLlm())

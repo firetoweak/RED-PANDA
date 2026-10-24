@@ -8,33 +8,33 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from redpanda.assistant.agent_messages import MESSAGE_SCHEMAS
-from redpanda.assistant.shared_memory import SHARED_MEMORY_SCHEMAS, SHARED_MEMORY_TAG
-from redpanda.assistant.assembly import build_assistant_assembly
-from redpanda.assistant.context.projection import externalize_payload
-from redpanda.assistant.context.prompt import (
+from konden.assistant.agent_messages import MESSAGE_SCHEMAS
+from konden.assistant.shared_memory import SHARED_MEMORY_SCHEMAS, SHARED_MEMORY_TAG
+from konden.assistant.assembly import build_assistant_assembly
+from konden.assistant.context.projection import externalize_payload
+from konden.assistant.context.prompt import (
     DEFAULT_ASSISTANT_PROMPT,
     BOT_PROMPT,
     SUBAGENT_PROMPT,
     SUBAGENT_READ_ONLY_PROMPT,
 )
-from redpanda.assistant.subagent.subagent import (
+from konden.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
     CLOSED_FACT,
     TASK_FACT,
     DelegateIntent,
     task_fact_arguments,
 )
-from redpanda.assistant.toolsets import LOAD_TOOLSET
-from redpanda.assistant.work_plan import WORK_PLAN_TAG
-from redpanda.skills.runtime import PROJECT_SKILL_PREFIX, PROJECT_SKILLS_DIRECTORY
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage
-from redpanda.paths import RedPandaHome
+from konden.assistant.toolsets import LOAD_TOOLSET
+from konden.assistant.work_plan import WORK_PLAN_TAG
+from konden.skills.runtime import PROJECT_SKILL_PREFIX, PROJECT_SKILLS_DIRECTORY
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
+from konden.paths import KondenHome
 from tests.fixtures.memory_journal import MemoryJournal
-from redpanda.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
-from redpanda.tools.builtin import create_subagent_workspace_specs
-from redpanda.tools.executor import RESERVED_KEYS
+from konden.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
+from konden.tools.builtin import create_subagent_workspace_specs
+from konden.tools.executor import RESERVED_KEYS
 from tests.fixtures.workspaces import workspace_record
 
 
@@ -142,11 +142,11 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "redpanda.assistant.assembly.RedPandaHome.default",
-                return_value=RedPandaHome(root / ".redpanda"),
+                "konden.assistant.assembly.KondenHome.default",
+                return_value=KondenHome(root / ".konden"),
             ),
             patch(
-                "redpanda.assistant.assembly.runtime_data_root",
+                "konden.assistant.assembly.runtime_data_root",
                 return_value=root / "runtime",
             ),
         ):
@@ -262,14 +262,14 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_only_subagent_has_the_same_on_demand_knowledge_boundary(self):
         from datetime import datetime, timezone
 
-        from redpanda.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
+        from konden.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "workspace").mkdir()
             (root / "workspace" / "AGENTS.md").write_text("父工作区约定", encoding="utf-8")
             workspace = workspace_record(root / "workspace")
-            home = RedPandaHome(root / ".redpanda")
+            home = KondenHome(root / ".konden")
             child = "parent/sub-delegate-1"
 
             journal = MemoryJournal()
@@ -282,7 +282,7 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
                 occurred_at=datetime.now(timezone.utc),
                 delivery=DeliveryIdentity("subagent", "delegate-1:task"),
             ))
-            with patch("redpanda.assistant.assembly.runtime_data_root", return_value=root / "runtime"):
+            with patch("konden.assistant.assembly.runtime_data_root", return_value=root / "runtime"):
                 assembly = await build_assistant_assembly(
                     AssistantConfig(model_name="test-model", compact_threshold_tokens=200_000, llm=SilentLlm()),
                     lambda _session_id, _output_id, _text: None,

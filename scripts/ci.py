@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def verification_environment() -> dict[str, str]:
     environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith("REDPANDA_")
+                   if not key.startswith("KONDEN_")
                    and key not in {"PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONPATH", "PYTHONHOME"}}
     environment.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
     return environment
@@ -26,11 +26,11 @@ def run(command, *, cwd: Path | None = None):
 
 
 def clean_checkout(targets: list[str]) -> None:
-    with tempfile.TemporaryDirectory(prefix="redpanda-ci-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="konden-ci-") as temporary:
         checkout = Path(temporary).resolve() / "src"
         run(["git", "worktree", "add", "--detach", str(checkout), "HEAD"])
         try:
-            python = checkout / "redpanda-env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            python = checkout / "konden-env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             run([sys.executable, "-m", "venv", str(python.parent.parent)], cwd=checkout)
             run([str(python), "scripts/ci.py", *targets], cwd=checkout)
         finally:
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> None:
         if target == "python":
             run([sys.executable, "-m", "ruff", "check", "--select", "F",
                  "--target-version", f"py{expected_python.replace('.', '')}",
-                 "redpanda", "thinllm", "scripts", "tests", "console_chat.py", "web_chat.py"])
+                 "konden", "thinllm", "scripts", "tests", "console_chat.py", "web_chat.py"])
             run([sys.executable, "-m", "pytest", "--durations=20",
                  "--junitxml=.tools/test-results/python.xml"])
         elif target == "process":

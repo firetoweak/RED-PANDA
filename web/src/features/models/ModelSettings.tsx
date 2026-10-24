@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Group, Modal, NumberInput, Paper, Radio, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import type { ModelConfig, ModelProfile } from "../../api/contracts";
-import { useGetCodexModelsQuery, useGetModelSettingsQuery, useSaveModelSettingsMutation } from "../../api/redpandaApi";
+import { useGetCodexModelsQuery, useGetModelSettingsQuery, useSaveModelSettingsMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { ModelTestButton } from "./ModelTestButton";
 

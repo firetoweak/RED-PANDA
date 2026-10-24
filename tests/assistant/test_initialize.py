@@ -2,15 +2,15 @@ import json
 
 import pytest
 
-from redpanda import initialize
-from redpanda.config import config_path, load_app_config, write_json
-from redpanda.llm.config import load_connections
+from konden import initialize
+from konden.config import config_path, load_app_config, write_json
+from konden.llm.config import load_connections
 
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("REDPANDA_HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("REDPANDA_CONFIG", raising=False)
+    monkeypatch.setenv("KONDEN_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("KONDEN_CONFIG", raising=False)
     return initialize.initialize()
 
 
@@ -98,7 +98,7 @@ def test_configuration_respects_explicit_model_config_path(home, tmp_path, monke
     original = home.config_path.read_bytes()
     target = tmp_path / "models.json"
     write_json(target, {"model": {"default": None, "candidates": []}})
-    monkeypatch.setenv("REDPANDA_CONFIG", str(target))
+    monkeypatch.setenv("KONDEN_CONFIG", str(target))
     inputs(monkeypatch, ["ollama", "", "my-model", "32000"])
     initialize.configure(home)
     assert load_app_config().default_model == "ollama/my-model"

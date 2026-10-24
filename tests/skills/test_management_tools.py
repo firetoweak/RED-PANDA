@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from redpanda.paths import RedPandaHome
-from redpanda.skills.application import SkillApplicationService
-from redpanda.skills.management_tools import SkillIdInput, SkillListInput, create_skill_management_specs
+from konden.paths import KondenHome
+from konden.skills.application import SkillApplicationService
+from konden.skills.management_tools import SkillIdInput, SkillListInput, create_skill_management_specs
 from tests.skills.test_package import write_skill
 
 
@@ -12,7 +12,7 @@ class SkillManagementToolsTest(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_skill_remains_observable_testable_and_diagnosable(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            workspace = RedPandaHome(root / ".redpanda")
+            workspace = KondenHome(root / ".konden")
             workspace.initialize()
             source = root / "source"
             write_skill(source, name="demo")

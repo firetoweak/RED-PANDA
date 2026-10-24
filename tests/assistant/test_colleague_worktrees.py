@@ -6,12 +6,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.builtin_tools import build_builtin_tools
-from redpanda.assistant.context.projection import ModelContextSettings
-from redpanda.assistant.decision import bind_executor_tools
-from redpanda.filesystem.registry import WorkspaceRecord
-from redpanda.filesystem.workspace import FileWorkspace
-from redpanda.runtime import (
+from konden.assistant.builtin_tools import build_builtin_tools
+from konden.assistant.context.projection import ModelContextSettings
+from konden.assistant.decision import bind_executor_tools
+from konden.filesystem.registry import WorkspaceRecord
+from konden.filesystem.workspace import FileWorkspace
+from konden.runtime import (
     AgentRuntime,
     CommandOutcomeReceived,
     InvokeTool,

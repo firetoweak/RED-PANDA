@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import shutil
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from thinllm import create_client
+
+from konden.assistant.host.data_root import hold_data_root
+from konden.assistant.host.process_env import install_host_environment
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.conversations import AssistantQueries
+from konden.config import AppConfig, assistant_config_from_app, load_app_config, config_path, write_json
+from konden.model_settings import ModelSettings
+from konden.llm.connections import ModelConnections
+from konden.paths import KondenHome
+from konden.mcp.composition import build_mcp
+from konden.filesystem.registry import WorkspaceRecord, WorkspaceRegistry
+from konden.skills.composition import build_skills
+from konden.skills.summarizer import LlmSkillDiffSummarizer
+from konden.timing import install_timing_logging
+
+
+class DataRootHasAgents(RuntimeError):
+    """要求全新会话的入口不能清空一个承载长期 Agent 的数据根。"""
+
+
+class UnboundHostLlm:
+    async def chat(self, *args, **kwargs):
+        raise RuntimeError("Worker must bind the Host LLM port")
+
+
+def worker_config(app_config: AppConfig):
+    """Worker 只拿配置；它这条会话的工作区由会话自己的日志决定。"""
+    return assistant_config_from_app(app_config, UnboundHostLlm())
+
+
+@dataclass(frozen=True, slots=True)
+class BootstrappedAssistant:
+    config: AppConfig
+    sessions: HostSupervisor
+    sessions_root: Path
+    mcp_service: object
+    skill_service: object
+    queries: AssistantQueries
+    workspaces: WorkspaceRegistry
+    workspace: WorkspaceRecord | None
+
+
+@asynccontextmanager
+async def bootstrap_assistant(
+    sink,
+    *,
+    app_config: AppConfig | None = None,
+    workspace_path: Path | None = None,
+    context_usage_sink=None,
+    subagent_activity_sink=None,
+    conversation_status_sink=None,
+    tool_progress_sink=None,
+    authorization_required_sink=None,
+    preview_sink=None,
+    thinking_sink=None,
+    subagent_output_sink=None,
+    session_activity_sink=None,
+    session_failed_sink=None,
+    schedule_changed_sink=None,
+    group_changed_sink=None,
+    command_environment: dict[str, str] | None = None,
+    fresh_sessions: bool = False,
+) -> AsyncIterator[BootstrappedAssistant]:
+    """Host 将普通回复与实时预览交给 Channel，不根据唤醒来源向同事或群转发。
+
+    ``fresh_sessions``：每次启动都是全新会话的入口，先丢弃上次运行留下的会话与状态。
+
+    长期 Agent 的会话与工作树也在这些状态里；数据根里已有 Agent 时拒绝清空。
+    """
+    install_timing_logging()
+    if command_environment is None:
+        command_environment = dict(os.environ)
+    install_host_environment()
+    home = KondenHome.default()
+    # 先独占数据根，再碰任何 Journal、定时或持续进程。
+    with hold_data_root(home):
+        if fresh_sessions:
+            if home.agent_directories_root.exists() or home.agent_worktrees_root.exists():
+                raise DataRootHasAgents(
+                    f"数据根 {home.root} 里有长期 Bot 的数据，"
+                    "每次启动都清空会话的入口不能使用它；请换一个数据目录。"
+                )
+            for root in (home.runtime_sessions_root, home.state_root):
+                if root.exists():
+                    shutil.rmtree(root)
+        config = load_app_config() if app_config is None else app_config
+        home.initialize()
+        store = SessionStore(home.runtime_sessions_root)
+        if app_config is not None and not config_path().exists():
+            write_json(config_path(), app_config.to_dict())
+        models = ModelSettings(home, store.root)
+        if app_config is not None:
+            models.save(app_config.to_dict())
+        llm = ModelConnections(home.connections_path, client_factory=create_client)
+        workspaces = WorkspaceRegistry.load(home.workspaces_path)
+        # 只有调用方明确给出路径才登记。TUI 传入启动目录或 --workspace；
+        # Web 缺省不从进程 cwd 偷建工作区。
+        workspace = (
+            None if workspace_path is None else workspaces.register_path(workspace_path)
+        )
+        host = HostSupervisor(
+            store,
+            partial(worker_config, config),
+            home,
+            sink,
+            workspaces=workspaces,
+            llm=llm,
+            command_environment=command_environment,
+            models=models,
+            context_usage_sink=context_usage_sink,
+            subagent_activity_sink=subagent_activity_sink,
+            conversation_status_sink=conversation_status_sink,
+            tool_progress_sink=tool_progress_sink,
+            authorization_required_sink=authorization_required_sink,
+            preview_sink=preview_sink,
+            thinking_sink=thinking_sink,
+            subagent_output_sink=subagent_output_sink,
+            session_activity_sink=session_activity_sink,
+            session_failed_sink=session_failed_sink,
+            schedule_changed_sink=schedule_changed_sink,
+            group_changed_sink=group_changed_sink,
+        )
+        mcp = build_mcp(home)
+        skills = build_skills(
+            home, diff_summarizer=LlmSkillDiffSummarizer(llm, lambda: models.config().default_model or "")
+        )
+        async with llm, mcp.client_manager, asyncio.TaskGroup() as tasks:
+            try:
+                # Take over old attempts before clocks can deliver new work.
+                await host.resume_unfinished_sessions()
+                host.start_automation(tasks)
+                yield BootstrappedAssistant(
+                    config,
+                    host,
+                    store.root,
+                    mcp.service,
+                    skills.service,
+                    AssistantQueries(store, host),
+                    workspaces,
+                    workspace,
+                )
+            finally:
+                await host.close()

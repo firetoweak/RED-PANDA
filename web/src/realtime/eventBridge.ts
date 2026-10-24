@@ -18,7 +18,7 @@ import {
   thinkingStartedEventSchema,
   toolProgressEventSchema,
 } from "../api/contracts";
-import { redpandaApi } from "../api/redpandaApi";
+import { kondenApi } from "../api/kondenApi";
 import type { AppDispatch } from "../app/store";
 import {
   authorizationRequired,
@@ -50,15 +50,15 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(redpandaApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
+    dispatch(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
   });
   source.addEventListener("avatars_changed", (event) => {
     avatarsChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(redpandaApi.util.invalidateTags(["Avatars"]));
+    dispatch(kondenApi.util.invalidateTags(["Avatars"]));
   });
   source.addEventListener("auto_authorize_changed", (event) => {
     autoAuthorizeChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(redpandaApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
+    dispatch(kondenApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));
@@ -69,7 +69,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Agents",
         "Inbox",
@@ -79,7 +79,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("schedule_changed", (event) => {
     const payload = scheduleChangedEventSchema.parse(JSON.parse(event.data));
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         { type: "Routines", id: payload.session_id },
         "Inbox",
@@ -88,7 +88,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
   source.addEventListener("group_changed", (event) => {
     groupChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(redpandaApi.util.invalidateTags(["Groups"]));
+    dispatch(kondenApi.util.invalidateTags(["Groups"]));
   });
   source.addEventListener("session_failed", (event) => {
     const payload = sessionFailedEventSchema.parse(JSON.parse(event.data));
@@ -98,12 +98,12 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         message: payload.message,
       }),
     );
-    dispatch(redpandaApi.util.invalidateTags(["Agents", "Inbox"]));
+    dispatch(kondenApi.util.invalidateTags(["Agents", "Inbox"]));
   });
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -118,7 +118,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -135,7 +135,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     // Tool finish can precede Outcome commit. The next decision observes committed
     // facts, so refresh the plan and timeline before waiting for model output.
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -207,7 +207,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Inbox",
       ]),
@@ -224,7 +224,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
       }),
     );
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
       ]),
     );
@@ -233,7 +233,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     const payload = authorizationRequiredEventSchema.parse(JSON.parse(event.data));
     dispatch(authorizationRequired({ sessionId: payload.session_id }));
     dispatch(
-      redpandaApi.util.invalidateTags([
+      kondenApi.util.invalidateTags([
         { type: "Conversation", id: payload.session_id },
         "Inbox",
       ]),

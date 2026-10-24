@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
 
-from redpanda.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
-from redpanda.assistant.host.supervisor import HostSupervisor, Worker
+from konden.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
+from konden.assistant.host.supervisor import HostSupervisor, Worker
 
 
 class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):

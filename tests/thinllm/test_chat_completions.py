@@ -311,7 +311,7 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
                         await client.chat([], "test/model", on_reasoning_delta=reasoning.append)
                 self.assertEqual(reasoning, [])
 
-    async def test_http_error_codes_map_to_redpanda_errors(self):
+    async def test_http_error_codes_map_to_konden_errors(self):
         cases = (
             (401, "invalid_api_key", LLMAuthenticationError),
             (400, "context_length_exceeded", LLMContextLengthError),

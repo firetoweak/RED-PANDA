@@ -6,14 +6,14 @@ from unittest.mock import patch
 
 import pytest
 
-from redpanda.assistant.artifacts import (
+from konden.assistant.artifacts import (
     ARTIFACT_BLOCK_CHARS,
     FileArtifactStore,
 )
 from tests.fixtures.artifacts import MemoryArtifactGateway, MemoryArtifactStore
-from redpanda.assistant.content import read_content_result
-from redpanda.assistant.context.projection import ModelContextProjector, externalize_payload
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, StateProjector, ToolBinding, CommandOutcome, OutcomeStatus
+from konden.assistant.content import read_content_result
+from konden.assistant.context.projection import ModelContextProjector, externalize_payload
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, StateProjector, ToolBinding, CommandOutcome, OutcomeStatus
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.session_scheduler import settle_session
 

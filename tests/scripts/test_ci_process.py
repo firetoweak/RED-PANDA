@@ -16,7 +16,7 @@ def test_clean_checkout_excludes_local_artifacts_and_is_always_removed(tmp_path,
     (repository / "scripts/ci.py").write_text(
         "import sys\nfrom pathlib import Path\n"
         "assert not Path('web/dist').exists()\n"
-        "assert Path(sys.prefix).resolve() == Path('redpanda-env').resolve()\n"
+        "assert Path(sys.prefix).resolve() == Path('konden-env').resolve()\n"
         "raise SystemExit(int(sys.argv[1]))\n", encoding="utf-8")
     monkeypatch.setattr(ci, "ROOT", repository)
     ci.run(["git", "init"])

@@ -26,23 +26,23 @@ from mcp.types import (
     Tool,
 )
 
-from redpanda.paths import RedPandaHome
-from redpanda.tools.spec import JsonSchemaParameters
-from redpanda.mcp.toolsets import ToolsetLoadError
-from redpanda.mcp.adapter import (
+from konden.paths import KondenHome
+from konden.tools.spec import JsonSchemaParameters
+from konden.mcp.toolsets import ToolsetLoadError
+from konden.mcp.adapter import (
     adapt_call_result,
     build_output_validator,
     encode_tool_name,
 )
-from redpanda.mcp.application import McpApplicationService
-from redpanda.mcp.errors import McpRecoveryPreconditionError
-from redpanda.mcp.client_manager import (
+from konden.mcp.application import McpApplicationService
+from konden.mcp.errors import McpRecoveryPreconditionError
+from konden.mcp.client_manager import (
     ManagedMcpConnection,
     McpClientManager,
     McpSdkError,
     _SdkConnectionOwner,
 )
-from redpanda.mcp.models import (
+from konden.mcp.models import (
     QUERY_SECRET_KEY,
     McpServerRecord,
     RuntimeAvailability,
@@ -50,9 +50,9 @@ from redpanda.mcp.models import (
     StreamableHttpTransportConfig,
     TransportKind,
 )
-from redpanda.mcp.registry import McpRegistry
-from redpanda.mcp.secrets import McpSecretStore
-from redpanda.mcp.management_tools import create_mcp_management_specs
+from konden.mcp.registry import McpRegistry
+from konden.mcp.secrets import McpSecretStore
+from konden.mcp.management_tools import create_mcp_management_specs
 
 
 class FakeMcpSession:
@@ -127,7 +127,7 @@ def _tool(
     )
 
 
-def _runtime_root(workspace: RedPandaHome) -> Path:
+def _runtime_root(workspace: KondenHome) -> Path:
     return workspace.mcp_root / "runtime"
 
 
@@ -172,7 +172,7 @@ class McpSdkBoundaryTest(unittest.IsolatedAsyncioTestCase):
 class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
     async def test_registry_requires_current_version_and_complete_records(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             record = _stdio_record("demo").to_dict()
@@ -216,7 +216,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_secret_store_requires_current_version_and_string_values(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             secrets = McpSecretStore.from_home(workspace)
             secret_root = workspace.mcp_root / "secrets"
@@ -239,7 +239,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_and_secrets_roundtrip(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -286,7 +286,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_remove_server_rejects_stale_revision(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             service = McpApplicationService(
                 McpRegistry.from_home(workspace),
@@ -322,7 +322,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_streamable_http_url_query_is_extracted_as_secret(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -366,7 +366,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_streamable_http_query_refs_roundtrip(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -402,7 +402,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_agent_management_tools_find_and_test_disabled_server(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -446,7 +446,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_test_and_enable_only_enables_available_server(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -484,7 +484,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_test_and_enable_preserves_disabled_on_failure(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -519,7 +519,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_test_server_persists_last_status(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -560,7 +560,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_server_id_rejects_secret_ref_and_path_ambiguity(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             service = McpApplicationService(
                 McpRegistry.from_home(workspace),
@@ -583,7 +583,7 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_existing_secret_namespace_is_restored_when_registry_write_fails(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -714,7 +714,7 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self._tmp = TemporaryDirectory()
-        workspace = RedPandaHome(Path(self._tmp.name) / ".redpanda")
+        workspace = KondenHome(Path(self._tmp.name) / ".konden")
         workspace.initialize()
         self.registry = McpRegistry.from_home(workspace)
         self.secrets = McpSecretStore.from_home(workspace)
@@ -1104,7 +1104,7 @@ class McpProviderTest(unittest.IsolatedAsyncioTestCase):
 class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
     async def test_client_declares_its_task_root_to_the_server(self):
         with TemporaryDirectory() as directory:
-            home = RedPandaHome(Path(directory) / "home")
+            home = KondenHome(Path(directory) / "home")
             task_root = Path(directory) / "bot"
             task_root.mkdir()
             manager = McpClientManager(
@@ -1124,7 +1124,7 @@ class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_stdio_reuses_state_across_toolset_loads(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)
@@ -1209,7 +1209,7 @@ class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 await manager.aclose()
 
     async def _stdio_server(self, directory, server_id, fixture, **config):
-        workspace = RedPandaHome(Path(directory) / ".redpanda")
+        workspace = KondenHome(Path(directory) / ".konden")
         workspace.initialize()
         secrets = McpSecretStore.from_home(workspace)
         manager = McpClientManager(secrets, runtime_root=_runtime_root(workspace))
@@ -1274,7 +1274,7 @@ class McpPaginationTest(unittest.IsolatedAsyncioTestCase):
                 return pages[cursor]
 
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             manager = McpClientManager(
                 McpSecretStore.from_home(workspace),
@@ -1293,7 +1293,7 @@ class McpRealStreamableHttpIntegrationTest(
 ):
     async def test_real_streamable_http_lists_and_calls_tool(self):
         with TemporaryDirectory() as directory:
-            workspace = RedPandaHome(Path(directory) / ".redpanda")
+            workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()
             registry = McpRegistry.from_home(workspace)
             secrets = McpSecretStore.from_home(workspace)

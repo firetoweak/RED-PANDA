@@ -32,7 +32,7 @@ def until(predicate):
 def gone(pid):
     if os.name != "nt":
         return not Path("/proc", str(pid)).exists()
-    from redpanda.execution.local.windows_job import SYNCHRONIZE, _kernel32
+    from konden.execution.local.windows_job import SYNCHRONIZE, _kernel32
     process = _kernel32.OpenProcess(SYNCHRONIZE, False, pid)
     if not process:
         return True
@@ -62,7 +62,7 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_command(tmp_path
         + ");time.sleep(120)"
     )
     (tmp_path / "command").write_text(shell(sys.executable, "-c", code), encoding="utf-8")
-    env = dict(os.environ, PYTHONPATH=str(root), REDPANDA_HOME=str(tmp_path / "home"))
+    env = dict(os.environ, PYTHONPATH=str(root), KONDEN_HOME=str(tmp_path / "home"))
 
     def start():
         (tmp_path / "ready").unlink(missing_ok=True)
@@ -102,10 +102,10 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_command(tmp_path
                 assert (tmp_path / "writes").read_bytes() == writes
                 stop(host, "close")
             if background:
-                from redpanda.assistant.host.session_store import SessionStore
-                from redpanda.runtime import DomainFactCommitted, SqliteJournal
-                from redpanda.paths import RedPandaHome
-                store = SessionStore(RedPandaHome(tmp_path / "home").runtime_sessions_root)
+                from konden.assistant.host.session_store import SessionStore
+                from konden.runtime import DomainFactCommitted, SqliteJournal
+                from konden.paths import KondenHome
+                store = SessionStore(KondenHome(tmp_path / "home").runtime_sessions_root)
                 events = asyncio.run(SqliteJournal(store.require("session")).snapshot("session"))
                 facts = [event for event in events if isinstance(event.payload, DomainFactCommitted)
                          and event.payload.fact_type == "background_command_finished"]

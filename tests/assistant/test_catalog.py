@@ -1,14 +1,14 @@
 from types import SimpleNamespace
 import unittest
 
-from redpanda.assistant.catalog import (
+from konden.assistant.catalog import (
     CATALOG,
     CapabilityCatalog,
     project_catalog,
 )
 from tests.fixtures.projection import project_chat_messages
-from redpanda.assistant.toolsets import ToolsetDescriptor
-from redpanda.runtime import (
+from konden.assistant.toolsets import ToolsetDescriptor
+from konden.runtime import (
     AgentRuntime,
     DomainFactCommitted,
     StateProjector,

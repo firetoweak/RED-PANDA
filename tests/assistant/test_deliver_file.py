@@ -5,14 +5,14 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.agent_messages import SEND_FILE, message_bindings
-from redpanda.assistant.attachments import AttachmentGateway, AttachmentRejected
-from redpanda.assistant.conversations import project_conversation
-from redpanda.assistant.host.session_store import SessionStore
-from redpanda.assistant.host.supervisor import HostSupervisor
-from redpanda.paths import RedPandaHome
-from redpanda.assistant.sessions import session_view
-from redpanda.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, replay
+from konden.assistant.agent_messages import SEND_FILE, message_bindings
+from konden.assistant.attachments import AttachmentGateway, AttachmentRejected
+from konden.assistant.conversations import project_conversation
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.host.supervisor import HostSupervisor
+from konden.paths import KondenHome
+from konden.assistant.sessions import session_view
+from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, SqliteJournal, replay
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.session_scheduler import settle_session
 
@@ -21,7 +21,7 @@ class DeliverFileTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.directory = TemporaryDirectory()
         root = Path(self.directory.name).resolve()
-        self.home = RedPandaHome(root / "home")
+        self.home = KondenHome(root / "home")
         self.store = SessionStore(self.home.runtime_sessions_root)
         self.host = HostSupervisor(self.store, None, self.home, None, llm=None)
         self.requests = patch.object(self.host, "request", AsyncMock())
@@ -51,7 +51,7 @@ class DeliverFileTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(refused["ok"], path)
 
     async def test_unreadable_file_is_a_known_error_and_does_not_escape(self):
-        from redpanda.assistant.file_attachments import FileAttachmentStore
+        from konden.assistant.file_attachments import FileAttachmentStore
 
         agent = await self.host.create_agent(name="Ada")
         agent.directory.mkdir(parents=True, exist_ok=True)

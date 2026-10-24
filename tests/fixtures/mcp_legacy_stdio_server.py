@@ -32,7 +32,7 @@ for raw_line in sys.stdin:
                     "protocolVersion": "2025-11-25",
                     "capabilities": {"tools": {}},
                     "serverInfo": {
-                        "name": "redpanda-legacy-test",
+                        "name": "konden-legacy-test",
                         "version": "1.0.0",
                     },
                 },

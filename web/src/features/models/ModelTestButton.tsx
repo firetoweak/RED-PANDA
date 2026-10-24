@@ -1,7 +1,7 @@
 import { Button, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import type { ModelTestResult } from "../../api/contracts";
-import { useTestModelMutation } from "../../api/redpandaApi";
+import { useTestModelMutation } from "../../api/kondenApi";
 
 export function ModelTestButton({ model, connectionId, saved, configured }: {
   model: string;

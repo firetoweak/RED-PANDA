@@ -7,8 +7,8 @@ from inspect import isawaitable
 from pathlib import Path
 from uuid import uuid4
 
-from redpanda.config import AssistantConfig
-from redpanda.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+from konden.config import AssistantConfig
+from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 
 
 def is_subagent_request(tools):
@@ -110,10 +110,35 @@ def cancellable_config(workspace: Path):
 
 
 def interrupted_read_config(workspace: Path):
-    from redpanda.assistant.host import worker
-    from redpanda.runtime import ToolBinding
+    from konden.assistant.host import worker
+    from konden.assistant.host.ipc import PipePeer
+    from konden.assistant.sessions import AssistantSessions
+    from konden.assistant.subagent.subagent import project_parent
+    from konden.runtime import ToolBinding
 
     build = worker.build_assistant_assembly
+    record_return = worker.record_interrupted_return
+    handle = PipePeer._handle
+    resume = AssistantSessions.resume
+    resume_received = asyncio.Event()
+    recovery_finished = asyncio.Event()
+
+    async def receive_resume(peer, request_id, operation, session_id, arguments):
+        if operation == "resume":
+            resume_received.set()
+        return await handle(peer, request_id, operation, session_id, arguments)
+
+    async def recover(journal, session_id):
+        if (workspace / "read-started").exists() and project_parent(await journal.snapshot(session_id)) is not None:
+            # Force the incoming resume to overlap this child's startup recovery.
+            await resume_received.wait()
+        await record_return(journal, session_id)
+        recovery_finished.set()
+
+    async def observe_resume(sessions, session_id):
+        if not recovery_finished.is_set():
+            (workspace / "resumed-before-recovery").touch()
+        return await resume(sessions, session_id)
 
     async def read(context, arguments):
         marker = workspace / "read-started"
@@ -130,13 +155,16 @@ def interrupted_read_config(workspace: Path):
         return result
 
     worker.build_assistant_assembly = assembly
+    worker.record_interrupted_return = recover
+    PipePeer._handle = receive_resume
+    AssistantSessions.resume = observe_resume
     return config_for(workspace)
 
 
 def blocking_tool_config(workspace: Path):
-    from redpanda.assistant.host import worker
-    from redpanda.assistant.assembly import _with_tool_progress
-    from redpanda.runtime import ToolBinding
+    from konden.assistant.host import worker
+    from konden.assistant.assembly import _with_tool_progress
+    from konden.runtime import ToolBinding
 
     build = worker.build_assistant_assembly
 
@@ -161,7 +189,7 @@ def blocking_tool_config(workspace: Path):
 
 def failing_startup_config(workspace: Path, stage: str):
     """Fail once so the parent can subsequently start with the same factory."""
-    from redpanda.assistant.host import worker
+    from konden.assistant.host import worker
 
     marker = workspace / f"failed-{stage}"
     if marker.exists():
@@ -177,7 +205,7 @@ def failing_startup_config(workspace: Path, stage: str):
         worker.build_assistant_assembly = fail
     config = config_for(workspace)
     if stage == "client":
-        from redpanda.mcp.client_manager import McpClientManager
+        from konden.mcp.client_manager import McpClientManager
 
         async def enter(self):
             raise RuntimeError("client initialization failed")
@@ -187,7 +215,7 @@ def failing_startup_config(workspace: Path, stage: str):
 
 
 def failing_request_config(workspace: Path):
-    from redpanda.assistant.host import worker
+    from konden.assistant.host import worker
 
     build = worker.build_assistant_assembly
 

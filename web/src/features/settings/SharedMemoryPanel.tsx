@@ -1,7 +1,7 @@
 import { Alert, Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import { sharedMemoryConflictSchema, type SharedMemory } from "../../api/contracts";
-import { useGetSharedMemoryQuery, useSaveSharedMemoryMutation } from "../../api/redpandaApi";
+import { useGetSharedMemoryQuery, useSaveSharedMemoryMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
 export function SharedMemoryPanel({ active }: { active: boolean }) {

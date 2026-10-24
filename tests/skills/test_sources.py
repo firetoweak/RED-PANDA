@@ -8,14 +8,14 @@ import zipfile
 
 import httpx
 
-from redpanda.skills.models import SkillSourceRef
-from redpanda.skills.approval import (
+from konden.skills.models import SkillSourceRef
+from konden.skills.approval import (
     SkillInstallProposalInput,
     create_skill_install_proposal_spec,
 )
-from redpanda.skills.sources import SkillSourceError, SkillSourceRouter
-from redpanda.skills.package import SkillPackageError
-from redpanda.tools.control import ControlPreparationFailure
+from konden.skills.sources import SkillSourceError, SkillSourceRouter
+from konden.skills.package import SkillPackageError
+from konden.tools.control import ControlPreparationFailure
 from tests.skills.test_package import write_skill
 
 

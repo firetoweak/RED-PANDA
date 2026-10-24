@@ -21,7 +21,7 @@ const { testModel, settings, catalog, saveSettings } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../src/app/hooks", () => ({ useAppSelector: () => "connection" }));
-vi.mock("../src/api/redpandaApi", () => ({
+vi.mock("../src/api/kondenApi", () => ({
   useGetModelSettingsQuery: () => ({ data: settings }),
   useSaveModelSettingsMutation: () => [saveSettings, { isLoading: false }],
   useGetCodexModelsQuery: () => catalog,

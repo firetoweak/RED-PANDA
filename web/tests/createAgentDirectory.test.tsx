@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { redpandaApi } from "../src/api/redpandaApi";
+import { kondenApi } from "../src/api/kondenApi";
 import type { Workspace } from "../src/api/contracts";
 import { CreateAgentModal } from "../src/features/sessions/CreateAgentModal";
 import { LinkProjectModal } from "../src/features/sessions/LinkProjectModal";
@@ -29,8 +29,8 @@ const projects: Workspace[] = ["C:/one/app", "C:/two/app"].map((path, i) => ({
 
 function showModal(workspaces: Workspace[] = [], link = false) {
   const store = configureStore({
-    reducer: { [redpandaApi.reducerPath]: redpandaApi.reducer },
-    middleware: (defaults) => defaults().concat(redpandaApi.middleware),
+    reducer: { [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
   });
   const onClose = vi.fn();
   const onCreated = vi.fn();
@@ -56,7 +56,7 @@ it("选目录只填写同页草稿，取消创建不登记项目", async () => {
   fireEvent.keyDown(screen.getByLabelText("名字"), { key: "Escape" });
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(fetch).toHaveBeenCalledOnce();
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it.each(["", " D:/项目/助手 "])("确认时一次提交名字和可选目录：%j", async (path) => {
@@ -72,7 +72,7 @@ it.each(["", " D:/项目/助手 "])("确认时一次提交名字和可选目录�
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith("agent-test"));
   expect(submissions).toEqual([{ connection_id: "connection", path: path.trim() || null, name: "Ada" }]);
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it("同名项目同时展示完整路径，后续关联使用选择的目录", async () => {
@@ -90,7 +90,7 @@ it("同名项目同时展示完整路径，后续关联使用选择的目录", a
   fireEvent.click(screen.getByRole("button", { name: "关联", exact: true }));
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   expect(submissions).toEqual([{ connection_id: "connection", workspace_id: null, path: "C:/two/app" }]);
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });
 
 it("选择取消保留原目录，桌面不可用时可继续手填", async () => {
@@ -106,5 +106,5 @@ it("选择取消保留原目录，桌面不可用时可继续手填", async () =
   await screen.findByText("当前 Python 未安装 Tcl/Tk");
   expect(screen.getByRole("combobox", { name: "代码目录（可选）", exact: true })).toBeEnabled();
   expect(screen.getByRole("combobox", { name: "代码目录（可选）", exact: true })).toHaveValue("C:/existing");
-  store.dispatch(redpandaApi.util.resetApiState());
+  store.dispatch(kondenApi.util.resetApiState());
 });

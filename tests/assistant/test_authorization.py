@@ -5,14 +5,14 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from redpanda.assistant.authorization import (
+from konden.assistant.authorization import (
     AuthorizationConflict,
     AuthorizationTargetNotFound,
 )
-from redpanda.assistant.host.ipc import PipePeer
-from redpanda.assistant.inputs import InputConflict
-from redpanda.assistant.sessions import AssistantSessions
-from redpanda.runtime import InvokeTool, ModelDecision, SqliteJournal
+from konden.assistant.host.ipc import PipePeer
+from konden.assistant.inputs import InputConflict
+from konden.assistant.sessions import AssistantSessions
+from konden.runtime import InvokeTool, ModelDecision, SqliteJournal
 from tests.fixtures.memory_journal import MemoryJournal
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
