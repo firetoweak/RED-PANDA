@@ -1,6 +1,3 @@
-# Adapted from GrokNode, pinned to 58d0e44974b015b70c5458b4a7c5cee866c226fd.
-# source/host/runner/system-prompt.ts; source/host/agents/agent-messaging.ts.
-# Adaptations describe RED PANDA's interfaces and presentation; the general voice follows GrokNode.
 import platform
 from pathlib import Path
 
