@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { z } from "zod";
 
 import type { AgentRosterEntry, GroupSummary } from "../../api/contracts";
+import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "./AgentStatus";
 import { BotAvatar } from "../conversation/ChatPresentation";
 import { RemoveConversationModal, type RemovalTarget } from "./RemoveConversationModal";
@@ -125,6 +126,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
               <Stack className="sidebar-agent-identity" gap={2}>
                 <Text className="session-title" fz={13} truncate>{agent.name}</Text>
               </Stack>
+              <UnreadBadge sessionId={agent.session_id} name={agent.name} />
             </Group>
           </Tooltip>))}
         {sectionChats.map((chat) => renderRow(`chat:${chat.group_id}`, `群聊 ${chat.name}`, chat.group_id === groupId,
@@ -176,6 +178,13 @@ function RosterRow({ name, active, children, sections, sectionId, onOpen, onMove
       </Menu.Dropdown>
     </Menu>
   </Group>;
+}
+
+function UnreadBadge({ sessionId, name }: { sessionId: string; name: string }) {
+  const unread = useAppSelector((state) => state.runtime.sessions[sessionId]?.unread ?? 0);
+  return unread === 0 ? null : <span className="sidebar-unread" role="status" aria-label={`${name} 有 ${unread} 条未读消息`}>
+    {unread > 99 ? "99+" : unread}
+  </span>;
 }
 
 function SectionNameModal({ initialName, creating, existing, onSave, onClose }: {

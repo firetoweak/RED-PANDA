@@ -120,6 +120,7 @@ body {
 .sidebar-agent-avatar .agent-status { position: absolute; right: -4px; bottom: -3px; padding: 1px; border-radius: 50%; background: var(--konden-sidebar); }
 .session-row.is-active .sidebar-agent-avatar .agent-status { background: var(--konden-tile); }
 .sidebar-agent-identity { min-width: 0; flex: 1; }
+.sidebar-unread { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 18px; height: 18px; padding-inline: 5px; border-radius: 9px; background: var(--mantine-color-red-8); color: white; font-size: 11px; font-weight: 600; line-height: 1; }
 
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 77px; padding: 0 29px; border-bottom: 1px solid var(--konden-border); }
 .agent-home, .session-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -136,6 +137,8 @@ body {
 .agent-details-project svg { flex-shrink: 0; color: var(--mantine-color-dimmed); }
 .agent-details-project:hover { color: var(--konden-accent-text); }
 .agent-details-path { margin-top: 8px; overflow-wrap: anywhere; }
+.background-command-row { padding-block: 10px; border-top: 1px solid var(--konden-border); }
+.background-command-row:first-child { padding-top: 0; border-top: 0; }
 .routine-row { position: relative; padding: 8px 0; border-top: 1px solid var(--konden-border); }
 .routine-row:first-child { border-top: 0; }
 .routine-open { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }

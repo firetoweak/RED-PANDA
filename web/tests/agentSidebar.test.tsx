@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import type { AgentRosterEntry, GroupSummary, Workspace } from "../src/api/contracts";
 import { AgentSidebar } from "../src/features/sessions/AgentSidebar";
-import runtimeReducer, { connected, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
+import runtimeReducer, { connected, outputFinal, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
 function workspace(workspaceId: string, name: string): Workspace {
   return {
@@ -236,6 +236,26 @@ it("点 Agent 打开它的会话", () => {
   renderSidebar("/");
   fireEvent.click(screen.getByRole("button", { name: "konden" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
+});
+
+it("离开的 Bot 收到回复显示未读红标，查看后清除，状态提示保持独立", () => {
+  browserStubs();
+  queries.agents = [agent({ session_id: "ada", name: "Ada", status: "working" }), agent({ session_id: "lin", name: "Lin" })];
+  queries.groups = [];
+  const { store } = renderSidebar("/sessions/lin");
+  act(() => {
+    store.dispatch(viewing("lin"));
+    store.dispatch(outputFinal({ sessionId: "ada", outputId: "reply-1", text: "下载完成" }));
+    store.dispatch(outputFinal({ sessionId: "ada", outputId: "reply-2", text: "校验完成" }));
+    store.dispatch(outputFinal({ sessionId: "lin", outputId: "reply-3", text: "正在查看" }));
+  });
+  const ada = within(screen.getByRole("button", { name: "Ada", exact: true }));
+  expect(ada.getByRole("status", { name: "Ada 有 2 条未读消息" })).toHaveTextContent("2");
+  expect(ada.getByLabelText("干活")).toBeInTheDocument();
+  expect(within(screen.getByRole("button", { name: "Lin", exact: true })).queryByRole("status")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Ada", exact: true }));
+  act(() => { store.dispatch(viewing("ada")); });
+  expect(ada.queryByRole("status")).not.toBeInTheDocument();
 });
 
 it("对话入口返回首页，待处理提示所属 Bot", () => {
