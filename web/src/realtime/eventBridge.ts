@@ -47,23 +47,40 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   const thinking = createTextDeltaBuffer((delta) => {
     dispatch(thinkingDelta(delta));
   });
+  type Tags = Parameters<typeof kondenApi.util.invalidateTags>[0];
+  let pendingTags: Tags = [];
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flushRefresh() {
+    clearTimeout(refreshTimer);
+    refreshTimer = undefined;
+    const tags = pendingTags;
+    pendingTags = [];
+    if (tags.length > 0) dispatch(kondenApi.util.invalidateTags(tags));
+  }
+
+  function refresh(tags: Tags) {
+    pendingTags = [...pendingTags, ...tags];
+    refreshTimer ??= setTimeout(flushRefresh, 50);
+  }
 
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections"]));
+    refresh(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections"]);
+    flushRefresh();
   });
   source.addEventListener("external_sessions_changed", (event) => {
     externalSessionsChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(kondenApi.util.invalidateTags(["ExternalSessions", "Conversation"]));
+    refresh(["ExternalSessions", "Conversation"]);
   });
   source.addEventListener("avatars_changed", (event) => {
     avatarsChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(kondenApi.util.invalidateTags(["Avatars"]));
+    refresh(["Avatars"]);
   });
   source.addEventListener("auto_authorize_changed", (event) => {
     autoAuthorizeChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(kondenApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
+    refresh(["AutoAuthorize", "Conversation", "Inbox", "Agents"]);
   });
   source.addEventListener("session_activity", (event) => {
     const payload = sessionActivityEventSchema.parse(JSON.parse(event.data));
@@ -73,27 +90,23 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         activity: payload.activity,
       }),
     );
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-        "Agents",
-        "Inbox",
-      ]),
-    );
+    refresh([
+      { type: "Conversation", id: payload.session_id },
+      "Agents",
+      "Inbox",
+    ]);
   });
   source.addEventListener("schedule_changed", (event) => {
     const payload = scheduleChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-        { type: "Routines", id: payload.session_id },
-        "Inbox",
-      ]),
-    );
+    refresh([
+      { type: "Conversation", id: payload.session_id },
+      { type: "Routines", id: payload.session_id },
+      "Inbox",
+    ]);
   });
   source.addEventListener("group_changed", (event) => {
     groupChangedEventSchema.parse(JSON.parse(event.data));
-    dispatch(kondenApi.util.invalidateTags(["Groups"]));
+    refresh(["Groups"]);
   });
   source.addEventListener("session_failed", (event) => {
     const payload = sessionFailedEventSchema.parse(JSON.parse(event.data));
@@ -103,15 +116,11 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         message: payload.message,
       }),
     );
-    dispatch(kondenApi.util.invalidateTags(["Agents", "Inbox"]));
+    refresh(["Agents", "Inbox"]);
   });
   source.addEventListener("context_usage", (event) => {
     const payload = contextUsageEventSchema.parse(JSON.parse(event.data));
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-      ]),
-    );
+    refresh([{ type: "Conversation", id: payload.session_id }]);
   });
   source.addEventListener("conversation_status", (event) => {
     const payload = conversationStatusEventSchema.parse(JSON.parse(event.data));
@@ -122,11 +131,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         compactPhase: payload.compact_phase,
       }),
     );
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-      ]),
-    );
+    refresh([{ type: "Conversation", id: payload.session_id }]);
   });
   source.addEventListener("preview.started", (event) => {
     const payload = previewStartedEventSchema.parse(JSON.parse(event.data));
@@ -139,11 +144,8 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
     );
     // Tool finish can precede Outcome commit. The next decision observes committed
     // facts, so refresh the plan and timeline before waiting for model output.
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-      ]),
-    );
+    refresh([{ type: "Conversation", id: payload.session_id }]);
+    flushRefresh();
   });
   source.addEventListener("preview.delta", (event) => {
     const payload = previewDeltaEventSchema.parse(JSON.parse(event.data));
@@ -211,12 +213,10 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         text: payload.text,
       }),
     );
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-        "Inbox",
-      ]),
-    );
+    refresh([
+      { type: "Conversation", id: payload.session_id },
+      "Inbox",
+    ]);
   });
   source.addEventListener("tool_progress", (event) => {
     const payload = toolProgressEventSchema.parse(JSON.parse(event.data));
@@ -228,21 +228,15 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
         status: payload.status,
       }),
     );
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-      ]),
-    );
+    refresh([{ type: "Conversation", id: payload.session_id }]);
   });
   source.addEventListener("authorization_required", (event) => {
     const payload = authorizationRequiredEventSchema.parse(JSON.parse(event.data));
     dispatch(authorizationRequired({ sessionId: payload.session_id }));
-    dispatch(
-      kondenApi.util.invalidateTags([
-        { type: "Conversation", id: payload.session_id },
-        "Inbox",
-      ]),
-    );
+    refresh([
+      { type: "Conversation", id: payload.session_id },
+      "Inbox",
+    ]);
   });
   source.addEventListener("error", () => {
     preview.flushNow();
@@ -251,6 +245,7 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   });
 
   return () => {
+    clearTimeout(refreshTimer);
     preview.flushNow();
     thinking.flushNow();
     source.close();

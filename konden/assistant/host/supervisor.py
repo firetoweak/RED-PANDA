@@ -1361,13 +1361,13 @@ class HostSupervisor:
             return view
 
     async def _journal_state(self, session_id):
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(
-            session_id
-        )
-        return events, replay(session_id, events).state
+        return await self.store.projected(session_id)
 
     async def _project_view(self, session_id):
         events, state = await self._journal_state(session_id)
+        return self._view_from_state(session_id, events, state)
+
+    def _view_from_state(self, session_id, events, state):
         return self._with_host_metadata(
             session_view(
                 state,
@@ -1379,18 +1379,14 @@ class HostSupervisor:
             session_id,
         )
 
-    async def _should_wake(self, session_id):
-        if await self.lifecycle.is_deleted(session_id):
-            return False
-        if self.current_failure(session_id) is not None:
-            return False
-        _events, state = await self._journal_state(session_id)
-        return session_view(state).should_wake
-
     async def _select_view(self, session_id):
-        if await self._should_wake(session_id):
+        deleted = await self.lifecycle.is_deleted(session_id)
+        failed = self.current_failure(session_id) is not None
+        events, state = await self._journal_state(session_id)
+        view = self._view_from_state(session_id, events, state)
+        if not deleted and not failed and view.should_wake:
             return await self.resume(session_id)
-        return await self._project_view(session_id)
+        return view
 
     async def release(self, owner):
         async with self.selection_locks.setdefault(owner, asyncio.Lock()):

@@ -9,10 +9,36 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from konden.assistant.host.session_store import SessionStore
-from konden.runtime import SqliteJournal
+from konden.runtime import AgentRuntime, SqliteJournal, StateProjector
 
 
 class SessionStoreListingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reuses_unchanged_projection_but_observes_independent_writes_and_isolates_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = SessionStore(Path(directory) / "first")
+            second = SessionStore(Path(directory) / "second")
+            for store in (first, second):
+                await store.create("same-id")
+            writer = AgentRuntime(SqliteJournal(first.require("same-id")), None, {})
+            event = await writer.receive_user_message("same-id", "first", delivery_id="first")
+
+            with patch.object(StateProjector, "project", autospec=True,
+                              side_effect=StateProjector.project) as project:
+                events, state = await first.projected("same-id")
+                self.assertEqual(state.next_trigger_event_ids, (event.event_id,))
+                self.assertEqual(await first.projected("same-id"), (events, state))
+                self.assertEqual(project.call_count, 1)
+
+                other_events, other_state = await second.projected("same-id")
+                self.assertEqual(other_events, ())
+                self.assertEqual(other_state.next_trigger_event_ids, ())
+
+                new = await writer.receive_user_message("same-id", "new", delivery_id="new")
+                updated_events, updated = await first.projected("same-id")
+                self.assertEqual(updated_events, (*events, new))
+                self.assertEqual(updated.next_trigger_event_ids, (event.event_id, new.event_id))
+                self.assertEqual(project.call_count, 3)
+
     @unittest.skipUnless(os.name == "nt", "Windows directory rename sharing contract")
     async def test_creation_retries_a_transient_windows_reader_without_losing_initial_facts(self):
         with tempfile.TemporaryDirectory() as directory:

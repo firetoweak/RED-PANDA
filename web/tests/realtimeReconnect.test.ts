@@ -6,7 +6,10 @@ import type { ConversationView } from "../src/api/contracts";
 import { visibleTimeline } from "../src/features/conversation/visibleTimeline";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 // HTTP may overtake SSE, but the events of one SSE connection remain ordered.
 it.each([0, 1, 2, 3, 4])("重连后最终快照插在第 %i 个流事件前，回复都只显示一次", (snapshotAt) => {
@@ -115,7 +118,8 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   store.dispatch(kondenApi.util.resetApiState());
 });
 
-it("状态事件更新所属会话，并使对应的页面数据重新读取", () => {
+it("状态立即更新，连续通知合并刷新，重连立即补齐所有待刷新数据", () => {
+  vi.useFakeTimers();
   const listeners = new Map<string, (event: MessageEvent) => void>();
   vi.stubGlobal("EventSource", class {
     addEventListener(name: string, listener: (event: MessageEvent) => void) { listeners.set(name, listener); }
@@ -137,17 +141,78 @@ it("状态事件更新所属会话，并使对应的页面数据重新读取", (
   });
   dispatch.mockClear();
   emit("context_usage", { session_id: "session-2", used: 1200, compact_threshold_tokens: 200000 });
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags([{ type: "Conversation", id: "session-2" }]));
   listeners.get("group_changed")!(new MessageEvent("group_changed", { data: JSON.stringify({ group_id: "group-1" }) }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Groups"]));
   listeners.get("auto_authorize_changed")!(new MessageEvent("auto_authorize_changed", { data: "{}" }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
   listeners.get("avatars_changed")!(new MessageEvent("avatars_changed", { data: "{}" }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Avatars"]));
   listeners.get("external_sessions_changed")!(new MessageEvent("external_sessions_changed", { data: "{}" }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["ExternalSessions", "Conversation"]));
+  expect(dispatch).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(50);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+    type: kondenApi.util.invalidateTags.type,
+    payload: expect.arrayContaining([
+      { type: "Conversation", id: "session-1" }, { type: "Conversation", id: "session-2" },
+      "Agents", "Inbox", "Groups", "AutoAuthorize", "Conversation", "Avatars", "ExternalSessions",
+    ]),
+  }));
+  dispatch.mockClear();
+  emit("schedule_changed", { session_id: "session-1" });
   listeners.get("connected")!(new MessageEvent("connected", { data: '{"connection_id":"again"}' }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections"]));
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+    type: kondenApi.util.invalidateTags.type,
+    payload: expect.arrayContaining([
+      "Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections",
+      { type: "Routines", id: "session-1" },
+    ]),
+  }));
+  dispatch.mockClear();
+  emit("context_usage", { session_id: "session-1", used: 1200, compact_threshold_tokens: 200000 });
   close();
+  vi.advanceTimersByTime(100);
+  expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: kondenApi.util.invalidateTags.type }));
   store.dispatch(kondenApi.util.resetApiState());
+});
+
+it("一批状态通知只触发一次已订阅 Bot 列表的 HTTP 重读", async () => {
+  const NativeRequest = Request;
+  vi.stubGlobal("Request", class extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(typeof input === "string" ? new URL(input, "http://localhost") : input, init);
+    }
+  });
+  const fetch = vi.fn(() => Promise.resolve(Response.json([])));
+  vi.stubGlobal("fetch", fetch);
+  const listeners = new Map<string, (event: MessageEvent) => void>();
+  vi.stubGlobal("EventSource", class {
+    addEventListener(name: string, listener: (event: MessageEvent) => void) { listeners.set(name, listener); }
+    close() {}
+  });
+  const store = configureStore({
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
+  });
+  const subscription = store.dispatch(kondenApi.endpoints.getAgents.initiate());
+  const close = openEventBridge(store.dispatch);
+  try {
+    await subscription.unwrap();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    for (let index = 0; index < 20; index += 1) {
+      listeners.get("session_activity")!(new MessageEvent("session_activity", {
+        data: JSON.stringify({ session_id: `bot-${index}`, activity: "running" }),
+      }));
+    }
+    expect(store.getState().runtime.sessions["bot-19"].activity).toBe("running");
+    await vi.advanceTimersByTimeAsync(49);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(kondenApi.endpoints.getAgents.select()(store.getState()).status).toBe("fulfilled"));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  } finally {
+    close();
+    subscription.unsubscribe();
+    store.dispatch(kondenApi.util.resetApiState());
+  }
 });

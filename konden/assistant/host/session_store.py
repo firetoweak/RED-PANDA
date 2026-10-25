@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from konden.assistant.runner import SessionNotFoundError
 from konden.assistant.workspaces import workspace_binding, directory_binding
-from konden.runtime import SqliteJournal
+from konden.runtime import CanonicalState, Event, SqliteJournal, StateProjector
 from konden.runtime.events import (
     DeliveryIdentity,
     DomainFactCommitted,
@@ -19,15 +19,13 @@ from konden.runtime.events import (
 
 
 class SessionStore:
-    """Identity to directory mapping.
-
-    Workers open existing Journals. Host may open one only when that Session
-    has no Worker, to persist a parent-initiated return.
-    """
+    """Session directories and reusable Journal reads; projections are disposable."""
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self._readers: dict[Path, SqliteJournal] = {}
+        self._projections: dict[str, tuple[tuple[Event, ...], CanonicalState]] = {}
 
     def path(self, session_id: str) -> Path:
         if type(session_id) is not str or not session_id:
@@ -42,6 +40,28 @@ class SessionStore:
         if not path.is_file():
             raise ValueError(f"Session Journal missing: {path}")
         return path
+
+    def journal(self, session_id: str) -> SqliteJournal:
+        return self._reader(self.require(session_id))
+
+    def _reader(self, path: Path) -> SqliteJournal:
+        journal = self._readers.get(path)
+        if journal is None:
+            journal = SqliteJournal(path)
+            self._readers[path] = journal
+        return journal
+
+    async def identities(self) -> tuple[str, ...]:
+        return tuple([await self._reader(path).session_identity() for path in self.journals()])
+
+    async def projected(self, session_id: str) -> tuple[tuple[Event, ...], CanonicalState]:
+        events = await self.journal(session_id).snapshot(session_id)
+        cached = self._projections.get(session_id)
+        if cached is not None and cached[0] is events:
+            return cached
+        projected = events, StateProjector().project(session_id, events).state
+        self._projections[session_id] = projected
+        return projected
 
     def journals(self) -> tuple[Path, ...]:
         paths: list[Path] = []

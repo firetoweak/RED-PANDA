@@ -16,7 +16,8 @@ from konden.assistant.agents import (
 )
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.agent_roster import AgentDeletedError
-from konden.runtime import AgentRuntime, DomainFactCommitted, SqliteJournal
+from konden.assistant.runner import SessionNotFoundError
+from konden.runtime import AgentRuntime, DomainFactCommitted
 from konden.runtime.json_values import thaw_value
 
 _DRIVE = "group.drive"
@@ -169,34 +170,36 @@ class AgentGroups:
         return None
 
     def _journal(self, group_id):
-        return SqliteJournal(self.store.require(group_id))
+        try:
+            return self.store.journal(group_id)
+        except SessionNotFoundError as error:
+            raise GroupNotFound(group_id) from error
+
+    async def _record(self, group_id):
+        events = await self._journal(group_id).snapshot(group_id)
+        created, = (parse_agent_fact(event.payload) for event in events
+                    if isinstance(event.payload, DomainFactCommitted)
+                    and event.payload.fact_type == GROUP_CREATED)
+        dissolved = [parse_agent_fact(event.payload) for event in events
+                     if isinstance(event.payload, DomainFactCommitted)
+                     and event.payload.fact_type == GROUP_DISSOLVED]
+        return GroupRecord(group_id, created, bool(dissolved)), events
 
     async def list(self, *, include_dissolved=False) -> tuple[GroupRecord, ...]:
         groups = []
-        for path in self.store.journals():
-            journal = SqliteJournal(path)
-            group_id = await journal.session_identity()
-            events = await journal.snapshot(group_id)
-            created, = (parse_agent_fact(event.payload) for event in events
-                        if isinstance(event.payload, DomainFactCommitted)
-                        and event.payload.fact_type == GROUP_CREATED)
-            dissolved = bool([parse_agent_fact(event.payload) for event in events
-                              if isinstance(event.payload, DomainFactCommitted)
-                              and event.payload.fact_type == GROUP_DISSOLVED])
-            if include_dissolved or not dissolved:
-                groups.append(GroupRecord(group_id, created, dissolved))
+        for group_id in await self.store.identities():
+            group, _events = await self._record(group_id)
+            if include_dissolved or not group.dissolved:
+                groups.append(group)
         return tuple(sorted(groups, key=lambda group: group.name))
 
     async def get(self, group_id: str) -> GroupRecord:
-        for group in await self.list(include_dissolved=True):
-            if group.group_id == group_id:
-                return group
-        raise GroupNotFound(group_id)
+        group, _events = await self._record(group_id)
+        return group
 
     async def view(self, group_id: str) -> dict:
         """What a person sees: the public record and who the Host is calling now."""
-        group = await self.get(group_id)
-        events = await self._journal(group_id).snapshot(group_id)
+        group, events = await self._record(group_id)
         drive = self._drives.get(group_id)
         return {
             "group_id": group.group_id, "name": group.name,

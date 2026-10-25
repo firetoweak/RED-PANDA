@@ -78,9 +78,9 @@ class AgentMessages:
 
     async def _colleague(self, agent):
         """The same status the Web roster shows; reads this colleague's Journal."""
-        events = await SqliteJournal(self.host.store.require(agent.session_id)).snapshot(agent.session_id)
+        events, state = await self.host.store.projected(agent.session_id)
         status = COLLEAGUE_STATUS[project_agent_roster_entry(
-            agent.session_id, events, name=agent.name,
+            agent.session_id, events, state, name=agent.name,
             activity=self.host.activity(agent.session_id),
             last_error=self.host.current_failure(agent.session_id),
             auto_authorize=self.host.auto_authorize()).status]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone
 
 from konden.assistant.conversations import (
@@ -367,6 +368,11 @@ class Idle:
     workspaces = _Workspaces("workspace-1")
     auto_authorize_enabled = True
 
+    def __init__(self, store):
+        from konden.assistant.host.agent_roster import AgentRoster
+
+        self.agents = AgentRoster(store)
+
     def activity(self, session_id):
         return "idle"
 
@@ -486,7 +492,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
-            sessions = Idle()
+            sessions = Idle(store)
             queries = AssistantQueries(store, sessions)
             for session_id in ("quiet", "named", "old"):
                 await store.create(session_id, directory=Path(directory))
@@ -545,7 +551,11 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             })
             await propose(store, "old", "req-old")
             sessions.auto_authorize_enabled = False
-            inbox = await queries.list_inbox()
+            await sessions.agents.list()
+            with patch.object(store, "projected", new=AsyncMock(wraps=store.projected)) as read:
+                inbox = await queries.list_inbox()
+                self.assertEqual({call.args[0] for call in read.call_args_list}, {"quiet", "named"})
+                self.assertEqual(read.call_count, 2)
 
             # Read the exact interval between issuing an ask command and recording
             # its automatic authorization; no Worker is running to close it.
@@ -590,7 +600,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
 
         with TemporaryDirectory() as directory:
             store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Idle())
+            queries = AssistantQueries(store, Idle(store))
             for session_id, name in (("limited", "上限熊猫"), ("pending", "待处理熊猫")):
                 await store.create(session_id, directory=Path(directory))
                 await SqliteJournal(store.require(session_id)).accept_delivery(EventDraft(
