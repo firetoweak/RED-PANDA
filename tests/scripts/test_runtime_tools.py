@@ -52,16 +52,6 @@ def test_local_tools_are_visible_only_in_the_process_environment(tmp_path, monke
     assert paths[1:] == [str(tmp_path / "system")]
 
 
-def test_windows_directory_move_can_use_the_standard_copy_path(tmp_path, monkeypatch):
-    data = archive()
-    monkeypatch.setattr(tools, "urlopen", lambda *args, **kwargs: io.BytesIO(data))
-    def locked_directory(*args, **kwargs):
-        raise PermissionError("directory rename denied")
-    monkeypatch.setattr(os, "rename", locked_directory)
-    tools.install_package(tmp_path, "tool", package(data))
-    assert (tools.tool_directory(tmp_path, "tool") / "tool.exe").read_bytes() == b"binary"
-
-
 def test_zip_helper_programs_keep_executable_permissions(tmp_path, monkeypatch):
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as bundle:

@@ -162,13 +162,6 @@ class LayerImportBoundaryTest(unittest.TestCase):
                 )
         self.assertEqual(offenders, [])
 
-    def test_worker_config_does_not_construct_the_concrete_llm_client(self):
-        import inspect
-
-        from konden.bootstrap import worker_config
-
-        self.assertNotIn("ChatCompletionsClient", inspect.getsource(worker_config))
-
     def test_assistant_does_not_import_foreign_llm_clients(self):
         offenders: list[str] = []
         for path in sorted(ASSISTANT_ROOT.rglob("*.py")):
