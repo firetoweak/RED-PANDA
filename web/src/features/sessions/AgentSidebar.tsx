@@ -11,11 +11,13 @@ import { BotRoster } from "./BotRoster";
 import { AutoAuthorize } from "./AutoAuthorize";
 import { SettingsMenu } from "../settings/SettingsMenu";
 import { ExternalRoster } from "../external/ExternalRoster";
+import { CapabilitiesIcon } from "../capabilities/CapabilitiesIcon";
 
 export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
   const navigate = useNavigate();
   const sessionId = useMatch("/sessions/:sessionId")?.params.sessionId;
   const groupId = useMatch("/groups/:groupId")?.params.groupId;
+  const capabilitiesOpened = useMatch("/capabilities") !== null;
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { data: agents = [] } = useGetAgentsQuery();
   const { data: chats = [] } = useGetGroupsQuery();
@@ -69,7 +71,11 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
         {filter === "all" || filter === "external" ? <ExternalRoster query={query} onOpen={open} /> : null}
       </ScrollArea>
     </AppShell.Section>
-    <AppShell.Section className="sidebar-footer"><Group gap={4} wrap="nowrap">
+    <AppShell.Section className="sidebar-footer"><Group gap={4} wrap="wrap">
+      <Tooltip label="能力" events={{ hover: true, focus: true, touch: false }}>
+        <ActionIcon className="capabilities-trigger" aria-label="能力" aria-current={capabilitiesOpened ? "page" : undefined}
+          variant="subtle" color="gray" size={32} onClick={() => open("/capabilities")}><CapabilitiesIcon size={20} /></ActionIcon>
+      </Tooltip>
       <SettingsMenu onOpen={onNavigate} /><ColorSchemeSwitcher />
       <Tooltip label={connectionId === null ? "正在连接…" : "已连接"}>
         <span className="connection-status" data-connected={connectionId !== null} role="status" aria-label={connectionId === null ? "正在连接…" : "已连接"}>

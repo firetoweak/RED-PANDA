@@ -42,6 +42,10 @@ from konden.channels.web.directory_picker import (
     select_directory,
 )
 from konden.channels.web.hub import WebEventHub
+from konden.channels.web.capabilities import CapabilityViews
+from konden.cli.registry import CliRegistry
+from konden.skills.errors import SkillInputError, SkillInstalledPackageError, SkillNotFoundError
+from konden.mcp.errors import McpServerNotFoundError
 from konden.channels.mcp import create_mcp_app
 from konden.filesystem.registry import (
     WorkspaceNotFound,
@@ -202,6 +206,10 @@ class AutoAuthorizeRequest(BaseModel):
     enabled: bool
 
 
+class CapabilityEnabledRequest(ConnectionRequest):
+    enabled: bool
+
+
 def create_web_app(
     channel: WebChannel | None = None,
     hub: WebEventHub | None = None,
@@ -213,6 +221,7 @@ def create_web_app(
     shared_memory: SharedMemoryStore | None = None,
     avatars: AvatarStore | None = None,
     external_messages=None,
+    capabilities: CapabilityViews | None = None,
 ) -> FastAPI:
     events = hub if hub is not None else WebEventHub()
 
@@ -231,6 +240,7 @@ def create_web_app(
             app.state.workspaces = workspaces
             app.state.shared_memory = shared_memory
             app.state.avatars = avatars
+            app.state.capabilities = capabilities
             async with mcp_app.router.lifespan_context(mcp_app):
                 yield
             return
@@ -261,6 +271,10 @@ def create_web_app(
             app.state.workspaces = assistant.workspaces
             app.state.shared_memory = SharedMemoryStore(assistant.sessions.home.state_root / "shared_memory.sqlite")
             app.state.avatars = avatars if avatars is not None else AvatarStore(assistant.sessions.home.state_root / "web_avatars")
+            app.state.capabilities = CapabilityViews(
+                assistant.skill_service, assistant.mcp_service,
+                CliRegistry(assistant.sessions.home.clis_root),
+            )
             failures = asyncio.create_task(
                 report_worker_failures(assistant.sessions, events),
                 name="web-assistant-failure",
@@ -395,6 +409,31 @@ def create_web_app(
             # SSE disconnect cancels its task group; finish releasing the Worker.
             with CancelScope(shield=True):
                 await web.disconnect(connection)
+
+    @app.get("/api/capabilities")
+    async def list_capabilities(request: Request):
+        return await request.app.state.capabilities.read()
+
+    @app.put("/api/capabilities/{kind}/{capability_id}/enabled")
+    async def set_capability_enabled(
+        kind: Literal["skills", "mcp"], capability_id: str,
+        body: CapabilityEnabledRequest, request: Request,
+    ):
+        _channel(request)._require_connection(body.connection_id)
+        views = request.app.state.capabilities
+        try:
+            record = (
+                await views.skills.set_enabled(capability_id, body.enabled)
+                if kind == "skills"
+                else await views.mcp.set_server_enabled(capability_id, body.enabled)
+            )
+        except (SkillNotFoundError, McpServerNotFoundError) as error:
+            return JSONResponse(status_code=404, content={"detail": str(error)})
+        except SkillInstalledPackageError:
+            raise
+        except SkillInputError as error:
+            return JSONResponse(status_code=400, content={"detail": str(error)})
+        return {"enabled": record.enabled}
 
     @app.get("/api/model-settings")
     async def model_settings(request: Request):

@@ -19,6 +19,7 @@ import { GroupChatPage } from "../features/groups/GroupChatPage";
 import { AgentHome } from "../features/sessions/AgentHome";
 import { AgentSidebar } from "../features/sessions/AgentSidebar";
 import { ExternalSessionPage } from "../features/external/ExternalSessionPage";
+import { CapabilitiesPage } from "../features/capabilities/CapabilitiesPage";
 import { openEventBridge } from "../realtime/eventBridge";
 
 export function App() {
@@ -114,6 +115,7 @@ export function App() {
         </ActionIcon>
         <Routes>
           <Route path="/" element={<AgentHome />} />
+          <Route path="/capabilities" element={<CapabilitiesPage />} />
           <Route path="/groups/:groupId" element={<GroupChatPage />} />
           <Route path="/sessions/:sessionId" element={<SessionConversation />} />
           <Route path="/external/:identity" element={<ExternalSessionPage />} />

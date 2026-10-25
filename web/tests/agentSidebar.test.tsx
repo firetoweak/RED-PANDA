@@ -100,6 +100,15 @@ function browserStubs() {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
 }
 
+it("能力入口直接从侧栏打开，并标记当前页面", () => {
+  browserStubs();
+  queries.agents = []; queries.groups = [];
+  renderSidebar("/");
+  fireEvent.click(screen.getByRole("button", { name: "能力", exact: true }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent("/capabilities");
+  expect(screen.getByRole("button", { name: "能力", exact: true })).toHaveAttribute("aria-current", "page");
+});
+
 afterEach(() => {
   cleanup(); queries.inbox = []; queries.externalSessions = []; vi.unstubAllGlobals();
   Object.keys(window.localStorage).filter((key) => key.startsWith("konden.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
