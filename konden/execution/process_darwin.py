@@ -95,11 +95,13 @@ class Running:
                 try:
                     os.killpg(self.pid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
-                    # Darwin returns EPERM when only zombies remain in the group.
-                    if self._group_busy():
+                    # Group signalling and libproc can disagree while members exit.
+                    # Observe the drain until the deadline; preserve lasting errors.
+                    if time.monotonic() >= deadline:
                         raise
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("macOS command process group did not drain")
+                else:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("macOS command process group did not drain")
                 time.sleep(.01)
             self.process.wait(timeout=10)
         for stream in self.logs:
