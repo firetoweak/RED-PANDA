@@ -1087,7 +1087,7 @@ class McpRealStdioIntegrationTest(unittest.IsolatedAsyncioTestCase):
             async with manager:
                 result = await manager.call_tool(record, "read_client_roots", {})
                 self.assertFalse(result.is_error)
-                self.assertEqual(result.structured_content, {"roots": [task_root.as_uri()]})
+                self.assertEqual(result.structured_content, {"roots": [task_root.resolve().as_uri()]})
 
     async def test_stdio_reuses_state_across_toolset_loads(self):
         with TemporaryDirectory() as directory:

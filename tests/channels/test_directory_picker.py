@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import io
 from pathlib import Path
 import subprocess
 import sys
@@ -36,27 +35,25 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(raised.exception.code, 2)
         root.destroy.assert_called_once()
 
-    def test_macos_native_selection_preserves_path_cancel_and_failure(self):
-        for argument, kind in (([], "folder"), (["--file"], "file")):
-            for selected in ("/Users/test/资料\n文件.txt", ""):
-                with self.subTest(argument=argument, selected=selected):
-                    output = io.StringIO()
-                    with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
-                              platform="darwin", argv=["picker", *argument], stderr=sys.stderr)),
-                          patch.object(sys.stderr, "reconfigure"), patch("sys.stdout", output),
-                          patch("konden.channels.web.directory_picker.subprocess.run",
-                                return_value=SimpleNamespace(stdout=selected + "\n")) as run):
-                        _main()
-                    self.assertEqual(json.loads(output.getvalue()), selected or None)
-                    self.assertIn("choose " + kind, run.call_args.args[0][-1])
-        error = subprocess.CalledProcessError(1, "osascript", stderr="original failure")
-        with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
-                  platform="darwin", argv=["picker"], stderr=sys.stderr)),
-              patch.object(sys.stderr, "reconfigure"),
-              patch("konden.channels.web.directory_picker.subprocess.run", side_effect=error)):
+    async def test_macos_native_selection_preserves_path_cancel_and_failure(self):
+        path = Path(__file__).resolve().parent / "资料\n文件.txt\n"
+        for select, kind in ((select_directory, "folder"), (select_file, "file")):
+            for selected in (str(path), ""):
+                with self.subTest(kind=kind, selected=selected):
+                    process = SimpleNamespace(returncode=0, communicate=lambda: (
+                        (selected + "\n").encode("utf-8"), b"",
+                    ))
+                    with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(platform="darwin")),
+                          patch("konden.channels.web.directory_picker.subprocess.Popen", return_value=process) as popen):
+                        self.assertEqual(await select(), path if selected else None)
+                    self.assertEqual(popen.call_args.args[0][0], "/usr/bin/osascript")
+                    self.assertIn("choose " + kind, popen.call_args.args[0][-1])
+        process = SimpleNamespace(returncode=2, communicate=lambda: (b"", b"original failure"))
+        with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(platform="darwin")),
+              patch("konden.channels.web.directory_picker.subprocess.Popen", return_value=process)):
             with self.assertRaises(subprocess.CalledProcessError) as raised:
-                _main()
-            self.assertIs(raised.exception, error)
+                await select_directory()
+            self.assertEqual(raised.exception.stderr, b"original failure")
 
     async def test_process_protocol_preserves_selection_cancel_and_error_meanings(self):
         selected = Path(__file__).resolve().parent
@@ -73,7 +70,9 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
                     returncode=returncode,
                     communicate=lambda: (stdout, stderr),
                 )
-                with patch(
+                with patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+                    platform="linux", executable=sys.executable,
+                )), patch(
                     "konden.channels.web.directory_picker.subprocess.Popen",
                     return_value=process,
                 ):
@@ -101,10 +100,12 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
             terminate=Mock(side_effect=finished.set),
             wait=Mock(return_value=-1),
         )
-        with patch(
+        with patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+            platform="darwin", executable=sys.executable,
+        )), patch(
             "konden.channels.web.directory_picker.subprocess.Popen",
             return_value=process,
-        ):
+        ) as popen:
             task = asyncio.create_task(select_directory())
             await asyncio.to_thread(started.wait)
             task.cancel()
@@ -112,6 +113,7 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
                 await task
         process.terminate.assert_called_once()
         process.wait.assert_called_once()
+        self.assertEqual(popen.call_args.args[0][0], "/usr/bin/osascript")
 
     async def test_select_file_asks_the_dialog_process_for_a_file(self):
         selected = Path(__file__).resolve()
@@ -119,7 +121,9 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
             returncode=0,
             communicate=lambda: (json.dumps(str(selected)).encode(), b""),
         )
-        with patch(
+        with patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+            platform="linux", executable=sys.executable,
+        )), patch(
             "konden.channels.web.directory_picker.subprocess.Popen",
             return_value=process,
         ) as popen:

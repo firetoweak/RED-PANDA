@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"},
-                                                     reason="Windows or Linux command ownership")]
+                                                     reason="Windows, Linux or macOS command ownership")]
 
 
 def shell(*args):
