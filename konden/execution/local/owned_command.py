@@ -1,4 +1,4 @@
-"""Foreground Linux commands reuse the task owner that survives caller death."""
+"""Foreground POSIX commands reuse the task owner that survives caller death."""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +13,7 @@ from konden.execution.command import (
     CommandStartError,
     wait_process,
 )
-from konden.execution.process_linux import Running
+from konden.execution.process_owner import Running
 
 
 class _Foreground:

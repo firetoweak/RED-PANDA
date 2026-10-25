@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -111,8 +110,6 @@ async def build_builtin_tools(
     if commands is not None:
         environment = replace(create_local_command_environment(command_environment),
                               command_executor=commands, background_supported=True)
-    elif sys.platform == "darwin":
-        environment = create_local_command_environment(command_environment)
     binding = FileAccess(
         environment_id="local",
         workspace_view=view,

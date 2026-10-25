@@ -13,6 +13,17 @@ on:
       - scripts/ci.py
       - tests/conftest.py
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to verify
+        type: choice
+        default: all
+        options: [all, ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+      group:
+        description: Process group to verify
+        type: choice
+        default: all
+        options: [all, compact, supervisor, execution, integration]
 
 permissions:
   contents: read
@@ -33,8 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        group: [compact, supervisor, execution, integration]
+        os: ${{ fromJSON(inputs.platform && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["ubuntu-latest","windows-latest","macos-15","macos-15-intel"]') }}
+        group: ${{ fromJSON(inputs.group && inputs.group != 'all' && format('["{0}"]', inputs.group) || '["compact","supervisor","execution","integration"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -43,7 +54,6 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.lock
       - uses: actions/setup-node@v7
-        if: matrix.group == 'execution'
         with:
           node-version: '24'
           cache: npm
@@ -54,6 +64,18 @@ jobs:
         run: |
           Add-Content -Path $env:GITHUB_ENV -Value "TEMP=$env:RUNNER_TEMP"
           Add-Content -Path $env:GITHUB_ENV -Value "TMP=$env:RUNNER_TEMP"
+      - name: Allow the application Chrome sandbox on Ubuntu
+        if: runner.os == 'Linux' && matrix.group == 'integration'
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/konden-chrome.apparmor" <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile konden-ci-chrome "$GITHUB_WORKSPACE/.tools/runtime/chrome/chrome" flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r "$RUNNER_TEMP/konden-chrome.apparmor"
       - name: Verify process contracts
         run: python scripts/ci.py process --process-group ${{ matrix.group }} --workers 2
       - name: Upload process test report

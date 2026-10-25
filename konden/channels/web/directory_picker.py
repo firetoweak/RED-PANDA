@@ -22,7 +22,17 @@ async def select_file() -> Path | None:
 
 
 async def _select(extra: list[str]) -> Path | None:
-    command = (sys.executable, "-I", str(Path(__file__).resolve()), *extra)
+    native = sys.platform == "darwin"
+    if native:
+        kind = "file" if "--file" in extra else "folder"
+        title = "选择要分析的文件" if kind == "file" else "选择工作区文件夹"
+        script = (
+            f'try\nreturn POSIX path of (choose {kind} with prompt "{title}")\n'
+            'on error number -128\nreturn ""\nend try'
+        )
+        command = ("/usr/bin/osascript", "-e", script)
+    else:
+        command = (sys.executable, "-I", str(Path(__file__).resolve()), *extra)
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -37,7 +47,7 @@ async def _select(extra: list[str]) -> Path | None:
         await asyncio.to_thread(process.wait)
         raise
 
-    if process.returncode == 2:
+    if process.returncode == 2 and not native:
         raise DirectoryPickerUnavailable(stderr.decode("utf-8").strip())
     if process.returncode != 0:
         error = subprocess.CalledProcessError(
@@ -46,7 +56,10 @@ async def _select(extra: list[str]) -> Path | None:
         )
         error.add_note(stderr.decode("utf-8"))
         raise error
-    selected = json.loads(stdout)
+    if native:
+        selected = stdout.decode("utf-8").removesuffix("\n") or None
+    else:
+        selected = json.loads(stdout)
     if selected is None:
         return None
     if type(selected) is not str or not selected or not Path(selected).is_absolute():

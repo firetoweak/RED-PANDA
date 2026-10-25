@@ -1,6 +1,7 @@
 import hashlib
 import io
 import os
+import platform
 from pathlib import Path
 import shutil
 import zipfile
@@ -64,7 +65,25 @@ def test_zip_helper_programs_keep_executable_permissions(tmp_path, monkeypatch):
     chmods = []
     monkeypatch.setattr(Path, "chmod", lambda path, mode: chmods.append((path.name, mode)))
     tools.install_package(tmp_path, "tool", package(data))
-    assert ("crash-handler", 0o755) in chmods
+    if platform.system() == "Darwin":
+        assert os.access(tools.tool_directory(tmp_path, "tool") / "crash-handler", os.X_OK)
+    else:
+        assert ("crash-handler", 0o755) in chmods
+
+
+@pytest.mark.parametrize("system,machine,expected", [
+    ("Darwin", "arm64", "darwin-arm64"), ("Darwin", "x86_64", "darwin-x86_64"),
+    ("Windows", "AMD64", "windows-x86_64"), ("Linux", "x86_64", "linux-x86_64"),
+    ("Linux", "aarch64", None),
+])
+def test_downloads_match_supported_host_architecture(monkeypatch, system, machine, expected):
+    monkeypatch.setattr(platform, "system", lambda: system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    if expected is None:
+        with pytest.raises(ValueError):
+            tools.host_platform()
+    else:
+        assert tools.host_platform() == expected
 
 
 def test_existing_system_tools_do_not_trigger_downloads(tmp_path, monkeypatch):
@@ -81,6 +100,8 @@ def test_browser_uses_application_install_even_when_system_chrome_exists(tmp_pat
     monkeypatch.setattr(shutil, "which", lambda name: f"system/{name}")
     install = []
     monkeypatch.setattr(tools, "install_package", lambda root, name, package: install.append(name))
+    tools.prepare(tmp_path, include_browser=False)
+    assert install == []
     tools.prepare(tmp_path)
     assert install == ["chrome"]
     browser = tools.tool_directory(tmp_path, "chrome") / record["executable"]

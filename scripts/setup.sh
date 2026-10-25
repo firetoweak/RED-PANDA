@@ -4,10 +4,10 @@ set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_root"
 
-if [ "$(uname -s)" != Linux ]; then
-  printf '%s\n' "konden supports Windows x64 and Linux x64. Use setup.ps1 on Windows." >&2
-  exit 1
-fi
+case "$(uname -s)" in
+  Linux|Darwin) ;;
+  *) printf '%s\n' "Use setup.sh on Linux/macOS or setup.ps1 on Windows." >&2; exit 1 ;;
+esac
 
 python_version=$(tr -d '\r\n' < .python-version)
 uv_version=0.12.19
