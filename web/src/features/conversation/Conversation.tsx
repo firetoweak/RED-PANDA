@@ -51,7 +51,6 @@ import { SessionAttention } from "./SessionAttention";
 import { ScheduledWait } from "./ScheduledWait";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { WorkPlanPanel } from "./WorkPlanPanel";
-import { BackgroundCommands } from "./BackgroundCommands";
 import { completedPlanForTurn, isPlanCompleted } from "./workPlanPlacement";
 import { turnNeedsSubagentHint } from "./subagent";
 import {
@@ -438,7 +437,6 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
         {conversation.waiting_until === null ? null : (
           <ScheduledWait dueAt={conversation.waiting_until} />
         )}
-        <BackgroundCommands sessionId={sessionId} connectionId={connectionId} />
         {compactPhase !== "failed" ? null : (
           <Alert
             className="composer-error"

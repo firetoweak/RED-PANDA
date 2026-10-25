@@ -7,7 +7,7 @@
 - `upload-image`：拖入/粘贴 PNG、JPEG、WebP、GIF → `POST .../attachments`（multipart，字段 `connection_id`、`file`），201，响应 `kind: "image"`、`name`、`size`、`attachment_id`（`sha256:<64位十六进制>`）、`mime`、`width`、`height`。
 - `upload-file`：其他类型 → 同接口，201，响应 `kind: "file"`、`attachment_id`（`file:<32位十六进制>`）、`name`、`size`。
 - `local-file`：输入框下方 `+` 图标按钮（可访问名称 `Add attachment`，悬停提示 `选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件`）→ `POST .../attachments/select`；后端在运行后端的电脑上弹系统对话框（标题 `选择要分析的文件`），选中后直接挂入，浏览器不提交任何服务器路径。等待期间输入框里有一个名为 `本机文件` 的占位附件，选中后换成真实文件名与大小，取消则移除。
-- `download`：消息里的附件可点开，`GET .../attachments/{attachment_id}`；文件附件是带下载文件名的链接，图片附件点开是大图预览。
+- `download`：消息里的附件可点开，`GET .../attachments/{attachment_id}`；文件附件保留带下载文件名的链接；PNG、JPEG、WebP、GIF 文件额外显示缩略图，可点击放大，图片附件同样可点开大图预览。
 - `retry-remove`：上传失败的图片块显示遮罩 `上传失败` 和按钮 `重试`（其 `title` 为后端 `detail`）；文件块在大小位置显示后端 `detail`（无 detail 时为 `上传失败`）和 `重试`；任一附件块都有 `Remove <名称>` 按钮。
 
 ## How to get to it (user POV)
