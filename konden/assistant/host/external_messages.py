@@ -233,7 +233,7 @@ class ExternalMessages:
     @staticmethod
     def not_found():
         return {"ok": False, "code": "SESSION_NOT_FOUND",
-                "error": "没有这个外部会话。新聊天用 get_context 省略 identity 领取身份；重连使用原身份与连接配置。"}
+                "error": "没有这个外部会话，请核对你实际取得的外部会话 identity。"}
 
     @staticmethod
     def invalid_reply():
