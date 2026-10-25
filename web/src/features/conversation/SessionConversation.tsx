@@ -14,6 +14,7 @@ import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
 import { BotAvatarPicker } from "./BotAvatarPicker";
 import { BackgroundCommands } from "./BackgroundCommands";
+import { BotDetailsPanel } from "./BotDetailsPanel";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -96,7 +97,7 @@ export function SessionConversation() {
           {details}
         </Drawer>
       ) : !detailsOpened ? null : (
-        <aside className="agent-details" aria-label="Agent 资料"><header className="details-heading"><Text fw={600} fz={12}>Bot 资料</Text><ActionIcon aria-label="关闭 Bot 资料" variant="subtle" color="gray" onClick={() => setDetailsOpened(false)}><IconLayoutSidebarRightCollapse size={17} /></ActionIcon></header>{details}</aside>
+        <BotDetailsPanel onClose={() => setDetailsOpened(false)}>{details}</BotDetailsPanel>
       )}
     </div>
   );
