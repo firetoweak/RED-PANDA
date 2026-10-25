@@ -77,7 +77,8 @@ def main(argv: list[str] | None = None) -> None:
     os.environ.clear()
     os.environ.update(environment)
     needs_web = "web" in targets
-    needs_node = needs_web or ("process" in targets and args.process_group in (None, "execution"))
+    needs_browser = "process" in targets and args.process_group in (None, "integration")
+    needs_node = needs_web or needs_browser or ("process" in targets and args.process_group == "execution")
     if needs_node:
         node_version = subprocess.check_output(["node", "--version"], text=True).strip()
         if node_version.split(".")[0] != "v24":
@@ -87,10 +88,13 @@ def main(argv: list[str] | None = None) -> None:
     if "process" in targets:
         from scripts import runtime_tools
         # rg / fd / Node for this process and the tests it starts; not the user's PATH.
-        runtime_tools.prepare(ROOT)
-    if needs_web:
+        runtime_tools.prepare(ROOT, include_browser=needs_browser)
+    if needs_web or needs_browser:
         npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+    if needs_web:
         run([npm, "ci"], cwd=ROOT / "web")
+    if needs_browser:
+        run([npm, "ci"], cwd=ROOT / "scripts/browser")
     for target in targets:
         if target == "python":
             run([sys.executable, "-m", "ruff", "check", "--select", "F",

@@ -51,10 +51,10 @@ class Git:
             environment: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[bytes]:
         if sys.platform == "win32":
             from konden.execution.process_win import Running
-        elif sys.platform == "linux":
-            from konden.execution.process_linux import Running
+        elif sys.platform in {"linux", "darwin"}:
+            from konden.execution.process_owner import Running
         else:
-            raise RuntimeError("Owned Git processes require Windows or Linux")
+            raise RuntimeError("Owned Git processes require Windows, Linux or macOS")
         env = self.environment if environment is None else {**self.environment, **environment}
         executable = shutil.which("git", path=env.get("PATH"))
         if executable is None:

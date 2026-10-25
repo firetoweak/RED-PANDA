@@ -129,7 +129,7 @@ async def build_assistant_assembly(
         colleague_roots=(home.agent_directories_root, home.agent_worktrees_root) if colleague_schemas else (),
         command_environment=command_environment,
         commands=(WorkerCommandPort(session_transport, session_id)
-                   if sys.platform in {"win32", "linux"} and task is None and session_transport is not None else None),
+                   if sys.platform in {"win32", "linux", "darwin"} and task is None and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,14 +101,13 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"PATH": "/product/bin", "JAVA_HOME": "/product/jdk"}),
             patch("konden.execution.local.bash.shutil.which", return_value="/usr/bin/bash"),
             patch(
-                "konden.execution.local.owned_command.Running" if sys.platform == "linux"
-                else "konden.execution.local.bash.asyncio.create_subprocess_exec",
+                "konden.execution.local.owned_command.Running",
                 side_effect=RuntimeError("stop after environment capture"),
             ) as spawn,
             self.assertRaisesRegex(RuntimeError, "stop after environment capture"),
         ):
             await runner.run("printf ok", Path.cwd(), 10)
-        child = spawn.call_args.args[2] if sys.platform == "linux" else spawn.call_args.kwargs["env"]
+        child = spawn.call_args.args[2]
         self.assertEqual(child["PATH"], "/project/bin")
         self.assertEqual(child["JAVA_HOME"], "/project/jdk")
 
@@ -122,8 +120,7 @@ class BashFailureContractTest(unittest.IsolatedAsyncioTestCase):
                 return_value="/usr/bin/bash",
             ),
             patch(
-                "konden.execution.local.owned_command.Running" if sys.platform == "linux"
-                else "konden.execution.local.bash.asyncio.create_subprocess_exec",
+                "konden.execution.local.owned_command.Running",
                 side_effect=RuntimeError("internal bug"),
             ),
         ):

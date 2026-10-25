@@ -1,4 +1,4 @@
-"""A separate subreaper owns each Linux task, including setsid descendants.
+"""A separate POSIX owner cleans each task when its caller exits.
 
 The control pipe is never inherited by the task. Host exit closes it, allowing
 the owner to reap its tree even when the Host itself was killed.
@@ -37,7 +37,8 @@ class Running:
         self._owner.stdin.flush()
         response = self._owner.stdout.readline()
         if not response:
-            raise RuntimeError("Linux process owner exited without a response; inspect owner.log")
+            detail = Path(self._diagnostics.name).read_text(encoding="utf-8", errors="replace")
+            raise RuntimeError(f"Command process exited without a response:\n{detail}")
         return json.loads(response)
 
     def poll(self, *, leader_only=False):
@@ -51,7 +52,8 @@ class Running:
                 self._owner.stdin.close()
                 code = self._owner.wait(timeout=15)
                 if code != 0:
-                    raise RuntimeError(f"Linux process owner failed during cleanup: exit_code={code}; inspect owner.log")
+                    detail = Path(self._diagnostics.name).read_text(encoding="utf-8", errors="replace")
+                    raise RuntimeError(f"Command cleanup failed: exit_code={code}\n{detail}")
             self._closed = True
         finally:
             if self._owner is not None:
@@ -62,7 +64,10 @@ class Running:
 def _serve():
     # -I ignores user PYTHONPATH/PYTHONHOME; only this implementation directory is added.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from process_posix import Running as Task
+    if sys.platform == "darwin":
+        from process_darwin import Running as Task
+    else:
+        from process_posix import Running as Task
 
     def send(response):
         print(json.dumps(response), flush=True)
@@ -78,7 +83,7 @@ def _serve():
         for line in sys.stdin:
             request = json.loads(line)
             if request["operation"] != "poll":
-                raise ValueError("Unknown Linux process owner operation")
+                raise ValueError("Unknown process owner operation")
             send({"exit_code": task.poll(leader_only=request["leader_only"])})
     finally:
         task.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import sys
 from pathlib import Path
 
 from konden.mcp.models import McpServerRecord, StdioTransportConfig, StreamableHttpTransportConfig, TransportKind
@@ -21,7 +22,10 @@ def browser_servers(task_root: Path | None = None) -> tuple[McpServerRecord, ...
     content = "\n".join(path.read_text(encoding="utf-8") for path in inputs)
     revision = int.from_bytes(hashlib.sha256(content.encode()).digest()[:6]) + 1
     modules = ROOT / "scripts/browser/node_modules"
-    chrome = ROOT / ".tools/runtime/chrome" / ("chrome.exe" if os.name == "nt" else "chrome")
+    chrome = ROOT / ".tools/runtime/chrome" / (
+        "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+        if sys.platform == "darwin" else "chrome.exe" if os.name == "nt" else "chrome"
+    )
     return (
         McpServerRecord(
             id="builtin-chrome-devtools",

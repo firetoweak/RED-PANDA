@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from collections.abc import Callable
 from typing import Any
 
@@ -27,6 +28,7 @@ COMMAND_DESCRIPTION = """
 限制：不支持中途的 UAC、sudo 密码或硬件确认；遇到时停止，告诉用户需要在工具外完成的步骤。
 执行环境：每次调用独立，不继承上次的环境激活、变量或目录；需要特定环境就在 command 里显式调用解释器或环境管理器。陌生 CLI 或遇到 unknown option 时逐层查 `--help`，不要猜 flag。
 {background_behavior}
+{process_scope}
 结果：退出码 0 为 COMMAND_COMPLETED，非 0 为 COMMAND_EXIT_NONZERO（已运行但不算成功）。检查 stdout、stderr 的 truncated 和 io_errors（非空表示输出可能不完整）。
 """.strip()
 
@@ -135,6 +137,10 @@ def create_command_execution_spec(
             "长命令：超过 wait_seconds 自动转后台继续执行，完成后会通知你；构建、测试、安装或服务可用 wait_seconds=0。"
             "收到 COMMAND_BACKGROUND 后可结束本轮，不要循环查询或用 sleep 等待。需要检查输出时用 read_command，终止时用 stop_command。"
             if commands.background_supported else "当前环境不支持后台命令；调用会在前台等待命令结束。"
+        ), process_scope=(
+            "macOS 限制：停止仅覆盖命令所在的进程组；自行脱离进程组或由系统服务启动的程序可能继续运行。"
+            "启动服务时保留前台模式，不使用 daemonize 或 setsid。"
+            if sys.platform == "darwin" else ""
         )),
         parameters=PydanticParameters(CommandInput if commands.background_supported else ForegroundCommandInput),
         handler=execute_command,

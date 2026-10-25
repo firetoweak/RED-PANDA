@@ -1,4 +1,3 @@
-import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,29 +49,22 @@ class CommandIoErrorsTest(unittest.IsolatedAsyncioTestCase):
         runner.run.assert_awaited_once()
 
     async def test_bash_read_failure_keeps_partial_output(self):
-        if sys.platform == "linux":
-            stdout = MagicMock()
-            stdout.__enter__.return_value = stdout
-            stdout.read.side_effect = [b"partial", OSError("output read failed")]
-            stderr = MagicMock()
-            stderr.__enter__.return_value = stderr
-            stderr.read.return_value = b""
+        stdout = MagicMock()
+        stdout.__enter__.return_value = stdout
+        stdout.read.side_effect = [b"partial", OSError("output read failed")]
+        stderr = MagicMock()
+        stderr.__enter__.return_value = stderr
+        stderr.read.return_value = b""
 
-            def open_output(path, *args, **kwargs):
-                return stdout if path.name == "stdout.bin" else stderr
+        def open_output(path, *args, **kwargs):
+            return stdout if path.name == "stdout.bin" else stderr
 
-            running = Mock(poll=Mock(return_value=1))
-            with patch("konden.execution.local.bash.shutil.which", return_value="bash"), \
-                 patch("konden.execution.local.owned_command.Running", return_value=running), \
-                 patch("konden.execution.local.owned_command.Path.open", new=open_output):
-                result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
-            running.close.assert_called_once()
-        else:
-            proc = self.process()
-            proc.stdout.read.side_effect = [b"partial", OSError("pipe read failed")]
-            with patch("konden.execution.local.bash.shutil.which", return_value="bash"), \
-                 patch("konden.execution.local.bash.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
-                result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
+        running = Mock(poll=Mock(return_value=1))
+        with patch("konden.execution.local.bash.shutil.which", return_value="bash"), \
+             patch("konden.execution.local.owned_command.Running", return_value=running), \
+             patch("konden.execution.local.owned_command.Path.open", new=open_output):
+            result = await BashCommandRunner(executable="bash").run("x", Path.cwd(), 10)
+        running.close.assert_called_once()
         self.assertEqual(result.stdout.content, "partial")
         self.assertIn("stdout: OSError", result.io_errors[0])
 

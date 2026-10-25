@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux"},
-                                                     reason="Windows or Linux command ownership")]
+pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"},
+                                                     reason="Windows, Linux or macOS command ownership")]
 
 
 def shell(*args):
@@ -30,6 +30,13 @@ def until(predicate):
 
 
 def gone(pid):
+    if sys.platform == "darwin":
+        state = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "stat="],
+                               capture_output=True, text=True, check=False)
+        if state.returncode == 1:
+            return True
+        state.check_returncode()
+        return state.stdout.strip().startswith("Z")
     if os.name != "nt":
         return not Path("/proc", str(pid)).exists()
     from konden.execution.local.windows_job import SYNCHRONIZE, _kernel32
@@ -58,7 +65,7 @@ def test_host_exit_stops_writers_and_two_restarts_do_not_repeat_command(tmp_path
         "Path('command-pid').write_text(str(os.getpid()));"
         "\nwith Path('runs').open('a') as f: f.write('run\\n')\n"
         f"subprocess.Popen([sys.executable,'-c',{writer!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,"
-        + ("creationflags=subprocess.CREATE_NEW_PROCESS_GROUP" if os.name == "nt" else "start_new_session=True")
+        + ("creationflags=subprocess.CREATE_NEW_PROCESS_GROUP" if os.name == "nt" else "start_new_session=" + str(sys.platform == "linux"))
         + ");time.sleep(120)"
     )
     (tmp_path / "command").write_text(shell(sys.executable, "-c", code), encoding="utf-8")
