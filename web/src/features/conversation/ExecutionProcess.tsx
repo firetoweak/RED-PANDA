@@ -15,12 +15,10 @@ import {
 import {
   IconAlertCircle,
   IconAlertTriangle,
-  IconArrowFork,
   IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconCode,
-  IconEye,
   IconTool,
   IconX,
 } from "@tabler/icons-react";
@@ -30,7 +28,7 @@ import type { ToolStatus } from "../../api/contracts";
 import { attachmentUrl } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { stepHeading } from "./stepHeading";
-import { isSubagentTool, subagentTask } from "./subagent";
+import { isSubagentTool } from "./subagent";
 import { SubagentCallCard } from "./SubagentCallCard";
 import type { VisibleStep, VisibleTool } from "./visibleTimeline";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -57,7 +55,6 @@ const STATUS_COLOR: Record<ToolStatus, string> = {
 };
 
 interface ExecutionProcessProps {
-  sessionId: string;
   steps: VisibleStep[];
   authorizationDisabled: boolean;
   onAuthorize: (commandId: string, approved: boolean) => void;
@@ -65,7 +62,6 @@ interface ExecutionProcessProps {
 }
 
 export function ExecutionProcess({
-  sessionId,
   steps,
   authorizationDisabled,
   onAuthorize,
@@ -73,52 +69,25 @@ export function ExecutionProcess({
 }: ExecutionProcessProps) {
   const [opened, setOpened] = useState(false);
   const running = steps.some(stepStatusIsRunning);
-  const toolCount = steps.reduce((count, step) => count + step.tools.length, 0);
-  const subagentTasks = steps.flatMap((step) => step.tools.filter((tool) => tool.name === "delegate"));
+  const tools = steps.flatMap((step) => step.tools);
 
   return (
     <Paper className={`execution-process${opened ? " is-open" : ""}`} radius="md" withBorder>
-      {subagentTasks.length === 0 ? null : (
-        <Group className="subagent-turn-marker" gap="xs" aria-label="本轮子 Agent 任务">
-          <Badge variant="light" leftSection={<IconArrowFork size={13} />}>
-            <span aria-label={`子 Agent · ${subagentTasks.length}`}>{subagentTasks.length}</span>
-          </Badge>
-          {subagentTasks.map((tool) => {
-            const task = subagentTask(tool) ?? tool.commandId;
-            return <Button key={tool.commandId} className="subagent-turn-task"
-              size="compact-xs" variant="subtle" title={task}
-              aria-label={`查看子 Agent 过程：${task}`} rightSection={<IconEye size={14} />}
-              disabled={onObserveSubagent === undefined || tool.status === "failed" || tool.status === "rejected"}
-              onClick={() => onObserveSubagent?.(tool.commandId)}>
-              <Text component="span" fz="inherit" truncate>{task}</Text>
-            </Button>;
-          })}
-        </Group>
-      )}
-      <Tooltip label={`${opened ? "收起" : "查看"}执行过程 · ${steps.length} 步 · ${toolCount} 次工具${running ? " · 运行中" : ""}`} events={{ hover: true, focus: true, touch: false }}>
+      <Tooltip label={`${opened ? "收起" : "查看"}执行过程${running ? " · 运行中" : ""}`} events={{ hover: true, focus: true, touch: false }}>
         <UnstyledButton
-          aria-label={`执行过程 · ${steps.length} 步 · ${toolCount} 次工具`}
+          aria-label="执行过程"
           aria-expanded={opened}
           className="execution-toggle"
           onClick={() => setOpened((value) => !value)}
         >
           {running ? <Loader color="ember" size={14} /> : <IconTool aria-hidden="true" size={16} />}
-          {toolCount === 0 ? null : <span className="process-count" aria-hidden="true">{toolCount}</span>}
         </UnstyledButton>
       </Tooltip>
       <Collapse expanded={opened}>
         <Stack className="execution-steps" gap={4}>
-          {steps.map((step, index) => (
-            <StepDisclosure
-              authorizationDisabled={authorizationDisabled}
-              index={index}
-              key={step.key}
-              onAuthorize={onAuthorize}
-              onObserveSubagent={onObserveSubagent}
-              sessionId={sessionId}
-              step={step}
-            />
-          ))}
+          {opened ? tools.map((tool) => isSubagentTool(tool.name)
+            ? <SubagentCallCard key={tool.commandId} tool={tool} onObserve={onObserveSubagent} />
+            : <ToolCard key={tool.commandId} tool={tool} onAuthorize={onAuthorize} authorizationDisabled={authorizationDisabled} />) : null}
         </Stack>
       </Collapse>
     </Paper>
