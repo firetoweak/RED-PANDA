@@ -19,7 +19,7 @@ import { formatMessageTime } from "../conversation/messageTime";
 import { AgentStatus } from "../sessions/AgentStatus";
 import { GroupComposer } from "./GroupComposer";
 import { BotAvatar, ChatPresentation, useIdentityColor, messageReference, MessageQuote, MessageMenu, type MessageReference } from "../conversation/ChatPresentation";
-import { useGroupReading } from "./useGroupReading";
+import { useMessageReading } from "../conversation/useMessageReading";
 import { createClientId } from "../conversation/clientId";
 
 function GroupMessageRow({ message, source, groupId, groupName, sessionOf }: {
@@ -76,7 +76,7 @@ function GroupConversation({ groupId }: { groupId: string; }) {
   const [quote, setQuote] = useState<MessageReference | null>(null);
   const narrow = useMediaQuery("(max-width: 73.75em)");
   useDidUpdate(() => setDetailsOpened(false), [narrow]);
-  const reading = useGroupReading(groupId, group?.messages);
+  const reading = useMessageReading(groupId, group?.messages);
 
   if (loadError !== undefined) {
     return <Text c="dimmed" p="lg">这个群不存在或已无法读取。</Text>;

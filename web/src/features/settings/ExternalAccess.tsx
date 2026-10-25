@@ -6,7 +6,7 @@ import type { CreatedExternalConnection } from "../../api/contracts";
 import { useCreateExternalConnectionMutation, useGetExternalConnectionsQuery, useRevokeExternalConnectionMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
-export function VerificationAccess() {
+export function ExternalAccess() {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const { currentData: connections = [], isLoading, error: loadError, refetch } = useGetExternalConnectionsQuery();
   const [createConnection, creating] = useCreateExternalConnectionMutation();
@@ -50,8 +50,8 @@ export function VerificationAccess() {
   }
 
   return <Stack gap="md">
-    <Text size="sm">把连接配置添加到你使用的编码工具。完成修改后，编码端交付需求和明确版本，由 konden 团队独立验证，再把问题与证据交回原会话。</Text>
-    <Text size="sm" c="dimmed">同一配置可以复用。编码会话自动领取身份，并从同事名单选择验证对象；用户无需取名或指定固定交接人。</Text>
+    <Text size="sm">把连接配置添加到你使用的原生工具，与 konden 的长期 Bot 持续交谈和协作。</Text>
+    <Text size="sm" c="dimmed">同一配置可以供多个聊天复用。每个新聊天领取独立身份，重连沿用原身份；接入后的会话会出现在侧栏。</Text>
     {created === null ? <Group justify="flex-start">
       <Button loading={creating.isLoading} disabled={connectionId === null || busy} onClick={() => void create()}>生成连接配置</Button>
     </Group> : <Stack gap="sm">
@@ -84,7 +84,7 @@ export function VerificationAccess() {
               aria-label={`撤销 ${label}`} onClick={() => setConfirmRevoke(item.connection_id)}>撤销</Button>
           </Group>
           {confirmRevoke !== item.connection_id ? null : <Stack gap="xs" mt="xs">
-            <Text size="sm">撤销后，使用此配置的编码会话立即失去提交和读取能力，已有验证记录保留。</Text>
+            <Text size="sm">撤销后，使用此配置的外部会话立即失去收发能力，已有对话记录保留。</Text>
             <Group gap="xs" justify="flex-end">
               <Button size="compact-xs" variant="subtle" disabled={busy} onClick={() => setConfirmRevoke(null)}>取消</Button>
               <Button size="compact-xs" color="red" loading={revoking.isLoading} disabled={connectionId === null || busy}

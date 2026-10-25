@@ -1,4 +1,4 @@
-"""Verification contracts at the external MCP and human Web boundaries."""
+"""External conversation behavior at the MCP and human Web boundaries."""
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -8,20 +8,16 @@ from fastapi.testclient import TestClient
 
 from konden.assistant.agents import AgentCreated, fact_arguments
 from konden.assistant.conversations import project_conversation
-from konden.assistant.external_messages import REPLY_EXTERNAL, ReplyExternal
+from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, SendToExternal
 from konden.assistant.host.external_messages import ExternalMessages
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.sessions import session_view
 from konden.channels.web.app import create_web_app
 from konden.channels.web.channel import WebChannel
+from konden.channels.web.hub import WebEventHub
 from konden.paths import KondenHome
 from konden.runtime import AgentRuntime, SqliteJournal, replay
-
-
-IDENTITY = "1" * 32
-REQUEST = dict(identity=IDENTITY, recipient="协调员", text="输入不能为空白；合法输入应成功。请独立验收，不采信开发者自测。",
-               delivery_id="version-a", revision="a" * 40, reference="https://example.com/pr/1")
 
 
 @pytest.fixture
@@ -42,7 +38,8 @@ def collaboration(tmp_path):
     first, token = service.connections.create()
     _, other_token = service.connections.create()
     web = WebChannel(host, None)
-    app = create_web_app(channel=web, external_messages=service)
+    hub = WebEventHub()
+    app = create_web_app(channel=web, hub=hub, external_messages=service)
     deliveries = []
 
     async def deliver(operation, session_id, arguments):
@@ -62,31 +59,38 @@ def collaboration(tmp_path):
                 assert response.status_code == 200, response.text
                 return response.json()["result"]
 
-            def reply(request_id, command="report-1", session_id="coordinator", kind="report", **changes):
-                fields = dict(kind=kind, verdict="passed" if kind == "report" else None,
-                    tested_revision="a" * 40 if kind == "report" else None,
-                    evidence=["evidence/validation.png"] if kind == "report" else [],
-                    reply_to=request_id, text="独立验证反馈")
-                fields.update(changes)
-                args = ReplyExternal(**fields).model_dump()
-                return client.portal.call(host._route, REPLY_EXTERNAL, session_id, {"command_id": command, **args})
+            context = call("get_context")["structuredContent"]
+            identity = context["identity"]
 
-            def read(request_id, identity=IDENTITY, credential=token, **options):
-                return call("read_feedback", dict(identity=identity, request_id=request_id, wait_seconds=0, **options),
-                            credential)["structuredContent"]
+            def send(**changes):
+                arguments = dict(identity=identity, recipient="协调员", text="你好，来讨论一下需求。", delivery_id="hello")
+                arguments.update(changes)
+                return call("send_message", arguments)["structuredContent"]
 
-            yield SimpleNamespace(host=host, service=service, store=store, client=client,
-                call=call, read=read, reply=reply, connection=first, token=token, other_token=other_token,
-                deliveries=deliveries, human_connection=human.connection_id)
+            def reply(command="reply-1", session_id="coordinator", **changes):
+                arguments = dict(identity=identity, text="收到，我们可以继续讨论。", reply_to=None)
+                arguments.update(changes)
+                parsed = SendToExternal(**arguments).model_dump()
+                return client.portal.call(host._route, SEND_EXTERNAL, session_id, {"command_id": command, **parsed})
+
+            def read(chat_identity=identity, credential=token, **options):
+                arguments = dict(identity=chat_identity, wait_seconds=0)
+                arguments.update(options)
+                return call("read_messages", arguments, credential)["structuredContent"]
+
+            yield SimpleNamespace(host=host, service=service, store=store, client=client, hub=hub,
+                call=call, send=send, read=read, reply=reply, identity=identity, context=context,
+                connection=first, token=token, other_token=other_token, deliveries=deliveries,
+                human_connection=human.connection_id)
             client.portal.call(web.disconnect, human)
             client.portal.call(host.close)
 
 
-def test_web_creates_global_access_without_names_or_a_fixed_recipient(collaboration):
+def test_web_manages_access_without_names_or_fixed_recipients(collaboration):
     c = collaboration
     path = "/api/external-connections"
     assert c.client.post(path, json={"connection_id": "inactive"}).status_code == 409
-    assert c.client.post(path, json={"connection_id": c.human_connection, "name": "用户不必取名"}).status_code == 422
+    assert c.client.post(path, json={"connection_id": c.human_connection, "name": "无需取名"}).status_code == 422
     created = c.client.post(path, json={"connection_id": c.human_connection})
     assert created.status_code == 201 and created.headers["cache-control"] == "no-store"
     credential = created.json()
@@ -102,129 +106,155 @@ def test_web_creates_global_access_without_names_or_a_fixed_recipient(collaborat
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer " + credential["token"]}, json={}).status_code == 401
 
 
-def test_only_current_access_and_chat_can_read_the_request(collaboration):
+def test_registration_is_visible_before_messages_and_reconnection_preserves_identity(collaboration):
+    c = collaboration
+    queue = c.client.portal.call(c.hub.subscribe)
+    fresh = c.call("get_context")["structuredContent"]
+    assert queue.get_nowait().name == "external_sessions_changed"
+    assert fresh["identity"] != c.identity
+    assert fresh["name"] == "外部会话-" + fresh["identity"][:8]
+    entries = c.client.get("/api/external-sessions").json()
+    assert {item["identity"] for item in entries} == {c.identity, fresh["identity"]}
+    assert all(item["peers"] == [] and item["active"] for item in entries)
+    view = c.client.get("/api/external-sessions/" + fresh["identity"]).json()
+    assert view["messages"] == [] and view["session"]["name"] == fresh["name"]
+    assert c.call("get_context", {"identity": fresh["identity"]})["structuredContent"] == fresh
+    assert len(c.client.get("/api/external-sessions").json()) == 2
+    restarted = ExternalMessages(c.host)
+    restored = c.client.portal.call(restarted.context, c.connection, fresh["identity"])
+    assert restored == fresh
+    peers = c.client.portal.call(c.host._route, LIST_EXTERNAL, "coordinator", {})["data"]["sessions"]
+    assert {item["identity"] for item in peers} == {c.identity, fresh["identity"]}
+    assert all(set(item) == {"identity", "name", "active", "last_activity_at"} for item in peers)
+    assert len(c.client.portal.call(c.host.agents.list)) == 2
+    assert c.client.get("/api/external-sessions/unknown").status_code == 404
+
+
+def test_access_and_identity_scope_messages_without_exposing_private_timelines(collaboration):
     c = collaboration
     assert c.client.post("/mcp/", json={}).status_code == 401
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer invalid"}, json={}).status_code == 401
-    context = c.call("get_context")["structuredContent"]
-    assert context["name"] == "编码会话-" + context["identity"][:8]
-    assert all(set(item) == {"name"} for item in context["colleagues"])
-    sent = c.call("request_verification", REQUEST)["structuredContent"]
-    assert sent["code"] == "ACCEPTED"
-    c.reply(sent["request_id"])
-    history = c.read(sent["request_id"])
-    assert len(history["feedback"]) == 1
-    assert "PRIVATE HUMAN CONTENT" not in str(history) + str(context)
-    assert "token_hash" not in str(history) + str(context)
-    assert c.read(sent["request_id"], credential=c.other_token)["code"] == "REQUEST_NOT_FOUND"
-    assert c.read(sent["request_id"], identity="2" * 32)["code"] == "REQUEST_NOT_FOUND"
+    c.send()
+    c.reply()
+    history = c.read()
+    assert len(history["messages"]) == 1
+    assert "PRIVATE HUMAN CONTENT" not in str(history) + str(c.context)
+    assert "token_hash" not in str(history) + str(c.context)
+    assert c.read(credential=c.other_token)["code"] == "SESSION_NOT_FOUND"
+    assert c.read(chat_identity="2" * 32)["code"] == "SESSION_NOT_FOUND"
+    assert c.call("get_context", {"identity": c.identity}, c.other_token)["structuredContent"]["code"] == "SESSION_NOT_FOUND"
+    assert c.send(identity="2" * 32)["code"] == "SESSION_NOT_FOUND"
 
 
-def test_two_automatic_identities_and_their_version_requests_stay_distinct(collaboration):
+def test_new_chats_share_access_but_keep_their_messages_separate(collaboration):
     c = collaboration
-    first = c.call("get_context")["structuredContent"]
-    second = c.call("get_context")["structuredContent"]
-    assert first["identity"] != second["identity"] and first["name"] != second["name"]
-    assert c.call("get_context", {"identity": first["identity"]})["structuredContent"]["name"] == first["name"]
-    one = c.call("request_verification", dict(REQUEST, identity=first["identity"]))["structuredContent"]
-    two = c.call("request_verification", dict(REQUEST, identity=second["identity"]))["structuredContent"]
-    assert one["request_id"] != two["request_id"]
-    c.reply(two["request_id"], "second")
-    c.reply(one["request_id"], "first")
-    assert len(c.read(one["request_id"], identity=first["identity"])["feedback"]) == 1
-    assert c.read(two["request_id"], identity=first["identity"])["code"] == "REQUEST_NOT_FOUND"
+    second = c.call("get_context")["structuredContent"]["identity"]
+    one = c.send()
+    two = c.send(identity=second)
+    assert one["message_id"] != two["message_id"]
+    c.reply(identity=second, text="第二个聊天", command="second")
+    c.reply(text="第一个聊天", command="first")
+    assert [message["text"] for message in c.read()["messages"]] == ["第一个聊天"]
+    assert [message["text"] for message in c.read(chat_identity=second)["messages"]] == ["第二个聊天"]
 
 
-def test_retries_are_idempotent_and_new_versions_link_to_the_original_request(collaboration):
+def test_messages_are_idempotent_and_replies_can_continue_the_same_conversation(collaboration):
     c = collaboration
-    sent = c.call("request_verification", REQUEST)["structuredContent"]
-    assert c.call("request_verification", REQUEST)["structuredContent"] == sent
-    assert len(c.deliveries) == 1
-    assert c.call("request_verification", dict(REQUEST, text="changed"))["structuredContent"]["code"] == "DELIVERY_CONFLICT"
-    assert c.call("request_verification", dict(REQUEST, recipient="其他 Bot"))["structuredContent"]["code"] == "DELIVERY_CONFLICT"
-    first = c.reply(sent["request_id"])
-    assert c.reply(sent["request_id"]) == first
-    revised = dict(REQUEST, recipient=None, revision="b" * 40, delivery_id="version-b", previous_request_id=sent["request_id"])
-    new = c.call("request_verification", revised)["structuredContent"]
-    assert new["request_id"] != sent["request_id"] and new["recipient"] == "协调员"
-    assert c.read(new["request_id"])["feedback"] == []
-    c.reply(new["request_id"], "retest", tested_revision="b" * 40)
-    history = c.read(new["request_id"])
-    assert history["request"]["previous_request_id"] == sent["request_id"]
-    assert history["request"]["revision"] == history["feedback"][0]["feedback"]["tested_revision"] == "b" * 40
-    assert c.read(sent["request_id"])["feedback"][0]["revision"] == "a" * 40
+    sent = c.send()
+    assert sent["code"] == "DELIVERED"
+    assert c.send() == sent and len(c.deliveries) == 1
+    assert c.send(text="改了正文")["code"] == "DELIVERY_CONFLICT"
+    assert c.send(recipient="其他 Bot")["code"] == "DELIVERY_CONFLICT"
+    response = c.reply(reply_to=sent["message_id"])
+    assert c.reply(reply_to=sent["message_id"]) == response
+    c.send(delivery_id="continue", text="继续讨论", reply_to=response["message_id"])
+    c.reply(command="follow-up", text="我又有了新发现。")
+    assert [item["text"] for item in c.read()["messages"]] == ["收到，我们可以继续讨论。", "我又有了新发现。"]
+    assert len(c.client.get("/api/external-sessions/" + c.identity).json()["messages"]) == 4
 
 
 @pytest.mark.parametrize("tool,arguments", [
-    ("request_verification", dict(REQUEST, revision="main")),
-    ("request_verification", dict(REQUEST, text=" ")),
-    ("request_verification", {key: value for key, value in REQUEST.items() if key != "identity"}),
-    ("request_verification", {key: value for key, value in REQUEST.items() if key != "revision"}),
-    ("request_verification", {key: value for key, value in REQUEST.items() if key != "reference"}),
-    ("request_verification", dict(REQUEST, recipient=None)),
-    ("request_verification", dict(REQUEST, sender="user")),
-    ("read_feedback", {"identity": IDENTITY}),
-    ("read_feedback", {"identity": IDENTITY, "request_id": "unknown", "after": -1}),
-    ("read_feedback", {"identity": IDENTITY, "request_id": "unknown", "wait_seconds": 51}),
-    ("read_feedback", {"identity": IDENTITY, "request_id": "unknown", "after": True}),
+    ("send_message", {"recipient": "协调员", "text": " "}),
+    ("send_message", {"text": "你好"}),
+    ("send_message", {"recipient": "协调员", "text": "你好", "revision": "a" * 40}),
+    ("send_message", {"recipient": "协调员", "text": "你好", "sender": "user"}),
+    ("read_messages", {"after": -1}),
+    ("read_messages", {"wait_seconds": 51}),
+    ("read_messages", {"after": True}),
     ("get_context", {"identity": " "}),
+    ("request_verification", {}),
+    ("read_feedback", {}),
 ])
-def test_invalid_handoff_is_rejected_before_delivery(collaboration, tool, arguments):
-    assert collaboration.call(tool, arguments)["isError"]
-    assert collaboration.deliveries == []
-
-
-def test_progress_question_and_report_remain_distinct_and_cursor_survives_restart(collaboration):
+def test_invalid_inputs_are_rejected_before_delivery(collaboration, tool, arguments):
     c = collaboration
-    request_id = c.call("request_verification", REQUEST)["structuredContent"]["request_id"]
-    c.reply(request_id, "working", kind="progress", text="正在验证")
-    c.reply(request_id, "question", kind="question", text="请确认预期行为")
-    c.reply(request_id, "report", verdict="issues_found", text="复现步骤：空白输入被接纳。预期应报错。")
-    first = c.read(request_id, limit=2)
-    assert [item["feedback"]["kind"] for item in first["feedback"]] == ["progress", "question"]
-    assert first["has_more"] and first["next_cursor"] == 2
+    fields = {} if tool in {"get_context", "request_verification", "read_feedback"} else {"identity": c.identity}
+    if tool == "send_message":
+        fields["delivery_id"] = "invalid"
+    assert c.call(tool, {**fields, **arguments})["isError"]
+    assert c.deliveries == []
+
+
+def test_bot_can_initiate_and_multiple_bots_share_a_stable_inbox_cursor(collaboration):
+    c = collaboration
+    assert c.read()["messages"] == []
+    c.reply(text="我是主动来联系你的。")
+    c.reply(command="other-1", session_id="other", text="我也来补充。")
+    c.reply(command="more", text="第三条消息。")
+    first = c.read(limit=2)
+    assert [item["sender"]["name"] for item in first["messages"]] == ["协调员", "其他 Bot"]
+    assert first["has_more"]
     restarted = ExternalMessages(c.host)
-    remaining = c.client.portal.call(restarted.read, c.connection, IDENTITY, request_id, 2, 50, 0)
-    assert len(remaining["feedback"]) == 1 and remaining["next_cursor"] == 3
-    assert remaining["feedback"][0]["feedback"]["verdict"] == "issues_found"
-    assert c.read(request_id, after=99)["code"] == "INVALID_CURSOR"
+    remaining = c.client.portal.call(restarted.read, c.connection, c.identity, first["next_cursor"], 50, 0)
+    assert [item["text"] for item in remaining["messages"]] == ["第三条消息。"]
+    assert not remaining["has_more"] and remaining["next_cursor"] > first["next_cursor"]
+    assert c.read(after=remaining["next_cursor"])["messages"] == []
+    assert c.read(after=99)["code"] == "INVALID_CURSOR"
 
 
-def test_waiting_reader_receives_feedback_and_revocation_interrupts_wait(collaboration):
+def test_waiting_reader_receives_messages_and_revocation_interrupts_wait(collaboration):
     c = collaboration
-    request_id = c.call("request_verification", REQUEST)["structuredContent"]["request_id"]
-    waiting = c.client.portal.start_task_soon(c.service.read, c.connection, IDENTITY, request_id, 0, 50, 2)
-    c.reply(request_id)
-    assert waiting.result(timeout=3)["feedback"][0]["reply_to"] == request_id
-    waiting = c.client.portal.start_task_soon(c.service.read, c.connection, IDENTITY, request_id, 1, 50, 2)
+    waiting = c.client.portal.start_task_soon(c.service.read, c.connection, c.identity, 0, 50, 2)
+    c.reply()
+    result = waiting.result(timeout=3)
+    assert result["messages"][0]["text"] == "收到，我们可以继续讨论。"
+    waiting = c.client.portal.start_task_soon(c.service.read, c.connection, c.identity, result["next_cursor"], 50, 2)
     c.client.portal.call(c.service.revoke_connection, c.connection.connection_id)
     assert waiting.result(timeout=3)["code"] == "CONNECTION_REVOKED"
-    assert c.reply(request_id, "after-revoked")["code"] == "CONNECTION_REVOKED"
+    assert c.reply(command="after-revoked")["code"] == "CONNECTION_REVOKED"
+    view = c.client.get("/api/external-sessions/" + c.identity).json()
+    assert not view["session"]["active"] and len(view["messages"]) == 1
 
 
-def test_request_and_report_are_visible_with_their_distinct_versions(collaboration):
+def test_reply_references_stay_with_the_same_peer_and_chat(collaboration):
     c = collaboration
-    request_id = c.call("request_verification", REQUEST)["structuredContent"]["request_id"]
-    c.reply(request_id, tested_revision="b" * 40)
+    sent = c.send()
+    assert c.reply(session_id="other", reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
+    assert c.send(recipient="其他 Bot", delivery_id="bad", reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
+    second = c.call("get_context")["structuredContent"]["identity"]
+    assert c.reply(identity=second, reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
+
+
+def test_bot_and_web_observe_the_same_generic_conversation(collaboration):
+    c = collaboration
+    original = c.send()["message_id"]
+    c.reply(reply_to=original)
 
     async def verify():
         messages = await c.service.messages("coordinator")
         assert messages[0][0].payload.requests_decision and not messages[1][0].payload.requests_decision
-        assert "builtin:independent-verification" in messages[0][1].for_model()["notice"]
+        shown = messages[0][1].for_model()
+        assert shown["sender"] == {"kind": "external", "name": c.context["name"], "identity": c.identity}
+        assert shown["text"] == "你好，来讨论一下需求。"
+        assert "independent-verification" not in str(shown)
         events = await SqliteJournal(c.store.require("coordinator")).snapshot("coordinator")
         state = replay("coordinator", events).state
         view = project_conversation("coordinator", events, state.steps, session=session_view(state))
         external = [item for item in view.items if item.kind == "external_message"]
         assert [item.direction for item in external] == ["received", "sent"]
-        assert all(item.peer == "编码会话-11111111" for item in external)
-        assert external[1].revision == "a" * 40 and external[1].feedback.tested_revision == "b" * 40
+        assert all(item.peer == c.context["name"] for item in external)
+        assert external[1].reply_to == original
 
     c.client.portal.call(verify)
-
-
-def test_other_bot_cannot_reply_and_unknown_previous_requests_are_rejected(collaboration):
-    c = collaboration
-    request_id = c.call("request_verification", REQUEST)["structuredContent"]["request_id"]
-    assert c.reply(request_id, session_id="other")["code"] == "INVALID_REPLY"
-    invalid = dict(REQUEST, delivery_id="new", previous_request_id="unknown")
-    assert c.call("request_verification", invalid)["structuredContent"]["code"] == "REQUEST_NOT_FOUND"
+    web = c.client.get("/api/external-sessions/" + c.identity).json()
+    assert [item["text"] for item in web["messages"]] == ["你好，来讨论一下需求。", "收到，我们可以继续讨论。"]
+    assert web["session"]["peers"] == [{"name": "协调员", "session_id": "coordinator", "deleted": False}]

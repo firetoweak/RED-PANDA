@@ -44,7 +44,7 @@ from konden.assistant.agent_git import GitWorkspace
 from konden.assistant.host.agent_messages import AgentMessages
 from konden.assistant.host.agent_groups import AgentGroups
 from konden.assistant.host.external_messages import ExternalMessages
-from konden.assistant.external_messages import REPLY_EXTERNAL
+from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL
 from konden.assistant.agent_messages import (
     LIST_COLLEAGUES, SEND_FILE, SEND_GROUP_MESSAGE, SEND_MESSAGE,
 )
@@ -368,8 +368,10 @@ class HostSupervisor:
             return await self.agent_messages.colleagues(session_id)
         if operation == SEND_MESSAGE:
             return await self.agent_messages.send(session_id, arguments)
-        if operation == REPLY_EXTERNAL:
-            return await self.external_messages.reply(session_id, arguments)
+        if operation == SEND_EXTERNAL:
+            return await self.external_messages.send_from_bot(session_id, arguments)
+        if operation == LIST_EXTERNAL:
+            return await self.external_messages.colleagues(session_id)
         if operation == SEND_GROUP_MESSAGE:
             return await self.agent_messages.send_group(session_id, arguments)
         if operation == SEND_FILE:

@@ -1,12 +1,12 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { GroupMessage } from "../../api/contracts";
+type ReadingMessage = { message_id: string };
 
 type ReadingPosition = { anchor: string | null; offset: number; bottom: boolean; lastRead: string | null };
 const positions = new Map<string, ReadingPosition>();
-const EMPTY_MESSAGES: GroupMessage[] = [];
+const EMPTY_MESSAGES: readonly ReadingMessage[] = [];
 
 /** 阅读位置属于对话；短暂查看资料、私聊或引用不改变原来的补读位置。 */
-export function useGroupReading(groupId: string, messages = EMPTY_MESSAGES) {
+export function useMessageReading(groupId: string, messages: readonly ReadingMessage[] = EMPTY_MESSAGES) {
   const viewport = useRef<HTMLDivElement>(null);
   const initial = useRef(positions.get(groupId));
   const initialized = useRef(false);

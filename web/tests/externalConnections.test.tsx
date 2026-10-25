@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { kondenApi } from "../src/api/kondenApi";
 import type { ExternalConnection } from "../src/api/contracts";
-import { VerificationAccess } from "../src/features/settings/VerificationAccess";
+import { ExternalAccess } from "../src/features/settings/ExternalAccess";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
 const stores: ReturnType<typeof createStore>[] = [];
@@ -56,7 +56,7 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
     return new Response(null, { status: 204 });
   }));
   const view = render(<Provider store={store}><MantineProvider env="test">
-    <VerificationAccess />
+    <ExternalAccess />
   </MantineProvider></Provider>);
   expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
   expect(screen.queryByLabelText("接入名称")).not.toBeInTheDocument();
@@ -73,7 +73,7 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
   expect(await screen.findByRole("button", { name: "已复制" })).toBeVisible();
   expect(writeText).toHaveBeenLastCalledWith(value);
   view.unmount();
-  render(<Provider store={store}><MantineProvider env="test"><VerificationAccess /></MantineProvider></Provider>);
+  render(<Provider store={store}><MantineProvider env="test"><ExternalAccess /></MantineProvider></Provider>);
   expect(screen.queryByLabelText("MCP 配置（JSON）")).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: "撤销 连接 aaaaaaaa" }));
   fireEvent.click(screen.getByRole("button", { name: "取消" }));

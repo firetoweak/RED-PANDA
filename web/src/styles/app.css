@@ -569,7 +569,18 @@ body.is-resizing-content-page { cursor: col-resize; user-select: none; }
 .private-message-direction { display: inline-flex; align-items: center; flex-shrink: 0; }
 .external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
 .external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
-.external-message-version { color: var(--mantine-color-dimmed); font-size: 12px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.external-roster { margin-top: 16px; }
+.external-roster > .roster-section-header { padding-inline: 10px; }
+.external-session-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 29px; border-bottom: 1px solid var(--konden-border); }
+.external-session-controls .mantine-Select-root { width: 230px; max-width: 100%; }
+.external-session-footer { position: relative; flex-shrink: 0; padding: 12px 24px; border-top: 1px solid var(--konden-border); text-align: center; }
+.external-session-revoked { margin: 12px 24px 0; }
+.external-message-meta a { color: inherit; text-decoration: none; }
+.external-message-meta a:hover { text-decoration: underline; }
+@media (max-width: 48em) {
+  .external-session-controls { padding: 10px 14px; }
+  .external-session-last-activity { display: none; }
+}
 .external-connection-config { font-family: var(--mantine-font-family-monospace); font-size: var(--mantine-font-size-xs); }
 .external-connection-name { min-width: 0; overflow-wrap: anywhere; }
 .private-message-peer { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; text-decoration: none; overflow-wrap: anywhere; }

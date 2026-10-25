@@ -1,6 +1,6 @@
 # Bot 名册
 
-侧栏直接列出全部 Bot 与群聊，不按代码项目分区。来源：`AgentSidebar.tsx`、`BotRoster.tsx`、`AgentHome.tsx`、`CreateAgentModal.tsx` 与 `/api/agents`。
+侧栏列出全部 Bot、群聊与已登记的外部会话，不按代码项目分区。外部会话的登记和消息页面见 external-conversations.md。来源：`AgentSidebar.tsx`、`BotRoster.tsx`、`AgentHome.tsx`、`CreateAgentModal.tsx` 与 `/api/agents`。
 
 ## Sub-features
 
@@ -13,7 +13,7 @@
 - `custom-sections`：`新建分组` 建本地分类，Bot 与群聊的移动菜单可归入分类；分组可以折叠、改名、删除，删除仅令条目回到 `未分组`。空名、重复名和保留名称不可用。
 - `section-preferences`：分类、归属与折叠保存在浏览器 `konden.sidebarGroups`，不按代码项目隔离；搜索临时展开匹配分组。
 - `home`：`/` 展示全部 Bot 与群聊；空首页显示 `创建第一位 Bot`，不自动创建会话。没有代码项目也能进入完整聊天流程；不再提供项目页。
-- `navigation`：侧栏顶部图标工具栏提供 `所有对话`、`新建 Bot`、`新建群聊` 与 `新建分组`，悬停或键盘聚焦可见说明；`所有对话` 返回 `/`。没有品牌块、空间切换或独立的 `工作台` / `待处理` 按钮。有待处理事项时只在所属 Bot 的头像旁提示，进入对话处理，见 [inbox.md](inbox.md)。`对话类型` 用图标提供 `全部` / `群聊` / `Bot` 过滤，保留可访问名称，Ctrl+K 聚焦搜索。底部 `设置` 为齿轮图标，菜单项目仍保留文字。
+- `navigation`：侧栏顶部图标工具栏提供 `所有对话`、`新建 Bot`、`新建群聊` 与 `新建分组`，悬停或键盘聚焦可见说明；`所有对话` 返回 `/`。没有品牌块、空间切换或独立的 `工作台` / `待处理` 按钮。有待处理事项时只在所属 Bot 的头像旁提示，进入对话处理，见 [inbox.md](inbox.md)。`对话类型` 用图标提供 `全部` / `群聊` / `Bot` / `外部会话` 过滤，保留可访问名称，Ctrl+K 聚焦搜索。底部 `设置` 为齿轮图标，菜单项目仍保留文字。
 
 ## How to get to it (user POV)
 

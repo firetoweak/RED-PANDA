@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { AgentRosterEntry, GroupSummary, Workspace } from "../src/api/contracts";
+import type { AgentRosterEntry, ExternalSessionSummary, GroupSummary, Workspace } from "../src/api/contracts";
 import { AgentSidebar } from "../src/features/sessions/AgentSidebar";
 import runtimeReducer, { connected, outputFinal, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
@@ -30,6 +30,7 @@ function agent(partial: Partial<AgentRosterEntry> & Pick<AgentRosterEntry, "sess
 
 const queries = vi.hoisted(() => ({
   agents: [] as AgentRosterEntry[],
+  externalSessions: [] as ExternalSessionSummary[],
   inbox: [] as { kind: "authorization"; label: string; session_id: string }[],
   workspaces: [] as Workspace[],
   deleteWorkspace: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
@@ -47,6 +48,7 @@ vi.mock("../src/api/kondenApi", () => ({
   useGetAutoAuthorizeQuery: () => ({ data: { enabled: false } }),
   useSetAutoAuthorizeMutation: () => [queries.setAutoAuthorize, { isLoading: false }],
   useGetAgentsQuery: () => ({ data: queries.agents, isLoading: false }),
+  useGetExternalSessionsQuery: () => ({ data: queries.externalSessions, isLoading: false }),
   useGetInboxQuery: () => ({ data: queries.inbox, isLoading: false }),
   useGetGroupsQuery: () => ({ data: queries.groups, isLoading: false }),
   useCreateGroupMutation: () => [queries.createGroup, { isLoading: false, reset: vi.fn() }],
@@ -99,8 +101,20 @@ function browserStubs() {
 }
 
 afterEach(() => {
-  cleanup(); queries.inbox = []; vi.unstubAllGlobals();
+  cleanup(); queries.inbox = []; queries.externalSessions = []; vi.unstubAllGlobals();
   Object.keys(window.localStorage).filter((key) => key.startsWith("konden.sidebarGroups")).forEach((key) => window.localStorage.removeItem(key));
+});
+
+it("没有内部 Bot 时仍能找到并打开已接入的外部会话", () => {
+  browserStubs();
+  queries.agents = []; queries.groups = [];
+  queries.externalSessions = [{ identity: "1".repeat(32), name: "外部会话-11111111", active: true,
+    created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] }];
+  renderSidebar("/");
+  const external = within(screen.getByRole("region", { name: "外部会话" }));
+  fireEvent.click(external.getByRole("button", { name: "外部会话-11111111" }));
+  expect(screen.getByTestId("current-path")).toHaveTextContent(`/external/${"1".repeat(32)}`);
+  expect(external.getByRole("button", { name: "外部会话-11111111" })).toHaveAttribute("aria-current", "page");
 });
 
 it("删除 Bot 要确认，失败保留弹窗，成功后离开被删除的会话", async () => {
@@ -186,7 +200,7 @@ it("名册分组覆盖所有 Bot，搜索展开但不改写折叠偏好", async 
   window.localStorage.setItem("konden.sidebarGroups", JSON.stringify(stored));
   renderSidebar("/");
   expect(within(screen.getByRole("region", { name: "名册的分组 未分组" })).getByRole("button", { name: "Lin", exact: true })).toBeInTheDocument();
-  fireEvent.change(screen.getByRole("textbox", { name: "搜索 Bot 或群聊" }), { target: { value: "Ada" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "搜索对话" }), { target: { value: "Ada" } });
   expect(screen.getByRole("button", { name: "分组 研发" })).toHaveAttribute("aria-expanded", "true");
   expect(await screen.findByRole("button", { name: "Ada", exact: true })).toBeInTheDocument();
   expect(JSON.parse(window.localStorage.getItem("konden.sidebarGroups")!).sections[0].collapsed).toBe(true);

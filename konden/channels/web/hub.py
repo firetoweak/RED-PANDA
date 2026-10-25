@@ -32,6 +32,9 @@ class WebEventHub:
     async def auto_authorize_changed(self) -> None:
         await self._broadcast("auto_authorize_changed", {})
 
+    async def external_sessions_changed(self) -> None:
+        await self._broadcast("external_sessions_changed", {})
+
     def subscribe(self) -> asyncio.Queue[WebEvent]:
         queue: asyncio.Queue[WebEvent] = asyncio.Queue()
         self._queues.add(queue)
