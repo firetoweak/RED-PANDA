@@ -9,9 +9,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ConversationView, GroupView } from "../src/api/contracts";
 import { kondenApi } from "../src/api/kondenApi";
 import type { ConversationTimeline } from "../src/features/conversation/ConversationTimeline";
+import { Conversation } from "../src/features/conversation/Conversation";
 import { SessionConversation } from "../src/features/conversation/SessionConversation";
 import { GroupChatPage } from "../src/features/groups/GroupChatPage";
-import runtimeReducer, { connected, disconnected, viewing } from "../src/realtime/runtimeSlice";
+import runtimeReducer, { connected, disconnected, previewDelta, previewStarted, sessionActivity, viewing } from "../src/realtime/runtimeSlice";
 
 // Markdown and virtual-list layout are independent of request ownership and order.
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({
@@ -95,6 +96,82 @@ it("删除后的私聊保留 Bot 名字与历史，不能再发送", async () =>
   expect(await screen.findByRole("article", { name: "历史 Ada 的回复" })).toHaveTextContent("保留的回复");
   expect(screen.getByText("Bot 已删除，此处仅保留聊天记录。")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "发送", exact: true })).not.toBeInTheDocument();
+});
+
+it("过程正文从流式输出到工具执行和历史重开始终可读，明细只由图标展开", async () => {
+  const store = createStore();
+  stores.push(store);
+  const history = snapshot("progress");
+  vi.stubGlobal("fetch", vi.fn((request: Request) => Promise.resolve(Response.json(
+    /\/(commands|inbox)$/.test(new URL(request.url).pathname) ? [] : history,
+  ))));
+  store.dispatch(sessionActivity({ sessionId: "progress", activity: "running" }));
+  const open = () => render(<Provider store={store}><MantineProvider env="test">
+    <MemoryRouter initialEntries={["/sessions/progress"]}>
+      <Routes><Route path="/sessions/:sessionId" element={<Conversation agentName="Ada" />} /></Routes>
+    </MemoryRouter>
+  </MantineProvider></Provider>);
+  const page = open();
+  await screen.findByText("来自 progress 的消息");
+  const progress = "配置已确认，开始启动实例。";
+  act(() => {
+    store.dispatch(previewStarted({ sessionId: "progress", outputId: "progress-output" }));
+    store.dispatch(previewDelta({ sessionId: "progress", outputId: "progress-output", text: progress }));
+  });
+  const streamed = screen.getByText(progress).closest("article");
+  const toolStep = {
+    kind: "step" as const, step_id: "progress-step", output_id: "progress-output", text: progress,
+    thinking: "检查启动所需的配置", occurred_at: "2026-10-23T00:00:01Z", files: [],
+    tools: [{ command_id: "read-config", name: "read_file", status: "running" as const,
+      error: null, arguments: { path: "config.json" } }],
+  };
+  await act(async () => {
+    await store.dispatch(kondenApi.util.upsertQueryData("getConversation", "progress", {
+      ...history, revision: 2, items: [...history.items, toolStep],
+    }));
+  });
+  const process = await screen.findByRole("button", { name: "执行过程", exact: true });
+  expect(screen.getByText(progress).closest("article")).toBe(streamed);
+  expect(streamed).toBeVisible();
+  expect(process).toHaveAttribute("aria-expanded", "false");
+  expect(process).toHaveTextContent(/^$/);
+  expect(screen.queryByText("read_file")).not.toBeInTheDocument();
+  expect(screen.queryByText("检查启动所需的配置")).not.toBeInTheDocument();
+  fireEvent.click(process);
+  await waitFor(() => expect(screen.getByText("read_file")).toBeVisible());
+  const final = "实例已经启动，验证通过。";
+  act(() => {
+    store.dispatch(previewStarted({ sessionId: "progress", outputId: "final-output" }));
+    store.dispatch(previewDelta({ sessionId: "progress", outputId: "final-output", text: final }));
+  });
+  expect(screen.getByText(progress).closest("article")).toBe(streamed);
+  expect(process).toHaveAttribute("aria-expanded", "true");
+  await act(async () => {
+    await store.dispatch(kondenApi.util.upsertQueryData("getConversation", "progress", {
+      ...history, revision: 3, items: [...history.items,
+        { ...toolStep, tools: [{ ...toolStep.tools[0], status: "succeeded" }] },
+        { kind: "step", step_id: "final-step", output_id: "final-output", text: final,
+          thinking: null, occurred_at: "2026-10-23T00:00:02Z", tools: [],
+          files: [{ attachment_id: `file:${"a".repeat(32)}`, name: "evidence.txt", size: 6 }] },
+      ],
+    }));
+    store.dispatch(sessionActivity({ sessionId: "progress", activity: "idle" }));
+  });
+  expect(await screen.findByRole("link", { name: "evidence.txt" })).toBeVisible();
+  const replies = screen.getAllByRole("article", { name: "Ada 的回复" });
+  expect(replies).toHaveLength(2);
+  expect(replies[0]).toHaveTextContent(progress);
+  expect(replies[1]).toHaveTextContent(final);
+  expect(screen.getByText(progress).closest("article")).toBe(streamed);
+  expect(process).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(process);
+  expect(screen.getAllByText(progress)).toHaveLength(1);
+  expect(screen.getByText(final)).toBeVisible();
+  page.unmount();
+  open();
+  expect(await screen.findByText(progress)).toBeVisible();
+  expect(screen.getByText(final)).toBeVisible();
+  expect(screen.getByRole("button", { name: "执行过程", exact: true })).toHaveAttribute("aria-expanded", "false");
 });
 
 it.each(["query-last", "mutation-last"])("较新快照不被旧响应覆盖：%s", async (order) => {

@@ -83,31 +83,26 @@ export function turnIsSettled(
   return !options.running && !options.awaitingControl;
 }
 
-export function turnReply(
+export function turnReplies(
   turn: TimelineTurn,
   settled: boolean,
-): { key: string; text: string; streaming: boolean; files: VisibleStep["files"] } | null {
-  const step = turn.final ?? turn.active;
-  if (step === null) {
-    return null;
-  }
-  const text = (step.text ?? "").trim();
-  if (text === "") {
-    return null;
-  }
-  return {
-    key: step.key,
-    text: step.text ?? "",
-    files: step.files ?? [],
-    streaming: !settled && turn.active !== null,
-  };
+): { key: string; text: string; streaming: boolean; files: VisibleStep["files"] }[] {
+  return [...turn.process, turn.active, turn.final]
+    .filter((step): step is VisibleStep => step !== null
+      && ((step.text ?? "").trim() !== "" || (step.files ?? []).length > 0))
+    .map((step) => ({
+      key: step.key,
+      text: step.text ?? "",
+      files: step.files ?? [],
+      streaming: !settled && step.pending,
+    }));
 }
 
 export function turnNeedsSilentEnd(
   turn: TimelineTurn,
   settled: boolean,
 ): boolean {
-  return settled && turn.process.length > 0 && turn.communications.length === 0 && turnReply(turn, settled) === null;
+  return settled && turn.process.length > 0 && turn.communications.length === 0 && turnReplies(turn, settled).length === 0;
 }
 
 function turnHasThinking(turn: TimelineTurn): boolean {
