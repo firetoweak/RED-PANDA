@@ -1,5 +1,5 @@
 import { MantineProvider } from "@mantine/core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -7,6 +7,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 import { ExecutionProcess } from "../src/features/conversation/ExecutionProcess";
 import { timelineTurns } from "../src/features/conversation/timelineTurns";
 import type { VisibleStep } from "../src/features/conversation/visibleTimeline";
+import { FileAttachmentTile } from "../src/features/conversation/FileAttachmentTile";
 
 const file = {
   attachment_id: `file:${"a".repeat(32)}`,
@@ -50,4 +51,19 @@ it("带附件的消息单独成气泡，执行过程里展开后也能下载", a
   fireEvent.click(await screen.findByRole("button", { name: /证据在这/ }));
   expect(screen.getByRole("link", { name: "evidence.txt", hidden: true }).getAttribute("href"))
     .toContain(encodeURIComponent(file.attachment_id));
+  expect(screen.queryByRole("button", { name: "evidence.txt", hidden: true })).not.toBeInTheDocument();
+});
+
+it("交付的图片文件显示缩略图，点击放大，保留原文件下载", () => {
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  const href = `/api/sessions/ada/attachments/${encodeURIComponent(file.attachment_id)}`;
+  render(<MantineProvider env="test">
+    <FileAttachmentTile name="e2e-03-stopped.PNG" size={83000} href={href} />
+  </MantineProvider>);
+  const preview = screen.getByRole("button", { name: "e2e-03-stopped.PNG" });
+  expect(preview.querySelector("img")).toHaveAttribute("src", href);
+  expect(screen.getByRole("link", { name: "e2e-03-stopped.PNG" })).toHaveAttribute("download");
+  fireEvent.click(preview);
+  expect(within(screen.getByRole("dialog", { name: "e2e-03-stopped.PNG" }))
+    .getByRole("img", { name: "e2e-03-stopped.PNG" })).toHaveAttribute("src", href);
 });

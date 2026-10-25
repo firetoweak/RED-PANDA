@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `stop`：运行中点 `停止`（aria-label `停止`）→ `POST /api/sessions/{id}/cancel`；取消当前轮，仍在前台等待的 `execute_command` 被中断（Linux 杀进程组，Windows 终止 Job）。已转后台的命令继续运行，需要用该条的 `停止命令` 或 `stop_command` 单独停止。
+- `stop`：运行中点 `停止`（aria-label `停止`）→ `POST /api/sessions/{id}/cancel`；取消当前轮，仍在前台等待的 `execute_command` 被中断（Linux 杀进程组，Windows 终止 Job）。已转后台的命令继续运行，需要在 Bot 资料的 `后台任务` 中点击该条的 `停止命令`，或用 `stop_command` 单独停止。
 - `retry-after-failure`：模型请求失败后输入框上方出现红色横幅 `执行已停止。<失败原因首行>`，按钮 `查看详情`、`再试`；`再试` 同样走 `POST .../retry`。
 - `interrupt-with-input`：父正在执行时发送新消息，按钮为 `打断并发送`；父已空闲而子协作仍开放时，按钮为 `发送`，同时保留 `停止`；父当前执行取消后处理新消息，不等待或自动收回子任务，成功后不保持停止状态。没有排队预览；文字与附件随同一消息提交。
 
