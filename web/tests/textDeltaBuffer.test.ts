@@ -11,16 +11,17 @@ it("batches interleaved sessions independently until the same frame", () => {
   });
   const buffer = createTextDeltaBuffer((delta) => published.push(delta), schedule);
 
-  for (let index = 0; index < 100; index++) {
-    buffer.enqueue({ sessionId: `s${index % 2}`, outputId: "out", text: "字" });
-  }
+  buffer.enqueue({ sessionId: "s0", outputId: "out", text: "甲" });
+  buffer.enqueue({ sessionId: "s1", outputId: "out", text: "乙" });
+  buffer.enqueue({ sessionId: "s0", outputId: "out", text: "丙" });
+  buffer.enqueue({ sessionId: "s1", outputId: "out", text: "丁" });
 
   expect(published).toEqual([]);
   expect(schedule).toHaveBeenCalledTimes(1);
   scheduled.flush?.();
   expect(published).toEqual([
-    { sessionId: "s0", outputId: "out", text: "字".repeat(50) },
-    { sessionId: "s1", outputId: "out", text: "字".repeat(50) },
+    { sessionId: "s0", outputId: "out", text: "甲丙" },
+    { sessionId: "s1", outputId: "out", text: "乙丁" },
   ]);
 });
 
@@ -63,29 +64,6 @@ it("forced flush cancels the frame and allows scheduling the next batch", () => 
 });
 
 describe("createTextDeltaBuffer", () => {
-  it("concatenates same-identity deltas until the scheduled flush", () => {
-    const published: TextDelta[] = [];
-    const scheduled: { flush: (() => void) | null } = { flush: null };
-    const buffer = createTextDeltaBuffer(
-      (delta) => published.push(delta),
-      (flush) => {
-        scheduled.flush = flush;
-        return () => {
-          scheduled.flush = null;
-        };
-      },
-    );
-
-    buffer.enqueue({ sessionId: "s1", outputId: "out", text: "想" });
-    buffer.enqueue({ sessionId: "s1", outputId: "out", text: "一" });
-    expect(published).toEqual([]);
-
-    scheduled.flush?.();
-    expect(published).toEqual([
-      { sessionId: "s1", outputId: "out", text: "想一" },
-    ]);
-  });
-
   it("publishes the previous identity immediately when the stream changes", () => {
     const published: TextDelta[] = [];
     const buffer = createTextDeltaBuffer(

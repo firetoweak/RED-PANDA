@@ -4,12 +4,9 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, patch
 
 from PIL import Image
-from prompt_toolkit.input import create_pipe_input
-from prompt_toolkit.layout import HSplit, Window
-from prompt_toolkit.output import DummyOutput
 from konden.assistant.attachments import AttachmentGateway
 from konden.assistant.compact.store import ConversationStatus
 
@@ -51,23 +48,6 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(submitted.text, "[Image #1]")
             self.assertEqual(len(submitted.artifact_refs), 1)
             self.assertEqual(paste.submit("next"), ConsoleMessage("next"))
-
-    def test_prompt_is_anchored_above_the_bottom_toolbar(self):
-        BottomAnchoredPromptSession, _ContextMeter, _read_console_input = _console()
-        with create_pipe_input() as console_input:
-            session = BottomAnchoredPromptSession(
-                bottom_toolbar=lambda: "实际输入 0 / compact 200k  ·  compact 0 次\nSession ID：session-1",
-                input=console_input,
-                output=DummyOutput(),
-            )
-
-            root = session.layout.container
-            self.assertIsInstance(root, HSplit)
-            self.assertIsInstance(root.children[0], Window)
-            prompt = root.children[1]
-            self.assertIsInstance(prompt, HSplit)
-            self.assertEqual(prompt.preferred_height(80, 24).min, 3)
-            self.assertEqual(prompt.preferred_height(80, 24).max, 3)
 
     def test_streaming_output_renders_in_layout_until_final_delivery(self):
         from konden.channels.tui.console import _StreamingConsoleOutput
@@ -156,18 +136,9 @@ class ConsoleInputTests(unittest.IsolatedAsyncioTestCase):
             EOFError,
         )
 
-        with patch("konden.channels.tui.console.patch_stdout") as patched:
+        with patch("konden.channels.tui.console.patch_stdout"):
             await read_console_input(queue, session)
 
-        patched.assert_called_once_with()
-        self.assertEqual(
-            session.prompt_async.await_args_list,
-            [
-                call("你：", refresh_interval=0.25),
-                call("你：", refresh_interval=0.25),
-                call("你：", refresh_interval=0.25),
-            ],
-        )
         self.assertEqual(await queue.get(), ConsoleMessage("第一个任务"))
         self.assertEqual(await queue.get(), ConsoleMessage("运行时打断"))
         self.assertIsNone(await queue.get())

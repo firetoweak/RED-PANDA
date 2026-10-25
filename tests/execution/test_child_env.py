@@ -1,23 +1,23 @@
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from konden.execution.command import (
     BoundedTextCapture,
     CaptureLimit,
     strip_terminal_control,
 )
-from konden.execution.local.child_env import (
-    CHILD_ENV_OVERLAY,
-    latest_persistent_path,
-)
+from konden.execution.local.child_env import latest_persistent_path
 from konden.execution.local.powershell import CommandEnvironmentPolicy
 
 
 class ChildEnvOverlayTest(unittest.TestCase):
     def test_overlay_is_applied_to_child_environment(self):
         env = CommandEnvironmentPolicy().build({})
-        for name, value in CHILD_ENV_OVERLAY.items():
+        for name, value in {
+            "NO_COLOR": "1", "PAGER": "cat", "GIT_PAGER": "cat",
+            "GH_PAGER": "cat", "CI": "1",
+        }.items():
             self.assertEqual(env[name], value)
 
     def test_path_is_replaced_with_latest_persistent_value(self):
@@ -69,10 +69,33 @@ class ChildEnvOverlayTest(unittest.TestCase):
         self.assertEqual(env["CONDA_PREFIX"], "project-env")
 
     @unittest.skipUnless(os.name == "nt", "Windows 注册表读取")
-    def test_reads_real_persistent_path_on_windows(self):
-        value = latest_persistent_path()
-        self.assertIsInstance(value, str)
-        self.assertTrue(value)
+    def test_combines_machine_and_expanded_user_registry_paths(self):
+        import winreg
+
+        machine, user = MagicMock(), MagicMock()
+        with (
+            patch("winreg.OpenKey", side_effect=[machine, user]) as opened,
+            patch("winreg.QueryValueEx", side_effect=[
+                (r"C:\system-tools", winreg.REG_SZ),
+                (r"%KONDEN_TEST_TOOLS%\bin", winreg.REG_EXPAND_SZ),
+            ]) as queried,
+            patch.dict(os.environ, {"KONDEN_TEST_TOOLS": r"C:\user-tools"}),
+        ):
+            self.assertEqual(
+                latest_persistent_path(), r"C:\system-tools;C:\user-tools\bin",
+            )
+
+        self.assertEqual(opened.call_args_list[0].args, (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ))
+        self.assertEqual(opened.call_args_list[1].args, (
+            winreg.HKEY_CURRENT_USER, "Environment",
+        ))
+        self.assertEqual([call.args for call in queried.call_args_list], [
+            (machine.__enter__.return_value, "Path"),
+            (user.__enter__.return_value, "Path"),
+        ])
 
 
 class StripTerminalControlTest(unittest.TestCase):

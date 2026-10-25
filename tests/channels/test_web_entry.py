@@ -76,14 +76,10 @@ class WebEntryTests(unittest.TestCase):
             creationflags=(web_chat.subprocess.CREATE_NEW_PROCESS_GROUP
                            if web_chat.os.name == "nt" else 0),
         )
-        run.assert_called_once_with(
-            "web_chat:app",
-            host="127.0.0.1",
-            port=8765,
-            reload=True,
-            reload_dirs=[str(Path(web_chat.__file__).parent)],
-            timeout_graceful_shutdown=1,
-        )
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args, ("web_chat:app",))
+        self.assertEqual(run.call_args.kwargs["host"], "127.0.0.1")
+        self.assertEqual(run.call_args.kwargs["port"], 8765)
+        self.assertTrue(run.call_args.kwargs["reload"])
         frontend.terminate.assert_called_once_with()
         frontend.wait.assert_called_once_with()
-

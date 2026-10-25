@@ -21,6 +21,7 @@ from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.filesystem.registry import WorkspaceRegistry
 from konden.paths import KondenHome
+from tests.execution.test_foreground_lifetime_process import gone, until
 
 
 pytestmark = pytest.mark.process
@@ -49,11 +50,8 @@ def test_internal_git_descendants_exit_when_the_owner_is_killed(tmp_path):
         pid = int((tmp_path / "owner.pid").read_text())
         os.kill(pid, signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
         owner.wait(timeout=20)
-        # Allow the OS Job / Linux subreaper to drain after the control owner dies.
-        time.sleep(.5)
-        before = (tmp_path / "writes").read_bytes()
-        time.sleep(.2)
-        assert (tmp_path / "writes").read_bytes() == before
+        writer = int((tmp_path / "writer.pid").read_text())
+        until(lambda: gone(writer))
     finally:
         if owner.poll() is None:
             owner.kill()

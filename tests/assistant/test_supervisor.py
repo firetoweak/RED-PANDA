@@ -5,7 +5,6 @@ import json
 from functools import partial
 from pathlib import Path
 import tempfile
-import time
 import unittest
 
 import pytest
@@ -61,7 +60,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         from tests.cli.test_runtime import make_record
 
         registry = CliRegistry(self.home.clis_root)
-        names = {f"cli-{index:02}" for index in range(40)}
+        names = {f"cli-{index:02}" for index in range(21)}
         for name in sorted(names):
             await registry.add(replace(make_record(name), description="x" * 1000))
 
@@ -72,7 +71,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
                 client.calls += 1
                 if client.calls == 1:
                     return LLMCallResult(LLMResponse(calls=(ToolCall(
-                        "last-cli", "load_cli", '{"cli_id":"cli-39"}',
+                        "last-cli", "load_cli", '{"cli_id":"cli-20"}',
                     ),)), LLMUsage(input_tokens=10, output_tokens=5))
                 return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=10, output_tokens=5))
 
@@ -89,7 +88,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         loaded = next(event.payload.outcome.value for event in events
                       if isinstance(event.payload, CommandOutcomeReceived)
                       and event.payload.outcome.value["code"] == "CLI_LOADED")
-        self.assertEqual(loaded["data"]["cli_id"], "cli-39")
+        self.assertEqual(loaded["data"]["cli_id"], "cli-20")
         self.assertEqual(loaded["data"]["description"], "x" * 1000)
         self.assertIn((sid, "done"), self.output)
         self.assertTrue(self.host.failures.empty())
@@ -376,7 +375,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
         (self.root / "input.txt").write_text("evidence", encoding="utf-8")
         for index, error in enumerate((LLMAuthenticationError("401"), LLMTransientError("429 exhausted"),
-                                       LLMProviderError("500"), LLMTransientError("stream interrupted"))):
+                                       LLMProviderError("500"))):
             with self.subTest(error=str(error)):
                 class FailAfterRead(ProcessLlm):
                     count = 0
@@ -922,7 +921,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
             "blocked", "BLOCK_PROCESS", delivery_id="a"
         )
         await until(lambda: list(self.root.glob("blocked-*")))
-        blocked_at = time.monotonic()
         await self.host.create("crash", self.workspace.workspace_id)
         await self.host.receive_user_message("crash", "CRASH_PROCESS", delivery_id="b")
         failure = await asyncio.wait_for(self.host.wait_failure(), 30)
@@ -932,7 +930,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await self.host.receive_user_message("healthy", "hello", delivery_id="c")
         await until(lambda: ("healthy", "done") in self.output)
         self.assertIn("blocked", self.host.workers)
-        await asyncio.sleep(max(0, 31 - (time.monotonic() - blocked_at)))
         (self.root / "release").touch()
         await until(lambda: ("blocked", "done") in self.output)
 

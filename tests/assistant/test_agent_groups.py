@@ -212,8 +212,7 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
         self.host.request.side_effect = lost
         with self.assertRaises(EOFError):
             await self.host.agent_groups.post(group.group_id, "大家看看", [], delivery_id="original")
-        # Let successful recipients finish before replacing the Host-owned service.
-        await asyncio.sleep(.05)
+        await self.settled(group)
         self.host.request.side_effect = deliver
         self.host.agent_groups = AgentGroups(self.host)
         await self.host.agent_groups.recover()

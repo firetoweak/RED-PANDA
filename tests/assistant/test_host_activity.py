@@ -114,7 +114,7 @@ class SelectIdleSessionTest(unittest.IsolatedAsyncioTestCase):
 
 
 class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
-    async def test_startup_recovers_unknown_commands_and_ignores_legacy_stop_flags(self):
+    async def test_startup_recovers_unknown_commands_without_retrying_them(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             home = KondenHome(root / "home")
@@ -172,25 +172,12 @@ class ResumeUnfinishedOnStartupTest(unittest.IsolatedAsyncioTestCase):
                 await crashed.advance("session-crashed")
                 await crashed.dispatcher.close()
 
-                # 废弃的会话暂停文件不再影响待处理消息。
-                await host.create("session-stopped", workspace.workspace_id)
-                await SqliteJournal(store.require("session-stopped")).accept_delivery(
-                    EventDraft(
-                        event_id="user-2",
-                        session_id="session-stopped",
-                        payload=UserMessageReceived("先别动"),
-                        occurred_at=datetime.now(timezone.utc),
-                        delivery=DeliveryIdentity("user", "d3"),
-                    )
-                )
-                for name in ("paused.json", "execution_stopped.json"):
-                    (store.root / name).write_text('{"session-stopped": true}', encoding="utf-8")
                 host.resume = AsyncMock()
 
                 await host.resume_unfinished_sessions()
 
                 resumed = {call.args[0] for call in host.resume.await_args_list}
-                self.assertEqual(resumed, {"session-open", "session-crashed", "session-stopped"})
+                self.assertEqual(resumed, {"session-open", "session-crashed"})
                 state = replay("session-crashed", await SqliteJournal(
                     store.require("session-crashed")).snapshot("session-crashed")).state
                 self.assertEqual([command.phase for command in state.commands], [CommandPhase.UNKNOWN])

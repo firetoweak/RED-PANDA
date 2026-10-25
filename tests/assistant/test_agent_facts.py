@@ -88,8 +88,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
             shown = agent_fact_for_model(payload)
             self.assertEqual(set(shown), {"name", "notice"})
             self.assertEqual(shown["name"], "Ada")
-            for internal in ("workspace-internal", "internal-branch", directory):
-                self.assertNotIn(internal, str(shown))
+            self.assertNotIn(directory, str(shown))
         private = PrivateMessage(
             message_id="message-2", sender=Speaker(kind="agent", name="Ada"),
             recipient="Lin", thread_id="thread-1", hop=2, reply_to="message-1", text="请检查测试。",

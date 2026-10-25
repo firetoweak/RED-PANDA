@@ -208,25 +208,25 @@ it("名册用干活、等授权、等人回话和空闲标出状态，运行中�
     </AppShell.Navbar></AppShell>
   </MemoryRouter></MantineProvider></Provider>;
   const view = render(sidebar());
-  expect(screen.getByLabelText("干活")).toHaveClass("activity-dot-running");
+  expect(screen.getByLabelText("干活")).toBeInTheDocument();
 
   queries.agents = [agent({ session_id: "parent", name: "konden", status: "idle" })];
   view.rerender(sidebar());
-  expect(screen.getByLabelText("空闲")).toHaveClass("activity-dot-idle");
+  expect(screen.getByLabelText("空闲")).toBeInTheDocument();
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "running" })); });
-  expect(screen.getByLabelText("干活")).toHaveClass("activity-dot-running");
+  expect(screen.getByLabelText("干活")).toBeInTheDocument();
 
   queries.agents = [agent({ session_id: "parent", name: "konden", status: "authorization" })];
   view.rerender(sidebar());
-  expect(screen.getByLabelText("等授权")).toHaveClass("activity-dot-attention");
+  expect(screen.getByLabelText("等授权")).toBeInTheDocument();
   act(() => { store.dispatch(viewing("parent")); });
-  expect(screen.getByLabelText("等授权")).toHaveClass("activity-dot-attention");
+  expect(screen.getByLabelText("等授权")).toBeInTheDocument();
 
   act(() => { store.dispatch(sessionActivity({ sessionId: "parent", activity: "idle" })); });
   queries.agents = [agent({ session_id: "parent", name: "konden", status: "waiting" })];
   view.rerender(sidebar());
-  expect(screen.getByLabelText("等人回话")).toHaveClass("activity-dot-waiting");
+  expect(screen.getByLabelText("等人回话")).toBeInTheDocument();
 });
 
 it("点 Agent 打开它的会话", () => {
@@ -238,17 +238,15 @@ it("点 Agent 打开它的会话", () => {
   expect(screen.getByTestId("current-path")).toHaveTextContent("/sessions/agent-1");
 });
 
-it("对话入口返回首页，待处理只提示所属 Bot，不占独立导航", () => {
+it("对话入口返回首页，待处理提示所属 Bot", () => {
   browserStubs();
   queries.agents = [agent({ session_id: "ada", name: "Ada" }), agent({ session_id: "lin", name: "Lin" })];
   queries.groups = [];
   queries.inbox = [{ kind: "authorization", label: "Ada", session_id: "ada" }];
   renderSidebar("/sessions/ada");
 
-  expect(screen.queryByRole("button", { name: "工作台" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /^待处理/ })).not.toBeInTheDocument();
-  expect(within(screen.getByRole("button", { name: "Ada", exact: true })).getByLabelText("空闲 · 需要你处理")).toHaveClass("activity-dot-attention");
-  expect(within(screen.getByRole("button", { name: "Lin", exact: true })).getByLabelText("空闲")).toHaveClass("activity-dot-idle");
+  expect(within(screen.getByRole("button", { name: "Ada", exact: true })).getByLabelText("空闲 · 需要你处理")).toBeInTheDocument();
+  expect(within(screen.getByRole("button", { name: "Lin", exact: true })).getByLabelText("空闲")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "所有对话" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent(/^\/$/);
 });

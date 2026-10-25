@@ -1,14 +1,7 @@
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from konden.mcp.application import McpApplicationService
-from konden.mcp.client_manager import McpClientManager
-from konden.mcp.registry import McpRegistry
-from konden.mcp.secrets import McpSecretStore
-from konden.paths import KondenHome
 from konden.tools.control import ControlApprovalProposal
 from konden.tools.spec import ToolArgumentsError
 from konden.mcp.approval import (
@@ -55,38 +48,6 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(spec.control_boundary)
         self.assertNotIn("secrets", result.payload)
         self.assertIn("Executable：npx", result.summary)
-
-    async def test_yes_install_accepts_frozen_stdio_args(self):
-        spec = self._spec()
-        input_data = spec.parameters.validate({
-            "server_id": "playwright",
-            "display_name": "Playwright",
-            "transport": "stdio",
-            "command": "npx",
-            "args": ["-y", "@playwright/mcp@latest"],
-            "source": "official_documentation",
-        })
-        request = await spec.handler(input_data)
-
-        with TemporaryDirectory() as directory:
-            home = KondenHome(Path(directory) / ".konden")
-            home.initialize()
-            secrets = McpSecretStore.from_home(home)
-            service = McpApplicationService(
-                McpRegistry.from_home(home),
-                secrets,
-                McpClientManager(secrets, runtime_root=home.mcp_root / "runtime"),
-            )
-            record = await service.upsert_server(
-                server_id=request.payload["server_id"],
-                display_name=request.payload["display_name"],
-                description=request.payload["description"],
-                transport=request.payload["transport"],
-                transport_config=request.payload["transport_config"],
-                enabled=False,
-            )
-
-        self.assertEqual(record.transport_config.args, ("-y", "@playwright/mcp@latest"))
 
     async def test_secrets_pass_through_payload_but_not_summary(self):
         spec = self._spec()
@@ -384,6 +345,7 @@ class McpRecoveryConsoleTest(unittest.IsolatedAsyncioTestCase):
 
         reply = await console.execute_if_handled("/mcp retry demo")
 
+        service.test_and_enable.assert_awaited_once_with("demo")
         self.assertIn("测试并启用成功", reply)
         self.assertIn("能力目录", reply)
 

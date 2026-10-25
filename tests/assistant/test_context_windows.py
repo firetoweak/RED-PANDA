@@ -1,3 +1,4 @@
+import asyncio
 import json
 from io import BytesIO
 from pathlib import Path
@@ -22,6 +23,7 @@ from konden.assistant.compact.core import (
     frozen_bundle,
     save_document,
 )
+from konden.assistant.compact.host import CompactHost
 from konden.assistant.context.projection import ModelContextProjector
 from konden.assistant.host.session_store import SessionStore
 from konden.runtime import AgentRuntime, InvokeTool, ModelDecision, RecordedDecision, SqliteJournal, StateProjector, ToolBinding
@@ -54,6 +56,25 @@ async def _handoff_session(runtime, session_id, bundle, inherited):
 
 
 class WindowTest(unittest.IsolatedAsyncioTestCase):
+    async def test_completion_waiting_at_retirement_does_not_accept_stale_job(self):
+        with TemporaryDirectory() as directory:
+            host = SimpleNamespace(store=SessionStore(Path(directory)))
+            compact = CompactHost(host)
+            job = compact.store.start("chat", {
+                "window": None, "position": 1, "inherited": [], "bundle": [],
+            })
+            async with compact.lock("chat"):
+                completing = asyncio.create_task(
+                    compact.complete(job["reader"], {"handoff": "retired summary"})
+                )
+                await asyncio.sleep(0)
+                compact.store.retire(job["reader"])
+            await completing
+
+            retired = compact.store.reader_job(job["reader"])
+            self.assertEqual(retired["published"], 2)
+            self.assertIsNone(retired["summary"])
+
     async def test_history_query_locates_literal_text_within_sequence_range(self):
         runtime = AgentRuntime(MemoryJournal(), None, {})
         await runtime.create_session("b")

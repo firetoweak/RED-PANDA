@@ -153,31 +153,18 @@ describe("visibleTimeline", () => {
   });
 
   it("keeps journal success and failure over live progress", () => {
-    const visible = visibleTimeline(
-      {
-        ...conversation,
-        items: [
-          conversation.items[0],
-          {
-            ...conversation.items[1],
-            tools: [
-              {
-                command_id: "cmd-1",
-                name: "read_file",
-                status: "succeeded",
-                error: null,
-              },
-            ],
-          },
-        ],
-      },
-      {},
-      null,
-      { "cmd-1": { commandId: "cmd-1", name: "read_file", status: "running" } },
-    );
-    expect(visible[1]).toMatchObject({
-      tools: [{ commandId: "cmd-1", status: "succeeded" }],
-    });
+    for (const status of ["succeeded", "failed"] as const) {
+      const error = status === "failed" ? "read failed" : null;
+      const visible = visibleTimeline(
+        { ...conversation, items: [conversation.items[0], {
+          ...conversation.items[1],
+          tools: [{ command_id: "cmd-1", name: "read_file", status, error }],
+        }] },
+        {}, null,
+        { "cmd-1": { commandId: "cmd-1", name: "read_file", status: "running" } },
+      );
+      expect(visible[1]).toMatchObject({ tools: [{ commandId: "cmd-1", status, error }] });
+    }
   });
 
   it("does not let stale running activity override authorization state", () => {

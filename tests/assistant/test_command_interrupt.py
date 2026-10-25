@@ -189,10 +189,9 @@ class CancelCommandTest(unittest.IsolatedAsyncioTestCase):
 
         await scheduler.cancel_turn("session")
         await advancing
-        for _ in range(50):
-            if scheduler.idle:
-                break
-            await asyncio.sleep(0.01)
+        async with asyncio.timeout(STARTUP_TIMEOUT):
+            while not scheduler.idle:
+                await asyncio.sleep(0)
 
         self.assertIsNone(scheduler._failure)
         self.assertTrue(scheduler.idle)

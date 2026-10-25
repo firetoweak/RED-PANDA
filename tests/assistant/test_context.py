@@ -838,7 +838,10 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         tool = self._tool_messages(prepared.messages)[0]
         payload = json.loads(tool["content"])
         self.assertEqual(payload["ok"], True)
-        self.assertIn("reference", payload["data"])
+        store = gateway.for_session(self.SESSION)
+        reference = payload["data"]["reference"]
+        self.assertEqual(set(store.contents), {reference})
+        self.assertEqual(json.loads(store.read(reference, 0, 4000).content), _result("Z" * 80))
 
     async def test_read_content_pages_are_session_scoped(self):
         gateway = MemoryArtifactGateway()

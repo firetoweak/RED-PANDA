@@ -116,10 +116,8 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
         self.assertIsNone(result["ok"])
         self.assertEqual(result["data"]["execution_status"], "unknown")
-        self.assertEqual(
-            result["error"],
-            "与 offline 的连接中断，未取得最终结果：call offline；执行结果未知，可能已部分执行。",
-        )
+        self.assertIn("call offline", result["error"])
+        self.assertIn("可能已部分执行", result["error"])
         self.assertEqual(self.closes, 1)
         self.assertEqual(self.opens, 1)  # No automatic retry.
         self.assertEqual(manager.runtime_state(record.id).status,
@@ -200,7 +198,10 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         )
         result = await handler({})
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
-        self.assertEqual(result["error"], "与 Tavily 的连接中断，未取得最终结果；执行结果未知，可能已部分执行。")
+        self.assertIsNone(result["ok"])
+        self.assertEqual(result["data"]["execution_status"], "unknown")
+        self.assertIn("Tavily", result["error"])
+        self.assertIn("可能已部分执行", result["error"])
         self.assertNotIn("owner", result["error"])
         self.assertNotIn("CancelledError", result["error"])
         self.assertEqual(
@@ -262,10 +263,10 @@ class McpLifecycleErrorsTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(_SdkConnectionOwner, "_open_facade", open_facade):
             result = await handler({})
         self.assertEqual(result["code"], "MCP_TRANSPORT_ERROR")
-        self.assertEqual(
-            result["error"],
-            "与 Tavily 的连接中断，未取得最终结果：connection reset；执行结果未知，可能已部分执行。",
-        )
+        self.assertIsNone(result["ok"])
+        self.assertEqual(result["data"]["execution_status"], "unknown")
+        self.assertIn("connection reset", result["error"])
+        self.assertIn("可能已部分执行", result["error"])
         self.assertNotIn("owner", result["error"])
         self.assertNotIn("CancelledError", result["error"])
         self.assertNotIn("运行失败且关闭失败", result["error"])

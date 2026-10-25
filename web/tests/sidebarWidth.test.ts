@@ -20,11 +20,8 @@ describe("sidebarWidth", () => {
     expect(clampSidebarWidth(320)).toBe(320);
   });
 
-  it("没有写入过时用默认宽度", () => {
+  it("记住合法宽度，缺失或非法值用默认宽度", () => {
     expect(readSidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
-  });
-
-  it("记住合法宽度，非法值当没记住", () => {
     writeSidebarWidth(360);
     expect(readSidebarWidth()).toBe(360);
 
