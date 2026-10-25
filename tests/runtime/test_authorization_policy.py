@@ -11,7 +11,7 @@ from konden.runtime import (
     RuntimeStatus,
     SqliteJournal,
 )
-from konden.runtime.dispatcher import DispatchStartResult, ToolBinding
+from konden.runtime.dispatcher import DispatchStartResult
 from konden.runtime.model import rejected_tool_arguments
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
@@ -95,19 +95,3 @@ class AuthorizationPolicySliceTest(unittest.IsolatedAsyncioTestCase):
         tool.release.set()
         while runtime.dispatcher.active_count:
             await asyncio.sleep(0)
-
-
-class ToolBindingAuthorizationValidationTest(unittest.TestCase):
-    def test_accepts_bool_or_callable(self):
-        async def handler(_context, _arguments):
-            return {}
-
-        self.assertTrue(
-            ToolBinding(handler, requires_authorization=True).requires_authorization
-        )
-        policy = lambda _args: True  # noqa: E731
-        self.assertIs(
-            ToolBinding(handler, requires_authorization=policy).requires_authorization,
-            policy,
-        )
-

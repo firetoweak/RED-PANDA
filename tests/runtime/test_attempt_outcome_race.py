@@ -76,10 +76,9 @@ class AttemptOutcomeRaceTest(unittest.IsolatedAsyncioTestCase):
         await self._accept(runtime, dispatch, "NATURAL", True)
         await self._accept(runtime, dispatch, "COMMAND_INTERRUPTED", None)
         release.set()
-        for _ in range(50):
-            if runtime.dispatcher.active_count == 0:
-                break
-            await asyncio.sleep(0.01)
+        async with asyncio.timeout(5):
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
 
         self.assertEqual(runtime.dispatcher.active_count, 0)
         self.assertEqual(
@@ -93,10 +92,9 @@ class AttemptOutcomeRaceTest(unittest.IsolatedAsyncioTestCase):
         await self._accept(runtime, dispatch, "COMMAND_INTERRUPTED", None)
         await self._accept(runtime, dispatch, "NATURAL", True)
         release.set()
-        for _ in range(50):
-            if runtime.dispatcher.active_count == 0:
-                break
-            await asyncio.sleep(0.01)
+        async with asyncio.timeout(5):
+            while runtime.dispatcher.active_count:
+                await asyncio.sleep(0)
 
         self.assertEqual(
             self._codes(await runtime.snapshot("session")),

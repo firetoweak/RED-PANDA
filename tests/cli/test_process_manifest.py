@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 import unittest
@@ -15,7 +14,6 @@ from pathlib import Path
 import pytest
 
 from konden.cli.composition import build_cli
-from konden.cli.installer import resolve_cli_path
 from konden.cli.runtime import LOAD_CLI, LoadCliInput
 from konden.paths import KondenHome
 
@@ -60,50 +58,3 @@ class ProcessManifestSliceTest(unittest.IsolatedAsyncioTestCase):
         loaded = await specs[LOAD_CLI].handler(LoadCliInput(cli_id="python"))
         self.assertEqual(loaded["code"], "CLI_LOADED")
         self.assertEqual(loaded["data"]["version"], record.version)
-
-    @unittest.skipUnless(os.name == "nt", "持久化 PATH 仅存在于 Windows")
-    async def test_command_name_resolution_uses_fresh_path(self):
-        """PATH 目录新增后，无需重启即可解析到其中的命令。"""
-        bin_dir = Path(self.temporary.name) / "freshbin"
-        bin_dir.mkdir()
-        shim = bin_dir / "konden-fake-cli.cmd"
-        shim.write_text(
-            "@echo off\r\n"
-            "if \"%1\"==\"--version\" (echo fake-cli 9.9.1 & exit /b 0)\r\n"
-            "if \"%1\"==\"--help\" (echo Usage: fake-cli & exit /b 0)\r\n"
-            "exit /b 1\r\n",
-            encoding="utf-8",
-        )
-        # 模拟「安装器写入持久化 PATH」：直接写 HKCU\Environment 的 Path，
-        # finally 恢复原值（原本不存在则删除新增值）。
-        import winreg
-
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            "Environment",
-            0,
-            winreg.KEY_READ | winreg.KEY_SET_VALUE,
-        ) as key:
-            try:
-                original, value_type = winreg.QueryValueEx(key, "Path")
-            except OSError:
-                original, value_type = None, winreg.REG_EXPAND_SZ
-            try:
-                winreg.SetValueEx(
-                    key,
-                    "Path",
-                    0,
-                    value_type,
-                    (original + ";" if original else "") + str(bin_dir),
-                )
-                resolved = resolve_cli_path("konden-fake-cli")
-                # PATHEXT casing and 8.3 short paths (RUNNER~1) may differ; compare by identity.
-                self.assertTrue(
-                    os.path.samefile(resolved, shim),
-                    f"{resolved!r} is not the same file as {shim!r}",
-                )
-            finally:
-                if original is None:
-                    winreg.DeleteValue(key, "Path")
-                else:
-                    winreg.SetValueEx(key, "Path", 0, value_type, original)

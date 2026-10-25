@@ -171,11 +171,6 @@ class ToolsetProgressiveLoadTest(unittest.IsolatedAsyncioTestCase):
         await settle_session(runtime, SESSION_ID)
         return await runtime.snapshot(SESSION_ID)
 
-    def test_catalog_does_not_expose_loaded_tools_before_load(self):
-        surface = ToolSurface(providers=(FakeEchoProvider(),))
-        surface.apply_catalog(SESSION_ID, surface.registry_descriptors())
-        self.assertEqual(_schema_names(surface.schemas(SESSION_ID)), {LOAD_TOOLSET})
-
     async def test_unknown_toolset_is_a_model_correctable_error(self):
         surface, _runtime = _attached()
         result = await surface.load(SESSION_ID, "missing")

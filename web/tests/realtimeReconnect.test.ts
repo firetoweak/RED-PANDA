@@ -115,14 +115,29 @@ it("断线清掉旧流，重连快照与后续增量在相同输出身份下衔�
   store.dispatch(kondenApi.util.resetApiState());
 });
 
-it("群变化事件让群数据重新读取，调度结束后页面不会停在旧的等待状态", () => {
+it("状态事件更新所属会话，并使对应的页面数据重新读取", () => {
   const listeners = new Map<string, (event: MessageEvent) => void>();
   vi.stubGlobal("EventSource", class {
     addEventListener(name: string, listener: (event: MessageEvent) => void) { listeners.set(name, listener); }
     close() {}
   });
-  const dispatch = vi.fn();
+  const store = configureStore({
+    reducer: { runtime: runtimeReducer, [kondenApi.reducerPath]: kondenApi.reducer },
+    middleware: (defaults) => defaults().concat(kondenApi.middleware),
+  });
+  const dispatch = vi.fn(store.dispatch);
   const close = openEventBridge(dispatch);
+  const emit = (name: string, payload: object) => listeners.get(name)!(new MessageEvent(name, { data: JSON.stringify(payload) }));
+  emit("session_activity", { session_id: "session-1", activity: "running" });
+  emit("session_failed", { session_id: "session-1", message: "运行失败：模型服务暂时不可用" });
+  emit("conversation_status", { session_id: "session-1", compact_count: 1, compact_phase: "failed" });
+  expect(store.getState().runtime.sessions["session-1"]).toMatchObject({
+    lastError: "运行失败：模型服务暂时不可用", activity: "idle",
+    conversationStatus: { compactCount: 1, compactPhase: "failed" },
+  });
+  dispatch.mockClear();
+  emit("context_usage", { session_id: "session-2", used: 1200, compact_threshold_tokens: 200000 });
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags([{ type: "Conversation", id: "session-2" }]));
   listeners.get("group_changed")!(new MessageEvent("group_changed", { data: JSON.stringify({ group_id: "group-1" }) }));
   expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Groups"]));
   listeners.get("auto_authorize_changed")!(new MessageEvent("auto_authorize_changed", { data: "{}" }));
@@ -132,4 +147,5 @@ it("群变化事件让群数据重新读取，调度结束后页面不会停在�
   listeners.get("connected")!(new MessageEvent("connected", { data: '{"connection_id":"again"}' }));
   expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
   close();
+  store.dispatch(kondenApi.util.resetApiState());
 });

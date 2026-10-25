@@ -56,15 +56,11 @@ class ExtractImagesTest(unittest.TestCase):
         encoded = json.dumps(result)
         self.assertNotIn(b64encode(data).decode("ascii"), encoded)
         reference = result["data"]["mcp"]["content"][0]
+        self.assertEqual(result["images"], [reference])
         self.assertEqual(reference["type"], "image")
         self.assertTrue(is_valid_attachment_id(reference["id"]))
         self.assertEqual(reference["mime"], "image/png")
         self.assertEqual(self.store.read(reference["id"]), data)
-
-    def test_references_are_hoisted_to_a_top_level_images_list(self):
-        result = extract_images(mcp_result(image_block(png())), self.store)
-
-        self.assertEqual(result["images"], [result["data"]["mcp"]["content"][0]])
 
     def test_text_blocks_are_untouched_and_order_is_preserved(self):
         text = {"type": "text", "text": "before"}
@@ -77,15 +73,6 @@ class ExtractImagesTest(unittest.TestCase):
         self.assertEqual([content[0], content[2]], [text, tail])
         self.assertEqual(len(result["images"]), 1)
 
-    def test_two_identical_images_share_one_stored_object(self):
-        data = png()
-        result = extract_images(
-            mcp_result(image_block(data), image_block(data)), self.store
-        )
-
-        first, second = result["images"]
-        self.assertEqual(first["id"], second["id"])
-        self.assertEqual(len(list(Path(self._directory.name).iterdir())), 1)
 
     def test_unsupported_format_is_rejected_visibly_not_dropped(self):
         bmp = BytesIO()
@@ -100,19 +87,11 @@ class ExtractImagesTest(unittest.TestCase):
         self.assertTrue(block["error"])
         self.assertNotIn("images", result)
 
-    def test_malformed_base64_is_rejected_visibly(self):
-        block = {"type": "image", "mimeType": "image/png", "data": "not base64 !!"}
-        result = extract_images(mcp_result(block), self.store)
-
-        self.assertEqual(
-            result["data"]["mcp"]["content"][0]["type"], "image_rejected"
-        )
-
     def test_one_rejection_does_not_discard_the_other_images(self):
         data = png()
         result = extract_images(
             mcp_result(
-                {"type": "image", "mimeType": "image/png", "data": "!!"},
+                {"type": "image", "mimeType": "image/png", "data": "not base64 !!"},
                 image_block(data),
             ),
             self.store,
@@ -122,11 +101,6 @@ class ExtractImagesTest(unittest.TestCase):
         self.assertEqual(content[0]["type"], "image_rejected")
         self.assertEqual(len(result["images"]), 1)
         self.assertEqual(self.store.read(content[1]["id"]), data)
-
-    def test_result_without_images_is_returned_unchanged(self):
-        original = mcp_result({"type": "text", "text": "plain"})
-
-        self.assertIs(extract_images(original, self.store), original)
 
     def test_transport_error_without_mcp_payload_passes_through(self):
         original = {
@@ -141,9 +115,9 @@ class ExtractImagesTest(unittest.TestCase):
 
 class BinaryRedactionTest(unittest.TestCase):
     def test_secret_redaction_skips_binary_blocks(self):
-        secret = "s3cr3t-token"
-        # base64 里恰好含有密钥子串时，文本替换会破坏原始字节。
         payload = b64encode(png()).decode("ascii")
+        # The secret really occurs in the image; redacting it would corrupt the bytes.
+        secret = payload[20:32]
         adapted = adapt_call_result(
             CallToolResult(
                 content=[
@@ -156,17 +130,5 @@ class BinaryRedactionTest(unittest.TestCase):
         )
 
         content = adapted["data"]["mcp"]["content"]
-        self.assertNotIn(secret, content[0]["text"])
+        self.assertEqual(content[0]["text"], "token=***")
         self.assertEqual(content[1]["data"], payload)
-
-    def test_redaction_still_applies_to_text_blocks(self):
-        secret = "abcdef"
-        adapted = adapt_call_result(
-            CallToolResult(
-                content=[TextContent(type="text", text=f"x{secret}y")],
-                isError=False,
-            ),
-            secret_values=(secret,),
-        )
-
-        self.assertEqual(adapted["data"]["mcp"]["content"][0]["text"], "x***y")

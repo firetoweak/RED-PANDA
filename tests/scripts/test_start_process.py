@@ -12,27 +12,17 @@ import pytest
 
 
 @pytest.mark.process
-def test_start_serves_built_web_without_node_from_another_directory(tmp_path):
+def test_start_serves_built_web_without_node_from_another_directory(tmp_path, prepared_application):
     source = Path(__file__).resolve().parents[2]
-    root = tmp_path / "application"
-    root.mkdir()
-    shutil.copytree(source / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
-    shutil.copyfile(source / "web_chat.py", root / "web_chat.py")
+    root = prepared_application
     # Use the actual application code with a small static page; no frontend build tools.
     (root / "web/dist/assets").mkdir(parents=True)
     (root / "web/dist/index.html").write_text("<!doctype html><title>Prepared konden</title>", encoding="utf-8")
-    python = source / "konden-env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if not python.is_file():
-        pytest.skip("Project Python is not installed")
     if os.name == "nt":
-        # A junction does not require Developer Mode or elevated symlink privileges.
-        subprocess.run(["cmd", "/c", "mklink", "/J", str(root / "konden-env"), str(python.parent.parent)],
-                       check=True, capture_output=True)
         shell = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
         command = [str(shell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(root / "scripts/start.ps1")]
         system_path = str(Path(os.environ["SystemRoot"]) / "System32")
     else:
-        (root / "konden-env").symlink_to(python.parent.parent, target_is_directory=True)
         command = ["/bin/sh", str(root / "scripts/start.sh")]
         helpers = tmp_path / "helpers"
         helpers.mkdir()

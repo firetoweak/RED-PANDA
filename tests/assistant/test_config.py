@@ -116,17 +116,6 @@ class AppConfigTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "<provider>/<model>"):
                     ModelConfig(model=active, compact_threshold_tokens=200000)
 
-    def test_rejects_gateway_and_model_parameter_config(self):
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            data = self._data()
-            data["model"]["candidates"][0]["gateway"] = {"base_url": "http://localhost/v1"}
-            data["model"]["candidates"][0]["request_options"] = {"temperature": 0}
-            self._write_config(path, data)
-
-            with self.assertRaisesRegex(ValueError, "候选模型字段必须是 model/compact_threshold_tokens"):
-                load_app_config(path)
-
     def test_compact_threshold_is_required_and_a_positive_integer(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"

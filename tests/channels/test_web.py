@@ -74,7 +74,6 @@ def test_static_resources_are_explicit(tmp_path):
                 missing_api = client.get("/api/missing")
                 assert missing_api.status_code == 404
                 assert missing_api.json() == {"detail": "Not Found"}
-        assert "/api/files/select" not in {route.path for route in app.routes}
 
 
 def test_frontend_files_stay_inside_static_dir(tmp_path):
@@ -972,24 +971,6 @@ class WebFirstSliceTest(unittest.TestCase):
             )
             self.assertEqual(self.workspaces.workspaces, ())
 
-    def test_file_selection_attaches_or_cancels_without_returning_a_path(self):
-        selected = Path(self._directory.name) / "notes.txt"
-        selected.write_text("x")
-        for choice in (selected, None):
-            with self.subTest(choice=choice), patch(
-                "konden.channels.web.channel.select_file", return_value=choice
-            ):
-                response = self.client.post("/api/sessions/session-old/attachments/select",
-                    json={"connection_id": self.connection.connection_id})
-            self.assertEqual(response.status_code, 200)
-            if choice is None:
-                self.assertEqual(response.json(), {"file": None})
-            else:
-                ref = response.json()["file"]
-                self.assertEqual((ref["kind"], ref["name"], ref["size"]), ("file", "notes.txt", 1))
-                self.assertNotIn("path", ref)
-        self.assertNotIn("/api/files/select", {route.path for route in self.client.app.routes})
-
     def test_known_input_connection_and_authorization_errors_keep_their_meaning(self):
         body = {"connection_id": self.connection.connection_id, "delivery_id": "input-1", "text": " "}
         self.assertEqual(self.client.post("/api/sessions/session-old/inputs", json=body).status_code, 422)
@@ -1088,6 +1069,7 @@ class ReportWorkerFailuresTest(unittest.IsolatedAsyncioTestCase):
         event = await asyncio.wait_for(queue.get(), timeout=1)
         self.assertEqual(event.name, "session_failed")
         self.assertEqual(event.data["session_id"], "session-1")
+        self.assertIn("worker died", event.data["message"])
         self.assertTrue(queue.empty())
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

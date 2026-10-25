@@ -4,7 +4,6 @@ import reducer, {
   bindOwner,
   connected,
   controlNotice,
-  conversationStatus,
   disconnected,
   outputFinal,
   previewDelta,
@@ -164,20 +163,6 @@ describe("runtimeSlice", () => {
   });
 
 
-  it("stores compact status on the owning session", () => {
-    let state = reducer(
-      undefined,
-      conversationStatus({
-        sessionId: "s1",
-        compactCount: 1,
-        compactPhase: "failed",
-      }),
-    );
-    expect(state.sessions.s1.conversationStatus).toEqual({
-      compactCount: 1,
-      compactPhase: "failed",
-    });
-  });
 
   it("clears the host owner on disconnect", () => {
     let state = reducer(undefined, connected("conn-1"));

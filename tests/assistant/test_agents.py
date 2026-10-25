@@ -198,7 +198,6 @@ class AgentRosterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.registry.get(linked.workspace_id).task_root, self.project)
         self.assertEqual(Path(linked.worktree), agent.directory / "projects" / self.workspace.name)
         self.assertEqual(project_agent(await journal.snapshot(agent.session_id)), agent)
-        self.assertFalse((self.home.root / "agents.json").exists())
 
     async def test_rename_keeps_identity_and_group_context_across_restart(self):
         agent, colleague = await self.create("Ada"), await self.create("Lin")

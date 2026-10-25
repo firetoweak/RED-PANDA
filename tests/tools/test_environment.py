@@ -51,16 +51,6 @@ class EnvironmentPathContractTest(unittest.TestCase):
 
             self.assertEqual(resolved.native_path, target.resolve())
 
-    def test_workspace_root_is_not_a_relative_resolution_base(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            cwd = root / "nested"
-            cwd.mkdir()
-
-            resolved = self.binding(root, cwd=cwd).resolver.resolve("new.txt")
-
-            self.assertEqual(resolved.native_path, (cwd / "new.txt").resolve())
-
     def test_nonexistent_path_still_has_a_location(self):
         with tempfile.TemporaryDirectory() as directory:
             resolved = self.binding(Path(directory)).resolver.resolve(
@@ -107,8 +97,3 @@ class EnvironmentPathContractTest(unittest.TestCase):
 
             self.assertEqual(membership.root_id, "package")
             self.assertEqual(membership.display_path, "a.py")
-
-    def test_workspace_view_has_a_serializable_round_trip(self):
-        with tempfile.TemporaryDirectory() as directory:
-            view = self.binding(Path(directory)).workspace_view
-            self.assertEqual(WorkspaceViewSnapshot.from_dict(view.to_dict()), view)

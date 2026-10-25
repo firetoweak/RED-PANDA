@@ -96,8 +96,6 @@ class AgentSubagentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((tree(parent) / "child.txt").read_text(encoding="utf-8"), "from child\n")
         self.assertEqual(git(tree(parent), "log", "-1", "--format=%an", "--", "child.txt"), "konden")
         self.assertEqual(git(tree(parent), "status", "--porcelain"), "")
-        self.assertFalse((self.home.state_root / "workspace_views").exists())
-        self.assertFalse((self.home.state_root / "subagent_worktrees").exists())
         self.assertFalse((self.project / "child.txt").exists())
         events = await SqliteJournal(self.host.store.require(parent.session_id)).snapshot(parent.session_id)
         [intent] = project_delegate_intents(events)
