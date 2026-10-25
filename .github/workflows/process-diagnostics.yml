@@ -13,6 +13,17 @@ on:
       - scripts/ci.py
       - tests/conftest.py
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to verify
+        type: choice
+        default: all
+        options: [all, ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+      group:
+        description: Process group to verify
+        type: choice
+        default: all
+        options: [all, compact, supervisor, execution, integration]
 
 permissions:
   contents: read
@@ -33,8 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
-        group: [compact, supervisor, execution, integration]
+        os: ${{ fromJSON(inputs.platform && inputs.platform != 'all' && format('["{0}"]', inputs.platform) || '["ubuntu-latest","windows-latest","macos-15","macos-15-intel"]') }}
+        group: ${{ fromJSON(inputs.group && inputs.group != 'all' && format('["{0}"]', inputs.group) || '["compact","supervisor","execution","integration"]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

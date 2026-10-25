@@ -37,7 +37,8 @@ class Running:
         self._owner.stdin.flush()
         response = self._owner.stdout.readline()
         if not response:
-            raise RuntimeError("Process owner exited without a response; inspect owner.log")
+            detail = Path(self._diagnostics.name).read_text(encoding="utf-8", errors="replace")
+            raise RuntimeError(f"Command process exited without a response:\n{detail}")
         return json.loads(response)
 
     def poll(self, *, leader_only=False):
@@ -51,7 +52,8 @@ class Running:
                 self._owner.stdin.close()
                 code = self._owner.wait(timeout=15)
                 if code != 0:
-                    raise RuntimeError(f"Process owner failed during cleanup: exit_code={code}; inspect owner.log")
+                    detail = Path(self._diagnostics.name).read_text(encoding="utf-8", errors="replace")
+                    raise RuntimeError(f"Command cleanup failed: exit_code={code}\n{detail}")
             self._closed = True
         finally:
             if self._owner is not None:
