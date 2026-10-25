@@ -3,11 +3,13 @@ import { configureStore } from "@reduxjs/toolkit";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { BackgroundCommands } from "../src/features/conversation/BackgroundCommands";
+import { BotDetailsPanel } from "../src/features/conversation/BotDetailsPanel";
 import { SessionConversation } from "../src/features/conversation/SessionConversation";
 import runtimeReducer, { connected } from "../src/realtime/runtimeSlice";
 
-const commands = vi.hoisted(() => ({ stop: vi.fn(() => Promise.resolve({ data: {} })), refetch: vi.fn() }));
+const commands = vi.hoisted(() => ({ stop: vi.fn(() => Promise.resolve({ data: {} })), refetch: vi.fn(), state: "running" }));
 
 vi.mock("../src/features/conversation/Conversation", () => ({ Conversation: () => <p>对话内容</p> }));
 vi.mock("../src/api/kondenApi", () => ({
@@ -31,8 +33,9 @@ vi.mock("../src/api/kondenApi", () => ({
     { routine_id: "r-pr", name: "检查 PR", intent: "看评审", schedule: "@every 10m", state: "active", next_run: null, last_run: null },
   ] }),
   useSetRoutineStateMutation: () => [() => undefined, { isLoading: false }],
-  useGetBackgroundCommandsQuery: (sessionId: string) => ({ currentData: sessionId !== "ada" ? [] : [
-    { command_id: "download", command: "download release.zip", state: "running", duration_ms: 65000, exit_code: null },
+  useGetBackgroundCommandsQuery: (sessionId: string) => ({ currentData: [
+    ...(sessionId !== "ada" ? [] : [{ command_id: "download", command: "download release.zip", state: commands.state, duration_ms: 65000, exit_code: null }]),
+    ...["completed", "stopped", "unknown"].map((state) => ({ command_id: state, command: `${state} command`, state, duration_ms: 2000, exit_code: 0 })),
   ], refetch: commands.refetch }),
   useStopBackgroundCommandMutation: () => [commands.stop, { isLoading: false }],
   useLinkProjectMutation: () => [() => undefined, { isLoading: false, reset: () => undefined }],
@@ -41,7 +44,12 @@ vi.mock("../src/api/kondenApi", () => ({
   useRenameAgentMutation: () => [() => undefined, { isLoading: false }],
   useUnlinkProjectMutation: () => [() => undefined, { isLoading: false }],
 }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+beforeEach(() => {
+  commands.state = "running";
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); });
 
 it("桌面资料默认展开，后台任务与例行任务跟随当前 Agent，也可手动收起", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -61,6 +69,7 @@ it("桌面资料默认展开，后台任务与例行任务跟随当前 Agent，�
   expect(background.getByText("download release.zip")).toBeVisible();
   expect(background.getByText("1 项运行中")).toBeVisible();
   expect(background.getByText("1 分 5 秒")).toBeVisible();
+  for (const state of ["completed", "stopped", "unknown"]) expect(background.queryByText(`${state} command`)).not.toBeInTheDocument();
   fireEvent.click(background.getByRole("button", { name: "停止命令" }));
   expect(commands.stop).toHaveBeenCalledWith({ sessionId: "ada", connectionId: "connection", commandId: "download" });
   await Promise.resolve();
@@ -75,7 +84,7 @@ it("桌面资料默认展开，后台任务与例行任务跟随当前 Agent，�
   expect(next.queryByText("Alpha")).not.toBeInTheDocument();
   expect(next.getByRole("link", { name: "接口讨论" })).toBeInTheDocument();
   expect(next.getByText("无例行任务")).toBeInTheDocument();
-  expect(next.getByText("无后台任务")).toBeInTheDocument();
+  expect(next.getByText("无运行中的后台任务")).toBeInTheDocument();
   expect(next.queryByText("download release.zip")).not.toBeInTheDocument();
 });
 
@@ -96,4 +105,57 @@ it("窄屏从页头打开资料后仍能访问例行任务，并能关闭回到�
   fireEvent.click(details.getByRole("button", { name: "关闭 Agent 资料" }));
   expect(screen.queryByRole("dialog", { name: "Agent 资料" })).not.toBeInTheDocument();
   expect(screen.getByText("对话内容")).toBeVisible();
+  expect(screen.queryByRole("separator", { name: "调节 Bot 资料宽度" })).not.toBeInTheDocument();
+});
+
+it("后台任务更新为结束或停止后从当前列表移除", () => {
+  const view = render(<MantineProvider env="test"><BackgroundCommands sessionId="ada" connectionId="connection" /></MantineProvider>);
+  expect(screen.getByText("download release.zip")).toBeVisible();
+  for (const state of ["completed", "stopped", "unknown"]) {
+    commands.state = state;
+    view.rerender(<MantineProvider env="test"><BackgroundCommands sessionId="ada" connectionId="connection" /></MantineProvider>);
+    expect(screen.queryByText("download release.zip")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止命令" })).not.toBeInTheDocument();
+    expect(screen.getByText("无运行中的后台任务")).toBeVisible();
+  }
+});
+
+it("资料栏向左拖宽、向右拖窄，保留聊天空间，关闭重开记住宽度并可用键盘调整", () => {
+  vi.stubGlobal("PointerEvent", class extends MouseEvent {
+    pointerId: number;
+    constructor(type: string, init: PointerEventInit) { super(type, init); this.pointerId = init.pointerId ?? 1; }
+  });
+  let parentWidth = 1000;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const width = this.classList.contains("bot-details-panel") ? Number.parseFloat(this.style.getPropertyValue("--bot-details-width")) : parentWidth;
+    return { width, right: 1200 } as DOMRect;
+  });
+  const panel = () => <MantineProvider env="test"><div><BotDetailsPanel onClose={() => undefined}><p>资料内容</p></BotDetailsPanel></div></MantineProvider>;
+  const view = render(panel());
+  let handle = screen.getByRole("separator", { name: "调节 Bot 资料宽度" });
+  Object.assign(handle, { setPointerCapture: vi.fn() });
+  fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+  fireEvent.pointerMove(handle, { clientX: 800, pointerId: 1 });
+  expect(handle).toHaveAttribute("aria-valuenow", "400");
+  fireEvent.pointerMove(handle, { clientX: 1000, pointerId: 2 });
+  expect(handle).toHaveAttribute("aria-valuenow", "400");
+  fireEvent.pointerUp(handle, { pointerId: 1 });
+  expect(window.localStorage.getItem("konden.botDetailsWidth")).toBe("400");
+  view.unmount();
+  expect(document.body).not.toHaveClass("is-resizing-bot-details");
+  render(panel());
+  handle = screen.getByRole("separator", { name: "调节 Bot 资料宽度" });
+  expect(handle).toHaveAttribute("aria-valuenow", "400");
+  fireEvent.keyDown(handle, { key: "ArrowRight" });
+  expect(window.localStorage.getItem("konden.botDetailsWidth")).toBe("380");
+  Object.assign(handle, { setPointerCapture: vi.fn() });
+  fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+  fireEvent.pointerMove(handle, { clientX: 1199, pointerId: 1 });
+  expect(handle).toHaveAttribute("aria-valuenow", "220");
+  parentWidth = 900;
+  fireEvent.pointerMove(handle, { clientX: 0, pointerId: 1 });
+  expect(handle).toHaveAttribute("aria-valuenow", "420");
+  fireEvent.pointerCancel(handle, { pointerId: 1 });
+  expect(document.body).not.toHaveClass("is-resizing-bot-details");
+  expect(window.localStorage.getItem("konden.botDetailsWidth")).toBe("420");
 });
