@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from konden.assistant.control import pending_approval_view, project_control_message
-from konden.assistant.external_messages import EXTERNAL_MESSAGE, Feedback, parse_external
+from konden.assistant.external_messages import EXTERNAL_MESSAGE, external_name, parse_external
 from konden.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent
 from konden.assistant.compact.core import latest_input_tokens
 from konden.assistant.attachments import AttachmentGateway, AttachmentStore
@@ -162,10 +162,7 @@ class ExternalMessageItem:
     peer: str
     identity: str
     text: str
-    revision: str
-    reference: str
-    previous_request_id: str | None
-    feedback: Feedback | None
+    reply_to: str | None
     occurred_at: datetime
 
 
@@ -511,19 +508,14 @@ def project_conversation(
             communication_notices.setdefault(event.causation_id, []).append(
                 parse_agent_fact(event.payload))
     items: list[ConversationItem] = []
-    external_peers: dict[str, str] = {}
     for event in events:
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == EXTERNAL_MESSAGE:
             message = parse_external(payload)
-            peer = message.name
-            if message.incoming:
-                external_peers[message.message_id] = message.name
-            else:
-                peer = external_peers[message.reply_to]
+            peer = external_name(message.identity)
             items.append(ExternalMessageItem("external_message", message.message_id,
                 "received" if message.incoming else "sent", peer, message.identity, message.text,
-                message.revision, message.reference, message.previous_request_id, message.feedback, event.occurred_at))
+                message.reply_to, event.occurred_at))
             continue
         if event.event_id in sent_messages:
             message = sent_messages[event.event_id]

@@ -144,8 +144,10 @@ it("状态事件更新所属会话，并使对应的页面数据重新读取", (
   expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["AutoAuthorize", "Conversation", "Inbox", "Agents"]));
   listeners.get("avatars_changed")!(new MessageEvent("avatars_changed", { data: "{}" }));
   expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Avatars"]));
+  listeners.get("external_sessions_changed")!(new MessageEvent("external_sessions_changed", { data: "{}" }));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["ExternalSessions", "Conversation"]));
   listeners.get("connected")!(new MessageEvent("connected", { data: '{"connection_id":"again"}' }));
-  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
+  expect(dispatch).toHaveBeenCalledWith(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections"]));
   close();
   store.dispatch(kondenApi.util.resetApiState());
 });

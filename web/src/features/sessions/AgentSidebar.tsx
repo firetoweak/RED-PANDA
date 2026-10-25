@@ -10,6 +10,7 @@ import { CreateAgentModal } from "./CreateAgentModal";
 import { BotRoster } from "./BotRoster";
 import { AutoAuthorize } from "./AutoAuthorize";
 import { SettingsMenu } from "../settings/SettingsMenu";
+import { ExternalRoster } from "../external/ExternalRoster";
 
 export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
   const navigate = useNavigate();
@@ -55,15 +56,18 @@ export function AgentSidebar({ onNavigate }: { onNavigate: () => void }) {
           </Tooltip>
         </Group>
       </Group>
-      <TextInput ref={searchInput} className="sidebar-search" aria-label="搜索 Bot 或群聊" placeholder="搜索 Bot 或群聊" value={search} mt={12} size="sm" leftSection={<IconSearch size={14} />} rightSection={search === "" ? <kbd>Ctrl K</kbd> : <ActionIcon aria-label="清除搜索" size="xs" onClick={() => setSearch("")}><IconX size={12} /></ActionIcon>} rightSectionWidth={48} onChange={(event) => setSearch(event.currentTarget.value)} />
+      <TextInput ref={searchInput} className="sidebar-search" aria-label="搜索对话" placeholder="搜索对话" value={search} mt={12} size="sm" leftSection={<IconSearch size={14} />} rightSection={search === "" ? <kbd>Ctrl K</kbd> : <ActionIcon aria-label="清除搜索" size="xs" onClick={() => setSearch("")}><IconX size={12} /></ActionIcon>} rightSectionWidth={48} onChange={(event) => setSearch(event.currentTarget.value)} />
     </AppShell.Section>
     <AppShell.Section grow className="session-section">
       <SegmentedControl className="sidebar-filter" aria-label="对话类型" fullWidth size="xs" mb={10} value={filter} onChange={setFilter} data={[
         { value: "all", label: <Tooltip label="全部"><span className="sidebar-filter-option"><IconMessages aria-hidden="true" size={17} /><VisuallyHidden>全部</VisuallyHidden></span></Tooltip> },
         { value: "groups", label: <Tooltip label="群聊"><span className="sidebar-filter-option"><IconUsersGroup aria-hidden="true" size={17} /><VisuallyHidden>群聊</VisuallyHidden></span></Tooltip> },
         { value: "bots", label: <Tooltip label="Bot"><span className="sidebar-filter-option"><IconMessageCircle aria-hidden="true" size={17} /><VisuallyHidden>Bot</VisuallyHidden></span></Tooltip> },
+        { value: "external", label: <Tooltip label="外部会话"><span className="sidebar-filter-option"><IconPlugConnected aria-hidden="true" size={17} /><VisuallyHidden>外部会话</VisuallyHidden></span></Tooltip> },
       ]} />
-      <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => filter !== "groups" && agent.name.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => filter !== "bots" && chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== "" || filter !== "all"} onOpen={open} creatingSection={sectionCreating} onCloseSection={() => setSectionCreating(false)} /></ScrollArea>
+      <ScrollArea className="session-scroll" type="hover"><BotRoster agents={agents.filter((agent) => (filter === "all" || filter === "bots") && agent.name.toLocaleLowerCase().includes(query))} chats={chats.filter((chat) => (filter === "all" || filter === "groups") && chat.name.toLocaleLowerCase().includes(query))} attentionSessionIds={new Set(inbox.map((item) => item.session_id))} sessionId={sessionId} groupId={groupId} searching={query !== "" || filter !== "all"} onOpen={open} creatingSection={sectionCreating} onCloseSection={() => setSectionCreating(false)} />
+        {filter === "all" || filter === "external" ? <ExternalRoster query={query} onOpen={open} /> : null}
+      </ScrollArea>
     </AppShell.Section>
     <AppShell.Section className="sidebar-footer"><Group gap={4} wrap="nowrap">
       <SettingsMenu onOpen={onNavigate} /><ColorSchemeSwitcher />
