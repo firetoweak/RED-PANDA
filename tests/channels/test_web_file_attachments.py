@@ -73,3 +73,10 @@ class WebFileAttachmentsTest(unittest.TestCase):
                     json={"connection_id": connection.connection_id, "path": str(live)},
                 ).status_code, 422)
                 picker.assert_awaited_once()
+                picker.return_value = None
+                cancelled = client.post(
+                    "/api/sessions/source/attachments/select",
+                    json={"connection_id": connection.connection_id},
+                )
+                self.assertEqual(cancelled.status_code, 200)
+                self.assertEqual(cancelled.json(), {"file": None})

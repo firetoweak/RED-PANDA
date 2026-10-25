@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -299,37 +297,6 @@ class AssistantSessionResumeTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(scheduler.woken, [])
         finally:
             await scheduler.close()
-
-    async def test_create_and_policy_do_not_write_host_preference_files(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker(()), {})
-            scheduler = RecordingScheduler(runtime, self.SESSION_ID)
-            surface = ToolSurface()
-            sessions = AssistantSessions(
-                runtime,
-                surface,
-                scheduler,
-                control=scheduler._control,
-                management=ManagementSurface(
-                    (),
-                    MemoryArtifactGateway(),
-                    ModelContextSettings(),
-                ),
-                catalog=RegistryCatalog(surface),
-            )
-            try:
-                view = await sessions.create(self.SESSION_ID)
-                self.assertFalse(view.auto_authorize)
-                updated = await sessions.apply_auto_authorize(
-                    self.SESSION_ID,
-                    enabled=True,
-                )
-                self.assertTrue(updated.auto_authorize)
-                self.assertFalse((root / "auto_authorize.json").is_file())
-            finally:
-                await scheduler.close()
-
 
 class AcceptInputTest(unittest.IsolatedAsyncioTestCase):
     async def test_control_confirmation_precedes_command_authorization(self):

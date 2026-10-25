@@ -146,6 +146,8 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             ))
             self.assertIsInstance(request, ControlApprovalProposal)
             frozen_hash = request.payload["content_hash"]
+            self.assertTrue(spec.control_boundary)
+            self.assertTrue(spec.exclusive_batch)
 
             write_skill(
                 source,
@@ -203,15 +205,6 @@ class SkillInstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("安装内容已不可用", execution.message)
             self.assertNotIn(request.payload["content_hash"], execution.message)
             self.assertIsNone(await service.registry.get("demo"))
-
-    async def test_install_proposal_is_both_approval_boundary_and_exclusive(self):
-        with tempfile.TemporaryDirectory() as directory:
-            workspace = KondenHome(Path(directory) / ".konden")
-            service = SkillApplicationService(workspace)
-            spec = create_skill_install_proposal_spec(service)
-
-            self.assertTrue(spec.control_boundary)
-            self.assertTrue(spec.exclusive_batch)
 
     async def test_set_enabled_proposal_freezes_revision_and_rejects_drift(self):
         with tempfile.TemporaryDirectory() as directory:

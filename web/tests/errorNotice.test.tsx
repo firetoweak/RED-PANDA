@@ -14,11 +14,11 @@ it("长错误默认收起，内容页提供全文和复制，打开时仍可操�
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent });
   const message = `ServiceFailure: Filesystem metadata is corrupt\nTraceback (most recent call last):\n${"    File worker.py, line 246\n".repeat(100)}origin points to missing delta inode`;
-  const rollback = vi.fn();
+  const operateHistory = vi.fn();
   function Harness() {
     const [opened, setOpened] = useState(false);
     return <div>
-      <button onClick={rollback}>从这一步之后重开</button>
+      <button onClick={operateHistory}>历史操作</button>
       <ErrorNotice title="执行已停止" message={message} onOpen={() => setOpened(true)} />
       {!opened ? null : <ContentPage title="错误详情" onClose={() => setOpened(false)}>
         <ErrorDetails message={message} />
@@ -36,8 +36,8 @@ it("长错误默认收起，内容页提供全文和复制，打开时仍可操�
   expect(details.querySelector("pre")?.textContent).toBe(message);
   fireEvent.click(screen.getByRole("button", { name: "复制完整错误" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(message));
-  fireEvent.click(screen.getByRole("button", { name: "从这一步之后重开" }));
-  expect(rollback).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "历史操作" }));
+  expect(operateHistory).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "关闭内容页" }));
   expect(screen.queryByRole("region", { name: "错误详情" })).not.toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("执行已停止");

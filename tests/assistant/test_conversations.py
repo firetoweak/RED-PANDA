@@ -392,32 +392,6 @@ class Idle:
 
 
 class QueriesTest(unittest.IsolatedAsyncioTestCase):
-    async def test_conversation_carries_host_session_flags(self):
-        from pathlib import Path
-        from tempfile import TemporaryDirectory
-
-        from konden.assistant.conversations import AssistantQueries
-        from konden.assistant.host.session_store import SessionStore
-        from konden.runtime import SqliteJournal
-        from konden.runtime.events import DeliveryIdentity, EventDraft
-
-        with TemporaryDirectory() as directory:
-            store = SessionStore(Path(directory))
-            queries = AssistantQueries(store, Idle())
-            await store.create("spoken", workspace_id="workspace-1")
-            await SqliteJournal(store.require("spoken")).accept_delivery(
-                EventDraft(
-                    event_id="user-1",
-                    session_id="spoken",
-                    payload=UserMessageReceived("你好"),
-                    occurred_at=datetime(2026, 9, 16, tzinfo=timezone.utc),
-                    delivery=DeliveryIdentity("web", "d1"),
-                )
-            )
-            spoken = await queries.conversation("spoken")
-
-        self.assertTrue(spoken.session.auto_authorize)
-
     async def test_inbox_lists_only_agent_pending_items(self):
         from pathlib import Path
         from tempfile import TemporaryDirectory
@@ -580,6 +554,7 @@ class QueriesTest(unittest.IsolatedAsyncioTestCase):
             for enabled in (True, False):
                 sessions.auto_authorize_enabled = enabled
                 conversation = await queries.conversation("quiet")
+                self.assertEqual(conversation.session.auto_authorize, enabled)
                 self.assertEqual(conversation.session.pending_authorization_ids,
                                  () if enabled else ("cmd-quiet",))
                 self.assertEqual(len(conversation.session.pending_authorization_commands),

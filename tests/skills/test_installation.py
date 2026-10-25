@@ -74,7 +74,7 @@ class SkillRegistryTest(unittest.IsolatedAsyncioTestCase):
 
 
 class LocalSkillInstallerTest(unittest.IsolatedAsyncioTestCase):
-    async def test_installs_under_frontmatter_name_and_defaults_disabled(self):
+    async def test_installs_under_frontmatter_name_and_defaults_enabled(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = KondenHome(Path(directory) / ".konden")
             workspace.initialize()

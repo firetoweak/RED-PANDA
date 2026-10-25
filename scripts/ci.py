@@ -11,13 +11,22 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SMOKE_TESTS = (
+    "tests/scripts/test_start_process.py",
+    "tests/scripts/test_dev_process.py",
+    "tests/assistant/test_data_root.py",
+    "tests/assistant/test_worker_spawn.py",
+    "tests/assistant/test_supervisor.py::SupervisorTest::test_child_recovery_preserves_unfinished_read_and_reports_once",
+    "tests/execution/test_host_process_process.py::test_owned_process_output_exit_and_session_isolation",
+)
 
 
 def verification_environment() -> dict[str, str]:
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("KONDEN_")
                    and key not in {"PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONPATH", "PYTHONHOME"}}
-    environment.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    environment.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1",
+                       PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
     return environment
 
 
@@ -41,15 +50,15 @@ def clean_checkout(targets: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("targets", nargs="*", choices=("python", "web", "web-test", "web-build", "process"))
+    parser.add_argument("targets", nargs="*", choices=("python", "web", "smoke", "process"))
     parser.add_argument("--clean", action="store_true",
-                        help="在独立虚拟环境与干净 HEAD 中验证 python/web；不携带本机产物")
+                        help="在独立虚拟环境与干净 HEAD 中验证；不携带本机产物")
     parser.add_argument("--process-group", choices=("compact", "supervisor", "execution", "integration"),
                         help="只验证指定 process 测试组；不指定时验证全部 process 用例")
     parser.add_argument("--workers", type=int, default=1,
                         help="process 组内并行 worker 数；默认串行")
     args = parser.parse_args(argv)
-    targets = args.targets or ["python", "web"]
+    targets = args.targets or ["python", "web", "smoke"]
     if args.process_group and "process" not in targets:
         parser.error("--process-group 需要 process 验证目标")
     if args.workers < 1 or (args.workers != 1 and "process" not in targets):
@@ -58,21 +67,22 @@ def main(argv: list[str] | None = None) -> None:
     if f"{sys.version_info.major}.{sys.version_info.minor}" != expected_python:
         parser.error(f"请使用 Python {expected_python}")
     if args.clean:
-        if "process" in targets:
-            parser.error("--clean 只验证 python/web；process 在当前 checkout 中准备应用命令行工具")
-        clean_checkout(targets)
+        arguments = [*targets, "--workers", str(args.workers)]
+        if args.process_group:
+            arguments.extend(["--process-group", args.process_group])
+        clean_checkout(arguments)
         return
     # Also applies before collection and to all test child processes.
     environment = verification_environment()
     os.environ.clear()
     os.environ.update(environment)
-    needs_web = any(target in {"web", "web-test", "web-build"} for target in targets)
+    needs_web = "web" in targets
     needs_node = needs_web or ("process" in targets and args.process_group in (None, "execution"))
     if needs_node:
         node_version = subprocess.check_output(["node", "--version"], text=True).strip()
         if node_version.split(".")[0] != "v24":
             parser.error("CI 验证请使用 Node.js 24")
-    if "python" in targets or "process" in targets:
+    if any(target in {"python", "smoke", "process"} for target in targets):
         run([sys.executable, "-m", "pip", "install", "--require-hashes", "-r", "requirements.lock"])
     if "process" in targets:
         from scripts import runtime_tools
@@ -88,6 +98,10 @@ def main(argv: list[str] | None = None) -> None:
                  "konden", "thinllm", "scripts", "tests", "console_chat.py", "web_chat.py"])
             run([sys.executable, "-m", "pytest", "--durations=20",
                  "--junitxml=.tools/test-results/python.xml"])
+        elif target == "smoke":
+            run([sys.executable, "-m", "pytest", *SMOKE_TESTS, "-m", "process", "-v",
+                 "-o", "faulthandler_timeout=120", "--durations=20",
+                 "--junitxml=.tools/test-results/smoke.xml"])
         elif target == "process":
             command = [sys.executable, "-m", "pytest", "-m", "process", "-x", "-v",
                        "-o", "faulthandler_timeout=120", "--durations=20",
@@ -95,13 +109,11 @@ def main(argv: list[str] | None = None) -> None:
             if args.process_group:
                 command.extend(["--process-group", args.process_group])
             if args.workers > 1:
-                command.extend(["-n", str(args.workers), "--dist", "worksteal"])
+                command.extend(["-p", "xdist.plugin", "-n", str(args.workers), "--dist", "worksteal"])
             run(command)
         else:
-            if target in {"web", "web-test"}:
-                run([npm, "test"], cwd=ROOT / "web")
-            if target in {"web", "web-build"}:
-                run([npm, "run", "build"], cwd=ROOT / "web")
+            run([npm, "test"], cwd=ROOT / "web")
+            run([npm, "run", "build"], cwd=ROOT / "web")
 
 
 if __name__ == "__main__":

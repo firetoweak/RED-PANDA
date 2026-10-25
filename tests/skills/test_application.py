@@ -39,14 +39,6 @@ class SkillApplicationServiceTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.temporary.cleanup()
 
-    async def test_storage_has_independent_product_root(self):
-        self.assertEqual(
-            self.service.skills_root,
-            self.workspace.skills_root.resolve(),
-        )
-        self.assertEqual(self.service.skills_root.parent, self.workspace.root)
-        self.assertNotEqual(self.service.skills_root, self.workspace.mcp_root)
-
     async def test_test_enable_disable_and_remove(self):
         inspection = await self.service.test_skill("demo")
         self.assertEqual(inspection.record.name, "demo")

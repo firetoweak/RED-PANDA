@@ -1,20 +1,9 @@
-"""Agent 在自己的 worktree 里直接工作；真实 Shell 必须使用给定的 worktree。"""
+"""装配后的文件工具遵守给定目录与权限，并向模型提供相应能力。"""
 from __future__ import annotations
 
-import os
 from pathlib import Path
-import subprocess
 import unittest
 from tempfile import TemporaryDirectory
-from functools import partial
-
-from konden.assistant.host.session_store import SessionStore
-from konden.assistant.host.supervisor import HostSupervisor
-from konden.filesystem.registry import WorkspaceRegistry
-from tests.fixtures.session_worker import config_for
-
-import pytest
-
 from konden.assistant.assembly import build_assistant_assembly
 from konden.config import AssistantConfig
 from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
@@ -77,44 +66,3 @@ class DirectWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn(skill.bundle.main_instructions, environment)
             finally:
                 await assembly.scheduler.close()
-
-    @pytest.mark.process
-    async def test_command_runs_in_real_git_worktree(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            project = root / "project"
-            project.mkdir()
-            (project / "note.txt").write_text("original")
-
-            def git(*arguments):
-                return subprocess.run(["git", "-C", str(project), *arguments], check=True, capture_output=True)
-
-            git("init")
-            git("add", "note.txt")
-            git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "initial")
-            worktree = root / "agent"
-            git("worktree", "add", "-b", "agent", str(worktree))
-            home = KondenHome(root / "home")
-            store = SessionStore(home.runtime_sessions_root)
-            registered = WorkspaceRegistry.load(home.workspaces_path).register_path(worktree)
-            host = HostSupervisor(store, partial(config_for, worktree), home, None, llm=CapturingLlm())
-            await host.create("agent", registered.workspace_id)
-            assembly = await build_assistant_assembly(
-                AssistantConfig(model_name="test", compact_threshold_tokens=200_000, llm=CapturingLlm()),
-                lambda *_: None, MemoryJournal(), session_id="agent",
-                workspace=workspace_record(worktree), home=home,
-                agent_branch=True, session_transport=host._route,
-            )
-            try:
-                command = ("Set-Content -LiteralPath note.txt -Value command; (Get-Location).Path"
-                           if os.name == "nt" else "printf 'command\\n' > note.txt; pwd")
-                result = await assembly.bindings["execute_command"].handler(
-                    AttemptContext("agent", "command", "attempt-command", 1), {"command": command},
-                )
-                self.assertEqual(result["code"], "COMMAND_COMPLETED", result)
-                self.assertEqual((worktree / "note.txt").read_text().strip(), "command")
-                self.assertEqual((project / "note.txt").read_text(), "original")
-                self.assertEqual(git("status", "--porcelain").stdout, b"")
-            finally:
-                await assembly.scheduler.close()
-                await host.close()

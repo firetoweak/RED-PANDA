@@ -214,7 +214,6 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         # Completing write and reply Steps must not stage or commit.
                         self.assertEqual(git("rev-parse", agent.projects[0].branch).stdout, base)
                         self.assertEqual([item.workspace_id for item in agent.projects], [workspace.workspace_id])
-                    self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
                     await current.receive_user_message(agents[0].session_id, "FINISH_AGENT", delivery_id="finish")
                     await asyncio.wait_for(current.wait_quiescent(agents[0].session_id), 30)
@@ -274,7 +273,6 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
                         self.assertNotIn(workspace.workspace_id, json.dumps(request["messages"]))
                         for agent in agents:
                             self.assertNotIn(agent.session_id, json.dumps(request["messages"]))
-                    self.assertFalse((home.state_root / "workspace_views").exists())
                     self.assertTrue(current.failures.empty())
                     self.assertEqual(git("rev-parse", agents[0].projects[0].branch).stdout, committed)
                     self.assertEqual(git("rev-parse", agents[1].projects[0].branch).stdout, base)

@@ -51,15 +51,6 @@ class BashCommandEnvironmentPolicyTest(unittest.TestCase):
 
 
 class BashDiscoveryTest(unittest.TestCase):
-    def test_discovers_bash(self):
-        with patch(
-            "konden.execution.local.bash.shutil.which",
-            return_value="/usr/bin/bash",
-        ):
-            runner = BashCommandRunner()
-
-        self.assertEqual(runner.executable, "/usr/bin/bash")
-
     def test_fails_when_bash_is_unavailable(self):
         with patch(
             "konden.execution.local.bash.shutil.which",

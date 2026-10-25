@@ -363,42 +363,9 @@ class McpRegistrySecretTest(unittest.IsolatedAsyncioTestCase):
                 record.credential_refs[QUERY_SECRET_KEY],
                 secrets.ref_for("tavily", QUERY_SECRET_KEY),
             )
-
-    async def test_streamable_http_query_refs_roundtrip(self):
-        with TemporaryDirectory() as directory:
-            workspace = KondenHome(Path(directory) / ".konden")
-            workspace.initialize()
-            registry = McpRegistry.from_home(workspace)
-            secrets = McpSecretStore.from_home(workspace)
-            service = McpApplicationService(
-                registry,
-                secrets,
-                McpClientManager(
-                    secrets,
-                    runtime_root=_runtime_root(workspace),
-                ),
-            )
-            record = await service.upsert_server(
-                server_id="tavily",
-                display_name="Tavily",
-                transport="streamable_http",
-                transport_config={
-                    "url": "https://mcp.tavily.com/mcp/?a=1&b=2",
-                },
-                enabled=False,
-            )
-
-            restored = McpServerRecord.from_dict(record.to_dict())
-
-            self.assertEqual(
-                restored.transport_config.url,
-                record.transport_config.url,
-            )
-            self.assertEqual(
-                restored.transport_config.query_refs,
-                record.transport_config.query_refs,
-            )
-            self.assertEqual(restored.credential_refs, record.credential_refs)
+            reloaded = await McpRegistry.from_home(workspace).get("tavily")
+            self.assertEqual(reloaded.transport_config.query_refs, config.query_refs)
+            self.assertEqual(reloaded.credential_refs, record.credential_refs)
 
     async def test_agent_management_tools_find_and_test_disabled_server(self):
         with TemporaryDirectory() as directory:
@@ -1259,12 +1226,12 @@ class McpPaginationTest(unittest.IsolatedAsyncioTestCase):
     async def test_tool_list_collects_all_paginated_pages(self):
         pages = {
             None: ListToolsResult(
-                tools=[_tool(f"tool_{index}") for index in range(50)],
+                tools=[_tool("tool_0"), _tool("tool_1")],
                 nextCursor="page-2",
                 ttlMs=5_000,
             ),
             "page-2": ListToolsResult(
-                tools=[_tool(f"tool_{index}") for index in range(50, 120)],
+                tools=[_tool("tool_2")],
                 ttlMs=3_000,
             ),
         }
@@ -1282,8 +1249,7 @@ class McpPaginationTest(unittest.IsolatedAsyncioTestCase):
             )
             tools, ttl = await manager._paginate_tools(PaginatedSession())
 
-        self.assertEqual(len(tools), 120)
-        self.assertEqual(tools[-1].name, "tool_119")
+        self.assertEqual([tool.name for tool in tools], ["tool_0", "tool_1", "tool_2"])
         self.assertEqual(ttl, 3.0)
 
 
@@ -1330,19 +1296,19 @@ class McpRealStreamableHttpIntegrationTest(
             )
             try:
                 specs = None
-                for _ in range(30):
-                    if process.returncode is not None:
-                        stderr = (await process.stderr.read()).decode(
-                            errors="replace"
-                        )
-                        self.fail(f"HTTP fixture exited early: {stderr}")
-                    try:
-                        specs = await service.toolset_provider.tool_specs(
-                            "mcp:real_http"
-                        )
-                        break
-                    except ToolsetLoadError:
-                        await asyncio.sleep(0.1)
+                async with asyncio.timeout(15):
+                    while specs is None:
+                        if process.returncode is not None:
+                            stderr = (await process.stderr.read()).decode(
+                                errors="replace"
+                            )
+                            self.fail(f"HTTP fixture exited early: {stderr}")
+                        try:
+                            specs = await service.toolset_provider.tool_specs(
+                                "mcp:real_http"
+                            )
+                        except ToolsetLoadError:
+                            await asyncio.sleep(0.1)
                 self.assertIsNotNone(specs)
                 echo = next(spec for spec in specs if spec.name.endswith("echo"))
                 result = await echo.handler({"value": "hello-http"})

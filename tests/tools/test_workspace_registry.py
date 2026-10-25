@@ -75,23 +75,16 @@ class WorkspaceRegistryTest(unittest.TestCase):
         project = self.make_project("my-app")
         record = registry.create(task_root=project)
 
+        kept = registry.create(task_root=self.make_project("kept"))
         registry.delete(record.workspace_id)
 
-        self.assertEqual(registry.workspaces, ())
+        self.assertEqual(registry.workspaces, (kept,))
         self.assertEqual(
             WorkspaceRegistry.load(self.registry_path).workspaces,
-            (),
+            (kept,),
         )
         self.assertTrue(project.is_dir())
-
-    def test_delete_keeps_the_other_records(self):
-        registry = WorkspaceRegistry.load(self.registry_path)
-        kept = registry.create(task_root=self.make_project("kept"))
-        dropped = registry.create(task_root=self.make_project("dropped"))
-
-        registry.delete(dropped.workspace_id)
-
-        self.assertEqual(registry.workspaces, (kept,))
+        self.assertTrue(kept.task_root.is_dir())
 
     def test_delete_rejects_unknown_workspace(self):
         registry = WorkspaceRegistry.load(self.registry_path)
@@ -134,6 +127,7 @@ class WorkspaceRegistryTest(unittest.TestCase):
 
         self.assertEqual(first.workspace_id, again.workspace_id)
         self.assertEqual(first.name, "my-app")
+        self.assertEqual(first.task_root, project.resolve())
         self.assertEqual(len(registry.workspaces), 1)
 
     def test_create_rejects_a_missing_directory(self):
@@ -141,15 +135,6 @@ class WorkspaceRegistryTest(unittest.TestCase):
 
         with self.assertRaises(WorkspaceRegistryError):
             registry.create(task_root=self.root / "missing")
-
-    def test_register_path_names_new_workspace_after_directory(self):
-        registry = WorkspaceRegistry.load(self.registry_path)
-        project = self.make_project("brand-new")
-
-        record = registry.register_path(project)
-
-        self.assertEqual(record.name, "brand-new")
-        self.assertEqual(record.task_root, project.resolve())
 
     def test_record_rejects_missing_directory(self):
         with self.assertRaises(ValueError):

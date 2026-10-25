@@ -59,14 +59,15 @@ class AttachmentStoreTest(unittest.TestCase):
         self.assertNotEqual(red.attachment_id, blue.attachment_id)
 
     def test_saved_bytes_round_trip(self):
-        data = png()
+        data = png((320, 240))
         ref = self.store.save_image(data, "image/png")
 
         self.assertEqual(self.store.read(ref.attachment_id), data)
         inspected = self.store.inspect(ref.attachment_id)
         self.assertEqual(inspected.attachment_id, ref.attachment_id)
         self.assertEqual(inspected.mime, "image/png")
-        self.assertEqual((inspected.width, inspected.height), (8, 8))
+        self.assertEqual((inspected.width, inspected.height), (320, 240))
+        self.assertEqual((inspected.source_width, inspected.source_height), (320, 240))
 
     def test_oversized_image_is_normalized_and_keeps_source_facts(self):
         ref = self.store.save_image(png((4096, 2048)), "image/png")
@@ -76,14 +77,6 @@ class AttachmentStoreTest(unittest.TestCase):
         self.assertEqual((ref.source_width, ref.source_height), (4096, 2048))
         with Image.open(BytesIO(self.store.read(ref.attachment_id))) as stored:
             self.assertEqual(stored.size, (ref.width, ref.height))
-
-    def test_image_within_limits_is_stored_verbatim(self):
-        data = png((320, 240))
-        ref = self.store.save_image(data, "image/png")
-
-        self.assertEqual((ref.width, ref.height), (320, 240))
-        self.assertEqual((ref.source_width, ref.source_height), (320, 240))
-        self.assertEqual(self.store.read(ref.attachment_id), data)
 
     def test_declared_mime_must_match_actual_format(self):
         with self.assertRaises(AttachmentRejected):
@@ -129,17 +122,6 @@ class AttachmentGatewayTest(unittest.TestCase):
 
             self.assertTrue(first.path(ref.attachment_id).is_file())
             self.assertFalse(second.path(ref.attachment_id).exists())
-
-    def test_drawer_sits_beside_the_session_journal(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            store = AttachmentGateway(root).for_session("session-a")
-            ref = store.save_image(png(), "image/png")
-            drawer = store.path(ref.attachment_id).parent
-
-            self.assertEqual(drawer.name, ".attachments")
-            self.assertEqual(drawer.parent.parent, root.resolve())
-
 
 class ReadImageTest(unittest.IsolatedAsyncioTestCase):
     async def test_returns_only_ids_that_appeared_in_this_session(self):

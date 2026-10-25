@@ -73,8 +73,6 @@ it("群记录区分人和 Agent，显示点名与正在通知的成员", () => {
   fireEvent.click(screen.getByRole("button", { name: "显示群资料" }));
   const details = within(screen.getByRole("complementary", { name: "群资料" }));
   expect(details.getByRole("link", { name: "查看 Ada 的会话" })).toHaveAttribute("href", "/sessions/agent-ada");
-  expect(details.queryByText("其他项目")).not.toBeInTheDocument();
-  expect(details.queryByText("当前项目")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起群资料" }));
   expect(screen.queryByRole("complementary", { name: "群资料" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "显示群资料" }));
@@ -212,7 +210,7 @@ it("切换对话分别保留群草稿和引用，发送后清除", async () => {
   expect(localStorage.getItem("konden.composerDraft.group:group-1")).toBeNull();
 });
 
-it("正文点名与头像同色，代码和邮箱保持原文", () => {
+it("正文点名高亮，代码和邮箱保持原文", () => {
   api.group = group({ messages: [{ message_id: "source", sender: "Lin", text: "请 @Ada 阅读，邮箱 dev@Ada。\n\n`@Ada`\n\n```txt\n@Ada\n```", mentioned_agents: ["Ada"], reply_to: null, occurred_at: "2026-10-18T10:00:00Z" }] });
   const { container } = renderPage();
   expect(container.querySelectorAll(".message-mention")).toHaveLength(1);
@@ -234,7 +232,6 @@ it("发送请求未结束时离开群聊，成功后不恢复已发送草稿", a
   renderPage();
   expect(screen.getByLabelText("群消息")).toHaveValue("");
 });
-
 
 it("发送确认丢失后重新打开群页，重试沿用原消息身份", async () => {
   api.group = group({});

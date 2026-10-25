@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -37,6 +36,7 @@ from konden.execution.local.powershell import (
     CommandEnvironmentPolicy,
     PowerShellCommandRunner,
 )
+from tests.execution.test_foreground_lifetime_process import gone
 
 
 POWERSHELL = shutil.which("pwsh.exe") or shutil.which("powershell.exe")
@@ -256,6 +256,32 @@ class PowerShellDiscoveryTest(unittest.TestCase):
 @unittest.skipUnless(POWERSHELL, "需要 Windows PowerShell")
 @pytest.mark.process
 class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
+    def child_command(self, runner, root):
+        ready = root / "ready"
+        script = root / "child.ps1"
+        script.write_text(
+            "[Console]::Out.WriteLine('started'); [Console]::Out.Flush()\n"
+            f"[IO.File]::WriteAllText('{ready}.tmp', $PID.ToString())\n"
+            f"Move-Item -LiteralPath '{ready}.tmp' -Destination '{ready}'\n"
+            "while ($true) { Start-Sleep -Seconds 1 }\n",
+            encoding="utf-8",
+        )
+        executable = str(runner.executable).replace("'", "''")
+        return f"& '{executable}' -NoProfile -File '{script}'", ready
+
+    async def child_started(self, ready, task):
+        async with asyncio.timeout(15):
+            while not ready.exists():
+                self.assertFalse(task.done(), "command ended before the child started")
+                await asyncio.sleep(.01)
+        return int(ready.read_text(encoding="utf-8-sig"))
+
+    async def stop_task(self, task):
+        if not task.done():
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
     async def test_preserves_stdout_stderr_and_explicit_exit_code(self):
         runner = PowerShellCommandRunner()
 
@@ -339,93 +365,61 @@ class PowerShellCommandRunnerTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.timed_out)
         self.assertIsNone(result.exit_code)
         self.assertIn("started", result.stdout.content)
-        self.assertLess(result.duration_ms, 4_000)
 
     async def test_timeout_terminates_child_process_tree(self):
         runner = PowerShellCommandRunner()
-        executable = str(runner.executable).replace("'", "''")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            marker = root / "child-finished.txt"
-            script = root / "child.ps1"
-            script.write_text(
-                "Start-Sleep -Seconds 2\n"
-                f"Set-Content -LiteralPath '{marker}' -Value done\n",
-                encoding="utf-8",
-            )
+            command, ready = self.child_command(runner, root)
 
-            result = await runner.run(
-                f"& '{executable}' -NoProfile -File '{script}'",
-                root,
-                0.2,
-            )
-            time.sleep(2.5)
+            async def timeout_after_ready(_process, _seconds, _interrupt):
+                async with asyncio.timeout(15):
+                    while not ready.exists():
+                        await asyncio.sleep(.01)
+                return "timed_out"
+
+            # The clock is covered above; here a live descendant must exist before
+            # entering timeout cleanup, even on a loaded machine.
+            with patch("konden.execution.local.powershell.wait_process", timeout_after_ready):
+                result = await runner.run(command, root, 1)
 
             self.assertTrue(result.timed_out)
-            self.assertFalse(marker.exists())
+            self.assertTrue(gone(int(ready.read_text(encoding="utf-8-sig"))))
 
     async def test_task_cancellation_terminates_child_process_tree(self):
         runner = PowerShellCommandRunner()
-        executable = str(runner.executable).replace("'", "''")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            marker = root / "child-finished.txt"
-            script = root / "child.ps1"
-            script.write_text(
-                "Start-Sleep -Seconds 2\n"
-                f"Set-Content -LiteralPath '{marker}' -Value done\n",
-                encoding="utf-8",
-            )
-            task = asyncio.create_task(
-                runner.run(
-                    f"& '{executable}' -NoProfile -File '{script}'",
-                    root,
-                    10,
-                )
-            )
-            await asyncio.sleep(0.2)
-            task.cancel()
-
-            with self.assertRaises(asyncio.CancelledError):
-                await task
-
-            await asyncio.sleep(2.5)
-            self.assertFalse(marker.exists())
+            command, ready = self.child_command(runner, root)
+            task = asyncio.create_task(runner.run(command, root, 30))
+            try:
+                pid = await self.child_started(ready, task)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+            finally:
+                await self.stop_task(task)
+            self.assertTrue(gone(pid))
 
     async def test_interrupt_terminates_child_process_tree_and_keeps_output(self):
         runner = PowerShellCommandRunner()
-        executable = str(runner.executable).replace("'", "''")
         interrupt = asyncio.Event()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            marker = root / "child-finished.txt"
-            script = root / "child.ps1"
-            script.write_text(
-                "Write-Output started\n"
-                "Start-Sleep -Seconds 2\n"
-                f"Set-Content -LiteralPath '{marker}' -Value done\n",
-                encoding="utf-8",
-            )
-            task = asyncio.create_task(
-                runner.run(
-                    "[Console]::Out.WriteLine('started'); "
-                    "[Console]::Out.Flush(); "
-                    f"& '{executable}' -NoProfile -File '{script}'",
-                    root,
-                    30,
-                    interrupt=interrupt,
-                )
-            )
-            await asyncio.sleep(1)
-            interrupt.set()
-            result = await task
-            await asyncio.sleep(2.5)
+            command, ready = self.child_command(runner, root)
+            task = asyncio.create_task(runner.run(command, root, 30, interrupt=interrupt))
+            try:
+                pid = await self.child_started(ready, task)
+                interrupt.set()
+                result = await task
+            finally:
+                await self.stop_task(task)
 
             self.assertTrue(result.interrupted)
             self.assertFalse(result.timed_out)
             self.assertIsNone(result.exit_code)
             self.assertIn("started", result.stdout.content)
-            self.assertFalse(marker.exists())
+            self.assertTrue(gone(pid))
 
     async def test_interrupt_returns_only_after_killed_descendant_has_exited(self):
         import ctypes

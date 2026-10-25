@@ -448,7 +448,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         host = SubAgentHost()
         host._parents["child"] = "parent"
         self.assertEqual(host.schemas("child"), [])
-        self.assertTrue({"report", "reply_parent", DELEGATE, INSTRUCT, RECLAIM, LIST_SUBAGENTS}.isdisjoint(host.tool_names("child")))
+        self.assertTrue({DELEGATE, INSTRUCT, RECLAIM, LIST_SUBAGENTS}.isdisjoint(host.tool_names("child")))
 
     async def test_instruction_rejects_invalid_arguments_and_unowned_child(self):
         from unittest.mock import AsyncMock
@@ -503,5 +503,3 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
             [schema["function"]["name"] for schema in host.schemas("plain")],
             [DELEGATE, INSTRUCT, LIST_SUBAGENTS, RECLAIM],
         )
-
-

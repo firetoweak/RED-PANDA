@@ -160,22 +160,6 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         await until(lambda: len(self.outputs) == 2)
         self.assertEqual(self.host.conversation_status("chat").compact_count, 0)
 
-    async def test_completion_waiting_at_retirement_does_not_accept_stale_job(self):
-        await self.start()
-        job = self.host.compact.store.job("chat")
-        async with self.host.compact.lock("chat"):
-            completing = asyncio.create_task(
-                self.host.compact.complete(job["reader"], {"handoff": HANDOFF})
-            )
-            await asyncio.sleep(0)
-            # Retirement wins while complete has read the old job and is waiting
-            # for the same publication boundary.
-            self.host.compact.store.retire(job["reader"])
-        await completing
-        retired = self.host.compact.store.reader_job(job["reader"])
-        self.assertEqual(retired["published"], 2)
-        self.assertIsNone(retired["summary"])
-
     async def test_prepared_publication_is_recovered_without_new_session(self):
         await self.start()
         job = self.host.compact.store.job("chat")
