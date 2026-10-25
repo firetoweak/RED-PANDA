@@ -40,25 +40,39 @@ git clone https://github.com/firetoweak/konden.git konden
 cd konden
 ```
 
-先准备环境，再启动。选择与你的系统对应的一组命令：
+先运行准备脚本，选择与你的系统对应的命令：
 
 **Windows（PowerShell）**
 
 ```powershell
 .\scripts\setup.ps1
-.\scripts\start.ps1
 ```
 
 **Linux**
 
 ```sh
 sh scripts/setup.sh
-sh scripts/start.sh
 ```
 
 准备脚本会补齐 Python、Node.js 等运行工具，不修改系统 PATH；无需预装 Python、Rust 或 Docker。
 
-启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，再新建 Bot、说明你希望它承担的工作。需要处理代码时，再关联已有首个提交的 Git 仓库。
+setup 完成后，先填写模型密钥。打开终端打印的「模型连接配置」文件（默认 Windows 为 `%USERPROFILE%\.konden\connections.json`，Linux 为 `~/.konden/connections.json`），在所用供应商项的 `api_key` 中填入自己的 API Key 并保存，保留其他供应商项。本地服务与 Codex 登录等其他连接方式见[模型配置指南](docs/模型配置.md)。
+
+填好后再启动：
+
+**Windows（PowerShell）**
+
+```powershell
+.\scripts\start.ps1
+```
+
+**Linux**
+
+```sh
+sh scripts/start.sh
+```
+
+启动后打开终端打印的地址，在侧栏「设置 → 模型配置」中添加相应模型，保存后点击「测试」确认连接，再新建 Bot、说明你希望它承担的工作。需要处理代码时，再关联已有首个提交的 Git 仓库。
 
 Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用专用 Chrome，进行浏览器操作与真实流程验证。搜索优先使用你已启用的搜索 MCP，其次使用内置 Exa；配置、准备检查、数据位置与其他入口见[运行指南](docs/运行指南.md)。
 
