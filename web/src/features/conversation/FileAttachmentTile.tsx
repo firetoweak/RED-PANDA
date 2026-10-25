@@ -1,5 +1,6 @@
 import { ActionIcon, Anchor, Button, Group, Loader, Paper, Stack, Text } from "@mantine/core";
 import { IconFile, IconX } from "@tabler/icons-react";
+import { AttachmentTile } from "./AttachmentTile";
 
 export function FileAttachmentTile({ name, size, href, state = "done", error, onRemove, onRetry }: {
   name: string;
@@ -12,6 +13,10 @@ export function FileAttachmentTile({ name, size, href, state = "done", error, on
 }) {
   return (
     <Paper className="file-attachment" p="xs" radius="md" withBorder data-state={state}>
+      <Stack gap="xs">
+      {state === "done" && href !== undefined && /\.(png|jpe?g|webp|gif)$/i.test(name) ? (
+        <AttachmentTile src={href} name={name} large />
+      ) : null}
       <Group gap={8} wrap="nowrap">
         {state === "uploading" ? <Loader size={18} /> : <IconFile size={22} />}
         <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
@@ -24,6 +29,7 @@ export function FileAttachmentTile({ name, size, href, state = "done", error, on
         {state === "error" && onRetry !== undefined ? <Button size="compact-xs" variant="subtle" onClick={onRetry}>重试</Button> : null}
         {onRemove === undefined ? null : <ActionIcon aria-label={`Remove ${name}`} variant="subtle" color="gray" onClick={onRemove}><IconX size={14} /></ActionIcon>}
       </Group>
+      </Stack>
     </Paper>
   );
 }

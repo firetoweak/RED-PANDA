@@ -13,6 +13,7 @@ import { Conversation } from "./Conversation";
 import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
 import { BotAvatarPicker } from "./BotAvatarPicker";
+import { BackgroundCommands } from "./BackgroundCommands";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -22,9 +23,9 @@ export function SessionConversation() {
   const { data: workspaces = [] } = useGetWorkspacesQuery();
   const { data: groups = [] } = useGetGroupsQuery();
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
-  const [detailsOpened, setDetailsOpened] = useState(false);
-  const narrow = useMediaQuery("(max-width: 73.75em)");
-  useDidUpdate(() => setDetailsOpened(false), [narrow]);
+  const narrow = useMediaQuery("(max-width: 73.75em)", false, { getInitialValueInEffect: false });
+  const [detailsOpened, setDetailsOpened] = useState(!narrow);
+  useDidUpdate(() => setDetailsOpened(!narrow), [narrow]);
   const agent = agents.find((item) => item.session_id === sessionId);
   const name = agent?.name ?? history?.agent_name ?? "Agent";
   const [linking, setLinking] = useState(false);
@@ -65,6 +66,7 @@ export function SessionConversation() {
           <IconUsersGroup size={16} /><span>{group.name}</span>
         </Link>)}
       </div>}
+      <BackgroundCommands key={`commands-${agent.session_id}`} sessionId={agent.session_id} connectionId={connectionId} />
       <RoutineList key={agent.session_id} sessionId={agent.session_id} connectionId={connectionId}
         onOpenTimeline={narrow ? () => setDetailsOpened(false) : undefined} />
     </>
@@ -82,7 +84,7 @@ export function SessionConversation() {
         </Group>
         {agent === undefined || agent.projects.length === 0 ? null : <span className="session-project-link">
           <IconFolder size={15} /><span>{agent.projects.map((project) => project.name).join("、")}</span></span>}
-        <ActionIcon aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
+        <ActionIcon className="agent-details-toggle" aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
       <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name ?? history?.agent_name ?? undefined} agentNames={agents.map((item) => item.name)} /></div>
       </div>
