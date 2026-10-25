@@ -6,7 +6,7 @@ import {
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
-  turnReply,
+  turnReplies,
   type TimelineTurn,
 } from "../src/features/conversation/timelineTurns";
 import { visibleTimeline } from "../src/features/conversation/visibleTimeline";
@@ -498,7 +498,7 @@ describe("turnIsSettled", () => {
       }),
     ).toBe(true);
     expect(turnNeedsSilentEnd(turn, true)).toBe(true);
-    expect(turnReply(turn, true)).toBeNull();
+    expect(turnReplies(turn, true)).toEqual([]);
   });
 
   it("stays open while the session is still running", () => {
@@ -509,6 +509,15 @@ describe("turnIsSettled", () => {
         awaitingControl: false,
       }),
     ).toBe(false);
+  });
+
+  it("keeps progress text when execution stops without a final reply", () => {
+    const turn = toolOnlyTurn(user);
+    turn.process[0].text = "实例已启动，验证尚未完成";
+    expect(turnReplies(turn, true)).toMatchObject([{
+      text: "实例已启动，验证尚未完成", streaming: false,
+    }]);
+    expect(turnNeedsSilentEnd(turn, true)).toBe(false);
   });
 
   it("stays open while control approval is pending", () => {
@@ -584,10 +593,10 @@ describe("turnIsSettled", () => {
       awaitingControl: false,
     })).toBe(true);
     expect(turnNeedsSilentEnd(turn, true)).toBe(false);
-    expect(turnReply(turn, true)).toMatchObject({
+    expect(turnReplies(turn, true)).toMatchObject([{
       text: "已经装好并测过了",
       streaming: false,
-    });
+    }]);
   });
 
   it("keeps leftover preview text after idle, without streaming", () => {
@@ -615,10 +624,10 @@ describe("turnIsSettled", () => {
         awaitingControl: false,
       }),
     ).toBe(true);
-    expect(turnReply(turn, true)).toMatchObject({
+    expect(turnReplies(turn, true)).toMatchObject([{
       text: "先测一下",
       streaming: false,
-    });
+    }]);
     expect(turnNeedsSilentEnd(turn, true)).toBe(false);
   });
 });
