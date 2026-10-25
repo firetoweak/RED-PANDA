@@ -32,6 +32,54 @@ class UserInputBatchTest(unittest.IsolatedAsyncioTestCase):
     async def user(self, runtime, text):
         return await runtime.receive_user_message("session", text, delivery_id=text)
 
+    async def test_result_arriving_during_human_reply_is_delivered_after_the_frozen_reply(self):
+        tool = RecordingTool("work")
+        replying, finish_reply = asyncio.Event(), asyncio.Event()
+
+        async def reply(frame):
+            self.assertIsNone(frame.state.commands[0].outcome)
+            replying.set()
+            await finish_reply.wait()
+            return ModelDecision(content="answer the new question")
+
+        runtime = self.runtime(lambda _: ModelDecision(command_requests=(InvokeTool("work"),)),
+                               reply, lambda _: ModelDecision(content="report the finished work"), tools=tool.binding())
+        await self.user(runtime, "start")
+        await runtime.advance("session")
+        await tool.started.wait()
+        new = await self.user(runtime, "new question")
+        advancing = asyncio.create_task(runtime.advance("session"))
+        await replying.wait()
+        tool.release.set()
+        await _drain(runtime)
+        finish_reply.set()
+        answer = await advancing
+        self.assertEqual(answer.step.trigger_event_ids, (new.event_id,))
+        completed = await runtime.advance("session")
+        self.assertEqual(completed.step.decision.content, "report the finished work")
+        self.assertEqual(len(tool.executions), 1)
+        self.assertIsNone((await runtime.advance("session")).step)
+
+    async def test_handled_human_message_does_not_hide_a_later_recovery_of_unfinished_work(self):
+        tool = RecordingTool("work")
+        runtime = self.runtime(lambda _: ModelDecision(command_requests=(InvokeTool("work"),)),
+                               lambda _: ModelDecision(content="answer"), tools=tool.binding())
+        await self.user(runtime, "start")
+        await runtime.advance("session")
+        await tool.started.wait()
+        await self.user(runtime, "new question")
+        await runtime.advance("session")
+        await runtime.dispatcher.close()
+        await self.journal.prepare_recovery("session")
+        events = await self.journal.snapshot("session")
+        frame = StateProjector().project("session", events).next_decision
+        self.assertIsNotNone(frame)
+        self.assertEqual(frame.state.commands[0].phase.value, "unknown")
+        self.assertIsNone(frame.state.commands[0].outcome)
+        self.assertEqual(len(tool.executions), 1)
+        await self.journal.prepare_recovery("session")
+        self.assertEqual(await self.journal.snapshot("session"), events)
+
     async def test_human_batch_overtakes_request_and_keeps_earlier_outcome(self):
         tool = RecordingTool("work")
         model = ScriptedDecisionMaker((
@@ -170,7 +218,7 @@ class UserInputBatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.projector.project("session", events).next_decision.trigger_event_ids,
                          (later.event_id,))
 
-    async def test_later_blocked_correction_holds_the_whole_batch(self):
+    async def test_later_correction_joins_the_whole_batch_without_waiting_for_running_tool(self):
         tool = RecordingTool("work")
         runtime = self.runtime(lambda _: ModelDecision(command_requests=(InvokeTool("work"),)),
                                tools=tool.binding())
@@ -190,7 +238,10 @@ class UserInputBatchTest(unittest.IsolatedAsyncioTestCase):
         await runtime.dispatcher.start_pending("session")
         await tool.started.wait()
         await self.user(runtime, "change to 2.1")
-        self.assertIsNone(runtime.projector.project("session", await runtime.snapshot("session")).next_decision)
+        frame = runtime.projector.project("session", await runtime.snapshot("session")).next_decision
+        self.assertEqual([event.payload.content for event in frame.trigger_events],
+                         ["release 2.0", "change to 2.1"])
+        self.assertIsNone(frame.state.commands[0].outcome)
         tool.release.set()
         await _drain(runtime)
         next_frame = runtime.projector.project("session", await runtime.snapshot("session")).next_decision

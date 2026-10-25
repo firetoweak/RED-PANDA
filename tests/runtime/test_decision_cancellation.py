@@ -19,6 +19,35 @@ from tests.assistant.test_runner import ScriptedDecisionMaker, SequentialIds
 
 
 class DecisionCancellationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_cancelling_new_reply_does_not_resume_from_the_older_tool_result(self):
+        from tests.runtime.test_boundary_slice import RecordingTool, runtime_for
+
+        tool = RecordingTool("work")
+        replying = asyncio.Event()
+
+        async def reply(_):
+            replying.set()
+            await asyncio.Event().wait()
+
+        runtime = runtime_for(tool, ScriptedDecisionMaker((
+            lambda _: ModelDecision(command_requests=(InvokeTool("work"),)), reply,
+        )))
+        self.addAsyncCleanup(runtime.dispatcher.close)
+        await runtime.receive_user_message("session", "start", delivery_id="first")
+        await runtime.advance("session")
+        await tool.started.wait()
+        new = await runtime.receive_user_message("session", "new question", delivery_id="new")
+        advancing = asyncio.create_task(runtime.advance("session"))
+        await replying.wait()
+        cancellations = await runtime.cancel_turn("session")
+        await advancing
+        self.assertEqual(cancellations[0].payload.trigger_event_ids, (new.event_id,))
+        tool.release.set()
+        while runtime.dispatcher.active_count:
+            await asyncio.sleep(0)
+        self.assertIsNone((await runtime.advance("session")).step)
+        self.assertEqual(len(tool.executions), 1)
+
     async def test_cancelled_decision_consumes_its_trigger_durably(self) -> None:
         started = asyncio.Event()
         cancelled = asyncio.Event()
