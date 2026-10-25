@@ -187,7 +187,7 @@ class HostSupervisor:
         self.closed = False
         self.compact = CompactHost(self)
         self.job = WindowsJob.create() if os.name == "nt" else None
-        self.commands = CommandHost(self) if sys.platform in {"win32", "linux"} else None
+        self.commands = CommandHost(self) if sys.platform in {"win32", "linux", "darwin"} else None
         self._auto_authorize = AutoAuthorizeStore(store.root)
         self._auto_authorize_lock = asyncio.Lock()
         self.automation = OneShotClock(

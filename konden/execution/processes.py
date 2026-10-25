@@ -82,10 +82,10 @@ class CommandManager:
                       wait_seconds: int, *, environment_overlay=None) -> dict:
         if sys.platform == "win32":
             from .process_win import Running
-        elif sys.platform == "linux":
-            from .process_linux import Running
+        elif sys.platform in {"linux", "darwin"}:
+            from .process_owner import Running
         else:
-            raise RuntimeError("Background commands require Windows or Linux")
+            raise RuntimeError("Background commands require Windows, Linux or macOS")
         # Recovery queries share this lock; an in-flight spawn is never "not started".
         async with self._lock:
             if self._closed:

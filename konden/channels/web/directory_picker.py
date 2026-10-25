@@ -56,6 +56,18 @@ async def _select(extra: list[str]) -> Path | None:
 
 def _main() -> None:
     sys.stderr.reconfigure(encoding="utf-8")
+    if sys.platform == "darwin":
+        kind = "file" if "--file" in sys.argv else "folder"
+        title = "选择要分析的文件" if kind == "file" else "选择工作区文件夹"
+        script = (
+            f'try\nreturn POSIX path of (choose {kind} with prompt "{title}")\n'
+            'on error number -128\nreturn ""\nend try'
+        )
+        result = subprocess.run(["/usr/bin/osascript", "-e", script],
+                                capture_output=True, text=True, encoding="utf-8", check=True)
+        selected = result.stdout.removesuffix("\n")
+        print(json.dumps(selected if selected else None))
+        return
     try:
         import tkinter
         from tkinter import filedialog

@@ -1,22 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import codecs
 import os
 import shutil
-import signal
-import sys
-import time
 from pathlib import Path
 from typing import Mapping, Sequence
 
 from konden.execution.command import (
-    BoundedTextCapture,
     CaptureLimit,
     CommandResult,
-    CommandStartError,
     ShellNotFoundError,
-    wait_process,
 )
 from konden.execution.local.child_env import (
     CHILD_ENV_OVERLAY,
@@ -112,89 +105,7 @@ class BashCommandRunner:
         *,
         interrupt: asyncio.Event | None = None,
     ) -> CommandResult:
+        from konden.execution.local.owned_command import run_owned_command
+
         argv, child_env = self.prepare(command)
-        if sys.platform == "linux":
-            from konden.execution.local.owned_command import run_owned_command
-            return await run_owned_command(argv, child_env, cwd, timeout_seconds, interrupt, self.capture_limit)
-        started = time.perf_counter()
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=cwd,
-                env=child_env,
-                stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
-            )
-        except OSError as exc:
-            raise CommandStartError(str(exc)) from exc
-        assert proc.stdout is not None
-        assert proc.stderr is not None
-
-        stdout_capture = BoundedTextCapture(self.capture_limit)
-        stderr_capture = BoundedTextCapture(self.capture_limit)
-        io_errors: list[str] = []
-
-        async def drain(stream, capture: BoundedTextCapture, name: str) -> None:
-            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-            while True:
-                try:
-                    chunk = await stream.read(4_096)
-                except OSError as exc:
-                    io_errors.append(f"{name}: {type(exc).__name__}: {exc}")
-                    break
-                if not chunk:
-                    break
-                capture.feed(decoder.decode(chunk))
-            capture.feed(decoder.decode(b"", final=True))
-
-        readers = (
-            asyncio.create_task(drain(proc.stdout, stdout_capture, "stdout")),
-            asyncio.create_task(drain(proc.stderr, stderr_capture, "stderr")),
-        )
-
-        async def terminate_and_drain() -> None:
-            if proc.returncode is None:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                await proc.wait()
-            await asyncio.gather(*readers)
-
-        timed_out = False
-        interrupted = False
-        try:
-            kind = await wait_process(proc, timeout_seconds, interrupt)
-        except BaseException as run_error:
-            cleanup = asyncio.create_task(terminate_and_drain())
-            try:
-                try:
-                    await asyncio.shield(cleanup)
-                except asyncio.CancelledError:
-                    await cleanup
-            except BaseException as cleanup_error:
-                if cleanup_error is not run_error:
-                    raise BaseExceptionGroup(
-                        "命令执行失败且清理失败", [run_error, cleanup_error]
-                    )
-                raise
-            raise
-        else:
-            if kind == "exited":
-                await asyncio.gather(*readers)
-            else:
-                timed_out = kind == "timed_out"
-                interrupted = kind == "interrupted"
-                await terminate_and_drain()
-
-        return CommandResult(
-            exit_code=None if timed_out or interrupted else proc.returncode,
-            stdout=stdout_capture.finish(),
-            stderr=stderr_capture.finish(),
-            duration_ms=round((time.perf_counter() - started) * 1_000),
-            timed_out=timed_out,
-            io_errors=tuple(io_errors),
-            interrupted=interrupted,
-        )
+        return await run_owned_command(argv, child_env, cwd, timeout_seconds, interrupt, self.capture_limit)

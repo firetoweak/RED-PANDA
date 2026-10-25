@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -26,11 +27,36 @@ class DirectoryPickerTest(unittest.IsolatedAsyncioTestCase):
         root = Mock()
         tkinter = SimpleNamespace(TclError=TclError, Tk=Mock(return_value=root),
             filedialog=SimpleNamespace(askdirectory=Mock(side_effect=TclError("desktop unavailable"))))
-        with patch.dict(sys.modules, {"tkinter": tkinter}), patch.object(sys, "argv", ["picker"]), patch.object(sys.stderr, "reconfigure"):
+        with (patch.dict(sys.modules, {"tkinter": tkinter}),
+              patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+                  platform="linux", argv=["picker"], stderr=sys.stderr)),
+              patch.object(sys.stderr, "reconfigure")):
             with self.assertRaises(SystemExit) as raised:
                 _main()
         self.assertEqual(raised.exception.code, 2)
         root.destroy.assert_called_once()
+
+    def test_macos_native_selection_preserves_path_cancel_and_failure(self):
+        for argument, kind in (([], "folder"), (["--file"], "file")):
+            for selected in ("/Users/test/资料\n文件.txt", ""):
+                with self.subTest(argument=argument, selected=selected):
+                    output = io.StringIO()
+                    with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+                              platform="darwin", argv=["picker", *argument], stderr=sys.stderr)),
+                          patch.object(sys.stderr, "reconfigure"), patch("sys.stdout", output),
+                          patch("konden.channels.web.directory_picker.subprocess.run",
+                                return_value=SimpleNamespace(stdout=selected + "\n")) as run):
+                        _main()
+                    self.assertEqual(json.loads(output.getvalue()), selected or None)
+                    self.assertIn("choose " + kind, run.call_args.args[0][-1])
+        error = subprocess.CalledProcessError(1, "osascript", stderr="original failure")
+        with (patch("konden.channels.web.directory_picker.sys", SimpleNamespace(
+                  platform="darwin", argv=["picker"], stderr=sys.stderr)),
+              patch.object(sys.stderr, "reconfigure"),
+              patch("konden.channels.web.directory_picker.subprocess.run", side_effect=error)):
+            with self.assertRaises(subprocess.CalledProcessError) as raised:
+                _main()
+            self.assertIs(raised.exception, error)
 
     async def test_process_protocol_preserves_selection_cancel_and_error_meanings(self):
         selected = Path(__file__).resolve().parent

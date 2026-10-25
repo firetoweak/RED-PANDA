@@ -18,9 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def host_platform() -> str:
-    name = f"{platform.system().lower()}-x86_64"
-    if platform.machine().lower() not in {"amd64", "x86_64"} or name not in {"windows-x86_64", "linux-x86_64"}:
-        raise ValueError("应用工具目前只支持 Windows x64 和 Linux x64。")
+    machine = platform.machine().lower()
+    architecture = "x86_64" if machine in {"amd64", "x86_64"} else machine
+    name = f"{platform.system().lower()}-{architecture}"
+    if name not in {"windows-x86_64", "linux-x86_64", "darwin-arm64", "darwin-x86_64"}:
+        raise ValueError("应用工具支持 Windows x64、Linux x64、macOS Apple Silicon 和 Intel。")
     return name
 
 
@@ -65,7 +67,10 @@ def install_package(root: Path, name: str, package: dict) -> None:
             raise ValueError(f"{name} 下载校验失败，未安装。请重新运行准备命令。")
         unpacked = staging / "unpacked"
         unpacked.mkdir()
-        if archive.suffix == ".zip":
+        if archive.suffix == ".zip" and platform.system() == "Darwin":
+            # Native extraction preserves app-bundle symlinks and code signatures.
+            subprocess.run(["ditto", "-x", "-k", str(archive), str(unpacked)], check=True)
+        elif archive.suffix == ".zip":
             with zipfile.ZipFile(archive) as bundle:
                 for member in bundle.infolist():
                     extracted = Path(bundle.extract(member, unpacked))
@@ -100,9 +105,11 @@ def install_linux_packages(names: list[str]) -> None:
         subprocess.run(prefix + command, check=True)
 
 
-def prepare(root: Path) -> None:
+def prepare(root: Path, *, include_browser: bool = True) -> None:
     activate(root)
     for name, package in packages(root).items():
+        if name == "chrome" and not include_browser:
+            continue
         if name == "chrome":
             ready = (tool_directory(root, name) / package["bin"] / package["executable"]).is_file()
         elif name == "node":
@@ -113,6 +120,8 @@ def prepare(root: Path) -> None:
             install_package(root, name, package)
             activate(root)
     if os.name != "nt" and shutil.which("git") is None:
+        if platform.system() == "Darwin":
+            raise ValueError("请先安装 Git；使用系统 Git 时，在终端运行 xcode-select --install 并完成安装。")
         install_linux_packages(["git"])
 
 

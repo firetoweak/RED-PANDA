@@ -45,7 +45,7 @@ def _child_pids():
 
 
 class Running:
-    """Own the caller's children; persistent tasks isolate this in process_linux."""
+    """Own the caller's children; process_owner isolates one task per process."""
     def __init__(self, argv, cwd, environment, log_dir):
         self.logs = []
         self.process = None

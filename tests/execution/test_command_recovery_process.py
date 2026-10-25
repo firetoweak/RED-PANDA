@@ -14,7 +14,7 @@ from konden.paths import KondenHome
 from tests.fixtures.session_worker import config_for
 from tests.execution.test_host_process_process import shell, until
 
-pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="Host ownership")]
+pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"}, reason="Host ownership")]
 
 
 @pytest.mark.parametrize("at_recovery", ["running", "completed", "not_started"])

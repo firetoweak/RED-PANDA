@@ -20,7 +20,7 @@ from konden.filesystem.registry import WorkspaceRegistry
 from konden.paths import KondenHome
 from tests.fixtures.session_worker import ProcessLlm, config_for
 
-pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="Windows or Linux owned processes")]
+pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"}, reason="Windows or Linux owned processes")]
 
 
 def shell(*args):
@@ -108,8 +108,8 @@ def test_cancelled_worker_leaves_created_command_queryable(tmp_path):
         from konden.execution.process_win import Running
         module = "konden.execution.process_win"
     else:
-        from konden.execution.process_linux import Running
-        module = "konden.execution.process_linux"
+        from konden.execution.process_owner import Running
+        module = "konden.execution.process_owner"
     async def scenario():
         manager = CommandManager(tmp_path / "logs", os.environ)
         spawned, release = threading.Event(), threading.Event()

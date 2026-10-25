@@ -33,7 +33,7 @@
 
 ## 快速开始
 
-支持 **Windows x64** 与 **Linux x64（glibc 2.35+）**，暂不支持 macOS。
+支持 **Windows x64**、**Linux x64（glibc 2.35+）** 与 **macOS 15+（Apple Silicon / Intel）**。
 
 ```sh
 git clone https://github.com/firetoweak/konden.git konden
@@ -49,7 +49,7 @@ cd konden
 .\scripts\start.ps1
 ```
 
-**Linux**
+**Linux / macOS（终端）**
 
 ```sh
 sh scripts/setup.sh
@@ -57,6 +57,8 @@ sh scripts/start.sh
 ```
 
 准备脚本会补齐 Python、Node.js 等运行工具，不修改系统 PATH；无需预装 Python、Rust 或 Docker。
+
+macOS 需要可用的 Git；若系统尚未准备命令行工具，先运行 `xcode-select --install` 并完成系统安装。Mac 的后台任务须保留在命令的进程组内：启动服务时使用前台模式，再由 konden 转后台；自行脱离进程组的守护程序不在自动停止范围内。
 
 启动后打开终端打印的地址，在侧栏「模型配置」中添加模型，再新建 Bot、说明你希望它承担的工作。需要处理代码时，再关联已有首个提交的 Git 仓库。
 
