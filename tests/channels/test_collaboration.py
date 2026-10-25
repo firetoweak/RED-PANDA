@@ -1,7 +1,7 @@
 """External conversation behavior at the MCP and human Web boundaries."""
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from konden.assistant.agents import AgentCreated, fact_arguments
 from konden.assistant.conversations import project_conversation
 from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, SendToExternal
+from konden.assistant.external_messages import parse_external
 from konden.assistant.host.external_messages import ExternalMessages
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
@@ -209,6 +210,45 @@ def test_bot_can_initiate_and_multiple_bots_share_a_stable_inbox_cursor(collabor
     assert not remaining["has_more"] and remaining["next_cursor"] > first["next_cursor"]
     assert c.read(after=remaining["next_cursor"])["messages"] == []
     assert c.read(after=99)["code"] == "INVALID_CURSOR"
+
+
+def test_empty_external_registry_does_not_read_bot_histories(tmp_path):
+    home = KondenHome(tmp_path / "home")
+    service = ExternalMessages(SimpleNamespace(home=home, agents=SimpleNamespace(
+        list=AsyncMock(side_effect=AssertionError("empty external list must not read Bots")))))
+    assert asyncio.run(service.list_sessions()) == []
+
+
+def test_external_index_reads_only_new_facts_and_retries_a_durable_reply_after_lost_ack(collaboration):
+    c = collaboration
+    assert c.read()["messages"] == []
+    deliver = c.host.request.side_effect
+
+    async def lost_ack(operation, session_id, arguments):
+        await deliver(operation, session_id, arguments)
+        raise RuntimeError("transport acknowledgement lost")
+
+    with patch.object(c.host, "request", side_effect=lost_ack):
+        with pytest.raises(RuntimeError, match="acknowledgement lost"):
+            c.reply()
+    with patch("konden.assistant.host.external_messages.parse_external", wraps=parse_external) as parse:
+        retried = c.reply()
+        assert retried["code"] == "DELIVERED"
+        first = c.read()
+        assert len(first["messages"]) == 1 and first["next_cursor"] == 1
+        assert parse.call_count == 1
+
+        async def independent_write():
+            await AgentRuntime(SqliteJournal(c.store.require("coordinator")), None, {}).receive_user_message(
+                "coordinator", "unrelated Worker fact", delivery_id="unrelated")
+
+        c.client.portal.call(independent_write)
+        assert c.read(after=first["next_cursor"])["messages"] == []
+        c.reply(command="next", session_id="other", text="第二条")
+        second = c.read(after=first["next_cursor"])
+        assert [message["text"] for message in second["messages"]] == ["第二条"]
+        assert second["next_cursor"] == 2 and parse.call_count == 2
+        assert len(c.deliveries) == 2
 
 
 def test_waiting_reader_receives_messages_and_revocation_interrupts_wait(collaboration):

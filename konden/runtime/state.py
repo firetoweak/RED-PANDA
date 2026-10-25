@@ -654,10 +654,11 @@ class StateProjector:
         until_sequence: int,
     ) -> None:
         selected = set(input_ids)
+        visible = set(decision.visible_event_ids)
         for event in events:
             if event.sequence > until_sequence:
                 break
-            if event.event_id in decision.visible_event_ids:
+            if event.event_id in visible:
                 continue
             payload = event.payload
             if isinstance(payload, (StepCommitted, DecisionCancelled)):
@@ -671,6 +672,7 @@ class StateProjector:
                         or isinstance(payload, CommandRejected) and payload.command_id in decision.commands):
                     continue
             decision.apply_regular(event)
+            visible.add(event.event_id)
 
 
 def _is_waited_follow_up(

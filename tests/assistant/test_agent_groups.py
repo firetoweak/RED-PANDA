@@ -79,6 +79,16 @@ class AgentGroupsTest(unittest.IsolatedAsyncioTestCase):
     def journal(self, session_id):
         return SqliteJournal(self.store.require(session_id))
 
+    async def test_opening_one_group_reads_its_journal_once_without_reading_other_groups(self):
+        groups = [await self.group(name=f"开发组-{index}") for index in range(3)]
+        selected = groups[1]
+        with patch.object(SqliteJournal, "snapshot", autospec=True,
+                          side_effect=SqliteJournal.snapshot) as read:
+            view = await self.host.agent_groups.view(selected.group_id)
+        self.assertEqual(view["name"], selected.name)
+        self.assertEqual(view["members"], list(MEMBERS))
+        self.assertEqual([call.args[1] for call in read.call_args_list], [selected.group_id])
+
     async def test_dissolve_preserves_history_and_does_not_resume_the_pending_calls(self):
         group = await self.host.agent_groups.create(name="开发群", members=["Ada", "Lin"])
         called, release = self.pause_delivery("Ada")

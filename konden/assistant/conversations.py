@@ -26,14 +26,13 @@ from konden.assistant.workspaces import bound_workspace_id
 from konden.runtime import (
     CommandPhase,
     CommandState,
+    CanonicalState,
     DomainFactCommitted,
     Event,
     OutcomeStatus,
-    SqliteJournal,
     StepCommitted,
     StepState,
     UserMessageReceived,
-    replay,
 )
 
 
@@ -210,7 +209,7 @@ class AssistantQueries:
         self._sessions = sessions
 
     async def observe_subagent(self, parent_session_id: str, command_id: str) -> SubagentObservation:
-        events = await SqliteJournal(self._store.require(parent_session_id)).snapshot(parent_session_id)
+        events = await self._store.journal(parent_session_id).snapshot(parent_session_id)
         intent = next((item for item in project_delegate_intents(events) if item.command_id == command_id), None)
         if intent is None:
             raise SessionNotFoundError(f"委派不存在：{command_id}")
@@ -218,7 +217,7 @@ class AssistantQueries:
         # 委派已提交，但 Host 尚未物化子 Journal 时，仍可打开任务说明。
         if not self._store.path(child_id).parent.exists():
             return SubagentObservation(child_id, intent.task, "idle", None, None)
-        child_events = await SqliteJournal(self._store.require(child_id)).snapshot(child_id)
+        child_events, child_state = await self._store.projected(child_id)
         returned = next((event.payload.data for event in child_events
                          if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == RETURN_FACT), None)
         result = None if returned is None else SubagentResult(
@@ -226,18 +225,17 @@ class AssistantQueries:
         )
         return SubagentObservation(
             child_id, intent.task, self._sessions.activity(child_id), result,
-            await self._conversation(child_id, child_events),
+            await self._conversation(child_id, child_events, child_state),
         )
 
     async def list_agents(self) -> tuple[AgentRosterEntry, ...]:
         entries: list[AgentRosterEntry] = []
         for record in await self._sessions.agents.list():
-            events = await SqliteJournal(self._store.require(record.session_id)).snapshot(
-                record.session_id
-            )
+            events, state = await self._store.projected(record.session_id)
             entries.append(project_agent_roster_entry(
                 record.session_id,
                 events,
+                state,
                 name=record.name,
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
@@ -246,13 +244,14 @@ class AssistantQueries:
         return tuple(entries)
 
     async def agent_entry(self, session_id: str) -> AgentRosterEntry:
-        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
+        events, state = await self._store.projected(session_id)
         agent = project_agent(events)
         if agent is None:
             raise SessionNotFoundError(session_id)
         return project_agent_roster_entry(
             session_id,
             events,
+            state,
             name=agent.name,
             activity=self._sessions.activity(session_id),
             last_error=self._sessions.current_failure(session_id),
@@ -262,14 +261,12 @@ class AssistantQueries:
     async def list_inbox(self) -> tuple[InboxItem, ...]:
         items: list[InboxItem] = []
         watches = {item.session_id: item for item in self._sessions.absence_watches()}
-        for path in self._store.journals():
-            journal = SqliteJournal(path)
-            session_id = await journal.session_identity()
-            events = await journal.snapshot(session_id)
+        for record in await self._sessions.agents.list():
+            session_id = record.session_id
+            events, state = await self._store.projected(session_id)
             agent = project_agent(events)
             if agent is None or agent.deleted:
                 continue
-            state = replay(session_id, events).state
             view = session_view(state, control_approval=pending_approval_view(events),
                                 auto_authorize=self._sessions.auto_authorize())
             if view.pending_authorization_commands or view.control_approval is not None:
@@ -299,7 +296,7 @@ class AssistantQueries:
         """Journal event id for each delivery. A step started by that event uses the same id."""
         if not delivery_ids:
             return {}
-        events = await SqliteJournal(self._store.require(session_id)).snapshot(session_id)
+        events = await self._store.journal(session_id).snapshot(session_id)
         wanted = set(delivery_ids)
         found: dict[str, str] = {}
         for event in events:
@@ -315,13 +312,10 @@ class AssistantQueries:
         *,
         view: SessionView | None = None,
     ) -> ConversationView:
-        events = await SqliteJournal(
-            self._store.require(session_id)
-        ).snapshot(session_id)
-        return await self._conversation(session_id, events, view=view)
+        events, state = await self._store.projected(session_id)
+        return await self._conversation(session_id, events, state, view=view)
 
-    async def _conversation(self, session_id: str, events: tuple[Event, ...], *, view: SessionView | None = None) -> ConversationView:
-        state = replay(session_id, events).state
+    async def _conversation(self, session_id: str, events: tuple[Event, ...], state: CanonicalState, *, view: SessionView | None = None) -> ConversationView:
         terminals = project_unreported_returns(events, await self._child_returns(events))
         still_open = bool(
             set(project_pending(events)) - {item.child_session_id for item in terminals}
@@ -361,7 +355,7 @@ class AssistantQueries:
         for child_id in project_pending(events):
             if not self._store.path(child_id).parent.exists():
                 continue
-            child_events = await SqliteJournal(self._store.require(child_id)).snapshot(child_id)
+            child_events = await self._store.journal(child_id).snapshot(child_id)
             returned = next(
                 (
                     event.payload.data
@@ -397,13 +391,13 @@ def project_agent_status(
 def project_agent_roster_entry(
     session_id: str,
     events: tuple[Event, ...],
+    state: CanonicalState,
     *,
     name: str,
     activity: SessionActivity,
     last_error: str | None,
     auto_authorize: bool,
 ) -> AgentRosterEntry:
-    state = replay(session_id, events).state
     agent = project_agent(events)
     return AgentRosterEntry(
         session_id=session_id,

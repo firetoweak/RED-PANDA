@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+from bisect import bisect_right, insort_right
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+from itertools import islice
 from uuid import uuid4
 
 from konden.assistant.external_messages import (
@@ -13,7 +15,7 @@ from konden.assistant.external_messages import (
 )
 from konden.assistant.host.agent_messages import message_identity
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
-from konden.runtime import DomainFactCommitted, SqliteJournal
+from konden.runtime import DomainFactCommitted, Event
 
 
 class ExternalConnectionNotFound(LookupError):
@@ -32,6 +34,8 @@ class ExternalMessages:
         self.changed_sink = None
         self._sending = asyncio.Lock()
         self._changed = asyncio.Condition(self._sending)
+        self._positions: dict[str, int] = {}
+        self._conversations: dict[tuple[str, str], list[tuple[str, Event, ExternalMessage]]] = {}
 
     async def _notify(self):
         if self.changed_sink is not None:
@@ -61,32 +65,46 @@ class ExternalMessages:
 
     async def messages(self, session_id):
         return [(event, parse_external(event.payload))
-                for event in await SqliteJournal(self.host.store.require(session_id)).snapshot(session_id)
+                for event in await self.host.store.journal(session_id).snapshot(session_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == EXTERNAL_MESSAGE]
 
-    async def _all_messages(self):
-        return [(agent, event, message)
-                for agent in await self.host.agents.list(include_deleted=True)
-                for event, message in await self.messages(agent.session_id)]
+    async def _refresh(self):
+        agents = {agent.session_id: agent for agent in await self.host.agents.list(include_deleted=True)}
+        for session_id in agents:
+            events = await self.host.store.journal(session_id).snapshot(session_id)
+            position = self._positions.get(session_id, 0)
+            additions = [(event, parse_external(event.payload)) for event in events[position:]
+                         if isinstance(event.payload, DomainFactCommitted)
+                         and event.payload.fact_type == EXTERNAL_MESSAGE]
+            for event, message in additions:
+                messages = self._conversations.setdefault((message.connection_id, message.identity), [])
+                insort_right(messages, (session_id, event, message), key=lambda item: item[2].sequence)
+            self._positions[session_id] = max(position, len(events))
+        return agents
+
+    def _messages_for(self, session, agents):
+        return [(agents[session_id], event, message) for session_id, event, message
+                in self._conversations.get((session.connection_id, session.identity), ())]
 
     async def _conversation(self, session):
-        return sorted((item for item in await self._all_messages()
-                       if item[2].identity == session.identity and item[2].connection_id == session.connection_id),
-                      key=lambda item: item[2].sequence)
+        return self._messages_for(session, await self._refresh())
 
-    def _session_view(self, session, messages):
+    def _session_view(self, session, messages, active_connections):
         peers = {agent.session_id: {"name": agent.name, "session_id": agent.session_id, "deleted": agent.deleted}
                  for agent, _, _ in messages}
         return {"identity": session.identity, "name": session.name,
                 "created_at": session.created_at.isoformat(),
                 "last_activity_at": max([session.created_at, *(event.occurred_at for _, event, _ in messages)]).isoformat(),
-                "active": self._active(session.connection_id), "peers": list(peers.values())}
+                "active": session.connection_id in active_connections, "peers": list(peers.values())}
 
     async def list_sessions(self):
-        messages = await self._all_messages()
-        return sorted((self._session_view(session, [item for item in messages
-                       if item[2].identity == session.identity and item[2].connection_id == session.connection_id])
-                       for session in self.sessions.read().sessions),
+        sessions = self.sessions.read().sessions
+        if not sessions:
+            return []
+        agents = await self._refresh()
+        active = {item.connection_id for item in self.connections.read().connections}
+        return sorted((self._session_view(session, self._messages_for(session, agents), active)
+                       for session in sessions),
                       key=lambda item: item["last_activity_at"], reverse=True)
 
     async def view(self, identity):
@@ -94,7 +112,8 @@ class ExternalMessages:
         if session is None:
             raise ExternalSessionNotFound(identity)
         messages = await self._conversation(session)
-        return {"session": self._session_view(session, messages), "messages": [
+        active = {item.connection_id for item in self.connections.read().connections}
+        return {"session": self._session_view(session, messages, active), "messages": [
             {"message_id": message.message_id, "sequence": message.sequence,
              "direction": message.direction, "text": message.text, "reply_to": message.reply_to,
              "bot_name": agent.name, "bot_session_id": agent.session_id,
@@ -172,16 +191,20 @@ class ExternalMessages:
         session = self._session(connection.connection_id, identity)
         if session is None:
             return self.not_found()
-        messages = await self._conversation(session)
+        await self._refresh()
+        messages = self._conversations.get((session.connection_id, session.identity), ())
         if after > len(messages):
             return {"ok": False, "code": "INVALID_CURSOR", "error": "请使用这个会话上次返回的 next_cursor。"}
-        received = [item for item in messages if not item[2].incoming and item[2].sequence > after]
-        page = received[:limit]
+        position = bisect_right(messages, after, key=lambda item: item[2].sequence)
+        received = (item for item in islice(messages, position, None) if not item[2].incoming)
+        page = list(islice(received, limit + 1))
+        has_more = len(page) > limit
+        page = page[:limit]
         return {"ok": True, "messages": [
             {"message_id": message.message_id, "sender": {"kind": "bot", "name": message.name},
              "text": message.text, "reply_to": message.reply_to, "occurred_at": event.occurred_at.isoformat()}
             for _, event, message in page],
-            "next_cursor": page[-1][2].sequence if page else after, "has_more": len(received) > len(page),
+            "next_cursor": page[-1][2].sequence if page else after, "has_more": has_more,
             "notice": "空结果只表示目前没有新消息。保留 identity 和 next_cursor，继续读取后续消息。"}
 
     async def read(self, connection, identity, after, limit, wait_seconds):
