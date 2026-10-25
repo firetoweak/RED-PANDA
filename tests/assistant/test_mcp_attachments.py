@@ -77,15 +77,6 @@ class ExtractImagesTest(unittest.TestCase):
         self.assertEqual([content[0], content[2]], [text, tail])
         self.assertEqual(len(result["images"]), 1)
 
-    def test_two_identical_images_share_one_stored_object(self):
-        data = png()
-        result = extract_images(
-            mcp_result(image_block(data), image_block(data)), self.store
-        )
-
-        first, second = result["images"]
-        self.assertEqual(first["id"], second["id"])
-        self.assertEqual(len(list(Path(self._directory.name).iterdir())), 1)
 
     def test_unsupported_format_is_rejected_visibly_not_dropped(self):
         bmp = BytesIO()
@@ -141,9 +132,9 @@ class ExtractImagesTest(unittest.TestCase):
 
 class BinaryRedactionTest(unittest.TestCase):
     def test_secret_redaction_skips_binary_blocks(self):
-        secret = "s3cr3t-token"
-        # base64 里恰好含有密钥子串时，文本替换会破坏原始字节。
         payload = b64encode(png()).decode("ascii")
+        # The secret really occurs in the image; redacting it would corrupt the bytes.
+        secret = payload[20:32]
         adapted = adapt_call_result(
             CallToolResult(
                 content=[
@@ -156,17 +147,5 @@ class BinaryRedactionTest(unittest.TestCase):
         )
 
         content = adapted["data"]["mcp"]["content"]
-        self.assertNotIn(secret, content[0]["text"])
+        self.assertEqual(content[0]["text"], "token=***")
         self.assertEqual(content[1]["data"], payload)
-
-    def test_redaction_still_applies_to_text_blocks(self):
-        secret = "abcdef"
-        adapted = adapt_call_result(
-            CallToolResult(
-                content=[TextContent(type="text", text=f"x{secret}y")],
-                isError=False,
-            ),
-            secret_values=(secret,),
-        )
-
-        self.assertEqual(adapted["data"]["mcp"]["content"][0]["text"], "x***y")

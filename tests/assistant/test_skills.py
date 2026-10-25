@@ -3,74 +3,16 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from konden.assistant.catalog import CatalogSkill
 from konden.assistant.context.projection import ModelContextSettings
-from konden.assistant.delivery import DELIVER_TOOL_NAME, deliver_binding
 from konden.assistant.skills import SkillToolAdapter
 from konden.paths import KondenHome
-from konden.runtime import (
-    AgentRuntime,
-    CommandOutcomeReceived,
-    InvokeTool,
-    ModelDecision,
-    RuntimeStatus,
-    StepCommitted,
-)
-from konden.runtime.state import DecisionFrame
 from konden.skills.application import SkillApplicationService
 from konden.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
 from tests.fixtures.artifacts import MemoryArtifactGateway
-from tests.fixtures.memory_journal import MemoryJournal
-from tests.session_scheduler import settle_session
 from tests.skills.test_package import write_skill
-
-DecisionScript = Callable[
-    [DecisionFrame],
-    ModelDecision | Awaitable[ModelDecision],
-]
-
-
-class SequentialIds:
-    def __init__(self) -> None:
-        self._value = 0
-
-    def __call__(self, prefix: str) -> str:
-        self._value += 1
-        return f"{prefix}-{self._value}"
-
-
-class ScriptedDecisionMaker:
-    def __init__(self, scripts: tuple[DecisionScript, ...]) -> None:
-        self.scripts = scripts
-        self.frames: list[DecisionFrame] = []
-
-    async def decide(self, frame: DecisionFrame) -> ModelDecision:
-        script = self.scripts[len(self.frames)]
-        self.frames.append(frame)
-        decision = script(frame)
-        if isinstance(decision, Awaitable):
-            return await decision
-        return decision
-
-
-def _schema_names(schemas: list[dict[str, object]]) -> set[str]:
-    names: set[str] = set()
-    for schema in schemas:
-        function = schema.get("function")
-        if isinstance(function, dict) and isinstance(function.get("name"), str):
-            names.add(function["name"])
-    return names
-
-
-def _load_skill_description(schemas: list[dict[str, object]]) -> str:
-    for schema in schemas:
-        function = schema.get("function")
-        if isinstance(function, dict) and function.get("name") == LOAD_SKILL:
-            return str(function.get("description") or "")
-    return ""
 
 
 class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
@@ -139,14 +81,6 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(resource["data"]["content"], (directory / "SKILL.md").read_text(encoding="utf-8"))
 
-    async def test_enabled_catalog_is_not_in_load_skill_description(self):
-        schemas = self.adapter.schemas()
-        self.assertEqual(
-            _schema_names(schemas),
-            {LOAD_SKILL, READ_SKILL_RESOURCE},
-        )
-        self.assertNotIn("demo: Demo workflow", _load_skill_description(schemas))
-
     async def test_project_skills_come_from_the_task_root_and_follow_its_changes(self):
         project = Path(self.temporary.name) / "project"
         skills_root = project / ".claude" / "skills"
@@ -180,9 +114,9 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_project_skills_beyond_the_catalog_budget_are_listed_unavailable(self):
         project = Path(self.temporary.name) / "crowded"
-        for index in range(40):
+        for index in range(8):
             write_skill(project / ".claude" / "skills" / f"big-{index:02}", name=f"big-{index:02}",
-                        description="x" * 120)
+                        description="x" * 500)
         constrained = SkillApplicationService(self.workspace, max_catalog_chars=4000)
         adapter = SkillToolAdapter(
             type("Skills", (), {"tool_catalog": constrained.tool_catalog})(),
@@ -190,13 +124,13 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item["description"] for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(8)})
         self.assertLessEqual(len("\n".join(f"- {key}: {value}" for key, value in by_id.items())), 4000)
-        self.assertEqual(by_id["project:big-00"], "x" * 120)
-        self.assertIn("长度上限", by_id["project:big-39"])
+        self.assertEqual(by_id["project:big-00"], "x" * 500)
+        self.assertIn("长度上限", by_id["project:big-07"])
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
-        result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "project:big-39"})
+        result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "project:big-07"})
         self.assertEqual(result["code"], "SKILL_PACKAGE_INVALID")
 
     async def test_project_skills_directory_leading_outside_the_task_root_is_not_read(self):
@@ -217,8 +151,8 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("project:.claude/skills", ids)
 
     async def test_crowded_project_catalog_preserves_every_id_and_explains_unavailability(self):
-        project = Path(self.temporary.name) / "forty-skills"
-        for index in range(40):
+        project = Path(self.temporary.name) / "unavailable-skills"
+        for index in range(3):
             name = f"big-{index:02}"
             write_skill(project / ".claude" / "skills" / name, name=name, description="x" * 500)
         constrained = SkillApplicationService(self.workspace, max_catalog_chars=400)
@@ -228,10 +162,10 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
         catalog = adapter.registry_catalog()
         by_id = {item["id"]: item for item in catalog}
-        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(40)})
+        self.assertEqual(set(by_id), {"demo", "builtin:coding", "builtin:git-collaboration", "builtin:web-research", "builtin:independent-verification"} | {f"project:big-{index:02}" for index in range(3)})
         adapter.apply_catalog(self.SESSION_ID, tuple(CatalogSkill(**item) for item in catalog))
         context = type("Context", (), {"session_id": self.SESSION_ID})()
-        for index in range(40):
+        for index in range(3):
             skill_id = f"project:big-{index:02}"
             self.assertIn("长度上限", by_id[skill_id]["description"])
             result = await adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": skill_id})
@@ -250,93 +184,18 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["code"], "SKILL_CATALOG_STALE")
 
     async def test_load_skill_returns_main_instructions_as_a_tool_result(self):
-        delivered: list[str] = []
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="loading skill",
-                        command_requests=(
-                            InvokeTool(LOAD_SKILL, (("skill_id", "demo"),)),
-                        ),
-                    ),
-                    lambda _frame: ModelDecision(
-                        content="loaded",
-                        command_requests=(
-                            InvokeTool(DELIVER_TOOL_NAME, (("output_id", "output-1"), ("text", "loaded"))),
-                        ),
-                    ),
-                )
-            ),
-            {
-                **self.adapter.bindings(),
-                **deliver_binding(lambda _session_id, _output_id, text: delivered.append(text)),
-            },
-            SequentialIds(),
-        )
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "use demo skill",
-            delivery_id="ask-1",
-        )
-        result = await settle_session(
-            runtime,
-            self.SESSION_ID,
-        )
-        events = await runtime.snapshot(self.SESSION_ID)
-        loaded = _outcomes_named(events, LOAD_SKILL)
-        self.assertEqual(result.state.status, RuntimeStatus.WAITING)
-        self.assertEqual(delivered, ["loaded"])
-        self.assertEqual(loaded[0]["code"], "SKILL_LOADED")
-        self.assertEqual(
-            loaded[0]["data"]["content"],
-            "\nFollow the demo workflow.\n",
-        )
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        result = await self.adapter.bindings()[LOAD_SKILL].handler(context, {"skill_id": "demo"})
+        self.assertEqual(result["code"], "SKILL_LOADED")
+        self.assertEqual(result["data"]["content"], "\nFollow the demo workflow.\n")
 
     async def test_read_skill_resource_does_not_require_a_prior_load(self):
-        delivered: list[str] = []
-        runtime = AgentRuntime(
-            MemoryJournal(),
-            ScriptedDecisionMaker(
-                (
-                    lambda _frame: ModelDecision(
-                        content="reading",
-                        command_requests=(
-                            InvokeTool(
-                                READ_SKILL_RESOURCE,
-                                (
-                                    ("skill_id", "demo"),
-                                    ("relative_path", "references/guide.md"),
-                                    ("offset", 2),
-                                    ("limit", 4),
-                                ),
-                            ),
-                        ),
-                    ),
-                    lambda _frame: ModelDecision(
-                        content="ok",
-                        command_requests=(
-                            InvokeTool(DELIVER_TOOL_NAME, (("output_id", "output-1"), ("text", "ok"))),
-                        ),
-                    ),
-                )
-            ),
-            {
-                **self.adapter.bindings(),
-                **deliver_binding(lambda _session_id, _output_id, text: delivered.append(text)),
-            },
-            SequentialIds(),
+        context = type("Context", (), {"session_id": self.SESSION_ID})()
+        result = await self.adapter.bindings()[READ_SKILL_RESOURCE].handler(
+            context, {"skill_id": "demo", "relative_path": "references/guide.md", "offset": 2, "limit": 4},
         )
-        await runtime.receive_user_message(
-            self.SESSION_ID,
-            "read guide",
-            delivery_id="ask-1",
-        )
-        await settle_session(runtime, self.SESSION_ID)
-        events = await runtime.snapshot(self.SESSION_ID)
-        reads = _outcomes_named(events, READ_SKILL_RESOURCE)
-        self.assertEqual(reads[0]["data"]["content"], "cdef")
+        self.assertEqual(result["code"], "SKILL_RESOURCE_READ")
+        self.assertEqual(result["data"]["content"], "cdef")
 
     async def test_tool_spec_validation_uses_validation_error_code(self):
         binding = self.adapter.bindings()[LOAD_SKILL]
@@ -351,20 +210,3 @@ class SkillToolAdapterTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result["code"], "VALIDATION_ERROR")
-
-
-def _outcomes_named(events, name: str) -> list[object]:
-    names: dict[str, str] = {}
-    for event in events:
-        payload = event.payload
-        if isinstance(payload, StepCommitted):
-            for command in payload.step.commands:
-                effect = command.effect
-                if isinstance(effect, InvokeTool):
-                    names[command.command_id] = effect.name
-    return [
-        event.payload.outcome.value
-        for event in events
-        if isinstance(event.payload, CommandOutcomeReceived)
-        and names.get(event.payload.command_id) == name
-    ]

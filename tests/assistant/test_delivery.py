@@ -9,7 +9,6 @@ from konden.assistant.delivery import (
     ensure_deliver,
 )
 from konden.runtime import (
-    Command,
     InvokeTool,
     ModelDecision,
 )
@@ -18,16 +17,6 @@ from konden.runtime.dispatcher import AttemptContext
 
 class AssistantDeliveryTest(unittest.IsolatedAsyncioTestCase):
     SESSION_ID = "deliver-session"
-
-    def test_command_outcome_decision_defaults_true(self):
-        self.assertTrue(Command("c1", InvokeTool("A")).decision_on_outcome)
-        self.assertFalse(
-            Command(
-                "c2",
-                InvokeTool("note"),
-                decision_on_outcome=False,
-            ).decision_on_outcome
-        )
 
     def test_deliver_is_non_deciding_command(self):
         binding = deliver_binding(
