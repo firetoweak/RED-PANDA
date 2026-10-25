@@ -20,7 +20,7 @@ from konden.filesystem.registry import WorkspaceRegistry
 from konden.paths import KondenHome
 from tests.fixtures.session_worker import ProcessLlm, config_for
 
-pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"}, reason="Windows or Linux owned processes")]
+pytestmark = [pytest.mark.process, pytest.mark.skipif(sys.platform not in {"win32", "linux", "darwin"}, reason="Windows, Linux or macOS owned processes")]
 
 
 def shell(*args):

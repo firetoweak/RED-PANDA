@@ -1,5 +1,6 @@
 """Wrong app paths or broken bundle links must fail before shipping browser tools."""
 import asyncio
+from dataclasses import replace
 import re
 
 import pytest
@@ -22,12 +23,21 @@ def test_bundled_browser_launches_and_evaluates_page(tmp_path, server_id, open_t
         home = KondenHome(tmp_path / "home")
         manager = McpClientManager(McpSecretStore.from_home(home), runtime_root=tmp_path / "runtime")
         record = next(server for server in browser_servers(tmp_path) if server.id == server_id)
+        browser_log = tmp_path / "chrome-devtools.log"
+        if server_id == "builtin-chrome-devtools":
+            record = replace(record, transport_config=replace(
+                record.transport_config,
+                args=(*record.transport_config.args, f"--log-file={browser_log}"),
+            ))
         try:
             async with asyncio.timeout(90):
                 names = {tool.name for tool in await manager.list_tools(record)}
                 assert {open_tool, evaluate_tool} <= names
                 opened = await manager.call_tool(record, open_tool, {"url": "about:blank"})
-                assert not opened.is_error, opened
+                assert not opened.is_error, (
+                    opened, browser_log.read_text(encoding="utf-8", errors="replace")
+                    if server_id == "builtin-chrome-devtools" else "",
+                )
                 arguments = {
                     "function": "() => { document.title = 'konden-browser-ready'; return document.title; }",
                 }

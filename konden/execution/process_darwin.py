@@ -30,7 +30,8 @@ SZOMB = 5
 
 def process_info(pid):
     info = BsdInfo()
-    size = _libproc.proc_pidinfo(pid, 3, 0, c.byref(info), c.sizeof(info))
+    # A nonzero argument includes zombies, whose PID we retain until close.
+    size = _libproc.proc_pidinfo(pid, 3, 1, c.byref(info), c.sizeof(info))
     if size == 0 and c.get_errno() == errno.ESRCH:
         return None
     if size != c.sizeof(info):
@@ -90,13 +91,13 @@ class Running:
     def close(self):
         if self.process is not None and self.process.returncode is None:
             deadline = time.monotonic() + 10
-            while True:
+            while self._group_busy():
                 try:
                     os.killpg(self.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                if not self._group_busy():
-                    break
+                except (ProcessLookupError, PermissionError):
+                    # Darwin returns EPERM when only zombies remain in the group.
+                    if self._group_busy():
+                        raise
                 if time.monotonic() >= deadline:
                     raise TimeoutError("macOS command process group did not drain")
                 time.sleep(.01)

@@ -386,7 +386,7 @@ class HostSupervisor:
                 return refused.result()
         if operation in {"command_execute", "command_query", "command_read", "command_stop", "command_list", "command_interrupt"}:
             if self.commands is None:
-                raise RuntimeError("Background commands require Windows or Linux")
+                raise RuntimeError("Background commands require Windows, Linux or macOS")
             return await self.commands.route(operation, session_id, arguments)
         if operation == "model_settings":
             if self.models is not None:
