@@ -4,6 +4,8 @@
 
 ## Sub-features
 
+- `capability-inventory`：侧栏底部 `能力` 图标直接打开 `/capabilities`，不经过设置。Skill、MCP、CLI 页签展示数量、搜索与可展开的清单；产品内置项与用户安装项一起呈现，停用项仍可查。用户安装的 Skill、MCP 可启停，CLI 没有启停开关。MCP 检测结果与启用状态分开；CLI 体检、版本均为已有记录。页面不连接外部 MCP、不运行 CLI，不展示 MCP 凭据与连接配置。
+
 - `bundled-browsers`：空安装登记的 Bot 默认可见 `mcp:builtin-chrome-devtools` 与 `mcp:builtin-playwright`；通过 `load_toolset` 按需加载，具体工具下一步才可调用，不产生安装提案或安装记录。每个连接使用独立的无头 Chrome，会话关闭后不保留登录状态；只读子 Agent 的能力目录排除两者。内置能力随产品更新，安装管理清单仍只列用户安装的 Server。
 
 - `bundled-skills`：空数据根无需安装即可在能力目录发现 `builtin:coding` 与 `builtin:git-collaboration`，正文经 `load_skill` 读取，不注入系统提示，也不作为用户安装记录。工作目录的 `.claude/skills/` 在无 Git、无登记项目的 Bot 中同样可发现为 `project:` Skill。验证时让普通 Bot 按目录自定义 Skill 交付文件，并核对调用与真实文件。
@@ -21,10 +23,17 @@
 
 ## How to get to it (user POV)
 
+- Web 清单：点击侧栏底部 `能力`；窄屏先打开 `打开 Agent 名册`。分类为 `Skill`、`MCP`、`CLI`，搜索为 `搜索 Skill` 等，`查看 <名字>` 展开详情。
 - Web：发 `请列出已安装的 MCP 服务器、Skill 和 CLI。`；安装时发 `请从本地目录 <绝对路径> 安装这个 skill。`；登记 CLI 发 `请把本机的 git 登记为 CLI，名称 git。`
 - 终端：见 console-chat，直接输入 `/mcp list`、`/skill list`。
 
 ## Driving it with the browser
+
+- **能力清单**：从侧栏打开 `能力`，切换三个页签、搜索名称或用途、展开来源与版本；再对用户安装项操作 `启用 <名字>` / `停用 <名字>`。
+  - (a) 与 `GET /api/capabilities` 对照，包含产品内置与停用安装，CLI 仅为系统已登记项。
+  - (b) 启停经 `PUT /api/capabilities/{skills|mcp}/{id}/enabled` 保存，后续 GET 和刷新保持；MCP 仅开启时仍显示原检测结果，不能变成「连接正常」。
+  - (c) 内置项不出现开关，CLI 不出现开关，列表读取不连接服务或执行命令，也不泄露 MCP 凭据。
+  - (d) 无匹配结果与读取失败分开显示；读取失败有 `重试`。1440×900 与 390×844 的明暗主题均可读，220px 侧栏底部允许换行，自动放行标签不竖排。
 
 - **默认浏览器**：按 setup-and-launch 准备环境，在空 home 从页面创建无项目 Bot，让它分别用 Chrome DevTools 与 Playwright 打开本次隔离 Web 的首页、读取标题并截图。
   - (a) 会话初始能力目录含两项内置 Toolset；Journal 留下各自的加载与真实调用结果，用户安装登记仍为空。
@@ -55,6 +64,8 @@
 - **密钥**：安装带密钥的 MCP 后，(c) 回复、journal、`GET /api/sessions/<id>` 里不出现明文密钥（`konden/mcp/secrets.py`）。
 
 ## Gotchas
+
+2026-10-26 能力清单增量：Windows 隔离 Web，经侧栏真实打开并操作 Skill/MCP/CLI 清单；停用项仍可查，启停持久保存且 MCP 原检测结果不变，断网错误可重试恢复。1440×900、390×844 明暗主题与 220px 侧栏通过。证据留在本地 `.tools/capabilities-evidence/`；无默认模型，未发模型消息，未重验外部服务连接、模型侧安装与完整控制流程。
 
 - Web 端没有 `/mcp` `/skill` 斜杠命令，只能经对话由助手调用工具；斜杠命令只在终端入口生效。CLI 没有斜杠命令，只能经对话。
 - `skill_help` 工具已删除，不要再按它验证。

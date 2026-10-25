@@ -83,7 +83,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | scheduling | [scheduling.md](./scheduling.md) | `schedule_once` / `cancel_schedule` 定时唤醒 | 真实 schedule_once 45 秒倒计时可见，无新用户输入即 MAP_WAKE；取消、重启持久化与错参未重验。 |
 | routines | [routines.md](./routines.md) | `Bot 资料` 侧栏／窄屏 `Agent 资料` 抽屉的 `例行任务`：开关 `暂停 <名字>` / `恢复 <名字>`，`删除 <名字>` → `确认删除 <名字>`；`查看 <名字>` 看意图与执行记录 | 真实 save_routine，1100 宽度资料抽屉查看与暂停，状态变为人暂停且下次未安排；删除、失败和无人查看策略未重验。 |
 | reply-delivery | [reply-delivery.md](./reply-delivery.md) | 长期 Agent 的普通结尾直接给人看，实时与历史一致；协作消息仍须显式发送 | 普通回复、私信与定时触发的结果可见，刷新后原文一致；正文右键复制消息的剪贴板为原文。send_file 未重验。 |
-| extensions | [extensions.md](./extensions.md) | MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 真实加载 MCP/Skill/CLI 管理工具并列出空安装清单；安装、测试、控制提案和移除未重验。 |
+| extensions | [extensions.md](./extensions.md) | 侧栏 `能力` 清单、MCP / Skill / CLI 的安装、启用、测试（对话内与 `/mcp` `/skill`） | 隔离 Web 的能力清单、搜索、展开、启停与读取失败重试通过；真实模型的安装、测试、控制提案和移除未重验。 |
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | Doctor 首事件与双标签实时状态、全局自动授权同步通过；保活时间、断线重连和失效连接未重验。 |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | 三栏布局、资料栏、`外观`、侧栏宽度与窄屏名册 | 亮色主题刷新保持、桌面内容页和 1100 资料抽屉通过；390 窄屏内容页仍隐藏输入框，作为产品缺口保留。 |
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 退出通过；更新终端说明后另建 home 复跑。粘贴、底栏和并发占用未重验。 |
@@ -98,6 +98,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | 入口 | 条目 |
 |---|---|
 | `/` → `AgentHome` | session-sidebar、web-session-chat |
+| `/capabilities` → `CapabilitiesPage` | extensions |
 | `/sessions/:sessionId` → `SessionConversation` | web-session-chat、inbox 及所有会话类条目 |
 | `/groups/:groupId` → `GroupChatPage` | group-chat |
 | 侧栏 `设置 → 模型配置` / `共同记忆` → `SettingsMenu` 抽屉（保持聊天路由） | model-settings、colleague-tools |
@@ -108,6 +109,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | 接口 | 条目 |
 |---|---|
 | `GET /api/events` | realtime-events、reply-delivery（流式预览与最终回复） |
+| `GET /api/capabilities`、`PUT /api/capabilities/{kind}/{id}/enabled`（kind 为 skills 或 mcp） | extensions |
 | `GET/PUT /api/model-settings`、`POST /api/model-settings/test` | model-settings |
 | `GET/PUT /api/shared-memory` | colleague-tools |
 | `GET/PUT /api/sessions/{id}/model` | model-settings |
