@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-import { ExecutionProcess } from "../src/features/conversation/ExecutionProcess";
+import { StepDisclosure } from "../src/features/conversation/ExecutionProcess";
 import { timelineTurns } from "../src/features/conversation/timelineTurns";
 import type { VisibleStep } from "../src/features/conversation/visibleTimeline";
 
@@ -22,7 +22,7 @@ function step(key: string, text: string, files: VisibleStep["files"] = []): Visi
   };
 }
 
-it("带附件的消息单独成气泡，执行过程里展开后也能下载", async () => {
+it("带附件的消息单独成气泡，子 Agent 执行步骤里也能下载", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const turns = timelineTurns([
     { ...step("send", ""), text: null, tools: [{
@@ -38,15 +38,15 @@ it("带附件的消息单独成气泡，执行过程里展开后也能下载", a
 
   render(
     <MantineProvider>
-      <ExecutionProcess
+      <StepDisclosure
         authorizationDisabled={false}
         onAuthorize={() => {}}
         sessionId="ada"
-        steps={[step("file", "证据在这", [file])]}
+        index={0}
+        step={step("file", "证据在这", [file])}
       />
     </MantineProvider>,
   );
-  fireEvent.click(screen.getByRole("button", { name: /执行过程/ }));
   fireEvent.click(await screen.findByRole("button", { name: /证据在这/ }));
   expect(screen.getByRole("link", { name: "evidence.txt", hidden: true }).getAttribute("href"))
     .toContain(encodeURIComponent(file.attachment_id));

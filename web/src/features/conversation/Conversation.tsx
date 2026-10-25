@@ -59,7 +59,7 @@ import {
   turnIsSettled,
   turnNeedsSilentEnd,
   turnNeedsThinkingHint,
-  turnReply,
+  turnReplies,
   type TimelineTurn,
 } from "./timelineTurns";
 import { ConversationTimeline } from "./ConversationTimeline";
@@ -98,7 +98,8 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const jumpRef = useRef<(id: string) => void>(() => {});
   const readCount = useRef(privateReading.get(sessionId)?.count ?? null);
   const messageKeys = (selected.currentData?.items ?? [])
-    .filter((item) => item.kind === "user" || (item.kind === "step" && item.text !== null && item.tools.length === 0))
+    .filter((item) => item.kind === "user" || (item.kind === "step"
+      && ((item.text ?? "").trim() !== "" || (item.files ?? []).length > 0)))
     .map((item) => item.kind === "step" ? `output:${item.output_id}` : item.message_id);
   const count = messageKeys.length;
   const [newCount, setNewCount] = useState(0);
@@ -188,7 +189,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const turns = timelineTurns(items);
   const firstUnread = newCount === 0 ? undefined : messageKeys.at(-newCount);
   jumpRef.current = (id) => {
-    const index = turns.findIndex((turn) => turn.user?.key === id || turnReply(turn, true)?.key === id);
+    const index = turns.findIndex((turn) => turn.user?.key === id || turnReplies(turn, true).some((reply) => reply.key === id));
     if (index < 0) return;
     if (quoteReturn === null) timelineRef.current?.getState((state) => setQuoteReturn(state.scrollTop));
     setFollowing(false);
@@ -280,26 +281,20 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                 running,
                 awaitingControl,
               });
-              const reply = turnReply(turn, settled);
+              const replies = turnReplies(turn, settled);
+              const hasTools = turn.process.some((step) => step.tools.length > 0);
               const completedPlan = completedPlanForTurn(turn, conversation.work_plan_updates);
               const plan = completedPlan === null ? null : <WorkPlanPanel plan={completedPlan} />;
               const body = (
                 <div className="assistant-turn">
-                  {turnNeedsThinkingHint(turn, {
-                    latest,
-                    running,
-                    settled,
-                  }) ? (
-                    <RunningHint label="思考中" agentName={agentName} />
-                  ) : reply !== null ? (
-                    <>
+                  {replies.map((reply) => (
+                    <div className="assistant-message" key={reply.key}>
                     {firstUnread !== undefined && reply.key === firstUnread ? <div className="unread-divider" role="separator">以下是未读消息</div> : null}
                     <Box
                       component="article"
-                      className={`message message-assistant${quotedMessage === reply.key ? " is-quote-target" : ""}`}
+                      className={`message message-assistant${reply.key !== (turn.final ?? turn.active)?.key ? " message-progress" : ""}${quotedMessage === reply.key ? " is-quote-target" : ""}`}
                       data-message-id={reply.key}
                       aria-label={`${agentName ?? "konden"} 的回复`}
-                      key={reply.key}
                     >
                         <AssistantAvatar name={agentName} />
                         <MessageMenu id={reply.key} author={agentName ?? "konden"} text={reply.text}>
@@ -323,16 +318,18 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                         </Stack>
                         </MessageMenu>
                     </Box>
-                    </>
+                    </div>
+                  ))}
+                  {turnNeedsThinkingHint(turn, { latest, running, settled }) ? (
+                    <RunningHint label="思考中" agentName={agentName} />
                   ) : turnNeedsSilentEnd(turn, settled) &&
                     !(latest && notice !== null) ? (
                     <SilentEndHint />
                   ) : null}
-                  {!(reply !== null && settled) && turn.process.length === 0 && thinking === null ? null : <div className="turn-details" aria-label="消息操作与过程">
-                  {turn.process.length === 0 ? null : (
+                  {!(replies.length > 0 && settled) && !hasTools && thinking === null ? null : <div className="turn-details" aria-label="消息操作与过程" key="details">
+                  {!hasTools ? null : (
                     <ExecutionProcess
                       authorizationDisabled={connectionId === null}
-                      sessionId={sessionId}
                       onAuthorize={authorize}
                       steps={turn.process}
                       onObserveSubagent={(commandId) => setOpenPage({ kind: "subagent", commandId })}
@@ -344,7 +341,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
                       text={thinking.thinking}
                     />
                   )}
-                  {reply !== null && settled && turn.final?.occurredAt != null ? (
+                  {replies.length > 0 && settled && turn.final?.occurredAt != null ? (
                     <Text className="message-time" component="time" dateTime={turn.final.occurredAt} c="dimmed" fz={11}
                       title={`回复提交于 ${formatMessageTime(turn.final.occurredAt).full}`}>
                       {formatMessageTime(turn.final.occurredAt).short}
@@ -569,11 +566,13 @@ function ControlNotice({ message }: { message: string }) {
 }
 
 function replyThinking(turn: TimelineTurn) {
-  const step = turn.active ?? turn.final;
-  if (step === null || step.thinking === null) {
+  const thinking = [...turn.process, turn.active, turn.final]
+    .flatMap((step) => step?.thinking?.trim() ? [step.thinking] : [])
+    .join("\n\n");
+  if (thinking === "") {
     return null;
   }
-  return { thinking: step.thinking, thinkingPending: step.thinkingPending };
+  return { thinking, thinkingPending: turn.active?.thinkingPending === true };
 }
 
 function requestErrorMessage(error: unknown, fallback: string) {
