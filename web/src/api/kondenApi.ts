@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 import { z } from "zod";
+import { capabilityEnabledSchema, capabilityInventorySchema, type CapabilityInventory } from "./capabilities";
 
 import {
   bindOwner,
@@ -139,8 +140,24 @@ function putConversation(
 export const kondenApi = createApi({
   reducerPath: "kondenApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections", "ExternalSessions"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections", "ExternalSessions", "Capabilities"],
   endpoints: (build) => ({
+    getCapabilities: build.query<CapabilityInventory, void>({
+      query: () => "/capabilities",
+      transformResponse: (value: unknown) => capabilityInventorySchema.parse(value),
+      providesTags: ["Capabilities"],
+    }),
+    setCapabilityEnabled: build.mutation<{ enabled: boolean }, {
+      connectionId: string; kind: "skills" | "mcp"; id: string; enabled: boolean;
+    }>({
+      query: ({ connectionId, kind, id, enabled }) => ({
+        url: `/capabilities/${kind}/${encodeURIComponent(id)}/enabled`, method: "PUT",
+        body: { connection_id: connectionId, enabled },
+      }),
+      transformResponse: (value: unknown) => capabilityEnabledSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: ["Capabilities"],
+    }),
     getSharedMemory: build.query<SharedMemory, void>({
       query: () => "/shared-memory",
       transformResponse: (value: unknown) => sharedMemorySchema.parse(value),
@@ -589,6 +606,8 @@ export const kondenApi = createApi({
 });
 
 export const {
+  useGetCapabilitiesQuery,
+  useSetCapabilityEnabledMutation,
   useGetExternalConnectionsQuery,
   useGetExternalSessionsQuery,
   useGetExternalConversationQuery,
