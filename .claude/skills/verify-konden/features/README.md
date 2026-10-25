@@ -59,7 +59,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 
 每个功能文件：一个 H1、一段开场说明，然后按顺序四个 H2：`Sub-features`、`How to get to it (user POV)`、`Driving it with <harness>`、`Gotchas`。
 
-## 功能列表（27 个）
+## 功能列表（28 个）
 
 | id | 文件 | 一句话 | 本轮 live 覆盖（非全部子功能） |
 |---|---|---|---|
@@ -68,6 +68,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
 | colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 2026-10-24 真实 list_colleagues 通过，负责方向能力已移除；共同记忆沿用此前页面证据，本轮未重验。 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、停止执行的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；停止执行接收和交流上限未重验。 |
+| external-conversations | [external-conversations.md](./external-conversations.md) | 原生聊天独立身份、通用双向消息与 Web 对话 | 2026-10-25 Windows、真实 DeepSeek：登记可见、双身份分流、主动后续、重启续读与撤销历史通过；原生客户端界面与 Linux 未测。 |
 | land-and-sync | [land-and-sync.md](./land-and-sync.md) | `land_branch`、`sync_branch`；未提交不带走，冲突与挡住时集成分支或自己的提交保留 | 真实指定 project 落地后同步，包含两个子任务成果，差异清零且人的原始 note.txt 不变；同步他人新增成果、冲突和阻挡未重验。 |
 | composer-attachments | [composer-attachments.md](./composer-attachments.md) | 图片/文件拖入粘贴上传、`Add attachment` 后端本机选择、下载附件 | 有效 64×64 PNG 真实粘贴、发送、刷新预览通过，GET 下载与原件逐字节相同；本机选择、普通文件、跨会话边界未重验。 |
 | tool-authorization | [tool-authorization.md](./tool-authorization.md) | 待处理条、批准/拒绝、默认自动放行与控制确认 | 全局关闭自动放行后 write_file 等待，展开参数并允许后执行一次，待处理消失；拒绝与控制确认未重验。 |
@@ -143,7 +144,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `list_colleagues` | `konden/assistant/agent_messages.py` | colleague-tools |
 | `read_shared_memory` `update_shared_memory` | `konden/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `konden/assistant/agent_messages.py` | private-messages |
-| 全局设置「外部验证接入」；MCP `get_context` `request_verification` `read_feedback`；Bot 的 `reply_external_message` | `features/settings/VerificationAccess.tsx`、`konden/channels/mcp/`、`assistant/host/external_messages.py` | private-messages（外部独立验证） |
+| 全局设置「外部接入」、侧栏「外部会话」；MCP 身份与消息；Bot 外部查询和发送 | `features/settings/ExternalAccess.tsx`、`features/external/`、`konden/channels/mcp/`、`assistant/host/external_messages.py` | external-conversations |
 | `send_group_message` | `konden/assistant/agent_messages.py` | group-chat |
 | `link_project` `unlink_project` | `konden/assistant/agent_tools.py` | workspace-management |
 | `land_branch` `sync_branch` | `konden/assistant/agent_tools.py` | land-and-sync |

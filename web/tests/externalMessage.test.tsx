@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { PrivateMessageNotice } from "../src/features/conversation/PrivateMessageNotice";
 
@@ -13,13 +14,11 @@ vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <div>{content}</div>,
 }));
 
-it("外部消息展示来源、正文和版本，不跳转到同名内部 Bot", () => {
-  render(<PrivateMessageNotice message={{ key: "external:1", kind: "private_message", direction: "received",
+it("普通外部消息展示正文，并跳转到外部会话而不是同名内部 Bot", () => {
+  render(<MemoryRouter initialEntries={["/sessions/receiver"]}><Routes><Route path="/sessions/:sessionId" element={<PrivateMessageNotice message={{ key: "external:1", kind: "private_message", direction: "received",
     peer: "Codex", occurredAt: "2026-10-23T01:00:00Z",
-    external: { identity: "1".repeat(32), text: "请测试这个版本", revision: "a".repeat(40), reference: "PR 1", previousRequestId: null, feedback: null } }} />);
+    external: { identity: "1".repeat(32), text: "来讨论一下方案", replyTo: null } }} />} /></Routes></MemoryRouter>);
   expect(screen.getByText("外部协作者")).toBeInTheDocument();
-  expect(screen.getByText("请测试这个版本")).toBeInTheDocument();
-  expect(screen.getByText("a".repeat(40))).toBeInTheDocument();
-  expect(screen.getByText("1".repeat(32))).toBeInTheDocument();
-  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.getByText("来讨论一下方案")).toBeInTheDocument();
+  expect(screen.getByRole("link")).toHaveAttribute("href", `/external/${"1".repeat(32)}?bot=receiver`);
 });

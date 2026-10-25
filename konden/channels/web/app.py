@@ -26,7 +26,7 @@ from konden.assistant.authorization import AuthorizationConflict, AuthorizationT
 from konden.assistant.host.agent_groups import GroupDissolvedError, GroupNameTaken, GroupNotFound
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from konden.assistant.host.agent_projects import ProjectLinkRefused
-from konden.assistant.host.external_messages import ExternalConnectionNotFound
+from konden.assistant.host.external_messages import ExternalConnectionNotFound, ExternalSessionNotFound
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.model_connection import check_model_connection
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
@@ -222,6 +222,8 @@ def create_web_app(
         app.state.collaboration_mcp = mcp_app
         app.state.hub = events
         app.state.external_messages = external_messages
+        if external_messages is not None:
+            external_messages.changed_sink = events.external_sessions_changed
         if channel is not None:
             app.state.channel = channel
             app.state.models = models
@@ -248,6 +250,7 @@ def create_web_app(
             conversation_status_sink=events.conversation_status,
         ) as assistant:
             app.state.external_messages = assistant.sessions.external_messages
+            app.state.external_messages.changed_sink = events.external_sessions_changed
             app.state.channel = WebChannel(
                 assistant.sessions,
                 assistant.queries,
@@ -484,6 +487,17 @@ def create_web_app(
     @app.get("/api/external-connections")
     async def external_connections(request: Request):
         return await _channel(request).list_external_connections()
+
+    @app.get("/api/external-sessions")
+    async def external_sessions(request: Request):
+        return await _channel(request).list_external_sessions()
+
+    @app.get("/api/external-sessions/{identity}")
+    async def external_session(identity: str, request: Request):
+        try:
+            return await _channel(request).external_session(identity)
+        except ExternalSessionNotFound:
+            return JSONResponse(status_code=404, content={"detail": "没有这个外部会话。"})
 
     @app.post("/api/external-connections", status_code=201)
     async def create_external_connection(body: ConnectionRequest, request: Request):

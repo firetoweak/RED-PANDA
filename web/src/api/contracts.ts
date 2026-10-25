@@ -112,6 +112,32 @@ export const createdExternalConnectionSchema = z.object({
 }).strict();
 export type CreatedExternalConnection = z.infer<typeof createdExternalConnectionSchema>;
 
+export const externalSessionSchema = z.object({
+  identity: z.string().regex(/^[0-9a-f]{32}$/),
+  name: z.string().min(1),
+  created_at: z.string().datetime({ offset: true }),
+  last_activity_at: z.string().datetime({ offset: true }),
+  active: z.boolean(),
+  peers: z.array(z.object({ name: z.string().min(1), session_id: z.string().min(1), deleted: z.boolean() }).strict()),
+}).strict();
+export type ExternalSessionSummary = z.infer<typeof externalSessionSchema>;
+export const externalConversationSchema = z.object({
+  session: externalSessionSchema,
+  messages: z.array(z.object({
+    message_id: z.string().min(1),
+    sequence: z.number().int().positive(),
+    direction: z.enum(["received", "sent"]),
+    text: z.string().min(1),
+    reply_to: z.string().nullable(),
+    bot_name: z.string().min(1),
+    bot_session_id: z.string().min(1),
+    occurred_at: z.string().datetime({ offset: true }),
+  }).strict()),
+}).strict();
+export type ExternalConversation = z.infer<typeof externalConversationSchema>;
+export type ExternalConversationMessage = ExternalConversation["messages"][number];
+export const externalSessionsChangedEventSchema = z.object({}).strict();
+
 export const avatarSelectionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("generated"), seed: z.string().min(1) }).strict(),
   z.object({ kind: z.literal("image"), attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }).strict(),
@@ -235,14 +261,6 @@ export const workPlanSchema = z.object({
 
 export type WorkPlan = z.infer<typeof workPlanSchema>;
 
-export const verificationFeedbackSchema = z.object({
-  kind: z.enum(["progress", "question", "report"]),
-  verdict: z.enum(["passed", "issues_found", "blocked"]).nullable(),
-  tested_revision: z.string().nullable(),
-  evidence: z.array(z.string()),
-}).strict();
-export type VerificationFeedback = z.infer<typeof verificationFeedbackSchema>;
-
 export const conversationViewSchema = z
   .object({
     deleted: z.boolean(),
@@ -259,10 +277,7 @@ export const conversationViewSchema = z
           peer: z.string().min(1),
           identity: z.string().min(1),
           text: z.string().min(1),
-          revision: z.string(),
-          reference: z.string(),
-          previous_request_id: z.string().nullable(),
-          feedback: verificationFeedbackSchema.nullable(),
+          reply_to: z.string().nullable(),
           occurred_at: z.string().datetime({ offset: true }),
         }).strict(),
         z.object({

@@ -13,6 +13,10 @@ import {
   createdExternalConnectionSchema,
   type ExternalConnection,
   type CreatedExternalConnection,
+  externalSessionSchema,
+  externalConversationSchema,
+  type ExternalSessionSummary,
+  type ExternalConversation,
   avatarSelectionSchema,
   avatarsSchema,
   type AvatarSelection,
@@ -135,7 +139,7 @@ function putConversation(
 export const kondenApi = createApi({
   reducerPath: "kondenApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections", "ExternalSessions"],
   endpoints: (build) => ({
     getSharedMemory: build.query<SharedMemory, void>({
       query: () => "/shared-memory",
@@ -231,6 +235,16 @@ export const kondenApi = createApi({
       query: () => "/external-connections",
       transformResponse: (value: unknown) => externalConnectionSchema.array().parse(value),
       providesTags: ["ExternalConnections"],
+    }),
+    getExternalSessions: build.query<ExternalSessionSummary[], void>({
+      query: () => "/external-sessions",
+      transformResponse: (value: unknown) => z.array(externalSessionSchema).parse(value),
+      providesTags: ["ExternalSessions"],
+    }),
+    getExternalConversation: build.query<ExternalConversation, string>({
+      query: (identity) => `/external-sessions/${encodeURIComponent(identity)}`,
+      transformResponse: (value: unknown) => externalConversationSchema.parse(value),
+      providesTags: ["ExternalSessions"],
     }),
     createExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string }>({
       query: ({ connectionId }) => ({
@@ -576,6 +590,8 @@ export const kondenApi = createApi({
 
 export const {
   useGetExternalConnectionsQuery,
+  useGetExternalSessionsQuery,
+  useGetExternalConversationQuery,
   useCreateExternalConnectionMutation,
   useRevokeExternalConnectionMutation,
   useGetBackgroundCommandsQuery,

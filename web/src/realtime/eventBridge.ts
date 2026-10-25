@@ -3,6 +3,7 @@ import {
   autoAuthorizeChangedEventSchema,
   avatarsChangedEventSchema,
   connectedEventSchema,
+  externalSessionsChangedEventSchema,
   contextUsageEventSchema,
   conversationStatusEventSchema,
   outputFinalEventSchema,
@@ -50,7 +51,11 @@ export function openEventBridge(dispatch: AppDispatch): () => void {
   source.addEventListener("connected", (event) => {
     const payload = connectedEventSchema.parse(JSON.parse(event.data));
     dispatch(connected(payload.connection_id));
-    dispatch(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars"]));
+    dispatch(kondenApi.util.invalidateTags(["Conversation", "Agents", "Groups", "Inbox", "AutoAuthorize", "Avatars", "ExternalSessions", "ExternalConnections"]));
+  });
+  source.addEventListener("external_sessions_changed", (event) => {
+    externalSessionsChangedEventSchema.parse(JSON.parse(event.data));
+    dispatch(kondenApi.util.invalidateTags(["ExternalSessions", "Conversation"]));
   });
   source.addEventListener("avatars_changed", (event) => {
     avatarsChangedEventSchema.parse(JSON.parse(event.data));

@@ -63,6 +63,12 @@ class WebChannel:
     async def list_external_connections(self):
         return self._sessions.external_messages.list_connections()
 
+    async def list_external_sessions(self):
+        return await self._sessions.external_messages.list_sessions()
+
+    async def external_session(self, identity):
+        return await self._sessions.external_messages.view(identity)
+
     async def create_external_connection(self, connection_id):
         self._require_connection(connection_id)
         return self._sessions.external_messages.create_connection()
