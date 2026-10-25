@@ -420,6 +420,9 @@ body.is-resizing-sidebar {
 .bot-details-resize:hover::after,
 .bot-details-resize:focus-visible::after,
 .bot-details-resize.is-dragging::after { background: var(--konden-accent-ring); }
+.bot-details-resize::after { width: 1px; background: var(--konden-border); }
+.bot-details-resize:focus-visible { outline: none; }
+.bot-details-resize:focus-visible::after { background: var(--konden-focus); }
 body.is-resizing-content-page,
 body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .subagent-panel-header { padding: 12px; border-bottom: 1px solid var(--konden-border); }
