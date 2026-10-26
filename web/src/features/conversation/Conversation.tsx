@@ -15,7 +15,7 @@ import {
   IconCheck,
   IconSparkles,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
 import { useParams } from "react-router-dom";
 
@@ -77,7 +77,11 @@ function turnHasOutput(turn: TimelineTurn, outputId: string): boolean {
   return [turn.active, turn.final, ...turn.process].some((step) => step?.outputId === outputId);
 }
 
-export function Conversation({ agentName, agentNames = [] }: { agentName?: string; agentNames?: string[] }) {
+export type ConversationHandle = { observeSubagent: (commandId: string) => void };
+
+export function Conversation({ agentName, agentNames = [], ref }: {
+  agentName?: string; agentNames?: string[]; ref?: Ref<ConversationHandle>;
+}) {
   const dispatch = useAppDispatch();
   const { sessionId: routeSessionId } = useParams();
   const routeId = routeSessionId ?? "";
@@ -88,6 +92,9 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const childAuthorizations = (inbox.data ?? []).filter((item) =>
     item.kind === "authorization" && item.session_id === sessionId && item.command_session_id !== sessionId);
   const [openPage, setOpenPage] = useState<OpenPage | null>(null);
+  useImperativeHandle(ref, () => ({
+    observeSubagent: (commandId) => setOpenPage({ kind: "subagent", commandId }),
+  }), []);
   const runtime = useAppSelector((state) => state.runtime.sessions[sessionId]);
   const selected = useGetConversationQuery(sessionId, {
     skip: routeSessionId === undefined,

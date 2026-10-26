@@ -1,10 +1,10 @@
 # 例行任务
 
-长期 Agent 用 `save_routine` / `set_routine_state` / `list_routines` 管理自己的例行任务；人在该 Agent 的 `Agent 资料`（点 `显示 Bot 资料` 打开）的 `例行任务` 一节里查看、暂停、恢复与删除。来源：`konden/automation/routines.py`（`RoutineStore`、`RoutineClock`、状态 `active`/`paused`/`paused_by_user`/`paused_unwatched`/`deleted`、事实 `automation.routine_due`、表 `routine_fires`）、`konden/automation/routine_tool.py`、`konden/assistant/host/supervisor.py`（`list_routines`、`routine_fires`、`set_routine_state_by_user`、`schedule_changed`）、`konden/channels/web/channel.py`、`web/src/features/conversation/RoutineList.tsx`。存储 `$KONDEN_HOME/state/routines.sqlite`。
+长期 Agent 用 `save_routine` / `set_routine_state` / `list_routines` 管理自己的例行任务；人在该 Agent 的 `Agent 资料`（点 `显示 Bot 资料` 打开）的 `例行任务` 页签里查看、暂停、恢复与删除。来源：`konden/automation/routines.py`（`RoutineStore`、`RoutineClock`、状态 `active`/`paused`/`paused_by_user`/`paused_unwatched`/`deleted`、事实 `automation.routine_due`、表 `routine_fires`）、`konden/automation/routine_tool.py`、`konden/assistant/host/supervisor.py`（`list_routines`、`routine_fires`、`set_routine_state_by_user`、`schedule_changed`）、`konden/channels/web/channel.py`、`web/src/features/conversation/RoutineList.tsx`。存储 `$KONDEN_HOME/state/routines.sqlite`。
 
 ## Sub-features
 
-- `list`：`Agent 资料` 侧栏（`aside`，`aria-label="Agent 资料"`）里的 `例行任务` 一节，不折叠。每项是按钮 `查看 <名字>`，显示名字、状态（`运行中` / `Agent 暂停` / `人暂停` / `无人查看已暂停`）、可读时间安排和 `上次 <时间> · 下次 <时间>`。可读安排例如 `@every 10m` → `每 10 分钟`、`0 2 * * *` → `每天 02:00`；译不出的时间表照原样显示。还没有跑过时上次是 `尚未运行`，暂停因而没有下一次时下次是 `未安排`。没有例行任务时这一节显示灰色 `无例行任务`。对话的输入框上方不再显示例行任务。
+- `list`：`Agent 资料` 侧栏（`aside`，`aria-label="Agent 资料"`）里的 `例行任务` 页签，不折叠。每项是按钮 `查看 <名字>`，显示名字、状态（`运行中` / `Agent 暂停` / `人暂停` / `无人查看已暂停`）、可读时间安排和 `上次 <时间> · 下次 <时间>`。可读安排例如 `@every 10m` → `每 10 分钟`、`0 2 * * *` → `每天 02:00`；译不出的时间表照原样显示。还没有跑过时上次是 `尚未运行`，暂停因而没有下一次时下次是 `未安排`。没有例行任务时这一节显示灰色 `无例行任务`。对话的输入框上方不再显示例行任务。
 - `pause`：运行中的一项有开关 `暂停 <名字>`，关掉后状态变 `人暂停`。
 - `resume`：暂停态（`Agent 暂停`、`人暂停` 或 `无人查看已暂停`）的一项有开关 `恢复 <名字>`，打开后回到 `运行中` 并重新排下一次。
 - `delete`：每项有 `删除 <名字>`；点后出现 `确认删除 <名字>` 与 `保留`，确认后这一项从列表消失。删除不可恢复。
@@ -17,12 +17,12 @@
 ## How to get to it (user POV)
 
 - 打开一个 Agent 的会话，发 `请用 save_routine 建一个例行任务，名字「检查 PR」，每 10 分钟一次（@every 10m），intent 写「看看有没有新评审」，然后回复 SAVED。`
-- 回复后点 `显示 Bot 资料` 打开 `Agent 资料`，`例行任务` 一节出现 `检查 PR`。宽屏是标题为 `Bot 资料` 的侧栏；1180px 及以下（73.75em，默认字号）是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
+- 回复后点 `显示 Bot 资料` 打开 `Agent 资料`，切换 `例行任务` 页签后出现 `检查 PR`。宽屏是标题为 `Bot 资料` 的侧栏；1180px 及以下（73.75em，默认字号）是右侧抽屉（`role="dialog"`，名称 `Agent 资料`），用 `关闭 Agent 资料` 或 Escape 关闭。
 - 要看执行记录，需要至少一次触发。最短间隔 5 分钟；也可以直接往 `routine_fires` 写入一条已触发的记录，并在该会话 Journal 里写下对应的 `automation.routine_due`（投递身份与 `fire_id` 相同），再补上由它开始的一轮回复。
 
 ## Driving it with the browser
 
-- **列表**：(a) `GET /api/sessions/<id>/routines` 返回一项，`state=active`、`next_run` 非空；`sqlite3 $KONDEN_HOME/state/routines.sqlite 'select name,state,next_due from routines'` 一致。(b) 打开 `Agent 资料`，`例行任务` 一节看到 `检查 PR`、`运行中`、`每 10 分钟`、`上次 … · 下次 …`，看不到原文 `@every 10m`。(c) 其他 Agent 的会话页不出现这一项。(d) 对不存在的会话 `GET /api/sessions/nope/routines` 返回 `[]`。
+- **列表**：(a) `GET /api/sessions/<id>/routines` 返回一项，`state=active`、`next_run` 非空；`sqlite3 $KONDEN_HOME/state/routines.sqlite 'select name,state,next_due from routines'` 一致。(b) 打开 `Agent 资料` 并切换 `例行任务` 页签，看到 `检查 PR`、`运行中`、`每 10 分钟`、`上次 … · 下次 …`，看不到原文 `@every 10m`。(c) 其他 Agent 的会话页不出现这一项。(d) 对不存在的会话 `GET /api/sessions/nope/routines` 返回 `[]`。
 - **暂停 / 恢复**：关掉开关 `暂停 检查 PR`。(a) `GET .../routines` 中 `state=paused_by_user`、`next_run=null`。(b) 状态变 `人暂停`，开关变为 `恢复 检查 PR`，下次显示 `未安排`；SSE `schedule_changed`。(c) 暂停期间到点不投递 `automation.routine_due`。(d) 接着发 `请用 set_routine_state 把「检查 PR」恢复为 active`：工具结果 `code=PAUSED_BY_USER`，状态仍是 `人暂停`。再打开 `恢复 检查 PR` → `state=active`、`next_run` 重新排上。
 - **删除**：点 `删除 检查 PR`，再点 `确认删除 检查 PR`。(a) `GET .../routines` 不再含这一项，sqlite 行 `state=deleted`。(b) 列表为空时这一节显示 `无例行任务`。(c) 点 `保留` 不发请求、状态不变。(d) 对已删除的一项 `PUT /api/sessions/<id>/routines/<routine_id>/state`（错误路径探测）→ 404 并带原因；`state` 传 `paused` → 422；失效的 `connection_id` → 409。
 - **详情与执行记录**：点 `查看 检查 PR`。(a) 看到意图全文；时间安排是 `每 10 分钟`，旁边仍有原文 `@every 10m`。(b) `GET /api/sessions/<id>/routines/<routine_id>/fires` 与页面顺序一致，新的在前；每条有 `planned_at`、`fired_at`，送达过的有 `delivered_at`，没送达的是 null。(c) 不存在或已删除的例行任务返回 404。(d) `返回例行任务` 回到列表。
@@ -43,3 +43,5 @@
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实 save_routine，1100 宽度资料抽屉查看与暂停，状态变为人暂停且下次未安排；删除、失败和无人查看策略未重验。
 
 - 2026-10-22 恢复修复增量：Windows Chrome、隔离 home、真实 DeepSeek，页面创建例行任务后改名并修改意图；预先准备的旧触发仍携带原内容。模拟送达确认丢失并实际重启 Web 后，补投确认完成，原触发事实仍只有一条，模型决策数不增加；刷新后的资料、执行记录与原回复一致。触发由验证脚本准备，未等待自然间隔；无人查看、删除及暂停策略本轮未重验。证据保存在本地 `.tools/recovery-fixes/verification/evidence/`。
+
+2026-10-26 资料分页增量：Windows 隔离预览中，桌面与 390px 窄屏均可在「详情／例行任务」间切换；详情保留后台任务与子智能体，例行任务空态只在其页签显示。页签保活、切 Bot 重置及既有例行操作由前端回归保护；本轮未重新等待例行触发，也未实测暂停、删除与执行记录跳转。证据留在本地 `.tools/ui-proof/`。

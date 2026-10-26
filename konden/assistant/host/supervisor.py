@@ -958,8 +958,9 @@ class HostSupervisor:
             return "running"
         return "waiting"
 
-    async def _list_subagents(self, parent_id):
-        events = await SqliteJournal(self.store.require(parent_id)).snapshot(parent_id)
+    async def list_subagents(self, parent_id):
+        """Read every delegation and its current execution state without waking Sessions."""
+        events = await self.store.journal(parent_id).snapshot(parent_id)
         children = []
         failed = project_failed_delegations(events)
         for intent in project_delegate_intents(events):
@@ -968,9 +969,15 @@ class HostSupervisor:
             elif not self.store.path(intent.child_session_id).is_file():
                 status = "creating"
             else:
-                child_events = await SqliteJournal(self.store.require(intent.child_session_id)).snapshot(intent.child_session_id)
+                child_events = await self.store.journal(intent.child_session_id).snapshot(intent.child_session_id)
                 status = await self._child_status(intent.child_session_id, child_events)
-            children.append({"child_session_id": intent.child_session_id, "task": intent.task, "status": status})
+            children.append({"command_id": intent.command_id, "child_session_id": intent.child_session_id,
+                             "task": intent.task, "status": status})
+        return children
+
+    async def _list_subagents(self, parent_id):
+        children = [{key: value for key, value in child.items() if key != "command_id"}
+                    for child in await self.list_subagents(parent_id)]
         return {"ok": True, "code": "SUBAGENTS_READ", "data": {"subagents": children}}
 
     async def _child_message(self, session_id, arguments):

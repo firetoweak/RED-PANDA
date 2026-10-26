@@ -41,6 +41,7 @@ import {
   routineFireSchema,
   routineSchema,
   subagentObservationSchema,
+  subagentSummarySchema,
   workspaceSchema,
   type AgentRosterEntry,
   type ConversationView,
@@ -55,6 +56,7 @@ import {
   type Routine,
   type RoutineFire,
   type SubagentObservation,
+  type SubagentSummary,
   type Workspace,
 } from "./contracts";
 
@@ -476,6 +478,14 @@ export const kondenApi = createApi({
         { type: "Conversation", id: sessionId },
       ],
     }),
+    getSubagents: build.query<SubagentSummary[], string>({
+      query: (sessionId) => `/sessions/${encodeURIComponent(sessionId)}/subagents`,
+      transformResponse: (value: unknown) => subagentSummarySchema.array().parse(value),
+      providesTags: (result, _error, sessionId) => [
+        { type: "Conversation", id: sessionId },
+        ...(result ?? []).map((child) => ({ type: "Conversation" as const, id: child.child_session_id })),
+      ],
+    }),
     observeSubagent: build.query<SubagentObservation, { parentSessionId: string; commandId: string }>({
       query: ({ parentSessionId, commandId }) =>
         `/sessions/${encodeURIComponent(parentSessionId)}/subagents/${encodeURIComponent(commandId)}`,
@@ -647,6 +657,7 @@ export const {
   usePostGroupMessageMutation,
   useGetWorkspacesQuery,
   useGetConversationQuery,
+  useGetSubagentsQuery,
   useObserveSubagentQuery,
   useSelectSessionMutation,
   useSendInputMutation,

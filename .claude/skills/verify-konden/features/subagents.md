@@ -2,12 +2,13 @@
 
 父用 `delegate` 委派、`instruct_subagent` 交流或调整、`list_subagents` 看实际运行状态、`reclaim` 明确结束协作。子用普通回复对父说话，没有 `report` 或 `reply_parent` 工具；普通回复、停止输出和等待消息都不结束协作。
 
-来源：`assistant/subagent/subagent.py`、`host/supervisor.py`、`host/worker.py`、`assembly.py`、`conversations.py`、`SubagentPanel.tsx`、`SubagentCallCard.tsx`、`Conversation.tsx`。
+来源：`assistant/subagent/subagent.py`、`host/supervisor.py`、`host/worker.py`、`assembly.py`、`conversations.py`、`SubagentPanel.tsx`、`SubagentList.tsx`、`SubagentCallCard.tsx`、`Conversation.tsx`。
 
 ## Sub-features
 
 - 委派、普通回复与持续追问。
 - 状态查询、显式结束与父停止。
+- Bot 资料默认「详情」中的「子智能体」列表；创建、运行、等待、结束和失败均来自实际协作状态，子后台命令仍运行时不显示为等待；「查看过程」复用现有观察页。
 - 共享文件、完整执行、命令授权与回收。
 
 ## How to get to it (user POV)
@@ -60,3 +61,5 @@
 - 2026-10-22 启动恢复增量：隔离 Windows Web、Chrome、真实 DeepSeek；从消息框委派后，在子模型请求处模拟延迟，父已等待且 `should_wake=false`。实际停止 Web 并用正常入口重启，未重新选中父前已收到原子回复。再次重启，父、子 Journal 和决策数均不变。暂停边界另由进程回归验证；未覆盖 Linux、项目子 Git 操作和全部传输中断。证据：`.tools/recovery-fixes/startup-web-evidence/`。
 
 2026-10-26 增量：Windows Chrome 1920×1031、隔离 home/8884 端口、受控本地协议模型。无项目 Bot 委派子写共享文件，父对话展开并允许写入及后台命令；真实脚本读取共享文件，父在其运行期间回复新问题；自然要求结束后父实际 reclaim，退出记录为 stopped，延迟文件未生成，共享文件保留、协作提示清除，浏览器无错误。未调用真实供应商，未重验窄屏、TUI、浏览器 MCP 资源释放及其他操作系统。证据 `.tools/shared-subagent-ui/evidence/`；原始状态与脚本留本地。
+
+2026-10-26 资料执行观察增量：Windows 隔离预览、真实 deepseek-flash，从页面新建验证 Bot 并启动父后台命令与子后台命令。详情中两类任务分别可见；子 Worker 暂时空闲而命令仍运行时，列表及过程页均显示运行。点击停止命令后父后台列表移除该项，聊天停止收回子协作后列表显示已结束；过程入口可打开原观察页。新增列表查询的无唤醒、无选择与旧委派可见由进程内测试保护。本轮未重验多子并行、创建失败及其他操作系统。证据留在本地 `.tools/ui-proof/`。
