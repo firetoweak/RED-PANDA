@@ -65,7 +65,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 |---|---|---|---|
 | web-session-chat | [web-session-chat.md](./web-session-chat.md) | 空首页 → 新建 Agent → 发消息 | 无项目 Bot 真实发送与回复、刷新历史通过；长历史、引用跳转与异常 API 未重验。 |
 | workspace-management | [workspace-management.md](./workspace-management.md) | 创建 Bot 同页选目录、按目录名展示、复用与后续关联 | 2026-10-23 增量：取消不登记、两位 Bot 复用同目录、后续关联同名仓库、路径区分、错误草稿保留及桌面与窄屏通过；原生目录窗口与解除未重验。 |
-| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组、搜索与删除未重验。 |
+| session-sidebar | [session-sidebar.md](./session-sidebar.md) | 全局 Bot 名册、无项目创建、搜索、Bot/群聊分组与状态圆点 | 2026-10-26 首次引导：无模型时只显示模型配置且不能开始，配置可用后预填名字可改，开始后进入对话并由新 Bot 主动介绍（入口说法与界面一致）；删除唯一 Bot 后引导重新出现。此前无项目 Ada 与有项目 Lin 创建、名册切换和状态对照 GET 通过；分组与搜索未重验。 |
 | colleague-tools | [colleague-tools.md](./colleague-tools.md) | 名册工具与加入事实；Bot工具和设置抽屉共同维护500字记忆 | 2026-10-24 真实 list_colleagues 通过，负责方向能力已移除；共同记忆沿用此前页面证据，本轮未重验。 |
 | private-messages | [private-messages.md](./private-messages.md) | `send_message` 送达、停止执行的收件人仍接纳但不推进、已知拒绝与交流上限 | 有项目 Lin 向无项目 Ada 送达 PRIVATE_MAP_OK，双方可见来源与跳转；停止执行接收和交流上限未重验。 |
 | external-conversations | [external-conversations.md](./external-conversations.md) | 原生聊天独立身份、通用双向消息与 Web 对话 | 2026-10-25 Windows、真实 DeepSeek：登记可见、双身份分流、主动后续、重启续读与撤销历史通过；原生客户端界面与 Linux 未测。 |

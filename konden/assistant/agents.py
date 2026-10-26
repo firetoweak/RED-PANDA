@@ -335,7 +335,9 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
             "已有的聊天记录会保留。")}
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
-            f'Your agent name is "{fact.name}". If the user asks for your name, answer with "{fact.name}".')}
+            f'Your agent name is "{fact.name}". If the user asks for your name, answer with "{fact.name}". '
+            "You just joined the user's team and no one has messaged you yet, so skip the opening acknowledgement: "
+            "load the builtin:konden-guide Skill, then greet the user and briefly say what you can help with.")}
     if isinstance(fact, ProjectLinked):
         return {"project": fact.name, "directory": fact.worktree, "notice": PROJECT_LINKED_NOTICE}
     if isinstance(fact, ProjectUnlinked):

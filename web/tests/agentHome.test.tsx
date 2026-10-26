@@ -10,6 +10,8 @@ import runtimeReducer, { connected } from "../src/realtime/runtimeSlice";
 
 const queries = vi.hoisted(() => ({
   failed: false,
+  empty: false,
+  modelReady: true,
   createAgent: vi.fn(() => ({ unwrap: () => Promise.resolve({ session_id: "new-agent" }) })),
 }));
 vi.mock("../src/api/kondenApi", () => ({
@@ -17,7 +19,7 @@ vi.mock("../src/api/kondenApi", () => ({
     { workspace_id: "alpha", name: "Alpha", task_root: "C:/alpha", full_access: false, created_at: "2026-10-20" },
     { workspace_id: "beta", name: "Beta", task_root: "C:/beta", full_access: false, created_at: "2026-10-20" },
   ] }),
-  useGetAgentsQuery: () => ({ isError: queries.failed, data: [
+  useGetAgentsQuery: () => ({ isError: queries.failed, data: queries.empty ? [] : [
     { workspace_id: "alpha", session_id: "a/1", name: "Ada", status: "idle" },
     { workspace_id: "beta", session_id: "b", name: "Lin", status: "idle" },
   ] }),
@@ -26,14 +28,21 @@ vi.mock("../src/api/kondenApi", () => ({
     { workspace_id: "beta", group_id: "g2", name: "后端讨论", members: ["Lin"] },
   ] }),
   useGetInboxQuery: () => ({ data: [] }),
+  useGetModelSettingsQuery: () => ({ isLoading: false, data: {
+    config: { model: { default: "openai/gpt", candidates: [] } }, connections_path: "C:/connections.json",
+    providers: [{ provider: "openai", configured: queries.modelReady, missing: queries.modelReady ? null : "api_key", local: false }],
+  } }),
   useCreateGroupMutation: () => [vi.fn(), { reset: vi.fn() }],
   useCreateAgentMutation: () => [queries.createAgent, { isLoading: false, reset: vi.fn() }],
   useCreateWorkspaceMutation: () => [vi.fn(), { reset: vi.fn() }],
   useSelectWorkspaceDirectoryMutation: () => [vi.fn(), { reset: vi.fn() }],
 }));
+vi.mock("../src/features/models/ModelSettings", () => ({ ModelSettings: () => <p>模型配置表单</p> }));
 
 beforeEach(() => {
   queries.failed = false;
+  queries.empty = false;
+  queries.modelReady = true;
   queries.createAgent.mockClear();
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -63,6 +72,22 @@ it("新建 Bot 默认不关联代码项目，创建后进入对话", async () =>
   fireEvent.change(screen.getByRole("textbox", { name: /名字/ }), { target: { value: "Grace" } });
   fireEvent.click(screen.getByRole("button", { name: "创建", exact: true }));
   await waitFor(() => expect(queries.createAgent).toHaveBeenCalledWith({ connectionId: "connection", path: null, name: "Grace" }));
+  expect(await screen.findByText("新 Agent 对话")).toBeInTheDocument();
+});
+
+it("名册为空时引导先配好模型，再给第一位伙伴起名并进入对话", async () => {
+  queries.empty = true;
+  queries.modelReady = false;
+  renderHome();
+  expect(screen.getByText("模型配置表单")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "开始" })).toBeDisabled();
+  cleanup();
+  queries.modelReady = true;
+  renderHome();
+  expect(screen.queryByText("模型配置表单")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: /给它起个名字/ }), { target: { value: "阿青" } });
+  fireEvent.click(screen.getByRole("button", { name: "开始" }));
+  await waitFor(() => expect(queries.createAgent).toHaveBeenCalledWith({ connectionId: "connection", path: null, name: "阿青" }));
   expect(await screen.findByText("新 Agent 对话")).toBeInTheDocument();
 });
 
