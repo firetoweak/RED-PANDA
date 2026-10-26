@@ -1,4 +1,7 @@
-import { Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { useLocalStorage } from "@mantine/hooks";
+import { IconTrash } from "@tabler/icons-react";
+import { z } from "zod";
 import { useGetSubagentsQuery } from "../../api/kondenApi";
 
 const STATUS_LABEL = {
@@ -13,7 +16,14 @@ export function SubagentList({ sessionId, onObserve }: {
   sessionId: string; onObserve: (commandId: string) => void;
 }) {
   const query = useGetSubagentsQuery(sessionId);
-  const subagents = query.currentData ?? [];
+  const [hidden, setHidden] = useLocalStorage<string[]>({
+    key: "konden.hiddenSubagents",
+    defaultValue: [],
+    getInitialValueInEffect: false,
+    deserialize: (value) => value === undefined ? [] : z.array(z.string().min(1)).parse(JSON.parse(value)),
+  });
+  const hiddenIds = new Set(hidden);
+  const subagents = (query.currentData ?? []).filter((item) => !hiddenIds.has(item.child_session_id));
   return <section className="agent-details-section" aria-label="子智能体">
     <Group className="agent-details-label" justify="space-between" gap={6}>
       <Text size="xs" c="dimmed">子智能体</Text>
@@ -24,10 +34,18 @@ export function SubagentList({ sessionId, onObserve }: {
       : subagents.length === 0 ? <Text size="sm" c="dimmed">无子智能体</Text>
       : <Stack gap={0}>
         {subagents.slice().reverse().map((subagent) => <Stack className="subagent-summary-row" key={subagent.command_id} gap={6}>
-          <Badge size="xs" variant="light"
-            color={subagent.status === "failed" ? "red" : subagent.status === "running" ? "ember" : "gray"}>
-            {STATUS_LABEL[subagent.status]}
-          </Badge>
+          <Group justify="space-between" gap={6}>
+            <Badge size="xs" variant="light"
+              color={subagent.status === "failed" ? "red" : subagent.status === "running" ? "ember" : "gray"}>
+              {STATUS_LABEL[subagent.status]}
+            </Badge>
+            {subagent.status !== "closed" && subagent.status !== "failed" ? null : <ActionIcon
+              variant="subtle" color="gray" size="md" title="从列表删除"
+              aria-label={`删除子智能体：${subagent.task}`}
+              onClick={() => setHidden((current) => [...current, subagent.child_session_id])}>
+              <IconTrash size={14} />
+            </ActionIcon>}
+          </Group>
           <Text size="xs" className="subagent-summary-task" lineClamp={4} title={subagent.task}>{subagent.task}</Text>
           <Button size="compact-xs" variant="subtle" color="gray" className="subagent-summary-open"
             aria-label={`查看子智能体过程：${subagent.task}`}

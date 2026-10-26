@@ -202,6 +202,29 @@ it("子列表错误时不显示缓存任务，切到无子任务的 Bot 显示�
   expect(screen.queryByText("检查登录页面")).not.toBeInTheDocument();
 });
 
+it("只能从列表删除结束或失败的子智能体，重新打开后保持删除且仍可观察进行中的协作", () => {
+  const onObserve = vi.fn();
+  const show = () => <MantineProvider env="test"><SubagentList sessionId="ada" onObserve={onObserve} /></MantineProvider>;
+  const view = render(show());
+  const list = within(screen.getByRole("region", { name: "子智能体" }));
+  expect(list.getAllByRole("button", { name: /^删除子智能体：/ })).toHaveLength(2);
+  fireEvent.click(list.getByRole("button", { name: "删除子智能体：已验收的检查" }));
+  fireEvent.click(list.getByRole("button", { name: "删除子智能体：无法启动的检查" }));
+  expect(list.getByText("3 项")).toBeVisible();
+  expect(list.queryByText("已验收的检查")).not.toBeInTheDocument();
+  expect(list.queryByText("无法启动的检查")).not.toBeInTheDocument();
+  view.unmount();
+  render(show());
+  const reopened = within(screen.getByRole("region", { name: "子智能体" }));
+  expect(reopened.getByText("3 项")).toBeVisible();
+  expect(reopened.queryByRole("button", { name: /^删除子智能体：/ })).not.toBeInTheDocument();
+  for (const task of ["准备检查服务", "检查登录页面", "补充接口证据"]) {
+    expect(reopened.getByText(task)).toBeVisible();
+    fireEvent.click(reopened.getByRole("button", { name: `查看子智能体过程：${task}` }));
+  }
+  expect(onObserve).toHaveBeenCalledTimes(3);
+});
+
 it("后台列表读取失败时不误报为空，也不提供旧任务的停止入口", () => {
   commands.isError = true;
   render(<MantineProvider env="test"><BackgroundCommands sessionId="ada" connectionId="connection" /></MantineProvider>);
