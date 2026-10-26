@@ -14,7 +14,7 @@
 - `write-tools`：`write_file`（新建/覆盖）、`replace_all`（替换文件中所有精确匹配文本）。
 - `referenced-content`：`read_content` 读取工具结果或历史检索返回的真实 `reference`；可按 `offset`/`limit` 连续读取，或用 `query` 查找字面关键词，按 `next_offset` 续读。来源 `konden/assistant/content.py`。
 - `argument-validation`：任一工具参数不符合 schema（如 `wait_seconds` 超出 0–30）→ `ok:false`、`code:VALIDATION_ERROR`、`hint`「按工具 schema 修正参数后重试。」（`executor.py`）。
-- `background-commands`：`execute_command(wait_seconds=0)` 立即转后台，等待到点未结束同样返回 `COMMAND_BACKGROUND`；完成事实 `background_command_finished` 只接纳一次并唤醒 Agent。`read_command` / `list_commands` / `stop_command` 查看与停止；成功码 `COMMAND_READ`、`COMMANDS_LISTED`、`COMMAND_STOPPED`，未知身份 `COMMAND_NOT_FOUND`。Windows/Linux 顶层会话注册，子 Agent 不提供；macOS 只有等待结束的前台命令。Bot 资料中的 `后台任务` 直接显示命令、状态与时长，无任务时显示 `无后台任务`；窄屏从页头打开资料抽屉查看。`停止命令` 只终止这一条，不停止执行整个 Agent。
+- `background-commands`：`execute_command(wait_seconds=0)` 立即转后台，等待到点未结束同样返回 `COMMAND_BACKGROUND`；完成事实 `background_command_finished` 只接纳一次并唤醒 Agent。`read_command` / `list_commands` / `stop_command` 查看与停止；成功码 `COMMAND_READ`、`COMMANDS_LISTED`、`COMMAND_STOPPED`，未知身份 `COMMAND_NOT_FOUND`。Windows/Linux 顶层会话注册，子 Agent 不提供；macOS 只有等待结束的前台命令。Bot 资料中的 `后台任务` 仅显示运行中的命令与时长，完成、停止或结果未知的记录不展示，计数与可见列表一致；无运行中的任务时显示 `无运行中的后台任务`。窄屏从页头打开资料抽屉查看。`停止命令` 只终止这一条，不停止执行整个 Agent。
 - `file-side-effect`：改动真实落盘到 Agent 工作树（见 Gotchas），人自己的 `$SCRATCH_WORKSPACE` 不变。
 - `coding-skill`：通用系统提示不含编码与 Git 工作流正文；能力目录提供 `builtin:coding` 与 `builtin:git-collaboration`，模型按任务用 `load_skill` 读取。无 Git 的 Bot 目录也能编码、验证并交付文件；用户指定的 Skill 与流程优先。
 - `project-instructions`：项目与普通目录统一由模型在文件工作前用 `read_file` 读取根目录 `AGENTS.md`，没有时读 `CLAUDE.md`，并按需读取相关目录约定和任务文档。全文不再逐轮注入系统提示；约定更新或上下文缺失时重新读取。判据是在约定中指向独立需求文档与验证命令，模型实际读取并执行，而非只看回复是否带固定词。
@@ -55,11 +55,13 @@ Windows 将第三条命令换成 `Write-Output edited`；不要在 PowerShell �
 - **搜索/写入**：让模型 `glob` 找 `*.txt`、`grep` 找 `edited`、`write_file` 新建 `new.txt` 写 `hi`、`replace_all` 把 `hi` 换成 `yo`。(a) `new.txt` 为 `yo`。(d) 实例 PATH 里没有 `fd`/`fdfind` 时 `glob` → `GLOB_NOT_FOUND`，记录为环境问题而非功能通过。
 - **结果引用**：某个工具或历史检索实际返回 `data.reference` 后，请模型用 `read_content` 先连续读取，再用 `query` 找一个已知标识。(a) `CONTENT_READ` 的片段与原文一致，续读使用真实 `next_offset`。(b) 时间线出现 `read_content` 调用。(c) 读取不修改源文件。(d) 合法格式但不存在的引用 → `CONTENT_NOT_FOUND`；偏移超出原文 → `OFFSET_OUT_OF_RANGE`。没有取得真实引用时记录未覆盖，不编造成功路径。
 - **命令授权**：在侧栏**全局关闭**自动放行后，在会话里让模型 `execute_command` 跑一个只读命令（如 `git status`）→ (b) 待处理条出现该调用（自动放行开启时所有待授权调用都会被自动批准，看不到这一步）；(a) 批准后才执行。(c) 不存在按命令文本放行的情况。(d) 拒绝后命令不执行，模型收到「用户拒绝」。
-- **后台接管与响应**：从页面请求 `execute_command` 跑长命令，`wait_seconds=0`，接管后用普通回复回执并结束本轮；命令运行中另发消息，要求普通回复包含标识。(a) `GET /api/sessions/<id>/commands` 仍为 running，后台列表展示时长，新消息已回复。(b) 启动须批准，读取与停止不另授权。(c) 页面 `停止命令` 后状态 stopped，完成事实恰好一条并唤醒 Agent；只有主动停止，没有自动重跑。(d) 再停同一条不再产生完成事实。短命令用 `wait_seconds=1` 等待较长于一秒的操作，确认到点转后台且自然结束后主动通知；核对完成后模型的普通回复直接可见，无需调用交付工具。
+- **后台接管与响应**：从页面请求 `execute_command` 跑长命令，`wait_seconds=0`，接管后用普通回复回执并结束本轮；命令运行中另发消息，要求普通回复包含标识。(a) `GET /api/sessions/<id>/commands` 仍为 running，后台列表展示时长，新消息已回复。(b) 启动须批准，读取与停止不另授权。(c) 页面 `停止命令` 后状态 stopped，任务从资料列表消失，完成事实恰好一条并唤醒 Agent；只有主动停止，没有自动重跑。(d) 再停同一条不再产生完成事实。短命令用 `wait_seconds=1` 等待较长于一秒的操作，确认到点转后台且自然结束后主动通知；列表不再展示已完成任务，仍在运行的其他任务继续显示。核对完成后模型的普通回复直接可见，无需调用交付工具。
 - **证据**：三个工具名可见时快照+截图；会话 JSON 与 `note.txt` 副本存到 `$EVIDENCE_DIR/tool-coding-round/`。
 - **关开关的反向路径**：新开会话，先关闭自动放行，发 `请用 apply_patch 把 note.txt 改成 edited，然后停止。`，在待处理条点 `允许 apply_patch`（详见 tool-authorization）；`read_file` 是只读工具，不会进入待处理。
 
 ## Gotchas
+
+- 2026-10-26 后台列表筛选增量：Windows 隔离 Web、本地固定回复模型经页面驱动两条真实后台命令；短命令自然完成后 GET 保留 completed，资料列表仅剩仍在运行的长命令。390px 抽屉停止长命令后 GET 为 stopped，列表显示 `无运行中的后台任务`。191 项前端测试与生产构建通过；结果未知记录的过滤由组件回归覆盖。未重验真实供应商及其他执行平台；证据 `.tools/bot-details-verification/evidence/`。
 
 - 2026-10-25 后台任务位置增量：隔离 Web 与本地固定回复模型驱动真实 `execute_command(wait_seconds=0)`，命令与时长显示在 Bot 资料，切换 Bot 不串页。390px 抽屉点击 `停止命令`，300 秒命令在 93 秒时变为 `stopped`，停止入口消失；未停止另一位 Bot。178 项前端测试及构建通过；未重验真实供应商及其他执行平台。证据 `.tools/bot-details-verification/evidence/`。
 
