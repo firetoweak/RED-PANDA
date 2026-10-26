@@ -63,8 +63,8 @@ _INTERNAL_FACT_TYPES = frozenset({
     SESSION_DIRECTORY_FACT,
     "compact.task", "compact.handoff_created", "compact.window_rolled_over",
 })
-_IMAGE_EVICTED_HINT = "\nThe image is no longer inline; use read_image with the id above to view it again."
-_USER_ATTACHMENT_HINT = "\n(Image attachment ids: {ids}; use read_image to view them again.)"
+_IMAGE_EVICTED_HINT = "\n这张图片已不再内嵌显示；用 read_image 和上面的 id 可以再次查看。"
+_USER_ATTACHMENT_HINT = "\n（图片附件 id：{ids}；用 read_image 可以再次查看。）"
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,8 +146,8 @@ def _rejection_text(tool_name: str) -> str:
             "ok": False,
             "code": "COMMAND_REJECTED",
             "data": None,
-            "error": f"The user declined this tool call ({tool_name}).",
-            "hint": "A declined action is final. Report it rather than retrying it through another tool.",
+            "error": f"用户拒绝了这次工具调用（{tool_name}）。",
+            "hint": "被拒绝的操作就是最终结果。请如实报告，不要换其他工具重试。",
         }
     )
 
@@ -163,17 +163,17 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
         # 起过 attempt 却没有结果。Journal 分不出「还在跑」和「已中断」，
         # 那是进程事实，不在事件里，所以这里只说到它知道的为止。
         code = "NO_RESULT_YET"
-        error = f"This call started but has no result; the reason is unknown. It may still be running or have partially executed ({tool_name})."
-        hint = ("You may respond to new user messages without waiting for this result. Do not submit a duplicate call or assume it succeeded. "
-                "Check the relevant files, external state, and running operations before acting on or retrying this unfinished work.")
+        error = f"这次调用已经开始但没有结果，原因未知。它可能仍在运行，也可能已部分执行（{tool_name}）。"
+        hint = ("你可以不等这个结果就回应用户的新消息。不要重复提交调用，也不要假定它已成功。"
+                "在基于这项未完成的工作采取行动或重试之前，先检查相关文件、外部状态和正在运行的操作。")
     elif state.dispatch_eligible_by_event_id is None:
         code = "AWAITING_AUTHORIZATION"
-        error = f"This call is waiting for the user's authorization ({tool_name})."
-        hint = "The action has not run."
+        error = f"这次调用正在等待用户授权（{tool_name}）。"
+        hint = "该操作尚未执行。"
     else:
         code = "NOT_STARTED"
-        error = f"This call has been submitted but has not started ({tool_name})."
-        hint = "Do not submit a duplicate call."
+        error = f"这次调用已提交但尚未开始（{tool_name}）。"
+        hint = "不要重复提交调用。"
     return _tool_result_json(
         {"ok": None, "code": code, "data": None, "error": error, "hint": hint}
     )
@@ -240,8 +240,8 @@ def _translate_visible_events(
         for ref in sorted(file_refs):
             attachments.files.materialize(ref)
         system_prompt += (
-            f"\nFiles attached to this conversation are in {attachments.files.materials}. "
-            "They are read-only; copy a file into your working directory before editing it."
+            f"\n这个对话附带的文件位于 {attachments.files.materials}。"
+            "它们是只读的；编辑前先把文件复制到你的工作目录。"
         )
     visible = set(state.visible_event_ids)
     steps = {step.committed_event_id: step for step in state.steps}
@@ -303,31 +303,31 @@ def _translate_visible_events(
             elif payload.fact_type == ROUTINE_DUE:
                 shown_data = {key: shown_data[key] for key in ("routine_id", "name", "intent", "planned_at", "fired_at")}
                 shown_data["notice"] = (
-                    "Carry out this routine's saved intent now. Report useful results or blockers; "
-                    "when nothing changed, keep the closing reply to one short factual sentence.")
+                    "现在执行这个例行任务保存的意图。报告有用的结果或阻碍；"
+                    "没有变化时，结束回复只用一句简短的事实陈述。")
             elif payload.fact_type == COMMAND_FINISHED:
-                shown_data["notice"] = "Your background command finished. Use read_command for its full output."
+                shown_data["notice"] = "你的后台命令已结束。用 read_command 查看完整输出。"
             elif payload.fact_type == TASK_FACT:
                 shown_data = {
                     key: shown_data[key] for key in ("task", "cwd")
                 }
-                shown_data["notice"] = "A task delegated by your parent agent. Complete it and report the result back to the parent."
+                shown_data["notice"] = "这是上级 Agent 委派给你的任务。完成它，并把结果汇报给上级 Agent。"
             elif payload.fact_type == INSTRUCTION_FACT:
-                shown_data = {"text": shown_data["text"], "notice": "A follow-up from your parent agent."}
+                shown_data = {"text": shown_data["text"], "notice": "上级 Agent 发来的后续指示。"}
             elif payload.fact_type == REPLY_FACT:
                 shown_data = {"child_session_id": shown_data["child_session_id"], "text": shown_data["text"],
-                              "notice": "A reply from your subagent. Use instruct_subagent for a follow-up, or reclaim to end the collaboration."}
+                              "notice": "子智能体发来的回复。用 instruct_subagent 发送后续指示，或用 reclaim 结束协作。"}
             elif payload.fact_type == CONTROL_PROPOSED:
                 shown_data = {
                     key: shown_data[key]
                     for key in ("request_id", "action", "summary", "risk")
                 }
-                shown_data["status"] = "Waiting for the user's approval; the action has not run."
+                shown_data["status"] = "正在等待用户批准；该操作尚未执行。"
             elif payload.fact_type == CONTROL_EXECUTION_STARTED:
                 shown_data = {
                     key: shown_data[key] for key in ("request_id", "action")
                 }
-                shown_data["status"] = "The action started. If its result is missing, read back the actual state before retrying."
+                shown_data["status"] = "该操作已开始。如果缺少结果，重试前先读回实际状态。"
             elif payload.fact_type in {CONTROL_SUCCEEDED, CONTROL_FAILED}:
                 shown_data = {
                     key: shown_data[key]
@@ -475,8 +475,8 @@ def _image_message(
 ) -> dict[str, object]:
     identifiers = "、".join(image["id"] for image in images)
     text = (
-        f"These {len(images)} images are observations from tool call {command_id}. "
-        f"Image ids: {identifiers}"
+        f"这 {len(images)} 张图片是工具调用 {command_id} 的观察结果。"
+        f"图片 id：{identifiers}"
     )
     return {"role": "user", "content": [{"type": "text", "text": text}, *images]}
 

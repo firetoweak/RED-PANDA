@@ -42,7 +42,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(message.text, content)
         self.assertIn("Ada", content)
         self.assertIn("开发组", content)
-        self.assertIn("another assistant reaching out, not the user", content)
+        self.assertIn("这是另一个助手发来的消息，不是用户", content)
         self.assertNotIn("origin-internal", content)
 
     async def test_colleague_and_group_messages_carry_their_arrival_time(self):
@@ -76,7 +76,7 @@ class AgentFactTest(unittest.IsolatedAsyncioTestCase):
             events, StateProjector().project_visible("owner", events), "sys"), ensure_ascii=False)
         from datetime import datetime
         local_time = datetime.fromisoformat("2026-10-19T01:00:00+00:00").astimezone().isoformat()
-        for expected in ("按 Skill 检查。", local_time, "this routine's saved intent"):
+        for expected in ("按 Skill 检查。", local_time, "这个例行任务保存的意图"):
             self.assertIn(expected, shown)
 
     def test_model_projection_hides_creation_coordinates_and_keeps_sender_identity(self):

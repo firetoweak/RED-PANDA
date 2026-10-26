@@ -105,7 +105,7 @@ class ToolImageProjectionTest(unittest.IsolatedAsyncioTestCase):
         observation = messages[messages.index(tool) + 1]
         self.assertEqual(observation["role"], "user")
         self.assertEqual(observation["content"][0]["type"], "text")
-        self.assertIn("observations from tool call", observation["content"][0]["text"])
+        self.assertIn("的观察结果", observation["content"][0]["text"])
         self.assertEqual(observation["content"][1], image)
 
     async def test_externalize_keeps_images_on_the_stub(self):
@@ -141,7 +141,7 @@ class ToolImageProjectionTest(unittest.IsolatedAsyncioTestCase):
             if type(message.get("content")) is list
             or (
                 type(message.get("content")) is str
-                and "The image is no longer inline" in message["content"]
+                and "这张图片已不再内嵌显示" in message["content"]
             )
         ]
         self.assertEqual(len(observations), 2)

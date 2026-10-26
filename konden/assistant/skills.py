@@ -98,7 +98,7 @@ class SkillToolAdapter:
                     "ok": False,
                     "code": "VALIDATION_ERROR",
                     "data": {"details": exc.details},
-                    "error": "skill arguments validation failed",
+                    "error": "skill 参数校验失败",
                 }
             result = runtime_tool_result(await spec.handler(payload))
             return externalize_tool_result(

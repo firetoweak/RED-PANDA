@@ -137,7 +137,7 @@ class AgentWorktrees:
         if top != root:
             raise AgentProjectRequired("项目路径必须是 Git 工作树根目录，请登记仓库根目录。")
         if self.root.is_relative_to(root):
-            raise AgentProjectRequired("konden 数据目录必须位于项目工作树之外。")
+            raise AgentProjectRequired("应用数据目录必须位于项目工作树之外。")
 
     def _initial_commit(self, root: Path) -> str:
         head = self._git(root, "symbolic-ref", "--quiet", "HEAD", accepted=(0, 1))

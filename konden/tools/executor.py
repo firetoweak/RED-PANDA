@@ -82,7 +82,7 @@ class ToolsExecutor:
                 {
                     "ok": False,
                     "code": "INVALID_JSON",
-                    "error": f"invalid json: {exc}",
+                    "error": f"JSON 格式无效：{exc}",
                     "hint": "修正工具 arguments 的 JSON 格式后重试。",
                 }
             )

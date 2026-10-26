@@ -115,7 +115,7 @@ def _invoke_tool(call: ToolCall) -> InvokeTool:
         return InvokeTool(call.name, rejected_tool_arguments(
             raw,
             code="INVALID_JSON",
-            error=f"invalid json: {exc}",
+            error=f"JSON 格式无效：{exc}",
             hint="修正工具 arguments 的 JSON 格式后重试。",
         ))
     if type(payload) is not dict:

@@ -370,7 +370,7 @@ class ConversationalControlTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("payload", fact)
         self.assertEqual(fact["summary"], request.summary)
-        self.assertIn("has not run", fact["status"])
+        self.assertIn("尚未执行", fact["status"])
 
     async def test_request_is_committed_with_step_before_preparation(self):
         observed_step = []

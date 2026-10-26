@@ -230,7 +230,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
     def test_decision_prompt_tells_model_its_workspace(self):
         decision = self._assembly.runtime.step_runner._decision_maker
         prompt = decision.prompt_for(SimpleNamespace(session_id="vocabulary"))
-        self.assertIn(f"Working directory: {self._workspace.task_root}", prompt)
+        self.assertIn(f"工作目录：{self._workspace.task_root}", prompt)
 
     def test_project_file_content_is_read_on_demand_instead_of_injected_into_system(self):
         decision = self._assembly.runtime.step_runner._decision_maker

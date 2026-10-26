@@ -20,7 +20,7 @@ async def check_model_connection(llm: LLMApi, model: str, *, reasoning_effort: s
     options = {} if reasoning_effort is None else {"reasoning_effort": reasoning_effort}
     try:
         await llm.chat(
-            [{"role": "user", "content": "Reply with OK only."}], model, tools=None,
+            [{"role": "user", "content": "只回复 OK。"}], model, tools=None,
             **options,
         )
     except (

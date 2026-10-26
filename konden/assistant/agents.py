@@ -309,14 +309,14 @@ def identity_for_model(events) -> dict | None:
     shown["groups"] = list(groups.values())
     shown["projects"] = [{"project": item.name, "directory": item.worktree} for item in agent.projects]
     shown["notice"] = (
-        "Your current agent profile: name, group memberships, and linked projects.")
+        "你当前的 Agent 资料：名字、所在的群，以及已关联的项目。")
     return shown
 
 
 PROJECT_LINKED_NOTICE = (
-    "This project is linked to you. directory is your read/write project working directory. "
-    "Use paths under it and set cwd to it for commands. "
-    "Use project to name it in land_branch, sync_branch, and delegate.")
+    "这个项目已关联给你。directory 是你可读写的项目工作目录。"
+    "使用它下面的路径，执行命令时把 cwd 设为它。"
+    "在 land_branch、sync_branch 和 delegate 中用 project 指明这个项目。")
 
 
 def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
@@ -324,15 +324,15 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     fact = parse_agent_fact(payload)
     if isinstance(fact, AgentRenamed):
         return {"old_name": fact.old_name, "name": fact.name,
-                "notice": "This agent's name changed. Use the current name for messages and mentions; existing conversations and group memberships continue."}
+                "notice": "这个 Agent 改了名字。发消息和提及时请使用当前名字；已有的对话和群成员身份照常延续。"}
     if isinstance(fact, AgentDeleted):
         return {"name": fact.name, "notice": (
-            "The user deleted this agent. It no longer participates in collaboration "
-            "and cannot receive private messages or group mentions.")}
+            "用户删除了这个 Agent。它不再参与协作，"
+            "也无法接收私信或群聊提及。")}
     if isinstance(fact, GroupDissolved):
         return {"group": fact.group, "notice": (
-            "The user dissolved this group. You can no longer send messages to it; "
-            "existing chat history is retained.")}
+            "用户解散了这个群。你不能再向它发送消息；"
+            "已有的聊天记录会保留。")}
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
             f'Your agent name is "{fact.name}". If the user asks for your name, answer with "{fact.name}". '
@@ -341,17 +341,17 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     if isinstance(fact, ProjectLinked):
         return {"project": fact.name, "directory": fact.worktree, "notice": PROJECT_LINKED_NOTICE}
     if isinstance(fact, ProjectUnlinked):
-        return {"project": fact.name, "notice": "This project has been unlinked and its working directory removed."}
+        return {"project": fact.name, "notice": "这个项目已解除关联，它的工作目录已被移除。"}
     if isinstance(fact, ColleagueJoined):
         return {"colleague": fact.name}
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
-            "Please respond to this group message. Use send_group_message if you have something worth adding, "
-            "using reply_to to reference this message; if you have nothing new, do not send a group message. "
-            "Never reveal private one-on-one context.")}
+            "请回应这条群消息。如果你有值得补充的内容，就用 send_group_message 发送，"
+            "并用 reply_to 引用这条消息；如果没有新内容，就不要发群消息。"
+            "绝不要透露私下一对一交流的内容。")}
     if isinstance(fact, GroupCreated):
         return {"group": fact.group, "members": fact.members, "notice": (
-            "You are a participant in this group chat. Use send_group_message to say something the room can see.")}
+            "你是这个群聊的成员。用 send_group_message 发言，群里所有人都能看到。")}
     if isinstance(fact, CommunicationLimitReached):
         return {"recipient": fact.recipient, "text": fact.text}
     if isinstance(fact, RoutinesUnwatched):
@@ -360,12 +360,12 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
              "reply_to": fact.reply_to, "text": fact.text}
     if isinstance(fact, PrivateMessage):
         shown["recipient"] = fact.recipient
-        shown["notice"] = "A private message just arrived. Reply to the sender with send_message."
+        shown["notice"] = "刚收到一条私信。用 send_message 回复发送者。"
     else:
         shown.update(group=fact.group, mentioned_agents=fact.mentioned_agents)
-        shown["notice"] = "A message in this group chat. Use send_group_message to say something the room can see."
+        shown["notice"] = "这是群聊中的一条消息。用 send_group_message 发言，群里所有人都能看到。"
     if fact.sender.kind == "agent":
-        shown["notice"] += " This is another assistant reaching out, not the user typing here. If it is just an FYI with nothing for you to do, no reply to the sender is needed."
+        shown["notice"] += "这是另一个助手发来的消息，不是用户在这里输入的。如果它只是告知信息、不需要你做什么，就不必回复发送者。提到这位同事时用名字，不用“他”或“她”。"
     return shown
 
 

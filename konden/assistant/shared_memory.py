@@ -160,8 +160,8 @@ def shared_memory_message(data):
         "role": "user",
         "content": f"<{SHARED_MEMORY_TAG}>\n" + json.dumps({
             "fact": SHARED_MEMORY, "data": data,
-            "notice": "Shared memory: durable facts shared across every assistant this user runs, "
-            "including their lasting preferences and anything all of the user's assistants should know. "
-            "Use read_shared_memory to read it and update_shared_memory to change it.",
+            "notice": "共同记忆：这位用户运行的所有助手共享的持久事实，"
+            "包括用户的长期偏好，以及用户的所有助手都应该知道的任何内容。"
+            "用 read_shared_memory 读取，用 update_shared_memory 修改。",
         }, ensure_ascii=False) + f"\n</{SHARED_MEMORY_TAG}>",
     }

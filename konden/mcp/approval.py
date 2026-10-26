@@ -131,19 +131,19 @@ class McpInstallProposalInput(BaseModel):
     def approval_summary(self) -> str:
         lines = [
             f"准备安装 MCP Server `{self.server_id}`（{self.display_name}）",
-            f"Transport：{self.transport}",
+            f"传输方式：{self.transport}",
             f"只读声明：{self.read_only}",
             f"来源：{self.source}",
         ]
         if self.transport == "stdio":
             lines.extend([
-                f"Executable：{self.command}",
-                "Arguments：" + json.dumps(self.args, ensure_ascii=False),
-                f"Working directory：{self.cwd or '(未指定，使用该 Server 自己的默认目录)'}",
+                f"可执行文件：{self.command}",
+                "参数：" + json.dumps(self.args, ensure_ascii=False),
+                f"工作目录：{self.cwd or '(未指定，使用该 Server 自己的默认目录)'}",
             ])
             if self.env:
                 lines.append(
-                    "Env：" + json.dumps(
+                    "环境变量：" + json.dumps(
                         {key: "***" for key in self.env},
                         ensure_ascii=False,
                     )
@@ -152,14 +152,14 @@ class McpInstallProposalInput(BaseModel):
             lines.append(f"URL：{self._display_url()}")
             if self.headers:
                 lines.append(
-                    "Headers：" + json.dumps(
+                    "请求头：" + json.dumps(
                         {key: "***" for key in self.headers},
                         ensure_ascii=False,
                     )
                 )
             if self.bearer is not None:
                 lines.append("Bearer：***")
-            lines.append(f"Timeout：{self.timeout_seconds}s")
+            lines.append(f"超时：{self.timeout_seconds}s")
         return "\n".join(lines)
 
     def _display_url(self) -> str:
