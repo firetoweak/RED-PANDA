@@ -363,7 +363,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
         shown.update(group=fact.group, mentioned_agents=fact.mentioned_agents)
         shown["notice"] = "这是群聊中的一条消息。用 send_group_message 发言，群里所有人都能看到。"
     if fact.sender.kind == "agent":
-        shown["notice"] += "这是另一个助手发来的消息，不是用户在这里输入的。如果它只是告知信息、不需要你做什么，就不必回复发送者。"
+        shown["notice"] += "这是另一个助手发来的消息，不是用户在这里输入的。如果它只是告知信息、不需要你做什么，就不必回复发送者。提到这位同事时用名字，不用“他”或“她”。"
     return shown
 
 
