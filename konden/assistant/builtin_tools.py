@@ -24,11 +24,10 @@ from konden.tools.builtin import (
     command_result,
     current_command_id,
     create_command_specs,
-    create_subagent_workspace_specs,
     create_workspace_tool_specs,
 )
 from konden.tools.executor import ToolsExecutor
-from konden.tools.registry import BUILTIN_TOOL_REGISTRY, ToolRegistry
+from konden.tools.registry import BUILTIN_TOOL_REGISTRY
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +82,6 @@ async def build_builtin_tools(
     materials_root: Path | None = None,
     personal_root: Path | None = None,
     colleague_roots: tuple[Path, ...] = (),
-    isolated: bool = False,
     command_environment: Mapping[str, str] | None = None,
     commands: CommandControl | None = None,
 ) -> BuiltinToolRunner:
@@ -129,8 +127,6 @@ async def build_builtin_tools(
     interrupts = CommandInterrupts()
     registry = BUILTIN_TOOL_REGISTRY.clone()
     for spec in create_workspace_tool_specs(binding, environment, interrupts):
-        if isolated and spec.name in {"write_file", "apply_patch", "replace_all"}:
-            spec = replace(spec, requires_authorization=False)
         registry.register(spec)
     if commands is not None:
         for spec in create_command_specs(commands):
@@ -142,22 +138,5 @@ async def build_builtin_tools(
     )
 
 
-def subagent_review_tools(operation):
-    from konden.runtime import ToolBinding
 
-    specs = create_subagent_workspace_specs(operation)
-    bindings = {}
-    for spec in specs:
-        async def handler(context, arguments, _name=spec.name):
-            async def review(*args, **kwargs):
-                return await operation(context.command_id, *args, **kwargs)
-            registry = ToolRegistry()
-            for bound in create_subagent_workspace_specs(review):
-                registry.register(bound)
-            executor = ToolsExecutor(registry)
-            return runtime_tool_result(await executor.execute_parsed(_name, arguments))
-        bindings[spec.name] = ToolBinding(handler, requires_authorization=spec.requires_authorization)
-    return ([spec.to_openai_tool() for spec in specs], bindings,
-            frozenset(spec.name for spec in specs if spec.exclusive_batch))
-
-__all__ = ["build_builtin_tools", "BuiltinToolRunner", "subagent_review_tools", "command_result", "current_command_id"]
+__all__ = ["build_builtin_tools", "BuiltinToolRunner", "command_result", "current_command_id"]

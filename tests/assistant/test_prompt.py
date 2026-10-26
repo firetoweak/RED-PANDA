@@ -16,7 +16,6 @@ from konden.assistant.context.prompt import (
     DEFAULT_ASSISTANT_PROMPT,
     BOT_PROMPT,
     SUBAGENT_PROMPT,
-    SUBAGENT_READ_ONLY_PROMPT,
 )
 from konden.assistant.subagent.subagent import (
     CHILD_BUILTIN_TOOL_NAMES,
@@ -33,7 +32,6 @@ from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage
 from konden.paths import KondenHome
 from tests.fixtures.memory_journal import MemoryJournal
 from konden.skills.runtime import LOAD_SKILL, READ_SKILL_RESOURCE
-from konden.tools.builtin import create_subagent_workspace_specs
 from konden.tools.executor import RESERVED_KEYS
 from tests.fixtures.workspaces import workspace_record
 
@@ -50,7 +48,6 @@ CONDITIONAL_TOOL_NAMES = frozenset({
     LOAD_TOOLSET,
     LOAD_SKILL,
     READ_SKILL_RESOURCE,
-    *(spec.name for spec in create_subagent_workspace_specs(None)),
 })
 """按状态暴露的工具：没有可加载 Toolset、没有已装 Skill、没有 Host 传输时它们不在 schemas 里。
 
@@ -259,7 +256,7 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
-    async def test_read_only_subagent_has_the_same_on_demand_knowledge_boundary(self):
+    async def test_shared_subagent_has_the_same_on_demand_knowledge_boundary(self):
         from datetime import datetime, timezone
 
         from konden.runtime.events import DeliveryIdentity, DomainFactCommitted, EventDraft
@@ -271,13 +268,15 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
             workspace = workspace_record(root / "workspace")
             home = KondenHome(root / ".konden")
             child = "parent/sub-delegate-1"
+            from konden.assistant.host.session_store import SessionStore
+            await SessionStore(home.runtime_sessions_root).create("parent", directory=workspace.task_root)
 
             journal = MemoryJournal()
             await journal.accept_delivery(EventDraft(
                 event_id="task", session_id=child,
                 payload=DomainFactCommitted("subagent.task", {
                     "task": "read", "parent_session_id": "parent",
-                    "delegate_command_id": "delegate-1", "resolve_conflicts_of": None, "project": None,
+                    "delegate_command_id": "delegate-1", "cwd": None,
                 }, requests_decision=True),
                 occurred_at=datetime.now(timezone.utc),
                 delivery=DeliveryIdentity("subagent", "delegate-1:task"),
@@ -292,7 +291,7 @@ class SubagentProjectInstructionsTests(unittest.IsolatedAsyncioTestCase):
                 decision = assembly.runtime.step_runner._decision_maker
                 state = SimpleNamespace(session_id=child)
                 prompt = decision.prompt_for(state)
-                self.assertTrue(prompt.startswith(SUBAGENT_READ_ONLY_PROMPT))
+                self.assertTrue(prompt.startswith(SUBAGENT_PROMPT))
                 self.assertNotIn("父工作区约定", prompt)
                 self.assertIn(str(workspace.task_root), prompt)
                 self.assertIn(LOAD_SKILL, assembly.subagents.tool_names(child))

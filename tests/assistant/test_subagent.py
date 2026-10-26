@@ -197,6 +197,8 @@ def local_transport(runtime, scheduler, host):
             await runtime.create_session(session_id)
             host._parents[session_id] = arguments["data"]["parent_session_id"]
             await runtime.receive_domain_fact(session_id, **arguments)
+            await scheduler.wake(session_id)
+            return {"ok": True}
         elif operation == "instruct_child":
             await runtime.receive_domain_fact(session_id, **instruction_arguments(arguments["parent_session_id"], arguments["command_id"], arguments["text"]))
             await scheduler.wake(session_id)
@@ -484,7 +486,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         surface.attach(runtime)
         surface.apply_catalog("child", surface.registry_descriptors())
         await surface.load("child", "demo")
-        host = SubAgentHost(agent_branch=True)
+        host = SubAgentHost()
         host._parents["child"] = "parent"
         maker = _decision_maker(runtime, None, host)
         maker._surface = surface
@@ -493,7 +495,7 @@ class SubAgentPolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("demo_ping", names)
         self.assertIn("load_toolset", names)
         self.assertIn("write_file", names)
-        self.assertNotIn("execute_command", names)
+        self.assertIn("execute_command", names)
 
     def test_unknown_session_has_no_policy(self):
         host = SubAgentHost()

@@ -29,6 +29,7 @@ export type PendingAuthorization = z.infer<typeof pendingAuthorizationSchema>;
 export const inboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("authorization"),
+    command_session_id: z.string().min(1),
     session_id: z.string().min(1),
     workspace_id: z.string().min(1).nullable(),
     label: z.string().min(1),

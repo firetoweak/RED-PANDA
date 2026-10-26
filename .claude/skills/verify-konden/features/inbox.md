@@ -5,7 +5,7 @@
 ## Sub-features
 
 - `empty`：没有事项时不额外显示通知区；侧栏不出现 `待处理` 按钮。
-- `authorization`：会话待处理条显示工具名与参数摘要，`查看 <工具名> 的参数` 展开完整 JSON，`允许` / `拒绝` 走原命令授权接口。
+- `authorization`：子的授权也在父 Bot 下提醒，批准仍绑定子命令；会话待处理条显示工具名与参数摘要，`查看 <工具名> 的参数` 展开完整 JSON，`允许` / `拒绝` 走原命令授权接口。
 - `control`：会话待处理条显示摘要和风险，`取消` / `确认` 走原控制接口。
 - `limit`：在所属会话显示交流上限报告；人在这个会话再发消息后消失。
 - `absence`：在所属会话询问例行任务是否 `继续` / `停下`；超时暂停后显示 `恢复`。决定沿用 `POST /api/inbox/absence`，只恢复这次被暂停的例行任务。
@@ -44,3 +44,5 @@
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：名册提示与会话待处理参数、批准后清除通过；交流超限、暂停积压与长时间无人查看未重验。
 
 - 历史（会话暂停机制现已移除）：2026-10-23 执行停止更名验证：Windows Chrome、隔离 home、真实 DeepSeek；页面点击停止后 `session.execution_stopped=true`，同事私信仍送达但收件人不推进；待处理事项 `kind=stopped` 显示「执行已停止，有未处理的消息。继续后才会处理。」。点击继续后标记清除并处理输入。例行任务暂停状态未改，群聊与子任务页面本轮未重验。证据 `.tools/recovery-fixes/stop-rename-web/`。
+
+- 2026-10-26 Windows Chrome、受控本地模型：在父对话展开、允许子 write_file 和 execute_command，所属 Bot 提醒清除，调用在子会话执行一次；拒绝、多个子授权及断线恢复未在页面重验。证据 `.tools/shared-subagent-ui/evidence/`。

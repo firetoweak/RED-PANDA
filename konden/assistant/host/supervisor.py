@@ -67,7 +67,7 @@ from konden.assistant.subagent.subagent import (
     return_data,
     task_from_arguments,
 )
-from konden.assistant.workspaces import bound_workspace_id, bound_directory
+from konden.assistant.workspaces import bound_workspace_id, bound_directory, bound_workspace
 from konden.assistant.host.spawn import start_worker
 from konden.assistant.host.worker import worker_main
 from konden.runtime import AgentRuntime, SqliteJournal, replay, DomainFactCommitted
@@ -280,32 +280,17 @@ class HostSupervisor:
             if entry.deleted:
                 await self.lifecycle.notify(entry.session_id)
 
-    async def _child_project(self, session_id) -> tuple[AgentRecord, str] | None:
-        """The parent Bot and project a delegated task works in, if it got a project copy."""
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-        task = project_task(events)
-        if task is None or task.project is None:
-            return None
-        return await self.agents.by_session(task.parent_session_id), task.project
-
     async def _git_workspace(self, session_id) -> GitWorkspace | None:
-        """A Bot's Git identity; a task delegated into a project also runs in its copy."""
         agent = await self.agents.by_session(session_id)
-        if agent is not None:
-            return GitWorkspace(None, agent.name)
-        child = await self._child_project(session_id)
-        if child is None:
-            return None
-        parent, workspace_id = child
-        return GitWorkspace(self.agent_worktrees.child(workspace_id, session_id).path, parent.name)
+        if agent is None:
+            task = project_task(await self.store.journal(session_id).snapshot(session_id))
+            if task is not None:
+                agent = await self.agents.by_session(task.parent_session_id)
+        return None if agent is None else GitWorkspace(agent.name)
 
     async def has_active_children(self, session_id: str, workspace_id: str) -> bool:
-        events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-        for child_id in project_pending(events):
-            child = await self._child_project(child_id)
-            if child is not None and child[1] == workspace_id:
-                return True
-        return False
+        # Children share all the parent's project files; unlink only after reclaim.
+        return bool(project_pending(await self.store.journal(session_id).snapshot(session_id)))
 
     async def _copy_worktree_file(self, session_id: str, relative: str) -> dict:
         """Snapshot one Bot directory file into the session attachments the person can download."""
@@ -347,23 +332,6 @@ class HostSupervisor:
         return await _settle(self.agent_projects.unlink(session_id, name, f"unlink:user:{uuid4().hex}"))
 
     async def _route(self, operation, session_id, arguments, *, worker=None):
-        if operation == "agent_child_review":
-            child = arguments["child_session_id"]
-            copy = await self._child_project(child)
-            if copy is None:
-                return {"ok": False, "code": "NO_PROJECT_CHANGES",
-                        "error": "这个子 Agent 没有在项目里工作，只做了只读调查，没有可比较或合入的改动。"}
-            parent, workspace_id = copy
-            linked = parent.project_by_id(workspace_id)
-            if linked is None:
-                return {"ok": False, "code": "PROJECT_NOT_LINKED",
-                        "error": "这个子 Agent 工作的项目已从你这里解除，无法比较或合入。",
-                        "hint": "需要它的成果时，重新挂上这个项目再委派一次。"}
-            if arguments["merge"]:
-                result, changed = await _settle(asyncio.to_thread(self.agent_worktrees.merge_child, parent, linked, child))
-                return {**asdict(result), "changed_files": list(changed)}
-            return await asyncio.to_thread(self.agent_worktrees.compare_child, linked, child,
-                                           tuple(arguments["paths"]), arguments["offset"])
         if operation == LIST_COLLEAGUES:
             return await self.agent_messages.colleagues(session_id)
         if operation == SEND_MESSAGE:
@@ -471,27 +439,13 @@ class HostSupervisor:
             child_workspace_id = bound_workspace_id(parent_events)
             child_directory = bound_directory(parent_events)
             async with self.locks.setdefault(session_id, asyncio.Lock()):
-                conflict_child_id = None
-                if expected_task.resolve_conflicts_of is not None:
-                    source = next((item for item in project_delegate_intents(parent_events)
-                                   if item.command_id == expected_task.resolve_conflicts_of), None)
-                    if source is None:
-                        raise ValueError("conflict source does not belong to parent")
-                    source_files = await self._route("prepare_child_files", source.child_session_id,
-                                                       {"parent_session_id": expected_task.parent_session_id})
-                    if not source_files["ok"]:
-                        raise ValueError("conflict source has no completed files")
-                    conflict_child_id = source.child_session_id
-                # Without a project, a delegated task only reads the parent's own directory.
-                if expected_task.project is not None:
-                    parent_agent = await self.agents.by_session(expected_task.parent_session_id)
-                    linked = parent_agent.project_by_id(expected_task.project)
-                    if linked is None:
-                        raise ValueError("delegated project is not linked to the parent")
-                    if conflict_child_id is not None and (await self._child_project(conflict_child_id))[1] != linked.workspace_id:
-                        raise ValueError("conflict source belongs to another project")
-                    await _settle(asyncio.to_thread(self.agent_worktrees.create_child, self.workspaces.get(linked.workspace_id),
-                                                    parent_agent, linked, session_id, conflict_child_id))
+                if expected_task.cwd is not None:
+                    parent_workspace = bound_workspace(expected_task.parent_session_id, parent_events, self.workspaces)
+                    directory = (parent_workspace.task_root / expected_task.cwd).resolve()
+                    if not directory.is_dir():
+                        return {"ok": False, "code": "CWD_NOT_FOUND", "error": "子任务工作目录不存在。"}
+                    if not parent_workspace.full_access and not directory.is_relative_to(parent_workspace.task_root.resolve()):
+                        return {"ok": False, "code": "CWD_OUTSIDE_WORKSPACE", "error": "子任务工作目录不在你的工作区内。"}
                 if not self.store.path(session_id).parent.exists():
                     await self.store.create(
                         session_id,
@@ -517,26 +471,9 @@ class HostSupervisor:
                 self.request("fact", session_id, initial_fact)
             )
             self._track(session_id, activation)
-            return None
-        if operation == "prepare_child_files":
-            async with self.turn_locks.setdefault(session_id, asyncio.Lock()):
-                events = await SqliteJournal(self.store.require(session_id)).snapshot(session_id)
-                task = project_task(events)
-                if task is None or task.parent_session_id != arguments["parent_session_id"]:
-                    raise ValueError("child workspace owner does not match delegate")
-                if await self._child_status(session_id, events) == "running":
-                    return {"ok": False, "code": "CHILD_STILL_WORKING", "error": "子 Agent 正在执行。请等它回复并停下来后再查看或合入；也可先用 reclaim 结束协作。"}
-                if task.project is not None:
-                    parent_agent = await self.agents.by_session(task.parent_session_id)
-                    failure = await _settle(asyncio.to_thread(self.agent_worktrees.finish_child, parent_agent,
-                                                              task.project, session_id))
-                    if failure is not None:
-                        return {"ok": False, "code": "CHILD_RESULT_FAILED", "data": {"git": failure},
-                                "error": "整理这个子任务的成果时 Git 报错，暂时无法查看或合入它。",
-                                "hint": "出错的位置不在你的工作区里，你无法处理。把 Git 原文告诉用户，请用户处理后再试。"}
-                return {"ok": True}
+            return {"ok": True}
         if operation == "reclaim_child":
-            await self._reclaim_child(session_id, arguments)
+            await _settle(self._reclaim_child(session_id, arguments))
             return None
         if operation == "instruct_child":
             return await self._instruct_child(session_id, arguments)
@@ -968,6 +905,8 @@ class HostSupervisor:
             if project_parent(events) is not None and project_returned(events):
                 await self.compact.retire(session_id)
         if worker.returned is not None and not self.closed:
+            if self.commands is not None:
+                await self.commands.manager.stop_session(session_id)
             parent, arguments = worker.returned
             if not await self.lifecycle.is_deleted(parent):
                 await self.request("fact", parent, arguments)
@@ -1012,7 +951,10 @@ class HostSupervisor:
         if returned is not None:
             return "failed" if returned["failure"] is not None else "closed"
         state = replay(child_id, events).state
-        if self.activity(child_id) == "running" or state.waiting_command_ids or session_view(state).should_wake:
+        commands_running = self.commands is not None and any(
+            command["state"] == "running" for command in await self.commands.manager.list(child_id)
+        )
+        if self.activity(child_id) == "running" or commands_running or state.waiting_command_ids or session_view(state).should_wake:
             return "running"
         return "waiting"
 
@@ -1084,8 +1026,10 @@ class HostSupervisor:
                 worker = self.workers.get(session_id)
                 if worker is not None and not worker.exited.is_set():
                     worker.intentionally_stopped = True
-                    if worker.process.is_alive():
-                        worker.process.terminate()
+                    await worker.peer.send(("shutdown",))
+                if self.commands is not None:
+                    await self.commands.manager.stop_session(session_id)
+                if worker is not None:
                     await worker.exited.wait()
                 returned = await persist_return(
                     SqliteJournal(self.store.require(session_id)),
@@ -1127,11 +1071,8 @@ class HostSupervisor:
         assert not self.closed
         if await self.lifecycle.is_deleted(session_id):
             raise AgentDeletedError(session_id)
-        if operation == "fact" and arguments["fact_type"] == CLOSED_FACT:
-            prepared = await self._route("prepare_child_files", arguments["data"]["child_session_id"],
-                                         {"parent_session_id": session_id})
-            if not prepared["ok"] and prepared["code"] == "CHILD_STILL_WORKING":
-                raise ValueError("child close precedes its durable return")
+        if operation == "fact" and arguments["fact_type"] == CLOSED_FACT and self.commands is not None:
+            await self.commands.manager.stop_session(arguments["data"]["child_session_id"])
         lock = self.locks.setdefault(session_id, asyncio.Lock())
         just_started = False
         while True:
@@ -1447,6 +1388,18 @@ class HostSupervisor:
                 dict(content=content, delivery_id=delivery_id, source=source, artifact_refs=artifact_refs),
             )
             return self._with_host_metadata(view, session_id)
+
+    async def resolve_child_authorization(self, parent_id, child_id, command_id, *, approved):
+        from konden.assistant.authorization import AuthorizationTargetNotFound
+
+        async with self.turn_locks.setdefault(child_id, asyncio.Lock()):
+            events = await self.store.journal(parent_id).snapshot(parent_id)
+            if child_id not in project_pending(events):
+                raise AuthorizationTargetNotFound(command_id)
+            child_events = await self.store.journal(child_id).snapshot(child_id)
+            if project_task(child_events).parent_session_id != parent_id or project_returned(child_events):
+                raise AuthorizationTargetNotFound(command_id)
+            return await self.resolve_authorization(child_id, command_id, approved=approved)
 
     async def resolve_authorization(self, session_id, command_id, *, approved):
         await self.compact.application(

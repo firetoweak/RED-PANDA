@@ -195,6 +195,10 @@ class AuthorizationRequest(BaseModel):
     approved: bool
 
 
+class CommandAuthorizationRequest(AuthorizationRequest):
+    command_session_id: str | None = Field(default=None, min_length=1)
+
+
 class ControlDecisionRequest(AuthorizationRequest):
     request_id: str = Field(min_length=1)
 
@@ -771,7 +775,7 @@ def create_web_app(
     async def authorize_command(
         session_id: str,
         command_id: str,
-        body: AuthorizationRequest,
+        body: CommandAuthorizationRequest,
         request: Request,
     ):
         return await _channel(request).authorize_command(
@@ -779,6 +783,7 @@ def create_web_app(
             session_id,
             command_id,
             body.approved,
+            **({"command_session_id": body.command_session_id} if body.command_session_id is not None else {}),
         )
 
     @app.get("/api/auto-authorize")

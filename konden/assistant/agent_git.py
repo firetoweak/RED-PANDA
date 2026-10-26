@@ -21,12 +21,7 @@ AUTHOR_EMAIL = "bot@konden.local"
 
 @dataclass(frozen=True, slots=True)
 class GitWorkspace:
-    """The Git identity a Session commits with, and the project copy it runs in, if any.
-
-    A Bot runs in its own directory and mounts its projects there; only a task
-    delegated into a project runs directly in that project copy.
-    """
-    worktree: Path | None
+    """The Git author used by a Bot and its shared-workspace tasks."""
     author: str
 
 

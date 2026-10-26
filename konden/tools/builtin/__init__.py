@@ -12,7 +12,6 @@ from konden.tools.builtin.command_interrupts import (
 from konden.tools.builtin.file_manage import create_file_manage_specs
 from konden.tools.builtin.file_read import create_file_read_specs
 from konden.tools.builtin.file_write import create_file_write_specs
-from konden.tools.builtin.subagent_workspace import create_subagent_workspace_specs
 from konden.tools.spec import ToolSpec
 from konden.tools.builtin.background_commands import create_command_specs
 
@@ -22,7 +21,6 @@ __all__ = [
     "current_command_id",
     "LiveCommand",
     "create_command_specs",
-    "create_subagent_workspace_specs",
     "create_workspace_tool_specs",
     "run_interruptible",
 ]
