@@ -333,6 +333,11 @@ class StateProjector:
             event.event_id: event.payload.step.observed_journal_position
             for event in events if isinstance(event.payload, StepCommitted)
         }
+        handled_at = {
+            trigger: event.payload.step.observed_journal_position
+            for event in events if isinstance(event.payload, StepCommitted)
+            for trigger in event.payload.step.trigger_event_ids
+        }
         operational = _StateBuilder(session_id)
         for event in events:
             if isinstance(event.payload, StepCommitted):
@@ -388,12 +393,13 @@ class StateProjector:
                 if event.event_id not in consumed_ids
                 and self._requires_decision(
                     event, decision, operational, events,
-                    issuing_observed, continuation_cancellations,
+                    issuing_observed, continuation_cancellations, handled_at,
                 )
             ), ())
-        # 先确定整批，再判断阻塞；不能只把更正之前的旧指令交出去。
+        # 人的输入成批进入，不等待旧工具；其他外部事实仍保持原来的等待顺序。
         if any(
             _is_external_decision_fact(event.payload)
+            and not isinstance(event.payload, UserMessageReceived)
             and self._blocked_by_in_flight(event, operational, issuing_observed)
             for event in pending
         ):
@@ -571,6 +577,7 @@ class StateProjector:
         events: tuple[Event, ...],
         issuing_observed: dict[str, int],
         continuation_cancellations: dict[str, Event],
+        handled_at: dict[str, int],
     ) -> bool:
         payload = event.payload
         if _is_external_decision_fact(payload):
@@ -611,10 +618,16 @@ class StateProjector:
                          and sibling.phase is CommandPhase.UNKNOWN)):
                 return False
         observed = issuing_observed[command_state.issued_by_event_id]
-        return not any(
-            _is_external_decision_fact(item.payload) and item.sequence > observed
-            for item in events
-        )
+        for item in events:
+            if not _is_external_decision_fact(item.payload) or item.sequence <= observed:
+                continue
+            handled = handled_at.get(item.event_id)
+            # 人的插话若已在结果到达之前处理，仍须接续后来才有的真实结果。
+            # 尚未处理或已经看见结果的输入仍接手本次续步，避免重复交付。
+            if isinstance(item.payload, UserMessageReceived) and handled is not None and handled < event.sequence:
+                continue
+            return False
+        return True
 
     @staticmethod
     def _blocked_by_in_flight(

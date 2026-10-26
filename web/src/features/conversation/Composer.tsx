@@ -441,10 +441,10 @@ export function Composer({
                 </ActionIcon>
               </Tooltip>
             ) : null}
-            <Tooltip label={running ? "打断当前执行，按新消息继续" : "发送"}>
+            <Tooltip label="发送">
               <ActionIcon
                 className="composer-send"
-                aria-label={running ? "打断并发送" : "发送"}
+                aria-label="发送"
                 disabled={!canSend}
                 loading={sending}
                 loaderProps={{ color: "var(--konden-button-text)" }}

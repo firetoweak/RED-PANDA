@@ -8,7 +8,7 @@ from konden.runtime.json_values import thaw_value
 
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import json
 
@@ -52,7 +52,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 22
+PROJECTOR_VERSION = 23
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -106,6 +106,8 @@ class _Projected:
     kind: str
     command_id: str | None = None
     sequence: int = 0
+    observed_position: int = 0
+    result_position: int = 0
 
 
 def outcome_text(outcome: CommandOutcome) -> str:
@@ -162,7 +164,8 @@ def _outstanding_text(state: CommandState, tool_name: str) -> str:
         # 那是进程事实，不在事件里，所以这里只说到它知道的为止。
         code = "NO_RESULT_YET"
         error = f"This call started but has no result; the reason is unknown. It may still be running or have partially executed ({tool_name})."
-        hint = "Check the relevant files, external state, and running operations before waiting, continuing, or retrying."
+        hint = ("You may respond to new user messages without waiting for this result. Do not submit a duplicate call or assume it succeeded. "
+                "Check the relevant files, external state, and running operations before acting on or retrying this unfinished work.")
     elif state.dispatch_eligible_by_event_id is None:
         code = "AWAITING_AUTHORIZATION"
         error = f"This call is waiting for the user's authorization ({tool_name})."
@@ -347,7 +350,7 @@ def _translate_visible_events(
             ))
             continue
         if isinstance(payload, StepCommitted):
-            items.extend(_project_step(steps[event.event_id]))
+            items.extend(_project_step(steps[event.event_id], sequences))
     return _hoist_tool_images(items)
 
 
@@ -385,7 +388,7 @@ def _shown_tool(state: CommandState) -> InvokeTool | None:
     return effect
 
 
-def _project_step(step: StepState) -> list[_Projected]:
+def _project_step(step: StepState, sequences: Mapping[str, int]) -> list[_Projected]:
     """一个回合译成一组消息：assistant 及其每个命令的表示，缺一不可。
 
     以回合为单位生成，而不是等 Outcome 事件在流里漂过来。配平因此是构造
@@ -430,7 +433,8 @@ def _project_step(step: StepState) -> list[_Projected]:
             }
             for state, effect in shown
         ]
-    items.append(_Projected(message, "assistant", sequence=step.sequence))
+    items.append(_Projected(message, "assistant", sequence=step.sequence,
+                            observed_position=step.step.observed_journal_position))
     for state, effect in shown:
         command_id = state.command.command_id
         if state.authorization_rejected_by_event_id is not None:
@@ -449,6 +453,8 @@ def _project_step(step: StepState) -> list[_Projected]:
                 "tool",
                 command_id,
                 step.sequence,
+                result_position=(sequences[state.canonical_outcome_event_id]
+                                 if state.canonical_outcome_event_id is not None else 0),
             )
         )
     return items
@@ -675,9 +681,7 @@ class ModelContextProjector:
         prefix: list[dict[str, object]] | None = None,
     ) -> PreparedModelContext:
         items = [
-            _Projected(
-                deepcopy(item.message), item.kind, item.command_id, item.sequence
-            )
+            replace(item, message=deepcopy(item.message))
             for item in _translate_visible_events(
                 events,
                 state,
@@ -828,8 +832,12 @@ class ModelContextProjector:
                 index += 1
                 continue
 
+            # Results are displayed beside their calls, even when they arrive
+            # after a later reply. Display order does not prove observation.
+            last_result = max(item.result_position for item in items[index + 1:result_end])
             consumed = any(
                 items[later].kind == "assistant"
+                and items[later].observed_position >= last_result
                 for later in range(result_end, protection_start)
             )
             succeeded = all(_tool_succeeded(result) for result in results)

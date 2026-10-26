@@ -138,13 +138,14 @@ it("上传失败保留文件并阻止缺附件发送，重试成功后才可提�
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("分析文件 [File #1]", [`file:${"a".repeat(32)}`]));
 });
 
-it("运行中点打断并发送立即提交文字和附件，不等待旧轮结束", async () => {
+it("运行中仍用发送立即提交文字和附件，停止保持为独立操作", async () => {
   upload.mockReturnValue({ unwrap: async () => ({ kind: "file", attachment_id: `file:${"a".repeat(32)}` }) });
   const { container, onSend, stop } = showComposer(true);
   fireEvent.change(screen.getByLabelText("消息"), { target: { value: "改为分析这个附件" } });
   fireEvent.paste(screen.getByLabelText("消息"), { clipboardData: { files: [new File([], "empty.txt")] } });
-  await waitFor(() => expect(screen.getByRole("button", { name: "打断并发送" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "打断并发送" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "发送", exact: true })).toBeEnabled());
+  expect(screen.getByRole("button", { name: "停止", exact: true })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "发送", exact: true }));
   await waitFor(() => expect(onSend).toHaveBeenCalledWith("改为分析这个附件 [File #1]", [`file:${"a".repeat(32)}`]));
   expect(screen.queryByRole("button", { name: "立即发送" })).not.toBeInTheDocument();
   expect(container.querySelector('input[type="file"]')).not.toHaveAttribute("accept");
@@ -243,11 +244,11 @@ it("发送确认后不覆盖用户在等待期间新写的文字", async () => {
   expect(screen.getByLabelText("消息")).toHaveValue("下一条草稿");
 });
 
-it("打断请求失败后保留文字草稿，刷新后也不自动发送", async () => {
+it("运行中发送失败后保留文字草稿，刷新后也不自动发送", async () => {
   const view = showComposer(true);
-  view.onSend.mockRejectedValueOnce(new Error("打断失败"));
+  view.onSend.mockRejectedValueOnce(new Error("发送失败"));
   fireEvent.change(screen.getByLabelText("消息"), { target: { value: "改为执行新要求" } });
-  fireEvent.click(screen.getByRole("button", { name: "打断并发送" }));
+  fireEvent.click(screen.getByRole("button", { name: "发送", exact: true }));
   await waitFor(() => expect(view.onSend).toHaveBeenCalledOnce());
   expect(screen.getByLabelText("消息")).toHaveValue("改为执行新要求");
   view.unmount();
