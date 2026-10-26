@@ -38,16 +38,16 @@ export function SessionConversation() {
   const details = agent === undefined ? null : (
     <Tabs key={agent.session_id} defaultValue="details" keepMounted
       classNames={{ root: "bot-details-tabs", list: "bot-details-tab-list", panel: "bot-details-tab-panel" }}>
-      <Tabs.List aria-label="Bot 资料分页">
-        <Tabs.Tab value="details">详情</Tabs.Tab>
-        <Tabs.Tab value="routines">例行任务</Tabs.Tab>
-      </Tabs.List>
-      <Tabs.Panel value="details">
       <div className="agent-details-profile">
         <BotAvatarPicker key={`avatar-${agent.session_id}`} name={agent.name} sessionId={agent.session_id} connectionId={connectionId} />
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
+      <Tabs.List aria-label="Bot 资料分页">
+        <Tabs.Tab value="details">详情</Tabs.Tab>
+        <Tabs.Tab value="routines">例行任务</Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel value="details">
       <div className="agent-details-section">
         <Text className="agent-details-label" size="xs" c="dimmed">代码项目</Text>
         {agent.projects.map((project) => <div key={project.workspace_id}>
@@ -75,7 +75,7 @@ export function SessionConversation() {
           <IconUsersGroup size={16} /><span>{group.name}</span>
         </Link>)}
       </div>}
-      <div className="bot-execution-columns">
+      <div className="bot-execution-sections">
         <BackgroundCommands key={`commands-${agent.session_id}`} sessionId={agent.session_id} connectionId={connectionId} />
         <SubagentList sessionId={agent.session_id}
           onObserve={(commandId) => {

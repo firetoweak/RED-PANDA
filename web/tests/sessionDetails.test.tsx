@@ -113,6 +113,7 @@ it("桌面资料默认详情，页签往返保留例行任务打开项，切 Bot
   expect(commands.stop).toHaveBeenCalledWith({ sessionId: "ada", connectionId: "connection", commandId: "download" });
   await waitFor(() => expect(commands.refetch).toHaveBeenCalled());
   fireEvent.click(details.getByRole("tab", { name: "例行任务" }));
+  expect(details.getByText("Ada")).toBeVisible();
   fireEvent.click(details.getByRole("button", { name: "查看 检查 PR" }));
   expect(details.getByRole("button", { name: "返回例行任务" })).toBeVisible();
   expect(details.getByText("看评审")).toBeVisible();
@@ -162,6 +163,7 @@ it("窄屏资料提供相同的详情、子过程和例行任务入口，关闭�
   fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "显示 Bot 资料" }));
   const reopened = within(screen.getByRole("dialog", { name: "Agent 资料" }));
   fireEvent.click(reopened.getByRole("tab", { name: "例行任务" }));
+  expect(reopened.getByText("Ada")).toBeVisible();
   expect(reopened.getByRole("button", { name: "查看 检查 PR" })).toBeVisible();
   expect(reopened.getByRole("switch", { name: "暂停 检查 PR" })).toBeVisible();
   expect(reopened.getByRole("button", { name: "删除 检查 PR" })).toBeVisible();
