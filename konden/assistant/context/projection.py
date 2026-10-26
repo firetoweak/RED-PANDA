@@ -303,8 +303,8 @@ def _translate_visible_events(
             elif payload.fact_type == ROUTINE_DUE:
                 shown_data = {key: shown_data[key] for key in ("routine_id", "name", "intent", "planned_at", "fired_at")}
                 shown_data["notice"] = (
-                    "Carry out this routine's saved intent now. Surface useful results naturally; "
-                    "if the saved instruction says to stay quiet when nothing changed, end without filler.")
+                    "Carry out this routine's saved intent now. Report useful results or blockers; "
+                    "when nothing changed, keep the closing reply to one short factual sentence.")
             elif payload.fact_type == COMMAND_FINISHED:
                 shown_data["notice"] = "Your background command finished. Use read_command for its full output."
             elif payload.fact_type == TASK_FACT:

@@ -345,7 +345,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
     if isinstance(fact, GroupAttention):
         return {"group": fact.group, "message_id": fact.message_id, "notice": (
             "Please respond to this group message. Use send_group_message if you have something worth adding, "
-            "using reply_to to reference this message; if you have nothing new, end without a message. "
+            "using reply_to to reference this message; if you have nothing new, do not send a group message. "
             "Never reveal private one-on-one context.")}
     if isinstance(fact, GroupCreated):
         return {"group": fact.group, "members": fact.members, "notice": (
@@ -363,7 +363,7 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
         shown.update(group=fact.group, mentioned_agents=fact.mentioned_agents)
         shown["notice"] = "A message in this group chat. Use send_group_message to say something the room can see."
     if fact.sender.kind == "agent":
-        shown["notice"] += " This is another assistant reaching out, not the user typing here. If it is just an FYI with nothing for you to do, it is fine to stay silent."
+        shown["notice"] += " This is another assistant reaching out, not the user typing here. If it is just an FYI with nothing for you to do, no reply to the sender is needed."
     return shown
 
 
