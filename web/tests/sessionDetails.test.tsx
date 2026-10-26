@@ -198,7 +198,7 @@ it("子列表错误时不显示缓存任务，切到无子任务的 Bot 显示�
   subagents.isError = false;
   view.rerender(show("lin"));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  expect(screen.getByText("无子智能体")).toBeVisible();
+  expect(screen.getByText("无运行中的子智能体")).toBeVisible();
   expect(screen.queryByText("检查登录页面")).not.toBeInTheDocument();
 });
 

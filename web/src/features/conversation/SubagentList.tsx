@@ -31,7 +31,7 @@ export function SubagentList({ sessionId, onObserve }: {
     </Group>
     {query.isError ? <Text role="alert" c="red" size="xs">子智能体读取失败</Text>
       : query.isLoading ? <Text size="sm" c="dimmed">正在读取…</Text>
-      : subagents.length === 0 ? <Text size="sm" c="dimmed">无子智能体</Text>
+      : subagents.length === 0 ? <Text size="sm" c="dimmed">无运行中的子智能体</Text>
       : <Stack gap={0}>
         {subagents.slice().reverse().map((subagent) => <Stack className="subagent-summary-row" key={subagent.command_id} gap={6}>
           <Group justify="space-between" gap={6}>
