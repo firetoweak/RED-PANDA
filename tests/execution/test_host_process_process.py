@@ -143,6 +143,86 @@ def test_cancelled_worker_leaves_created_command_queryable(tmp_path):
     asyncio.run(scenario())
 
 
+def test_human_input_is_answered_while_the_started_command_keeps_running(tmp_path):
+    from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
+    from konden.runtime import CommandOutcomeReceived, DecisionCancelled, SqliteJournal, StepCommitted
+
+    async def scenario():
+        root = tmp_path / "project"
+        root.mkdir()
+        home = KondenHome(tmp_path / "home")
+        store = SessionStore(home.runtime_sessions_root)
+        workspace = WorkspaceRegistry.load(home.workspaces_path).register_path(root)
+        output = []
+
+        class Llm:
+            async def chat(self, messages, model, **kwargs):
+                results = [json.loads(message["content"]) for message in messages if message["role"] == "tool"]
+                if not results:
+                    command = shell(sys.executable, "-u", "-c",
+                        "import time;from pathlib import Path;Path('ready').touch();\n"
+                        "while not Path('release').exists(): time.sleep(.02)\nPath('finished').touch();print('DONE')")
+                    response = LLMResponse(content="", calls=(ToolCall("long", "execute_command", json.dumps({
+                        "command": command, "wait_seconds": 30,
+                    })),))
+                elif results[0]["code"] == "NO_RESULT_YET":
+                    response = LLMResponse(content="INTERJECT_OK")
+                else:
+                    assert results[0]["code"] == "COMMAND_COMPLETED"
+                    assert "DONE" in results[0]["data"]["stdout"]["content"]
+                    response = LLMResponse(content="WORK_DONE")
+                return LLMCallResult(response, LLMUsage(input_tokens=10, output_tokens=5))
+
+        host = HostSupervisor(store, partial(config_for, root), home,
+                              lambda session, _output, text: output.append((session, text)), llm=Llm())
+        try:
+            await host.create("a", workspace.workspace_id)
+            await host.set_auto_authorize(True)
+            await host.accept_input("a", "start long work", delivery_id="start")
+
+            async def started():
+                return (root / "ready").exists()
+
+            await until(started)
+            await host.accept_input("a", "keep the work; answer this first", delivery_id="interject")
+
+            async def answered():
+                return ("a", "INTERJECT_OK") in output
+
+            await until(answered)
+            journal = SqliteJournal(store.require("a"))
+            events = await journal.snapshot("a")
+            first = next(event.payload.step for event in events if isinstance(event.payload, StepCommitted))
+            command_id = first.commands[0].command_id
+            assert not any(isinstance(event.payload, DecisionCancelled) for event in events)
+            assert not any(isinstance(event.payload, CommandOutcomeReceived)
+                           and event.payload.command_id == command_id for event in events)
+            assert not (root / "finished").exists()
+            await host.accept_input("a", "keep the work; answer this first", delivery_id="interject")
+            await host.accept_input("a", "another question while you work", delivery_id="interject-2")
+
+            async def answered_again():
+                return output.count(("a", "INTERJECT_OK")) == 2
+
+            await until(answered_again)
+            assert not (root / "finished").exists()
+            (root / "release").touch()
+
+            async def completed():
+                return ("a", "WORK_DONE") in output
+
+            await until(completed)
+            await host.wait_quiescent("a")
+            assert (root / "finished").exists()
+            assert output.count(("a", "INTERJECT_OK")) == 2
+            assert output.count(("a", "WORK_DONE")) == 1
+        finally:
+            (root / "release").touch()
+            await host.close()
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("completion", ["stop", "exit"])
 def test_host_port_survives_worker_retirement(tmp_path, completion):
     from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall

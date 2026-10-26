@@ -108,9 +108,11 @@ class WorkerRecoveryTest(unittest.IsolatedAsyncioTestCase):
                 "child", "new input", delivery_id="second"
             )
             await runtime.dispatcher.close()
-            self.assertIsNone(runtime.projector.project(
+            pending = runtime.projector.project(
                 "child", await journal.snapshot("child")
-            ).next_decision)
+            ).next_decision
+            self.assertEqual(pending.trigger_event.delivery.delivery_id, "second")
+            self.assertIsNone(pending.state.commands[0].outcome)
             before = await journal.snapshot("child")
             await journal.prepare_recovery("child")
             recovered = await journal.snapshot("child")

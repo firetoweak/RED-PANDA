@@ -1,12 +1,12 @@
-# 运行控制：打断并发送、停止与失败再试
+# 运行控制：运行中发送、停止与失败再试
 
-控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、`打断并发送`）、`Conversation.tsx`（新消息接 `POST .../inputs`，运行中携带 `interrupt=true`；`停止` 接 `POST .../cancel`；模型失败横幅 `执行已停止` 带 `查看详情`/`再试`；请求失败横幅 `操作失败`）、`ErrorNotice.tsx`、`ExecutionProcess.tsx`（结果不确定的调用显示 `中断`）、`konden/tools/builtin/command_execution.py`（`COMMAND_INTERRUPTED`）、`konden/assistant/host/supervisor.py`（`cancel_turn`/`retry`/`accept_input`）。用户侧没有「停止执行」按钮。
+控制正在执行的回合。来源：`Composer.tsx`（运行中 `停止`、`发送`）、`Conversation.tsx`（新消息接 `POST .../inputs`，携带 `interrupt=false`；`停止` 接 `POST .../cancel`；模型失败横幅 `执行已停止` 带 `查看详情`/`再试`；请求失败横幅 `操作失败`）、`ErrorNotice.tsx`、`ExecutionProcess.tsx`（结果不确定的调用显示 `中断`）、`konden/tools/builtin/command_execution.py`（`COMMAND_INTERRUPTED`）、`konden/assistant/host/supervisor.py`（`cancel_turn`/`retry`/`accept_input`）。用户侧没有「停止执行」按钮。
 
 ## Sub-features
 
 - `stop`：运行中点 `停止`（aria-label `停止`）→ `POST /api/sessions/{id}/cancel`；取消当前轮，仍在前台等待的 `execute_command` 被中断（Linux 杀进程组，Windows 终止 Job）。已转后台的命令继续运行，需要在 Bot 资料的 `后台任务` 中点击该条的 `停止命令`，或用 `stop_command` 单独停止。
 - `retry-after-failure`：模型请求失败后输入框上方出现红色横幅 `执行已停止。<失败原因首行>`，按钮 `查看详情`、`再试`；`再试` 同样走 `POST .../retry`。
-- `interrupt-with-input`：父正在执行时发送新消息，按钮为 `打断并发送`；父已空闲而子协作仍开放时，按钮为 `发送`，同时保留 `停止`；父当前执行取消后处理新消息，不等待或自动收回子任务，成功后不保持停止状态。没有排队预览；文字与附件随同一消息提交。
+- `send-while-running`：父正在执行时也用 `发送` 接纳新消息，同时保留独立 `停止`；旧工具尚未返回时也能接续新消息，已有子任务与命令继续运行。文字与附件随同一消息提交，重投不重复接纳。
 
 ## How to get to it (user POV)
 
@@ -27,18 +27,20 @@
   - (b) 失败时横幅文字以 `执行已停止。运行失败：` 开头；`查看详情` 打开错误详情页（标题 `执行已停止 · 错误详情`，有 `复制完整错误`）。
   - (c) 再试前 `session.last_error` 保持不变，刷新页面后横幅仍在。
   - (d) 已断线时 `再试` 禁用，重连后可点；请求发出后才断线可能显示 `操作失败。再试失败，请确认后端连接后重试。`。
-- **运行中发送（打断）**：前台长命令运行中输入 `改为只回复 INTERRUPT_OK，不要重跑旧命令` 并回车或点 `打断并发送`。
-  - (a) 旧命令产生 `COMMAND_INTERRUPTED`，`late.txt` 不出现；`GET` 中新用户消息只有一条。
-  - (b) 一次 `POST .../inputs` 携带 `interrupt=true`，没有先从浏览器请求 `cancel`，模型随后回复 `INTERRUPT_OK`，无需点继续。
-  - (c) 已有历史和已发生的副作用保留；旧前台命令不自动重跑。子任务与独立后台命令继续运行，父根据新要求用 `reclaim` 或 `stop_command` 逐项停止；重投同一 `delivery_id` 不再打断新执行。
-  - (d) 请求失败保留正文和附件并显示 `操作失败`；刷新后仅恢复文字，不自动发送。窄屏也能用回车发送，按钮可访问名称仍为 `打断并发送`。
+- **运行中发送**：长命令仍在执行且工具尚未返回时，输入 `保留旧任务，先只回复 INTERJECT_OK，不要重跑旧命令` 并回车或点 `发送`。
+  - (a) `GET` 中新用户消息只有一条，旧命令仍在执行且没有中断终局；释放受控命令后能取得真实完成结果。
+  - (b) 一次 `POST .../inputs` 携带 `interrupt=false`，不请求 `cancel`；旧工具返回之前已出现 `INTERJECT_OK`。结果之后到达，仍接续报告一次。
+  - (c) 已有历史和副作用保留，旧任务不重跑。新回复生成期间到达的旧结果进入后续判断，不混入已经开始的模型调用；新回复开始前已有结果则随新输入提供，不重复续步。
+  - (d) 请求失败保留正文和附件并显示 `操作失败`；刷新后仅恢复文字，不自动发送。窄屏也能用回车发送，按钮可访问名称为 `发送`。
 - **等待子任务时插话**：委派任务仍在执行时，发送 `保留子任务，先回复 PARENT_INTERVENED`。
   - (a) 新消息入历史；已有子任务未被标为收回，不等子任务完成就能处理新指令。
-  - (b) 父仍执行时入口为 `打断并发送`；父已空闲时为 `发送`。父回复 `PARENT_INTERVENED`；子任务仍能正常交回。
+  - (b) 入口始终为 `发送`。父回复 `PARENT_INTERVENED`；子任务仍能正常交回。
   - (c) 子任务去留由父的工具调用决定；独立 `停止` 仍收回全部未完成子任务。
   - (d) 改为要求父收回指定任务，核对实际 `reclaim` 调用及子会话出现结束事实并保留父给出的原因，普通回复和等待不代表结束；必须确认实际收回。
 
 ## Gotchas
+
+- 2026-10-26 增量：Windows Chrome 1440×900、独立 home/端口、受控本地模型。长命令工具返回前的两次插话均已回复，旧进程继续；释放后真实完成通知与最终报告各一次。结果在插话生成期间到达、连续插话后的结果保护、停止与未知结果恢复由自动化验证。未调用真实供应商模型，未重验窄屏、TUI、macOS/Linux。证据 `.tools/human-input/ui-run/evidence/`。
 
 - 2026-10-22 打断并发送增量：Windows Chrome、隔离 home、真实 DeepSeek，1440×900 点击和 390×844 回车均在前台长命令运行中提交新指令。旧命令留下 `COMMAND_INTERRUPTED`，后续文件未生成；模型直接回复指定标记，`paused=false`，不需要继续。窄屏无页面横向溢出。重投不再次打断及冲突输入由进程测试验证；未验证 Linux、MCP 长调用或独立后台命令停止。完整证据留在本地 `.tools/interrupt-evidence/`。
 - 2026-10-22 子任务保留增量（旧显式报告协议的历史记录，状态字段与报告方式已被自然回复协议替换）：同样使用隔离 Web、Windows Chrome 与真实 DeepSeek，等待子任务时从 `打断并发送` 提交保留要求，父约 1.5 秒后回复 `PARENT_INTERVENED`，同时 `has_active_subagents=true`、`paused=false`，子任务未被收回。另一次在新子任务运行中要求收回，父实际调用 `reclaim`，观察页与 GET 均显示已收回和用户给出的原因，`cancelled=true`。首次收回尝试撞上子自然结束，不计作收回通过。选择性收回一个、另一个正常报告和独立停止全部收回由进程测试验证；本轮未重验代码项目写入、后台命令停止与其他平台。证据留在 `.tools/interrupt-adjust-evidence/`。

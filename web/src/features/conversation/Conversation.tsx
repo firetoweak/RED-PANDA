@@ -237,7 +237,7 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
       deliveryId: `web-${createClientId()}`,
       text,
       artifactRefs,
-      interrupt: running,
+      interrupt: false,
     }).unwrap();
     dispatch(controlNotice({ sessionId, message: null }));
   }

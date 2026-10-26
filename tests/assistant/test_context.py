@@ -454,6 +454,8 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("reason is unknown", payload["error"])
         self.assertIn("may still be running", payload["error"])
         self.assertNotIn("user stopped", payload["error"])
+        self.assertIn("respond to new user messages without waiting", payload["hint"])
+        self.assertIn("Do not submit a duplicate call", payload["hint"])
 
         gate.set()
         while runtime.dispatcher.active_count:
@@ -522,6 +524,36 @@ class ModelContextProjectorTest(unittest.IsolatedAsyncioTestCase):
 
     def _tool_messages(self, messages):
         return [message for message in messages if message["role"] == "tool"]
+
+    async def test_result_after_two_human_interjections_is_not_dehydrated_as_already_seen(self):
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def work(_context, _arguments):
+            started.set()
+            await release.wait()
+            return _result("LATE_RESULT")
+
+        runtime = AgentRuntime(MemoryJournal(), ScriptedDecisionMaker((
+            lambda _: ModelDecision(command_requests=(InvokeTool("work"),)),
+            lambda _: ModelDecision(content="first answer"),
+            lambda _: ModelDecision(content="second answer"),
+        )), {"work": ToolBinding(work)}, SequentialIds())
+        self.addAsyncCleanup(runtime.dispatcher.close)
+        await runtime.receive_user_message(self.SESSION, "start", delivery_id="start")
+        await runtime.advance(self.SESSION)
+        await started.wait()
+        for index in (1, 2):
+            await runtime.receive_user_message(self.SESSION, f"question {index}", delivery_id=f"q{index}")
+            await runtime.advance(self.SESSION)
+        release.set()
+        while runtime.dispatcher.active_count:
+            await asyncio.sleep(0)
+        events = await runtime.snapshot(self.SESSION)
+        prepared = self._projector().prepare(
+            events, StateProjector().project_visible(self.SESSION, events), self.SESSION, "sys",
+        )
+        self.assertEqual(prepared.age_dehydrated_command_ids, ())
+        self.assertEqual(json.loads(self._tool_messages(prepared.messages)[0]["content"]), _result("LATE_RESULT"))
 
     async def test_latest_user_turn_is_not_age_dehydrated(self):
         async def ping(_context, _arguments):

@@ -18,7 +18,11 @@ import runtimeReducer, { connected, disconnected, previewDelta, previewStarted, 
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <span>{content}</span>,
 }));
-vi.mock("../src/features/conversation/Composer", () => ({ Composer: () => null }));
+vi.mock("../src/features/conversation/Composer", () => ({
+  Composer: ({ onSend }: { onSend: (text: string, refs: string[]) => Promise<void> }) => (
+    <button onClick={() => { void onSend("继续旧任务，先回答新问题", []); }}>发送测试消息</button>
+  ),
+}));
 vi.mock("../src/features/conversation/ConversationTimeline", () => ({
   ConversationTimeline: ({ turns, renderTurn }: ComponentProps<typeof ConversationTimeline>) => (
     <>{turns.map((turn) => <div key={turn.key}>{renderTurn(turn)}</div>)}</>
@@ -74,6 +78,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "fonts");
   localStorage.clear();
+});
+
+it("Bot 运行期间普通发送不请求取消，并立即显示接纳的新消息", async () => {
+  const store = createStore();
+  stores.push(store);
+  store.dispatch(connected({ connection_id: "connection" }));
+  store.dispatch(sessionActivity({ sessionId: "Ada", activity: "running" }));
+  const before = snapshot("Ada");
+  const after: ConversationView = { ...before, revision: 2, items: [...before.items, {
+    kind: "user", message_id: "new-input", text: "继续旧任务，先回答新问题",
+    occurred_at: "2026-10-26T00:00:00Z", images: [], files: [],
+  }] };
+  const inputs: object[] = [];
+  const paths: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    paths.push(path);
+    if (path.endsWith("/inputs")) {
+      inputs.push(await request.json());
+      return Response.json(after);
+    }
+    return Response.json(path.endsWith("/agents") || path.endsWith("/workspaces") ? [] : before);
+  }));
+  render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/Ada"]}>
+    <Routes><Route path="/sessions/:sessionId" element={<Conversation />} /></Routes>
+  </MemoryRouter></MantineProvider></Provider>);
+  await screen.findByText("来自 Ada 的消息");
+  fireEvent.click(screen.getByRole("button", { name: "发送测试消息" }));
+  await screen.findByText("继续旧任务，先回答新问题");
+  expect(inputs).toHaveLength(1);
+  expect(inputs[0]).toMatchObject({ interrupt: false, text: "继续旧任务，先回答新问题" });
+  expect(paths.some((path) => path.endsWith("/cancel"))).toBe(false);
 });
 
 it("删除后的私聊保留 Bot 名字与历史，不能再发送", async () => {
