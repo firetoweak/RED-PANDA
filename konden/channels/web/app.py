@@ -634,6 +634,10 @@ def create_web_app(
     async def set_routine_state(session_id: str, routine_id: str, body: RoutineStateRequest, request: Request):
         return await _channel(request).set_routine_state(body.connection_id, session_id, routine_id, body.state)
 
+    @app.get("/api/sessions/{session_id}/subagents")
+    async def list_subagents(session_id: str, request: Request):
+        return await _channel(request).list_subagents(session_id)
+
     @app.get("/api/sessions/{session_id}/subagents/{command_id}")
     async def observe_subagent(session_id: str, command_id: str, request: Request):
         return await _channel(request).observe_subagent(session_id, command_id)

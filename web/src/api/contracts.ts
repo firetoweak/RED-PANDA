@@ -481,6 +481,14 @@ export const conversationStatusEventSchema = z
   })
   .strict();
 
+export const subagentSummarySchema = z.object({
+  command_id: z.string().min(1),
+  child_session_id: z.string().min(1),
+  task: z.string().min(1),
+  status: z.enum(["creating", "running", "waiting", "closed", "failed"]),
+}).strict();
+export type SubagentSummary = z.infer<typeof subagentSummarySchema>;
+
 export const subagentObservationSchema = z.object({
   session_id: z.string().min(1),
   task: z.string().min(1),

@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { configureStore } from "@reduxjs/toolkit";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -10,15 +10,23 @@ import { ContentPage } from "../src/features/conversation/ContentPage";
 import { SubagentCallCard } from "../src/features/conversation/SubagentCallCard";
 import runtimeReducer, { bindOwner, connected, previewDelta, previewStarted, sessionActivity, thinkingDelta, thinkingStarted, toolProgress, viewing } from "../src/realtime/runtimeSlice";
 
-const query = vi.hoisted(() => ({ data: undefined as SubagentObservation | undefined, read: vi.fn() }));
+const query = vi.hoisted(() => ({
+  data: undefined as SubagentObservation | undefined,
+  read: vi.fn(),
+  summaryStatus: undefined as "running" | "closed" | undefined,
+}));
 vi.mock("../src/api/kondenApi", () => ({
   useObserveSubagentQuery: (args: unknown) => { query.read(args); return { currentData: query.data, isError: false }; },
+  useGetSubagentsQuery: () => ({ currentData: query.summaryStatus === undefined ? [] : [{
+    command_id: "delegate", child_session_id: "child", task: "调查工具", status: query.summaryStatus,
+  }] }),
 }));
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <div>{content}</div>,
 }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 beforeEach(() => {
+  query.summaryStatus = undefined;
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
 });
@@ -68,9 +76,19 @@ it("观察子过程、切换和关闭面板都保持父 owner，并保留交回�
   expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   act(() => {
     store.dispatch(sessionActivity({ sessionId: "child", activity: "idle" }));
+    query.data = { ...query.data!, activity: "idle" };
+    query.summaryStatus = "running";
+  });
+  view.rerender(show("delegate"));
+  const header = within(screen.getByRole("button", { name: "展开任务" }).parentElement!);
+  expect(header.getByText("运行中")).toBeInTheDocument();
+  expect(header.queryByText("等待中")).not.toBeInTheDocument();
+  act(() => {
+    store.dispatch(sessionActivity({ sessionId: "child", activity: "idle" }));
     query.data = { ...query.data!, activity: "idle", result: {
       failure: null, reason: "已验收",
     }};
+    query.summaryStatus = "closed";
   });
   view.rerender(show("delegate"));
   expect(screen.getByText("协作已结束")).toBeInTheDocument();

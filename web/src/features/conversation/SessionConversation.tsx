@@ -1,7 +1,7 @@
-import { ActionIcon, Alert, Button, Drawer, Group, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Drawer, Group, Tabs, Text } from "@mantine/core";
 import { useDidUpdate, useMediaQuery } from "@mantine/hooks";
 import { IconArrowLeft, IconFolder, IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand, IconUsersGroup } from "@tabler/icons-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useGetAgentsQuery, useGetConversationQuery, useGetGroupsQuery, useGetWorkspacesQuery, useUnlinkProjectMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
@@ -9,12 +9,13 @@ import { AgentStatus } from "../sessions/AgentStatus";
 import { LinkProjectModal } from "../sessions/LinkProjectModal";
 import { EditableAgentName } from "../sessions/EditableAgentName";
 
-import { Conversation } from "./Conversation";
+import { Conversation, type ConversationHandle } from "./Conversation";
 import { RoutineList } from "./RoutineList";
 import { BotAvatar } from "./ChatPresentation";
 import { BotAvatarPicker } from "./BotAvatarPicker";
 import { BackgroundCommands } from "./BackgroundCommands";
 import { BotDetailsPanel } from "./BotDetailsPanel";
+import { SubagentList } from "./SubagentList";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -32,14 +33,21 @@ export function SessionConversation() {
   const [linking, setLinking] = useState(false);
   const [unlinkProject, unlinking] = useUnlinkProjectMutation();
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  const conversationRef = useRef<ConversationHandle>(null);
   const agentGroups = groups.filter((group) => group.members.includes(agent?.name ?? ""));
   const details = agent === undefined ? null : (
-    <>
+    <Tabs key={agent.session_id} defaultValue="details" keepMounted
+      classNames={{ root: "bot-details-tabs", list: "bot-details-tab-list", panel: "bot-details-tab-panel" }}>
       <div className="agent-details-profile">
         <BotAvatarPicker key={`avatar-${agent.session_id}`} name={agent.name} sessionId={agent.session_id} connectionId={connectionId} />
         <EditableAgentName key={agent.session_id} agent={agent} connectionId={connectionId} size="md" />
         <AgentStatus agent={agent} />
       </div>
+      <Tabs.List aria-label="Bot 资料分页">
+        <Tabs.Tab value="details">详情</Tabs.Tab>
+        <Tabs.Tab value="routines">例行任务</Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel value="details">
       <div className="agent-details-section">
         <Text className="agent-details-label" size="xs" c="dimmed">代码项目</Text>
         {agent.projects.map((project) => <div key={project.workspace_id}>
@@ -67,10 +75,20 @@ export function SessionConversation() {
           <IconUsersGroup size={16} /><span>{group.name}</span>
         </Link>)}
       </div>}
-      <BackgroundCommands key={`commands-${agent.session_id}`} sessionId={agent.session_id} connectionId={connectionId} />
+      <div className="bot-execution-sections">
+        <BackgroundCommands key={`commands-${agent.session_id}`} sessionId={agent.session_id} connectionId={connectionId} />
+        <SubagentList sessionId={agent.session_id}
+          onObserve={(commandId) => {
+            conversationRef.current?.observeSubagent(commandId);
+            if (narrow) setDetailsOpened(false);
+          }} />
+      </div>
+      </Tabs.Panel>
+      <Tabs.Panel value="routines">
       <RoutineList key={agent.session_id} sessionId={agent.session_id} connectionId={connectionId}
         onOpenTimeline={narrow ? () => setDetailsOpened(false) : undefined} />
-    </>
+      </Tabs.Panel>
+    </Tabs>
   );
   return (
     <div className="session-page">
@@ -87,7 +105,7 @@ export function SessionConversation() {
           <IconFolder size={15} /><span>{agent.projects.map((project) => project.name).join("、")}</span></span>}
         <ActionIcon className="agent-details-toggle" aria-label={detailsOpened ? "收起 Bot 资料" : "显示 Bot 资料"} aria-expanded={detailsOpened} variant="subtle" color="gray" onClick={() => setDetailsOpened((opened) => !opened)}>{detailsOpened ? <IconLayoutSidebarRightCollapse size={18} /> : <IconLayoutSidebarRightExpand size={18} />}</ActionIcon>
       </header>
-      <div className="session-page-body"><Conversation key={sessionId} agentName={agent?.name ?? history?.agent_name ?? undefined} agentNames={agents.map((item) => item.name)} /></div>
+      <div className="session-page-body"><Conversation ref={conversationRef} key={sessionId} agentName={agent?.name ?? history?.agent_name ?? undefined} agentNames={agents.map((item) => item.name)} /></div>
       </div>
       {agent === undefined ? null : narrow ? (
         <Drawer opened={detailsOpened} onClose={() => setDetailsOpened(false)}

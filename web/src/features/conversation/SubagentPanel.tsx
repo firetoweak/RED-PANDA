@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Center, Group, Loader, Paper, ScrollArea, Stack, 
 import { IconArrowDown, IconChevronDown, IconChevronUp } from "@tabler/icons-react";
 import { useState } from "react";
 
-import { useObserveSubagentQuery } from "../../api/kondenApi";
+import { useGetSubagentsQuery, useObserveSubagentQuery } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 import { StepDisclosure } from "./ExecutionProcess";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -14,6 +14,8 @@ export function SubagentPanel({ parentSessionId, commandId }: {
   parentSessionId: string; commandId: string;
 }) {
   const query = useObserveSubagentQuery({ parentSessionId, commandId });
+  const subagents = useGetSubagentsQuery(parentSessionId);
+  const status = subagents.currentData?.find((item) => item.command_id === commandId)?.status;
   const [taskOpened, setTaskOpened] = useState(false);
   const observation = query.currentData;
   const runtime = useAppSelector((state) => observation === undefined ? undefined : state.runtime.sessions[observation.session_id]);
@@ -29,7 +31,8 @@ export function SubagentPanel({ parentSessionId, commandId }: {
   );
   const label = result !== null
     ? result.failure !== null ? "执行失败" : "协作已结束"
-    : !connected ? "连接中断" : conversation === null ? "正在创建" : activity === "running" ? "运行中" : "等待中";
+    : !connected ? "连接中断" : status === "failed" ? "执行失败" : status === "closed" ? "协作已结束"
+      : conversation === null ? "正在创建" : activity === "running" || status === "running" ? "运行中" : "等待中";
 
   return <div className="subagent-page">
     <Stack className="subagent-panel-header" gap={8}>
@@ -54,7 +57,7 @@ export function SubagentPanel({ parentSessionId, commandId }: {
       : observation === undefined ? <Center><Loader size="sm" /></Center>
       : <ScrollArea className="subagent-panel-scroll" viewportRef={follow.viewportRef} type="hover">
         <Stack className="subagent-panel-content" gap="md" ref={follow.contentRef}>
-          {items.length === 0 ? <Text c="dimmed" size="sm">{conversation === null ? "正在创建子任务…" : "尚无执行记录"}</Text> : null}
+          {items.length === 0 ? <Text c="dimmed" size="sm">{conversation === null && status !== "failed" ? "正在创建子任务…" : "尚无执行记录"}</Text> : null}
           {items.length === 0 ? null : <Paper className="execution-process subagent-process" withBorder radius="md">
             <Stack className="execution-steps" gap={4}>
               {items.map((item, index) => item.kind === "user"
