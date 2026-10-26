@@ -85,7 +85,7 @@ class CliToolAdapter:
                     "ok": False,
                     "code": "VALIDATION_ERROR",
                     "data": {"details": exc.details},
-                    "error": "cli arguments validation failed",
+                    "error": "cli 参数校验失败",
                 }
             result = runtime_tool_result(await spec.handler(payload))
             return externalize_tool_result(

@@ -50,11 +50,11 @@ class LoopGuard:
         text = (
             "<loop_guard_notice>\n"
             + "\n".join(
-                "System observation: " + hit["observation"] + " Call ids: "
+                "系统观察：" + hit["observation"] + "调用 id："
                 + json.dumps([ref["command_id"] for ref in hit["references"]], ensure_ascii=False)
                 for hit in evidence
             )
-            + "\nCheck whether these calls are making progress before choosing the next step.\n</loop_guard_notice>"
+            + "\n在选择下一步之前，先检查这些调用是否在取得进展。\n</loop_guard_notice>"
         )
         return {
             "text": text,

@@ -47,7 +47,7 @@ class McpInstallProposalTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.action, MCP_INSTALL_ACTION)
         self.assertTrue(spec.control_boundary)
         self.assertNotIn("secrets", result.payload)
-        self.assertIn("Executable：npx", result.summary)
+        self.assertIn("可执行文件：npx", result.summary)
 
     async def test_secrets_pass_through_payload_but_not_summary(self):
         spec = self._spec()

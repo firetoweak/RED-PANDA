@@ -108,7 +108,7 @@ def adapt_call_result(
                     "meta": meta,
                 }
             },
-            "error": _text_from_content(content) or "MCP tool reported an error",
+            "error": _text_from_content(content) or "MCP 工具报告了错误",
             "hint": "按 error 判断原因；涉及创建、发送或修改时，先核对实际状态再重试。",
         }
 

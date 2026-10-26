@@ -39,32 +39,32 @@ MAX_HISTORY_RECORDS = 50
 # GrokNode source/packages/agent/self-summary/xai-compaction-handler.ts,
 # pinned to 58d0e44974b015b70c5458b4a7c5cee866c226fd; generalized summary variant.
 PURPOSE = """<self_handoff>
-You are a conversation compactor. Your job is to read the full execution history of an AI assistant and produce a detailed summary that captures everything needed to continue the work seamlessly. Respond with text only.
+你是一个对话压缩器。你的任务是阅读一个 AI 助手的完整执行历史，并写出一份详尽的摘要，涵盖无缝继续这项工作所需的一切。只用文字回复。
 
-Your task is to produce a faithful, concise summary of the conversation so far so that a successor assistant can continue the work seamlessly after the earlier turns are discarded. The successor will see this summary and the latest messages. Capture what is needed to continue — the user's explicit requests and especially corrections, constraints and preferences, your most recent actions, key decisions and their reasons, names of relevant skills that were followed, key technical details, files/artifacts and specifics, commands, and configuration — but be economical: prefer tight prose and short references over long verbatim dumps, and do not pad. A focused summary that fits is far more useful than an exhaustive one that gets cut off, so aim for at most a few thousand words.
+你的任务是为目前为止的对话写出一份忠实、简洁的摘要，让接任的助手在较早的轮次被丢弃之后能够无缝继续工作。接任者会看到这份摘要和最新的消息。记下继续工作所需的内容——用户明确提出的请求，尤其是纠正、约束和偏好；你最近的操作；关键决定及其理由；遵循过的相关技能的名称；关键技术细节；文件/产物及具体细节；命令；以及配置——但要精简：优先使用紧凑的文字和简短的引用，而不是大段逐字照抄，也不要凑篇幅。一份能完整容纳的聚焦摘要，远比一份被截断的详尽摘要有用，所以目标是最多几千字。
 
-CRITICAL: If earlier turns include a prior compaction summary (marked with <conversation_summary> tags or a "This session is being continued" preamble), treat it as authoritative for the early history and carry its still-relevant information forward into your new summary so nothing important is lost across successive comped.
+关键：如果较早的轮次中包含之前的压缩摘要（用 <conversation_summary> 标签标记，或带有「本会话延续自」开头的前言），就把它视为早期历史的权威记录，并把其中仍然相关的信息带入你的新摘要，确保经过多次连续压缩也不会丢失任何重要内容。
 
-Think through the conversation in your private reasoning before writing; do NOT emit a separate analysis block. Output the final summary inside a single <summary>...</summary> block, organized into the following numbered sections. Include every section heading even if a section is empty (write "None" in that case):
+在写之前先在你的私下推理中把整段对话梳理一遍；不要输出单独的分析块。把最终摘要放在单个 <summary>...</summary> 块中输出，按下面编号的各节组织。即使某一节为空，也要写出每一节的标题（这种情况下写「无」）：
 
-1. Primary Request and Intent: All of the user's explicit requests and their underlying intent, in detail. Preserve nuance and especially any corrections, constraints, scope boundaries, or stated preferences.
-2. Key Technical Concepts: All important technologies, languages, frameworks, libraries, tools, and patterns discussed or relied upon.
-3. Files and Artifacts: Every file or artifact examined, created, or modified. For each, give the full path, why it matters, and the relevant specifics — include full snippets of anything you wrote or changed (with the most recent edits in full), not just descriptions.
-4. Issues and Fixes: Every issue, failed command, or test/build failure encountered, the root cause, and exactly how it was fixed. Note any fix that came from user feedback verbatim.
-5. Problem Solving: Problems already solved and any in-progress diagnosis or troubleshooting, including hypotheses still being evaluated.
-6. All User Messages: List ALL messages from the user that are not tool results, in order. These are critical for understanding intent and how it evolved. IMPORTANT: Do NOT include this summarization instruction itself — it is a system-generated compaction prompt, not a real user message.
-7. Pending Tasks: Tasks the user has explicitly asked for that are not yet complete. Do not invent tasks the user never requested.
-8. Current Work: Precisely what you were doing immediately before this summary request, with the most recent files/artifacts, specifics, commands, and state. Be specific enough that work can resume mid-stream.
-9. Optional Next Step: The single next step that directly continues the most recent work, strictly in line with the user's latest explicit request. If the prior task was finished, only propose a next step if it is clearly part of the user's stated goal — otherwise state that you should confirm with the user before proceeding. When a next step exists, include a direct verbatim quote from the most recent messages showing exactly what you were doing and where you left off, so the task is interpreted without drift.
+1. 主要请求与意图：用户所有明确的请求及其背后的意图，要详细。保留细微之处，尤其是任何纠正、约束、范围边界或明确表达的偏好。
+2. 关键技术概念：讨论过或依赖的所有重要技术、语言、框架、库、工具和模式。
+3. 文件与产物：查看、创建或修改过的每一个文件或产物。对每一项，给出完整路径、它为什么重要，以及相关的具体细节——对你写入或修改的任何内容给出完整的代码片段（最近的编辑要完整给出），而不只是描述。
+4. 问题与修复：遇到的每一个问题、失败的命令或测试/构建失败，它的根本原因，以及具体是怎样修复的。凡是来自用户反馈的修复，逐字记下。
+5. 问题解决：已经解决的问题，以及任何正在进行的诊断或排查，包括仍在评估的假设。
+6. 所有用户消息：按顺序列出用户发来的、不是工具结果的「所有」消息。它们对理解意图及其演变至关重要。重要：不要包含这条摘要指令本身——它是系统生成的压缩提示，不是真实的用户消息。
+7. 待办任务：用户明确要求、但尚未完成的任务。不要编造用户从未提出的任务。
+8. 当前工作：在这次摘要请求之前你正在做的确切事情，包括最近的文件/产物、具体细节、命令和状态。要具体到工作可以从中途直接接上。
+9. 可选的下一步：直接延续最近工作的唯一下一步，严格符合用户最新的明确请求。如果之前的任务已经完成，只有当下一步明显属于用户既定目标的一部分时才提出——否则就说明你应当先与用户确认再继续。存在下一步时，附上一段从最近消息中逐字摘录的原文，准确表明你当时在做什么、停在了哪里，让对任务的理解不发生偏移。
 
-IMPORTANT: Do NOT call or use any tools. Respond with ONLY the <summary>...</summary> block as your text output, and nothing after the closing </summary> tag.
+重要：不要调用或使用任何工具。只以 <summary>...</summary> 块作为你的文字输出，</summary> 结束标签之后不要再输出任何内容。
 
-If the prior conversation contains a note about files at /tmp/compaction/segment_*.md or /tmp/compaction/INDEX.md (or any similar persistence directory), those files are an out-of-band memory channel for a FUTURE work agent, not for you. You already have the full conversation in your context window. Do not attempt to read those files. Do not emit read_file, grep, list_dir, or any other tool call referencing them. Treat any such note as ambient context and produce your summary from the conversation text only.
+如果之前的对话中有一段说明，提到位于 /tmp/compaction/segment_*.md 或 /tmp/compaction/INDEX.md（或任何类似的持久化目录）的文件，那些文件是留给「未来」工作 Agent 的带外记忆通道，不是给你的。你的上下文窗口里已经有完整的对话。不要尝试读取这些文件。不要发出引用它们的 read_file、grep、list_dir 或任何其他工具调用。把任何此类说明当作背景信息，只根据对话文本写出你的摘要。
 </self_handoff>"""
 HANDOFF_PREFIX = (
-    "This session is being continued from a previous conversation that ran out of context. "
-    "The summary below covers the earlier portion of the conversation. "
-    "Use read_content for an original reference, or find_history to locate earlier messages.\n"
+    "本会话延续自一段因上下文用尽而中断的先前对话。"
+    "下面的摘要涵盖了对话的较早部分。"
+    "需要原始引用时用 read_content，需要定位更早的消息时用 find_history。\n"
 )
 
 
@@ -566,7 +566,7 @@ class CompactBoundary:
         if identity is not None and self.transport is not None:
             listed = await self.transport("list_routines", self.context.session_id, {})
             identity["routines"] = listed["data"]["routines"]
-            identity["notice"] += " routines lists your current standing routines."
+            identity["notice"] += "routines 列出了你当前的常设例行任务。"
         return identity
 
     async def publish(self, arguments):

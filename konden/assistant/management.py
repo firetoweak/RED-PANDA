@@ -153,7 +153,7 @@ class ManagementToolAdapter:
                     "ok": False,
                     "code": "VALIDATION_ERROR",
                     "data": {"details": exc.details},
-                    "error": "management tool arguments validation failed",
+                    "error": "管理工具参数校验失败",
                     "hint": "按本次决策提供的 schema 修正参数。",
                 }
             result = await spec.handler(input_data)

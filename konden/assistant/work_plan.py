@@ -134,10 +134,10 @@ def render_work_plan(events: Sequence[Event]) -> str | None:
     if update is None:
         return None
     if update.plan is None:
-        return f"<{WORK_PLAN_TAG}>\nYour work plan has been cleared.\n</{WORK_PLAN_TAG}>"
+        return f"<{WORK_PLAN_TAG}>\n你的工作计划已清空。\n</{WORK_PLAN_TAG}>"
     return (
         f"<{WORK_PLAN_TAG}>\n"
-        "Your current work plan:\n"
+        "你当前的工作计划：\n"
         + json.dumps(update.plan.model_dump(mode="json"), ensure_ascii=False)
         + f"\n</{WORK_PLAN_TAG}>"
     )

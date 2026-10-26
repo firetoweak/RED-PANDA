@@ -72,6 +72,6 @@ class ConsecutiveActions:
             if len(run) >= self.threshold:
                 hits.append(Evidence(
                     "consecutive_action", 1, self.threshold, run,
-                    f"The same tool was called {len(run)} times consecutively with identical arguments.",
+                    f"同一个工具以完全相同的参数被连续调用了 {len(run)} 次。",
                 ))
         return tuple(hits)
