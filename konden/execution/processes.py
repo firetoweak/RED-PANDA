@@ -76,6 +76,7 @@ class CommandManager:
         self._commands: dict[str, OwnedCommand] = {}
         self._lock = asyncio.Lock()
         self._closed = False
+        self._closed_sessions: set[str] = set()
         self._interrupts: set[str] = set()
 
     async def execute(self, session_id: str, command_id: str, command: str, cwd: Path,
@@ -90,6 +91,8 @@ class CommandManager:
         async with self._lock:
             if self._closed:
                 raise RuntimeError("Command owner is closed")
+            if session_id in self._closed_sessions:
+                raise CommandStartError("该会话的命令执行已结束。")
             if command_id in self._commands:
                 raise ValueError("command already started")
             overlay = environment_overlay or {}
@@ -259,9 +262,11 @@ class CommandManager:
                 if entry.session_id == session_id and entry.backgrounded]
 
     async def stop_session(self, session_id: str) -> None:
-        for entry in tuple(self._commands.values()):
-            if entry.session_id == session_id:
-                await self.stop(session_id, entry.command_id)
+        async with self._lock:
+            self._closed_sessions.add(session_id)
+            entries = tuple(entry for entry in self._commands.values() if entry.session_id == session_id)
+        for entry in entries:
+            await self.stop(session_id, entry.command_id)
 
     async def close(self) -> None:
         async with self._lock:

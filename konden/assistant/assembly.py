@@ -4,6 +4,10 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 import sys
 
+from konden.assistant.host.session_store import SessionStore
+from konden.assistant.workspaces import bound_workspace
+from konden.filesystem.registry import WorkspaceRegistry
+
 from konden.assistant.artifacts import FileArtifactGateway
 from konden.assistant.attachments import (
     AttachmentGateway,
@@ -37,7 +41,6 @@ from konden.assistant.runner import SessionScheduler
 from konden.assistant.agent_tools import AGENT_GIT_SCHEMAS, AGENT_GIT_TOOLS, EXCLUSIVE_PROJECT_TOOLS, agent_git_bindings
 from konden.assistant.sessions import AssistantSessions
 from konden.assistant.subagent.subagent import SubAgentHost, project_task
-from konden.assistant.subagent.review import GitChildReview
 from konden.assistant.toolsets import (
     LOAD_TOOLSET,
     LOAD_TOOLSET_DESCRIPTION,
@@ -53,7 +56,7 @@ from konden.automation.tool import (
     cancel_schedule_binding,
     schedule_once_binding,
 )
-from konden.assistant.builtin_tools import build_builtin_tools, subagent_review_tools
+from konden.assistant.builtin_tools import build_builtin_tools
 from konden.filesystem.registry import WorkspaceRecord
 from konden.filesystem.workspace import FileWorkspace
 from konden.assistant.cli import CliToolAdapter
@@ -113,36 +116,33 @@ async def build_assistant_assembly(
     session_transport=None,
     model_selection_source=None,
     home: KondenHome | None = None,
-    agent_branch: bool = False,
 ) -> AssistantAssembly:
     sessions_root = runtime_data_root() if home is None else home.runtime_sessions_root
     home = KondenHome.default() if home is None else home
     task = project_task(await journal.snapshot(session_id))
     agent = project_agent(await journal.snapshot(session_id))
+    file_owner = agent
+    shared_root = None
+    if task is not None:
+        parent_events = await SessionStore(sessions_root).journal(task.parent_session_id).snapshot(task.parent_session_id)
+        file_owner = project_agent(parent_events)
+        shared_root = bound_workspace(task.parent_session_id, parent_events, WorkspaceRegistry.load(home.workspaces_path)).task_root
     colleague_schemas = MESSAGE_SCHEMAS if agent is not None and session_transport is not None else []
     colleague_bindings = (message_bindings(session_transport, journal) if colleague_schemas else {})
     attachment_gateway = AttachmentGateway(sessions_root)
     attachments = attachment_gateway.for_session(session_id)
     builtin_tools = await build_builtin_tools(
-        workspace, materials_root=attachments.files.materials, isolated=task is not None,
-        personal_root=None if agent is None else agent.directory,
-        colleague_roots=(home.agent_directories_root, home.agent_worktrees_root) if colleague_schemas else (),
+        workspace, materials_root=attachments.files.materials,
+        personal_root=(shared_root if file_owner is None else file_owner.directory),
+        colleague_roots=(home.agent_directories_root, home.agent_worktrees_root) if file_owner is not None else (),
         command_environment=command_environment,
         commands=(WorkerCommandPort(session_transport, session_id)
-                   if sys.platform in {"win32", "linux", "darwin"} and task is None and session_transport is not None else None),
+                   if sys.platform in {"win32", "linux", "darwin"} and session_transport is not None else None),
     )
     command_interrupts = builtin_tools.command_interrupts
 
-    async def review_operation(*args, **kwargs):
-        return await child_review.review(*args, **kwargs)
-
-    # A Bot links projects; its tasks delegated into one are branches merged back into its own branch.
     agent_git = agent is not None and session_transport is not None
-    review_schemas, review_bindings, exclusive_tools = (
-        subagent_review_tools(review_operation) if agent_git else ([], {}, frozenset())
-    )
-    if agent_git:
-        exclusive_tools |= EXCLUSIVE_PROJECT_TOOLS
+    exclusive_tools = EXCLUSIVE_PROJECT_TOOLS if agent_git else frozenset()
     settings = ModelContextSettings()
     gateway = FileArtifactGateway(sessions_root)
     projector = ModelContextProjector(
@@ -203,7 +203,7 @@ async def build_assistant_assembly(
     skill_tools = SkillToolAdapter(skills, gateway, settings,
                                   project_root=workspace.task_root)
     cli_tools = CliToolAdapter(cli, gateway, settings)
-    subagents = SubAgentHost(subagent_activity_sink, agent_branch=agent_branch, projects=agent is not None)
+    subagents = SubAgentHost(subagent_activity_sink)
     if task is not None:
         subagents._parents[session_id] = task.parent_session_id
     preview = PreviewEmitter(preview_sink, thinking_sink)
@@ -216,10 +216,9 @@ async def build_assistant_assembly(
             await observed
 
     surface = ToolSurface(
-        providers=(McpToolsetAdapter(mcp, attachments, read_only_only=task is not None),),
+        providers=(McpToolsetAdapter(mcp, attachments),),
         base_schemas=[
             *builtin_tools.schemas,
-            *review_schemas,
             *colleague_schemas,
             *(SHARED_MEMORY_SCHEMAS if shared_memory is not None else []),
             *(ROUTINE_SCHEMAS if colleague_schemas else []),
@@ -234,7 +233,6 @@ async def build_assistant_assembly(
         ],
         reserved_names=(
             *builtin_tools.names(),
-            *review_bindings,
             *colleague_bindings,
             *(schema["function"]["name"] for schema in SHARED_MEMORY_SCHEMAS),
             *ROUTINE_TOOLS,
@@ -274,7 +272,6 @@ async def build_assistant_assembly(
             gateway,
             settings,
         ),
-        **review_bindings,
         **colleague_bindings,
         **(shared_memory_bindings(shared_memory, agent.name) if shared_memory is not None else {}),
         **(routine_bindings(session_transport) if colleague_schemas else {}),
@@ -305,7 +302,7 @@ async def build_assistant_assembly(
         system_prompt=BOT_PROMPT if agent is not None else DEFAULT_ASSISTANT_PROMPT,
         environment=environment_prompt(
             workspace.task_root, full_access=workspace.full_access,
-            own_copy=agent_branch, delegated=task is not None,
+            delegated=task is not None,
             personal_directory=None if agent is None else agent.directory,
         ),
         surface=surface,
@@ -324,7 +321,6 @@ async def build_assistant_assembly(
         preview=preview,
     )
     runtime = AgentRuntime(journal, decision, bindings)
-    child_review = GitChildReview(runtime, session_id, session_transport)
     surface.attach(runtime)
     compact_context.runtime = runtime
 

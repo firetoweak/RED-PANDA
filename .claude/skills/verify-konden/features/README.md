@@ -10,7 +10,7 @@
 
 编码 Skill 增量：编码方法与 Git 协作分别按需加载，普通目录支持自定义 Skill；验证见 tool-coding-round 与 extensions，既有记录不代表全部重验。
 
-Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 `projects` 列表描述挂载关系，落地、同步与项目委派都需要项目名。
+Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 `projects` 列表描述挂载关系，落地、同步需要项目名；子任务共享父工作区，委派可选择已有工作目录。
 
 - 按 `../SKILL.md` 启动一个隔离实例：地址 `$KONDEN_VERIFY_URL`，数据目录 `$KONDEN_HOME`，临时工作区 `$SCRATCH_WORKSPACE`（内含 `note.txt`，内容为一行 `verify`）。
 - 第一次点击前 `doctor.py` 必须对该 pid 和 home 返回 0。
@@ -33,7 +33,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | 例行任务 | `$KONDEN_HOME/state/routines.sqlite` |
 | Bot 个人目录 | `$KONDEN_HOME/state/bots/<sha256(session_id) 前 20 位>/` |
 | Bot 的项目 worktree | Bot 个人目录下 `projects/<项目名>/` |
-| 集成与子任务 worktree | `$KONDEN_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/` 下的 `integration`、`children/<sha256(子会话) 前 20 位>` |
+| 集成 worktree | `$KONDEN_HOME/state/coding_bot/<sha256(workspace_id) 前 20 位>/integration` |
 | MCP / Skill / CLI 安装 | `$KONDEN_HOME/mcp/`、`skills/`、`clis/` |
 
 ## 判据写法约定
@@ -76,7 +76,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | group-chat | [group-chat.md](./group-chat.md) | 全局 `新建群聊`、群资料与成员跳转、人发言与 `点名` | 创建两成员群、@all 补全、人发言及两个 Bot 的真实群回复实时显示通过；成员改动与群回复引用跳转未重验。 |
 | tool-coding-round | [tool-coding-round.md](./tool-coding-round.md) | 文件工具、前台/后台命令与非零退出 `COMMAND_EXIT_NONZERO` | 真实 read_file/apply_patch/write_file/execute_command 通过，文件只改在挂载项目内；后台命令与非零退出未重验。 |
 | run-control | [run-control.md](./run-control.md) | 打断并发送、前台打断、失败再试；后台命令单独停止 | 子助手已回复但协作未结束时，父空闲显示发送与停止；显式回收后停止消失；认证失败再试通过。 |
-| subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、`compare_subagent`/`merge_subagent` | 无项目子助手初稿、同一子追问与多批普通回复、父显式 reclaim 通过；过程页可观察，普通回复不自动结束协作。 |
+| subagents | [subagents.md](./subagents.md) | `delegate`、`instruct_subagent`、`list_subagents`、`reclaim`、内容页 `子 Agent`、共享文件、命令授权与资源回收 | 2026-10-26 Windows Chrome、受控模型：无项目共享写入、子命令在父处授权、运行中插话与显式回收通过；真实供应商及多子并行未重验。 |
 | work-plan | [work-plan.md](./work-plan.md) | 计划生命周期：创建、状态标记、更新、回收（结束/中断/compact/另一个 Agent/子 Agent）、完成归档 | 真实 update_plan 建两步计划并全部完成，展开归档与 GET 一致；中断、compact 和跨 Agent 回收未重验。 |
 | work-plan-and-usage | [work-plan-and-usage.md](./work-plan-and-usage.md) | 消息时间、`上下文用量`、compact（计划部分指向 work-plan） | 真实回合时间与上下文用量环、200K 阈值和 GET 一致，不再有轮次耗时；compact 未触发。 |
 | model-settings | [model-settings.md](./model-settings.md) | `设置 → 模型配置` 抽屉、`测试`、`保存配置`、会话切换模型 | 设置抽屉编辑当前模型阈值，加入待保存配置并保存，GET 确认生效；连接测试、模型切换和表单边界未重验。 |
@@ -87,7 +87,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | realtime-events | [realtime-events.md](./realtime-events.md) | `/api/events` SSE、连接状态、多标签页同步 | Doctor 首事件与双标签实时状态、全局自动授权同步通过；保活时间、断线重连和失效连接未重验。 |
 | layout-appearance | [layout-appearance.md](./layout-appearance.md) | 三栏布局、资料栏、`外观`、侧栏宽度与窄屏名册 | 亮色主题刷新保持、桌面内容页和 1100 资料抽屉通过；390 窄屏内容页仍隐藏输入框，作为产品缺口保留。 |
 | console-chat | [console-chat.md](./console-chat.md) | 终端单会话入口 `console_chat.py`、`/new` | 真实 Windows ConPTY 启动、/mcp list、/new、新会话 TUI_PING_OK 与 Ctrl+D 退出通过；更新终端说明后另建 home 复跑。粘贴、底栏和并发占用未重验。 |
-| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行多个 `delegate`、worktree 隔离、并发合并冲突、收回、父会话控制与计量 | 同一决策两个带 project 的 delegate，各自写文件，compare、逐次 merge、reclaim 后父目录含两文件；并发冲突与停止传播未重验。 |
+| subagents-parallel | [subagents-parallel.md](./subagents-parallel.md) | 并行委派、共享文件、选择性回收与父会话控制 | 2026-10-26 按共享工作区更新；多子并行页面未重验，单子执行与回收见 subagents。 |
 | crash-recovery | [crash-recovery.md](./crash-recovery.md) | kill -9 Web/Worker、断网、模型 429/5xx/超时/断流/无效 key 后的恢复与去重 | 隔离配置无效 key 触发认证失败，刷新横幅仍在，恢复配置后再试成功且原输入仅一条；杀进程、断网、429 和未知命令恢复未重验。 |
 | setup-and-launch | [setup-and-launch.md](./setup-and-launch.md) | `setup.sh`/`setup.ps1` 四步准备、模型向导、`start.sh`/`dev.sh` | Windows setup 四步、setup --check、隔离 Web 启动、Doctor 与首页通过；Linux、首次模型向导和开发启动未重验。 |
 
@@ -136,7 +136,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | 工具 | 来源 | 条目 |
 |---|---|---|
 | `read_file` `glob` `grep` `write_file` `apply_patch` `replace_all` `execute_command` | `konden/tools/builtin/` | tool-coding-round |
-| `delegate` `instruct_subagent` `list_subagents` `reclaim` `compare_subagent` `merge_subagent` | `konden/assistant/subagent/subagent.py`、`tools/builtin/subagent_workspace.py` | subagents、subagents-parallel |
+| `delegate` `instruct_subagent` `list_subagents` `reclaim` | `konden/assistant/subagent/subagent.py` | subagents、subagents-parallel |
 | `read_image` | `konden/assistant/attachments.py` | composer-attachments |
 | `update_plan` | `konden/assistant/work_plan.py` | work-plan |
 | `find_history`（`model_usage` 不是工具，是用量元数据键，模型调不到） | `konden/assistant/compact/core.py` | work-plan-and-usage |
@@ -228,7 +228,7 @@ Harness 修正已在 Windows 上按 `../SKILL.md` 原文实跑 Launch → Doctor
 ## 已确认的设计边界（不当问题报）
 
 - Web API 没有登录鉴权，是刻意设计。
-- `文件改动` 只对挂项目的 Bot 与项目委派任务提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
+- `文件改动` 只对挂项目的 Bot提供，内容是 Git 差异，不区分会话外修改；外部编辑暂需手动刷新。没有系统内文件回退。
 - 工作计划由模型制定和控制，没有完整状态机。
 - `select-directory` 是 human-in-the-loop，人不选就一直等。
 - 停止：只有一个 `停止`；一次性写入写完再停，长命令杀进程组，中断调用标 unknown 并给模型简短提示，`继续` 不自动重跑。

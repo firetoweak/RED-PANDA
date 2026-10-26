@@ -16,7 +16,7 @@ from konden.assistant.assembly import build_assistant_assembly
 from konden.assistant.host.ipc import PipePeer, ProcessFailure
 from konden.assistant.host.llm_port import WorkerLlmPort
 from konden.assistant.subagent.subagent import (
-    project_parent, record_interrupted_return, record_unexpected_return,
+    project_parent, project_task, record_interrupted_return, record_unexpected_return,
 )
 from konden.assistant.workspaces import bound_workspace
 from konden.paths import KondenHome
@@ -54,9 +54,10 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         events,
         WorkspaceRegistry.load(home.workspaces_path),
     )
+    task = project_task(events)
+    if task is not None and task.cwd is not None:
+        workspace = replace(workspace, task_root=(workspace.task_root / task.cwd).resolve())
     if git_workspace is not None:
-        if git_workspace.worktree is not None:
-            workspace = replace(workspace, task_root=git_workspace.worktree, full_access=False)
         # Git identity belongs to this Bot, not the person launching the Host.
         # Environment defaults leave commit decisions and commands to the model.
         identity = git_identity(git_workspace.author)
@@ -117,6 +118,9 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
 
     async def signal(kind, *payload):
         nonlocal advertised
+        if kind == "shutdown":
+            stop.set()
+            return
         if kind != "stop":
             raise ValueError(f"Unknown Worker signal: {kind}")
         (observed_revision,) = payload
@@ -188,7 +192,6 @@ async def _run_session(connection, session_id, journal, config_factory, home_roo
         session_transport=peer.request,
         model_selection_source=model_selection_source,
         home=home,
-        agent_branch=git_workspace is not None and git_workspace.worktree is not None,
     )
     config.llm.bind_attachment_reader(assembly.read_attachment)
     before_advance = assembly.scheduler.before_advance

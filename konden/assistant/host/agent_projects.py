@@ -201,8 +201,8 @@ class AgentProjects:
             linked = self._require(agent, name)
             if await self.host.has_active_children(session_id, linked.workspace_id):
                 raise ProjectLinkRefused(
-                    "CHILDREN_ACTIVE", "还有委派到这个项目的子 Agent 没有交回。",
-                    hint="等它们交回并处理完结果，或用 reclaim 收回，再解除。")
+                    "CHILDREN_ACTIVE", "还有共享工作区的子 Agent 没有回收。",
+                    hint="先用 reclaim 回收子 Agent，再解除项目。")
             project = self.host.workspaces.get(linked.workspace_id)
             pending = self._pending(session_id)
             if pending.exists():

@@ -305,12 +305,16 @@ class WebChannel:
         session_id: str,
         command_id: str,
         approved: bool,
+        *, command_session_id: str | None = None,
     ):
         self._require_connection(connection_id)
         if type(session_id) is not str or not session_id:
             raise ValueError("session_id must be a non-empty str")
         if type(command_id) is not str or not command_id:
             raise ValueError("command_id must be a non-empty str")
+        if command_session_id is not None and command_session_id != session_id:
+            await self._sessions.resolve_child_authorization(session_id, command_session_id, command_id, approved=approved)
+            return await self._queries.conversation(session_id)
         await self._sessions.resolve_authorization(
             session_id,
             command_id,

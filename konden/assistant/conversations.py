@@ -74,6 +74,7 @@ class AuthorizationInboxItem:
     command_id: str
     name: str
     arguments: dict[str, object]
+    command_session_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,11 +229,27 @@ class AssistantQueries:
             await self._conversation(child_id, child_events, child_state),
         )
 
+    async def _child_authorizations(self, parent_id, events):
+        items = []
+        pending = project_pending(events)
+        for intent in project_delegate_intents(events):
+            if intent.child_session_id not in pending or not self._store.path(intent.child_session_id).is_file():
+                continue
+            child_events, child_state = await self._store.projected(intent.child_session_id)
+            if any(isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == RETURN_FACT for event in child_events):
+                continue
+            view = session_view(child_state, auto_authorize=self._sessions.auto_authorize())
+            items.extend(replace(item, session_id=parent_id) for item in project_inbox_items(
+                session_id=intent.child_session_id, workspace_id=None, label=f"子 Agent · {intent.task}",
+                authorizations=view.pending_authorization_commands, control=None,
+            ))
+        return tuple(items)
+
     async def list_agents(self) -> tuple[AgentRosterEntry, ...]:
         entries: list[AgentRosterEntry] = []
         for record in await self._sessions.agents.list():
             events, state = await self._store.projected(record.session_id)
-            entries.append(project_agent_roster_entry(
+            entry = project_agent_roster_entry(
                 record.session_id,
                 events,
                 state,
@@ -240,7 +257,10 @@ class AssistantQueries:
                 activity=self._sessions.activity(record.session_id),
                 last_error=self._sessions.current_failure(record.session_id),
                 auto_authorize=self._sessions.auto_authorize(),
-            ))
+            )
+            if entry.status != "working" and await self._child_authorizations(record.session_id, events):
+                entry = replace(entry, status="authorization")
+            entries.append(entry)
         return tuple(entries)
 
     async def agent_entry(self, session_id: str) -> AgentRosterEntry:
@@ -248,7 +268,7 @@ class AssistantQueries:
         agent = project_agent(events)
         if agent is None:
             raise SessionNotFoundError(session_id)
-        return project_agent_roster_entry(
+        entry = project_agent_roster_entry(
             session_id,
             events,
             state,
@@ -257,6 +277,9 @@ class AssistantQueries:
             last_error=self._sessions.current_failure(session_id),
             auto_authorize=self._sessions.auto_authorize(),
         )
+        if entry.status != "working" and await self._child_authorizations(session_id, events):
+            entry = replace(entry, status="authorization")
+        return entry
 
     async def list_inbox(self) -> tuple[InboxItem, ...]:
         items: list[InboxItem] = []
@@ -275,6 +298,7 @@ class AssistantQueries:
                     authorizations=view.pending_authorization_commands,
                     control=view.control_approval,
                 ))
+            items.extend(await self._child_authorizations(session_id, events))
             items.extend(project_limit_items(
                 session_id=session_id, workspace_id=None, label=agent.name, events=events,
             ))
@@ -426,7 +450,7 @@ def project_inbox_items(
     items: list[InboxItem] = [
         AuthorizationInboxItem(
             "authorization", session_id, workspace_id, label,
-            item.command_id, item.name, dict(item.arguments),
+            item.command_id, item.name, dict(item.arguments), session_id,
         )
         for item in authorizations
     ]

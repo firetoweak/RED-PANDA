@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from konden.assistant.agent_git import Git, MergeResult, git_error, identity, raise_git
+from konden.assistant.agent_git import Git, MergeResult, git_error, raise_git
 from konden.assistant.agents import AgentRecord, ProjectLinked
 from konden.filesystem.registry import WorkspaceRecord
 from konden.paths import KondenHome
@@ -52,11 +52,6 @@ class AgentWorktrees:
 
     def agent_branch(self, workspace_id: str, session_id: str) -> str:
         return f"{self.namespace}/{_key(workspace_id)}/{_key(session_id)}"
-
-    def child(self, workspace_id: str, child_session_id: str) -> GitWorktree:
-        project, child = _key(workspace_id), _key(child_session_id)
-        return GitWorktree(self.root / project / "children" / child,
-                           f"{self.namespace}/{project}/children/{child}")
 
     def link(self, project: WorkspaceRecord, session_id: str, path: Path) -> GitWorktree:
         """Give one Bot its own branch of the project, checked out at `path`.
@@ -122,64 +117,6 @@ class AgentWorktrees:
             worktree, self.git.oid(worktree, f"refs/heads/{integration.branch}"),
             author=agent.name, message="同步已落地的工作", keep_conflict=True,
         )
-
-    def create_child(self, project: WorkspaceRecord, parent: AgentRecord, linked: ProjectLinked,
-                     child_session_id: str, conflict_source: str | None = None) -> GitWorktree:
-        """Branch a delegated task from the parent's committed work; replay reuses it.
-
-        A conflict-resolving task starts with the failed merge in progress, so its
-        resolution is completed as that merge when the task returns.
-        """
-        child = self.child(linked.workspace_id, child_session_id)
-        self._add(project.task_root, child, linked.branch)
-        if conflict_source is not None and not self.git.merging(child.path):
-            source = self.child(linked.workspace_id, conflict_source)
-            result = self.git.merge(child.path, self.git.oid(child.path, f"refs/heads/{source.branch}"),
-                                    author=parent.name, message="合入待解决冲突的子任务成果", keep_conflict=True)
-            if result.status in {"blocked", "failed"}:
-                raise RuntimeError(f"conflict-resolving task could not start its merge: {result.detail}")
-        return child
-
-    def finish_child(self, parent: AgentRecord, workspace_id: str, child_session_id: str) -> str | None:
-        """Fix the returned task's result as one commit on its branch.
-
-        The task cannot run commands, so it cannot commit itself; its branch is
-        only the vehicle the parent compares and merges. A conflict-resolving
-        task's result completes the merge it started in. Returns Git's own error
-        when Git fails, such as on a leftover index.lock.
-        """
-        child = self.child(workspace_id, child_session_id)
-        added = self.git.run(child.path, "add", "--all", accepted=(0, 128))
-        if added.returncode:
-            return git_error(added)
-        merging = self.git.merging(child.path)
-        if merging or self.git.run(child.path, "diff", "--cached", "--quiet", accepted=(0, 1)).returncode == 1:
-            committed = self.git.run(child.path, "commit", "--quiet", "--no-verify",
-                                     *(("--no-edit",) if merging else ("-m", "子任务成果")),
-                                     environment=identity(parent.name), accepted=(0, 1, 128))
-            if committed.returncode:
-                return git_error(committed)
-        return None
-
-    def compare_child(self, linked: ProjectLinked, child_session_id: str,
-                      paths: tuple[str, ...], offset: int) -> dict:
-        child = self.child(linked.workspace_id, child_session_id)
-        return self.git.compare(Path(linked.worktree), f"refs/heads/{linked.branch}",
-                                f"refs/heads/{child.branch}", paths, offset=offset)
-
-    def merge_child(self, parent: AgentRecord, linked: ProjectLinked,
-                    child_session_id: str) -> tuple[MergeResult, tuple[str, ...]]:
-        """Merge a returned task into the parent branch; a conflict changes nothing."""
-        worktree = Path(linked.worktree)
-        if self.git.merging(worktree):
-            return MergeResult("in_progress", self.git.oid(worktree, "HEAD")), ()
-        child = self.child(linked.workspace_id, child_session_id)
-        before = self.git.oid(worktree, "HEAD")
-        result = self.git.merge(worktree, self.git.oid(worktree, f"refs/heads/{child.branch}"),
-                                author=parent.name, message="合入子任务的成果", keep_conflict=False)
-        if result.status != "merged":
-            return result, ()
-        return result, self.git.changed_paths(worktree, before, result.head)
 
     def remove(self, project: WorkspaceRecord, worktree: GitWorktree) -> None:
         # Only used to roll back a worktree whose link fact was not committed.

@@ -52,7 +52,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 22
+PROJECTOR_VERSION = 23
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -306,7 +306,7 @@ def _translate_visible_events(
                 shown_data["notice"] = "Your background command finished. Use read_command for its full output."
             elif payload.fact_type == TASK_FACT:
                 shown_data = {
-                    key: shown_data[key] for key in ("task", "resolve_conflicts_of")
+                    key: shown_data[key] for key in ("task", "cwd")
                 }
                 shown_data["notice"] = "A task delegated by your parent agent. Complete it and report the result back to the parent."
             elif payload.fact_type == INSTRUCTION_FACT:

@@ -218,7 +218,7 @@ class _Queries:
         return (
             AuthorizationInboxItem(
                 "authorization", "session-old", "workspace-old", "验证熊猫",
-                "cmd-1", "apply_patch", {"path": "note.txt"},
+                "cmd-1", "apply_patch", {"path": "note.txt"}, "session-old",
             ),
             ControlInboxItem(
                 "control", "session-old", "workspace-old", "验证熊猫",
@@ -1025,6 +1025,7 @@ class WebFirstSliceTest(unittest.TestCase):
                 "workspace_id": "workspace-old",
                 "label": "验证熊猫",
                 "command_id": "cmd-1",
+                "command_session_id": "session-old",
                 "name": "apply_patch",
                 "arguments": {"path": "note.txt"},
             },

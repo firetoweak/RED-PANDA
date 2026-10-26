@@ -75,6 +75,7 @@ type UploadAttachment = SelectSession & {
 };
 
 type AuthorizeCommand = SelectSession & {
+  commandSessionId?: string;
   commandId: string;
   approved: boolean;
 };
@@ -544,10 +545,10 @@ export const kondenApi = createApi({
       },
     }),
     authorizeCommand: build.mutation<ConversationView, AuthorizeCommand>({
-      query: ({ connectionId, sessionId, commandId, approved }) => ({
+      query: ({ connectionId, sessionId, commandId, approved, commandSessionId }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(commandId)}/authorize`,
         method: "POST",
-        body: { connection_id: connectionId, approved },
+        body: { connection_id: connectionId, approved, ...(commandSessionId === undefined ? {} : { command_session_id: commandSessionId }) },
       }),
       transformResponse: (value: unknown) => conversationViewSchema.parse(value),
       invalidatesTags: ["Agents", "Inbox"],

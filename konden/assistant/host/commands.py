@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from konden.assistant.agent_git import identity as git_identity
+from konden.assistant.subagent.subagent import project_returned
 from konden.assistant.commands import COMMAND_FINISHED, SOURCE, background_commands, completed_commands
 from konden.assistant.host.ipc import WorkerFailed
 from konden.assistant.host.agent_roster import AgentDeletedError
@@ -92,6 +93,8 @@ class CommandHost:
         if result["state"] == "unknown":
             data["notice"] = "应用已重新启动，命令不再运行且不会重启；没有退出记录，可能已部分执行，请先核对现场。"
         while True:
+            if session_id in self.host.intentionally_stopped or project_returned(await journal.snapshot(session_id)):
+                return
             try:
                 await self.host.request("fact", session_id, {
                     "source": SOURCE, "fact_type": COMMAND_FINISHED, "delivery_id": identity,

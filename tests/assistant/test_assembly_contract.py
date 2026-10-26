@@ -208,6 +208,8 @@ class AssemblyWiringTest(unittest.IsolatedAsyncioTestCase):
             journal = MemoryJournal()
             failed = []
             child = child_session_id("parent", "delegate-1")
+            from konden.assistant.host.session_store import SessionStore
+            await SessionStore(root / "runtime").create("parent", directory=workspace)
             await AgentRuntime(journal, None, {}).receive_domain_fact(child, **task_fact_arguments(
                 DelegateIntent("delegate-1", "parent", child, "核对结果"),
             ))

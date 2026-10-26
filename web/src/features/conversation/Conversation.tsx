@@ -23,6 +23,7 @@ import {
   useAuthorizeCommandMutation,
   useCancelTurnMutation,
   useGetConversationQuery,
+  useGetInboxQuery,
   useResolveControlMutation,
   useSelectSessionMutation,
   useSendInputMutation,
@@ -83,6 +84,9 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const ownerSessionId = useAppSelector((state) => state.runtime.ownerSessionId);
   const sessionId = routeId;
+  const inbox = useGetInboxQuery(undefined, { skip: connectionId === null || agentName === undefined });
+  const childAuthorizations = (inbox.data ?? []).filter((item) =>
+    item.kind === "authorization" && item.session_id === sessionId && item.command_session_id !== sessionId);
   const [openPage, setOpenPage] = useState<OpenPage | null>(null);
   const runtime = useAppSelector((state) => state.runtime.sessions[sessionId]);
   const selected = useGetConversationQuery(sessionId, {
@@ -238,13 +242,14 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
     dispatch(controlNotice({ sessionId, message: null }));
   }
 
-  async function authorize(commandId: string, approved: boolean) {
+  async function authorize(commandId: string, approved: boolean, targetSessionId = sessionId) {
     if (connectionId === null) {
       return;
     }
     await authorizeCommand({
       connectionId,
       sessionId,
+      commandSessionId: targetSessionId === sessionId ? undefined : targetSessionId,
       commandId,
       approved,
     }).unwrap();
@@ -414,6 +419,14 @@ export function Conversation({ agentName, agentNames = [] }: { agentName?: strin
         <Box>
           <Box className="composer-column">
             {agentName === undefined || conversation.deleted ? null : <SessionAttention key={sessionId} sessionId={sessionId} connectionId={connectionId} />}
+            {childAuthorizations.map((item) => item.kind === "authorization" ? (
+              <PendingActions key={`${item.command_session_id}:${item.command_id}`}
+                label={item.label} authorizations={[item]} control={null}
+                authorizationDisabled={conversation.deleted || connectionId === null || authorizing.isLoading}
+                controlDisabled={true}
+                onAuthorize={(commandId, approved) => void authorize(commandId, approved, item.command_session_id)}
+                onControl={() => {}} />
+            ) : null)}
             <PendingActions
               authorizations={conversation.session.pending_authorization_commands}
               control={conversation.session.control_approval}

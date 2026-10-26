@@ -54,7 +54,8 @@ function AuthorizationRow({ item, disabled, onAuthorize }: {
 }
 
 /** Pending decisions of this session, read from the server view so they disappear with the server state. */
-export function PendingActions({ authorizations, control, authorizationDisabled, controlDisabled, onAuthorize, onControl }: {
+export function PendingActions({ label = "待处理", authorizations, control, authorizationDisabled, controlDisabled, onAuthorize, onControl }: {
+  label?: string;
   authorizations: PendingAuthorization[];
   control: ControlApproval | null;
   authorizationDisabled: boolean;
@@ -69,7 +70,7 @@ export function PendingActions({ authorizations, control, authorizationDisabled,
   return (
     <Paper aria-label="待处理" className="pending-actions" component="section" mb={8} p="sm" radius="md" withBorder>
       <Stack gap="sm">
-        <Text fw={600} size="sm">待处理 · {count} 项</Text>
+        <Text fw={600} size="sm">{label} · {count} 项</Text>
         {authorizations.map((item) => (
           <AuthorizationRow key={item.command_id} disabled={authorizationDisabled} item={item} onAuthorize={onAuthorize} />
         ))}

@@ -3,23 +3,19 @@ from pathlib import Path
 
 
 def environment_prompt(
-    workspace_root: Path, *, full_access: bool, own_copy: bool, delegated: bool = False,
+    workspace_root: Path, *, full_access: bool, delegated: bool = False,
     personal_directory: Path | None = None,
 ) -> str:
     """The bound environment stays in the stable prefix; omit changing timestamps."""
     system = platform.system()
     workspace = f"Working directory: {workspace_root}"
-    if own_copy:
-        workspace += " (your own copy, separate from the user's directory)"
     access = (
         "File tools can also access other locations on this computer; use native absolute paths."
         if full_access
         else "File tools can read and write this directory; other access is reported by the tools."
     )
     file_rules = (
-        "Edits affect this copy directly, with no file rollback. The parent compares and merges your changes."
-        if own_copy and delegated else
-        "This is the user's real directory. You can read it, but cannot modify it."
+        "File tools and commands affect the shared directory directly; changes are visible to your parent and other tasks immediately. There is no file rollback."
         if delegated else
         "File tools and commands affect the real directory directly. There is no file rollback."
     )
@@ -112,7 +108,7 @@ Your `execute_command` calls run in real terminal sessions, so a slow command ne
 Use the `delegate` tool to hand a self-contained chunk of work to a subagent: researching something, digging through files, or running a multi-step investigation. Subagents always run in the background, so the moment you dispatch one you keep control instead of blocking on it.
 - After you dispatch, don't sit idle. Tell the user you've kicked it off (a short reply), then keep working on other parts of the task or end your turn. Idle-waiting is the core failure mode: the automatic revival brings you the result the moment it's done, so never block the turn just to watch one finish, and don't repeatedly ask whether it's done.
 - Don't assume a running subagent is progressing. Use `list_subagents` to check its status when a later step needs it, rather than repeatedly polling for completion.
-- Use `instruct_subagent` to send a follow-up to an existing subagent; it keeps its context. Use `reclaim` to end the collaboration when it is no longer needed. For a child working in a project copy, `compare_subagent` shows the changes and `merge_subagent` brings them into your project.
+- Use `instruct_subagent` to send a follow-up to an existing subagent; it keeps its context. You share files with your subagents; coordinate editing ranges and any directory or branch strategy yourself. After accepting the result, cancelling the task, or deciding it is no longer needed, you must call `reclaim` and confirm success to stop the child and release its execution resources. A reply to the user while work continues is not task completion.
 - When you're revived with a result, fold it into the work: if it's genuinely new and relevant, or the user asked to be told when it finished, update the user with a short reply about what came back and what's next (summarize, don't paste raw output), and dispatch more background work if it helps. Reach for delegation when a job splits into independent pieces or has a slow part you don't want to block on. This revival is self-triggered, not someone reaching out, so if the result is stale, irrelevant, already handled, or a duplicate and the user was not waiting on it, end the turn with no reply rather than narrating it (the same way a routine run stays quiet when there's nothing new).
 
 ## Managing connected tools
@@ -198,11 +194,9 @@ You are konden running as a subagent.
 Complete the delegated task autonomously, then end your turn with a concise final answer in plain text. That text is delivered back to the parent agent as your result.
 You have no way to talk to the user directly; do not ask the user follow-up questions, just do the work and report what you found or did.
 {workspace}
-Commands are unavailable here. External tools are limited to read-only Toolsets; load them with `load_toolset` before use.
+You can run commands, including background commands; completion notifications return to you. Use wait_seconds=0 for long commands and do not poll for completion. Load task-relevant Toolsets, Skills and CLIs as needed. Follow the existing tool authorization rules. Your parent owns coordination; report blockers and clarify conflicting edits instead of silently replacing other tasks' work.
 Your replies reach the parent directly. The parent can send follow-ups and ends the collaboration when it is done.
-When `resolve_conflicts_of` is nonempty, the working directory contains merge conflict markers; resolve them as part of the delegated task.
 """.strip().format(workspace=workspace) + "\n\n" + _WORK_CONTEXT_PROMPT + "\n\n" + _TOOL_RESULT_PROMPT
 
 
-SUBAGENT_PROMPT = _subagent_prompt("You work in your own copy of the parent's committed project and can read and modify it.")
-SUBAGENT_READ_ONLY_PROMPT = _subagent_prompt("Operate in readonly mode: do not modify anything in the user's directory.")
+SUBAGENT_PROMPT = _subagent_prompt("You share the parent's working files, including uncommitted changes. Edits are immediately visible. Stay within the task scope and coordinate overlapping changes with the parent. Report what changed, verification evidence, and any unverified areas.")
