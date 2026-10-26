@@ -335,9 +335,9 @@ def agent_fact_for_model(payload: DomainFactCommitted) -> dict:
             "existing chat history is retained.")}
     if isinstance(fact, AgentCreated):
         return {"name": fact.name, "notice": (
-            f'Your agent name is "{fact.name}". If the user asks for your name, answer with "{fact.name}". '
-            "You just joined the user's team and no one has messaged you yet, so skip the opening acknowledgement: "
-            "load the builtin:konden-guide Skill, then greet the user and briefly say what you can help with.")}
+            f"你的 Agent 名字是「{fact.name}」。用户问你叫什么时，回答「{fact.name}」。"
+            "你刚加入用户的团队，还没有人给你发过消息，所以不要先发开场确认："
+            "先加载 builtin:konden-guide Skill，然后问候用户，并简短说明你能帮忙做什么。")}
     if isinstance(fact, ProjectLinked):
         return {"project": fact.name, "directory": fact.worktree, "notice": PROJECT_LINKED_NOTICE}
     if isinstance(fact, ProjectUnlinked):
