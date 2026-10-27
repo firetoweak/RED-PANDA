@@ -157,6 +157,7 @@ async def build_assistant_assembly(
     home.initialize()
     shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite") if agent is not None else None
     personal_memory = personal_memory_store(home, agent) if agent is not None else None
+    memory = MemoryContext(shared_memory, personal_memory) if agent is not None else None
     mcp = build_mcp(home, task_root=workspace.task_root)
     skills = build_skills(
         home,
@@ -325,7 +326,6 @@ async def build_assistant_assembly(
         subagents=subagents,
         compact=compact_context,
         exclusive_tool_names=exclusive_tools,
-        memory=MemoryContext(shared_memory, personal_memory) if agent is not None else None,
         loop_guard=LoopGuard(),
         preview=preview,
     )
@@ -367,6 +367,8 @@ async def build_assistant_assembly(
         if not compact_context.is_reader:
             if not (await runtime.state(session_id)).waiting_command_ids:
                 await catalog.sync(runtime, session_id)
+                if memory is not None:
+                    await memory.observe(runtime, session_id)
         return True if compact is None else await compact.before_advance()
 
     scheduler.before_advance = before_advance

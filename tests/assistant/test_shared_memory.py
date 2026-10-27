@@ -1,8 +1,11 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
+
+from konden.assistant.context.memory import MemoryContext, memory_observations, SHARED_MEMORY, PERSONAL_MEMORY
 
 from konden.assistant.shared_memory import (
     READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY,
@@ -10,7 +13,7 @@ from konden.assistant.shared_memory import (
 )
 from konden.assistant.agents import AgentCreated, AgentRecord
 from konden.assistant.personal_memory import (
-    READ_PERSONAL_MEMORY, UPDATE_PERSONAL_MEMORY, personal_memory_store, personal_memory_bindings,
+    READ_PERSONAL_MEMORY, UPDATE_PERSONAL_MEMORY, personal_memory_store, personal_memory_bindings, UpdatePersonalMemory,
 )
 from konden.paths import KondenHome
 from konden.runtime import AgentRuntime, DomainFactCommitted, StateProjector
@@ -75,23 +78,35 @@ class SharedMemoryTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertTrue(self.tools[UPDATE_SHARED_MEMORY].requires_authorization)
 
-    async def test_memory_observations_and_captured_prefixes_are_excluded_from_history(self):
+    async def test_observations_are_passive_append_only_and_never_own_current_memory(self):
+        home = KondenHome(Path(self.directory.name))
+        ada = AgentRecord("ada", AgentCreated(name="Ada", directory=str(home.agent_directories_root / "ada")))
+        own = personal_memory_store(home, ada)
+        observer = MemoryContext(self.store, own)
         runtime = AgentRuntime(MemoryJournal(), None, {})
-        await runtime.create_session("lin")
-        await runtime.receive_domain_fact(
-            "lin", "bot.shared_memory", {"version": 1, "content": "旧观察正文", "updated_by": "用户"},
-            source="bot.shared_memory", delivery_id="observed", requests_decision=False,
-        )
-        await runtime.receive_user_message("lin", "当前问题", delivery_id="question")
-        events = await runtime.snapshot("lin")
-        projected = ModelContextProjector(MemoryArtifactGateway()).prepare(
-            events, StateProjector().project_visible("lin", events), "lin",
-            prefix=[{"role": "user", "content": "<shared_memory>旧前言正文</shared_memory>"},
-                    {"role": "user", "content": "<working_memory>旧加载正文</working_memory>"}],
-        )
-        self.assertIn("当前问题", str(projected.messages))
-        for text in ("旧观察正文", "旧前言正文", "旧加载正文"):
-            self.assertNotIn(text, str(projected.messages))
+        await runtime.create_session("ada")
+        await observer.observe(runtime, "ada")
+        initial = await runtime.snapshot("ada")
+        self.assertEqual(set(memory_observations(initial)), {SHARED_MEMORY, PERSONAL_MEMORY})
+        self.assertTrue(all(not e.payload.requests_decision for e in initial
+                            if isinstance(e.payload, DomainFactCommitted)))
+        await observer.observe(runtime, "ada")
+        self.assertEqual(await runtime.snapshot("ada"), initial)
+        saved = await self.update("先确认共享资源的使用者。")
+        self.assertEqual(await runtime.snapshot("ada"), initial)
+        self.assertEqual(memory_observations(initial)[SHARED_MEMORY]["content"], "")
+        # Historical projection has no access to the current memory stores.
+        projector = ModelContextProjector(MemoryArtifactGateway())
+        def project(events):
+            return projector.prepare(events, StateProjector().project_visible("ada", events), "ada").messages
+        before = project(initial)
+        await observer.observe(runtime, "ada")
+        observed = await runtime.snapshot("ada")
+        self.assertEqual(observed[:len(initial)], initial)
+        self.assertEqual(project(observed)[:len(before)], before)
+        self.assertEqual(project(initial), before)
+        self.assertEqual(self.store.read().model_dump(), saved["data"])
+        self.assertEqual(memory_observations(observed)[SHARED_MEMORY], saved["data"])
 
     async def test_personal_memory_is_scoped_to_bot_and_enforces_its_smaller_limit(self):
         home = KondenHome(Path(self.directory.name))
@@ -113,26 +128,33 @@ class SharedMemoryTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["code"], "INVALID_ARGUMENT")
         self.assertTrue(tools[UPDATE_PERSONAL_MEMORY].requires_authorization)
 
-    async def test_current_memories_are_loaded_at_request_tail_without_rewriting_history(self):
+    async def test_consecutive_decisions_keep_prefix_through_memory_updates_and_clear(self):
         home = KondenHome(Path(self.directory.name))
         directory = home.agent_directories_root / "ada"
         directory.mkdir(parents=True)
         ada = AgentRecord("ada", AgentCreated(name="Ada", directory=str(directory)))
         shared = SharedMemoryStore(home.state_root / "shared_memory.sqlite")
-        shared.update(UpdateSharedMemory(version=0, content="旧约束：解释过程后给结论。"),
-                      author="用户", source="user", operation_id="first")
+        shared.update(UpdateSharedMemory(version=0, content="Explain before concluding."),
+                      author="user", source="user", operation_id="first")
         own = personal_memory_store(home, ada)
-        tools = personal_memory_bindings(own, ada.name)
-        await tools[UPDATE_PERSONAL_MEMORY].handler(SimpleNamespace(session_id="ada", command_id="own"),
-                                                  {"version": 0, "content": "不确定时明确说明缺少的依据。"})
+        own.update(UpdatePersonalMemory(version=0, content="State missing evidence."),
+                   author="user", source="user", operation_id="own")
         requests = []
+        journal = MemoryJournal()
 
         class Llm:
             async def chat(self, messages, model, **kwargs):
+                # Each presented body must already have an exact committed observation.
+                events = await journal.snapshot("ada")
+                for message in messages:
+                    if str(message["content"]).startswith("<working_memory>"):
+                        data = json.loads(message["content"].split("\n")[1])
+                        assert any(isinstance(e.payload, DomainFactCommitted)
+                                   and e.payload.fact_type == data["fact"]
+                                   and dict(e.payload.data) == data["data"] for e in events)
                 requests.append(messages)
                 return LLMCallResult(LLMResponse(content="done"), LLMUsage(input_tokens=1, output_tokens=1))
 
-        journal = MemoryJournal()
         runtime = AgentRuntime(journal, None, {})
         await runtime.create_session("ada")
         binding = directory_binding(directory)
@@ -151,24 +173,46 @@ class SharedMemoryTest(unittest.IsolatedAsyncioTestCase):
             return await decide(frame)
 
         assembly.runtime.step_runner._decision_maker.decide = remember_frame
-        try:
-            await assembly.runtime.receive_user_message("ada", "开始讨论。", delivery_id="first")
+
+        async def turn(text):
+            await assembly.runtime.receive_user_message("ada", text, delivery_id=text)
             await assembly.scheduler.wake("ada")
             await assembly.scheduler.join()
-            first_events = await journal.snapshot("ada")
-            baseline = requests[-1]
-            self.assertIn("<working_memory>", baseline[-1]["content"])
-            self.assertIn("旧约束：解释过程后给结论。", baseline[-1]["content"])
-            shared.update(UpdateSharedMemory(version=1, content="新约束：先给结论，再解释依据。"),
-                          author="用户", source="user", operation_id="second")
-            self.assertEqual(await journal.snapshot("ada"), first_events)
+            return requests[-1]
+
+        def memories(messages):
+            return [m for m in messages if str(m["content"]).startswith("<working_memory>")]
+
+        try:
+            first = await turn("first")
+            second = await turn("second")
+            third = await turn("third")
+            self.assertEqual(second[:len(first)], first)
+            self.assertEqual(third[:len(second)], second)
+            self.assertEqual(len(memories(third)), 2)
+            before_update = await journal.snapshot("ada")
+            shared.update(UpdateSharedMemory(version=1, content="Conclude before explaining."),
+                          author="user", source="user", operation_id="second")
+            self.assertEqual(await journal.snapshot("ada"), before_update)
+            # Reusing the same frozen decision must not read newer product data.
             await decide(frames[-1])
-            self.assertEqual(requests[-1][:-1], baseline[:-1])
-            self.assertIn("新约束：先给结论，再解释依据。", requests[-1][-1]["content"])
-            self.assertIn("不确定时明确说明缺少的依据。", requests[-1][-1]["content"])
-            self.assertNotIn("旧约束：解释过程后给结论。", str(requests[-1]))
-            self.assertFalse(any(isinstance(event.payload, DomainFactCommitted)
-                                 and event.payload.fact_type in {"bot.shared_memory", "bot.personal_memory"}
-                                 for event in await journal.snapshot("ada")))
+            self.assertEqual(requests[-1], third)
+            changed = await turn("changed")
+            self.assertEqual(changed[:len(third)], third)
+            self.assertEqual(len(memories(changed)), 3)
+            self.assertIn("Conclude before explaining.", memories(changed)[-1]["content"])
+            self.assertIn("Explain before concluding.", str(changed))
+            own.update(UpdatePersonalMemory(version=1, content=""),
+                       author="user", source="user", operation_id="clear")
+            cleared = await turn("cleared")
+            self.assertEqual(cleared[:len(changed)], changed)
+            self.assertEqual(len(memories(cleared)), 4)
+            self.assertIn('"content": ""', memories(cleared)[-1]["content"])
+            unchanged = await turn("unchanged")
+            self.assertEqual(unchanged[:len(cleared)], cleared)
+            self.assertEqual(memories(unchanged), memories(cleared))
+            observed = memory_observations(await journal.snapshot("ada"))
+            self.assertEqual(observed[SHARED_MEMORY], shared.read().model_dump())
+            self.assertEqual(observed[PERSONAL_MEMORY], own.read().model_dump())
         finally:
             await assembly.scheduler.close()

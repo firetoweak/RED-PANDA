@@ -1,6 +1,8 @@
 from __future__ import annotations
+from bisect import bisect_right
 
 from konden.assistant.external_messages import EXTERNAL_MESSAGE, parse_external
+from konden.assistant.context.memory import MEMORY_FACTS, memory_message
 
 from konden.runtime.json_values import thaw_value
 
@@ -50,7 +52,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 24
+PROJECTOR_VERSION = 25
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -60,7 +62,6 @@ _INTERNAL_FACT_TYPES = frozenset({
     SESSION_WORKSPACE_FACT,
     SESSION_DIRECTORY_FACT,
     "compact.task", "compact.handoff_created", "compact.window_rolled_over",
-    "bot.shared_memory", "bot.personal_memory",
 })
 _IMAGE_EVICTED_HINT = "\n这张图片已不再内嵌显示；用 read_image 和上面的 id 可以再次查看。"
 _USER_ATTACHMENT_HINT = "\n（图片附件 id：{ids}；用 read_image 可以再次查看。）"
@@ -250,13 +251,24 @@ def _translate_visible_events(
             "system",
         ),
     ]
-    # 回复位于整批输入之后；被人的输入越过的旧请求不能把后续 Step 排回历史。
+    # 回复位于本次已经观察到的输入与事实之后；后到消息仍留在回复之后。
+    # 只按唤醒消息排序会把已读的被动事实移到回复后，破坏下一轮请求前缀。
     sequences = {event.event_id: event.sequence for event in events}
+    passive_positions = [
+        event.sequence for event in events
+        if isinstance(event.payload, DomainFactCommitted) and not event.payload.requests_decision
+        and event.payload.fact_type not in _INTERNAL_FACT_TYPES
+    ]
     step_positions: dict[str, int] = {}
     position = 0
     for event in events:
         if isinstance(event.payload, StepCommitted):
-            position = max(position, *(sequences[item] for item in event.payload.step.trigger_event_ids))
+            step = event.payload.step
+            # The cutoff can also contain queued decision requests not yet selected.
+            # Only passive facts and the selected triggers were necessarily visible.
+            count = bisect_right(passive_positions, step.observed_journal_position)
+            position = max(position, *(sequences[item] for item in step.trigger_event_ids),
+                           passive_positions[count - 1] if count else 0)
             step_positions[event.event_id] = position
     ordered = sorted(events, key=lambda event: (
         step_positions[event.event_id]
@@ -340,6 +352,8 @@ def _translate_visible_events(
                 items.append(_received_at(event))
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
+            elif payload.fact_type in MEMORY_FACTS:
+                content = memory_message(payload.fact_type, shown_data)["content"]
             items.append(_Projected(
                 {"role": "user", "content": content},
                 "trigger" if payload.requests_decision else "fact",
@@ -677,14 +691,6 @@ class ModelContextProjector:
         *,
         prefix: list[dict[str, object]] | None = None,
     ) -> PreparedModelContext:
-        # Loaded memory belongs only to the current request, including after replay.
-        prefix = [
-            message for message in prefix or []
-            if not (
-                isinstance(message["content"], str)
-                and message["content"].startswith(("<shared_memory>", "<personal_memory>", "<working_memory>"))
-            )
-        ]
         items = [
             replace(item, message=deepcopy(item.message))
             for item in _translate_visible_events(

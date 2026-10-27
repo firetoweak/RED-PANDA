@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from konden.assistant.agent_messages import SEND_GROUP_MESSAGE, SEND_MESSAGE
+from konden.assistant.context.memory import memory_observations, SHARED_MEMORY, PERSONAL_MEMORY
 from konden.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
 )
@@ -189,10 +190,9 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         shown = json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False)
         self.assertIn("先给判断，再解释取舍。", shown)
         self.assertIn("共享资源先协调，交接附验证依据。", shown)
-        self.assertIn("<working_memory>", self.llm.requests[-1]["messages"][-1]["content"])
-        self.assertFalse(any(isinstance(event.payload, DomainFactCommitted)
-                             and event.payload.fact_type in {"bot.shared_memory", "bot.personal_memory"}
-                             for event in await self.events(self.ada)))
+        observed = memory_observations(await self.events(self.ada))
+        self.assertEqual(observed[SHARED_MEMORY], note)
+        self.assertEqual(observed[PERSONAL_MEMORY], own)
         self.assertTrue(self.host.failures.empty())
 
     async def test_group_members_receive_calls_even_after_current_turn_interruption(self):
