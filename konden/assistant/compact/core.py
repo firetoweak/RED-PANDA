@@ -7,6 +7,7 @@ from konden.runtime.json_values import thaw_value
 import json
 from copy import deepcopy
 from dataclasses import replace
+from datetime import datetime
 
 from konden.assistant.agents import identity_for_model
 from konden.assistant.shared_memory import project_shared_memory, shared_memory_message
@@ -86,9 +87,11 @@ FIND_HISTORY_SCHEMA = schema(
     FIND_HISTORY,
     "检索当前对话可回查的原始消息，包括当前上下文中已省略的历史。"
     "query 按区分大小写的字面关键词检索消息内容，空串表示浏览，不搜索引用中的正文。"
-    "返回消息序号、原文线索和可用 read_content 读取的真实 reference；片段足够时无需再读。"
+    "可结合 start_time/end_time 按消息组最初记录的时间筛选；工具结果随发起它的助手消息组返回。"
+    "返回消息序号、occurred_at 时间、原文线索和可用 read_content 读取的真实 reference；片段足够时无需再读。"
     "start_sequence/end_sequence 含两端，offset 是跳过的匹配消息组数。"
     "首次可省略 upto；续页沿用返回的 upto、next_offset 和筛选条件。"
+    "查整天时，start_time 用当天零点，end_time 用次日零点，均须带时区。"
     "limit 默认 10、最大 50。",
     {
         "query": {"type": "string", "default": ""},
@@ -96,6 +99,8 @@ FIND_HISTORY_SCHEMA = schema(
         "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
         "start_sequence": {"type": "integer", "minimum": 1},
         "end_sequence": {"type": "integer", "minimum": 1},
+        "start_time": {"type": "string", "description": "开始记录时间，包含该时刻；ISO8601 且带时区，例如 2026-10-01T00:00:00+08:00。"},
+        "end_time": {"type": "string", "description": "结束记录时间，不包含该时刻；ISO8601 且带时区。必须晚于 start_time。"},
         "upto": {"type": "integer", "minimum": 0, "description": "沿用上次检索返回的历史截止位置。"},
     },
     [],
@@ -117,7 +122,16 @@ def _message_strings(value):
             yield from _message_strings(child)
 
 
-def _history_record(sequence, messages, query):
+def _history_time(value):
+    if type(value) is not str:
+        raise ValueError("历史时间必须是带时区的 ISO8601 字符串。")
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        raise ValueError("历史时间必须带时区，例如 2026-10-01T00:00:00+08:00。")
+    return parsed
+
+
+def _history_record(sequence, messages, query, occurred_at):
     texts = list(_message_strings(messages))
     if query:
         text = next((text for text in texts if query in text), None)
@@ -130,6 +144,7 @@ def _history_record(sequence, messages, query):
     end = min(len(text), start + HISTORY_PREVIEW_CHARS)
     return {
         "sequence": sequence,
+        "occurred_at": occurred_at,
         "roles": list(dict.fromkeys(message["role"] for message in messages)),
         "preview": text[start:end],
         "preview_truncated": start > 0 or end < len(text),
@@ -223,6 +238,8 @@ class CompactContext:
         self.prefix = []
         self.window = None
         self.request = None
+        self._history = None
+        self._history_query = None
         if self.is_reader:
             data = self.seed[1]
             self.request = load_document(
@@ -290,21 +307,26 @@ class CompactContext:
             data = self.seed[1]
             if upto is not None and upto != data["upto"]:
                 raise HistoryPositionError(f"当前可读历史固定截至 {data['upto']}，请用 end_sequence 筛选更早范围")
-            bundle = load_document(
-                self.projector.gateway, data["source"], data["bundle"]
-            )
-            bundle["artifacts"] = sorted(
-                set(bundle["artifacts"]) | {data["inherited"], data["bundle"]}
-            )
-            return data["source"], bundle, data["upto"]
+            if self._history is None:
+                bundle = load_document(
+                    self.projector.gateway, data["source"], data["bundle"]
+                )
+                bundle["artifacts"] = sorted(
+                    set(bundle["artifacts"]) | {data["inherited"], data["bundle"]}
+                )
+                self._history = data["source"], bundle, data["upto"]
+            return self._history
         events = await self.runtime.snapshot(self.session_id)
         available = events[-1].sequence if events else 0
         upto = available if upto is None else upto
         if upto > available:
             raise HistoryPositionError(f"当前可回查的历史截至消息序号 {available}，请提供不超过该值的 upto")
+        if self._history is not None and self._history[2] == upto:
+            return self._history
         # 截取执行事实后再投影，不能让截止位置之后的 Outcome 改写旧 Step 的表示。
         selected = tuple(event for event in events if event.sequence <= upto)
-        return self.session_id, history_bundle(self.projector, selected, self.session_id), upto
+        self._history = self.session_id, history_bundle(self.projector, selected, self.session_id), upto
+        return self._history
 
     async def prepare_reader(self, events, state):
         own = _translate_visible_events(
@@ -334,7 +356,7 @@ class CompactContext:
         end_sequence = arguments.get("end_sequence")
         query = arguments.get("query", "")
         if (
-            set(arguments) - {"offset", "limit", "upto", "start_sequence", "end_sequence", "query"}
+            set(arguments) - {"offset", "limit", "upto", "start_sequence", "end_sequence", "query", "start_time", "end_time"}
             or type(offset) is not int or offset < 0
             or type(limit) is not int or not 1 <= limit <= MAX_HISTORY_RECORDS
             or ("upto" in arguments and (type(upto) is not int or upto < 0))
@@ -343,9 +365,16 @@ class CompactContext:
             or type(query) is not str
         ):
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": (
-                "参数无效：只接受 query、offset、limit、upto、start_sequence、end_sequence；"
+                "参数无效：只接受 query、offset、limit、upto、start_sequence、end_sequence、start_time、end_time；"
                 "offset ≥ 0，limit 为 1–50，upto ≥ 0，start_sequence ≥ 1，end_sequence ≥ start_sequence。"
             )}
+        try:
+            start_time = _history_time(arguments["start_time"]) if "start_time" in arguments else None
+            end_time = _history_time(arguments["end_time"]) if "end_time" in arguments else None
+        except ValueError:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "start_time/end_time 必须是带时区的 ISO8601 时间，例如 2026-10-01T00:00:00+08:00。"}
+        if start_time is not None and end_time is not None and start_time >= end_time:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "end_time 必须晚于 start_time；开始时间包含，结束时间不包含。"}
         if offset > 0 and upto is None:
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "续查必须提供第一页返回的 upto"}
         try:
@@ -355,16 +384,27 @@ class CompactContext:
         end_sequence = upto if end_sequence is None else end_sequence
         if end_sequence > upto:
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "end_sequence 不能超过 upto"}
-        records = []
-        for sequence in sorted(bundle["raw"], key=int):
-            if start_sequence <= int(sequence) <= end_sequence:
-                record = _history_record(int(sequence), bundle["raw"][sequence], query)
-                if record is not None:
-                    records.append(record)
+        key = upto, start_sequence, end_sequence, query, start_time, end_time
+        if self._history_query is None or self._history_query[0] != key:
+            records = []
+            for sequence in sorted(bundle["raw"], key=int):
+                if start_sequence <= int(sequence) <= end_sequence:
+                    occurred_at = bundle["timestamps"][sequence]
+                    if start_time is not None or end_time is not None:
+                        moment = datetime.fromisoformat(occurred_at)
+                        if start_time is not None and moment < start_time:
+                            continue
+                        if end_time is not None and moment >= end_time:
+                            continue
+                    record = _history_record(int(sequence), bundle["raw"][sequence], query, occurred_at)
+                    if record is not None:
+                        records.append(record)
+            self._history_query = key, records
+        records = self._history_query[1]
         if offset > len(records):
             return {"ok": False, "code": "OFFSET_OUT_OF_RANGE", "error": f"offset 超过匹配总数 {len(records)}"}
         end = min(len(records), offset + limit)
-        page = records[offset:end]
+        page = [dict(record) for record in records[offset:end]]
         store = self.projector.gateway.for_session(self.session_id)
         for record in page:
             record["reference"] = store.save(json.dumps(
@@ -374,6 +414,7 @@ class CompactContext:
             "ok": True, "code": "HISTORY_FOUND",
             "data": {
                 "upto": upto, "start_sequence": start_sequence, "end_sequence": end_sequence,
+                "start_time": arguments.get("start_time"), "end_time": arguments.get("end_time"),
                 "records": page, "offset": offset,
                 "next_offset": end if end < len(records) else None,
                 "total_records": len(records),
@@ -467,7 +508,11 @@ def history_bundle(projector, events, session_id):
                 artifacts.update((payload.data["artifact"], payload.data["request"]))
             elif payload.fact_type == WINDOW:
                 artifacts.update((payload.data["context"], payload.data["bundle"]))
-    return {"raw": raw, "artifacts": sorted(artifacts)}
+    timestamps = {
+        str(event.sequence): event.occurred_at.isoformat()
+        for event in events if str(event.sequence) in raw
+    }
+    return {"raw": raw, "timestamps": timestamps, "artifacts": sorted(artifacts)}
 
 
 def window_preamble(summary, upto, catalog, identity, shared_memory):

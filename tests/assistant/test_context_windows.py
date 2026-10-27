@@ -1,5 +1,7 @@
 import asyncio
 import json
+from dataclasses import replace
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -97,6 +99,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["total_records"], 1)
         record = data["records"][0]
         self.assertEqual(record["sequence"], target.sequence)
+        self.assertEqual(record["occurred_at"], target.occurred_at.isoformat())
         self.assertIn(query, record["preview"])
         self.assertTrue(record["preview_truncated"])
         event = await context.read_content(None, {"reference": record["reference"]})
@@ -105,6 +108,70 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(not_literal["data"]["records"], [])
         wrong_case = await context.find_history(None, {**args, "query": query.lower()})
         self.assertEqual(wrong_case["data"]["records"], [])
+
+    async def test_history_time_range_combines_keyword_and_sequence_across_local_midnight(self):
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("b")
+        events = []
+        for index, (time, text) in enumerate((
+            ("2026-10-01T15:59:59+00:00", "验证：前一天"),
+            ("2026-10-01T16:00:00+00:00", "验证：当天开始"),
+            ("2026-10-02T10:00:00+00:00", "部署：当天"),
+            ("2026-10-02T15:59:59+00:00", "验证：当天结束前"),
+            ("2026-10-02T16:00:00+00:00", "验证：后一天"),
+        )):
+            event = await runtime.receive_user_message("b", text, delivery_id=str(index))
+            events.append(replace(event, occurred_at=datetime.fromisoformat(time)))
+        runtime = AgentRuntime(MemoryJournal(events), None, {})
+        context = CompactContext(
+            "b", tuple(events), ModelContextProjector(gateway=MemoryArtifactGateway()), None,
+        )
+        context.runtime = runtime
+        args = {"query": "验证", "start_time": "2026-10-02T00:00:00+08:00",
+                "end_time": "2026-10-03T00:00:00+08:00", "limit": 1}
+        first = (await context.find_history(None, args))["data"]
+        self.assertEqual(first["total_records"], 2)
+        self.assertEqual(first["records"][0]["sequence"], events[1].sequence)
+        self.assertEqual(first["records"][0]["occurred_at"], events[1].occurred_at.isoformat())
+        await runtime.receive_user_message("b", "验证：查询后新到", delivery_id="late")
+        second = (await context.find_history(None, {
+            **args, "upto": first["upto"], "offset": first["next_offset"],
+        }))["data"]
+        self.assertEqual(second["total_records"], 2)
+        self.assertEqual(second["records"][0]["sequence"], events[3].sequence)
+        self.assertIsNone(second["next_offset"])
+        raw = await context.read_content(None, {"reference": second["records"][0]["reference"]})
+        self.assertIn("当天结束前", raw["data"]["fragments"][0]["content"])
+        narrowed = (await context.find_history(None, {
+            **args, "start_sequence": events[2].sequence, "end_sequence": events[3].sequence,
+        }))["data"]
+        self.assertEqual([record["sequence"] for record in narrowed["records"]], [events[3].sequence])
+        before = (await context.find_history(None, {"end_time": args["start_time"]}))["data"]
+        self.assertEqual([record["sequence"] for record in before["records"]], [events[0].sequence])
+        after = (await context.find_history(None, {
+            "start_time": args["end_time"], "end_sequence": events[-1].sequence,
+        }))["data"]
+        self.assertEqual([record["sequence"] for record in after["records"]], [events[-1].sequence])
+
+    async def test_history_rejects_ambiguous_or_reversed_time_range(self):
+        runtime = AgentRuntime(MemoryJournal(), None, {})
+        await runtime.create_session("b")
+        context = CompactContext(
+            "b", (), ModelContextProjector(gateway=MemoryArtifactGateway()), None,
+        )
+        context.runtime = runtime
+        for arguments in (
+            {"start_time": "2026-10-02"},
+            {"start_time": "2026-10-02T00:00:00"},
+            {"end_time": "2026-02-30T00:00:00Z"},
+            {"end_time": 42},
+            {"start_time": ""},
+            {"start_time": "2026-10-03T00:00:00Z", "end_time": "2026-10-02T00:00:00Z"},
+            {"start_time": "2026-10-02T00:00:00Z", "end_time": "2026-10-02T08:00:00+08:00"},
+        ):
+            with self.subTest(arguments=arguments):
+                result = await context.find_history(None, arguments)
+                self.assertEqual(result["code"], "INVALID_ARGUMENT")
 
     async def test_history_paging_keeps_late_outcomes_out_of_the_original_snapshot(self):
         gateway = MemoryArtifactGateway()
@@ -218,7 +285,8 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             prepared = projector.prepare(events, visible, sid, "frozen system", prefix=restored.prefix)
             self.assertNotIn("original analysis", json.dumps(prepared.messages))
             self.assertNotIn("original reasoning", json.dumps(prepared.messages))
-            args = {"offset": 0, "limit": 2}
+            args = {"offset": 0, "limit": 2, "start_time": original.occurred_at.isoformat(),
+                    "end_time": (original.occurred_at + timedelta(days=1)).isoformat()}
             pages = []
             while True:
                 result = await restored.find_history(None, args)
@@ -237,6 +305,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([r["sequence"] for r in records], sorted(r["sequence"] for r in records))
             old_user = next(r for r in records if "original question" in r["preview"])
             self.assertEqual(old_user["sequence"], original.sequence)
+            self.assertEqual(old_user["occurred_at"], original.occurred_at.isoformat())
             old_step = next(r for r in records if "original analysis" in r["preview"])
             event = await restored.read_content(None, {"reference": old_step["reference"]})
             messages = json.loads(event["data"]["fragments"][0]["content"])
@@ -354,7 +423,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
                 ]}],
                 "tools": [],
             })
-            bundle = save_document(gateway, "b", {"records": [], "raw": {}, "artifacts": []})
+            bundle = save_document(gateway, "b", {"records": [], "raw": {}, "timestamps": {}, "artifacts": []})
             projector = ModelContextProjector(gateway=gateway, attachments=attachments)
             runtime = AgentRuntime(MemoryJournal(), None, {})
             await _handoff_session(runtime, "h", bundle, inherited)
@@ -369,6 +438,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         runtime = AgentRuntime(MemoryJournal(), None, {})
         bundle = save_document(gateway, "b", {
             "records": [], "raw": {"1": [{"role": "user", "content": "before P"}]}, "artifacts": [],
+            "timestamps": {"1": "2026-10-01T00:00:00+00:00"},
         })
         request = save_document(gateway, "b", {"messages": [{"role": "system", "content": "fixed"}], "tools": []})
         await _handoff_session(runtime, "h", bundle, request)
@@ -388,8 +458,12 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("before P", record["preview"])
         content = await context.read_content(None, {"reference": record["reference"]})
         self.assertIn("before P", content["data"]["fragments"][0]["content"])
-        scoped = await context.find_history(None, {"upto": 1, "start_sequence": 1, "end_sequence": 1, "query": "before"})
+        scoped = await context.find_history(None, {
+            "upto": 1, "start_sequence": 1, "end_sequence": 1, "query": "before",
+            "start_time": "2026-10-01T08:00:00+08:00", "end_time": "2026-10-02T08:00:00+08:00",
+        })
         self.assertEqual(scoped["data"]["records"][0]["preview"], "before P")
+        self.assertEqual(scoped["data"]["records"][0]["occurred_at"], "2026-10-01T00:00:00+00:00")
         beyond = await context.find_history(None, {"upto": 2})
         self.assertEqual(beyond["code"], "HISTORY_POSITION_OUT_OF_RANGE")
         denied = await context.read_content(None, {"reference": later_artifact.artifact_id})
