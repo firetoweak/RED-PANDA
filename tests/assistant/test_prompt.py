@@ -9,7 +9,9 @@ from unittest.mock import patch
 
 from tests.fixtures.artifacts import MemoryArtifactGateway
 from konden.assistant.agent_messages import MESSAGE_SCHEMAS
-from konden.assistant.shared_memory import SHARED_MEMORY_SCHEMAS, SHARED_MEMORY_TAG
+from konden.assistant.shared_memory import SHARED_MEMORY_SCHEMAS
+from konden.assistant.personal_memory import PERSONAL_MEMORY_SCHEMAS
+from konden.assistant.context.memory import MEMORY_TAG
 from konden.assistant.assembly import build_assistant_assembly
 from konden.assistant.context.projection import externalize_payload
 from konden.assistant.context.prompt import (
@@ -195,12 +197,12 @@ class PromptVocabularyTests(unittest.IsolatedAsyncioTestCase):
             | set(TOOL_RESULT_FIELD_NAMES)
             | _externalized_meta_fields()
             | _fact_type_tokens()
-            | {WORK_PLAN_TAG, SHARED_MEMORY_TAG}
+            | {WORK_PLAN_TAG, MEMORY_TAG}
         )
 
     def test_default_prompt_names_only_real_tools_and_fields(self):
         # Colleague and person messaging tools are assembled only for long-lived Agents.
-        agent_schemas = [*MESSAGE_SCHEMAS, *SHARED_MEMORY_SCHEMAS]
+        agent_schemas = [*MESSAGE_SCHEMAS, *SHARED_MEMORY_SCHEMAS, *PERSONAL_MEMORY_SCHEMAS]
         agent_references = {schema["function"]["name"] for schema in agent_schemas} | _schema_field_names(agent_schemas)
         for prompt, extra in ((DEFAULT_ASSISTANT_PROMPT, set()), (BOT_PROMPT, agent_references)):
             unknown = (

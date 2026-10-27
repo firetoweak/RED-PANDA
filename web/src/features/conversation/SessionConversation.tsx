@@ -16,6 +16,7 @@ import { BotAvatarPicker } from "./BotAvatarPicker";
 import { BackgroundCommands } from "./BackgroundCommands";
 import { BotDetailsPanel } from "./BotDetailsPanel";
 import { SubagentList } from "./SubagentList";
+import { PersonalMemoryPanel } from "./PersonalMemoryPanel";
 
 export function SessionConversation() {
   const { sessionId } = useParams();
@@ -27,7 +28,9 @@ export function SessionConversation() {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
   const narrow = useMediaQuery("(max-width: 73.75em)", false, { getInitialValueInEffect: false });
   const [detailsOpened, setDetailsOpened] = useState(!narrow);
+  const [detailsTab, setDetailsTab] = useState<string | null>("details");
   useDidUpdate(() => setDetailsOpened(!narrow), [narrow]);
+  useDidUpdate(() => setDetailsTab("details"), [sessionId]);
   const agent = agents.find((item) => item.session_id === sessionId);
   const name = agent?.name ?? history?.agent_name ?? "Agent";
   const [linking, setLinking] = useState(false);
@@ -36,7 +39,7 @@ export function SessionConversation() {
   const conversationRef = useRef<ConversationHandle>(null);
   const agentGroups = groups.filter((group) => group.members.includes(agent?.name ?? ""));
   const details = agent === undefined ? null : (
-    <Tabs key={agent.session_id} defaultValue="details" keepMounted
+    <Tabs key={agent.session_id} value={detailsTab} onChange={setDetailsTab} keepMounted
       classNames={{ root: "bot-details-tabs", list: "bot-details-tab-list", panel: "bot-details-tab-panel" }}>
       <div className="agent-details-profile">
         <BotAvatarPicker key={`avatar-${agent.session_id}`} name={agent.name} sessionId={agent.session_id} connectionId={connectionId} />
@@ -45,6 +48,7 @@ export function SessionConversation() {
       </div>
       <Tabs.List aria-label="Bot 资料分页">
         <Tabs.Tab value="details">详情</Tabs.Tab>
+        <Tabs.Tab value="memory">个人记忆</Tabs.Tab>
         <Tabs.Tab value="routines">例行任务</Tabs.Tab>
       </Tabs.List>
       <Tabs.Panel value="details">
@@ -83,6 +87,11 @@ export function SessionConversation() {
             if (narrow) setDetailsOpened(false);
           }} />
       </div>
+      </Tabs.Panel>
+      <Tabs.Panel value="memory">
+        <div className="agent-details-section">
+          <PersonalMemoryPanel sessionId={agent.session_id} active={detailsOpened && detailsTab === "memory"} />
+        </div>
       </Tabs.Panel>
       <Tabs.Panel value="routines">
       <RoutineList key={agent.session_id} sessionId={agent.session_id} connectionId={connectionId}

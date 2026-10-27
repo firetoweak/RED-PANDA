@@ -35,6 +35,9 @@ import {
   sharedMemorySchema,
   sharedMemoryConflictSchema,
   type SharedMemory,
+  personalMemorySchema,
+  personalMemoryConflictSchema,
+  type PersonalMemory,
   modelTestResultSchema,
   sessionModelSchema,
   inboxItemSchema,
@@ -143,7 +146,7 @@ function putConversation(
 export const kondenApi = createApi({
   reducerPath: "kondenApi",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "Avatars", "ExternalConnections", "ExternalSessions", "Capabilities"],
+  tagTypes: ["Agents", "Groups", "Inbox", "Workspaces", "Conversation", "ModelSettings", "SessionModel", "Routines", "AutoAuthorize", "SharedMemory", "PersonalMemory", "Avatars", "ExternalConnections", "ExternalSessions", "Capabilities"],
   endpoints: (build) => ({
     getCapabilities: build.query<CapabilityInventory, void>({
       query: () => "/capabilities",
@@ -175,6 +178,24 @@ export const kondenApi = createApi({
         && typeof response.data === "object" && response.data !== null && "current" in response.data
         ? sharedMemoryConflictSchema.parse(response.data) : response,
       invalidatesTags: ["SharedMemory"],
+    }),
+    getPersonalMemory: build.query<PersonalMemory, string>({
+      query: (sessionId) => `/agents/${encodeURIComponent(sessionId)}/memory`,
+      transformResponse: (value: unknown) => personalMemorySchema.parse(value),
+      providesTags: (_result, _error, id) => [{ type: "PersonalMemory", id }],
+    }),
+    savePersonalMemory: build.mutation<PersonalMemory, {
+      sessionId: string; connectionId: string; deliveryId: string; version: number; content: string;
+    }>({
+      query: ({ sessionId, connectionId, deliveryId, version, content }) => ({
+        url: `/agents/${encodeURIComponent(sessionId)}/memory`, method: "PUT",
+        body: { connection_id: connectionId, delivery_id: deliveryId, version, content },
+      }),
+      transformResponse: (value: unknown) => personalMemorySchema.parse(value),
+      transformErrorResponse: (response) => response.status === 409
+        && typeof response.data === "object" && response.data !== null && "current" in response.data
+        ? personalMemoryConflictSchema.parse(response.data) : response,
+      invalidatesTags: (_result, _error, { sessionId }) => [{ type: "PersonalMemory", id: sessionId }],
     }),
     getModelSettings: build.query<ModelSettings, void>({
       query: () => "/model-settings",
@@ -634,6 +655,8 @@ export const {
   useGetModelSettingsQuery,
   useGetSharedMemoryQuery,
   useSaveSharedMemoryMutation,
+  useGetPersonalMemoryQuery,
+  useSavePersonalMemoryMutation,
   useSaveModelSettingsMutation,
   useGetCodexModelsQuery,
   useTestModelMutation,

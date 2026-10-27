@@ -183,6 +183,8 @@ class CompactHost:
         source = job["source"]
         material = json.loads(job["bundle"])
         bundle = load_document(self.gateway, source, snapshot["bundle"])
+        # Restate P's observations, then replay (P,Q] in its original order.
+        memories = load_document(self.gateway, source, material["bundle"])["memories"]
         p, q = job["upto"], snapshot["position"]
         provenance = {
             "source": source,
@@ -191,7 +193,7 @@ class CompactHost:
             "request": material["inherited"],
         }
         before = window_preamble(
-            job["summary"], p, snapshot["catalog"], snapshot["identity"], snapshot["shared_memory"],
+            job["summary"], p, snapshot["catalog"], snapshot["identity"], memories,
         )
         after = projected_tail(bundle["records"], p, q)
         messages = [*before, *after]

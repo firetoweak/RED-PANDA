@@ -1,12 +1,22 @@
 import { z } from "zod";
 
-export const sharedMemorySchema = z.object({
+const memorySchema = z.object({
   version: z.number().int().nonnegative(),
-  content: z.string().refine((value) => Array.from(value).length <= 500),
+  content: z.string(),
   updated_by: z.string().nullable(),
 }).strict();
+export type WorkingMemory = z.infer<typeof memorySchema>;
+export const memoryConflictSchema = z.object({ detail: z.string(), current: memorySchema }).strict();
+export const sharedMemorySchema = memorySchema.extend({
+  content: z.string().refine((value) => Array.from(value).length <= 500),
+});
 export type SharedMemory = z.infer<typeof sharedMemorySchema>;
 export const sharedMemoryConflictSchema = z.object({ detail: z.string(), current: sharedMemorySchema }).strict();
+export const personalMemorySchema = memorySchema.extend({
+  content: z.string().refine((value) => Array.from(value).length <= 200),
+});
+export type PersonalMemory = z.infer<typeof personalMemorySchema>;
+export const personalMemoryConflictSchema = z.object({ detail: z.string(), current: personalMemorySchema }).strict();
 
 const controlApprovalSchema = z
   .object({
