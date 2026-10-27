@@ -5,9 +5,10 @@ import type { AvatarSelection } from "../../api/contracts";
 import { kondenApi, useSetAgentAvatarMutation, useUploadAgentAvatarMutation } from "../../api/kondenApi";
 import { useAppDispatch } from "../../app/hooks";
 import { BotAvatar, BotAvatars } from "./ChatPresentation";
+import { createClientId } from "./clientId";
 
 function candidates() {
-  return Array.from({ length: 8 }, () => crypto.randomUUID());
+  return Array.from({ length: 8 }, createClientId);
 }
 
 export function BotAvatarPicker({ name, sessionId, connectionId }: {

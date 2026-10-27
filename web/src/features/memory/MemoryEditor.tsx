@@ -2,6 +2,7 @@ import { Alert, Button, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import { memoryConflictSchema, type WorkingMemory } from "../../api/contracts";
 import { useAppSelector } from "../../app/hooks";
+import { createClientId } from "../conversation/clientId";
 
 type Change = { connectionId: string; deliveryId: string; version: number; content: string };
 type Props = {
@@ -48,7 +49,7 @@ export function MemoryEditor({ kind, query: { data, error, refetch }, save, savi
   async function submit() {
     if (connectionId === null || base === null) return;
     if (!pending.current || pending.current.version !== base.version || pending.current.content !== content) {
-      pending.current = { deliveryId: crypto.randomUUID(), version: base.version, content };
+      pending.current = { deliveryId: createClientId(), version: base.version, content };
     }
     try {
       const updated = await save({ connectionId, ...pending.current });

@@ -103,6 +103,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); Reflect.deleteProperty(document, "fonts"); });
 
 it("个人记忆按 Bot 隔离，200字符封顶并可清空，切换 Bot 不带入旧草稿", async () => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   store.dispatch(connected("connection"));
   render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
@@ -189,7 +190,8 @@ it("桌面资料默认详情，页签往返保留例行任务打开项，切 Bot
   expect(next.queryByRole("button", { name: "返回例行任务" })).not.toBeInTheDocument();
 });
 
-it("窄屏资料提供相同的详情、子过程和例行任务入口，关闭后回到对话", () => {
+it("普通 HTTP 窄屏资料可打开详情、子过程和例行任务，关闭后回到对话", () => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   const store = configureStore({ reducer: { runtime: runtimeReducer } });
   render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
