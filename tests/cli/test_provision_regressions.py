@@ -10,6 +10,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 
@@ -51,8 +52,19 @@ class ProvisionTransportTest(unittest.IsolatedAsyncioTestCase):
         self.install_root = Path(self.temporary.name).resolve()
         self.archive = _zip_bytes({"bin/gh.exe": b"binary"})
         self.digest = hashlib.sha256(self.archive).hexdigest()
+        # 资产名是 windows 的，把被测的平台探测固定住，测试才与 runner 无关
+        self._platform_patch = patch(
+            "konden.cli.provision._platform_key", return_value="windows"
+        )
+        self._arch_patch = patch(
+            "konden.cli.provision._arch_key", return_value="x86_64"
+        )
+        self._platform_patch.start()
+        self._arch_patch.start()
 
     def tearDown(self) -> None:
+        self._platform_patch.stop()
+        self._arch_patch.stop()
         self.temporary.cleanup()
 
     def _transport(self, handler) -> httpx.MockTransport:
