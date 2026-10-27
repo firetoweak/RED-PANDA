@@ -109,6 +109,8 @@ manifest 域重新解析路径并重跑体检。
 
 `github-release` 满足 install profile：下载与解压都在用户态，不调系统安装器、不写 PATH、不做 UAC 提权，因此默认非交互、可无人值守完成。这也是它取代“借 winget/apt 安装”的原因——系统安装器在需要提权的机器上会静默卡住。下载发生在审批之后：propose 只解析 Release 元数据把 tag 钉死（不钉版本时解析成具体 tag，避免「批的是 A、装的是 B」），用户批准前不拉取任何归档。归档里找不到可执行文件即失败，不做猜测。
 
+校验按对象分流：校验文件里与归档同名的条目校验归档字节；若只有一条且写的是归档内路径（zellij 的 `.sha256sum` 写 `target/release/zellij.exe`），则解压后校验该文件，找不到就报错而不是跳过。没有校验文件时才不校验。
+
 `repair` 对 manifest 域重新解析路径，对 `github-release` 域按冻结的 tag 重新下载并重新登记；`uninstall` 对 `github-release` 域会连同 `_installs/<cli_id>/` 一起删掉，manifest 域只删登记。
 
 ## 不做
