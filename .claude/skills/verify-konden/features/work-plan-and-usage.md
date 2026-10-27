@@ -8,6 +8,7 @@
 - `message-time`：用户消息外侧与 Bot 回复后的过程栏显示消息时间；悬停可看完整日期时间。不再显示每轮耗时或运行秒数。
 - `context-meter`：输入区右侧用量环，`role="img"`，`aria-label` 为 `<标题> · <已用> / <上限> tokens`。标题：有本窗口用量且有阈值时 `N% 已用`；本窗口还没有用量时 `暂无本窗口用量`；有用量但没有阈值时 `上下文用量`。token 数 ≥ 1000 写成 `64K` / `12.3K`，缺失写 `—`。
 - `compact`：输入 tokens 达到模型的 `compact 触发值（输入 tokens）` 时整理上下文，之后模型可用 `find_history` 找回旧内容。
+- `history-search`：`find_history` 将带时区的记录时间范围、消息序号范围与字面关键词组合筛选，命中项带 `occurred_at` 和原文引用；工具结果随发起它的助手消息组返回。
 
 ## How to get to it (user POV)
 
@@ -28,6 +29,11 @@
   - (b) compact 成功没有任何提示；刚滚到新窗口时 `context_input_tokens` 为 `null`，用量环先显示 `暂无本窗口用量 · — / 2K tokens`，下一次回复后才有新窗口的数值；不保证新窗口的输入用量一定低于整理前。
   - (c) 之前的用户消息在界面上仍可见。
   - (d) compact 失败时 `compact_phase` 为 `failed`，输入区出现红色提示 `上下文整理失败。窗口仍超预算时会话无法继续推进。`。先修复失败原因并恢复会话，再问模型最初说过的暗号；成功整理后的模型应能经 `find_history` 找回。失败仍超预算时不能要求模型继续回答。
+- **历史检索**：在同一 Bot 对话中发送两条含独特标记的记录，经过 compact 后，请 Bot 用 `find_history` 按日期和该标记查询，并以 `limit=1` 翻页，再用返回的引用调用 `read_content` 核对原文。
+  - (a) 对照 `GET /api/sessions/<id>` 和本次工具结果：原消息仍在；命中项的时间对应其消息组最初记录时刻；原文引用能读取准确内容。
+  - (b) 实际工具调用同时携带 `query`、带时区的 `start_time/end_time`；开始时刻包含，结束时刻不包含。查整日使用当地当天零点到次日零点。
+  - (c) 续页沿用 `upto`、筛选条件和 `next_offset`；期间新到的消息及工具结果不改变原查询页。改变时间或关键词后，结果按新条件计算。
+  - (d) 查询不含样本的时间范围应返回空结果；不带时区或起止颠倒应返回 `INVALID_ARGUMENT`。外置正文仍沿引用读取，不把未命中解释成历史已被删除。
 
 ## Gotchas
 
@@ -39,3 +45,5 @@
 - 2026-10-20 维护实测（`origin/main@32860f6`，Windows Chrome/ConPTY，隔离 home）：真实回合的上下文用量与耗时可见，API context_input_tokens 有值；compact 阶段和计数未触发，不能据此标为通过。
 
 - 2026-10-22 全量维护（`origin/main@4c000ca`，Windows Chrome/ConPTY，隔离 home、真实 DeepSeek）：真实回合时间与上下文用量环、200K 阈值和 GET 一致，不再有轮次耗时；compact 未触发。
+
+- 2026-10-27 历史检索增量（Windows Chrome、隔离 home、真实 DeepSeek Flash）：同一 Bot 经三次 compact 后，按带时区时间范围和关键词以每页一条找回两条旧记录，沿同一截止位置续页并逐条回读原文通过；结果时间与原消息一致。未来日期范围返回空结果、无时区输入返回 `INVALID_ARGUMENT`。证据保留在任务 worktree 的 `.tools/history-verify-evidence/`；未验证数月真实历史的检索效果及 Linux 页面。
