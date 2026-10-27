@@ -102,7 +102,14 @@ manifest 域重新解析路径并重跑体检。
 
 ### 安装源
 
-第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，konden 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 切片届时与 install profile（长超时、非交互、复用同一命令执行实现、不做 UAC 提权）和候选冻结一起设计。
+两种来源，走同一条审批与登记链路：
+
+- `manifest`：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，konden 重跑体检更新版本）；PATH 由用户的手工安装保证。
+- `github-release`：konden 自备（第二版新增）。locator 是 `owner/repo`，`requested_version` 可选。审批通过后从 GitHub Release 取当前平台与架构的 zip/tar.gz，命中 checksums 资产则校验 sha256，解压到 `clis_root/_installs/<cli_id>/<version>/`，登记解压出来的可执行文件。
+
+`github-release` 满足 install profile：下载与解压都在用户态，不调系统安装器、不写 PATH、不做 UAC 提权，因此默认非交互、可无人值守完成。这也是它取代“借 winget/apt 安装”的原因——系统安装器在需要提权的机器上会静默卡住。下载发生在审批之后：propose 只冻结来源与版本，用户批准前不拉取任何东西。归档里找不到可执行文件即失败，不做猜测。
+
+`repair` 对 manifest 域重新解析路径，对 `github-release` 域重新下载同一版本并重新登记。
 
 ## 不做
 

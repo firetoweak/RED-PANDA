@@ -17,6 +17,7 @@ from konden.cli.models import (
     validate_cli_description,
     validate_cli_id,
 )
+from konden.cli.provision import provision_github_release
 from konden.cli.registry import CliRegistry
 from konden.cli.runtime import CliToolCatalog
 from konden.paths import KondenHome
@@ -31,7 +32,7 @@ class CliInstallCandidate:
     description: str
     source: CliSourceRef
     resolved_path: str
-    probed: CliProbe
+    probed: CliProbe | None
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,28 @@ class CliApplicationService:
             probed=probed,
         )
 
+    async def prepare_release_install(
+        self,
+        name: str,
+        description: str,
+        repository: str,
+        requested_version: str | None = None,
+    ) -> CliInstallCandidate:
+        """propose 阶段只冻结来源，不下载；下载发生在审批通过之后。"""
+        validate_cli_id(name)
+        validate_cli_description(description)
+        async with self._management_lock:
+            if await self.registry.get(name) is not None:
+                raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
+        source = CliSourceRef("github-release", repository, requested_version)
+        return CliInstallCandidate(
+            name=name,
+            description=description,
+            source=source,
+            resolved_path="",
+            probed=None,
+        )
+
     async def install_frozen(
         self,
         name: str,
@@ -116,7 +139,14 @@ class CliApplicationService:
         async with self._management_lock:
             if await self.registry.get(name) is not None:
                 raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
-            if not Path(resolved_path).is_file():
+            if source.kind == "github-release":
+                provisioned = await provision_github_release(
+                    name,
+                    source,
+                    install_root=self.clis_root / "_installs",
+                )
+                resolved_path = provisioned.resolved_path
+            elif not Path(resolved_path).is_file():
                 raise CliInputError(
                     f"候选路径已失效: {resolved_path}。请重新 propose。"
                 )
