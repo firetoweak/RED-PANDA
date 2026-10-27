@@ -17,7 +17,8 @@ from konden.assistant.agents import (
 )
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
-from konden.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, project_shared_memory
+from konden.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, SharedMemoryStore
+from konden.assistant.personal_memory import READ_PERSONAL_MEMORY, UPDATE_PERSONAL_MEMORY, personal_memory_store
 from konden.automation.routines import RoutineFire
 from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from konden.paths import KondenHome
@@ -53,6 +54,17 @@ class MessagingLlm(ProcessLlm):
         if attention is not None:
             calls = (ToolCall("group", SEND_GROUP_MESSAGE, json.dumps(
                 {"group": attention["group"], "text": "收到", "reply_to": attention["message_id"]})),)
+        elif "PERSONAL_WRITE:" in text:
+            if READ_PERSONAL_MEMORY not in called:
+                calls = (ToolCall("read-personal", READ_PERSONAL_MEMORY, "{}"),)
+            elif UPDATE_PERSONAL_MEMORY not in called:
+                current = next(json.loads(message["content"])["data"] for message in reversed(messages)
+                               if message["role"] == "tool" and "PERSONAL_MEMORY_READ" in str(message["content"]))
+                instruction = next(message["content"] for message in reversed(messages)
+                                   if message["role"] == "user" and str(message["content"]).startswith("PERSONAL_WRITE:"))
+                calls = (ToolCall("write-personal", UPDATE_PERSONAL_MEMORY, json.dumps({
+                    "version": current["version"], "content": instruction.removeprefix("PERSONAL_WRITE:"),
+                })),)
         elif "MEMORY_WRITE:" in text:
             if READ_SHARED_MEMORY not in called:
                 calls = (ToolCall("read-memory", READ_SHARED_MEMORY, "{}"),)
@@ -144,21 +156,43 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(self.lin.session_id, self.host.workers)
         self.assertTrue(self.host.failures.empty())
 
-    async def test_both_bots_edit_one_memory_and_updates_do_not_wake_idle_colleagues(self):
+    async def test_shared_and_personal_memories_keep_their_scope_across_rename_and_restart(self):
+        shared = SharedMemoryStore(self.home.state_root / "shared_memory.sqlite")
         idle = await self.events(self.lin)
         await self.host.receive_user_message(self.ada.session_id, "MEMORY_WRITE:共享资源先协调。", delivery_id="ada-memory")
         await self.settled(self.ada)
         self.assertEqual(await self.events(self.lin), idle)
         self.assertNotIn(self.lin.session_id, self.host.workers)
-        self.assertEqual(project_shared_memory(await self.events(self.ada))["content"], "共享资源先协调。")
+        self.assertEqual(shared.read().content, "共享资源先协调。")
         await self.host.receive_user_message(self.lin.session_id, "MEMORY_WRITE:共享资源先协调，交接附验证依据。", delivery_id="lin-memory")
         await self.settled(self.lin)
-        note = project_shared_memory(await self.events(self.lin))
+        note = shared.read().model_dump()
         self.assertEqual(note, {"version": 2, "content": "共享资源先协调，交接附验证依据。", "updated_by": "Lin"})
         await self.host.receive_user_message(self.ada.session_id, "查看同事的新约定。", delivery_id="observe-memory")
         await self.settled(self.ada)
-        self.assertEqual(project_shared_memory(await self.events(self.ada)), note)
+        self.assertEqual(shared.read().model_dump(), note)
         self.assertIn("共享资源先协调，交接附验证依据。", json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False))
+        idle = await self.events(self.lin)
+        await self.host.receive_user_message(self.ada.session_id, "PERSONAL_WRITE:先给判断，再解释取舍。", delivery_id="ada-personal")
+        await self.settled(self.ada)
+        own = personal_memory_store(self.home, self.ada).read().model_dump()
+        self.assertEqual(own["content"], "先给判断，再解释取舍。")
+        self.assertEqual(await self.events(self.lin), idle)
+        self.assertEqual(personal_memory_store(self.home, self.lin).read().content, "")
+        self.assertEqual(shared.read().model_dump(), note)
+        await self.host.rename_agent(self.ada.session_id, "Aster")
+        await self.host.close()
+        self.host = self.new_host()
+        await self.host.receive_user_message(self.ada.session_id, "按当前约束继续工作。", delivery_id="after-restart")
+        await self.settled(self.ada)
+        self.assertEqual(personal_memory_store(self.home, self.ada).read().model_dump(), own)
+        shown = json.dumps(self.llm.requests[-1]["messages"], ensure_ascii=False)
+        self.assertIn("先给判断，再解释取舍。", shown)
+        self.assertIn("共享资源先协调，交接附验证依据。", shown)
+        self.assertIn("<working_memory>", self.llm.requests[-1]["messages"][-1]["content"])
+        self.assertFalse(any(isinstance(event.payload, DomainFactCommitted)
+                             and event.payload.fact_type in {"bot.shared_memory", "bot.personal_memory"}
+                             for event in await self.events(self.ada)))
         self.assertTrue(self.host.failures.empty())
 
     async def test_group_members_receive_calls_even_after_current_turn_interruption(self):

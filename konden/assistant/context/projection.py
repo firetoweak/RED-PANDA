@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from konden.assistant.external_messages import EXTERNAL_MESSAGE, parse_external
 
-from konden.assistant.shared_memory import SHARED_MEMORY, shared_memory_message
-
 from konden.runtime.json_values import thaw_value
 
 from collections.abc import Mapping
@@ -52,7 +50,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 23
+PROJECTOR_VERSION = 24
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -62,6 +60,7 @@ _INTERNAL_FACT_TYPES = frozenset({
     SESSION_WORKSPACE_FACT,
     SESSION_DIRECTORY_FACT,
     "compact.task", "compact.handoff_created", "compact.window_rolled_over",
+    "bot.shared_memory", "bot.personal_memory",
 })
 _IMAGE_EVICTED_HINT = "\n这张图片已不再内嵌显示；用 read_image 和上面的 id 可以再次查看。"
 _USER_ATTACHMENT_HINT = "\n（图片附件 id：{ids}；用 read_image 可以再次查看。）"
@@ -341,8 +340,6 @@ def _translate_visible_events(
                 items.append(_received_at(event))
             if payload.fact_type == "assistant.catalog":
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
-            elif payload.fact_type == SHARED_MEMORY:
-                content = shared_memory_message(shown_data)["content"]
             items.append(_Projected(
                 {"role": "user", "content": content},
                 "trigger" if payload.requests_decision else "fact",
@@ -680,6 +677,14 @@ class ModelContextProjector:
         *,
         prefix: list[dict[str, object]] | None = None,
     ) -> PreparedModelContext:
+        # Loaded memory belongs only to the current request, including after replay.
+        prefix = [
+            message for message in prefix or []
+            if not (
+                isinstance(message["content"], str)
+                and message["content"].startswith(("<shared_memory>", "<personal_memory>", "<working_memory>"))
+            )
+        ]
         items = [
             replace(item, message=deepcopy(item.message))
             for item in _translate_visible_events(

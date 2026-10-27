@@ -39,18 +39,18 @@ def linked_project(messages):
     return None, None
 
 
-def delayed_memory_sync_config(root):
+def delayed_decision_config(root):
     from konden.assistant import assembly
 
-    sync = assembly.sync_shared_memory
+    decide = assembly.JournalBackedLlmDecisionMaker.decide
 
     async def delayed(*args):
-        (root / "memory-sync-started").touch()
-        while not (root / "release-memory-sync").exists():
+        (root / "decision-started").touch()
+        while not (root / "release-decision").exists():
             await asyncio.sleep(0.01)
-        return await sync(*args)
+        return await decide(*args)
 
-    assembly.sync_shared_memory = delayed
+    assembly.JournalBackedLlmDecisionMaker.decide = delayed
     return config_for(root)
 
 
@@ -292,21 +292,21 @@ class AgentWorkerTest(unittest.IsolatedAsyncioTestCase):
             llm = WorktreeLlm(root)
 
             def host():
-                return HostSupervisor(store, partial(delayed_memory_sync_config, root), home, None, llm=llm)
+                return HostSupervisor(store, partial(delayed_decision_config, root), home, None, llm=llm)
 
             current = host()
             try:
                 agent = await current.create_agent(name="Notes")
                 async with asyncio.timeout(30):
-                    while not (root / "memory-sync-started").exists():
+                    while not (root / "decision-started").exists():
                         await asyncio.sleep(0.01)
                 self.assertEqual(agent.projects, ())
                 self.assertEqual(WorkspaceRegistry.load(home.workspaces_path).workspaces, ())
                 await current.select("page", agent.session_id)
                 await current.set_auto_authorize(True)
                 await current.receive_user_message(agent.session_id, "WRITE_AGENT_0", delivery_id="write")
-                # Reproduce a context snapshot arriving after the user's first instruction.
-                (root / "release-memory-sync").touch()
+                # The user's first instruction arrives while the initial decision is preparing.
+                (root / "release-decision").touch()
                 await asyncio.wait_for(current.wait_quiescent(agent.session_id), 30)
                 self.assertEqual((agent.directory / "note.txt").read_text(), "WRITE_AGENT_0")
                 self.assertEqual((agent.directory / "command.txt").read_text().strip(), "command-ok")

@@ -14,6 +14,13 @@ import runtimeReducer, { connected } from "../src/realtime/runtimeSlice";
 const commands = vi.hoisted(() => ({
   stop: vi.fn(() => Promise.resolve({ data: {} })), refetch: vi.fn(), state: "running", isError: false,
 }));
+const memory = vi.hoisted(() => ({
+  notes: {
+    ada: { version: 1, content: "先给判断，再解释取舍。", updated_by: "用户" },
+    lin: { version: 0, content: "", updated_by: null },
+  } as Record<string, { version: number; content: string; updated_by: string | null }>,
+  save: vi.fn(), refetch: vi.fn(), reset: vi.fn(),
+}));
 const subagents = vi.hoisted(() => ({
   observe: vi.fn(),
   isError: false,
@@ -35,6 +42,8 @@ vi.mock("../src/features/conversation/Conversation", () => ({
   },
 }));
 vi.mock("../src/api/kondenApi", () => ({
+  useGetPersonalMemoryQuery: (sessionId: string) => ({ currentData: memory.notes[sessionId], refetch: memory.refetch }),
+  useSavePersonalMemoryMutation: () => [memory.save, { isLoading: false, error: undefined, reset: memory.reset }],
   useGetConversationQuery: () => ({ currentData: undefined }),
   useGetAgentsQuery: () => ({ data: [
     { session_id: "ada", projects: [{ name: "Alpha", workspace_id: "alpha", directory: "C:/bots/ada/projects/Alpha" }],
@@ -75,6 +84,13 @@ vi.mock("../src/api/kondenApi", () => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  memory.notes = {
+    ada: { version: 1, content: "先给判断，再解释取舍。", updated_by: "用户" },
+    lin: { version: 0, content: "", updated_by: null },
+  };
+  memory.save.mockImplementation(({ version, content }) => ({
+    unwrap: async () => ({ version: version + 1, content, updated_by: "用户" }),
+  }));
   commands.state = "running";
   commands.isError = false;
   subagents.isError = false;
@@ -82,8 +98,38 @@ beforeEach(() => {
   subagents.pendingSessionId = null;
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); Reflect.deleteProperty(document, "fonts"); });
+
+it("个人记忆按 Bot 隔离，200字符封顶并可清空，切换 Bot 不带入旧草稿", async () => {
+  const store = configureStore({ reducer: { runtime: runtimeReducer } });
+  store.dispatch(connected("connection"));
+  render(<Provider store={store}><MantineProvider env="test"><MemoryRouter initialEntries={["/sessions/ada"]}>
+    <Link to="/sessions/lin">切换到 Lin</Link>
+    <Routes><Route path="/sessions/:sessionId" element={<SessionConversation />} /></Routes>
+  </MemoryRouter></MantineProvider></Provider>);
+  fireEvent.click(screen.getByRole("tab", { name: "个人记忆" }));
+  const input = await screen.findByRole("textbox", { name: "个人记忆正文" });
+  expect(input).toHaveValue("先给判断，再解释取舍。");
+  fireEvent.change(input, { target: { value: "🐼".repeat(200) } });
+  expect(screen.getByText("200 / 200")).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存记忆" })).toBeEnabled();
+  fireEvent.change(input, { target: { value: "字".repeat(201) } });
+  expect(screen.getByText("超过200字，请精简后保存。")).toBeVisible();
+  expect(screen.getByRole("button", { name: "保存记忆" })).toBeDisabled();
+  fireEvent.change(input, { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存记忆" }));
+  await waitFor(() => expect(memory.save).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "ada", version: 1, content: "" })));
+  fireEvent.change(input, { target: { value: "Ada 未保存的草稿。" } });
+  fireEvent.click(screen.getByRole("tab", { name: "详情" }));
+  fireEvent.click(screen.getByRole("tab", { name: "个人记忆" }));
+  expect(screen.getByRole("textbox", { name: "个人记忆正文" })).toHaveValue("Ada 未保存的草稿。");
+  fireEvent.click(screen.getByRole("link", { name: "切换到 Lin" }));
+  await waitFor(() => expect(screen.getByRole("tab", { name: "详情" })).toHaveAttribute("aria-selected", "true"));
+  fireEvent.click(screen.getByRole("tab", { name: "个人记忆" }));
+  expect(await screen.findByRole("textbox", { name: "个人记忆正文" })).toHaveValue("");
+});
 
 it("桌面资料默认详情，页签往返保留例行任务打开项，切 Bot 回到详情且不串旧数据", async () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));

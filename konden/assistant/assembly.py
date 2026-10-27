@@ -69,8 +69,12 @@ from konden.assistant.management import (
 from konden.assistant.skills import SkillToolAdapter
 from konden.assistant.catalog import CapabilityCatalog
 from konden.assistant.shared_memory import (
-    SHARED_MEMORY_SCHEMAS, SharedMemoryStore, shared_memory_bindings, sync_shared_memory,
+    SHARED_MEMORY_SCHEMAS, SharedMemoryStore, shared_memory_bindings,
 )
+from konden.assistant.personal_memory import (
+    PERSONAL_MEMORY_SCHEMAS, personal_memory_store, personal_memory_bindings,
+)
+from konden.assistant.context.memory import MemoryContext
 from konden.config import AssistantConfig
 from konden.paths import KondenHome, runtime_data_root
 from konden.cli.composition import CliAssembly, build_cli
@@ -152,6 +156,7 @@ async def build_assistant_assembly(
     )
     home.initialize()
     shared_memory = SharedMemoryStore(home.state_root / "shared_memory.sqlite") if agent is not None else None
+    personal_memory = personal_memory_store(home, agent) if agent is not None else None
     mcp = build_mcp(home, task_root=workspace.task_root)
     skills = build_skills(
         home,
@@ -221,6 +226,7 @@ async def build_assistant_assembly(
             *builtin_tools.schemas,
             *colleague_schemas,
             *(SHARED_MEMORY_SCHEMAS if shared_memory is not None else []),
+            *(PERSONAL_MEMORY_SCHEMAS if personal_memory is not None else []),
             *(ROUTINE_SCHEMAS if colleague_schemas else []),
             *(AGENT_GIT_SCHEMAS if agent_git else []),
             *(
@@ -235,6 +241,7 @@ async def build_assistant_assembly(
             *builtin_tools.names(),
             *colleague_bindings,
             *(schema["function"]["name"] for schema in SHARED_MEMORY_SCHEMAS),
+            *(schema["function"]["name"] for schema in PERSONAL_MEMORY_SCHEMAS),
             *ROUTINE_TOOLS,
             *AGENT_GIT_TOOLS,
             SCHEDULE_ONCE,
@@ -274,6 +281,7 @@ async def build_assistant_assembly(
         ),
         **colleague_bindings,
         **(shared_memory_bindings(shared_memory, agent.name) if shared_memory is not None else {}),
+        **(personal_memory_bindings(personal_memory, agent.name) if personal_memory is not None else {}),
         **(routine_bindings(session_transport) if colleague_schemas else {}),
         **(agent_git_bindings(session_transport) if agent_git else {}),
         **(
@@ -317,6 +325,7 @@ async def build_assistant_assembly(
         subagents=subagents,
         compact=compact_context,
         exclusive_tool_names=exclusive_tools,
+        memory=MemoryContext(shared_memory, personal_memory) if agent is not None else None,
         loop_guard=LoopGuard(),
         preview=preview,
     )
@@ -358,8 +367,6 @@ async def build_assistant_assembly(
         if not compact_context.is_reader:
             if not (await runtime.state(session_id)).waiting_command_ids:
                 await catalog.sync(runtime, session_id)
-                if shared_memory is not None:
-                    await sync_shared_memory(runtime, session_id, shared_memory)
         return True if compact is None else await compact.before_advance()
 
     scheduler.before_advance = before_advance

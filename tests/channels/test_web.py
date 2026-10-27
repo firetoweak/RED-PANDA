@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+from konden.assistant.personal_memory import personal_memory_store, UpdatePersonalMemory
 
 import asyncio
 import json
@@ -252,6 +253,7 @@ class WebFirstSliceTest(unittest.TestCase):
         self.queries = _Queries()
         self.sessions = _Sessions(self.queries)
         home = KondenHome(Path(self._directory.name))
+        self.sessions.home = home
         write_json(home.config_path, MODEL_CONFIG)
         self.models = ModelSettings(home, home.runtime_sessions_root, path=home.config_path)
         self.models.initialize_session("session-old")
@@ -405,6 +407,45 @@ class WebFirstSliceTest(unittest.TestCase):
         inactive = self.client.put("/api/shared-memory", json={**body, "connection_id": "gone", "content": ""})
         self.assertEqual(inactive.status_code, 409)
         self.assertEqual(self.shared_memory.read().version, 1)
+
+    def test_personal_memory_web_edits_are_scoped_and_preserve_unread_bot_updates(self):
+        home = self.sessions.home
+        ada = SimpleNamespace(directory=home.agent_directories_root / "ada", deleted=False)
+        lin = SimpleNamespace(directory=home.agent_directories_root / "lin", deleted=False)
+        self.sessions.agents.by_session.side_effect = lambda sid: {"ada": ada, "lin": lin}.get(sid)
+        url = "/api/agents/ada/memory"
+        self.assertEqual(self.client.get(url).json()["content"], "")
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "personal-save",
+                "version": 0, "content": "先给判断，再解释取舍。"}
+        saved = self.client.put(url, json=body)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["updated_by"], "用户")
+        self.assertEqual(self.client.put(url, json=body).json(), saved.json())
+        bot = personal_memory_store(home, ada).update(
+            UpdatePersonalMemory(version=1, content="先给判断，再给一个具体例子。"),
+            author="Ada", source="bot:ada", operation_id="bot-update",
+        )
+        stale = self.client.put(url, json={**body, "delivery_id": "stale", "version": 1})
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.json()["current"], bot["data"])
+        self.assertEqual(self.client.get("/api/agents/lin/memory").json()["content"], "")
+        self.assertEqual(self.client.get("/api/shared-memory").json()["content"], "")
+        self.assertEqual(self.client.get(url).json(), bot["data"])
+        cleared = self.client.put(url, json={**body, "delivery_id": "clear", "version": 2, "content": ""})
+        self.assertEqual(cleared.json()["content"], "")
+
+    def test_personal_memory_boundary_checks_bot_length_and_connection(self):
+        self.sessions.agents.by_session.return_value.directory = self.sessions.home.agent_directories_root / "ada"
+        url = "/api/agents/ada/memory"
+        body = {"connection_id": self.connection.connection_id, "delivery_id": "personal-limit",
+                "version": 0, "content": "🐼" * 200}
+        self.assertEqual(self.client.put(url, json=body).status_code, 200)
+        self.assertEqual(self.client.put(url, json={**body, "content": "字" * 201}).status_code, 422)
+        self.assertEqual(self.client.put(url, json={**body, "connection_id": "gone"}).status_code, 409)
+        self.assertEqual(self.client.get(url).json()["version"], 1)
+        self.sessions.agents.by_session.return_value = None
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.put(url, json=body).status_code, 404)
 
     def test_auto_authorize_is_global_and_notifies_other_pages(self):
         queue = self.hub.subscribe()

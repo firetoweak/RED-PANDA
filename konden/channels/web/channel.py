@@ -13,6 +13,7 @@ from konden.assistant.attachments import (
 )
 from konden.assistant.file_attachments import FileAttachment, is_file_attachment_id
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
+from konden.assistant.personal_memory import personal_memory_store
 from konden.automation.once import SOURCE as AUTOMATION_SOURCE
 from konden.channels.web.directory_picker import select_file
 
@@ -59,6 +60,23 @@ class WebChannel:
 
     async def list_agents(self):
         return await self._queries.list_agents()
+
+    async def _personal_memory(self, session_id: str):
+        agent = await self._sessions.agents.by_session(session_id)
+        if agent is None:
+            raise AgentNotFound(session_id)
+        if agent.deleted:
+            raise AgentDeletedError(session_id)
+        return personal_memory_store(self._sessions.home, agent)
+
+    async def read_personal_memory(self, session_id: str):
+        return (await self._personal_memory(session_id)).read().model_dump()
+
+    async def update_personal_memory(self, connection_id: str, session_id: str, change, operation_id: str):
+        self._require_connection(connection_id)
+        return (await self._personal_memory(session_id)).update(
+            change, author="用户", source="user", operation_id=operation_id,
+        )
 
     async def list_external_connections(self):
         return self._sessions.external_messages.list_connections()

@@ -30,6 +30,7 @@ from konden.assistant.host.external_messages import ExternalConnectionNotFound, 
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.model_connection import check_model_connection
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+from konden.assistant.personal_memory import UpdatePersonalMemory
 from konden.automation.routines import RoutineNotFound
 from konden.model_settings import ModelCatalogUnavailable, ModelConfigurationError, ModelInUseError
 from konden.assistant.runner import SessionNotFoundError
@@ -99,6 +100,10 @@ class ModelSettingsRequest(ConnectionRequest):
 
 
 class SharedMemoryRequest(ConnectionRequest, UpdateSharedMemory):
+    delivery_id: str = Field(min_length=1)
+
+
+class PersonalMemoryRequest(ConnectionRequest, UpdatePersonalMemory):
     delivery_id: str = Field(min_length=1)
 
 
@@ -456,6 +461,19 @@ def create_web_app(
         _channel(request)._require_connection(body.connection_id)
         result = request.app.state.shared_memory.update(
             body, author="用户", source="user", operation_id=body.delivery_id,
+        )
+        if not result["ok"]:
+            return JSONResponse(status_code=409, content={"detail": result["error"], "current": result["data"]})
+        return result["data"]
+
+    @app.get("/api/agents/{session_id}/memory")
+    async def read_personal_memory(session_id: str, request: Request):
+        return await _channel(request).read_personal_memory(session_id)
+
+    @app.put("/api/agents/{session_id}/memory")
+    async def save_personal_memory(session_id: str, body: PersonalMemoryRequest, request: Request):
+        result = await _channel(request).update_personal_memory(
+            body.connection_id, session_id, body, body.delivery_id,
         )
         if not result["ok"]:
             return JSONResponse(status_code=409, content={"detail": result["error"], "current": result["data"]})

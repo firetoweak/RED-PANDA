@@ -6,12 +6,15 @@
 
 - `list`：`list_colleagues` 不接受参数。每位同事有 `name`、`directory`、`projects`、`status`、`since`。
 - `roster-facts`：第二位 Agent 创建后，已在的同事收到 `bot.colleague_joined`；这些事实都不请求决策。
-- `shared-memory`：所有长期 Bot 用 `read_shared_memory` 查阅、用 `update_shared_memory` 修改同一份正文，最多500字符，含标点、空白和换行，可以为空。修改需要已读的 `version` 和完整 `content`；沿用工具授权。状态在 `$KONDEN_HOME/state/shared_memory.sqlite`，修改者与来源一起保存。首次工作、内容变化和压缩后，完整正文通过 `bot.shared_memory` / `<shared_memory>` 呈现，不单独唤醒空闲同事。
+- `shared-memory`：所有长期 Bot 用 `read_shared_memory` 查阅、用 `update_shared_memory` 修改同一份正文，最多500字符，含标点、空白和换行，可以为空。修改需要已读的 `version` 和完整 `content`；沿用工具授权。状态在 `$KONDEN_HOME/state/shared_memory.sqlite`，修改者与来源一起保存。每次判断在稳定历史之后独立加载当前正文，与个人记忆一起呈现在 `<working_memory>` 中；不追加观察事实，不交给 compact 转述，不单独唤醒空闲同事。
+
+- `personal-memory`：每个长期 Bot 用 `read_personal_memory` / `update_personal_memory` 读写自己的工作约束，最多200字符，可以为空。人从该 Bot 资料的 `个人记忆` 页签直接编辑；版本冲突、重试与修改来源沿用共同记忆规则。两者都只收短、常用、常改、场景无关的工作约束，知识结论与技能文档归档后按需检索。
 
 ## How to get to it (user POV)
 
 - 不关联项目也可以建两个 Bot，例如 `Ada` 与 `Lin`。
 - 打开 `Ada` 的会话，在 `消息` 里请它查询同事。
+- 人直接维护个人记忆：打开 Bot 对话 → Bot 资料 → `个人记忆`，编辑 `个人记忆正文` 后 `保存记忆`；切换页签保留草稿，切换 Bot 不串正文或草稿。
 - 人直接维护共同记忆：侧栏底部 `设置 → 共同记忆` 打开抽屉，`共同记忆正文` 显示全文和最近修改者；`保存记忆` 提交，`撤销修改` 恢复当前正文。无需先创建 Bot。
 
 ## Driving it with the browser
@@ -25,12 +28,16 @@ Bot 工具和下一轮读取验证需要 `live_model_ready`；Web 共同记忆�
   - (d) 带任意参数调用 → `INVALID_ARGUMENT`，错误为 `list_colleagues 不接受参数。`。用返回的 `directory` 请 `Ada` `read_file` 读 `Lin` 项目工作树（`projects/<项目名>` 下）里尚未提交的文件，读得到；`write_file` 写进该目录 → `ENVIRONMENT_PERMISSION_DENIED`，错误含 `path 不在可写入范围内`，`Lin` 的文件不变。
 - **加入事实**：先有 `Ada`，再创建 `Lin`。`Ada` 的 journal 应有 `bot.colleague_joined`，`name` 为 `Lin` 且 `requests_decision` 为 false；不会因此多出给人的回复，名册仍是两个 Bot。
 
-共同记忆增量验证仍从两个 Bot 的 `消息` 输入框进入：请 Ada 读取后保存一句团队约定；Lin 在下次工作时应直接看到该正文，也能读取并修改，Ada 再工作时看到 Lin 的新版本。(a) 数据库最新正文、版本、修改者及两边 journal 的观察一致；(b) 时间线出现对应读写工具卡；(c) 不改工作目录或项目文件，不因更新让空闲同事多出回复；(d) 501字符正文得到 `SHARED_MEMORY_TOO_LONG`，旧版本得到 `SHARED_MEMORY_CHANGED` 并返回最新正文，原文不被覆盖。压缩后继续问同一约定，对照实际模型输入中的 `<shared_memory>`，不能只凭回复猜测注入成功。未实测的子路径单独标注，不以进程测试替代页面证据。
+共同记忆增量验证仍从两个 Bot 的 `消息` 输入框进入：请 Ada 读取后保存一句团队工作约束；Lin 下次工作应直接看到当前正文，也能读取并修改，Ada 再工作时看到 Lin 的新版本。(a) 数据库当前正文、版本、修改者与实际模型请求一致；(b) 时间线只保留显式读写工具记录，不追加 `bot.shared_memory` / `bot.personal_memory` 观察事实；(c) 不改项目文件，不因更新唤醒空闲同事；(d) 501字符正文返回 `SHARED_MEMORY_TOO_LONG`，旧版本返回 `SHARED_MEMORY_CHANGED` 及最新正文。压缩后检查实际请求末尾的 `<working_memory>` 包含当前两份正文，handoff 与历史前言不携带加载的记忆块，不能只凭回复猜测。固定历史、只改记忆时，记忆块之前的请求前缀应保持相同。
 
 Web 编辑增量：输入500个表情，计数是 `500 / 500` 且可保存；501个字显示 `超过500字，请精简后保存。` 且不能保存。清空后可保存，最近修改者为 `用户`；Bot 下次工作直接看到该正文。关闭抽屉、进入模型配置再返回，未保存草稿仍在。另一页面或 Bot 在编辑期间先保存时，显示最新正文并保留自己的草稿，`保存记忆` 禁用；点 `已核对，继续编辑` 后才能按新版本保存。GET/PUT `/api/shared-memory` 与页面一致；未知或失效 Web 连接不能写入，重投同一次成功操作不增加版本。Web 编辑与读取本身不调用模型。
 
 
+个人记忆增量：Ada 从工具实际读取并保存个人约束，用户随后从页面修订；Ada 下一次判断应读到新正文，Lin 的个人记忆保持为空，共同正文也不变。检查 `GET /api/agents/<id>/memory`、`GET /api/shared-memory`、实际模型请求和操作结果。200个表情按200字符计数且可保存，201字禁止保存；清空可保存。用户编辑草稿期间 Bot 先写入新版本，应展示新正文、保留草稿并禁止保存，核对后才能继续。改名及服务重启保留归属；缺失或删除的 Bot、失效连接不能写入。不得以自动化测试代替页面子路径，未实测的范围单独注明。
+
 ## Gotchas
+
+2026-10-27 个人记忆与独立加载增量（Windows Chrome、隔离 home、真实 DeepSeek Flash）：个人记忆工具读取、合并与替换约束，页面编辑后的下一次判断直接读取新正文，第二名 Bot 的个人记忆保持为空；共同正文未被个人操作修改。页面200字符计数、201字禁止保存，以及 Bot 更新期间保留用户草稿、核对新版本后保存均通过；桌面与390×844资料抽屉可用。一次真实 compact 后，核对实际新窗口请求末尾包含当前两份正文，压缩请求与历史前言没有加载的记忆块，也没有新增记忆观察事件。工作约束／知识沉淀／任务进度分类样本通过且未写入。证据在任务 worktree 的 `.tools/memory-verify-evidence/`；清空、缺失身份、失效连接、改名和重启由自动化覆盖，未在页面逐项重跑；未验证其他系统页面、长期维护遗漏率或其他模型。
 
 2026-10-24 起负责方向已移除；以下声明方向验证仅为旧版本历史，不是当前入口。本次隔离 Web、真实 DeepSeek 从页面调用 `list_colleagues`，返回名字、目录、项目、状态与活动时间，不再带方向；声明工具和保存接口已删除。源码组装的身份与工具说明对照留在 `.tools/remove-direction/evidence/context-audit.json`，没有将它冒称为真实 Compact 验证。本轮未重验共同记忆页面或越权写入。
 

@@ -19,6 +19,7 @@ from konden.assistant.subagent.subagent import DelegateIntent, task_fact_argumen
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
+from konden.assistant.personal_memory import personal_memory_store, UpdatePersonalMemory
 from konden.assistant.artifacts import FileArtifactGateway
 from konden.paths import KondenHome
 from konden.filesystem.registry import WorkspaceRegistry
@@ -69,12 +70,16 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
             lambda: (self.root / "compact_started").exists() and len(self.outputs) == 1
         )
 
-    async def test_bot_rollover_restates_shared_memory_updated_during_handoff(self):
+    async def test_memories_load_after_rollover_without_entering_compact_history(self):
         memory = SharedMemoryStore(self.home.state_root / "shared_memory.sqlite")
         memory.update(UpdateSharedMemory(version=0, content="旧的团队约定"),
                       author="Lin", source="bot:lin", operation_id="before")
         ada = await self.host.create_agent(name="Ada")
         await until(lambda: (self.root / "compact_started").exists() and len(self.outputs) == 1)
+        personal_memory_store(self.home, ada).update(
+            UpdatePersonalMemory(version=0, content="先给判断，再解释取舍。"),
+            author="用户", source="user", operation_id="personal-during",
+        )
         memory.update(UpdateSharedMemory(version=1, content="最新团队约定：共享资源先协调。"),
                       author="Lin", source="bot:lin", operation_id="during")
         await self.host.receive_user_message(ada.session_id, "TAIL_KEEP", delivery_id="tail")
@@ -86,8 +91,14 @@ class CompactTest(unittest.IsolatedAsyncioTestCase):
         requests = [json.loads(line) for line in (self.root / "requests.jsonl").read_text(encoding="utf-8").splitlines()]
         shown = json.dumps(requests[-1], ensure_ascii=False)
         self.assertIn("最新团队约定：共享资源先协调。", shown)
-        self.assertIn("<shared_memory>", shown)
+        self.assertIn("<working_memory>", shown)
+        self.assertIn("先给判断，再解释取舍。", shown)
         self.assertNotIn("旧的团队约定", shown)
+        snapshot = await self.host.request("compact_snapshot", ada.session_id, {})
+        inherited = FileArtifactGateway(self.store.root).for_session(ada.session_id).read(snapshot["inherited"], 0, 1000000).content
+        self.assertNotIn("<working_memory>", inherited)
+        self.assertNotIn("最新团队约定：共享资源先协调。", inherited)
+        self.assertNotIn("先给判断，再解释取舍。", inherited)
         self.assertTrue(self.host.failures.empty())
 
     async def test_background_rollover_preserves_session_tail_and_delivery_identity(

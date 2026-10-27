@@ -10,7 +10,6 @@ from dataclasses import replace
 from datetime import datetime
 
 from konden.assistant.agents import identity_for_model
-from konden.assistant.shared_memory import project_shared_memory, shared_memory_message
 from konden.assistant.artifacts import (
     is_valid_artifact_id,
     ArtifactNotFoundError,
@@ -515,7 +514,7 @@ def history_bundle(projector, events, session_id):
     return {"raw": raw, "timestamps": timestamps, "artifacts": sorted(artifacts)}
 
 
-def window_preamble(summary, upto, catalog, identity, shared_memory):
+def window_preamble(summary, upto, catalog, identity):
     """A new window restates what earlier facts established before the handoff text."""
     before = []
     if identity is not None:
@@ -533,8 +532,6 @@ def window_preamble(summary, upto, catalog, identity, shared_memory):
                          ensure_ascii=False)
             + "\n</capability_catalog>",
         })
-    if shared_memory is not None:
-        before.append(shared_memory_message(shared_memory))
     return before
 
 
@@ -601,7 +598,6 @@ class CompactBoundary:
             ),
             "catalog": catalog,
             "identity": await self._identity(events),
-            "shared_memory": project_shared_memory(events),
         }
 
     async def _identity(self, events):

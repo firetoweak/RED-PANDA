@@ -35,6 +35,7 @@ from konden.assistant.context.projection import (
     externalize_tool_result,
 )
 from konden.assistant.context.prompt import DEFAULT_ASSISTANT_PROMPT
+from konden.assistant.context.memory import MemoryContext
 from konden.assistant.toolsets import ToolSurface
 from konden.assistant.management import ManagementSurface
 from konden.assistant.subagent.subagent import SubAgentHost
@@ -233,8 +234,10 @@ class JournalBackedLlmDecisionMaker:
         loop_guard: LoopGuard,
         preview: PreviewEmitter,
         exclusive_tool_names: AbstractSet[str] = frozenset(),
+        memory: MemoryContext | None = None,
     ) -> None:
         self._exclusive_tool_names = exclusive_tool_names
+        self._memory = memory
         self._journal = journal
         self._llm = llm
         self._model = model
@@ -413,6 +416,7 @@ class JournalBackedLlmDecisionMaker:
             prepared, notice = self.with_loop_guard(
                 prepared, events, frame.observed_journal_position
             )
+            messages = [*prepared.messages, *(self._memory.messages() if self._memory is not None else [])]
         finally:
             _LOGGER.info("context preparation timing", extra={
                 "stage": "system", "operation": "context_prepare",
@@ -454,7 +458,7 @@ class JournalBackedLlmDecisionMaker:
         try:
             if show_preview:
                 result = await self._llm.chat(
-                    prepared.messages,
+                    messages,
                     model,
                     tools=schemas or None,
                     on_content_delta=on_content_delta,
@@ -463,7 +467,7 @@ class JournalBackedLlmDecisionMaker:
                 )
             else:
                 result = await self._llm.chat(
-                    prepared.messages,
+                    messages,
                     model,
                     tools=schemas or None,
                     **options,
@@ -530,7 +534,7 @@ class JournalBackedLlmDecisionMaker:
             "request": {
                 "projector": "model-context/v1",
                 "model": model,
-                "messages": prepared.messages,
+                "messages": messages,
                 "tools": schemas or None,
             },
             "response": {
