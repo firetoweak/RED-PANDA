@@ -24,7 +24,8 @@ from tests.cli.fakes import FakeExecutor, make_result
 class ReleaseFlowTestBase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        # macOS 的 /var/folders 是指向 /private/var 的软链，路径比较统一用解析后的形式
+        self.root = Path(self.temporary.name).resolve()
         self.home = KondenHome(self.root / ".konden")
         self.home.initialize()
         self.executor = FakeExecutor()
