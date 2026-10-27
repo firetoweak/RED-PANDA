@@ -165,6 +165,7 @@ it("解散其他群聊不离开当前 Bot 会话", async () => {
 
 it("Bot 和群聊可混放分组，折叠与归属刷新保留，删除分组不删除条目", async () => {
   browserStubs();
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   queries.workspaces = [workspace("organize", "项目")];
   queries.agents = [agent({ session_id: "ada", name: "Ada", workspace_id: "organize" })];
   queries.groups = [{ group_id: "chat", name: "开发群", members: ["Ada", "Lin"] }];

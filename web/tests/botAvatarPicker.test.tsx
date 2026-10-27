@@ -17,6 +17,7 @@ function createStore() {
   });
 }
 beforeEach(() => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
   const NativeRequest = Request;
   vi.stubGlobal("Request", class extends NativeRequest {
     constructor(input: RequestInfo | URL, init?: RequestInit) {

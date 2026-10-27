@@ -8,6 +8,7 @@ import type { AgentRosterEntry, GroupSummary } from "../../api/contracts";
 import { useAppSelector } from "../../app/hooks";
 import { AgentStatus } from "./AgentStatus";
 import { BotAvatar } from "../conversation/ChatPresentation";
+import { createClientId } from "../conversation/clientId";
 import { RemoveConversationModal, type RemovalTarget } from "./RemoveConversationModal";
 
 const organizationSchema = z.object({
@@ -69,7 +70,7 @@ export function BotRoster({ agents, chats, attentionSessionIds, sessionId, group
 
   function save(name: string) {
     if (activeEditing === null) return;
-    const id = activeEditing.id ?? crypto.randomUUID();
+    const id = activeEditing.id ?? createClientId();
     setOrganization((current) => ({ ...current,
       sections: activeEditing.id === null ? [...current.sections, { id, name, collapsed: false }]
         : current.sections.map((section) => section.id === id ? { ...section, name } : section),
