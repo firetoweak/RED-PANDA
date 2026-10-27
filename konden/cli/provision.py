@@ -74,6 +74,27 @@ class ProvisionedCli:
     install_root: Path
 
 
+async def resolve_release_tag(
+    source: CliSourceRef,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    timeout_seconds: float = 30.0,
+) -> str:
+    """把 owner/repo（不带版本时取 latest）解析成确定的 tag，供 propose 冻结。
+
+    只查 Release 元数据，不下载任何归档，因此可以放在审批之前。
+    """
+    owner, repository = _split_locator(source.locator)
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=timeout_seconds,
+        transport=transport,
+        headers={"Accept": "application/vnd.github+json"},
+    ) as client:
+        release = await _fetch_release(client, owner, repository, source.requested_version)
+        return _require_str(release.get("tag_name"), "tag_name")
+
+
 async def provision_github_release(
     cli_id: str,
     source: CliSourceRef,

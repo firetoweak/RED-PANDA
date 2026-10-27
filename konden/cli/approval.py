@@ -185,7 +185,7 @@ class CliInstallApprovalHandler:
                 CliSourceRef.from_dict(dict(source)),
                 cast(str, resolved_path),
             )
-        except (CliAlreadyInstalledError, CliInputError) as exc:
+        except (CliAlreadyInstalledError, CliInputError, CliSourceError) as exc:
             return ControlApprovalExecution(
                 False,
                 f"CLI `{name}` 登记未执行：{exc}",
