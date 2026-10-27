@@ -117,17 +117,28 @@ async def provision_github_release(
         version = tag.lstrip("vV")
         assets = _release_assets(release)
         asset = select_asset(assets, platform_key=_platform_key(), arch_key=_arch_key())
-        payload = await _download(client, asset["browser_download_url"], max_download_bytes)
-        checksum_asset = select_checksum_asset(assets)
+        # 先取校验文件（几 KB），再下载归档：校验不通过就不浪费带宽
+        expected = None
+        checksum_asset = select_checksum_asset(assets, str(asset.get("name") or ""))
         if checksum_asset is not None:
-            checksums = _parse_checksums(
-                (await _download(client, checksum_asset["browser_download_url"], max_download_bytes)).decode(
-                    "utf-8", errors="replace"
+            checksum_text = (
+                await _download(
+                    client, checksum_asset["browser_download_url"], max_download_bytes
                 )
-            )
-            expected = checksums.get(str(asset["name"]).casefold())
+            ).decode("utf-8", errors="replace")
+            parsed_checksums = _parse_checksums(checksum_text)
+            expected = parsed_checksums.get(str(asset["name"]).casefold())
+            if expected is None and len(parsed_checksums) == 1:
+                # 伴随文件里可能写的是归档内部路径（zellij 写的是 target/release/zellij.exe），
+                # 只有一个条目时它必然描述的就是这个归档。
+                expected = next(iter(parsed_checksums.values()))
             if expected is None:
-                raise CliSourceError(f"校验文件里没有 {asset['name']} 的 sha256")
+                raise CliSourceError(
+                    f"校验文件 {checksum_asset.get('name')} 里没有 "
+                    f"{asset['name']} 的 sha256"
+                )
+        payload = await _download(client, asset["browser_download_url"], max_download_bytes)
+        if expected is not None:
             actual = hashlib.sha256(payload).hexdigest()
             if actual != expected:
                 raise CliSourceError(f"{asset['name']} 校验失败：期望 {expected}，实际 {actual}")
@@ -199,11 +210,41 @@ def _foreign_token(
     return any(token in lowered for token in others)
 
 
-def select_checksum_asset(assets: list[dict[str, Any]]) -> dict[str, Any] | None:
+_CHECKSUM_SUFFIXES = (".sha256", ".sha256sum", ".sha512", ".sha", ".checksums", ".checksums.txt")
+
+
+def select_checksum_asset(
+    assets: list[dict[str, Any]], asset_name: str
+) -> dict[str, Any] | None:
+    """挑与选中归档配对的校验文件。
+
+    优先同名伴随文件（`<归档>.sha256` / `<归档>.sha256sum` 等）；
+    没有伴随文件时退化到聚合的 checksums 文件（里面按文件名列多行）。
+    """
+    wanted = asset_name.casefold()
+    stem = wanted.rsplit(".", 1)[0] if "." in wanted else wanted
+    exact: list[dict[str, Any]] = []
+    stem_matched: list[dict[str, Any]] = []
+    aggregates: list[dict[str, Any]] = []
     for asset in assets:
-        name = str(asset.get("name") or "").casefold()
-        if asset.get("browser_download_url") and any(hint in name for hint in _CHECKSUM_HINTS):
-            return asset
+        name = str(asset.get("name") or "")
+        lowered = name.casefold()
+        if not lowered or not asset.get("browser_download_url"):
+            continue
+        if wanted and any(lowered == wanted + suffix for suffix in _CHECKSUM_SUFFIXES):
+            exact.append(asset)
+        elif stem and any(lowered == stem + suffix for suffix in _CHECKSUM_SUFFIXES):
+            # zellij 这类把归档扩展名去掉：`x86_64-pc-windows-msvc.zip` 配 `.sha256sum`
+            stem_matched.append(asset)
+        elif any(hint in lowered for hint in _CHECKSUM_HINTS) and not any(
+            token in lowered
+            for tokens in _PLATFORM_TOKENS.values()
+            for token in tokens
+        ):
+            aggregates.append(asset)
+    for group in (exact, stem_matched, aggregates):
+        if group:
+            return group[0]
     return None
 
 
@@ -267,26 +308,69 @@ async def _fetch_release(
     repository: str,
     requested_version: str | None,
 ) -> dict[str, Any]:
+    """按版本取 Release。
+
+    tag 命名没有统一约定（`v1.2.3` 和 `1.2.3` 都常见），所以按候选顺序逐个试，
+    别硬拼前缀：resolve 阶段拿到的就是真实 tag，直接命中第一个候选。
+    """
     if requested_version:
-        tag = requested_version if requested_version.startswith(("v", "V")) else f"v{requested_version}"
-        url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/tags/{tag}"
-    else:
-        url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/latest"
+        tags = _tag_candidates(requested_version)
+        for tag in tags:
+            url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/tags/{tag}"
+            payload = await _get_release(client, url, f"{owner}/{repository} 的 tag {tag}")
+            if payload is not None:
+                return payload
+        raise CliSourceError(
+            f"取 Release 失败：{owner}/{repository} 没有 tag {' 或 '.join(tags)}（HTTP 404）"
+        )
+    url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/latest"
+    payload = await _get_release(client, url, f"{owner}/{repository} 的最新 Release")
+    if payload is None:
+        raise CliSourceError(
+            f"取 Release 失败：{owner}/{repository} 没有可用的 Release（HTTP 404）"
+        )
+    return payload
+
+
+def _tag_candidates(version: str) -> list[str]:
+    stripped = version.strip()
+    alternate = (
+        stripped[1:] if stripped[:1] in {"v", "V"} else f"v{stripped}"
+    )
+    candidates = [stripped]
+    if alternate and alternate != stripped:
+        candidates.append(alternate)
+    return candidates
+
+
+async def _get_release(
+    client: httpx.AsyncClient,
+    url: str,
+    label: str,
+) -> dict[str, Any] | None:
+    """取一个 Release；返回 None 表示 404（交给调用方决定下一步）。"""
     try:
         response = await client.get(url)
-        response.raise_for_status()
-        payload = response.json()
-    except httpx.HTTPStatusError as exc:
-        raise CliSourceError(
-            f"取 Release 失败：{owner}/{repository} HTTP {exc.response.status_code}"
-        ) from exc
     except httpx.HTTPError as exc:
         raise CliSourceError(
-            f"取 Release 失败：{owner}/{repository} ({type(exc).__name__})。"
+            f"取 Release 失败：{label} 网络错误（{type(exc).__name__}）。"
             "网络需要代理时请设置 HTTPS_PROXY。"
         ) from exc
+    if response.status_code == 404:
+        return None
+    if response.status_code in {403, 429}:
+        if response.headers.get("x-ratelimit-remaining") == "0":
+            reset = response.headers.get("x-ratelimit-reset", "未知")
+            raise CliSourceError(
+                f"取 Release 失败：GitHub API 触发限流（匿名每小时 60 次，"
+                f"重置时间 {reset}）。稍后重试或配置 GITHUB_TOKEN：{label}"
+            )
+        raise CliSourceError(f"取 Release 失败：{label} 被拒绝（HTTP {response.status_code}）")
+    if response.status_code >= 400:
+        raise CliSourceError(f"取 Release 失败：{label} HTTP {response.status_code}")
+    payload = response.json()
     if not isinstance(payload, dict):
-        raise CliSourceError("Release 响应不是 object")
+        raise CliSourceError(f"取 Release 失败：{label} 响应不是 object")
     return payload
 
 
@@ -398,7 +482,10 @@ def _extract_tar(payload: bytes, destination: Path) -> None:
 
 def _safe_target(destination: Path, member_name: str) -> Path | None:
     """拒绝绝对路径与 .. 穿越；返回落盘目标。"""
-    normalized = member_name.replace("\\", "/").lstrip("/")
+    raw = member_name.replace("\\", "/")
+    if raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
+        return None
+    normalized = raw
     if not normalized or normalized.startswith("../") or "/../" in normalized:
         return None
     target = (destination / normalized).resolve()
