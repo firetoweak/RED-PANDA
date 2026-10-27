@@ -118,7 +118,9 @@ async def provision_github_release(
         assets = _release_assets(release)
         asset = select_asset(assets, platform_key=_platform_key(), arch_key=_arch_key())
         # 先取校验文件（几 KB），再下载归档：校验不通过就不浪费带宽
-        expected = None
+        archive_digest: str | None = None
+        inner_target: str | None = None
+        inner_digest: str | None = None
         checksum_asset = select_checksum_asset(assets, str(asset.get("name") or ""))
         if checksum_asset is not None:
             checksum_text = (
@@ -126,26 +128,27 @@ async def provision_github_release(
                     client, checksum_asset["browser_download_url"], max_download_bytes
                 )
             ).decode("utf-8", errors="replace")
-            parsed_checksums = _parse_checksums(checksum_text)
-            expected = parsed_checksums.get(str(asset["name"]).casefold())
-            if expected is None and len(parsed_checksums) == 1:
-                # 伴随文件里可能写的是归档内部路径（zellij 写的是 target/release/zellij.exe），
-                # 只有一个条目时它必然描述的就是这个归档。
-                expected = next(iter(parsed_checksums.values()))
-            if expected is None:
+            archive_digest, inner_target, inner_digest = _expected_digest(
+                _parse_checksums(checksum_text), str(asset["name"])
+            )
+            if archive_digest is None and inner_target is None:
                 raise CliSourceError(
                     f"校验文件 {checksum_asset.get('name')} 里没有 "
                     f"{asset['name']} 的 sha256"
                 )
         payload = await _download(client, asset["browser_download_url"], max_download_bytes)
-        if expected is not None:
+        if archive_digest is not None:
             actual = hashlib.sha256(payload).hexdigest()
-            if actual != expected:
-                raise CliSourceError(f"{asset['name']} 校验失败：期望 {expected}，实际 {actual}")
+            if actual != archive_digest:
+                raise CliSourceError(
+                    f"{asset['name']} 校验失败：期望 {archive_digest}，实际 {actual}"
+                )
 
     destination = install_root / cli_id / _safe_segment(version)
     _reset_directory(destination)
     _extract(payload, str(asset["name"]), destination)
+    if inner_target is not None and inner_digest is not None:
+        _verify_inner_file(destination, inner_target, inner_digest, str(asset["name"]))
     executable = locate_executable(destination, cli_id)
     if executable is None:
         raise CliSourceError(
@@ -397,6 +400,49 @@ def _release_assets(release: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(assets, list):
         return []
     return [asset for asset in assets if isinstance(asset, dict)]
+
+
+def _expected_digest(
+    checksums: dict[str, str], asset_name: str
+) -> tuple[str | None, str | None, str | None]:
+    """判断校验值描述的是归档本身，还是归档里的某个文件。
+
+    返回 (归档摘要, 归档内路径, 该文件摘要)。zellij 这类伴随文件写的是
+    `target/release/zellij.exe`，只可能在解压后校验。
+    """
+    lowered = asset_name.casefold()
+    if lowered in checksums:
+        return checksums[lowered], None, None
+    if len(checksums) == 1:
+        only_name, only_digest = next(iter(checksums.items()))
+        if "/" in only_name or "\\" in only_name:
+            return None, only_name, only_digest
+        return only_digest, None, None
+    return None, None, None
+
+
+def _verify_inner_file(
+    destination: Path,
+    inner_path: str,
+    expected: str,
+    archive_name: str,
+) -> None:
+    relative = inner_path.replace("\\", "/")
+    while relative.startswith("./"):
+        relative = relative[2:]
+    candidate = destination / relative
+    if not candidate.is_file():
+        matches = [path for path in destination.rglob(Path(relative).name) if path.is_file()]
+        candidate = matches[0] if len(matches) == 1 else None
+    if candidate is None or not candidate.is_file():
+        raise CliSourceError(
+            f"{archive_name} 的校验文件指向归档内 {inner_path}，解压后没有找到"
+        )
+    actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    if actual != expected:
+        raise CliSourceError(
+            f"{archive_name} 内 {inner_path} 校验失败：期望 {expected}，实际 {actual}"
+        )
 
 
 def _parse_checksums(text: str) -> dict[str, str]:

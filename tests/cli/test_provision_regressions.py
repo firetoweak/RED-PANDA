@@ -169,17 +169,44 @@ class ChecksumPairingTest(ProvisionTransportTest):
         self.assertFalse((self.install_root / "gh").exists())
 
     async def test_single_entry_companion_may_name_inner_path(self) -> None:
-        """zellij 的 .sha256sum 里写的是 target/release/zellij.exe，单条目时按它校验。"""
+        """zellij 的 .sha256sum 写的是归档内路径，只能在解压后校验该文件。"""
         companion = f"{ARCHIVE_NAME}.sha256sum"
+        inner_digest = hashlib.sha256(b"binary").hexdigest()
         transport = self._serve(
             {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
             {
-                companion: f"{self.digest}  target/release/gh.exe\n".encode(),
+                companion: f"{inner_digest}  bin/gh.exe\n".encode(),
                 ARCHIVE_NAME: self.archive,
             },
         )
         provisioned = await self._provision("v1.0.0", transport)
         self.assertTrue(provisioned.resolved_path.endswith("gh.exe"))
+
+    async def test_inner_file_mismatch_is_rejected(self) -> None:
+        companion = f"{ARCHIVE_NAME}.sha256sum"
+        transport = self._serve(
+            {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
+            {
+                companion: f"{'0' * 64}  bin/gh.exe\n".encode(),
+                ARCHIVE_NAME: self.archive,
+            },
+        )
+        with self.assertRaises(CliSourceError) as caught:
+            await self._provision("v1.0.0", transport)
+        self.assertIn("校验失败", str(caught.exception))
+
+    async def test_inner_path_missing_from_archive_is_reported(self) -> None:
+        companion = f"{ARCHIVE_NAME}.sha256sum"
+        transport = self._serve(
+            {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
+            {
+                companion: f"{'0' * 64}  target/release/nope.exe\n".encode(),
+                ARCHIVE_NAME: self.archive,
+            },
+        )
+        with self.assertRaises(CliSourceError) as caught:
+            await self._provision("v1.0.0", transport)
+        self.assertIn("没有找到", str(caught.exception))
 
     def test_parse_checksums_ignores_non_digest_lines(self) -> None:
         parsed = parse_checksums(f"{self.digest}  {ARCHIVE_NAME}\nnot a line\n")
