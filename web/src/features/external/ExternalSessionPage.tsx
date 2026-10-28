@@ -9,6 +9,7 @@ import { BotAvatar, ChatPresentation, MessageQuote, messageReference } from "../
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
 import { useMessageReading } from "../conversation/useMessageReading";
+import { CodexContinuation } from "./CodexContinuation";
 
 const EMPTY_MESSAGES: ExternalConversationMessage[] = [];
 
@@ -42,6 +43,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
           </Group>
           <Text c="dimmed" fz={11} className="external-session-last-activity" title={formatMessageTime(session.last_activity_at).full}>最近活动 {formatMessageTime(session.last_activity_at).short}</Text>
         </header>
+        <CodexContinuation identity={identity} active={session.active} value={conversation.codex} />
         {session.peers.length === 0 ? null : <div className="external-session-controls">
           <Select aria-label="查看与哪位 Bot 的对话" value={bot} allowDeselect={false}
             data={[{ value: "all", label: "全部 Bot 的对话" }, ...session.peers.map((peer) => ({ value: peer.session_id, label: peer.name + (peer.deleted ? "（已退出）" : "") }))]}

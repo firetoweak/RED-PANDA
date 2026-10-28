@@ -287,6 +287,27 @@ export const kondenApi = createApi({
       transformResponse: (value: unknown) => externalConversationSchema.parse(value),
       providesTags: ["ExternalSessions"],
     }),
+    setExternalCodex: build.mutation<ExternalConversation, {
+      connectionId: string; identity: string; target: { thread_id: string; executable: string } | null;
+    }>({
+      query: ({ connectionId, identity, target }) => ({
+        url: `/external-sessions/${encodeURIComponent(identity)}/codex`,
+        method: target === null ? "DELETE" : "PUT",
+        body: { connection_id: connectionId, ...target },
+      }),
+      transformResponse: (value: unknown) => externalConversationSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalSessions"] : [],
+    }),
+    retryExternalCodex: build.mutation<ExternalConversation, { connectionId: string; identity: string }>({
+      query: ({ connectionId, identity }) => ({
+        url: `/external-sessions/${encodeURIComponent(identity)}/codex/retry`,
+        method: "POST", body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => externalConversationSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalSessions"] : [],
+    }),
     createExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string }>({
       query: ({ connectionId }) => ({
         url: "/external-connections", method: "POST", body: { connection_id: connectionId },
@@ -643,6 +664,8 @@ export const {
   useGetExternalConnectionsQuery,
   useGetExternalSessionsQuery,
   useGetExternalConversationQuery,
+  useSetExternalCodexMutation,
+  useRetryExternalCodexMutation,
   useCreateExternalConnectionMutation,
   useRevokeExternalConnectionMutation,
   useGetBackgroundCommandsQuery,

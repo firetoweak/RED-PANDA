@@ -27,6 +27,7 @@ from konden.assistant.host.agent_groups import GroupDissolvedError, GroupNameTak
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from konden.assistant.host.agent_projects import ProjectLinkRefused
 from konden.assistant.host.external_messages import ExternalConnectionNotFound, ExternalSessionNotFound
+from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexTarget
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.model_connection import check_model_connection
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
@@ -93,6 +94,10 @@ class ConnectionRequest(BaseModel):
 class AbsenceAnswer(ConnectionRequest):
     session_id: str = Field(min_length=1)
     action: Literal["continue", "stop"]
+
+
+class CodexContinuationRequest(ConnectionRequest, CodexTarget):
+    pass
 
 
 class ModelSettingsRequest(ConnectionRequest):
@@ -555,10 +560,28 @@ def create_web_app(
 
     @app.get("/api/external-sessions/{identity}")
     async def external_session(identity: str, request: Request):
-        try:
-            return await _channel(request).external_session(identity)
-        except ExternalSessionNotFound:
-            return JSONResponse(status_code=404, content={"detail": "没有这个外部会话。"})
+        return await _channel(request).external_session(identity)
+
+    @app.exception_handler(ExternalSessionNotFound)
+    async def external_session_missing(request, error):
+        return JSONResponse(status_code=404, content={"detail": "没有这个外部会话。"})
+
+    @app.exception_handler(CodexContinuationInvalid)
+    async def codex_continuation_invalid(request, error):
+        return JSONResponse(status_code=422, content={"detail": str(error)})
+
+    @app.put("/api/external-sessions/{identity}/codex")
+    async def configure_external_codex(identity: str, body: CodexContinuationRequest, request: Request):
+        target = CodexTarget(thread_id=body.thread_id, executable=body.executable)
+        return await _channel(request).configure_external_codex(body.connection_id, identity, target)
+
+    @app.delete("/api/external-sessions/{identity}/codex")
+    async def disable_external_codex(identity: str, body: ConnectionRequest, request: Request):
+        return await _channel(request).configure_external_codex(body.connection_id, identity, None)
+
+    @app.post("/api/external-sessions/{identity}/codex/retry")
+    async def retry_external_codex(identity: str, body: ConnectionRequest, request: Request):
+        return await _channel(request).retry_external_codex(body.connection_id, identity)
 
     @app.post("/api/external-connections", status_code=201)
     async def create_external_connection(body: ConnectionRequest, request: Request):
