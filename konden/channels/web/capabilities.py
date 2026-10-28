@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from konden.cli.registry import CliRegistry
 from konden.mcp.application import McpApplicationService
-from konden.mcp.bundled import bundled_servers
 from konden.mcp.models import McpServerRecord
 from konden.skills.application import SkillApplicationService
 
@@ -44,7 +43,7 @@ class CapabilityViews:
             }
             for record in await self.skills.list_skills()
         )
-        servers = [_mcp_view(record, "builtin") for record in bundled_servers()]
+        servers = [_mcp_view(record, "builtin") for record in self.mcp.bundled_servers()]
         servers.extend(
             _mcp_view(item.record, "installed")
             for item in await self.mcp.list_servers()

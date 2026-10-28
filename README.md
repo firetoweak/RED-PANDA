@@ -80,7 +80,7 @@ sh scripts/start.sh
 
 Mac 的后台任务须保留在命令的进程组内：启动服务时使用前台模式，再由 konden 转后台；自行脱离进程组的守护程序不在自动停止范围内。
 
-Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用专用 Chrome，进行浏览器操作与真实流程验证。搜索优先使用你已启用的搜索 MCP，其次使用内置 Exa；配置、准备检查、数据位置与其他入口见[运行指南](docs/运行指南.md)。
+Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用专用 Chrome，进行浏览器操作与真实流程验证。搜索优先使用你已启用的搜索 MCP，其次使用已配置密钥的内置 DeepSeek，最后使用浏览器；配置、数据位置与其他入口见[运行指南](docs/运行指南.md)。
 
 ## 外部会话接入（MCP）
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +25,7 @@ from konden.mcp.adapter import (
 from konden.mcp.client_manager import McpClientError, McpClientManager, McpToolNotStartedError
 from konden.mcp.registry import McpRegistry
 from konden.mcp.models import McpServerRecord
-from konden.mcp.bundled import SEARCH_SERVER_ID
+from konden.mcp.bundled import BROWSER_SERVER_IDS, DEEPSEEK_SERVER_ID, BUILTIN_SERVER_IDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,15 +42,15 @@ class McpToolsetProvider:
         registry: McpRegistry,
         client_manager: McpClientManager,
         *,
-        bundled_servers: tuple[McpServerRecord, ...] = (),
+        bundled_servers: Callable[[], tuple[McpServerRecord, ...]] = tuple,
     ) -> None:
         self._registry = registry
         self._client_manager = client_manager
-        self._bundled = {record.id: record for record in bundled_servers}
+        self._bundled_servers = bundled_servers
 
     def descriptors(self, *, read_only_only: bool = False) -> tuple[ToolsetDescriptor, ...]:
         records = tuple(
-            record for record in (*self._bundled.values(), *self._registry.snapshot())
+            record for record in (*self._bundled_servers(), *self._registry.snapshot())
             if record.enabled and (not read_only_only or record.read_only)
         )
         descriptors: list[ToolsetDescriptor] = []
@@ -66,14 +66,15 @@ class McpToolsetProvider:
         return tuple(sorted(descriptors, key=lambda item: item.id))
 
     async def _record(self, server_id: str) -> McpServerRecord | None:
-        if server_id in self._bundled:
-            return self._bundled[server_id]
+        for record in self._bundled_servers():
+            if record.id == server_id:
+                return record
         return await self._registry.get(server_id)
 
     def _connection_hint(self, server_id: str) -> str:
-        if server_id == SEARCH_SERVER_ID:
-            return "Exa 检索暂不可用；加载 web-research Skill，尚未尝试用户已配置的检索服务时优先使用它，否则使用浏览器兜底。免费服务限流时不要连续重试。"
-        if server_id in self._bundled:
+        if server_id == DEEPSEEK_SERVER_ID:
+            return "DeepSeek 检索暂不可用；请报告错误详情，可按 web-research Skill 使用浏览器。"
+        if server_id in BROWSER_SERVER_IDS:
             return "内置浏览器连接失败；请报告错误详情。环境未准备好时，请用户在本应用的源码目录重新运行 scripts/setup.ps1（Windows）或 scripts/setup.sh（Linux/macOS）。"
         return "不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。"
 
@@ -208,7 +209,9 @@ class McpToolsetProvider:
                     "code": "MCP_SERVER_DISABLED",
                     "data": {"server_id": record_id},
                     "error": f"MCP Server 不可用或已停用: {record_id}",
-                    "hint": "先 load_management_tools 加载 mcp，用 list_mcp_servers 查看状态，再用 propose_mcp_recovery 申请恢复。",
+                    "hint": ("请在 connections.json 中填写 deepseek.api_key，或选择其他检索服务。"
+                             if record_id == DEEPSEEK_SERVER_ID else
+                             "先 load_management_tools 加载 mcp，用 list_mcp_servers 查看状态，再用 propose_mcp_recovery 申请恢复。"),
                 }
             if record.revision != expected_revision:
                 return {
@@ -243,7 +246,7 @@ class McpToolsetProvider:
                     exc, error_summary=summary,
                     not_started=isinstance(exc, McpToolNotStartedError),
                 )
-                if record_id in self._bundled:
+                if record_id in BUILTIN_SERVER_IDS:
                     result["hint"] += " " + self._connection_hint(record_id)
                 return result
             from mcp.types import InputRequiredResult

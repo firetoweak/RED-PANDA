@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
@@ -61,11 +62,12 @@ class McpApplicationService:
         client_manager: McpClientManager,
         content_service: McpContentService | None = None,
         *,
-        bundled_servers: tuple[McpServerRecord, ...] = (),
+        bundled_servers: Callable[[], tuple[McpServerRecord, ...]] = tuple,
     ) -> None:
         self.registry = registry
         self.secret_store = secret_store
         self.client_manager = client_manager
+        self.bundled_servers = bundled_servers
         self.content = (
             McpContentService(registry, client_manager)
             if content_service is None
