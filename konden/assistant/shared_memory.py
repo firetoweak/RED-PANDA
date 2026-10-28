@@ -32,9 +32,12 @@ SHARED_MEMORY_SCHEMAS = [
     {"type": "function", "function": {
         "name": UPDATE_SHARED_MEMORY,
         "description": (
-            "修改所有 Bot 共享的工作约束。先读当前正文，再整理为完整的新正文，最多500字，可为空。"
+            "修改所有 Bot 共享的工作约束。所有 Bot 都会看到同一份正文，写一次即可供整个团队共同遵守。"
+            "用户的偏好、团队约定、需要同事共同遵守的要求写在这里；"
+            "需要所有同事遵守时，写入共同记忆即可，不必逐个通知同事各自记录。"
+            "不确定是否只适用于你时，写共同记忆。先读当前正文，再整理为完整的新正文，最多500字，可为空。"
             + MEMORY_RULES
-            + "只保存明确适用于所有 Bot 的约束；针对你自己的约束使用个人记忆。超限不会截断或保存。"
+            + "仅适用于你自己的约束使用个人记忆。超限不会截断或保存。"
             "若返回 SHARED_MEMORY_CHANGED，先阅读返回的最新正文，再调整后重试。"
         ),
         "parameters": UpdateSharedMemory.model_json_schema(),
