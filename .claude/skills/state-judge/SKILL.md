@@ -1,11 +1,6 @@
 ---
 name: state-judge
-description: >-
-  Use when designing or reviewing stateful systems (databases, journals,
-  workflows, agents): checks correctness under evidenced retry, crash, and concurrency risks
-  (idempotency, consistency, atomicity) and data-access efficiency (repeated
-  reads/writes, N+1 and slow queries, missing or unsafe caching, unbatched
-  writes).
+description: Review stateful changes (persistence, journals, workflows, concurrent actors) for correctness under evidenced retry, crash, or overlap, and for data-access cost on hot paths.
 ---
 # State judge
 
@@ -13,10 +8,10 @@ A proportionate review for persistent systems: protect actual business guarantee
 
 Two parts, one review:
 
-- **Part A: Correctness under relevant failures.** Does state preserve the required business meaning under realistic retry, crash, and overlap?
-- **Part B: Data-access efficiency.** Is storage cost reasonable for the actual workload and expected data growth?
+- **Part A: Correctness under relevant failures.** Does state preserve the required business meaning under realistic retry, crash, and overlap? Questions, additional concerns, and verification options: `references/correctness.md`.
+- **Part B: Data-access efficiency.** Is storage cost reasonable for the actual workload and expected data growth? Questions, red flags, and verification options: `references/efficiency.md`.
 
-Correctness comes first. Never trade Part A for Part B: a cache or batch that breaks idempotency or consistency is a regression, not an optimization.
+Decide which parts the change touches, then read only those references. Correctness comes first. Never trade Part A for Part B: a cache or batch that breaks idempotency or consistency is a regression, not an optimization.
 
 This is design plus targeted verification, not a requirement to add defensive infrastructure or adversarial tests to every stateful change.
 
@@ -34,84 +29,17 @@ An explicit business guarantee or a concrete severe consequence (such as duplica
 
 ## When to run
 
-- Changing persistence, transactions, queues, journals, workflows, or multi-actor control
-- Adding or changing code on a hot path: per-request handlers, loops over records, polling, list/dashboard pages, agent step loops
-- Bugs that only show under retry, crash mid-write, double-submit, or overlapping workers
-- Slowness that grows with data size, request count, or history length
+- Changing persistence, transactions, queues, journals, workflows, or multi-actor control (Part A)
+- Bugs that only show under retry, crash mid-write, double-submit, or overlapping workers (Part A)
+- Adding or changing code on a hot path: per-request handlers, loops over records, polling, list/dashboard pages, agent step loops (Part B)
+- Slowness that grows with data size, request count, or history length (Part B)
 - User says they can judge business meaning but not low-level correctness
 
-## Part A: Correctness questions (only where applicable)
+## Verification
 
-1. **Success boundary**: What durable state and side effects change on success? Which changes must be atomic according to the business contract?
-2. **Idempotency**: Can the same intent actually be retried, replayed, or delivered twice on this path? If so, does repeating it violate the required outcome? Require deduplication only when those semantics call for it.
-3. **Concurrency**: Which actors actually overlap on this state in supported or observed use? Does the existing conflict policy satisfy the business requirement? Do not require serialization, locks, or versioning merely because simultaneous writes are technically possible.
-4. **Partial failure**: Can a reachable interruption leave a materially invalid business state? If so, how is committed state identified and the required recovery achieved? Do not require an in-flight state machine for ordinary writes without such a need.
-5. **Proof**: What focused check would falsify the identified risk or verify the fix? Reuse existing tests when sufficient. Add adversarial tests only for established failure paths.
+Verify only an established risk or meaningful cost. For relevant checks, verify final durable state, side effects, and storage cost as needed, not return codes alone. Don't add guard tests for internal code paths with no external cost source. There is no minimum number of tests; a review may require no new tests or safeguards.
 
-Mark a question not applicable with a brief reason when no relevant trigger or guarantee exists; that is a valid review result.
-
-### Additional concerns (consider only when the workflow supports them)
-
-- **At-least-once delivery**: check the actual queue or retry contract before requiring deduplication.
-- **Read-your-writes / stale reads**: after a write, can another actor still see old state?
-- **Ordering**: does the business require ordering, and can actual delivery violate it?
-- **Poison in-flight**: started work with unknown result is marked unknown, never treated as success or failure.
-- **Cross-boundary transactions**: if DB, filesystem, and network effects must agree, assess existing recovery before considering compensation or an outbox.
-- **Human plus automation overlap**: manual interrupt, rewind, or edit concurrent with agents.
-
-## Part B: Efficiency questions (for relevant workload costs)
-
-1. **Access count**: For one typical operation (one request, one agent step, one page load), how many reads and writes hit each store? Is that number constant, or does it grow with item count, history length, or user count? Write it down, e.g. "3 queries, constant" or "1 + N queries".
-2. **Repeated reads**: Is the same data loaded more than once within one operation (different functions each re-fetching the same row, config, file, or session)? Load once at the boundary and pass it down, or memoize for the scope of that operation.
-3. **Query shape**: Any query inside a loop (N+1)? Any filter, sort, or join without a supporting index? Any full scan, `SELECT *` of wide rows, or loading a whole table or history to use a few fields or the last item? Any unbounded result without a limit or pagination?
-4. **Write pattern**: Are many small writes done one by one where one batched or bulk write would do? Is a whole object or file rewritten to change one field? Are writes repeated with unchanged values?
-5. **Reuse and caching**: Is expensive, stable data (config, schema, compiled templates, permission tables, file metadata) recomputed or re-read on every call? If a cache is added: what is its scope (per operation, per process, shared), what invalidates it, and is any staleness acceptable for this business use? Require only the freshness guarantee the consumer needs.
-
-### Efficiency red flags (name them when seen)
-
-- Query or file read inside a `for` / `map` over records
-- The same getter called repeatedly in one request with no reuse
-- Polling a store in a tight loop instead of waiting on an event or using backoff
-- Cost that grows with total history (re-reading the full log, chat, or journal each step) when only the tail or a summary is needed
-- Count or exists checks done by loading every row
-- Serial network or DB calls that are independent and could run concurrently or be combined
-- A cache keyed so broadly it serves wrong data, or so narrowly it never hits
-- Optimization without measurement: complexity added for a path that is not hot
-
-### Scope discipline for Part B
-
-Only flag an efficiency issue when the path is hot (per request, per loop item, per step) or the cost grows with data size. A one-off startup read or an admin script that runs once does not need tuning. Prefer the simplest fix in this order: remove the duplicate access, then pass already-loaded data down, then batch, then index, and only then cache.
-
-## Verification beyond unit tests
-
-Choose from this menu only to verify an established risk or meaningful cost. These are options, not a mandatory checklist:
-
-| Kind | What it catches |
-| --- | --- |
-| Crash injection mid-write | Half-committed state |
-| Duplicate submit / replay | Missing idempotency |
-| Concurrent interleaving | Races between workers and actors |
-| Restart plus recovery | Incorrect resume from journal or DB |
-| Property / invariant checks | Violations of existing business invariants; do not invent uniqueness or single-writer rules |
-| Chaos on clocks or network | Timeouts and reordering |
-| Query or IO counting (assert at most K queries per operation) | N+1, repeated reads, regressions in access count |
-| Scaling check (run with 10, 100, 1000 items and compare counts or time) | Cost that grows with data size |
-| Query plan inspection (e.g. EXPLAIN) on the main queries | Missing index, full scans |
-| Cache staleness test (change the source, then read through the cache) | Missing or wrong invalidation |
-
-For relevant checks, verify **final durable state, side effects, and storage cost** as needed, not return codes alone. Only add a count or timing test where a real hot path exists; don't add guard tests for internal code paths with no external cost source. There is no minimum number of tests; a review may require no new tests or safeguards.
-
-## How to guide a human who does not read every line
-
-Use these plain-language prompts where relevant:
-
-1. What is the smallest successful transaction?
-2. Can this operation actually repeat, and what should that mean for the business?
-3. Who actually changes this state concurrently, and does that require special handling?
-4. How many times does one operation hit the database or disk, and does that grow with data?
-5. Is anything loaded or computed twice that could be reused, and if something is cached, what makes it refresh?
-
-Clarify unanswered material requirements before proposing a fix. Do not redesign a boundary merely to fill every prompt.
+When guiding a human who does not read every line, use the plain-language prompts in each reference where relevant. Clarify unanswered material requirements before proposing a fix. Do not redesign a boundary merely to fill every prompt.
 
 ## Output format
 
