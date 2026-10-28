@@ -5,7 +5,7 @@ from pathlib import Path
 
 from konden.paths import KondenHome
 from konden.mcp.application import McpApplicationService
-from konden.mcp.bundled import bundled_servers
+from konden.mcp.bundled import create_bundled_servers
 from konden.mcp.client_manager import McpClientManager
 from konden.mcp.content import McpContentService
 from konden.mcp.registry import McpRegistry
@@ -60,7 +60,7 @@ def build_mcp(
         secret_store,
         manager,
         content_service=content,
-        bundled_servers=bundled_servers(task_root),
+        bundled_servers=create_bundled_servers(home, task_root),
     )
     control_operations = (
         ControlOperation(

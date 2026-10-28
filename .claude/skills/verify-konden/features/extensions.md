@@ -8,6 +8,8 @@
 
 - `bundled-browsers`：空安装登记的 Bot 默认可见 `mcp:builtin-chrome-devtools` 与 `mcp:builtin-playwright`；通过 `load_toolset` 按需加载，具体工具下一步才可调用，不产生安装提案或安装记录。每个连接使用独立的无头 Chrome，会话关闭后不保留登录状态；只读子 Agent 的能力目录排除两者。内置能力随产品更新，安装管理清单仍只列用户安装的 Server。
 
+- `deepseek-web-search`：只需在当前 home 的 `connections.json` 填写 `deepseek.api_key`，只读 `mcp:builtin-deepseek` 自动可用，无安装登记或密钥副本。能力清单列为产品内置，启用状态跟随密钥是否填写，没有独立开关；Bot 按需加载 `web_search`、`web_fetch`，来源与错误如实返回。修改密钥后下一次请求生效，清空后从模型目录移除。搜索优先用户配置的搜索 MCP，其次可用的 DeepSeek；浏览器按需补充动态内容、交互与视觉证据，也能在检索服务不可用时搜索。准备环境不探测外部检索服务。
+
 - `bundled-skills`：空数据根无需安装即可在能力目录发现 `builtin:coding` 与 `builtin:git-collaboration`，正文经 `load_skill` 读取，不注入系统提示，也不作为用户安装记录。工作目录的 `.claude/skills/` 在无 Git、无登记项目的 Bot 中同样可发现为 `project:` Skill。验证时让普通 Bot 按目录自定义 Skill 交付文件，并核对调用与真实文件。
 
 - `load`：`load_management_tools`、`load_toolset`、`load_skill`、`read_skill_resource`、`load_cli`。
@@ -46,6 +48,8 @@
   - (b) 模型调用的是 `list_mcp_servers` / `list_installed_skills` / `list_installed_clis`；终端 `/mcp list` 在空 home 打印 `尚未注册任何 MCP Server。`。
   - (c) 列出不写文件。
   - (d) `/mcp list --foo` → `/mcp list 只接受可选参数 --runtime`。
+- **DeepSeek 网页检索**：在隔离 home 只填写官方 Key，从 `能力 → MCP` 展开 `查看 DeepSeek Web Search`，核对产品内置、只读与启用状态，页面与 `GET /api/capabilities` 均不含密钥。创建无项目 Bot，发送 `请联网查找 DeepSeek 网页搜索与抓取 API 的官方文档，读取其中一个官方页面的原文，并给出来源链接。`，核对会话中的真实 Search、Fetch 调用与带来源的回答，确认安装登记与 SecretStore 没有新增项；运行时清空再填回密钥，能力清单随之更新，后续请求仍可用。重启隔离 Web 后回答与调用仍可恢复。认证失败、余额不足、限流与抓取失败由接口边界测试保护；本项没有逐一触发真实服务错误。
+- **检索与浏览器组合**：先发送普通文字查证任务，核对真实搜索、正文与来源；再要求补充原始页面中有助于理解的视觉信息，核对即使检索成功仍能使用浏览器，并把真实图片交付到对话。已有证据足够时要求整理成图示，核对无需再次浏览即可使用已有数据。对照执行过程、`GET /api/sessions/<id>` 与图片附件，文字快照不算实际看图，模型没有查看过的视觉细节不得当作已核实事实。分别记录模型自主选择与用户明确要求的路径，不把单次实测写成必然行为。
 - **安装 Skill（取消后确认）**：准备一个最小 `SKILL.md` 目录，让助手按绝对路径安装 → 待处理条出现 `准备安装 Skill …` 一项 → 点 `取消`。
   - (a) `skills/` 不变。
   - (b) 再次请求后点 `确认` → `skills/` 出现该 skill，`list_installed_skills` 含它；`test_installed_skill` 通过。
@@ -65,6 +69,8 @@
 
 ## Gotchas
 
+- 2026-10-28 检索与图文组合增量：Windows 隔离 Web、真实 DeepSeek Flash，无项目 Bot 的普通查证任务自主使用 Search / Fetch；随后用户要求视觉补充时，真实 Playwright 打开同一官方来源并交付可预览 PNG，没有重复检索。再要求按已有资料画图时，直接渲染 Mermaid，没有追加工具调用。证据 `.tools/verification/web-research-multimodal/evidence/`；后两项为用户明确要求的路径，未验证不同模型的自主视觉补充、真实 Tavily、登录站点或完整性能与费用对比。
+
 2026-10-26 能力清单增量：Windows 隔离 Web，经侧栏真实打开并操作 Skill/MCP/CLI 清单；停用项仍可查，启停持久保存且 MCP 原检测结果不变，断网错误可重试恢复。1440×900、390×844 明暗主题与 220px 侧栏通过。证据留在本地 `.tools/capabilities-evidence/`；无默认模型，未发模型消息，未重验外部服务连接、模型侧安装与完整控制流程。
 
 - Web 端没有 `/mcp` `/skill` 斜杠命令，只能经对话由助手调用工具；斜杠命令只在终端入口生效。CLI 没有斜杠命令，只能经对话。
@@ -83,6 +89,8 @@
 - 2026-10-22 启动恢复增量：隔离 Windows Web、Chrome、真实 DeepSeek；消息框发起本机 Git 的 CLI 登记，页面点击确认后，在批准已写入、执行尚未开始处注入 Worker 退出。正常入口重启后原操作成功，页面显示登记结果；再次重启 Journal 不变，没有重复执行。控制准备、待批准、暂停与执行结果未知的边界由进程回归核对；未重验其他控制操作的实际安装与更新。证据：`.tools/recovery-fixes/startup-web-evidence/`。
 
 - 2026-10-23 浏览器增量：Windows、隔离空安装登记、无项目 Bot、真实 DeepSeek。页面创建的 Bot 首次即发现两项内置 Toolset，真实打开隔离首页、读取标题与截图；重启后重新加载并把两张 PNG 直接保存至个人目录、交付附件。桌面 1440×900 结果与 GET、文件头一致。另以四个真实 MCP 连接核对独立页面状态与截图目录；只读目录过滤、断线结果未知与外部安装 ID 冲突由回归守约。证据 `.tools/browser-evidence/`；Linux 与需要登录的外部网站未实跑。
+
+以下两条为已移除能力的历史记录：内置 Exa 与其准备检查已移除，当前检索顺序以本页的 `deepseek-web-search` 和内置检索 Skill 为准。
 
 - 2026-10-23 默认检索增量：Windows、隔离空安装登记、无项目 Bot、真实 DeepSeek。页面发起中文任务，Bot 加载内置检索 Skill，经 Exa 搜索并读取官网正文；浏览器演练要求本轮不用 Exa，Bot 经 Bing 调整查询、打开官网核对并交付截图。另以产品 MCP 客户端核对技术、场馆与法条三类中文搜索和批量正文读取；已知限流与空返回由回归守约。证据 `.tools/exa-evidence/`；免费额度耗尽后的真实 429、Linux 真实浏览器、不同地区网络未验证。
 

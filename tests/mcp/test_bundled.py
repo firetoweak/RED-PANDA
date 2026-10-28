@@ -1,10 +1,12 @@
 import unittest
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock
 
 from mcp.types import Tool
 
+from konden.llm.config import initial_connections
 from konden.mcp.approval import McpInstallProposalInput
 from konden.mcp.bundled import BROWSER_SERVER_IDS, BUILTIN_SERVER_IDS
 from konden.mcp.client_manager import McpClientError
@@ -19,10 +21,28 @@ def test_browser_catalog_is_available_without_installation_or_connection(tmp_pat
     assembly = build_mcp(home)
     provider = assembly.toolset_provider
     assert {item.id for item in provider.descriptors()} == {
-        "mcp:builtin-chrome-devtools", "mcp:builtin-playwright", "mcp:builtin-exa",
+        "mcp:builtin-chrome-devtools", "mcp:builtin-playwright",
     }
-    assert [item.id for item in provider.descriptors(read_only_only=True)] == ["mcp:builtin-exa"]
+    assert provider.descriptors(read_only_only=True) == ()
     assert assembly.service.registry.snapshot() == ()
+    assert assembly.client_manager._connections == {}
+
+
+def test_deepseek_catalog_tracks_the_existing_connection_without_installation_or_restart(tmp_path):
+    home = KondenHome(tmp_path)
+    assembly = build_mcp(home)
+    provider = assembly.toolset_provider
+    settings = initial_connections()
+    settings["deepseek"]["api_key"] = "private-deepseek-key"
+    home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
+    descriptors = provider.descriptors(read_only_only=True)
+    assert {item.id for item in descriptors} == {"mcp:builtin-deepseek"}
+    assert "private-deepseek-key" not in repr(descriptors)
+    settings["deepseek"]["api_key"] = ""
+    home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
+    assert provider.descriptors(read_only_only=True) == ()
+    assert assembly.service.registry.snapshot() == ()
+    assert not (home.mcp_root / "secrets").exists()
     assert assembly.client_manager._connections == {}
 
 
@@ -30,7 +50,8 @@ class BundledBrowserTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.assembly = build_mcp(KondenHome(Path(temporary.name)))
+        self.home = KondenHome(Path(temporary.name))
+        self.assembly = build_mcp(self.home)
 
     async def asyncTearDown(self):
         await self.assembly.client_manager.aclose()
@@ -89,9 +110,12 @@ class BundledBrowserTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.assembly.service.registry.snapshot(), ())
 
     async def test_search_connection_failure_offers_browser_instead_of_reinstall(self):
+        settings = initial_connections()
+        settings["deepseek"]["api_key"] = "test-key"
+        self.home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
         self.assembly.client_manager.list_tools = AsyncMock(side_effect=McpClientError("HTTP 429"))
         with self.assertRaises(ToolsetLoadError) as caught:
-            await self.assembly.toolset_provider.discover_tools("mcp:builtin-exa")
+            await self.assembly.toolset_provider.discover_tools("mcp:builtin-deepseek")
         self.assertIn("web-research", caught.exception.hint)
         self.assertIn("浏览器", caught.exception.hint)
         self.assertNotIn("setup.ps1", caught.exception.hint)
