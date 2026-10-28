@@ -25,7 +25,7 @@ from konden.mcp.adapter import (
 from konden.mcp.client_manager import McpClientError, McpClientManager, McpToolNotStartedError
 from konden.mcp.registry import McpRegistry
 from konden.mcp.models import McpServerRecord
-from konden.mcp.bundled import BROWSER_SERVER_IDS, DEEPSEEK_SERVER_ID, SEARCH_SERVER_ID, BUILTIN_SERVER_IDS
+from konden.mcp.bundled import BROWSER_SERVER_IDS, DEEPSEEK_SERVER_ID, BUILTIN_SERVER_IDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,10 +72,8 @@ class McpToolsetProvider:
         return await self._registry.get(server_id)
 
     def _connection_hint(self, server_id: str) -> str:
-        if server_id == SEARCH_SERVER_ID:
-            return "Exa 检索暂不可用；加载 web-research Skill，尚未尝试用户已配置的检索服务时优先使用它，否则使用浏览器兜底。免费服务限流时不要连续重试。"
         if server_id == DEEPSEEK_SERVER_ID:
-            return "DeepSeek 检索暂不可用；请报告错误详情，可按 web-research Skill 使用 Exa 或浏览器。"
+            return "DeepSeek 检索暂不可用；请报告错误详情，可按 web-research Skill 使用浏览器。"
         if server_id in BROWSER_SERVER_IDS:
             return "内置浏览器连接失败；请报告错误详情。环境未准备好时，请用户在本应用的源码目录重新运行 scripts/setup.ps1（Windows）或 scripts/setup.sh（Linux/macOS）。"
         return "不要原样重试；可 load_management_tools 加载 mcp 后用 test_mcp_server 诊断。"

@@ -10,14 +10,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from konden.llm.config import load_connections
-from konden.mcp.models import McpServerRecord, StdioTransportConfig, StreamableHttpTransportConfig, TransportKind
+from konden.mcp.models import McpServerRecord, StdioTransportConfig, TransportKind
 from konden.paths import KondenHome
 
 
 BROWSER_SERVER_IDS = frozenset({"builtin-chrome-devtools", "builtin-playwright"})
-SEARCH_SERVER_ID = "builtin-exa"
 DEEPSEEK_SERVER_ID = "builtin-deepseek"
-BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | {SEARCH_SERVER_ID, DEEPSEEK_SERVER_ID}
+BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | {DEEPSEEK_SERVER_ID}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -68,20 +67,8 @@ def browser_servers(task_root: Path | None = None) -> tuple[McpServerRecord, ...
     )
 
 
-def search_server() -> McpServerRecord:
-    return McpServerRecord(
-        id=SEARCH_SERVER_ID,
-        display_name="Exa Web Search",
-        description="备用网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；优先使用用户配置的检索服务和目录中可用的 DeepSeek，没有或不可用时再用 Exa，最后用浏览器兜底。",
-        transport=TransportKind.STREAMABLE_HTTP,
-        transport_config=StreamableHttpTransportConfig(url="https://mcp.exa.ai/mcp"),
-        enabled=True,
-        read_only=True,
-    )
-
-
 def create_bundled_servers(home: KondenHome, task_root: Path | None = None) -> Callable[[], tuple[McpServerRecord, ...]]:
-    fixed = (*browser_servers(task_root), search_server())
+    fixed = browser_servers(task_root)
     revision = int.from_bytes(hashlib.sha256((ROOT / "konden/mcp/deepseek_web.py").read_bytes()).digest()[:6]) + 1
     deepseek = McpServerRecord(
         id=DEEPSEEK_SERVER_ID,
