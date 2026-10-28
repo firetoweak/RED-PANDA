@@ -587,6 +587,9 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .external-roster { margin-top: 16px; }
 .external-roster > .roster-section-header { padding-inline: 10px; }
 .external-session-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 29px; border-bottom: 1px solid var(--konden-border); }
+.external-codex { flex-shrink: 0; padding: 10px 29px; border-bottom: 1px solid var(--konden-border); }
+.external-codex-form { max-width: 680px; }
+.external-codex-detail { overflow-wrap: anywhere; white-space: pre-wrap; }
 .external-session-controls .mantine-Select-root { width: 230px; max-width: 100%; }
 .external-session-footer { position: relative; flex-shrink: 0; padding: 12px 24px; border-top: 1px solid var(--konden-border); text-align: center; }
 .external-session-revoked { margin: 12px 24px 0; }
@@ -594,6 +597,7 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .external-message-meta a:hover { text-decoration: underline; }
 @media (max-width: 48em) {
   .external-session-controls { padding: 10px 14px; }
+  .external-codex { padding: 10px 14px; }
   .external-session-last-activity { display: none; }
 }
 .external-connection-config { font-family: var(--mantine-font-family-monospace); font-size: var(--mantine-font-size-xs); }

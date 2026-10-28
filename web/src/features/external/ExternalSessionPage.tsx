@@ -9,6 +9,7 @@ import { BotAvatar, ChatPresentation, MessageQuote, messageReference } from "../
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
 import { useMessageReading } from "../conversation/useMessageReading";
+import { CodexContinuation } from "./CodexContinuation";
 
 const EMPTY_MESSAGES: ExternalConversationMessage[] = [];
 
@@ -42,6 +43,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
           </Group>
           <Text c="dimmed" fz={11} className="external-session-last-activity" title={formatMessageTime(session.last_activity_at).full}>最近活动 {formatMessageTime(session.last_activity_at).short}</Text>
         </header>
+        <CodexContinuation identity={identity} active={session.active} value={conversation.codex} />
         {session.peers.length === 0 ? null : <div className="external-session-controls">
           <Select aria-label="查看与哪位 Bot 的对话" value={bot} allowDeselect={false}
             data={[{ value: "all", label: "全部 Bot 的对话" }, ...session.peers.map((peer) => ({ value: peer.session_id, label: peer.name + (peer.deleted ? "（已退出）" : "") }))]}
@@ -55,7 +57,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
             {messages.length === 0 ? <div className="group-chat-empty">
               <span className="agent-avatar agent-details-avatar" aria-hidden="true"><IconPlugConnected size={28} /></span>
               <Text fw={500} size="lg">{!session.active ? "此会话尚无消息" : session.peers.length === 0 ? "外部会话已接入" : "这里还没有消息"}</Text>
-              <Text c="dimmed" size="sm">在原生工具中向同事发送消息，这里会保留双方的对话。</Text>
+              <Text c="dimmed" size="sm">在原生聊天中向同事发送消息，这里会保留双方的对话。</Text>
             </div> : messages.map((message, index) => {
               const source = messages.find((item) => item.message_id === message.reply_to);
               const time = formatMessageTime(message.occurred_at);

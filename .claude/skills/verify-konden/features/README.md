@@ -146,7 +146,7 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `list_colleagues` | `konden/assistant/agent_messages.py` | colleague-tools |
 | `read_shared_memory` `update_shared_memory` | `konden/assistant/shared_memory.py` | colleague-tools |
 | `send_message` | `konden/assistant/agent_messages.py` | private-messages |
-| 全局设置「外部接入」、侧栏「外部会话」；MCP 身份与消息；Bot 外部查询和发送 | `features/settings/ExternalAccess.tsx`、`features/external/`、`konden/channels/mcp/`、`assistant/host/external_messages.py` | external-conversations |
+| 全局设置「Codex 接入」、侧栏「外部会话」；MCP 身份与消息；Bot 外部查询和发送 | `features/settings/ExternalAccess.tsx`、`features/external/`、`konden/channels/mcp/`、`assistant/host/external_messages.py` | external-conversations |
 | `send_group_message` | `konden/assistant/agent_messages.py` | group-chat |
 | `link_project` `unlink_project` | `konden/assistant/agent_tools.py` | workspace-management |
 | `land_branch` `sync_branch` | `konden/assistant/agent_tools.py` | land-and-sync |

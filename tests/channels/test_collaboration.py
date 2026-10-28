@@ -1,5 +1,7 @@
 """External conversation behavior at the MCP and human Web boundaries."""
 import asyncio
+from datetime import datetime, timezone
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +13,7 @@ from konden.assistant.conversations import project_conversation
 from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, SendToExternal
 from konden.assistant.external_messages import parse_external
 from konden.assistant.host.external_messages import ExternalMessages
+from konden.assistant.host.codex_continuation import QueueAttempt
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.sessions import session_view
@@ -263,6 +266,94 @@ def test_waiting_reader_receives_messages_and_revocation_interrupts_wait(collabo
     assert c.reply(command="after-revoked")["code"] == "CONNECTION_REVOKED"
     view = c.client.get("/api/external-sessions/" + c.identity).json()
     assert not view["session"]["active"] and len(view["messages"]) == 1
+
+
+def test_codex_binding_is_human_owned_and_scoped_to_one_chat(collaboration):
+    c = collaboration
+    path = f"/api/external-sessions/{c.identity}/codex"
+    target = {"connection_id": c.human_connection, "thread_id": "01234567-89ab-cdef-0123-456789abcdef",
+              "executable": sys.executable}
+    assert c.client.put(path, json={**target, "connection_id": "inactive"}).status_code == 409
+    assert c.client.put(path, json={**target, "thread_id": "not-a-chat"}).status_code == 422
+    assert c.client.put(path, json={**target, "executable": "nonexistent-konden-codex"}).status_code == 422
+    assert c.call("configure_codex", target)["isError"]
+    configured = c.client.put(path, json=target)
+    assert configured.status_code == 200
+    assert configured.json()["codex"]["status"] == "ready"
+    second = c.call("get_context")["structuredContent"]["identity"]
+
+    async def queued(binding, message_id):
+        received = await c.service.read(c.connection, c.identity, 0, 50, 0)
+        assert any(message["message_id"] == message_id for message in received["messages"])
+        return QueueAttempt(message_id=message_id, attempted_at=datetime.now(timezone.utc),
+                            status="queued", detail="已入队，尚未确认处理。")
+
+    with patch("konden.assistant.host.codex_continuation.queue_codex", side_effect=queued) as queue:
+        c.send()
+        c.reply(identity=second, command="second-chat")
+        assert queue.call_count == 0
+        c.reply()
+        c.reply()
+        assert queue.call_count == 1
+        view = c.client.get(f"/api/external-sessions/{c.identity}").json()
+        assert view["codex"]["status"] == "queued" and view["codex"]["thread_id"] == target["thread_id"]
+        assert c.client.get(f"/api/external-sessions/{second}").json()["codex"]["status"] == "disabled"
+        restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
+        assert restarted["codex"] == view["codex"]
+        assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 200
+        c.reply(command="disabled")
+        assert queue.call_count == 1
+
+
+def test_codex_failure_preserves_messages_and_can_be_retried(collaboration):
+    c = collaboration
+    path = f"/api/external-sessions/{c.identity}/codex"
+    c.client.put(path, json={"connection_id": c.human_connection,
+        "thread_id": "01234567-89ab-cdef-0123-456789abcdef", "executable": sys.executable}).raise_for_status()
+
+    async def attempt(binding, message_id):
+        return QueueAttempt(message_id=message_id, attempted_at=datetime.now(timezone.utc),
+                            status="failed", detail="Codex 没有运行")
+
+    with patch("konden.assistant.host.codex_continuation.queue_codex", side_effect=attempt) as queue:
+        sent = c.reply()
+        assert sent["code"] == "DELIVERED" and len(c.read()["messages"]) == 1
+        view = c.client.get(f"/api/external-sessions/{c.identity}").json()
+        assert view["codex"]["status"] == "failed" and view["codex"]["detail"] == "Codex 没有运行"
+        assert c.client.post(path + "/retry", json={"connection_id": "inactive"}).status_code == 409
+        queue.side_effect = lambda binding, message_id: QueueAttempt(message_id=message_id,
+            attempted_at=datetime.now(timezone.utc), status="queued", detail="已入队")
+        retried = c.client.post(path + "/retry", json={"connection_id": c.human_connection})
+        assert retried.status_code == 200 and retried.json()["codex"]["status"] == "queued"
+        assert len(c.read()["messages"]) == 1
+        c.client.portal.call(c.service.revoke_connection, c.connection.connection_id)
+        assert c.client.post(path + "/retry", json={"connection_id": c.human_connection}).status_code == 422
+        assert queue.call_count == 2
+
+
+def test_slow_codex_does_not_block_reading_or_reenable_a_disabled_binding(collaboration):
+    c = collaboration
+    path = f"/api/external-sessions/{c.identity}/codex"
+    c.client.put(path, json={"connection_id": c.human_connection,
+        "thread_id": "01234567-89ab-cdef-0123-456789abcdef", "executable": sys.executable}).raise_for_status()
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def queue(binding, message_id):
+        entered.set()
+        await release.wait()
+        return QueueAttempt(message_id=message_id, attempted_at=datetime.now(timezone.utc), status="queued", detail="已入队")
+
+    with patch("konden.assistant.host.codex_continuation.queue_codex", side_effect=queue):
+        sending = c.client.portal.start_task_soon(c.service.send_from_bot, "coordinator",
+            {"command_id": "slow", "identity": c.identity, "text": "消息已到", "reply_to": None})
+        c.client.portal.call(entered.wait)
+        assert c.read()["messages"][0]["text"] == "消息已到"
+        restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
+        assert restarted["codex"]["status"] == "unknown"
+        assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 200
+        c.client.portal.call(release.set)
+        assert sending.result(timeout=2)["code"] == "DELIVERED"
+        assert c.client.get(f"/api/external-sessions/{c.identity}").json()["codex"]["status"] == "disabled"
 
 
 def test_reply_references_stay_with_the_same_peer_and_chat(collaboration):

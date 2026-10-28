@@ -134,6 +134,13 @@ export const externalSessionSchema = z.object({
 export type ExternalSessionSummary = z.infer<typeof externalSessionSchema>;
 export const externalConversationSchema = z.object({
   session: externalSessionSchema,
+  codex: z.object({
+    thread_id: z.string().nullable(),
+    executable: z.string().min(1),
+    status: z.enum(["disabled", "ready", "pending", "queued", "failed", "unknown"]),
+    detail: z.string().nullable(),
+    attempted_at: z.string().datetime({ offset: true }).nullable(),
+  }).strict(),
   messages: z.array(z.object({
     message_id: z.string().min(1),
     sequence: z.number().int().positive(),
