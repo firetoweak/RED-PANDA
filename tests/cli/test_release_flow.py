@@ -3,6 +3,7 @@
 网络与下载全部用 mock 短路，这里只验证接线与失败面。
 """
 
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,7 +13,11 @@ from konden.cli.application import CliApplicationService
 from konden.cli.approval import (
     CliInstallApprovalHandler,
     CliInstallProposalInput,
+    CliIdProposalInput,
+    CliUninstallApprovalHandler,
     create_cli_install_proposal_spec,
+    create_cli_repair_proposal_spec,
+    create_cli_uninstall_proposal_spec,
 )
 from konden.cli.errors import CliAlreadyInstalledError, CliSourceError
 from konden.cli.models import CliSourceRef
@@ -107,6 +112,42 @@ class PrepareReleaseInstallTest(ReleaseFlowTestBase):
 
 
 class InstallFrozenTest(ReleaseFlowTestBase):
+    async def test_shared_home_serializes_installation_before_touching_files(self) -> None:
+        """失败的同名安装不得覆盖另一个 Bot 已登记的程序。"""
+        other = CliApplicationService(self.home, self.executor)
+        first_started, finish_first, second_started = (
+            asyncio.Event(), asyncio.Event(), asyncio.Event()
+        )
+        binary = self.service.clis_root / "_installs" / "gh" / "1.2.3" / "gh.exe"
+
+        async def provision(name, source, *, install_root):
+            if source.locator == "first/cli":
+                first_started.set()
+                await finish_first.wait()
+            binary.parent.mkdir(parents=True, exist_ok=True)
+            binary.write_text(source.locator, encoding="utf-8")
+            return ProvisionedCli(str(binary), "1.2.3", binary.parent)
+
+        async def install_second():
+            second_started.set()
+            return await other.install_frozen(
+                "gh", "Second", CliSourceRef("github-release", "second/cli", "v1.2.3"), ""
+            )
+
+        with patch("konden.cli.application.provision_github_release", new=provision):
+            first = asyncio.create_task(self.service.install_frozen(
+                "gh", "First", CliSourceRef("github-release", "first/cli", "v1.2.3"), ""
+            ))
+            await asyncio.wait_for(first_started.wait(), timeout=5)
+            second = asyncio.create_task(install_second())
+            await second_started.wait()
+            finish_first.set()
+            installed = await first
+            with self.assertRaises(CliAlreadyInstalledError):
+                await second
+        self.assertEqual(await self.service.inspect("gh"), installed)
+        self.assertEqual(binary.read_text(encoding="utf-8"), "first/cli")
+
     async def test_registers_provisioned_path_and_source(self) -> None:
         record = await self._install_release()
         self.assertEqual(record.name, "gh")
@@ -136,6 +177,11 @@ class InstallFrozenTest(ReleaseFlowTestBase):
 class RepairTest(ReleaseFlowTestBase):
     async def test_release_repair_redownloads_same_tag(self) -> None:
         record = await self._install_release()
+        proposal = await create_cli_repair_proposal_spec(self.service).handler(
+            CliIdProposalInput(cli_id="gh")
+        )
+        self.assertIn("重新下载 v1.2.3", proposal.summary)
+        self.assertIn("替换", proposal.risk)
         provision = AsyncMock(return_value=self._provisioned())
         with patch("konden.cli.application.provision_github_release", new=provision):
             repaired = await self.service.repair("gh", expected_revision=record.revision)
@@ -187,7 +233,14 @@ class UninstallTest(ReleaseFlowTestBase):
                 CliSourceRef("github-release", "cli/cli", "v1.2.3"),
                 "",
             )
-        await self.service.uninstall("gh", expected_revision=record.revision)
+        proposal = await create_cli_uninstall_proposal_spec(self.service).handler(
+            CliIdProposalInput(cli_id=record.name)
+        )
+        self.assertIn("卸载", proposal.summary)
+        self.assertIn("删除", proposal.risk)
+        self.assertIn("安装目录", proposal.risk)
+        execution = await CliUninstallApprovalHandler(self.service).execute(proposal.payload)
+        self.assertTrue(execution.succeeded)
         self.assertFalse((self.service.clis_root / "_installs" / "gh").exists())
         self.assertIsNone(await self.service.inspect_or_none("gh"))
 
@@ -226,6 +279,7 @@ class InstallApprovalFailureTest(ReleaseFlowTestBase):
             new=AsyncMock(side_effect=CliSourceError("下载归档失败：ReadTimeout")),
         ):
             execution = await handler.execute(request.payload)
+        self.assertIn("v1.2.3", request.summary)
         self.assertFalse(execution.succeeded)
         self.assertIn("ReadTimeout", execution.message)
         self.assertIsNone(await self.service.inspect_or_none("gh"))

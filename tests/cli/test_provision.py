@@ -275,10 +275,20 @@ class LocateExecutableTest(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_uniquely_named_binary_is_used_as_fallback(self):
-        write_binary(self.root / "tools" / "gh-cli")
-        self.assertEqual(
-            locate_executable(self.root, "gh"), self.root / "tools" / "gh-cli"
-        )
+        binary = write_binary(self.root / "tools" / "gh-cli.exe")
+        self.assertEqual(locate_executable(self.root, "gh"), binary)
+
+    def test_windows_alias_ignores_extensionless_documents(self):
+        """登记名不等于程序名时，不能把许可证登记成 CLI。"""
+        binary = write_binary(self.root / "rg.exe")
+        write_binary(self.root / "LICENSE-MIT", b"license")
+        with patch.object(provision, "_platform_key", return_value="windows"):
+            self.assertEqual(locate_executable(self.root, "ripgrep"), binary)
+
+    def test_ambiguous_fallback_is_rejected(self):
+        write_binary(self.root / "client.exe")
+        write_binary(self.root / "server.exe")
+        self.assertIsNone(locate_executable(self.root, "tool"))
 
     def test_missing_executable_returns_none(self):
         (self.root / "README.md").write_text("docs", encoding="utf-8")
@@ -416,7 +426,7 @@ class GithubReleaseProvisionTest(unittest.IsolatedAsyncioTestCase):
         )
 
         with self.assertRaises(CliSourceError) as context:
-            await self._provision(transport, requested_version="2.39.0")
+            await self._provision(transport, requested_version="v2.39.0")
 
         self.assertIn("校验失败", str(context.exception))
         self.assertIn("/repos/cli/cli/releases/tags/v2.39.0", requested)

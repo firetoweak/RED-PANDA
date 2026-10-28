@@ -18,10 +18,12 @@ import re
 import shutil
 import sys
 import tarfile
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -91,7 +93,9 @@ async def resolve_release_tag(
         transport=transport,
         headers={"Accept": "application/vnd.github+json"},
     ) as client:
-        release = await _fetch_release(client, owner, repository, source.requested_version)
+        release = await _fetch_release(
+            client, owner, repository, source.requested_version, allow_tag_aliases=True
+        )
         return _require_str(release.get("tag_name"), "tag_name")
 
 
@@ -129,7 +133,7 @@ async def provision_github_release(
                 )
             ).decode("utf-8", errors="replace")
             archive_digest, inner_target, inner_digest = _expected_digest(
-                _parse_checksums(checksum_text), str(asset["name"])
+                checksum_text, str(asset["name"])
             )
             if archive_digest is None and inner_target is None:
                 raise CliSourceError(
@@ -145,15 +149,32 @@ async def provision_github_release(
                 )
 
     destination = install_root / cli_id / _safe_segment(version)
-    _reset_directory(destination)
-    _extract(payload, str(asset["name"]), destination)
-    if inner_target is not None and inner_digest is not None:
-        _verify_inner_file(destination, inner_target, inner_digest, str(asset["name"]))
-    executable = locate_executable(destination, cli_id)
-    if executable is None:
-        raise CliSourceError(
-            f"{cli_id} 归档里找不到可执行文件：{asset['name']}"
-        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".install-", dir=destination.parent) as temporary:
+        staging = Path(temporary) / "package"
+        staging.mkdir()
+        _extract(payload, str(asset["name"]), staging)
+        if inner_target is not None and inner_digest is not None:
+            _verify_inner_file(staging, inner_target, inner_digest, str(asset["name"]))
+        executable = locate_executable(staging, cli_id)
+        if executable is None:
+            raise CliSourceError(
+                f"{cli_id} 归档里找不到唯一的可执行文件：{asset['name']}"
+            )
+        relative_executable = executable.relative_to(staging)
+        # 备份放在临时目录外，替换或回滚失败时仍保留旧程序。
+        backup = destination.parent / f"{Path(temporary).name}-previous"
+        if destination.exists():
+            destination.rename(backup)
+        try:
+            staging.rename(destination)
+        except OSError:
+            if backup.exists():
+                backup.rename(destination)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+    executable = destination / relative_executable
     return ProvisionedCli(resolved_path=str(executable), version=version, install_root=destination)
 
 
@@ -261,24 +282,23 @@ def locate_executable(root: Path, cli_id: str) -> Path | None:
     names = {cli_id, f"{cli_id}.exe"}
     preferred: list[Path] = []
     fallback: list[Path] = []
+    windows = _platform_key() == "windows"
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or not os.access(path, os.X_OK) and os.name != "nt":
+        if not path.is_file():
+            continue
+        if windows:
+            if path.suffix.casefold() != ".exe":
+                continue
+        elif not os.access(path, os.X_OK):
             continue
         if path.name.casefold() in {name.casefold() for name in names}:
             preferred.append(path)
-        elif _is_executable_name(path.name):
+        else:
             fallback.append(path)
-    for group in (preferred, fallback):
-        if not group:
-            continue
-        in_bin = [path for path in group if path.parent.name == "bin"]
-        return (in_bin or group)[0]
-    return None
-
-
-def _is_executable_name(name: str) -> bool:
-    lowered = name.casefold()
-    return lowered.endswith(".exe") or "." not in lowered
+    if preferred:
+        in_bin = [path for path in preferred if path.parent.name == "bin"]
+        return (in_bin or preferred)[0]
+    return fallback[0] if len(fallback) == 1 else None
 
 
 def _split_locator(locator: str) -> tuple[str, str]:
@@ -310,16 +330,14 @@ async def _fetch_release(
     owner: str,
     repository: str,
     requested_version: str | None,
+    *,
+    allow_tag_aliases: bool = False,
 ) -> dict[str, Any]:
-    """按版本取 Release。
-
-    tag 命名没有统一约定（`v1.2.3` 和 `1.2.3` 都常见），所以按候选顺序逐个试，
-    别硬拼前缀：resolve 阶段拿到的就是真实 tag，直接命中第一个候选。
-    """
+    """提案时可解析版本前缀；安装与修复只取已确定的 tag。"""
     if requested_version:
-        tags = _tag_candidates(requested_version)
+        tags = _tag_candidates(requested_version) if allow_tag_aliases else [requested_version]
         for tag in tags:
-            url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/tags/{tag}"
+            url = f"{_GITHUB_API}/repos/{owner}/{repository}/releases/tags/{quote(tag, safe='')}"
             payload = await _get_release(client, url, f"{owner}/{repository} 的 tag {tag}")
             if payload is not None:
                 return payload
@@ -403,13 +421,20 @@ def _release_assets(release: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _expected_digest(
-    checksums: dict[str, str], asset_name: str
+    checksum_text: str, asset_name: str
 ) -> tuple[str | None, str | None, str | None]:
     """判断校验值描述的是归档本身，还是归档里的某个文件。
 
     返回 (归档摘要, 归档内路径, 该文件摘要)。zellij 这类伴随文件写的是
     `target/release/zellij.exe`，只可能在解压后校验。
     """
+    checksums = _parse_checksums(checksum_text)
+    if not checksums:
+        # 同名伴随文件也可能只给摘要，或使用 CertUtil 的标题 / 摘要 / 结束语格式。
+        digests = [line.strip() for line in checksum_text.splitlines()
+                   if re.fullmatch(r"[0-9a-fA-F]{64}", line.strip())]
+        if len(digests) == 1:
+            return digests[0].casefold(), None, None
     lowered = asset_name.casefold()
     if lowered in checksums:
         return checksums[lowered], None, None
@@ -462,12 +487,6 @@ def _safe_segment(value: str) -> str:
     if not cleaned:
         raise CliSourceError(f"版本号无法用作目录名：{value!r}")
     return cleaned
-
-
-def _reset_directory(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=True)
 
 
 def _extract(payload: bytes, name: str, destination: Path) -> None:

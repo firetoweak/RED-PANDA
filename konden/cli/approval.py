@@ -117,6 +117,10 @@ def create_cli_install_proposal_spec(
                 ),
             })
         downloads = candidate.source.kind == "github-release"
+        version = (
+            candidate.source.requested_version
+            if downloads else candidate.probed.version or "未知"
+        )
         return ControlApprovalProposal(
             action=CLI_INSTALL_ACTION,
             payload={
@@ -130,7 +134,7 @@ def create_cli_install_proposal_spec(
                 f"描述：{candidate.description}\n"
                 f"来源：{candidate.source.kind} {candidate.source.locator}\n"
                 f"解析路径：{candidate.resolved_path or '（安装后确定）'}\n"
-                f"版本：{candidate.probed.version if candidate.probed else '（安装后确定）'}\n"
+                f"版本：{version}\n"
                 f"体检：\n{_health_summary(candidate.probed.health if candidate.probed else None)}"
             ),
             risk=(
@@ -213,6 +217,7 @@ def create_cli_uninstall_proposal_spec(
         record = await service.inspect_or_none(input_data.cli_id)
         if record is None:
             return _not_installed(input_data.cli_id)
+        downloads = record.source.kind == "github-release"
         return ControlApprovalProposal(
             action=CLI_UNINSTALL_ACTION,
             payload={
@@ -220,11 +225,14 @@ def create_cli_uninstall_proposal_spec(
                 "expected_revision": record.revision,
             },
             summary=(
-                f"准备移除 CLI `{record.name}` 的登记\n"
+                f"准备{'卸载' if downloads else '移除登记'} CLI `{record.name}`\n"
                 f"解析路径：{record.resolved_path}"
             ),
             risk=(
-                "只移除登记，不卸载软件本身；"
+                (
+                    "移除登记，并删除 konden 下载的程序及其安装目录；"
+                    if downloads else "只移除登记，不卸载软件本身；"
+                ) +
                 "移除后该 CLI 不再出现在能力目录中。"
             ),
         )
@@ -232,7 +240,8 @@ def create_cli_uninstall_proposal_spec(
     return ToolSpec(
         name=PROPOSE_CLI_UNINSTALL,
         description=(
-            "移除一个已登记 CLI 的登记事实（不卸载软件）。本工具必须单独调用。"
+            "移除 CLI 的登记；由 konden 从 GitHub Release 下载的 CLI 会同时删除程序与安装目录，"
+            "本机手工安装的 CLI 保留软件。本工具必须单独调用。"
         ),
         parameters=PydanticParameters(CliIdProposalInput),
         handler=propose,
@@ -290,6 +299,7 @@ def create_cli_repair_proposal_spec(
         record = await service.inspect_or_none(input_data.cli_id)
         if record is None:
             return _not_installed(input_data.cli_id)
+        downloads = record.source.kind == "github-release"
         return ControlApprovalProposal(
             action=CLI_REPAIR_ACTION,
             payload={
@@ -299,16 +309,22 @@ def create_cli_repair_proposal_spec(
             summary=(
                 f"准备修复 CLI `{record.name}`\n"
                 f"登记路径：{record.resolved_path}\n"
-                "将按登记来源重新解析 resolved_path 并重跑体检。"
+                + (
+                    f"将从 GitHub Release 重新下载 {record.source.requested_version} 并重跑体检。"
+                    if downloads else "将按登记来源重新解析 resolved_path 并重跑体检。"
+                )
             ),
-            risk="repair 只重新解析与体检，不会暗中变更登记身份。",
+            risk=(
+                "将替换 konden 下载的程序；下载或校验失败时保留现有安装。"
+                if downloads else "repair 只重新解析与体检，不会暗中变更登记身份。"
+            ),
         )
 
     return ToolSpec(
         name=PROPOSE_CLI_REPAIR,
         description=(
-            "在 inspect/test 已证明登记路径失效后，按登记来源重新解析 "
-            "resolved_path 并提交修复审批。本工具必须单独调用。"
+            "在 inspect/test 已证明登记路径失效后，提交修复审批：本机已安装的 CLI 重新解析路径，"
+            "GitHub Release 来源重新下载同一版本并体检。本工具必须单独调用。"
         ),
         parameters=PydanticParameters(CliIdProposalInput),
         handler=propose,

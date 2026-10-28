@@ -130,6 +130,7 @@ class CliUninstallApprovalTest(unittest.IsolatedAsyncioTestCase):
             request.payload,
             {"cli_id": "rg", "expected_revision": 1},
         )
+        self.assertIn("不卸载软件本身", request.risk)
 
         execution = await self.handler.execute(request.payload)
 

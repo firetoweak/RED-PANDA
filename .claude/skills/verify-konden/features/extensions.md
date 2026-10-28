@@ -17,7 +17,7 @@
 - `propose`：`propose_mcp_install|update|remove|recovery`、`propose_skill_install|update|uninstall|set_enabled`、`propose_cli_install|update|uninstall|repair`。Web 在输入框上方的待处理条（区域 `待处理`）列出该请求，按钮 `取消` / `确认`，经 `POST .../control` 决定；终端里回答 `yes`/`y`（批准）或 `no`/`n`（拒绝）。
 - `mcp-stdio-guard`：`propose_mcp_install` / `propose_mcp_update` 的 stdio `command` 文件名（不区分大小写）为 `bash`、`cmd`、`cmd.exe`、`powershell`、`powershell.exe`、`pwsh`、`sh`、`zsh` 时直接校验失败 `MCP stdio 不接受 Shell 解释器作为 command`，不进入确认。
 - `skill-source`：来源 `local` / `url` / `github`；`local` 的 locator 必须是本机绝对目录，否则 `local locator 必须是本机绝对目录`；`requested_ref` 只用于 `github`，其他来源传了即 `requested_ref 仅适用于 github 来源`。
-- `cli-register`：`propose_cli_install` 只登记本机已安装的程序（`name`、`description`、`locator`），`name` 须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，不合规返回 `code: CLI_INVALID`；已登记返回 `CLI_ALREADY_INSTALLED`；找不到程序返回 `CLI_SOURCE_ERROR`。登记后立即可用，没有启用/停用开关。
+- `cli-register`：`propose_cli_install` 的 `locator` 登记本机已有程序；`repo` 从 GitHub Release 下载，两者二选一。Release 提案展示确定的 tag，下载在批准后发生；修复重新下载同一 tag，卸载审批明确会删除下载的程序与安装目录。本机手工安装的软件在移除登记后保留。`name` 须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，不合规返回 `code: CLI_INVALID`；已登记返回 `CLI_ALREADY_INSTALLED`；找不到程序或下载失败返回 `CLI_SOURCE_ERROR`。登记后立即可用，没有启用/停用开关。
   - `control-startup-recovery`：重启会继续已提交的控制准备、已批准但尚未开始的操作；提案仍待批准时不执行，已开始而结果未知时不自动重试，人已停止执行的会话不自动执行。连续重启不能重复已完成的操作。
 - `console-commands`：
   - `/mcp list [--runtime]`、`/mcp upsert <json>`、`/mcp enable|disable|remove|test|retry <id>`、`/mcp resources|resource-templates|prompts <id> [--cursor TOKEN]`、`/mcp read-resource <id> <uri>`、`/mcp get-prompt <id> <name> [json-args]`、`/mcp help`（`/mcp` 不带子命令同样显示帮助）。
@@ -68,6 +68,8 @@
 - **密钥**：安装带密钥的 MCP 后，(c) 回复、journal、`GET /api/sessions/<id>` 里不出现明文密钥（`konden/mcp/secrets.py`）。
 
 ## Gotchas
+
+2026-10-28 CLI Release 修复增量：Windows 隔离数据根，经生产控制提案与执行 handler 实测 ripgrep 15.2.0 下载、CertUtil sha256 校验、体检、删除程序后的同 tag 修复及卸载。真实页面从侧栏打开能力、CLI，展开版本和通过的体检，再刷新确认卸载后 CLI0，与 GET 和磁盘一致。证据留在本地 `.tools/review200/live/evidence/`。Doctor `live_model_ready=false`，未驱动模型对话中的审批按钮；macOS/Linux 未做真实下载，失败保留旧程序与并发同名安装由进程内及独立进程回归保护。
 
 - 2026-10-28 检索与图文组合增量：Windows 隔离 Web、真实 DeepSeek Flash，无项目 Bot 的普通查证任务自主使用 Search / Fetch；随后用户要求视觉补充时，真实 Playwright 打开同一官方来源并交付可预览 PNG，没有重复检索。再要求按已有资料画图时，直接渲染 Mermaid，没有追加工具调用。证据 `.tools/verification/web-research-multimodal/evidence/`；后两项为用户明确要求的路径，未验证不同模型的自主视觉补充、真实 Tavily、登录站点或完整性能与费用对比。
 

@@ -5,6 +5,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from filelock import AsyncFileLock
+
 from konden.cli.errors import (
     CliAlreadyInstalledError,
     CliInputError,
@@ -65,7 +67,9 @@ class CliApplicationService:
             self.registry,
             max_catalog_chars=max_catalog_chars,
         )
+        # 文件锁可重入；同一实例内仍需串行，避免并发协程重入同一个文件锁。
         self._management_lock = asyncio.Lock()
+        self._process_lock = AsyncFileLock(clis_root / "management.lock")
 
     async def list_clis(self) -> tuple[CliRecord, ...]:
         return await self.registry.list_clis()
@@ -94,7 +98,7 @@ class CliApplicationService:
     ) -> CliInstallCandidate:
         validate_cli_id(name)
         validate_cli_description(description)
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             if await self.registry.get(name) is not None:
                 raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
         resolved_path = resolve_cli_path(locator)
@@ -122,7 +126,7 @@ class CliApplicationService:
         validate_cli_id(name)
         validate_cli_description(description)
         source = CliSourceRef("github-release", repository, requested_version)
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             if await self.registry.get(name) is not None:
                 raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
         resolved_source = CliSourceRef(
@@ -146,7 +150,7 @@ class CliApplicationService:
         resolved_path: str,
     ) -> CliRecord:
         """按批准的身份登记；version/health 取执行时的最新系统事实。"""
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             if await self.registry.get(name) is not None:
                 raise CliAlreadyInstalledError(f"CLI 已登记: {name}")
             if source.kind == "github-release":
@@ -175,7 +179,7 @@ class CliApplicationService:
 
         不重新解析路径——路径漂移属于 repair。
         """
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             record = await self._require_at_revision(cli_id, expected_revision)
             if record.resolved_path is None or not Path(
                 record.resolved_path
@@ -201,7 +205,7 @@ class CliApplicationService:
         manifest 源重新解析本机路径；github-release 源按冻结的 tag 重新下载解压，
         因为它的 resolved_path 指向 konden 自己管理的安装目录。
         """
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             record = await self._require_at_revision(cli_id, expected_revision)
             if record.source.kind == "github-release":
                 provisioned = await provision_github_release(
@@ -227,7 +231,7 @@ class CliApplicationService:
     async def uninstall(self, cli_id: str, *, expected_revision: int) -> CliRecord:
         """移除登记。manifest 源不卸载软件本身——那是用户的手工安装；
         github-release 源连 konden 自己下载的安装目录一起清掉。"""
-        async with self._management_lock:
+        async with self._management_lock, self._process_lock:
             record = await self._require_at_revision(cli_id, expected_revision)
             removed = await self.registry.remove(cli_id)
             if record.source.kind == "github-release":

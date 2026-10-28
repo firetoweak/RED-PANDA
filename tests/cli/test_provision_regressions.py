@@ -19,6 +19,7 @@ from konden.cli.models import CliSourceRef
 from konden.cli.provision import (
     parse_checksums,
     provision_github_release,
+    resolve_release_tag,
     select_checksum_asset,
 )
 
@@ -109,16 +110,31 @@ class TagPrefixTest(ProvisionTransportTest):
             {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME])},
             {ARCHIVE_NAME: self.archive},
         )
-        provisioned = await self._provision("1.0.0", transport)
+        tag = await resolve_release_tag(
+            CliSourceRef("github-release", "cli/cli", "1.0.0"), transport=transport
+        )
+        provisioned = await self._provision(tag, transport)
         self.assertEqual(provisioned.version, "1.0.0")
 
-    async def test_missing_tag_reports_both_candidates(self) -> None:
+    async def test_missing_requested_version_reports_both_candidates(self) -> None:
         transport = self._serve({}, {})
         with self.assertRaises(CliSourceError) as caught:
-            await self._provision("9.9.9", transport)
+            await resolve_release_tag(
+                CliSourceRef("github-release", "cli/cli", "9.9.9"), transport=transport
+            )
         message = str(caught.exception)
         self.assertIn("9.9.9", message)
         self.assertIn("v9.9.9", message)
+
+    async def test_withdrawn_frozen_tag_does_not_install_an_alternative(self) -> None:
+        """前缀相近的 tag 是不同 Release，不能替用户批准另一个版本。"""
+        transport = self._serve(
+            {"1.0.0": _release("1.0.0", [ARCHIVE_NAME])},
+            {ARCHIVE_NAME: self.archive},
+        )
+        with self.assertRaises(CliSourceError):
+            await self._provision("v1.0.0", transport)
+        self.assertFalse((self.install_root / "gh").exists())
 
 
 class ChecksumPairingTest(ProvisionTransportTest):
@@ -135,15 +151,19 @@ class ChecksumPairingTest(ProvisionTransportTest):
 
     async def test_companion_content_is_used_for_verification(self) -> None:
         companion = f"{ARCHIVE_NAME}.sha256"
-        transport = self._serve(
-            {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
-            {
-                companion: f"{self.digest}  {ARCHIVE_NAME}\n".encode(),
-                ARCHIVE_NAME: self.archive,
-            },
-        )
-        provisioned = await self._provision("v1.0.0", transport)
-        self.assertTrue(provisioned.resolved_path.endswith("gh.exe"))
+        for checksum in (
+            f"{self.digest}  {ARCHIVE_NAME}\n",
+            f"{self.digest}\n",
+            f"SHA256 hash of {ARCHIVE_NAME}:\r\n{self.digest}\r\n"
+            "CertUtil: -hashfile command completed successfully.\r\n",
+        ):
+            with self.subTest(checksum=checksum):
+                transport = self._serve(
+                    {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
+                    {companion: checksum.encode(), ARCHIVE_NAME: self.archive},
+                )
+                provisioned = await self._provision("v1.0.0", transport)
+                self.assertTrue(provisioned.resolved_path.endswith("gh.exe"))
 
     async def test_stem_style_companion_is_matched(self) -> None:
         """zellij 式：校验文件把归档扩展名去掉，如 `tool-x86_64-pc-windows-msvc.sha256sum`。"""
@@ -168,17 +188,21 @@ class ChecksumPairingTest(ProvisionTransportTest):
 
     async def test_wrong_digest_in_companion_fails_before_extract(self) -> None:
         companion = f"{ARCHIVE_NAME}.sha256"
-        transport = self._serve(
-            {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
-            {
-                companion: f"{'0' * 64}  {ARCHIVE_NAME}\n".encode(),
-                ARCHIVE_NAME: self.archive,
-            },
-        )
-        with self.assertRaises(CliSourceError) as caught:
-            await self._provision("v1.0.0", transport)
-        self.assertIn("校验失败", str(caught.exception))
-        self.assertFalse((self.install_root / "gh").exists())
+        for checksum in (
+            f"{'0' * 64}  {ARCHIVE_NAME}\n",
+            "0" * 64,
+            f"SHA256 hash of {ARCHIVE_NAME}:\r\n{'0' * 64}\r\n"
+            "CertUtil: -hashfile command completed successfully.\r\n",
+        ):
+            with self.subTest(checksum=checksum):
+                transport = self._serve(
+                    {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
+                    {companion: checksum.encode(), ARCHIVE_NAME: self.archive},
+                )
+                with self.assertRaises(CliSourceError) as caught:
+                    await self._provision("v1.0.0", transport)
+                self.assertIn("校验失败", str(caught.exception))
+                self.assertFalse((self.install_root / "gh").exists())
 
     async def test_single_entry_companion_may_name_inner_path(self) -> None:
         """zellij 的 .sha256sum 写的是归档内路径，只能在解压后校验该文件。"""
@@ -195,17 +219,26 @@ class ChecksumPairingTest(ProvisionTransportTest):
         self.assertTrue(provisioned.resolved_path.endswith("gh.exe"))
 
     async def test_inner_file_mismatch_is_rejected(self) -> None:
+        installed = await self._provision(
+            "v1.0.0",
+            self._serve(
+                {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME])},
+                {ARCHIVE_NAME: self.archive},
+            ),
+        )
         companion = f"{ARCHIVE_NAME}.sha256sum"
         transport = self._serve(
             {"v1.0.0": _release("v1.0.0", [ARCHIVE_NAME, companion])},
             {
                 companion: f"{'0' * 64}  bin/gh.exe\n".encode(),
-                ARCHIVE_NAME: self.archive,
+                ARCHIVE_NAME: _zip_bytes({"bin/gh.exe": b"rejected replacement"}),
             },
         )
         with self.assertRaises(CliSourceError) as caught:
             await self._provision("v1.0.0", transport)
         self.assertIn("校验失败", str(caught.exception))
+        self.assertEqual(Path(installed.resolved_path).read_bytes(), b"binary")
+        self.assertEqual(list(installed.install_root.parent.iterdir()), [installed.install_root])
 
     async def test_inner_path_missing_from_archive_is_reported(self) -> None:
         companion = f"{ARCHIVE_NAME}.sha256sum"
