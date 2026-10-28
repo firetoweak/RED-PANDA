@@ -26,7 +26,7 @@ class ReadMessages(ExternalIdentity):
 
 ARGUMENTS = {"get_context": ContextArguments, "send_message": SendExternal, "read_messages": ReadMessages}
 DESCRIPTIONS = {
-    "get_context": "登记当前原生聊天的外部会话身份，并查询同事名字。新聊天省略 identity；同一聊天继续或重连时传回原值。",
+    "get_context": "登记当前 Codex 聊天的外部会话身份，并查询同事名字。新聊天省略 identity；同一聊天继续或重连时传回原值。",
     "send_message": "向一位同事发送消息，继续对话或开始新话题。无需代码项目或版本。送达后用 read_messages 收取回复与后续消息。",
     "read_messages": "等待并读取当前外部会话收到的消息，包含不同同事的答复与后续发言。保留 next_cursor 续读；不需要先发送请求。",
 }
@@ -78,7 +78,7 @@ def create_mcp_app(service):
                               structuredContent=result)
 
     server = Server("konden conversations", on_list_tools=list_tools, on_call_tool=call_tool, instructions=(
-        "你在原生工具里工作，通过 konden 与长期 Bot 持续交谈和协作。"
+        "你在 Codex 中工作，通过 konden 与长期 Bot 持续交谈和协作。"
         "先 get_context 登记当前聊天并保留 identity。每个新聊天领取新身份，同一聊天继续或重连时沿用原身份；共用连接配置不等于共用聊天身份。"
         "用 send_message 按同事名字发送消息，reply_to 可引用此前消息；用 read_messages 按 next_cursor 收取答复和后续发言。"
         "同事不需要等待新请求才能继续发消息。空结果不表示协作结束，可继续有界等待。"

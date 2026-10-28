@@ -35,7 +35,7 @@ afterEach(() => {
   Reflect.deleteProperty(document, "fonts");
 });
 
-it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不留在查询或 mutation 中", async () => {
+it("生成可直接用于 Codex 的 TOML，支持复制与撤销且凭据只显示一次", async () => {
   const store = createStore(); stores.push(store);
   const item = { connection_id: "a".repeat(32) };
   let entries: ExternalConnection[] = [];
@@ -61,11 +61,9 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
   expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
   expect(screen.queryByLabelText("接入名称")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
-  const config = await screen.findByLabelText("MCP 配置（JSON）");
+  const config = await screen.findByLabelText("Codex MCP 配置（TOML）");
   const value = (config as HTMLTextAreaElement).value;
-  expect(JSON.parse(value).mcpServers.konden).toEqual({
-    url: "http://localhost/mcp/", headers: { Authorization: "Bearer one-time-secret" },
-  });
+  expect(value).toBe('[mcp_servers.konden]\nurl = "http://localhost/mcp/"\n\n[mcp_servers.konden.http_headers]\nAuthorization = "Bearer one-time-secret"');
   await waitFor(() => expect(JSON.stringify(store.getState())).not.toContain("one-time-secret"));
   fireEvent.click(screen.getByRole("button", { name: "复制配置" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("复制失败，请选中上方配置手动复制。");
@@ -74,7 +72,7 @@ it("页面可创建、复制和撤销，关闭后不再显示凭据，凭据不�
   expect(writeText).toHaveBeenLastCalledWith(value);
   view.unmount();
   render(<Provider store={store}><MantineProvider env="test"><ExternalAccess /></MantineProvider></Provider>);
-  expect(screen.queryByLabelText("MCP 配置（JSON）")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Codex MCP 配置（TOML）")).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: "撤销 连接 aaaaaaaa" }));
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(removed).not.toHaveBeenCalled();

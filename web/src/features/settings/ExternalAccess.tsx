@@ -1,4 +1,4 @@
-import { Alert, Button, Divider, Group, Stack, Text, Textarea } from "@mantine/core";
+import { Alert, Button, Code, Divider, Group, Stack, Text, Textarea } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { useState } from "react";
 
@@ -16,9 +16,13 @@ export function ExternalAccess() {
   const [error, setError] = useState<string | null>(null);
   const clipboard = useClipboard();
   const busy = creating.isLoading || revoking.isLoading;
-  const config = created === null ? "" : JSON.stringify({ mcpServers: {
-    konden: { url: created.url, headers: { Authorization: `Bearer ${created.token}` } },
-  } }, null, 2);
+  const config = created === null ? "" : [
+    "[mcp_servers.konden]",
+    `url = ${JSON.stringify(created.url)}`,
+    "",
+    "[mcp_servers.konden.http_headers]",
+    `Authorization = ${JSON.stringify(`Bearer ${created.token}`)}`,
+  ].join("\n");
 
   async function create() {
     if (connectionId === null || busy) return;
@@ -50,16 +54,17 @@ export function ExternalAccess() {
   }
 
   return <Stack gap="md">
-    <Text size="sm">把连接配置添加到你使用的原生工具，与 konden 的长期 Bot 持续交谈和协作。</Text>
-    <Text size="sm" c="dimmed">同一配置可以供多个聊天复用。每个新聊天领取独立身份，重连沿用原身份；接入后的会话会出现在侧栏。</Text>
+    <Text size="sm">让 Codex 聊天与 konden 的长期 Bot 持续交谈和协作。当前适配同一台电脑上的 Codex。</Text>
+    <Text size="sm" c="dimmed">同一配置可以供多个 Codex 聊天复用。每个新聊天领取独立身份，重连沿用原身份；接入后会出现在侧栏「外部会话」。</Text>
     {created === null ? <Group justify="flex-start">
       <Button loading={creating.isLoading} disabled={connectionId === null || busy} onClick={() => void create()}>生成连接配置</Button>
     </Group> : <Stack gap="sm">
       <Text fw={600} size="sm">连接配置已生成</Text>
-      <Text size="sm">请保存配置。凭据只在这次生成后显示，关闭设置后无法再次查看；遗失时请撤销并重新生成。</Text>
-      <Textarea label="MCP 配置（JSON）" value={config} readOnly autosize minRows={8} maxRows={12}
+      <Text size="sm">将下方内容合并到 Codex 的 <Code>~/.codex/config.toml</Code>；已有 konden 配置时替换对应条目，保留其他设置。</Text>
+      <Textarea label="Codex MCP 配置（TOML）" value={config} readOnly autosize minRows={5} maxRows={10}
         classNames={{ input: "external-connection-config" }} />
-      <Text size="xs" c="dimmed">支持此格式的客户端可使用这段配置；其他客户端填写其中的 URL 和 Authorization 请求头。凭据用于连接，请勿粘贴到聊天正文。</Text>
+      <Text size="sm">保存后重启 Codex，再请聊天使用 konden。凭据只显示一次，关闭设置后无法再次查看；遗失时请撤销并重新生成。</Text>
+      <Text size="xs" c="dimmed">请勿将凭据粘贴到聊天正文。Bot 回信的「Codex 自动接续」可在对应外部会话页单独启用。</Text>
       <Group justify="space-between">
         <Button variant="subtle" onClick={() => { setCreated(null); clipboard.reset(); }}>已保存，继续管理</Button>
         <Button onClick={() => clipboard.copy(config)}>{clipboard.copied ? "已复制" : "复制配置"}</Button>

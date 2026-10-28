@@ -15,7 +15,7 @@ export function ExternalRoster({ query, onOpen }: { query: string; onOpen: (path
     </Group>
     {error !== undefined ? <Text c="dimmed" size="xs" px={10}>无法读取外部会话。<Button size="compact-xs" variant="subtle" onClick={() => void refetch()}>重试</Button></Text>
       : isLoading ? <Text c="dimmed" size="xs" px={10}>正在读取外部会话…</Text>
-      : visible.length === 0 ? <Text c="dimmed" size="xs" px={10} py={8}>{query === "" ? "尚无外部会话，可在设置中配置外部接入。" : "没有匹配的外部会话。"}</Text> : null}
+      : visible.length === 0 ? <Text c="dimmed" size="xs" px={10} py={8}>{query === "" ? "尚无外部会话，可在「设置 → Codex 接入」中配置。" : "没有匹配的外部会话。"}</Text> : null}
     <Stack gap={3}>{visible.map((session) => <div key={session.identity}
       className={identity === session.identity ? "session-row is-active" : "session-row"}>
       <UnstyledButton className="session-row-main" aria-label={session.name}
