@@ -246,27 +246,37 @@ describe("visibleTimeline", () => {
 });
 
 describe("timelineTurns", () => {
-  it("keeps private-message notices before the reply without closing its tool process", () => {
+  it("keeps replies in one private conversation across ordinary replies, without mixing peers or new topics", () => {
     const incoming = { kind: "private_message" as const, message_id: "in", direction: "received" as const,
-      peer: "Nova", text: "请检查文件", occurred_at: "2026-10-21T00:00:00Z" };
-    const sent = { ...incoming, message_id: "out", direction: "sent" as const };
+      peer: "Nova", thread_id: "nova-thread", reply_to: "out", text: "请检查文件", occurred_at: "2026-10-21T00:00:00Z" };
+    const sent = { ...incoming, message_id: "out", direction: "sent" as const, reply_to: null };
+    const anotherPeer = { ...sent, message_id: "other", peer: "Lin", thread_id: "lin-thread" };
+    const newTopic = { ...sent, message_id: "new", thread_id: "nova-new-topic" };
     const turns = timelineTurns(visibleTimeline({ ...conversation, items: [
       ...conversation.items, sent,
       { kind: "step", step_id: "final", output_id: "final", text: "已转达", thinking: null,
         tools: [], occurred_at: "2026-10-21T00:00:01Z", files: [] },
-      incoming,
+      incoming, anotherPeer, newTopic,
     ] }, {}, null, {}));
     expect(turns).toHaveLength(2);
     expect(turns[0]).toMatchObject({
-      communications: [{ key: "private:sent:out", direction: "sent", peer: "Nova", text: "请检查文件" }],
+      communications: [{ key: "private-thread:nova-thread", messages: [
+        { key: "private:sent:out", direction: "sent", peer: "Nova", text: "请检查文件" },
+        { key: "private:received:in", direction: "received", peer: "Nova", text: "请检查文件" },
+      ] }],
       process: [{ key: "output:user-1" }], final: { text: "已转达" },
     });
     expect(turns[1]).toMatchObject({
-      communications: [{ key: "private:received:in", direction: "received", peer: "Nova", text: "请检查文件" }],
+      communications: [
+        { key: "private-thread:lin-thread", messages: [{ peer: "Lin" }] },
+        { key: "private-thread:nova-new-topic", messages: [{ peer: "Nova" }] },
+      ],
       final: null,
     });
     const sentOnly = timelineTurns(visibleTimeline({ ...conversation, items: [...conversation.items, sent] }, {}, null, {}))[0];
     expect(turnNeedsSilentEnd(sentOnly, true)).toBe(false);
+    const earlyReply = timelineTurns(visibleTimeline({ ...conversation, items: [incoming, sent] }, {}, null, {}));
+    expect(earlyReply[0].communications[0].messages.map((message) => message.messageId)).toEqual(["out", "in"]);
   });
 
   it("keeps tool steps in the process and exposes the final no-tool step", () => {

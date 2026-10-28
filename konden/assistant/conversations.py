@@ -149,9 +149,11 @@ class StepItem:
 class PrivateMessageItem:
     kind: Literal["private_message"]
     message_id: str
+    thread_id: str
     direction: Literal["sent", "received"]
     peer: str
     text: str
+    reply_to: str | None
     occurred_at: datetime
 
 
@@ -512,6 +514,11 @@ def project_conversation(
 ) -> ConversationView:
     by_event = {step.committed_event_id: step for step in steps}
     sent_messages = {}
+    private_threads = {}
+    for event in events:
+        if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == PRIVATE_MESSAGE:
+            message = parse_agent_fact(event.payload)
+            private_threads[message.message_id] = message.thread_id
     for step in steps:
         for command in step.commands:
             outcome = command.outcome
@@ -519,8 +526,13 @@ def project_conversation(
                     and outcome.status is OutcomeStatus.SUCCEEDED):
                 result = thaw_value(outcome.value)
                 if result["ok"] is True and result["code"] == "DELIVERED":
+                    arguments = command.command.effect.argument_dict()
+                    identity = result["data"]["message_id"]
+                    reply_to = arguments.get("reply_to")
+                    thread_id = identity if reply_to is None else private_threads[reply_to]
+                    private_threads[identity] = thread_id
                     sent_messages[command.canonical_outcome_event_id] = (
-                        result["data"], command.command.effect.argument_dict()["text"])
+                        result["data"], arguments["text"], reply_to, thread_id)
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -538,16 +550,16 @@ def project_conversation(
                 message.reply_to, event.occurred_at))
             continue
         if event.event_id in sent_messages:
-            message, text = sent_messages[event.event_id]
-            items.append(PrivateMessageItem("private_message", message["message_id"],
-                                           "sent", message["recipient"], text, event.occurred_at))
+            message, text, reply_to, thread_id = sent_messages[event.event_id]
+            items.append(PrivateMessageItem("private_message", message["message_id"], thread_id,
+                                           "sent", message["recipient"], text, reply_to, event.occurred_at))
             continue
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == PRIVATE_MESSAGE:
             message = parse_agent_fact(payload)
             if message.sender.kind == "agent":
-                items.append(PrivateMessageItem("private_message", message.message_id,
+                items.append(PrivateMessageItem("private_message", message.message_id, message.thread_id,
                                                "received", message.sender.name, message.text,
-                                               event.occurred_at))
+                                               message.reply_to, event.occurred_at))
             continue
         if isinstance(payload, UserMessageReceived):
             file_ids = tuple(ref for ref in event.artifact_refs if is_file_attachment_id(ref))

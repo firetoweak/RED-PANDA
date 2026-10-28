@@ -301,9 +301,11 @@ export const conversationViewSchema = z
         z.object({
           kind: z.literal("private_message"),
           message_id: z.string().min(1),
+          thread_id: z.string().min(1),
           direction: z.enum(["sent", "received"]),
           peer: z.string().min(1),
           text: z.string().min(1),
+          reply_to: z.string().nullable(),
           occurred_at: z.string().datetime({ offset: true }),
         }).strict(),
         z
