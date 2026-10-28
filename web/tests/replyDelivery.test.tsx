@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { configureStore } from "@reduxjs/toolkit";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -53,11 +53,13 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
       { kind: "step", step_id: "s1", output_id: "hi", text: "回给人", thinking: null,
         occurred_at: "2026-10-19T00:00:01Z", tools: [] },
       { kind: "private_message", message_id: "received-lin", direction: "received", peer: "Lin",
+        text: "请检查文件",
         occurred_at: "2026-10-19T00:01:00Z" },
       { kind: "step", step_id: "s2", output_id: "colleague", text: "先看看 Lin 说的文件", thinking: null,
         occurred_at: "2026-10-19T00:01:00Z", tools: [{ command_id: "read", name: "read_file", status: "succeeded",
           error: null, arguments: { path: "a.md" } }] },
       { kind: "private_message", message_id: "sent-lin", direction: "sent", peer: "Lin",
+        text: "文件没问题",
         occurred_at: "2026-10-19T00:01:04Z" },
       { kind: "step", step_id: "s3", output_id: "read", text: "已回复 Lin\n\n细节：文件没问题", thinking: null,
         occurred_at: "2026-10-19T00:01:05Z", tools: [] },
@@ -91,8 +93,17 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
   expect(screen.getByRole("img", { name: "消息来自" })).toBeVisible();
   expect(screen.getByRole("img", { name: "已发消息给" })).toBeVisible();
-  expect((await screen.findAllByRole("link", { name: "Lin" })).map((link) => link.getAttribute("href")))
+  expect((await screen.findAllByRole("link", { name: "打开 Lin 的对话" })).map((link) => link.getAttribute("href")))
     .toEqual(["/sessions/agent-lin", "/sessions/agent-lin"]);
+  expect(screen.queryByText("请检查文件")).not.toBeInTheDocument();
+  expect(screen.queryByText("文件没问题", { exact: true })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "消息来自 Lin", expanded: false }));
+  expect(screen.getByText("请检查文件")).toBeVisible();
+  expect(screen.queryByText("文件没问题", { exact: true })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "已发消息给 Lin", expanded: false }));
+  expect(screen.getByText("文件没问题", { exact: true })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "消息来自 Lin", expanded: true }));
+  expect(screen.queryByText("请检查文件")).not.toBeInTheDocument();
   expect(screen.queryByText("以下是未读消息")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /工作记录/ })).toBeNull();
 

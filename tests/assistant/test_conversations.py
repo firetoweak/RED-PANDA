@@ -108,10 +108,10 @@ class ConversationProjectionTest(unittest.TestCase):
         conversation = project_conversation("session-1", events, timeline(events), session=view)
         self.assertEqual([item.kind for item in conversation.items],
                          ["user", "step", "private_message", "private_message", "step"])
-        self.assertEqual([(item.message_id, item.direction, item.peer, item.occurred_at)
+        self.assertEqual([(item.message_id, item.direction, item.peer, item.text, item.occurred_at)
                           for item in conversation.items if item.kind == "private_message"], [
-            ("private-in", "received", "Lin", events[2].occurred_at),
-            ("private-out", "sent", "Ada", events[4].occurred_at),
+            ("private-in", "received", "Lin", "我完成了检查", events[2].occurred_at),
+            ("private-out", "sent", "Ada", "请检查代码", events[4].occurred_at),
         ])
 
     def test_refused_private_message_is_only_a_tool_record(self):

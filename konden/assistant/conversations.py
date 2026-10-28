@@ -151,6 +151,7 @@ class PrivateMessageItem:
     message_id: str
     direction: Literal["sent", "received"]
     peer: str
+    text: str
     occurred_at: datetime
 
 
@@ -518,7 +519,8 @@ def project_conversation(
                     and outcome.status is OutcomeStatus.SUCCEEDED):
                 result = thaw_value(outcome.value)
                 if result["ok"] is True and result["code"] == "DELIVERED":
-                    sent_messages[command.canonical_outcome_event_id] = result["data"]
+                    sent_messages[command.canonical_outcome_event_id] = (
+                        result["data"], command.command.effect.argument_dict()["text"])
     communication_notices: dict[str, list] = {}
     for event in events:
         if (isinstance(event.payload, DomainFactCommitted)
@@ -536,15 +538,16 @@ def project_conversation(
                 message.reply_to, event.occurred_at))
             continue
         if event.event_id in sent_messages:
-            message = sent_messages[event.event_id]
+            message, text = sent_messages[event.event_id]
             items.append(PrivateMessageItem("private_message", message["message_id"],
-                                           "sent", message["recipient"], event.occurred_at))
+                                           "sent", message["recipient"], text, event.occurred_at))
             continue
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == PRIVATE_MESSAGE:
             message = parse_agent_fact(payload)
             if message.sender.kind == "agent":
                 items.append(PrivateMessageItem("private_message", message.message_id,
-                                               "received", message.sender.name, event.occurred_at))
+                                               "received", message.sender.name, message.text,
+                                               event.occurred_at))
             continue
         if isinstance(payload, UserMessageReceived):
             file_ids = tuple(ref for ref in event.artifact_refs if is_file_attachment_id(ref))

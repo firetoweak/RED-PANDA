@@ -248,7 +248,7 @@ describe("visibleTimeline", () => {
 describe("timelineTurns", () => {
   it("keeps private-message notices before the reply without closing its tool process", () => {
     const incoming = { kind: "private_message" as const, message_id: "in", direction: "received" as const,
-      peer: "Nova", occurred_at: "2026-10-21T00:00:00Z" };
+      peer: "Nova", text: "请检查文件", occurred_at: "2026-10-21T00:00:00Z" };
     const sent = { ...incoming, message_id: "out", direction: "sent" as const };
     const turns = timelineTurns(visibleTimeline({ ...conversation, items: [
       ...conversation.items, sent,
@@ -258,11 +258,11 @@ describe("timelineTurns", () => {
     ] }, {}, null, {}));
     expect(turns).toHaveLength(2);
     expect(turns[0]).toMatchObject({
-      communications: [{ key: "private:sent:out", direction: "sent", peer: "Nova" }],
+      communications: [{ key: "private:sent:out", direction: "sent", peer: "Nova", text: "请检查文件" }],
       process: [{ key: "output:user-1" }], final: { text: "已转达" },
     });
     expect(turns[1]).toMatchObject({
-      communications: [{ key: "private:received:in", direction: "received", peer: "Nova" }],
+      communications: [{ key: "private:received:in", direction: "received", peer: "Nova", text: "请检查文件" }],
       final: null,
     });
     const sentOnly = timelineTurns(visibleTimeline({ ...conversation, items: [...conversation.items, sent] }, {}, null, {}))[0];
