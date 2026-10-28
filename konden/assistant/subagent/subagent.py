@@ -18,6 +18,7 @@ from konden.assistant.delivery import DELIVER_TOOL_NAME, DeliverySink, deliver_b
 from konden.assistant.host.ipc import ProcessFailure
 from konden.runtime import (
     AgentRuntime,
+    AttemptPhase,
     CommandOutcome,
     CommandOutcomeReceived,
     CommandPhase,
@@ -270,7 +271,9 @@ async def record_interrupted_return(journal: Journal, session_id: str) -> None:
     if project_parent(events) is None or _return_event(events) is not None:
         return
     state = StateProjector().project(session_id, events).state
-    if not any(command.phase is CommandPhase.UNKNOWN for command in state.commands):
+    if not any(command.phase is CommandPhase.UNKNOWN
+               and command.attempts[-1].phase is AttemptPhase.ORPHANED
+               for command in state.commands):
         return
     await persist_return(
         journal,
