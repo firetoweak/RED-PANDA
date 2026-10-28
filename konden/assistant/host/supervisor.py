@@ -1033,7 +1033,14 @@ class HostSupervisor:
                 worker = self.workers.get(session_id)
                 if worker is not None and not worker.exited.is_set():
                     worker.intentionally_stopped = True
-                    await worker.peer.send(("shutdown",))
+                    # An idle stop may already have closed the pipe. Wait for
+                    # its exit or rejection before requesting forced shutdown.
+                    if worker.stopping:
+                        await worker.transition.wait()
+                    if not worker.exited.is_set():
+                        worker.stopping = True
+                        worker.transition.clear()
+                        await worker.peer.send(("shutdown",))
                 if self.commands is not None:
                     await self.commands.manager.stop_session(session_id)
                 if worker is not None:

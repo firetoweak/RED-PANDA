@@ -1,4 +1,6 @@
 import asyncio
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 from konden.assistant.subagent.subagent import (
@@ -10,6 +12,7 @@ from konden.runtime import (
     DomainFactCommitted,
     InvokeTool,
     ModelDecision,
+    SqliteJournal,
     StateProjector,
     ToolBinding,
 )
@@ -23,11 +26,14 @@ CHILD = f"{PARENT}/sub-{COMMAND}"
 
 
 class SubagentRecoveryTest(unittest.IsolatedAsyncioTestCase):
-    async def interrupted_journal(self, *, child=True):
+    async def interrupted_journal(self, *, child=True, orphaned=True):
         async def read(context, arguments):
             await asyncio.Event().wait()
 
-        journal = MemoryJournal()
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        journal = SqliteJournal(Path(directory.name) / "journal.sqlite")
+        await journal.create_session(CHILD)
         runtime = AgentRuntime(
             journal,
             ScriptedDecisionMaker((lambda _: ModelDecision(
@@ -52,7 +58,15 @@ class SubagentRecoveryTest(unittest.IsolatedAsyncioTestCase):
             await runtime.receive_user_message(CHILD, "read", delivery_id="task")
         await runtime.advance(CHILD)
         await runtime.dispatcher.close()
+        if orphaned:
+            await journal.prepare_recovery(CHILD)
         return journal
+
+    async def test_recovery_does_not_reclaim_a_command_started_by_the_current_worker(self):
+        journal = await self.interrupted_journal(orphaned=False)
+        before = await journal.snapshot(CHILD)
+        await record_interrupted_return(journal, CHILD)
+        self.assertEqual(await journal.snapshot(CHILD), before)
 
     async def test_recovery_appends_one_return_without_changing_execution_history(self):
         journal = await self.interrupted_journal()

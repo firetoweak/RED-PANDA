@@ -1,15 +1,69 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
 
 from konden.assistant.host.ipc import PipePeer, ProcessFailure, WorkerFailed
+from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor, Worker
+from konden.assistant.subagent.subagent import RETURN_FACT
+from konden.runtime import DomainFactCommitted
 
 
 class HostRequestFailureTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reclaim_waits_for_idle_stop_and_shuts_down_if_it_was_rejected(self):
+        for accepted in (True, False):
+            with self.subTest(idle_stop_accepted=accepted), TemporaryDirectory() as directory:
+                child = "parent/sub-command"
+                host = object.__new__(HostSupervisor)
+                host.store = SessionStore(Path(directory))
+                await host.store.create(child)
+                host.turn_locks = {}
+                host.locks = {}
+                host.intentionally_stopped = set()
+                host.compact = SimpleNamespace(retire=AsyncMock())
+                host.commands = SimpleNamespace(manager=SimpleNamespace(stop_session=AsyncMock()))
+                host.request = AsyncMock()
+                worker = Worker(None, SimpleNamespace())
+                worker.stopping = True
+                host.workers = {child: worker}
+                pipe_open = False
+
+                async def shutdown(message):
+                    if not pipe_open:
+                        raise BrokenPipeError("idle stop is already closing this pipe")
+                    worker.exited.set()
+                    worker.transition.set()
+
+                worker.peer.send = AsyncMock(side_effect=shutdown)
+
+                async def finish_idle_stop():
+                    nonlocal pipe_open
+                    await asyncio.sleep(0)
+                    if accepted:
+                        worker.exited.set()
+                    else:
+                        pipe_open = True
+                        worker.stopping = False
+                    worker.transition.set()
+
+                async with asyncio.timeout(2):
+                    await asyncio.gather(
+                        host._reclaim_child(child, {"parent_session_id": "parent", "reason": "验收完成"}),
+                        finish_idle_stop(),
+                    )
+                returned = [event.payload for event in await host.store.journal(child).snapshot(child)
+                            if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == RETURN_FACT]
+                self.assertEqual(len(returned), 1)
+                self.assertIsNone(returned[0].data["failure"])
+                self.assertEqual(returned[0].data["reason"], "验收完成")
+                host.commands.manager.stop_session.assert_awaited_once_with(child)
+                host.request.assert_awaited_once()
+
     async def test_peer_close_does_not_send_abort_back_to_exiting_worker(self):
         host = object.__new__(HostSupervisor)
         host.lifecycle = SimpleNamespace(is_deleted=AsyncMock(return_value=False))
