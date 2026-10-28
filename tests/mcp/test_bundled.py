@@ -1,10 +1,12 @@
 import unittest
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock
 
 from mcp.types import Tool
 
+from konden.llm.config import initial_connections
 from konden.mcp.approval import McpInstallProposalInput
 from konden.mcp.bundled import BROWSER_SERVER_IDS, BUILTIN_SERVER_IDS
 from konden.mcp.client_manager import McpClientError
@@ -23,6 +25,24 @@ def test_browser_catalog_is_available_without_installation_or_connection(tmp_pat
     }
     assert [item.id for item in provider.descriptors(read_only_only=True)] == ["mcp:builtin-exa"]
     assert assembly.service.registry.snapshot() == ()
+    assert assembly.client_manager._connections == {}
+
+
+def test_deepseek_catalog_tracks_the_existing_connection_without_installation_or_restart(tmp_path):
+    home = KondenHome(tmp_path)
+    assembly = build_mcp(home)
+    provider = assembly.toolset_provider
+    settings = initial_connections()
+    settings["deepseek"]["api_key"] = "private-deepseek-key"
+    home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
+    descriptors = provider.descriptors(read_only_only=True)
+    assert {item.id for item in descriptors} == {"mcp:builtin-exa", "mcp:builtin-deepseek"}
+    assert "private-deepseek-key" not in repr(descriptors)
+    settings["deepseek"]["api_key"] = ""
+    home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
+    assert [item.id for item in provider.descriptors(read_only_only=True)] == ["mcp:builtin-exa"]
+    assert assembly.service.registry.snapshot() == ()
+    assert not (home.mcp_root / "secrets").exists()
     assert assembly.client_manager._connections == {}
 
 

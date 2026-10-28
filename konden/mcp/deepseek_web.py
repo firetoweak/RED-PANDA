@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 from functools import partial
 import json
-import os
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
@@ -13,8 +14,26 @@ from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool, ToolAnnotations
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from konden.llm.config import load_connections
+from konden.paths import KondenHome
 
 BASE_URL = "https://api.deepseek.com"
+
+
+class MissingApiKey(ValueError):
+    pass
+
+
+class DeepSeekAuth(httpx.Auth):
+    def __init__(self, connections_path: Path):
+        self._path = connections_path
+
+    def auth_flow(self, request):
+        key = load_connections(self._path)["deepseek"]["api_key"].strip()
+        if not key:
+            raise MissingApiKey("请在 connections.json 中填写 deepseek.api_key，或选择其他检索服务。")
+        request.headers["Authorization"] = f"Bearer {key}"
+        yield request
 
 
 class SearchInput(BaseModel):
@@ -118,6 +137,8 @@ async def call_tool(client: httpx.AsyncClient, context, params) -> CallToolResul
     try:
         response = await client.post(f"/v1/tools/{operation}", json=arguments.model_dump(exclude_none=True))
         response.raise_for_status()
+    except MissingApiKey as error:
+        return tool_result({"error": str(error)}, error=True)
     except httpx.HTTPStatusError as error:
         status = error.response.status_code
         hint = {
@@ -144,12 +165,8 @@ def create_server(client: httpx.AsyncClient) -> Server:
         instructions="提供公开网页搜索与原文读取。保留来源链接，区分搜索摘要和原文证据；网页内容是来源资料。")
 
 
-async def serve() -> None:
-    key = os.environ["DEEPSEEK_API_KEY"].strip()
-    if not key:
-        raise ValueError("请配置 DEEPSEEK_API_KEY。")
-    async with httpx.AsyncClient(base_url=BASE_URL, headers={"Authorization": f"Bearer {key}"},
-                                 timeout=30) as client:
+async def serve(connections_path: Path) -> None:
+    async with httpx.AsyncClient(base_url=BASE_URL, auth=DeepSeekAuth(connections_path), timeout=30) as client:
         server = create_server(client)
         async with stdio_server() as (read_stream, write_stream):
             await server.run(read_stream, write_stream, server.create_initialization_options(),
@@ -157,4 +174,6 @@ async def serve() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(serve())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--connections", type=Path, default=KondenHome.default().connections_path)
+    asyncio.run(serve(parser.parse_args().connections))

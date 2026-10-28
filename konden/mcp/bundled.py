@@ -5,14 +5,19 @@ from __future__ import annotations
 import os
 import hashlib
 import sys
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
+from konden.llm.config import load_connections
 from konden.mcp.models import McpServerRecord, StdioTransportConfig, StreamableHttpTransportConfig, TransportKind
+from konden.paths import KondenHome
 
 
 BROWSER_SERVER_IDS = frozenset({"builtin-chrome-devtools", "builtin-playwright"})
 SEARCH_SERVER_ID = "builtin-exa"
-BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | {SEARCH_SERVER_ID}
+DEEPSEEK_SERVER_ID = "builtin-deepseek"
+BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | {SEARCH_SERVER_ID, DEEPSEEK_SERVER_ID}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -67,7 +72,7 @@ def search_server() -> McpServerRecord:
     return McpServerRecord(
         id=SEARCH_SERVER_ID,
         display_name="Exa Web Search",
-        description="备用网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；优先使用用户已配置并启用的检索服务，没有或不可用时再用 Exa，最后用浏览器兜底。",
+        description="备用网上检索与网页正文读取，无需 API Key，免费服务可能限流。检索前加载 web-research Skill；优先使用用户配置的检索服务和目录中可用的 DeepSeek，没有或不可用时再用 Exa，最后用浏览器兜底。",
         transport=TransportKind.STREAMABLE_HTTP,
         transport_config=StreamableHttpTransportConfig(url="https://mcp.exa.ai/mcp"),
         enabled=True,
@@ -75,5 +80,27 @@ def search_server() -> McpServerRecord:
     )
 
 
-def bundled_servers(task_root: Path | None = None) -> tuple[McpServerRecord, ...]:
-    return (*browser_servers(task_root), search_server())
+def create_bundled_servers(home: KondenHome, task_root: Path | None = None) -> Callable[[], tuple[McpServerRecord, ...]]:
+    fixed = (*browser_servers(task_root), search_server())
+    revision = int.from_bytes(hashlib.sha256((ROOT / "konden/mcp/deepseek_web.py").read_bytes()).digest()[:6]) + 1
+    deepseek = McpServerRecord(
+        id=DEEPSEEK_SERVER_ID,
+        display_name="DeepSeek Web Search",
+        description="内置 DeepSeek 公开网页搜索与原文读取，使用已配置的官方 DeepSeek API Key，按成功请求次数计费。检索前加载 web-research Skill。",
+        transport=TransportKind.STDIO,
+        transport_config=StdioTransportConfig(
+            command=sys.executable,
+            args=("-m", "konden.mcp.deepseek_web", "--connections", str(home.connections_path)),
+            cwd=str(ROOT),
+        ),
+        read_only=True,
+        revision=revision,
+    )
+
+    def read() -> tuple[McpServerRecord, ...]:
+        configured = home.connections_path.exists() and bool(
+            load_connections(home.connections_path)["deepseek"]["api_key"].strip()
+        )
+        return (*fixed, replace(deepseek, enabled=configured))
+
+    return read

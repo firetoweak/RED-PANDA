@@ -7,7 +7,8 @@ from mcp.types import CallToolRequestParams
 from pydantic import ValidationError
 import pytest
 
-from konden.mcp.deepseek_web import call_tool
+from konden.llm.config import initial_connections
+from konden.mcp.deepseek_web import DeepSeekAuth, call_tool
 
 
 PAGE = {
@@ -119,3 +120,31 @@ def test_unknown_internal_error_is_not_converted_to_a_recoverable_tool_failure()
 
     with pytest.raises(RuntimeError, match="broken contract"):
         invoke("web_search", {"query": "search"}, handler)
+
+
+def test_each_request_uses_the_current_connection_key_and_stops_after_it_is_cleared(tmp_path):
+    path = tmp_path / "connections.json"
+    settings = initial_connections()
+    used_keys = []
+
+    def handler(request):
+        used_keys.append(request.headers["Authorization"])
+        return httpx.Response(200, json={"results": []})
+
+    async def scenario():
+        async with httpx.AsyncClient(base_url="https://api.deepseek.com", auth=DeepSeekAuth(path),
+                                     transport=httpx.MockTransport(handler)) as client:
+            params = CallToolRequestParams(name="web_search", arguments={"query": "search"})
+            for key in ("first-key", "updated-key", ""):
+                settings["deepseek"]["api_key"] = key
+                path.write_text(json.dumps(settings), encoding="utf-8")
+                result = await call_tool(client, None, params)
+                assert result.is_error == (not key)
+                if not key:
+                    assert "deepseek.api_key" in result.structured_content["error"]
+            path.write_text("{}", encoding="utf-8")
+            with pytest.raises(ValueError, match="connections.json"):
+                await call_tool(client, None, params)
+
+    asyncio.run(scenario())
+    assert used_keys == ["Bearer first-key", "Bearer updated-key"]

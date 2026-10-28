@@ -162,7 +162,6 @@ Bot 可不挂项目独立使用；代码任务需显式选择项目。名册以 
 | `console_chat.py [--home] [--workspace]`，会内 `/new` `/mcp ...` `/skill ...` | console-chat、extensions |
 | `scripts/setup.sh`、`scripts/setup.ps1`、`scripts/setup.py [--configure] [--check]` | setup-and-launch |
 | `python -m konden.initialize --configure / --if-needed` | setup-and-launch |
-| `python -m scripts.configure_deepseek_search [--home PATH]` | extensions（DeepSeek 搜索与网页读取） |
 | `scripts/start.sh`、`scripts/start.ps1`（→ `scripts/launch.py` → `web_chat.py`） | setup-and-launch |
 | `scripts/dev.sh`、`scripts/dev.ps1`（→ `scripts.launch --dev`） | setup-and-launch |
 

@@ -1,20 +1,19 @@
-"""证明配置命令能启动实际 stdio 服务，并使只读会话在重启后仍可发现和调用。"""
+"""证明只填现有连接文件就能启动 stdio 检索服务，重建装配后仍可调用。"""
 import asyncio
 import json
 
 import pytest
 
 from konden.llm.config import initial_connections
+from konden.mcp.bundled import DEEPSEEK_SERVER_ID
 from konden.mcp.composition import build_mcp
-from konden.mcp.secrets import McpSecretStore
 from konden.paths import KondenHome
-from scripts.configure_deepseek_search import SERVER_ID, configure
 
 
 pytestmark = pytest.mark.process
 
 
-def test_configure_and_reopen_deepseek_tools_without_exposing_or_changing_model_credentials(tmp_path):
+def test_configured_deepseek_is_available_without_registration_or_a_second_secret_copy(tmp_path):
     home = KondenHome(tmp_path / "home")
     home.initialize()
     connections = initial_connections()
@@ -23,25 +22,30 @@ def test_configure_and_reopen_deepseek_tools_without_exposing_or_changing_model_
     home.connections_path.write_text(original, encoding="utf-8")
 
     async def scenario():
-        assert await configure(home) == 0
         assembly = build_mcp(home)
-        async with assembly.client_manager as manager:
-            record = await assembly.service.registry.get(SERVER_ID)
-            assert record.enabled and record.read_only
-            assert "test-deepseek-secret" not in json.dumps(record.to_dict())
-            assert McpSecretStore.from_home(home).resolve_many(record.credential_refs) == {
-                "DEEPSEEK_API_KEY": "test-deepseek-secret",
+        provider = assembly.toolset_provider
+        async with assembly.client_manager:
+            discovered = await provider.discover_tools(f"mcp:{DEEPSEEK_SERVER_ID}")
+            assert {tool.spec.name for tool in discovered} == {
+                "mcp__builtin-deepseek__web_search", "mcp__builtin-deepseek__web_fetch",
             }
-            assert record.toolset_id in {
-                descriptor.id for descriptor in assembly.toolset_provider.descriptors(read_only_only=True)
-            }
-            tools = {tool.name: tool for tool in await manager.list_tools(record)}
-            assert set(tools) == {"web_search", "web_fetch"}
-            assert tools["web_search"].input_schema["properties"]["query"]["maxLength"] == 128
-            # A schema error proves request/response transport without calling the paid API.
-            result = await manager.call_tool(record, "web_fetch", {"url": "file:///private.txt"})
-            assert result.is_error
-            assert "HTTP/HTTPS" in result.model_dump_json()
+        reopened = build_mcp(home)
+        async with reopened.client_manager:
+            descriptor = next(item for item in reopened.toolset_provider.descriptors(read_only_only=True)
+                              if item.id == f"mcp:{DEEPSEEK_SERVER_ID}")
+            tool = next(item for item in discovered if item.provider_data["tool_name"] == "web_fetch")
+            restored = reopened.toolset_provider.restore_spec(
+                toolset_id=descriptor.id, revision=descriptor.revision,
+                name=tool.spec.name, description=tool.spec.description,
+                parameters=tool.spec.parameters.schema(), requires_authorization=False,
+                provider_data=tool.provider_data,
+            )
+            # Invalid URL proves transport and restoration without a paid request.
+            result = await restored.handler({"url": "file:///private.txt"})
+            assert not result["ok"]
+            assert "HTTP/HTTPS" in result["error"]
+            assert reopened.service.registry.snapshot() == ()
+            assert not (home.mcp_root / "secrets").exists()
 
     asyncio.run(scenario())
     assert home.connections_path.read_text(encoding="utf-8") == original

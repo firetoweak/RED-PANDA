@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -13,6 +14,7 @@ from konden.channels.web.capabilities import CapabilityViews
 from konden.channels.web.channel import WebChannel
 from konden.cli.models import CliHealth, CliRecord, CliSourceRef
 from konden.cli.registry import CliRegistry
+from konden.llm.config import initial_connections
 from konden.mcp.composition import build_mcp
 from konden.paths import KondenHome
 from konden.skills.application import SkillApplicationService
@@ -63,12 +65,21 @@ def test_inventory_includes_disabled_and_builtin_capabilities_without_connecting
     server = next(item for item in data["mcp"] if item["id"] == "reports")
     assert (server["enabled"], server["last_status"]) == (False, "unknown")
     assert {item["id"] for item in data["mcp"] if item["origin"] == "builtin"} == {
-        "builtin-playwright", "builtin-chrome-devtools", "builtin-exa",
+        "builtin-playwright", "builtin-chrome-devtools", "builtin-exa", "builtin-deepseek",
     }
+    assert not next(item for item in data["mcp"] if item["id"] == "builtin-deepseek")["enabled"]
     assert "secret-value" not in response.text
     assert "transport_config" not in response.text
     assert data["cli"][0]["version"] == "2.50.0"
     assert data["cli"][0]["health"]["help_ok"]
+    settings = initial_connections()
+    settings["deepseek"]["api_key"] = "private-deepseek-key"
+    home = KondenHome(views.skills.skills_root.parent)
+    home.connections_path.write_text(json.dumps(settings), encoding="utf-8")
+    updated = client.get("/api/capabilities")
+    deepseek = next(item for item in updated.json()["mcp"] if item["id"] == "builtin-deepseek")
+    assert deepseek["enabled"] and deepseek["read_only"]
+    assert "private-deepseek-key" not in updated.text
     views.mcp.client_manager.invalidate.assert_not_awaited()
 
 

@@ -8,7 +8,7 @@
 
 - `bundled-browsers`：空安装登记的 Bot 默认可见 `mcp:builtin-chrome-devtools` 与 `mcp:builtin-playwright`；通过 `load_toolset` 按需加载，具体工具下一步才可调用，不产生安装提案或安装记录。每个连接使用独立的无头 Chrome，会话关闭后不保留登录状态；只读子 Agent 的能力目录排除两者。内置能力随产品更新，安装管理清单仍只列用户安装的 Server。
 
-- `deepseek-web-search`：运行项目 Python `-m scripts.configure_deepseek_search --home <数据目录>`，从该目录的 `connections.json` 读取 `deepseek.api_key`，登记并启用只读 `mcp:deepseek-web-search`。连接检查只发现工具，不调用计费搜索。能力清单可查看和启停；Bot 按需加载 `web_search`、`web_fetch`，来源与错误如实返回，检索优先级沿用 `web-research`。
+- `deepseek-web-search`：只需在当前 home 的 `connections.json` 填写 `deepseek.api_key`，只读 `mcp:builtin-deepseek` 自动可用，无安装登记或密钥副本。能力清单列为产品内置，启用状态跟随密钥是否填写，没有独立开关；Bot 按需加载 `web_search`、`web_fetch`，来源与错误如实返回。修改密钥后下一次请求生效，清空后从模型目录移除，检索优先级沿用 `web-research`。
 
 - `bundled-skills`：空数据根无需安装即可在能力目录发现 `builtin:coding` 与 `builtin:git-collaboration`，正文经 `load_skill` 读取，不注入系统提示，也不作为用户安装记录。工作目录的 `.claude/skills/` 在无 Git、无登记项目的 Bot 中同样可发现为 `project:` Skill。验证时让普通 Bot 按目录自定义 Skill 交付文件，并核对调用与真实文件。
 
@@ -48,7 +48,7 @@
   - (b) 模型调用的是 `list_mcp_servers` / `list_installed_skills` / `list_installed_clis`；终端 `/mcp list` 在空 home 打印 `尚未注册任何 MCP Server。`。
   - (c) 列出不写文件。
   - (d) `/mcp list --foo` → `/mcp list 只接受可选参数 --runtime`。
-- **DeepSeek 网页检索**：在隔离 home 配置官方 Key 并运行上述配置命令，从 `能力 → MCP` 展开 `查看 DeepSeek Web Search`，核对只读与启用状态，页面与 `GET /api/capabilities` 均不含密钥。创建无项目 Bot，发送 `请联网查找 DeepSeek 网页搜索与抓取 API 的官方文档，读取其中一个官方页面的原文，并给出来源链接。`，核对会话中的真实 Search、Fetch 调用与带来源的回答；重启隔离 Web 后登记与回答仍存在。认证失败、余额不足、限流与抓取失败由接口边界测试保护；本项没有逐一触发真实服务错误。
+- **DeepSeek 网页检索**：在隔离 home 只填写官方 Key，从 `能力 → MCP` 展开 `查看 DeepSeek Web Search`，核对产品内置、只读与启用状态，页面与 `GET /api/capabilities` 均不含密钥。创建无项目 Bot，发送 `请联网查找 DeepSeek 网页搜索与抓取 API 的官方文档，读取其中一个官方页面的原文，并给出来源链接。`，核对会话中的真实 Search、Fetch 调用与带来源的回答，确认安装登记与 SecretStore 没有新增项；运行时清空再填回密钥，能力清单随之更新，后续请求仍可用。重启隔离 Web 后回答与调用仍可恢复。认证失败、余额不足、限流与抓取失败由接口边界测试保护；本项没有逐一触发真实服务错误。
 - **安装 Skill（取消后确认）**：准备一个最小 `SKILL.md` 目录，让助手按绝对路径安装 → 待处理条出现 `准备安装 Skill …` 一项 → 点 `取消`。
   - (a) `skills/` 不变。
   - (b) 再次请求后点 `确认` → `skills/` 出现该 skill，`list_installed_skills` 含它；`test_installed_skill` 通过。
