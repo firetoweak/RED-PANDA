@@ -1,6 +1,6 @@
 # 外部会话
 
-当前先适配同机 Codex：聊天经 MCP 登记独立身份，与长期 Bot 持续双向交流，并在 Web 中可见。其他编码工具尚未适配。消息不要求仓库、版本或验证结论。来源：外部会话服务、MCP 入口与 `web/src/features/external/`；任务场景见用户指南 `docs/外部协作.md`。
+原生聊天经 MCP 登记独立身份，与长期 Bot 持续双向交流，并在 Web 中可见；通信契约不要求 Codex 身份或自动接续绑定。当前优先适配并验证同机 Codex，其他客户端暂未纳入接入验证。消息不要求仓库、版本或验证结论。来源：外部会话服务、MCP 入口与 `web/src/features/external/`；任务场景见用户指南 `docs/外部协作.md`。
 
 ## Sub-features
 
@@ -35,4 +35,4 @@
 
 2026-10-25 增量通过：Windows 隔离 Web、MCP Streamable HTTP 协议客户端与真实 DeepSeek。首次登记可见、两个身份分流、无版本往返、Bot 独立后续发言、查询后主动联系、页面跳转、桌面明暗与 390px、真实 Host 重启续读、撤销中止等待和历史保留通过。旧验证记录的离线转换在隔离样本上保留身份、事件顺序、引用与原始备份。Python、前端和 smoke 统一入口通过。未验证原生 Codex/Claude 客户端的界面切换、Linux、外部群聊或空闲自动唤醒，也未重跑独立验收的修复复验业务场景。证据在本地 `.tools/external-conversation-proof/evidence/`。
 
-2026-10-28 Codex 接入增量通过：Windows 隔离 Web 实际生成 TOML，本机 Codex CLI 从独立 `CODEX_HOME` 正确读取 URL 与认证配置；协议客户端按该配置完成 MCP 握手、两个新身份登记、重连续用和空收件箱读取。页面生成、复制、关闭后隐藏凭据、桌面明暗主题、390px、会话导航、取消及确认撤销通过，撤销后 MCP 返回 401。统一 Python 与前端检查通过。隔离实例未配置默认模型，本轮未运行真实 Bot 往返，也未重跑原生 Codex 自动接续联动；其他平台未验证。证据在本地 `.tools/codex-access-proof/evidence/`。
+2026-10-28 Codex 接入增量通过：Windows 隔离 Web 实际生成 TOML，本机 Codex CLI 从独立 `CODEX_HOME` 正确读取 URL 与认证配置；普通协议客户端按该配置完成 MCP 握手、两个新身份登记、重连续用和空收件箱读取，不绑定 Codex 聊天，收到的通用提示也不假定客户端是 Codex。页面生成、复制、关闭后隐藏凭据、桌面明暗主题、390px、会话导航、取消及确认撤销通过，撤销后 MCP 返回 401。统一 Python 与前端检查通过。隔离实例未配置默认模型，本轮未运行真实 Bot 往返，也未重跑原生 Codex 自动接续联动；其他原生客户端与平台未验证。证据在本地 `.tools/codex-access-proof/evidence/`。

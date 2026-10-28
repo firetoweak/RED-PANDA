@@ -57,7 +57,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
             {messages.length === 0 ? <div className="group-chat-empty">
               <span className="agent-avatar agent-details-avatar" aria-hidden="true"><IconPlugConnected size={28} /></span>
               <Text fw={500} size="lg">{!session.active ? "此会话尚无消息" : session.peers.length === 0 ? "外部会话已接入" : "这里还没有消息"}</Text>
-              <Text c="dimmed" size="sm">在 Codex 聊天中向同事发送消息，这里会保留双方的对话。</Text>
+              <Text c="dimmed" size="sm">在原生聊天中向同事发送消息，这里会保留双方的对话。</Text>
             </div> : messages.map((message, index) => {
               const source = messages.find((item) => item.message_id === message.reply_to);
               const time = formatMessageTime(message.occurred_at);
