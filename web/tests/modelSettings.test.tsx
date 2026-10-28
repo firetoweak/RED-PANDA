@@ -96,7 +96,7 @@ it("Codex 从账号目录选择，展示能力并保存原始 ID，compact 独�
   fireEvent.click(screen.getByRole("button", { name: "保存配置", exact: true }));
   expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ config: { model: {
     ...settings.config.model, candidates: [...settings.config.model.candidates,
-      { model: "openai-codex/ExactCase-ID", compact_threshold_tokens: 200000 }],
+      { model: "openai-codex/ExactCase-ID", compact_threshold_tokens: 50000 }],
   } } }));
 });
 

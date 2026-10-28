@@ -96,5 +96,5 @@ def load_app_config(path: Path | None = None) -> AppConfig:
 def assistant_config_from_app(app: AppConfig, llm: LLMApi) -> AssistantConfig:
     model = app.default
     return AssistantConfig("" if model is None else model.model,
-                           200000 if model is None else model.compact_threshold_tokens, llm,
+                           50000 if model is None else model.compact_threshold_tokens, llm,
                            None if model is None else model.reasoning_effort)

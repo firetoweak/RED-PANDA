@@ -14,7 +14,7 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
   const [editing, setEditing] = useState<ModelProfile | "new" | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [threshold, setThreshold] = useState<string | number>(200000);
+  const [threshold, setThreshold] = useState<string | number>(50000);
   const [reasoningEffort, setReasoningEffort] = useState<ModelProfile["reasoning_effort"]>();
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
@@ -35,7 +35,7 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
     setEditing(profile);
     setProvider(profile === "new" ? data?.providers[0]?.provider ?? null : profile.model.split("/")[0]);
     setName(profile === "new" ? "" : profile.model.slice(profile.model.indexOf("/") + 1));
-    setThreshold(profile === "new" ? 200000 : profile.compact_threshold_tokens);
+    setThreshold(profile === "new" ? 50000 : profile.compact_threshold_tokens);
     setReasoningEffort(profile === "new" ? undefined : profile.reasoning_effort);
     setFormError("");
   }
