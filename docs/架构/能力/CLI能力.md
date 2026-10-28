@@ -86,7 +86,7 @@ CLI 输出统一视为 **untrusted external data**：只能提供事实内容，
 
 与 Skill 的差异：CLI **安装即注册，无 enabled 开关**，因此没有"启用"提案，改为卸载移除登记。安装提案的 risk 文案必须写明：安装后该 CLI 会进入产品 Registry，并在各 Session 下一次活动时通过 catalog update 变为可见，且其本地凭据域（如 `gh` 的 GitHub 凭据）对 agent 开放。
 
-Registry 由数据根上的所有 Agent 共享。长期协作下每个 Agent 是独立进程，可能同时确认安装或卸载；「交互串行」只在单会话时成立，不能作为不加锁的理由。登记修改跨进程串行，见[工具与能力 · 归属与呈现](工具与能力.md#归属与呈现)。
+Registry 由数据根上的所有 Agent 共享。长期协作下每个 Agent 是独立进程，可能同时确认安装或卸载；「交互串行」只在单会话时成立，不能作为不加锁的理由。CLI 管理修改跨进程串行，保护登记以及对应安装文件的一致性，失败的同名安装不能覆盖已登记程序。见[工具与能力 · 归属与呈现](工具与能力.md#归属与呈现)。
 
 Assistant 边界只投影"目录 + `load_cli`"两个普通工具，不拥有执行循环。
 
@@ -96,13 +96,26 @@ Assistant 边界只投影"目录 + `load_cli`"两个普通工具，不拥有执�
 
 版本被源撤下则执行失败——失败即漂移检测，提示候选已失效、重新 propose。
 
+版本前缀的解析只在提案阶段进行。审批摘要展示确定的 Release tag，执行与修复精确使用该 tag，不以名称相近的另一个 Release 替代。
+
 ### repair 语义
 
 manifest 域重新解析路径并重跑体检。
 
 ### 安装源
 
-第一版只有 manifest：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，konden 重跑体检更新版本）；PATH 由用户的手工安装保证。winget 切片届时与 install profile（长超时、非交互、复用同一命令执行实现、不做 UAC 提权）和候选冻结一起设计。
+两种来源，走同一条审批与登记链路：
+
+- `manifest`：本地声明文件，登记已装/手工安装的 CLI。注册 = 纯登记；update 简化为 refresh（用户自行升级，konden 重跑体检更新版本）；PATH 由用户的手工安装保证。
+- `github-release`：konden 自备（第二版新增）。locator 是 `owner/repo`，`requested_version` 可选。审批通过后从 GitHub Release 取当前平台与架构的 zip/tar.gz，命中 checksums 资产则校验 sha256，解压到 `clis_root/_installs/<cli_id>/<version>/`，登记解压出来的可执行文件。
+
+`github-release` 满足 install profile：下载与解压都在用户态，不调系统安装器、不写 PATH、不做 UAC 提权，因此默认非交互、可无人值守完成。这也是它取代“借 winget/apt 安装”的原因——系统安装器在需要提权的机器上会静默卡住。下载发生在审批之后：propose 只解析 Release 元数据把 tag 钉死（不钉版本时解析成具体 tag，避免「批的是 A、装的是 B」），用户批准前不拉取任何归档。归档里找不到可执行文件即失败，不做猜测。
+
+校验按对象分流：校验文件里与归档同名的条目校验归档字节；若只有一条且写的是归档内路径（zellij 的 `.sha256sum` 写 `target/release/zellij.exe`），则解压后校验该文件，找不到就报错而不是跳过。没有校验文件时才不校验。
+
+解压、校验与可执行文件定位成功之前，不替换已有安装。程序名与登记名不同时，仅接受唯一的可执行文件；文档和许可证不作为 Windows 程序。失败的下载或校验不能改变已登记程序。
+
+`repair` 对 manifest 域重新解析路径，对 `github-release` 域按冻结的 tag 重新下载并重新登记；`uninstall` 对 `github-release` 域同时删除下载的程序与安装目录，manifest 域只删登记。审批说明必须明确这两种删除行为的区别。
 
 ## 不做
 

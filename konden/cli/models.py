@@ -29,7 +29,10 @@ def validate_cli_description(description: str) -> str:
     return description
 
 
-CliSourceKind = Literal["manifest"]
+CliSourceKind = Literal["manifest", "github-release"]
+
+_GITHUB_LOCATOR_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_CLI_SOURCE_KINDS = {"manifest", "github-release"}
 
 
 @dataclass(frozen=True)
@@ -41,12 +44,19 @@ class CliSourceRef:
     def __post_init__(self) -> None:
         if type(self.kind) is not str:
             raise TypeError("CLI source kind 必须是 string")
-        if self.kind not in {"manifest"}:
+        if self.kind not in _CLI_SOURCE_KINDS:
             raise ValueError(f"不支持的 CLI source kind: {self.kind}")
         if type(self.locator) is not str:
             raise TypeError("CLI source locator 必须是 string")
         if not self.locator.strip():
             raise ValueError("CLI source locator 不能为空")
+        if (
+            self.kind == "github-release"
+            and not _GITHUB_LOCATOR_PATTERN.fullmatch(self.locator)
+        ):
+            raise ValueError(
+                f"github-release locator 必须是 owner/repo: {self.locator}"
+            )
         if self.requested_version is not None:
             if type(self.requested_version) is not str:
                 raise TypeError("CLI requested_version 必须是 string|null")

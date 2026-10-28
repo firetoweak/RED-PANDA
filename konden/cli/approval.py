@@ -4,7 +4,7 @@ from typing import Mapping, cast
 
 from pydantic import BaseModel
 
-from konden.cli.application import CliApplicationService
+from konden.cli.application import CliApplicationService, CliInstallCandidate
 from konden.cli.errors import (
     CliAlreadyInstalledError,
     CliInputError,
@@ -34,14 +34,46 @@ PROPOSE_CLI_REPAIR = "propose_cli_repair"
 class CliInstallProposalInput(BaseModel):
     name: str
     description: str
-    locator: str
+    locator: str | None = None
+    repo: str | None = None
+    version: str | None = None
 
 
-def _health_summary(record_health: CliHealth) -> str:
+def _health_summary(record_health: CliHealth | None) -> str:
+    if record_health is None:
+        return "  尚未体检（下载安装后才测）"
     return (
         f"  --help：{'正常' if record_health.help_ok else '失败'}\n"
         f"  --version：{'正常' if record_health.version_ok else '失败'}\n"
         f"  提及 JSON 输出：{'是' if record_health.help_mentions_json else '否'}"
+    )
+
+
+async def _prepare_install_candidate(
+    service: CliApplicationService,
+    input_data: CliInstallProposalInput,
+) -> CliInstallCandidate:
+    """两个入口二选一：repo 走 GitHub Release 自动下载，locator 登记本机已装的。"""
+    has_locator = bool(input_data.locator and input_data.locator.strip())
+    has_repo = bool(input_data.repo and input_data.repo.strip())
+    if has_locator == has_repo:
+        raise ValueError(
+            "locator 与 repo 必须且只能给一个："
+            "repo 用于从 GitHub Release 下载，locator 用于登记本机已安装的 CLI"
+        )
+    if has_repo:
+        assert input_data.repo is not None
+        return await service.prepare_release_install(
+            input_data.name,
+            input_data.description,
+            input_data.repo.strip(),
+            input_data.version,
+        )
+    assert input_data.locator is not None
+    return await service.prepare_install(
+        input_data.name,
+        input_data.description,
+        input_data.locator.strip(),
     )
 
 
@@ -52,11 +84,7 @@ def create_cli_install_proposal_spec(
         input_data: CliInstallProposalInput,
     ) -> ControlApprovalProposal | ControlPreparationFailure | dict:
         try:
-            candidate = await service.prepare_install(
-                input_data.name,
-                input_data.description,
-                input_data.locator,
-            )
+            candidate = await _prepare_install_candidate(service, input_data)
         except ValueError as exc:
             return {
                 "ok": False,
@@ -77,10 +105,22 @@ def create_cli_install_proposal_spec(
             return ControlPreparationFailure({
                 "ok": False,
                 "code": "CLI_SOURCE_ERROR",
-                "data": {"locator": input_data.locator},
+                "data": {
+                    "locator": input_data.locator,
+                    "repo": input_data.repo,
+                },
                 "error": str(exc),
-                "hint": "确认该 CLI 已安装且在 PATH 中，或提供显式可执行文件路径。",
+                "hint": (
+                    "locator 需指向本机已安装且在 PATH 中的可执行文件；"
+                    "repo 需形如 owner/repo，下载走 GitHub Release，"
+                    "网络需要代理时设置 HTTPS_PROXY。"
+                ),
             })
+        downloads = candidate.source.kind == "github-release"
+        version = (
+            candidate.source.requested_version
+            if downloads else candidate.probed.version or "未知"
+        )
         return ControlApprovalProposal(
             action=CLI_INSTALL_ACTION,
             payload={
@@ -90,25 +130,30 @@ def create_cli_install_proposal_spec(
                 "resolved_path": candidate.resolved_path,
             },
             summary=(
-                f"准备登记 CLI `{candidate.name}`\n"
+                f"准备{'下载并安装' if downloads else '登记'} CLI `{candidate.name}`\n"
                 f"描述：{candidate.description}\n"
                 f"来源：{candidate.source.kind} {candidate.source.locator}\n"
-                f"解析路径：{candidate.resolved_path}\n"
-                f"版本：{candidate.probed.version or '未知'}\n"
-                f"体检：\n{_health_summary(candidate.probed.health)}"
+                f"解析路径：{candidate.resolved_path or '（安装后确定）'}\n"
+                f"版本：{version}\n"
+                f"体检：\n{_health_summary(candidate.probed.health if candidate.probed else None)}"
             ),
             risk=(
-                "登记后该 CLI 立即出现在能力目录中可用（没有启用/停用开关）；"
+                "批准后该 CLI 立即出现在能力目录中可用（没有启用/停用开关）；"
                 "其本地凭据（如 gh 的 GitHub 凭据）将对助手开放。"
-                "只登记本机已安装的程序，不下载任何软件。"
+                + (
+                    "将从 GitHub Release 下载二进制并解压到 konden 自己的目录。"
+                    if downloads
+                    else "只登记本机已安装的程序，不下载任何软件。"
+                )
             ),
         )
 
     return ToolSpec(
         name=PROPOSE_CLI_INSTALL,
         description=(
-            "当用户要求登记一个本机已安装的 CLI 时，解析路径并预跑体检，"
-            "然后提交用户审批。信息不足时先询问；本工具必须单独调用。"
+            "当用户要求登记本机已安装的 CLI，或要求 konden 自备某个 CLI 时使用："
+            "给 locator 解析本机路径并预跑体检，给 repo 则从 GitHub Release 下载安装；"
+            "随后提交用户审批。信息不足时先询问；本工具必须单独调用。"
         ),
         parameters=PydanticParameters(CliInstallProposalInput),
         handler=propose,
@@ -144,7 +189,7 @@ class CliInstallApprovalHandler:
                 CliSourceRef.from_dict(dict(source)),
                 cast(str, resolved_path),
             )
-        except (CliAlreadyInstalledError, CliInputError) as exc:
+        except (CliAlreadyInstalledError, CliInputError, CliSourceError) as exc:
             return ControlApprovalExecution(
                 False,
                 f"CLI `{name}` 登记未执行：{exc}",
@@ -172,6 +217,7 @@ def create_cli_uninstall_proposal_spec(
         record = await service.inspect_or_none(input_data.cli_id)
         if record is None:
             return _not_installed(input_data.cli_id)
+        downloads = record.source.kind == "github-release"
         return ControlApprovalProposal(
             action=CLI_UNINSTALL_ACTION,
             payload={
@@ -179,11 +225,14 @@ def create_cli_uninstall_proposal_spec(
                 "expected_revision": record.revision,
             },
             summary=(
-                f"准备移除 CLI `{record.name}` 的登记\n"
+                f"准备{'卸载' if downloads else '移除登记'} CLI `{record.name}`\n"
                 f"解析路径：{record.resolved_path}"
             ),
             risk=(
-                "只移除登记，不卸载软件本身；"
+                (
+                    "移除登记，并删除 konden 下载的程序及其安装目录；"
+                    if downloads else "只移除登记，不卸载软件本身；"
+                ) +
                 "移除后该 CLI 不再出现在能力目录中。"
             ),
         )
@@ -191,7 +240,8 @@ def create_cli_uninstall_proposal_spec(
     return ToolSpec(
         name=PROPOSE_CLI_UNINSTALL,
         description=(
-            "移除一个已登记 CLI 的登记事实（不卸载软件）。本工具必须单独调用。"
+            "移除 CLI 的登记；由 konden 从 GitHub Release 下载的 CLI 会同时删除程序与安装目录，"
+            "本机手工安装的 CLI 保留软件。本工具必须单独调用。"
         ),
         parameters=PydanticParameters(CliIdProposalInput),
         handler=propose,
@@ -249,6 +299,7 @@ def create_cli_repair_proposal_spec(
         record = await service.inspect_or_none(input_data.cli_id)
         if record is None:
             return _not_installed(input_data.cli_id)
+        downloads = record.source.kind == "github-release"
         return ControlApprovalProposal(
             action=CLI_REPAIR_ACTION,
             payload={
@@ -258,16 +309,22 @@ def create_cli_repair_proposal_spec(
             summary=(
                 f"准备修复 CLI `{record.name}`\n"
                 f"登记路径：{record.resolved_path}\n"
-                "将按登记来源重新解析 resolved_path 并重跑体检。"
+                + (
+                    f"将从 GitHub Release 重新下载 {record.source.requested_version} 并重跑体检。"
+                    if downloads else "将按登记来源重新解析 resolved_path 并重跑体检。"
+                )
             ),
-            risk="repair 只重新解析与体检，不会暗中变更登记身份。",
+            risk=(
+                "将替换 konden 下载的程序；下载或校验失败时保留现有安装。"
+                if downloads else "repair 只重新解析与体检，不会暗中变更登记身份。"
+            ),
         )
 
     return ToolSpec(
         name=PROPOSE_CLI_REPAIR,
         description=(
-            "在 inspect/test 已证明登记路径失效后，按登记来源重新解析 "
-            "resolved_path 并提交修复审批。本工具必须单独调用。"
+            "在 inspect/test 已证明登记路径失效后，提交修复审批：本机已安装的 CLI 重新解析路径，"
+            "GitHub Release 来源重新下载同一版本并体检。本工具必须单独调用。"
         ),
         parameters=PydanticParameters(CliIdProposalInput),
         handler=propose,
