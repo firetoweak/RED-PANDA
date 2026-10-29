@@ -11,10 +11,12 @@ export type CatalogModel = {
 };
 export type Favorite = { effort: string | null; compactTokens: number };
 export type Preferences = { favorites: Record<string, Favorite>; defaultModel: string };
+export type ModelTestResult = { ok: true; latencyMs: number } | { ok: false; message: string };
 export type ModelPreviewApi = {
   loadModels(provider?: string): Promise<CatalogModel[]>;
   loadPreferences(): Promise<Preferences>;
   savePreferences(value: Preferences): Promise<Preferences>;
+  testModel(model: CatalogModel, effort: string | null): Promise<ModelTestResult>;
   reply(text: string, model: CatalogModel, effort: string | null, signal: AbortSignal): Promise<string>;
 };
 
@@ -66,6 +68,7 @@ export function effortName(item: CatalogModel, value: string | null) {
 
 const STORAGE_KEY = "konden.model-ui-preview.preferences";
 let catalogErrorShown = false;
+const failedModelTests = new Set<string>();
 const delay = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 export const previewApi: ModelPreviewApi = {
@@ -85,6 +88,14 @@ export const previewApi: ModelPreviewApi = {
     await delay(380);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
     return structuredClone(value);
+  },
+  async testModel(item, _effort) {
+    await delay(1000);
+    if (item.provider === "ollama" && !failedModelTests.has(item.id)) {
+      failedModelTests.add(item.id);
+      return { ok: false, message: "模拟本地服务未响应，请重试。" };
+    }
+    return { ok: true, latencyMs: 420 };
   },
   async reply(_text, selectedModel, effort, signal) {
     await new Promise<void>((resolve, reject) => {

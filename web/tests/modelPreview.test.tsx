@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModelSettingsDrawer } from "../previews/models/ModelSettingsDrawer";
 import { ModelPicker } from "../previews/models/ModelPicker";
 import { ModelPreview } from "../previews/models/ModelPreview";
-import type { CatalogModel, ModelPreviewApi, Preferences } from "../previews/models/api";
+import type { CatalogModel, ModelPreviewApi, ModelTestResult, Preferences } from "../previews/models/api";
 
 const MODELS: CatalogModel[] = [
   { id: "openai/alpha", provider: "openai", name: "Alpha", description: "alpha", contextTokens: 100_000,
@@ -23,6 +23,7 @@ function fakeApi(): ModelPreviewApi {
     loadModels: vi.fn(async (provider?: string) => MODELS.filter((item) => !provider || item.provider === provider)),
     loadPreferences: vi.fn(async () => structuredClone(PREFERENCES)),
     savePreferences: vi.fn(async (value) => structuredClone(value)),
+    testModel: vi.fn(async () => ({ ok: true as const, latencyMs: 420 })),
     reply: vi.fn(async () => "示例回复已完成"),
   };
 }
@@ -45,6 +46,10 @@ it("常用模型先编辑草稿，撤销不保存，保存才提交偏好", asyn
   fireEvent.click(checkbox);
   expect(checkbox).toBeChecked();
   expect(api.savePreferences).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("tab", { name: /已选模型/ }));
+  expect(screen.getByRole("button", { name: "测试 OpenAI Plain" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "测试 DeepSeek Beta" })).toBeVisible();
+  fireEvent.click(screen.getByRole("tab", { name: "供应商与模型" }));
   fireEvent.click(screen.getByRole("button", { name: "撤销修改" }));
   expect(checkbox).not.toBeChecked();
   fireEvent.click(checkbox);
@@ -96,6 +101,7 @@ it("修改新会话默认值保留当前选择，新建 Bot 才采用新默认�
   render(<MantineProvider env="test"><ModelPreview api={fakeApi()} /></MantineProvider>);
   expect(await screen.findByRole("button", { name: "切换模型：OpenAI Alpha" })).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "打开模型配置" }));
+  fireEvent.click(await screen.findByRole("tab", { name: /已选模型/ }));
   fireEvent.click(await screen.findByRole("combobox", { name: "新会话默认模型" }));
   fireEvent.click(await screen.findByRole("option", { name: "DeepSeek · Beta" }));
   fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
@@ -123,4 +129,35 @@ it("回复开始后改变强度仅影响下一次，已发送消息保留原选�
   expect(screen.getByRole("article", { name: "示例回复" })).toHaveTextContent("OpenAI · Alpha · 中 · 示例回复");
   expect(screen.getByRole("button", { name: "推理强度：高" })).toBeVisible();
   expect(screen.queryByText("下次回复生效")).not.toBeInTheDocument();
+});
+
+it("已选模型按当前强度独立测试，切换分页保留进度，失败可重试", async () => {
+  const api = fakeApi();
+  let finishAlpha!: (result: ModelTestResult) => void;
+  let betaAttempts = 0;
+  api.testModel = vi.fn((model) => {
+    if (model.id === "openai/alpha") return new Promise<ModelTestResult>((resolve) => { finishAlpha = resolve; });
+    return Promise.resolve<ModelTestResult>(++betaAttempts === 1
+      ? { ok: false, message: "示例连接超时" } : { ok: true, latencyMs: 420 });
+  });
+  render(<MantineProvider env="test"><ModelSettingsDrawer opened onClose={() => {}} preferences={PREFERENCES}
+    allModels={MODELS} onSaved={() => {}} api={api} /></MantineProvider>);
+  fireEvent.click(screen.getByRole("tab", { name: /已选模型/ }));
+  const alpha = () => within(screen.getByRole("listitem", { name: "OpenAI Alpha" }));
+  const beta = () => within(screen.getByRole("listitem", { name: "DeepSeek Beta" }));
+  fireEvent.click(alpha().getByRole("combobox", { name: "OpenAI Alpha 默认推理强度" }));
+  fireEvent.click(await screen.findByRole("option", { name: "高", exact: true }));
+  fireEvent.click(alpha().getByRole("button", { name: "测试 OpenAI Alpha" }));
+  expect(api.testModel).toHaveBeenCalledWith(MODELS[0], "high");
+  fireEvent.click(screen.getByRole("tab", { name: "供应商与模型" }));
+  fireEvent.click(screen.getByRole("tab", { name: /已选模型/ }));
+  expect(alpha().getByRole("status")).toHaveTextContent("正在测试");
+  fireEvent.click(beta().getByRole("button", { name: "测试 DeepSeek Beta" }));
+  expect(await beta().findByText("示例连接超时")).toBeVisible();
+  expect(alpha().getByRole("status")).toHaveTextContent("正在测试");
+  fireEvent.click(beta().getByRole("button", { name: "测试 DeepSeek Beta" }));
+  await waitFor(() => expect(beta().getByRole("status")).toHaveTextContent("示例测试通过 · 420 ms"));
+  await act(async () => { finishAlpha({ ok: true, latencyMs: 620 }); });
+  expect(alpha().getByRole("status")).toHaveTextContent("示例测试通过 · 620 ms");
+  expect(beta().getByRole("status")).toHaveTextContent("示例测试通过 · 420 ms");
 });
