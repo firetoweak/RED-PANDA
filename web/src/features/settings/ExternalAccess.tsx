@@ -8,7 +8,7 @@ import { useAppSelector } from "../../app/hooks";
 
 export function ExternalAccess() {
   const connectionId = useAppSelector((state) => state.runtime.connectionId);
-  const { currentData: connections = [], isLoading, error: loadError, refetch } = useGetExternalConnectionsQuery(undefined, { pollingInterval: 5000 });
+  const { currentData: connections = [], isLoading, error: loadError, refetch } = useGetExternalConnectionsQuery();
   const [createConnection, creating] = useCreateExternalConnectionMutation();
   const [revokeConnection, revoking] = useRevokeExternalConnectionMutation();
   const [renameConnection, renaming] = useRenameExternalConnectionMutation();
@@ -128,12 +128,11 @@ export function ExternalAccess() {
         : connections.length === 0 ? <Text size="sm" c="dimmed">尚未生成连接配置。</Text> : null}
       {connections.map((item) => {
         const label = item.name || `连接 ${item.connection_id.slice(0, 8)}`;
-        const latest = item.activity.at(-1);
         return <div key={item.connection_id}>
           <Group justify="space-between" wrap="nowrap">
             <Stack gap={2} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
               <Text size="sm" fw={600}>{label}</Text>
-              <Text size="xs" c="dimmed">ID {item.connection_id.slice(0, 8)} · {latest ? `最近访问 ${new Date(latest.occurred_at).toLocaleString()}` : "尚无访问记录"}</Text>
+              <Text size="xs" c="dimmed">ID {item.connection_id.slice(0, 8)}</Text>
             </Stack>
             <Button size="compact-xs" variant="subtle" disabled={connectionId === null || busy}
               aria-label={`重命名 ${label}`} onClick={() => { setEditing(item.connection_id); setEditName(item.name); }}>重命名</Button>
@@ -148,22 +147,6 @@ export function ExternalAccess() {
               <Button size="compact-xs" loading={renaming.isLoading} disabled={connectionId === null || busy} onClick={() => void rename(item.connection_id)}>保存名称</Button>
             </Group>
           </Stack>}
-          <Accordion variant="default" mt="xs">
-            <Accordion.Item value="activity">
-              <Accordion.Control>最近活动日志{item.activity.length ? `（${item.activity.length}）` : ""}</Accordion.Control>
-              <Accordion.Panel>
-                <Stack gap="sm">
-                  <Text size="xs" c="dimmed">保留最近 30 次工具访问，每 5 秒刷新；访问记录不代表客户端持续在线。</Text>
-                  {item.activity.length === 0 ? <Text size="sm" c="dimmed">尚无访问记录。请在 Codex 中添加配置并使用 konden 工具。</Text>
-                    : [...item.activity].reverse().map((entry, index) => <Stack key={index} gap={2}>
-                      <Text size="xs" c="dimmed">{new Date(entry.occurred_at).toLocaleString()}</Text>
-                      <Text size="sm">{{ "tools/list": "查询工具列表", get_context: "登记 / 查询聊天", send_message: "发送消息", read_messages: "读取消息" }[entry.operation]} · {entry.result === "OK" ? "成功" : entry.result}</Text>
-                      {entry.identity === null ? null : <Text size="xs" style={{ overflowWrap: "anywhere" }}>聊天 {entry.identity}</Text>}
-                    </Stack>)}
-                </Stack>
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
           {confirmRevoke !== item.connection_id ? null : <Stack gap="xs" mt="xs">
             <Text size="sm">撤销后，使用此配置的外部会话立即失去收发能力，已有对话记录保留。</Text>
             <Group gap="xs" justify="flex-end">

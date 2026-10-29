@@ -37,9 +37,7 @@ afterEach(() => {
 
 it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后隐藏凭据且支持撤销", async () => {
   const store = createStore(); stores.push(store);
-  let item: ExternalConnection = { connection_id: "a".repeat(32), name: "笔记本 Codex", activity: [
-    { occurred_at: "2026-10-29T10:00:00Z", operation: "get_context", identity: "b".repeat(32), result: "OK" },
-  ] };
+  let item: ExternalConnection = { connection_id: "a".repeat(32), name: "笔记本 Codex" };
   let entries: ExternalConnection[] = [];
   const writeText = vi.fn().mockRejectedValueOnce(new Error("clipboard denied")).mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent });
@@ -92,9 +90,6 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
   expect(screen.queryByLabelText("URL")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("HTTP 请求头：Authorization")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Codex MCP 配置（TOML）")).not.toBeInTheDocument();
-  fireEvent.click(await screen.findByRole("button", { name: "最近活动日志（1）" }));
-  await waitFor(() => expect(screen.getByText("登记 / 查询聊天 · 成功")).toBeVisible());
-  expect(screen.getByText(`聊天 ${"b".repeat(32)}`)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "重命名 笔记本 Codex" }));
   fireEvent.change(screen.getByLabelText("修改接入名称"), { target: { value: "台式机 Codex" } });
   fireEvent.click(screen.getByRole("button", { name: "保存名称" }));

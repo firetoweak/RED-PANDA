@@ -55,8 +55,6 @@ class ScopedAccess:
 
 def create_mcp_app(service):
     async def list_tools(context, params):
-        connection = context.request.scope["external_connection"]
-        service().connections.record_activity(connection.connection_id, "tools/list", None, "OK")
         return ListToolsResult(tools=[Tool(name=name, description=DESCRIPTIONS[name],
             inputSchema=model.model_json_schema()) for name, model in ARGUMENTS.items()])
 
@@ -76,8 +74,6 @@ def create_mcp_app(service):
             result = await service().send(connection, arguments)
         else:
             result = await service().read(connection, arguments.identity, arguments.after, arguments.limit, arguments.wait_seconds)
-        service().connections.record_activity(connection.connection_id, params.name,
-            result.get("identity", arguments.identity), result.get("code", "OK"))
         return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
                               structuredContent=result)
 

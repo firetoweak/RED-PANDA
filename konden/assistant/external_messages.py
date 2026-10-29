@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 import secrets
 from typing import Literal
@@ -53,20 +53,11 @@ class SendToExternal(MessageInput, ExternalIdentity):
         description="可引用你与这个外部会话之间的 message_id；继续交谈或新话题可省略。")
 
 
-class ConnectionActivity(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
-    occurred_at: datetime
-    operation: Literal["tools/list", "get_context", "send_message", "read_messages"]
-    identity: str | None = None
-    result: str
-
-
 class ExternalConnection(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
     connection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     token_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     name: str = Field(default="", max_length=80)
-    activity: list[ConnectionActivity] = Field(default_factory=list)
 
     def view(self):
         return self.model_dump(mode="json", exclude={"token_hash"})
@@ -111,17 +102,6 @@ class ConnectionStore:
                     write_json(self.path, saved.model_dump(mode="json"))
                     return updated
         return None
-
-    def record_activity(self, connection_id: str, operation: str, identity: str | None, result: str):
-        with FileLock(str(self.path) + ".lock"):
-            saved = self.read()
-            for index, item in enumerate(saved.connections):
-                if item.connection_id == connection_id:
-                    activity = ConnectionActivity(occurred_at=datetime.now(timezone.utc),
-                        operation=operation, identity=identity, result=result)
-                    saved.connections[index] = item.model_copy(update={"activity": [*item.activity, activity][-30:]})
-                    write_json(self.path, saved.model_dump(mode="json"))
-                    return
 
     def revoke(self, connection_id: str) -> None:
         with FileLock(str(self.path) + ".lock"):
