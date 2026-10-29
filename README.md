@@ -92,7 +92,7 @@ Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用
 | 在外部对话中交付独立验证 | [独立验证](docs/外部协作.md#独立验证) |
 | 模型连接与切换 | [模型配置](docs/模型配置.md) |
 | 源码验证入口 | [统一验证脚本](scripts/ci.py) |
-| 设计取舍与演进 | [架构总览](docs/架构/总览.md) · [后续方向](docs/架构/CodingBot/方向.md) |
+| 设计取舍与演进 | [架构总览](docs/架构/总览.md) · [后续方向](docs/架构/多智能体/方向.md) |
 | 全部文档 | [文档索引](docs/README.md) |
 
 ## 许可证
