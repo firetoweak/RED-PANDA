@@ -70,24 +70,26 @@ it("切换供应商后，迟到的旧目录不会覆盖新目录", async () => {
   expect(screen.getByRole("checkbox", { name: "在输入框显示 DeepSeek Beta" })).toBeVisible();
 });
 
-it("全部目录可临时选用非常用模型，推理菜单保留供应商自己的档位", async () => {
+it("模型菜单只展示勾选模型的名称，推理菜单保留供应商自己的档位", async () => {
   const select = vi.fn();
   const view = render(<MantineProvider env="test"><ModelPicker models={MODELS} preferences={PREFERENCES}
-    selection={{ model: "deepseek/beta", effort: null }} onSelect={select} onOpenSettings={() => {}} pending={false} /></MantineProvider>);
+    selection={{ model: "deepseek/beta", effort: null }} onSelect={select} pending={false} /></MantineProvider>);
   fireEvent.click(screen.getByRole("button", { name: "推理强度：高" }));
   expect(await screen.findByRole("menuitem", { name: "最高", exact: true })).toBeVisible();
   expect(screen.queryByRole("menuitem", { name: "中", exact: true })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("menuitem", { name: "最高", exact: true }));
   expect(select).toHaveBeenCalledWith({ model: "deepseek/beta", effort: "max" });
   fireEvent.click(screen.getByRole("button", { name: "切换模型：DeepSeek Beta" }));
-  fireEvent.click(await screen.findByText("全部", { exact: true }));
-  fireEvent.click(await screen.findByRole("option", { name: "OpenAI Plain" }));
-  expect(select).toHaveBeenLastCalledWith({ model: "openai/plain", effort: null });
-  expect(PREFERENCES.favorites["openai/plain"]).toBeUndefined();
+  const menu = await screen.findByRole("menu");
+  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Alpha", "Beta"]);
+  expect(menu.textContent).toBe("AlphaBeta");
+  expect(within(menu).queryByRole("menuitem", { name: "OpenAI Plain" })).not.toBeInTheDocument();
+  expect(within(menu).getByRole("menuitem", { name: "DeepSeek Beta" })).toHaveAttribute("aria-current", "true");
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "OpenAI Alpha" }));
+  expect(select).toHaveBeenLastCalledWith({ model: "openai/alpha", effort: null });
   view.rerender(<MantineProvider env="test"><ModelPicker models={MODELS} preferences={PREFERENCES}
-    selection={{ model: "openai/plain", effort: null }} onSelect={select} onOpenSettings={() => {}} pending={false} /></MantineProvider>);
+    selection={{ model: "openai/plain", effort: null }} onSelect={select} pending={false} /></MantineProvider>);
   expect(screen.queryByRole("button", { name: /推理强度/ })).not.toBeInTheDocument();
-  expect(screen.getByText("临时使用")).toBeVisible();
 });
 
 it("修改新会话默认值保留当前选择，新建 Bot 才采用新默认值", async () => {

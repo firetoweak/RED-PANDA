@@ -72,7 +72,7 @@ export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, o
     <div className="catalog-toolbar">
       <div className="catalog-intro">
         <div><Text fw={600} size="sm">挑选你的常用模型</Text>
-          <Text c="dimmed" size="sm" mt={5}>勾选后显示在聊天输入框，也可以随时临时选用其他模型。</Text></div>
+          <Text c="dimmed" size="sm" mt={5}>勾选后显示在聊天输入框的模型列表中。</Text></div>
         <Badge variant="light" color="gray" radius="sm">{selectedCount} 个常用</Badge>
       </div>
       <div className="catalog-filters">

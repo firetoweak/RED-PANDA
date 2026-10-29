@@ -54,19 +54,11 @@
 .model-picker-trigger, .effort-picker-trigger { --button-hover: var(--konden-hover); }
 .selection-pending { flex-basis: 100%; padding: 4px 9px 0; }
 .pending-dot { height: 4px; width: 4px; border-radius: 50%; background: var(--mantine-color-ember-4); }
-.temporary-model-label { padding: 0 7px; font-size: 10px; }
 .preview-disclaimer { text-align: center; margin-top: 10px; font-size: 10px; }
-.model-picker-dropdown { width: min(370px, calc(100vw - 28px)); border-color: var(--konden-border-strong); background: var(--konden-panel); border-radius: 11px; }
-.model-picker-header { display: grid; gap: 12px; padding: 15px; }
-.model-picker-options { max-height: min(340px, 45dvh); overflow: auto; padding: 0 7px 7px; scrollbar-color: var(--konden-border-strong) transparent; }
-.model-provider-heading { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 7px; font-size: 11px; }
-.model-provider-heading span { font-size: 10px; }
-.model-picker-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px; border: 0; border-radius: 6px; background: transparent; color: var(--mantine-color-text); text-align: left; cursor: pointer; font-family: inherit; font-size: 13px; }
-.model-picker-option:hover, .model-picker-option:focus-visible, .model-picker-option[aria-selected="true"] { background: var(--konden-hover); }
-.model-picker-option[aria-selected="true"] > svg { color: var(--mantine-color-ember-4); flex-shrink: 0; }
-.model-picker-option small { display: block; padding-top: 4px; color: var(--mantine-color-dimmed); font-size: 11px; }
-.model-picker-footer { padding: 6px 8px 10px; border-top: 1px solid var(--konden-border); }
-.model-picker-footer > p { padding: 2px 11px; }
+.model-picker-dropdown { width: min(240px, calc(100vw - 28px)); max-height: min(340px, 45dvh); overflow: auto; scrollbar-color: var(--konden-border-strong) transparent; border-color: var(--konden-border-strong); background: var(--konden-panel); border-radius: 9px; }
+.model-picker-option { padding: 10px; border-radius: 6px; color: var(--mantine-color-text); font-size: 13px; }
+.model-picker-option:hover, .model-picker-option:focus-visible, .model-picker-option[aria-current="true"] { background: var(--konden-hover); }
+.model-picker-option[aria-current="true"] .mantine-Menu-itemSection { color: var(--mantine-color-ember-4); }
 .model-preview-settings .mantine-Drawer-content { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; background: var(--konden-panel); }
 .model-preview-settings .mantine-Drawer-header { flex-shrink: 0; border-bottom: 1px solid var(--konden-border); padding: 22px 28px; background: var(--konden-panel); }
 .model-preview-settings .mantine-Drawer-title { font-size: 17px; font-weight: 650; }

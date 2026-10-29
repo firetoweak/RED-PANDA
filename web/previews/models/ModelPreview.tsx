@@ -127,7 +127,7 @@ export function ModelPreview({ api = previewApi }: { api?: ModelPreviewApi }) {
             onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
           <div className="preview-composer-toolbar"><ModelPicker models={models} preferences={preferences}
             selection={active.selection} onSelect={(selection) => updateBot(activeId, (bot) => ({ ...bot, selection }))}
-            onOpenSettings={() => setSettingsOpened(true)} pending={selectionPending} />
+            pending={selectionPending} />
             {inFlight?.bot === active.id ? <ActionIcon aria-label="停止示例回复" type="button" radius="xl" variant="filled" color="gray" size={34} onClick={() => inFlight.controller.abort()}><IconPlayerStopFilled size={16} /></ActionIcon>
               : <ActionIcon aria-label="发送" type="submit" radius="xl" variant="filled" color="gray" size={34} disabled={!active.draft.trim() || inFlight !== null}><IconArrowUp size={19} /></ActionIcon>}
           </div>
