@@ -46,9 +46,16 @@ class ExternalMessages:
     def list_connections(self):
         return [item.view() for item in self.connections.read().connections]
 
-    def create_connection(self, name=""):
+    def create_connection(self, name):
         connection, token = self.connections.create(name)
         return {"connection": connection.view(), "token": token}
+
+    def connection_configuration(self, connection_id):
+        connection = next((item for item in self.connections.read().connections
+                           if item.connection_id == connection_id), None)
+        if connection is None:
+            raise ExternalConnectionNotFound(connection_id)
+        return {"connection": connection.view(), "token": connection.token}
 
     def rename_connection(self, connection_id, name):
         connection = self.connections.rename(connection_id, name)

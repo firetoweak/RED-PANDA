@@ -95,9 +95,13 @@ class WebChannel:
         self._require_connection(connection_id)
         return await self._sessions.external_messages.retry_codex(identity)
 
-    async def create_external_connection(self, connection_id, name=""):
+    async def create_external_connection(self, connection_id, name):
         self._require_connection(connection_id)
         return self._sessions.external_messages.create_connection(name)
+
+    async def external_connection_configuration(self, connection_id, external_id):
+        self._require_connection(connection_id)
+        return self._sessions.external_messages.connection_configuration(external_id)
 
     async def rename_external_connection(self, connection_id, external_id, name):
         self._require_connection(connection_id)

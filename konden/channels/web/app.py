@@ -92,11 +92,13 @@ class ConnectionRequest(BaseModel):
 
 
 class ExternalConnectionRequest(ConnectionRequest):
-    name: str = Field(default="", max_length=80)
+    name: str = Field(min_length=1, max_length=80)
 
     @field_validator("name")
     @classmethod
     def trimmed_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("接入名称不能为空")
         return value.strip()
 
 
@@ -601,6 +603,12 @@ def create_web_app(
     @app.exception_handler(ExternalConnectionNotFound)
     async def external_connection_missing(request, error):
         return JSONResponse(status_code=404, content={"detail": "没有这份连接配置，可能已撤销。"})
+
+    @app.post("/api/external-connections/{external_id}/configuration")
+    async def external_connection_configuration(external_id: str, body: ConnectionRequest, request: Request):
+        config = await _channel(request).external_connection_configuration(body.connection_id, external_id)
+        return JSONResponse(content={**config, "url": str(request.base_url) + "mcp/"},
+                            headers={"Cache-Control": "no-store"})
 
     @app.put("/api/external-connections/{external_id}/name")
     async def rename_external_connection(external_id: str, body: ExternalConnectionRequest, request: Request):
