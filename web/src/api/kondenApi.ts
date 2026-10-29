@@ -288,7 +288,7 @@ export const kondenApi = createApi({
       providesTags: ["ExternalSessions"],
     }),
     setExternalCodex: build.mutation<ExternalConversation, {
-      connectionId: string; identity: string; target: { thread_id: string; executable: string } | null;
+      connectionId: string; identity: string; target: { executable: string } | null;
     }>({
       query: ({ connectionId, identity, target }) => ({
         url: `/external-sessions/${encodeURIComponent(identity)}/codex`,

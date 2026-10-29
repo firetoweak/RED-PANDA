@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -55,11 +56,15 @@ def collaboration(tmp_path):
         with TestClient(app, base_url="http://127.0.0.1:8876") as client:
             human = client.portal.call(web.connect)
 
-            def call(name, arguments=None, credential=token):
+            native_identity = "0123456789ab7def8123456789abcdef"
+
+            def call(name, arguments=None, credential=token, *, chat=native_identity, meta="native"):
+                metadata = {"threadId": str(UUID(chat))} if meta == "native" else meta
                 response = client.post("/mcp/", headers={"Authorization": "Bearer " + credential,
                     "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25"},
                     json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                          "params": {"name": name, "arguments": {} if arguments is None else arguments}})
+                          "params": {"name": name, "arguments": {} if arguments is None else arguments,
+                                     "_meta": metadata}})
                 assert response.status_code == 200, response.text
                 return response.json()["result"]
 
@@ -67,9 +72,10 @@ def collaboration(tmp_path):
             identity = context["identity"]
 
             def send(**changes):
-                arguments = dict(identity=identity, recipient="协调员", text="你好，来讨论一下需求。", delivery_id="hello")
+                chat = changes.pop("identity", identity)
+                arguments = dict(recipient="协调员", text="你好，来讨论一下需求。", delivery_id="hello")
                 arguments.update(changes)
-                return call("send_message", arguments)["structuredContent"]
+                return call("send_message", arguments, chat=chat)["structuredContent"]
 
             def reply(command="reply-1", session_id="coordinator", **changes):
                 arguments = dict(identity=identity, text="收到，我们可以继续讨论。", reply_to=None)
@@ -78,9 +84,9 @@ def collaboration(tmp_path):
                 return client.portal.call(host._route, SEND_EXTERNAL, session_id, {"command_id": command, **parsed})
 
             def read(chat_identity=identity, credential=token, **options):
-                arguments = dict(identity=chat_identity, wait_seconds=0)
+                arguments = dict(wait_seconds=0)
                 arguments.update(options)
-                return call("read_messages", arguments, credential)["structuredContent"]
+                return call("read_messages", arguments, credential, chat=chat_identity)["structuredContent"]
 
             yield SimpleNamespace(host=host, service=service, store=store, client=client, hub=hub,
                 call=call, send=send, read=read, reply=reply, identity=identity, context=context,
@@ -105,7 +111,7 @@ def test_web_manages_named_access(collaboration):
     entries = c.client.get(path).json()
     assert credential["connection"] in entries and all(set(item) == {"connection_id", "name"} for item in entries)
     assert credential["token"] not in str(entries)
-    context = c.call("get_context", credential=credential["token"])["structuredContent"]
+    context = c.call("get_context", credential=credential["token"], chat="3" * 32)["structuredContent"]
     assert {item["name"] for item in context["colleagues"]} == {"协调员", "其他 Bot"}
     external_id = credential["connection"]["connection_id"]
     config_path = f"{path}/{external_id}/configuration"
@@ -121,7 +127,7 @@ def test_web_manages_named_access(collaboration):
     renamed = c.client.put(rename_path, json={"connection_id": c.human_connection, "name": " 台式机 Codex "})
     assert renamed.status_code == 200
     assert renamed.json()["name"] == "台式机 Codex"
-    c.call("read_messages", {"identity": context["identity"], "wait_seconds": 0}, credential["token"])
+    c.call("read_messages", {"wait_seconds": 0}, credential["token"], chat=context["identity"])
     restored = ExternalMessages(c.host).list_connections()
     item = next(item for item in restored if item["connection_id"] == external_id)
     assert item["name"] == "台式机 Codex"
@@ -136,23 +142,23 @@ def test_web_manages_named_access(collaboration):
 def test_registration_is_visible_before_messages_and_reconnection_preserves_identity(collaboration):
     c = collaboration
     queue = c.client.portal.call(c.hub.subscribe)
-    fresh = c.call("get_context")["structuredContent"]
+    fresh = c.call("get_context", {"name": "文档协作"}, chat="2" * 32)["structuredContent"]
     assert queue.get_nowait().name == "external_sessions_changed"
     assert fresh["identity"] != c.identity
-    assert fresh["name"] == "外部会话-" + fresh["identity"][:8]
+    assert fresh["name"] == "文档协作"
     entries = c.client.get("/api/external-sessions").json()
     assert {item["identity"] for item in entries} == {c.identity, fresh["identity"]}
     assert all(item["peers"] == [] and item["active"] for item in entries)
     view = c.client.get("/api/external-sessions/" + fresh["identity"]).json()
     assert view["messages"] == [] and view["session"]["name"] == fresh["name"]
-    assert c.call("get_context", {"identity": fresh["identity"]})["structuredContent"] == fresh
+    assert c.call("get_context", chat=fresh["identity"])["structuredContent"] == fresh
     assert len(c.client.get("/api/external-sessions").json()) == 2
     restarted = ExternalMessages(c.host)
     restored = c.client.portal.call(restarted.context, c.connection, fresh["identity"])
     assert restored == fresh
     peers = c.client.portal.call(c.host._route, LIST_EXTERNAL, "coordinator", {})["data"]["sessions"]
     assert {item["identity"] for item in peers} == {c.identity, fresh["identity"]}
-    assert all(set(item) == {"identity", "name", "active", "last_activity_at"} for item in peers)
+    assert all(set(item) == {"identity", "name", "active", "last_activity_at", "codex_status"} for item in peers)
     assert len(c.client.portal.call(c.host.agents.list)) == 2
     assert c.client.get("/api/external-sessions/unknown").status_code == 404
 
@@ -169,13 +175,41 @@ def test_access_and_identity_scope_messages_without_exposing_private_timelines(c
     assert "token_hash" not in str(history) + str(c.context)
     assert c.read(credential=c.other_token)["code"] == "SESSION_NOT_FOUND"
     assert c.read(chat_identity="2" * 32)["code"] == "SESSION_NOT_FOUND"
-    assert c.call("get_context", {"identity": c.identity}, c.other_token)["structuredContent"]["code"] == "SESSION_NOT_FOUND"
+    assert c.call("get_context", credential=c.other_token)["structuredContent"]["code"] == "CONNECTION_CONFLICT"
     assert c.send(identity="2" * 32)["code"] == "SESSION_NOT_FOUND"
+
+
+def test_native_chat_is_stable_and_descendant_tools_address_the_original_chat(collaboration):
+    c = collaboration
+    assert c.call("get_context")["structuredContent"]["identity"] == c.identity
+    renamed = c.call("get_context", {"name": " 原生通信 "}, meta={
+        "threadId": str(UUID("3" * 32)), "sessionId": str(UUID(c.identity)), "windowId": "window:2",
+    })["structuredContent"]
+    assert renamed["identity"] == c.identity and renamed["name"] == "原生通信"
+    assert len(c.client.get("/api/external-sessions").json()) == 1
+    restored = c.client.portal.call(ExternalMessages(c.host).context, c.connection, c.identity)
+    assert restored == renamed
+    c.reply(text="只给原来的聊天")
+    result = c.call("read_messages", {"wait_seconds": 0}, meta={
+        "threadId": str(UUID("3" * 32)), "sessionId": str(UUID(c.identity)),
+    })["structuredContent"]
+    assert result["messages"][0]["text"] == "只给原来的聊天"
+
+
+@pytest.mark.parametrize("meta", [None, {}, {"threadId": "wrong"}, {"threadId": 5},
+    {"threadId": "01234567-89ab-7def-8123-456789abcdef", "sessionId": "wrong"}])
+def test_missing_or_invalid_native_metadata_cannot_create_or_address_a_chat(collaboration, meta):
+    c = collaboration
+    for tool, arguments in [("get_context", {}), ("read_messages", {"wait_seconds": 0}),
+                             ("send_message", {"recipient": "协调员", "text": "hello", "delivery_id": "invalid"})]:
+        result = c.call(tool, arguments, meta=meta)
+        assert result["isError"] and "原生聊天标识" in result["content"][0]["text"]
+    assert len(c.client.get("/api/external-sessions").json()) == 1 and c.deliveries == []
 
 
 def test_new_chats_share_access_but_keep_their_messages_separate(collaboration):
     c = collaboration
-    second = c.call("get_context")["structuredContent"]["identity"]
+    second = c.call("get_context", chat="2" * 32)["structuredContent"]["identity"]
     one = c.send()
     two = c.send(identity=second)
     assert one["message_id"] != two["message_id"]
@@ -183,6 +217,26 @@ def test_new_chats_share_access_but_keep_their_messages_separate(collaboration):
     c.reply(text="第一个聊天", command="first")
     assert [message["text"] for message in c.read()["messages"]] == ["第一个聊天"]
     assert [message["text"] for message in c.read(chat_identity=second)["messages"]] == ["第二个聊天"]
+
+
+def test_revoked_configuration_can_be_replaced_without_losing_the_native_chat_history(collaboration):
+    c = collaboration
+    sent = c.send()
+    c.reply(reply_to=sent["message_id"])
+    first = c.read()
+    c.client.portal.call(c.service.revoke_connection, c.connection.connection_id)
+    restored = c.call("get_context", credential=c.other_token)["structuredContent"]
+    assert restored["identity"] == c.identity
+    assert len(c.client.get("/api/external-sessions").json()) == 1
+    assert c.read(credential=c.other_token)["messages"] == first["messages"]
+    assert c.read(credential=c.other_token, after=first["next_cursor"])["messages"] == []
+    c.reply(command="after-rotation", text="换配置后的后续消息")
+    result = c.read(credential=c.other_token, after=first["next_cursor"])
+    assert result["messages"][0]["text"] == "换配置后的后续消息"
+    assert result["next_cursor"] > first["next_cursor"]
+    restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
+    assert len(restarted["messages"]) == 3 and restarted["session"]["active"]
+    assert restarted["codex"]["status"] == "disabled"
 
 
 def test_messages_are_idempotent_and_replies_can_continue_the_same_conversation(collaboration):
@@ -209,12 +263,15 @@ def test_messages_are_idempotent_and_replies_can_continue_the_same_conversation(
     ("read_messages", {"wait_seconds": 51}),
     ("read_messages", {"after": True}),
     ("get_context", {"identity": " "}),
+    ("get_context", {"name": " "}),
+    ("get_context", {"name": "x" * 81}),
+    ("read_messages", {"identity": "0" * 32}),
     ("request_verification", {}),
     ("read_feedback", {}),
 ])
 def test_invalid_inputs_are_rejected_before_delivery(collaboration, tool, arguments):
     c = collaboration
-    fields = {} if tool in {"get_context", "request_verification", "read_feedback"} else {"identity": c.identity}
+    fields = {}
     if tool == "send_message":
         fields["delivery_id"] = "invalid"
     assert c.call(tool, {**fields, **arguments})["isError"]
@@ -294,18 +351,18 @@ def test_waiting_reader_receives_messages_and_revocation_interrupts_wait(collabo
 def test_codex_binding_is_human_owned_and_scoped_to_one_chat(collaboration):
     c = collaboration
     path = f"/api/external-sessions/{c.identity}/codex"
-    target = {"connection_id": c.human_connection, "thread_id": "01234567-89ab-cdef-0123-456789abcdef",
-              "executable": sys.executable}
+    target = {"connection_id": c.human_connection, "executable": sys.executable}
     assert c.client.put(path, json={**target, "connection_id": "inactive"}).status_code == 409
-    assert c.client.put(path, json={**target, "thread_id": "not-a-chat"}).status_code == 422
+    assert c.client.put(path, json={**target, "thread_id": "22222222-2222-4222-8222-222222222222"}).status_code == 422
     assert c.client.put(path, json={**target, "executable": "nonexistent-konden-codex"}).status_code == 422
     assert c.call("configure_codex", target)["isError"]
     configured = c.client.put(path, json=target)
     assert configured.status_code == 200
     assert configured.json()["codex"]["status"] == "ready"
-    second = c.call("get_context")["structuredContent"]["identity"]
+    second = c.call("get_context", chat="2" * 32)["structuredContent"]["identity"]
 
     async def queued(binding, message_id):
+        assert binding.thread_id == str(UUID(c.identity))
         received = await c.service.read(c.connection, c.identity, 0, 50, 0)
         assert any(message["message_id"] == message_id for message in received["messages"])
         return QueueAttempt(message_id=message_id, attempted_at=datetime.now(timezone.utc),
@@ -319,7 +376,7 @@ def test_codex_binding_is_human_owned_and_scoped_to_one_chat(collaboration):
         c.reply()
         assert queue.call_count == 1
         view = c.client.get(f"/api/external-sessions/{c.identity}").json()
-        assert view["codex"]["status"] == "queued" and view["codex"]["thread_id"] == target["thread_id"]
+        assert view["codex"]["status"] == "queued" and view["codex"]["thread_id"] == str(UUID(c.identity))
         assert c.client.get(f"/api/external-sessions/{second}").json()["codex"]["status"] == "disabled"
         restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
         assert restarted["codex"] == view["codex"]
@@ -332,7 +389,7 @@ def test_codex_failure_preserves_messages_and_can_be_retried(collaboration):
     c = collaboration
     path = f"/api/external-sessions/{c.identity}/codex"
     c.client.put(path, json={"connection_id": c.human_connection,
-        "thread_id": "01234567-89ab-cdef-0123-456789abcdef", "executable": sys.executable}).raise_for_status()
+        "executable": sys.executable}).raise_for_status()
 
     async def attempt(binding, message_id):
         return QueueAttempt(message_id=message_id, attempted_at=datetime.now(timezone.utc),
@@ -358,7 +415,7 @@ def test_slow_codex_does_not_block_reading_or_reenable_a_disabled_binding(collab
     c = collaboration
     path = f"/api/external-sessions/{c.identity}/codex"
     c.client.put(path, json={"connection_id": c.human_connection,
-        "thread_id": "01234567-89ab-cdef-0123-456789abcdef", "executable": sys.executable}).raise_for_status()
+        "executable": sys.executable}).raise_for_status()
     entered, release = asyncio.Event(), asyncio.Event()
 
     async def queue(binding, message_id):
@@ -384,7 +441,7 @@ def test_reply_references_stay_with_the_same_peer_and_chat(collaboration):
     sent = c.send()
     assert c.reply(session_id="other", reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
     assert c.send(recipient="其他 Bot", delivery_id="bad", reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
-    second = c.call("get_context")["structuredContent"]["identity"]
+    second = c.call("get_context", chat="2" * 32)["structuredContent"]["identity"]
     assert c.reply(identity=second, reply_to=sent["message_id"])["code"] == "INVALID_REPLY"
 
 
