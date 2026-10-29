@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="940" viewBox="0 0 1280 940" role="img" aria-labelledby="title desc">
+  <title id="title">群聊：所有成员收到记录，被点名者收到回应请求</title>
+  <desc id="desc">人的群发言先接纳到群记录，再分发为各成员的观察事实；点名成员另外收到要求决策的回应请求。模型如需在群里回答，显式发送并引用原消息，回应再进入群记录与分发。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="940" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <rect x="40" y="384" width="560" height="310" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="64" y="420" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">Bot A 的长期时间线</text>
+  <rect x="680" y="384" width="560" height="310" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="704" y="420" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">Bot B 的长期时间线</text>
+  <path d="M364 194 H464" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M740 248 V310 H320 V448" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M740 310 H960 V448" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1045" y="299" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">分发副本，不等成员执行</text>
+  <path d="M464 226 H416 V278 H20 V610 H76" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="180" y="303" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">点名产生独立回应请求</text>
+  <path d="M320 534 V568" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M320 654 V752" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M600 804 H640 V870 H1260 V194 H1240" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">群聊：所有成员收到记录，被点名者收到回应请求</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">例：人向两位成员发言并点名 Bot A；Bot B 仍可继续自己的工作。</text>
+  <rect x="40" y="140" width="324" height="108" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="202.0" y="189.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,146,300,96">人：@Bot A 请看一下</text>
+  <text x="202.0" y="219.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,146,300,96">这是一条新的群发言</text>
+  <rect x="464" y="140" width="776" height="108" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="852.0" y="189.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="476,146,752,96">群记录先接纳发言</text>
+  <text x="852.0" y="219.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="476,146,752,96">保存来源、引用与讨论进度；群本身不运行模型</text>
+  <rect x="76" y="448" width="488" height="86" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="320.0" y="486.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="88,454,464,74">收到群记录副本</text>
+  <text x="320.0" y="516.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="88,454,464,74">观察事实，本身不触发决策</text>
+  <rect x="716" y="448" width="488" height="86" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="960.0" y="486.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="728,454,464,74">收到同一群记录副本</text>
+  <text x="960.0" y="516.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="728,454,464,74">观察事实，本身不触发决策</text>
+  <rect x="76" y="568" width="488" height="86" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="320.0" y="606.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="88,574,464,74">另收回应请求 → 判断</text>
+  <text x="320.0" y="636.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="88,574,464,74">按自己的执行节奏处理</text>
+  <text x="960" y="603" font-size="22" text-anchor="middle" font-weight="700" fill="#20354a">本次没有回应请求</text>
+  <text x="960" y="636" font-size="18" text-anchor="middle" font-weight="400" fill="#556779">不因收到副本而启动模型</text>
+  <rect x="40" y="752" width="560" height="104" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="320.0" y="799.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,758,536,92">如需群内回应，显式发送并引用</text>
+  <text x="320.0" y="829.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,758,536,92">模型决定是否发言；引用不表示任务完成</text>
+  <text x="680" y="774" font-size="19" text-anchor="start" font-weight="400" fill="#60758b">回应写回群记录，继续分发</text>
+  <text x="680" y="813" font-size="19" text-anchor="start" font-weight="400" fill="#60758b">不点名时：叫除发言者外的成员</text>
+  <text x="40" y="911" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">发言送达、回应请求、模型发言是三件事；普通回复仍给人，群消息须显式发送。</text>
+</svg>

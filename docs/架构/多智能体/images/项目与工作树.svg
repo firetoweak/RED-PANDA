@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="880" viewBox="0 0 1280 880" role="img" aria-labelledby="title desc">
+  <title id="title">项目是挂载资源，个人目录始终是任务根</title>
+  <desc id="desc">人的检出只提供项目初始已提交基线；Bot 在持久个人目录中挂载各自独立的项目 worktree 和分支，通过落地与同步和项目集成分支交换已提交历史。各工作树共享 Git 对象。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="880" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <rect x="40" y="414" width="548" height="288" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="64" y="450" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">Bot A 的个人目录</text>
+  <rect x="692" y="414" width="548" height="288" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="716" y="450" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">Bot B 的个人目录</text>
+  <path d="M400 203 H608" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="504" y="188" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">仅首次建立</text>
+  <path d="M260 480 V330 H760 V264" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="460" y="317" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">落地：自己的已提交工作 → 集成</text>
+  <path d="M842 264 V382 H368 V480" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="562" y="369" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">同步：集成 → 自己</text>
+  <path d="M900 480 V330 H1000 V264" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="960" y="317" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">落地</text>
+  <path d="M1116 264 V382 H1032 V480" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1074" y="369" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">同步</text>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">项目是挂载资源，个人目录始终是任务根</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">示例只画一个项目；每位 Bot 可以独立挂载多个项目。</text>
+  <rect x="40" y="142" width="360" height="122" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="220.0" y="184.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,148,336,110">人的检出目录</text>
+  <text x="220.0" y="214.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,148,336,110">首次挂载时提供已提交基线</text>
+  <text x="220.0" y="242.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,148,336,110">暂存、未提交、未跟踪内容不复制</text>
+  <rect x="608" y="142" width="632" height="122" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="924.0" y="184.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="620,148,608,110">项目集成工作树与分支</text>
+  <text x="924.0" y="214.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="620,148,608,110">首次建好后独立演进</text>
+  <text x="924.0" y="242.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="620,148,608,110">后续挂载与同步从这里取得已集成内容</text>
+  <rect x="80" y="480" width="468" height="90" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="314.0" y="520.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="92,486,444,78">项目 worktree A / 分支 A</text>
+  <text x="314.0" y="550.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="92,486,444,78">A 可写，其他成员只读</text>
+  <rect x="732" y="480" width="468" height="90" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="966.0" y="520.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="744,486,444,78">项目 worktree B / 分支 B</text>
+  <text x="966.0" y="550.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="744,486,444,78">B 可写，其他成员只读</text>
+  <text x="314" y="627" font-size="18" text-anchor="middle" font-weight="400" fill="#20354a">自己的文件、工作约定与按需加载的 Skill</text>
+  <text x="966" y="627" font-size="18" text-anchor="middle" font-weight="400" fill="#20354a">自己的文件、工作约定与按需加载的 Skill</text>
+  <text x="314" y="663" font-size="18" text-anchor="middle" font-weight="400" fill="#60758b">不挂项目也能独立工作</text>
+  <text x="966" y="663" font-size="18" text-anchor="middle" font-weight="400" fill="#60758b">不与同事共享半成品工作树</text>
+  <rect x="40" y="742" width="1200" height="92" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="640.0" y="783.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,748,1176,80">共享 Git 对象，各自拥有目录与分支</text>
+  <text x="640.0" y="813.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,748,1176,80">Host 串行处理同一项目的集成修改；落地与同步都不移动人的检出。</text>
+</svg>
