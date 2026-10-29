@@ -34,10 +34,10 @@ class MessageInput(BaseModel):
 class ExternalIdentity(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
     identity: str = Field(pattern=r"^[0-9a-f]{32}$",
-        description="get_context 返回的当前原生聊天身份；同一聊天继续或重连时沿用，新聊天重新领取。")
+        description="外部会话的联系标识，来自 list_external_sessions 或收到消息的 sender.identity。")
 
 
-class SendExternal(MessageInput, ExternalIdentity):
+class SendExternal(MessageInput):
     recipient: str = Field(min_length=1, description="get_context 返回的同事名字，区分大小写。")
     delivery_id: str = Field(min_length=1, max_length=200,
         description="这条消息的唯一标识。重试保持标识与所有内容不变；新消息使用新标识。")
@@ -109,16 +109,17 @@ class ConnectionStore:
 
 
 def external_name(identity: str) -> str:
-    return "外部会话-" + identity[:8]
+    return "Codex · " + identity[-8:]
 
 
 class ExternalSession(ExternalIdentity):
     connection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     created_at: datetime
+    label: str | None = Field(default=None, min_length=1, max_length=80)
 
     @property
     def name(self) -> str:
-        return external_name(self.identity)
+        return self.label if self.label is not None else external_name(self.identity)
 
 
 class ExternalSessions(BaseModel):
@@ -142,6 +143,13 @@ class ExternalSessionStore:
             if any(item.identity == session.identity for item in saved.sessions):
                 raise ValueError("duplicate external conversation identity")
             saved.sessions.append(session)
+            write_json(self.path, saved.model_dump(mode="json"))
+
+    def update(self, session: ExternalSession) -> None:
+        with FileLock(str(self.path) + ".lock"):
+            saved = self.read()
+            index = next(index for index, item in enumerate(saved.sessions) if item.identity == session.identity)
+            saved.sessions[index] = session
             write_json(self.path, saved.model_dump(mode="json"))
 
 

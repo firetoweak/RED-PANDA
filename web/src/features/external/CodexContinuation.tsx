@@ -7,7 +7,7 @@ import { useRetryExternalCodexMutation, useSetExternalCodexMutation } from "../.
 import { useAppSelector } from "../../app/hooks";
 
 const labels = {
-  disabled: "未启用", ready: "已启用，等待新消息", pending: "有消息尚未提醒",
+  disabled: "需主动收信", ready: "已启用，等待新消息", pending: "有消息尚未提醒",
   queued: "提示已入队", failed: "提醒失败", unknown: "提醒结果未确认",
 };
 
@@ -18,22 +18,20 @@ export function CodexContinuation({ identity, active, value }: {
   const [setCodex, setting] = useSetExternalCodexMutation();
   const [retry, retrying] = useRetryExternalCodexMutation();
   const [opened, setOpened] = useState(false);
-  const [thread, setThread] = useState(value.thread_id ?? "");
   const [executable, setExecutable] = useState(value.executable);
   const [error, setError] = useState<string | null>(null);
   const panelId = useId();
   const busy = setting.isLoading || retrying.isLoading;
-  const enabled = value.thread_id !== null;
+  const enabled = value.status !== "disabled";
   const needsRetry = value.status === "failed" || value.status === "unknown" || value.status === "pending";
 
   useEffect(() => {
     if (!opened) {
-      setThread(value.thread_id ?? "");
       setExecutable(value.executable);
     }
-  }, [opened, value.thread_id, value.executable]);
+  }, [opened, value.executable]);
 
-  async function change(target: { thread_id: string; executable: string } | null) {
+  async function change(target: { executable: string } | null) {
     if (connectionId === null || busy) return;
     setError(null);
     try {
@@ -69,18 +67,12 @@ export function CodexContinuation({ identity, active, value }: {
     {value.detail === null ? null : <Text size="xs" c={needsRetry ? undefined : "dimmed"} className="external-codex-detail">{value.detail}</Text>}
     {opened ? <form id={panelId} className="external-codex-form" onSubmit={(event) => {
       event.preventDefault();
-      const threadId = thread.trim().toLowerCase();
-      if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(threadId)) {
-        setError("请填写 Codex 聊天 ID（UUID），可让目标聊天读取自身的 CODEX_THREAD_ID。");
-        return;
-      }
-      void change({ thread_id: threadId, executable: executable.trim() });
+      void change({ executable: executable.trim() });
     }}>
       <Stack gap="sm">
         <Text size="sm">Bot 发来消息时，提醒对应的 Codex 聊天继续处理。消息内容仍通过 MCP 读取，并遵守已有授权。</Text>
         <Text size="xs" c="dimmed">适用于同一台电脑上已加载的聊天。当前已验证空闲聊天，不保证打开应用或恢复未加载的聊天。</Text>
-        <TextInput label="Codex 聊天 ID" description="可让目标聊天读取自身的 CODEX_THREAD_ID。每个聊天分别绑定。"
-          value={thread} onChange={(event) => setThread(event.currentTarget.value)} required disabled={!active || busy} />
+        <Text size="xs" c="dimmed">已自动识别原生聊天：{value.thread_id}</Text>
         <TextInput label="Codex 程序" description="本机 Codex 可执行文件的完整路径，或 PATH 中的 codex 命令。"
           value={executable} onChange={(event) => setExecutable(event.currentTarget.value)} required disabled={!active || busy} />
         {connectionId === null ? <Text size="xs" c="dimmed">正在重新连接，连接恢复后可以保存。</Text> : null}
@@ -88,7 +80,7 @@ export function CodexContinuation({ identity, active, value }: {
           {enabled ? <Button variant="subtle" color="gray" disabled={connectionId === null || busy}
             onClick={() => void change(null)}>停用自动接续</Button> : null}
           <Button variant="default" disabled={busy} onClick={() => setOpened(false)}>取消</Button>
-          <Button type="submit" loading={setting.isLoading} disabled={!active || connectionId === null || busy || !thread.trim() || !executable.trim()}>
+          <Button type="submit" loading={setting.isLoading} disabled={!active || connectionId === null || busy || !executable.trim()}>
             {enabled ? "保存设置" : "保存并启用"}
           </Button>
         </Group>
