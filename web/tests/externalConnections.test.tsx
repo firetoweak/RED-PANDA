@@ -35,7 +35,7 @@ afterEach(() => {
   Reflect.deleteProperty(document, "fonts");
 });
 
-it("生成可直接用于 Codex 的 TOML，支持复制与撤销且凭据只显示一次", async () => {
+it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后隐藏凭据且支持撤销", async () => {
   const store = createStore(); stores.push(store);
   const item = { connection_id: "a".repeat(32) };
   let entries: ExternalConnection[] = [];
@@ -61,17 +61,29 @@ it("生成可直接用于 Codex 的 TOML，支持复制与撤销且凭据只显�
   expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
   expect(screen.queryByLabelText("接入名称")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
-  const config = await screen.findByLabelText("Codex MCP 配置（TOML）");
+  expect(await screen.findByRole("textbox", { name: "URL" })).toHaveValue("http://localhost/mcp/");
+  expect(screen.getByLabelText("HTTP 请求头：Authorization")).toHaveValue("Bearer one-time-secret");
+  expect(screen.queryByRole("textbox", { name: "Codex MCP 配置（TOML）" })).not.toBeInTheDocument();
+  await waitFor(() => expect(JSON.stringify(store.getState())).not.toContain("one-time-secret"));
+  fireEvent.click(screen.getByRole("button", { name: "复制 URL" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("复制失败，请选中对应字段手动复制。");
+  fireEvent.click(screen.getByRole("button", { name: "复制 URL" }));
+  expect(await screen.findByRole("button", { name: "已复制" })).toBeVisible();
+  expect(writeText).toHaveBeenLastCalledWith("http://localhost/mcp/");
+  fireEvent.click(screen.getByRole("button", { name: "复制请求头值" }));
+  await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("Bearer one-time-secret"));
+  expect(screen.getByRole("button", { name: "复制 URL" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "高级：手动配置 TOML" }));
+  const config = await screen.findByRole("textbox", { name: "Codex MCP 配置（TOML）" });
   const value = (config as HTMLTextAreaElement).value;
   expect(value).toBe('[mcp_servers.konden]\nurl = "http://localhost/mcp/"\n\n[mcp_servers.konden.http_headers]\nAuthorization = "Bearer one-time-secret"');
-  await waitFor(() => expect(JSON.stringify(store.getState())).not.toContain("one-time-secret"));
-  fireEvent.click(screen.getByRole("button", { name: "复制配置" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("复制失败，请选中上方配置手动复制。");
-  fireEvent.click(screen.getByRole("button", { name: "复制配置" }));
-  expect(await screen.findByRole("button", { name: "已复制" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "复制 TOML" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "已复制" })).toBeVisible());
   expect(writeText).toHaveBeenLastCalledWith(value);
   view.unmount();
   render(<Provider store={store}><MantineProvider env="test"><ExternalAccess /></MantineProvider></Provider>);
+  expect(screen.queryByLabelText("URL")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("HTTP 请求头：Authorization")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Codex MCP 配置（TOML）")).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("button", { name: "撤销 连接 aaaaaaaa" }));
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
