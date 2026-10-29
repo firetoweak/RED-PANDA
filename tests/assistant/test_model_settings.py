@@ -64,7 +64,15 @@ class ModelSettingsTest(unittest.TestCase):
         self.models.select("session", FLASH["model"])
         self.models.save({"model": {"default": FLASH["model"], "candidates": [FLASH]}})
 
-    def test_reasoning_effort_changes_apply_only_at_the_next_decision(self):
+    def test_new_default_and_removing_the_unused_old_default_are_saved_together(self):
+        self.models.save({"model": {"default": FLASH["model"], "candidates": [FLASH]}})
+        self.assertEqual(self.models.config().default_model, FLASH["model"])
+        self.assertEqual([item.model for item in self.models.config().models], [FLASH["model"]])
+
+    def test_session_reasoning_effort_is_independent_of_later_default_edits(self):
+        connections = json.loads(self.home.connections_path.read_text(encoding="utf-8"))
+        connections["stepfun"]["api_key"] = "test"
+        write_json(self.home.connections_path, connections)
         step5 = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 200000,
                  "reasoning_effort": "high"}
         self.models.save({"model": {"default": step5["model"], "candidates": [PRO, FLASH, step5]}})
@@ -74,10 +82,33 @@ class ModelSettingsTest(unittest.TestCase):
         self.models.save({"model": {"default": step5["model"], "candidates": [PRO, FLASH, updated]}})
         self.assertEqual(captured, step5)
         self.assertEqual(self.models.selection("step5"), {
-            "selected": updated, "effective": step5, "pending": True,
+            "selected": step5, "effective": step5, "pending": False,
         })
+        self.models.select("step5", step5["model"], "low")
         self.assertEqual(self.models.for_decision("step5"), updated)
         self.assertFalse(self.models.selection("step5")["pending"])
+
+    def test_failed_selection_write_does_not_publish_an_uncommitted_choice(self):
+        self.models.initialize_session("session")
+        with patch("konden.model_settings.write_json", side_effect=PermissionError("locked")):
+            with self.assertRaises(PermissionError):
+                self.models.select("session", FLASH["model"], "max")
+        self.assertEqual(self.models.selected("session"), PRO["model"])
+        reloaded = ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
+        self.assertEqual(reloaded.selection("session")["selected"], PRO)
+
+    def test_existing_model_names_upgrade_once_to_complete_selections(self):
+        target = self.home.runtime_sessions_root / "models.json"
+        write_json(target, {"old": PRO["model"]})
+        upgraded = ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
+        self.assertEqual(upgraded.selected("old"), PRO["model"])
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {
+            "old": {"model": PRO["model"], "reasoning_effort": None}})
+        write_json(target, {"": PRO["model"]})
+        damaged = target.read_bytes()
+        with self.assertRaises(ValueError):
+            ModelSettings(self.home, self.home.runtime_sessions_root, path=self.home.config_path)
+        self.assertEqual(target.read_bytes(), damaged)
 
     def test_unconfigured_candidate_is_rejected_before_selection_is_written(self):
         self.models.initialize_session("session")

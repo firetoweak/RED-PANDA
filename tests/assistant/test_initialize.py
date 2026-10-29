@@ -79,18 +79,20 @@ def test_codex_wizard_reuses_login_without_asking_for_or_copying_secrets(home, t
     assert auth_file.read_bytes() == before
 
 
-def test_editing_existing_model_preserves_key_and_reasoning_effort(home, monkeypatch, capsys):
-    previous = {"model": "stepfun/step-5-preview", "compact_threshold_tokens": 64000,
+@pytest.mark.parametrize("model", ["stepfun/step-5-preview", "openai/gpt-6.1-terra"])
+def test_editing_existing_model_preserves_key_and_reasoning_effort(home, monkeypatch, capsys, model):
+    provider = model.partition("/")[0]
+    previous = {"model": model, "compact_threshold_tokens": 64000,
                 "reasoning_effort": "high"}
     write_json(config_path(), {"model": {"default": previous["model"], "candidates": [previous]}})
     connections = load_connections(home.connections_path)
-    connections["stepfun"]["api_key"] = "existing-secret"
+    connections[provider]["api_key"] = "existing-secret"
     write_json(home.connections_path, connections)
     inputs(monkeypatch, ["", "", "", ""])
     profile = initialize.configure(home)
     assert profile.to_dict() == previous
     assert load_app_config().models == (profile,)
-    assert load_connections(home.connections_path)["stepfun"]["api_key"] == "existing-secret"
+    assert load_connections(home.connections_path)[provider]["api_key"] == "existing-secret"
     assert "existing-secret" not in capsys.readouterr().out
 
 

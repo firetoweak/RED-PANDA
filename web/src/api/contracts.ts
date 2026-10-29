@@ -443,7 +443,7 @@ export const authorizationRequiredEventSchema = z
 export const modelProfileSchema = z.object({
   model: z.string().min(1),
   compact_threshold_tokens: z.number().int().positive(),
-  reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
+  reasoning_effort: z.string().min(1).optional(),
 }).strict();
 
 export const modelConfigSchema = z.object({
@@ -467,13 +467,25 @@ export const modelSettingsSchema = z.object({
   }).strict().array(),
 }).strict();
 
-export const codexModelsSchema = z.object({
-  slug: z.string().min(1),
-  display_name: z.string().min(1),
+export const modelCatalogSchema = z.object({
+  model: z.string().min(1), name: z.string().min(1),
   context_window: z.number().int().positive().nullable(),
-  default_reasoning_level: z.string().nullable(),
-  supported_reasoning_levels: z.object({ effort: z.string().min(1) }).strict().array(),
+  reasoning_levels: z.string().min(1).array(),
+  default_reasoning_effort: z.string().nullable(),
+  web_search: z.boolean(),
 }).strict().array();
+export type ModelCatalog = z.infer<typeof modelCatalogSchema>;
+
+export const searchConfigSchema = z.object({
+  enabled: z.boolean(), provider: z.enum(["deepseek", "openai"]), openai_model: z.string().nullable(),
+}).strict();
+export type SearchConfig = z.infer<typeof searchConfigSchema>;
+export const searchResultSchema = z.object({
+  query: z.string(), provider: z.enum(["deepseek", "openai"]), model: z.string().nullable(),
+  elapsed_ms: z.number().int().nonnegative(), searched: z.boolean(), summary: z.string().nullable(),
+  sources: z.object({title: z.string(), url: z.string(), snippet: z.string()}).strict().array(),
+}).strict();
+export type SearchResult = z.infer<typeof searchResultSchema>;
 
 export const sessionModelSchema = z.object({
   selected: modelProfileSchema.nullable(),
@@ -529,7 +541,6 @@ export type ToolStatus = z.infer<typeof toolStatusSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
 export type ModelConfig = z.infer<typeof modelConfigSchema>;
 export type ModelSettings = z.infer<typeof modelSettingsSchema>;
-export type CodexModels = z.infer<typeof codexModelsSchema>;
 export type ModelTestResult = z.infer<typeof modelTestResultSchema>;
 export type SessionModel = z.infer<typeof sessionModelSchema>;
 

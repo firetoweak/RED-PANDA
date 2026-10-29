@@ -393,9 +393,9 @@ class WebChannel:
     def model_selection(self, session_id: str):
         return self._sessions.model_selection(session_id)
 
-    def set_model(self, connection_id: str, session_id: str, model: str):
+    def set_model(self, connection_id: str, session_id: str, model: str, reasoning_effort: str | None = None):
         self._require_connection(connection_id)
-        return self._sessions.set_model(session_id, model)
+        return self._sessions.set_model(session_id, model, reasoning_effort)
 
     def _store(self) -> AttachmentGateway:
         if self._attachments is None:

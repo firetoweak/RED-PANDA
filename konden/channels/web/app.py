@@ -34,6 +34,9 @@ from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
 from konden.assistant.personal_memory import UpdatePersonalMemory
 from konden.automation.routines import RoutineNotFound
 from konden.model_settings import ModelCatalogUnavailable, ModelConfigurationError, ModelInUseError
+from konden.search import SearchConfig, SearchSettings
+from thinllm import InvalidLLMResponse, LLMProviderError, LLMTransientError
+import httpx
 from konden.assistant.runner import SessionNotFoundError
 from konden.assistant.inputs import InputConflict
 from konden.bootstrap import bootstrap_assistant
@@ -125,10 +128,27 @@ class PersonalMemoryRequest(ConnectionRequest, UpdatePersonalMemory):
 
 class SessionModelRequest(ConnectionRequest):
     model: str
+    reasoning_effort: str | None = Field(default=None, min_length=1, pattern=r"^\S+$")
 
 
 class ModelTestRequest(ConnectionRequest):
     model: str
+    reasoning_effort: str | None = Field(default=None, min_length=1, pattern=r"^\S+$")
+
+
+class SearchSettingsRequest(ConnectionRequest):
+    config: SearchConfig
+
+
+class SearchTestRequest(SearchSettingsRequest):
+    query: str = Field(min_length=1, max_length=128)
+
+    @field_validator("query")
+    @classmethod
+    def search_query(cls, value):
+        if not value.strip():
+            raise ValueError("请输入搜索问题")
+        return value.strip()
 
 
 class AgentNameRequest(ConnectionRequest):
@@ -464,9 +484,30 @@ def create_web_app(
     async def model_settings(request: Request):
         return request.app.state.models.view()
 
-    @app.get("/api/model-settings/codex-models")
-    async def codex_models(request: Request):
-        return await request.app.state.models.codex_models()
+    @app.get("/api/model-settings/catalog/{provider}")
+    async def model_catalog(provider: str, request: Request):
+        return await request.app.state.models.catalog(provider)
+
+    @app.get("/api/model-settings/search")
+    async def search_settings(request: Request):
+        return SearchSettings(request.app.state.models.connections_path).config().model_dump()
+
+    @app.put("/api/model-settings/search")
+    async def save_search_settings(body: SearchSettingsRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        return SearchSettings(request.app.state.models.connections_path).save(body.config)
+
+    @app.post("/api/model-settings/search/test")
+    async def test_search(body: SearchTestRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        try:
+            return await SearchSettings(request.app.state.models.connections_path).search(body.query, body.config)
+        except (LLMProviderError, LLMTransientError, InvalidLLMResponse) as error:
+            return JSONResponse(status_code=502, content={"detail": str(error)})
+        except httpx.HTTPStatusError as error:
+            return JSONResponse(status_code=502, content={"detail": f"DeepSeek 搜索失败（HTTP {error.response.status_code}）"})
+        except httpx.TransportError as error:
+            return JSONResponse(status_code=502, content={"detail": f"DeepSeek 搜索连接失败：{type(error).__name__}"})
 
     @app.get("/api/shared-memory")
     async def read_shared_memory(request: Request):
@@ -498,12 +539,12 @@ def create_web_app(
     @app.put("/api/model-settings")
     async def save_model_settings(body: ModelSettingsRequest, request: Request):
         _channel(request)._require_connection(body.connection_id)
-        return request.app.state.models.save(body.config)
+        return await request.app.state.models.save_config(body.config)
 
     @app.post("/api/model-settings/test")
     async def test_model_connection(body: ModelTestRequest, request: Request):
         _channel(request)._require_connection(body.connection_id)
-        profile = request.app.state.models.require_candidate(body.model)
+        profile = await request.app.state.models.test_profile(body.model, body.reasoning_effort)
         return await check_model_connection(request.app.state.model_llm, body.model,
                                             reasoning_effort=profile.reasoning_effort)
 
@@ -513,7 +554,10 @@ def create_web_app(
 
     @app.put("/api/sessions/{session_id}/model")
     async def set_session_model(session_id: str, body: SessionModelRequest, request: Request):
-        return _channel(request).set_model(body.connection_id, session_id, body.model)
+        _channel(request)._require_connection(body.connection_id)
+        request.app.state.models.require_candidate(body.model)
+        await request.app.state.models.test_profile(body.model, body.reasoning_effort)
+        return _channel(request).set_model(body.connection_id, session_id, body.model, body.reasoning_effort)
 
     @app.exception_handler(AgentDeletedError)
     async def agent_deleted(_request: Request, _error: AgentDeletedError):

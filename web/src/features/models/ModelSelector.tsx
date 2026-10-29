@@ -1,42 +1,32 @@
-import { Alert, Button, Menu, Stack } from "@mantine/core";
-import { IconCheck, IconChevronDown } from "@tabler/icons-react";
-import { useGetModelSettingsQuery, useGetSessionModelQuery, useSetSessionModelMutation } from "../../api/kondenApi";
+import { Alert, Button, Stack } from "@mantine/core";
+import { useGetModelCatalogQuery, useGetModelSettingsQuery, useGetSessionModelQuery, useSetSessionModelMutation } from "../../api/kondenApi";
+import { ModelPicker, type Selection } from "./ModelPicker";
+import { catalogModels, configuredModel, preferencesFrom } from "./modelUi";
+import "./models.css";
 
-export function ModelSelector({ sessionId, connectionId }: { sessionId: string; connectionId: string | null }) {
-  const { data: settings, error: settingsError } = useGetModelSettingsQuery(undefined, { pollingInterval: 5000 });
-  const { data: selection, error } = useGetSessionModelQuery(sessionId, { pollingInterval: 2000 });
-  const [select, { isLoading, error: selectError }] = useSetSessionModelMutation();
-  const selected = selection?.selected?.model ?? null;
-  async function change(model: string) {
+export function ModelSelector({sessionId, connectionId, onChanging}: {sessionId:string;connectionId:string|null;onChanging?(changing:boolean):void}) {
+  const {data:settings,error:settingsError} = useGetModelSettingsQuery(undefined,{pollingInterval:5000});
+  const {data:selection,error} = useGetSessionModelQuery(sessionId,{pollingInterval:2000});
+  const [select,{isLoading,error:selectError}] = useSetSessionModelMutation();
+  const selected = selection?.selected;
+  const provider = selected?.model.split("/")[0];
+  const {currentData:catalog,error:catalogError} = useGetModelCatalogQuery(provider ?? "", {skip:provider === undefined});
+  async function change(value:Selection) {
     if (connectionId === null) return;
-    try { await select({ sessionId, connectionId, model }).unwrap(); } catch { /* mutation 显示失败 */ }
+    onChanging?.(true);
+    try { await select({sessionId,connectionId,model:value.model,reasoningEffort:value.effort}).unwrap(); }
+    catch { /* The mutation state displays its error. */ }
+    finally { onChanging?.(false); }
   }
-  return <Stack gap={3} maw={320}>
-    <Menu trigger="click" position="top-end" withinPortal>
-      <Menu.Target>
-        <Button aria-label={"切换会话模型：" + (selected === null ? "选择模型" : modelName(selected))}
-          size="compact-sm" radius="xl" variant="light" color="gray" fw={400}
-          disabled={connectionId === null || isLoading} loading={isLoading}
-          rightSection={<IconChevronDown size={13} />} style={{ maxWidth: 320 }}
-          styles={{ label: { overflow: "hidden", textOverflow: "ellipsis" } }}>
-          {selected === null ? "选择模型" : modelName(selected)}
-        </Button>
-      </Menu.Target>
-      <Menu.Dropdown style={{ maxHeight: 260, overflowY: "auto" }}>
-        {settings?.config.model.candidates.map((item) => {
-          const status = settings.providers.find((provider) => provider.provider === item.model.split("/")[0]);
-          return <Menu.Item key={item.model} disabled={!status?.configured || connectionId === null || isLoading}
-            rightSection={item.model === selected ? <IconCheck size={14} /> : undefined}
-            onClick={() => void change(item.model)}>
-            {modelName(item.model)}
-          </Menu.Item>;
-        })}
-      </Menu.Dropdown>
-    </Menu>
-    {selectError || error || settingsError ? <Alert color="red" p="xs">{typeof selectError === "string" ? selectError : JSON.stringify(selectError ?? error ?? settingsError)}</Alert> : null}
+  const models = settings ? [...new Map([...settings.config.model.candidates.map(configuredModel),
+    ...catalogModels(catalog ?? [])].map((item) => [item.id,item])).values()] : [];
+  return <Stack gap={3}>
+    {settings && selected ? <ModelPicker models={models} preferences={preferencesFrom(settings.config)}
+      selection={{model:selected.model,effort:selected.reasoning_effort ?? null}} onSelect={(value) => void change(value)}
+      pending={selection.pending} disabled={connectionId === null || isLoading}
+      disabledProviders={settings.providers.filter((item) => !item.configured).map((item) => item.provider)} />
+      : <Button size="compact-sm" variant="subtle" color="gray" disabled>选择模型</Button>}
+    {selectError || error || settingsError || catalogError ? <Alert color="red" p="xs">{typeof (selectError ?? catalogError) === "string"
+      ? String(selectError ?? catalogError) : JSON.stringify(selectError ?? error ?? settingsError ?? catalogError)}</Alert> : null}
   </Stack>;
-}
-
-function modelName(model: string) {
-  return model.slice(model.indexOf("/") + 1);
 }
