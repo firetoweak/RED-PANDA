@@ -308,11 +308,19 @@ export const kondenApi = createApi({
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
       invalidatesTags: (_result, error) => error === undefined ? ["ExternalSessions"] : [],
     }),
-    createExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string }>({
-      query: ({ connectionId }) => ({
-        url: "/external-connections", method: "POST", body: { connection_id: connectionId },
+    createExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string; name: string }>({
+      query: ({ connectionId, name }) => ({
+        url: "/external-connections", method: "POST", body: { connection_id: connectionId, name },
       }),
       transformResponse: (value: unknown) => createdExternalConnectionSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalConnections"] : [],
+    }),
+    renameExternalConnection: build.mutation<ExternalConnection, { connectionId: string; externalId: string; name: string }>({
+      query: ({ connectionId, externalId, name }) => ({
+        url: `/external-connections/${externalId}/name`, method: "PUT", body: { connection_id: connectionId, name },
+      }),
+      transformResponse: (value: unknown) => externalConnectionSchema.parse(value),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
       invalidatesTags: (_result, error) => error === undefined ? ["ExternalConnections"] : [],
     }),
@@ -668,6 +676,7 @@ export const {
   useRetryExternalCodexMutation,
   useCreateExternalConnectionMutation,
   useRevokeExternalConnectionMutation,
+  useRenameExternalConnectionMutation,
   useGetBackgroundCommandsQuery,
   useStopBackgroundCommandMutation,
   useGetRoutinesQuery,

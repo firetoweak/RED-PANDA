@@ -114,6 +114,13 @@ export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
 export const externalConnectionSchema = z.object({
   connection_id: z.string().regex(/^[0-9a-f]{32}$/),
+  name: z.string(),
+  activity: z.array(z.object({
+    occurred_at: z.string(),
+    operation: z.enum(["tools/list", "get_context", "send_message", "read_messages"]),
+    identity: z.string().nullable(),
+    result: z.string(),
+  }).strict()),
 }).strict();
 export type ExternalConnection = z.infer<typeof externalConnectionSchema>;
 export const createdExternalConnectionSchema = z.object({

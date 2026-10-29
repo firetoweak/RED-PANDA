@@ -90,22 +90,39 @@ def collaboration(tmp_path):
             client.portal.call(host.close)
 
 
-def test_web_manages_access_without_names_or_fixed_recipients(collaboration):
+def test_web_manages_named_access_and_scoped_activity(collaboration):
     c = collaboration
     path = "/api/external-connections"
     assert c.client.post(path, json={"connection_id": "inactive"}).status_code == 409
-    assert c.client.post(path, json={"connection_id": c.human_connection, "name": "无需取名"}).status_code == 422
-    created = c.client.post(path, json={"connection_id": c.human_connection})
+    created = c.client.post(path, json={"connection_id": c.human_connection, "name": "笔记本 Codex"})
     assert created.status_code == 201 and created.headers["cache-control"] == "no-store"
     credential = created.json()
     assert credential["url"] == "http://127.0.0.1:8876/mcp/"
     entries = c.client.get(path).json()
-    assert credential["connection"] in entries and all(set(item) == {"connection_id"} for item in entries)
+    assert credential["connection"] in entries and all(set(item) == {"connection_id", "name", "activity"} for item in entries)
     assert credential["token"] not in str(entries)
     context = c.call("get_context", credential=credential["token"])["structuredContent"]
     assert {item["name"] for item in context["colleagues"]} == {"协调员", "其他 Bot"}
     external_id = credential["connection"]["connection_id"]
+    rename_path = f"{path}/{external_id}/name"
+    assert c.client.put(rename_path, json={"connection_id": "inactive", "name": "x"}).status_code == 409
+    assert c.client.put(rename_path, json={"connection_id": c.human_connection, "name": "x" * 81}).status_code == 422
+    renamed = c.client.put(rename_path, json={"connection_id": c.human_connection, "name": " 台式机 Codex "})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "台式机 Codex"
+    assert renamed.json()["activity"][-1]["identity"] == context["identity"]
+    c.call("read_messages", {"identity": context["identity"], "wait_seconds": 0}, credential["token"])
+    restored = ExternalMessages(c.host).list_connections()
+    item = next(item for item in restored if item["connection_id"] == external_id)
+    assert item["name"] == "台式机 Codex"
+    assert [entry["operation"] for entry in item["activity"]] == ["get_context", "read_messages"]
+    assert credential["token"] not in str(restored) and "token_hash" not in str(restored)
+    assert all(not item["activity"] for item in restored if item["connection_id"] not in {external_id, c.connection.connection_id})
+    for _ in range(31):
+        c.call("get_context", {"identity": context["identity"]}, credential["token"])
+    assert len(next(item for item in c.client.get(path).json() if item["connection_id"] == external_id)["activity"]) == 30
     assert c.client.request("DELETE", f"{path}/{external_id}", json={"connection_id": c.human_connection}).status_code == 204
+    assert c.client.put(rename_path, json={"connection_id": c.human_connection, "name": "x"}).status_code == 404
     assert c.client.request("DELETE", f"{path}/{external_id}", json={"connection_id": c.human_connection}).status_code == 404
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer " + credential["token"]}, json={}).status_code == 401
 

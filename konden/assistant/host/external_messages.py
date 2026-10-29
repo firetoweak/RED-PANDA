@@ -44,11 +44,17 @@ class ExternalMessages:
             await self.changed_sink()
 
     def list_connections(self):
-        return [{"connection_id": item.connection_id} for item in self.connections.read().connections]
+        return [item.view() for item in self.connections.read().connections]
 
-    def create_connection(self):
-        connection, token = self.connections.create()
-        return {"connection": {"connection_id": connection.connection_id}, "token": token}
+    def create_connection(self, name=""):
+        connection, token = self.connections.create(name)
+        return {"connection": connection.view(), "token": token}
+
+    def rename_connection(self, connection_id, name):
+        connection = self.connections.rename(connection_id, name)
+        if connection is None:
+            raise ExternalConnectionNotFound(connection_id)
+        return connection.view()
 
     async def revoke_connection(self, connection_id):
         async with self._changed:
