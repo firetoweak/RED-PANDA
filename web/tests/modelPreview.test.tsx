@@ -49,7 +49,12 @@ it("常用模型先编辑草稿，撤销不保存，保存才提交偏好", asyn
   fireEvent.click(screen.getByRole("tab", { name: /已选模型/ }));
   expect(screen.getByRole("button", { name: "测试 OpenAI Plain" })).toBeVisible();
   expect(screen.getByRole("button", { name: "测试 DeepSeek Beta" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "删除 OpenAI Alpha" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "删除 OpenAI Plain" }));
+  expect(screen.queryByRole("button", { name: "测试 OpenAI Plain" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "供应商与模型" }));
+  expect(checkbox).not.toBeChecked();
+  fireEvent.click(checkbox);
   fireEvent.click(screen.getByRole("button", { name: "撤销修改" }));
   expect(checkbox).not.toBeChecked();
   fireEvent.click(checkbox);

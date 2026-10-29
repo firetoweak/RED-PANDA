@@ -119,6 +119,7 @@ export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, o
       </Tabs.Panel>
       <Tabs.Panel value="selected" className="model-settings-page">
         <SelectedModelsPanel models={selectedModels} preferences={draft} saving={saving} onChange={updateFavorite}
+          onRemove={(model) => toggle(model, false)}
           onDefaultChange={(value) => { setDraft((previous) => ({ ...previous, defaultModel: value })); setSavedNotice(false); }}
           testModel={api.testModel} />
       </Tabs.Panel>

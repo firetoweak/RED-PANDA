@@ -1,5 +1,5 @@
 import { ActionIcon, Button, Collapse, Group, NumberInput, Select, Text, Tooltip } from "@mantine/core";
-import { IconAdjustments, IconAlertCircle, IconCheck, IconPlayerPlay } from "@tabler/icons-react";
+import { IconAdjustments, IconAlertCircle, IconCheck, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { providerName, type CatalogModel, type Favorite, type ModelPreviewApi, type ModelTestResult, type Preferences } from "./api";
 
@@ -9,10 +9,11 @@ type ModelRowProps = {
   isDefault: boolean;
   saving: boolean;
   onChange(values: Partial<Favorite>): void;
+  onRemove(): void;
   testModel: ModelPreviewApi["testModel"];
 };
 
-function SelectedModelRow({ model, favorite, isDefault, saving, onChange, testModel }: ModelRowProps) {
+function SelectedModelRow({ model, favorite, isDefault, saving, onChange, onRemove, testModel }: ModelRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<ModelTestResult | null>(null);
@@ -40,9 +41,15 @@ function SelectedModelRow({ model, favorite, isDefault, saving, onChange, testMo
     <Button className="selected-model-test" aria-label={`测试 ${label}`} size="xs" variant="default"
       loading={testing} disabled={saving} leftSection={<IconPlayerPlay size={13} />}
       onClick={() => void test()}>{result?.ok === false ? "重试" : "测试"}</Button>
-    <Tooltip label="更多设置"><ActionIcon variant="subtle" color="gray" className="selected-model-more"
-      aria-label={`${label} 更多设置`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-      <IconAdjustments size={16} /></ActionIcon></Tooltip>
+    <Group gap={4} wrap="nowrap" className="selected-model-actions">
+      <Tooltip label="更多设置"><ActionIcon variant="subtle" color="gray"
+        aria-label={`${label} 更多设置`} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+        <IconAdjustments size={16} /></ActionIcon></Tooltip>
+      <Tooltip label={isDefault ? "请先更换新会话默认模型" : "删除模型"}><span>
+        <ActionIcon variant="subtle" color="gray" aria-label={`删除 ${label}`} disabled={isDefault || saving} onClick={onRemove}>
+          <IconTrash size={16} /></ActionIcon>
+      </span></Tooltip>
+    </Group>
     {testing || result ? <div className="model-test-result" role="status">
       {testing ? <Text size="xs" c="dimmed">正在测试…</Text>
         : result?.ok ? <Text size="xs" c="teal"><IconCheck size={13} />示例测试通过 · {result.latencyMs} ms</Text>
@@ -59,11 +66,12 @@ function SelectedModelRow({ model, favorite, isDefault, saving, onChange, testMo
   </div>;
 }
 
-export function SelectedModelsPanel({ models, preferences, saving, onChange, onDefaultChange, testModel }: {
+export function SelectedModelsPanel({ models, preferences, saving, onChange, onRemove, onDefaultChange, testModel }: {
   models: CatalogModel[];
   preferences: Preferences;
   saving: boolean;
   onChange(id: string, values: Partial<Favorite>): void;
+  onRemove(model: CatalogModel): void;
   onDefaultChange(id: string): void;
   testModel: ModelPreviewApi["testModel"];
 }) {
@@ -74,7 +82,7 @@ export function SelectedModelsPanel({ models, preferences, saving, onChange, onD
       <div role="list" aria-label="已选模型">
         {models.map((model) => <SelectedModelRow key={`${model.id}:${preferences.favorites[model.id].effort ?? "default"}`}
           model={model} favorite={preferences.favorites[model.id]} isDefault={model.id === preferences.defaultModel}
-          saving={saving} onChange={(values) => onChange(model.id, values)} testModel={testModel} />)}
+          saving={saving} onChange={(values) => onChange(model.id, values)} onRemove={() => onRemove(model)} testModel={testModel} />)}
       </div>
     </div>
     <div className="selected-models-default catalog-default">
