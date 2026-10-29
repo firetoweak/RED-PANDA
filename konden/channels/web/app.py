@@ -27,7 +27,7 @@ from konden.assistant.host.agent_groups import GroupDissolvedError, GroupNameTak
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from konden.assistant.host.agent_projects import ProjectLinkRefused
 from konden.assistant.host.external_messages import ExternalConnectionNotFound, ExternalSessionNotFound
-from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexTarget
+from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexExecutable
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.model_connection import check_model_connection
 from konden.assistant.shared_memory import SharedMemoryStore, UpdateSharedMemory
@@ -107,7 +107,7 @@ class AbsenceAnswer(ConnectionRequest):
     action: Literal["continue", "stop"]
 
 
-class CodexContinuationRequest(ConnectionRequest, CodexTarget):
+class CodexContinuationRequest(ConnectionRequest, CodexExecutable):
     pass
 
 
@@ -583,7 +583,7 @@ def create_web_app(
 
     @app.put("/api/external-sessions/{identity}/codex")
     async def configure_external_codex(identity: str, body: CodexContinuationRequest, request: Request):
-        target = CodexTarget(thread_id=body.thread_id, executable=body.executable)
+        target = CodexExecutable(executable=body.executable)
         return await _channel(request).configure_external_codex(body.connection_id, identity, target)
 
     @app.delete("/api/external-sessions/{identity}/codex")

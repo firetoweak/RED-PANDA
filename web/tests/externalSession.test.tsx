@@ -17,8 +17,8 @@ vi.mock("../src/app/hooks", () => ({ useAppSelector: () => query.connectionId })
 vi.mock("../src/features/conversation/MarkdownMessage", () => ({ MarkdownMessage: ({ content }: { content: string }) => <p>{content}</p> }));
 
 const identity = "1".repeat(32);
-const codex = { thread_id: null, executable: "codex", status: "disabled", detail: null, attempted_at: null } as const;
-const session = { identity, name: "外部会话-11111111", active: true,
+const codex = { thread_id: "11111111-1111-1111-1111-111111111111", executable: "codex", status: "disabled", detail: null, attempted_at: null } as const;
+const session = { identity, name: "外部会话-11111111", active: true, codex_status: "disabled" as const,
   created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] };
 beforeEach(() => {
   query.connectionId = "human";
@@ -63,18 +63,15 @@ it("按 Bot 查看完整往返，并可切回全部对话", async () => {
   expect(screen.getByText("第二位的主动消息")).toBeVisible();
 });
 
-it("用户为当前外部会话绑定 Codex 聊天，保存前校验聊天 ID", async () => {
+it("当前聊天自动定位，用户只需确认程序并启用接续", async () => {
   query.data = { session, codex, messages: [] };
   open();
   fireEvent.click(screen.getByRole("button", { name: "Codex 自动接续" }));
-  fireEvent.change(screen.getByRole("textbox", { name: /Codex 聊天 ID/ }), { target: { value: "wrong-chat" } });
-  fireEvent.click(screen.getByRole("button", { name: "保存并启用" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("请填写 Codex 聊天 ID");
-  expect(query.save).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByRole("textbox", { name: /Codex 聊天 ID/ }), { target: { value: "01234567-89ab-cdef-0123-456789abcdef" } });
+  expect(screen.queryByRole("textbox", { name: /Codex 聊天 ID/ })).not.toBeInTheDocument();
+  expect(screen.getByText(`已自动识别原生聊天：${codex.thread_id}`)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "保存并启用" }));
   expect(query.save).toHaveBeenCalledWith({ connectionId: "human", identity,
-    target: { thread_id: "01234567-89ab-cdef-0123-456789abcdef", executable: "codex" } });
+    target: { executable: "codex" } });
   await waitFor(() => expect(screen.getByRole("button", { name: "Codex 自动接续" })).toHaveAttribute("aria-expanded", "false"));
 });
 

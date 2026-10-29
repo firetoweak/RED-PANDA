@@ -67,7 +67,7 @@ class GroupMessageArguments(BaseModel):
 MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": LIST_EXTERNAL,
-        "description": "查询已登记的外部会话名字、identity、最近活动和接入是否有效。外部会话保留原生工具中的上下文，用 send_external_message 联系。查询本身不构成联系对方的用户授权。",
+        "description": "查询已登记的外部会话名字、identity、最近消息、接入是否有效和收信提醒状态。接入有效不代表客户端在线；disabled 需主动收信，ready 已启用自动接续，pending 尚未提醒，queued 提醒已入队，failed 提醒失败，unknown 提醒结果未确认。外部会话保留原生工具中的上下文，用 send_external_message 联系。查询本身不构成联系对方的用户授权。",
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
     }},
     {"type": "function", "function": {
