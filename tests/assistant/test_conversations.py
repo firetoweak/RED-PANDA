@@ -108,10 +108,37 @@ class ConversationProjectionTest(unittest.TestCase):
         conversation = project_conversation("session-1", events, timeline(events), session=view)
         self.assertEqual([item.kind for item in conversation.items],
                          ["user", "step", "private_message", "private_message", "step"])
-        self.assertEqual([(item.message_id, item.direction, item.peer, item.occurred_at)
+        self.assertEqual([(item.message_id, item.thread_id, item.direction, item.peer, item.text, item.occurred_at)
                           for item in conversation.items if item.kind == "private_message"], [
-            ("private-in", "received", "Lin", events[2].occurred_at),
-            ("private-out", "sent", "Ada", events[4].occurred_at),
+            ("private-in", "private-in", "received", "Lin", "我完成了检查", events[2].occurred_at),
+            ("private-out", "private-out", "sent", "Ada", "请检查代码", events[4].occurred_at),
+        ])
+
+    def test_sent_reply_keeps_the_received_message_thread(self):
+        from konden.assistant.agents import PRIVATE_MESSAGE
+
+        send = Command("send-1", InvokeTool("send_message", (
+            ("recipient", "Lin"), ("text", "已处理，请复核"), ("reply_to", "private-in"),
+        )))
+        events = (
+            event(1, "incoming-1", DomainFactCommitted(PRIVATE_MESSAGE, {
+                "message_id": "private-in", "sender": {"kind": "agent", "name": "Lin"},
+                "recipient": "Atlas", "text": "请调整卡片", "reply_to": None,
+                "thread_id": "private-in", "hop": 0, "origin": "origin-1",
+            }, requests_decision=True)),
+            event(2, "step-1", committed_step("decision-1", "incoming-1", "", (send,))),
+            event(3, "attempt-1", DispatchAttemptStarted("att-1", "send-1"), causation_id="step-1"),
+            event(4, "outcome-1", CommandOutcomeReceived("send-1", "att-1", CommandOutcome(
+                OutcomeStatus.SUCCEEDED, value={"ok": True, "code": "DELIVERED", "data": {
+                    "message_id": "private-out", "recipient": "Lin",
+                }},
+            )), causation_id="attempt-1"),
+        )
+        conversation = project_conversation("session-1", events, timeline(events),
+            session=SessionView("waiting", ("external_fact",), (), False))
+        self.assertEqual([(item.thread_id, item.reply_to, item.text) for item in conversation.items
+                          if item.kind == "private_message"], [
+            ("private-in", None, "请调整卡片"), ("private-in", "private-in", "已处理，请复核"),
         ])
 
     def test_refused_private_message_is_only_a_tool_record(self):

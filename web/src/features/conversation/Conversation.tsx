@@ -377,7 +377,8 @@ export function Conversation({ agentName, agentNames = [], ref }: {
                     />
                   </Box>
                 )}
-                {turn.communications.map((message) => <PrivateMessageNotice key={message.key} message={message} />)}
+                {turn.communications.map((communication) => <PrivateMessageNotice key={communication.key}
+                  communication={communication} agentName={conversation.agent_name ?? agentName ?? "konden"} />)}
                 {body}
                 {latest && notice !== null ? (
                   <ControlNotice message={notice} />

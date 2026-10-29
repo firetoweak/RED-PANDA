@@ -15,9 +15,10 @@ vi.mock("../src/features/conversation/MarkdownMessage", () => ({
 }));
 
 it("普通外部消息展示正文，并跳转到外部会话而不是同名内部 Bot", () => {
-  render(<MemoryRouter initialEntries={["/sessions/receiver"]}><Routes><Route path="/sessions/:sessionId" element={<PrivateMessageNotice message={{ key: "external:1", kind: "private_message", direction: "received",
+  render(<MemoryRouter initialEntries={["/sessions/receiver"]}><Routes><Route path="/sessions/:sessionId" element={<PrivateMessageNotice agentName="接收方" communication={{ key: "external:1", messages: [{ key: "external:1", kind: "private_message", direction: "received", threadId: null,
     peer: "Codex", occurredAt: "2026-10-23T01:00:00Z",
-    external: { identity: "1".repeat(32), text: "来讨论一下方案", replyTo: null } }} />} /></Routes></MemoryRouter>);
+    text: "来讨论一下方案", messageId: "1", replyTo: null,
+    external: { identity: "1".repeat(32) } }] }} />} /></Routes></MemoryRouter>);
   expect(screen.getByText("外部协作者")).toBeInTheDocument();
   expect(screen.getByText("来讨论一下方案")).toBeInTheDocument();
   expect(screen.getByRole("link")).toHaveAttribute("href", `/external/${"1".repeat(32)}?bot=receiver`);

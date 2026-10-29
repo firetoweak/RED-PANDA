@@ -39,11 +39,15 @@ export type VisibleStep = {
 
 export type VisiblePrivateMessage = {
   key: string;
+  messageId: string;
   kind: "private_message";
   direction: "sent" | "received";
   peer: string;
+  text: string;
+  threadId: string | null;
+  replyTo: string | null;
   occurredAt: string;
-  external?: { identity: string; text: string; replyTo: string | null };
+  external?: { identity: string };
 };
 
 export type VisibleItem = VisibleUser | VisibleStep | VisiblePrivateMessage;
@@ -66,19 +70,27 @@ export function visibleTimeline(
     if (item.kind === "external_message") {
       return {
         key: `external:${item.message_id}`,
+        messageId: item.message_id,
+        threadId: null,
+        replyTo: item.reply_to,
         kind: "private_message",
         direction: item.direction,
         peer: item.peer,
+        text: item.text,
         occurredAt: item.occurred_at,
-        external: { identity: item.identity, text: item.text, replyTo: item.reply_to },
+        external: { identity: item.identity },
       };
     }
     if (item.kind === "private_message") {
       return {
         key: `private:${item.direction}:${item.message_id}`,
+        messageId: item.message_id,
+        threadId: item.thread_id,
+        replyTo: item.reply_to,
         kind: "private_message",
         direction: item.direction,
         peer: item.peer,
+        text: item.text,
         occurredAt: item.occurred_at,
       };
     }

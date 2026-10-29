@@ -582,6 +582,28 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .message-progress .assistant-reply { background: transparent; }
 .private-message-notice { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; color: var(--mantine-color-dimmed); font-size: 12px; line-height: 1.6; }
 .private-message-direction { display: inline-flex; align-items: center; flex-shrink: 0; }
+.private-message-card { width: fit-content; max-width: 100%; min-width: 0; margin-inline: auto; border: 1px solid var(--konden-border); border-radius: 10px; }
+.private-message-card.is-open { width: min(100%, 72ch); }
+.private-message-header { display: flex; align-items: center; border-radius: inherit; }
+.private-message-toggle { flex: 1; min-width: 0; min-height: 44px; padding: 8px 12px; justify-content: flex-start; border-radius: inherit; }
+.private-message-toggle:hover { background: var(--konden-hover); }
+.private-message-toggle:focus-visible, .private-message-open-peer:focus-visible { outline: 2px solid var(--konden-focus); outline-offset: 3px; }
+.private-message-card.is-open .private-message-header { border-radius: 10px 10px 0 0; }
+.private-message-toggle time { margin-left: auto; padding-left: 6px; white-space: nowrap; font-size: 11px; }
+.private-message-chevron { flex-shrink: 0; }
+.private-message-card.is-open .private-message-chevron { transform: rotate(180deg); }
+.private-message-open-peer { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; min-height: 44px; margin-right: 4px; color: var(--mantine-color-dimmed); border-radius: 6px; }
+.private-message-open-peer:hover { background: var(--konden-hover); }
+.private-message-content { min-width: 0; padding: 14px 16px 16px; border-top: 1px solid var(--konden-border); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.private-message-content .markdown-message :where(ul, ol) { padding-inline-start: 1.5em; }
+.private-message-count { white-space: nowrap; }
+.private-message-entry { min-width: 0; padding: 12px; border-radius: 8px; background: var(--konden-surface); }
+.private-message-entry + .private-message-entry { margin-top: 12px; }
+.private-message-entry[data-direction="sent"] { margin-left: 28px; background: var(--konden-bubble); }
+.private-message-entry[data-direction="received"] { margin-right: 28px; }
+.private-message-entry-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--mantine-color-dimmed); font-size: 12px; }
+.private-message-entry-meta time { margin-left: auto; flex-shrink: 0; font-size: 11px; }
+.private-message-entry-meta .agent-avatar { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 5px; }
 .external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
 .external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
 .external-roster { margin-top: 16px; }

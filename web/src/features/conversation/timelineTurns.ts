@@ -1,19 +1,32 @@
 import type { VisibleItem, VisiblePrivateMessage, VisibleStep, VisibleUser } from "./visibleTimeline";
 
+export type TimelineCommunication = {
+  key: string;
+  messages: VisiblePrivateMessage[];
+};
+
 export type TimelineTurn = {
   key: string;
   user: VisibleUser | null;
-  communications: VisiblePrivateMessage[];
+  communications: TimelineCommunication[];
   process: VisibleStep[];
   active: VisibleStep | null;
   final: VisibleStep | null;
 };
 
 export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
-  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[]; communications: VisiblePrivateMessage[] }> = [];
+  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[]; communications: TimelineCommunication[] }> = [];
+  const privateThreads = new Map<string, TimelineCommunication>();
   let current: (typeof turns)[number] | null = null;
 
   for (const item of items) {
+    if (item.kind === "private_message" && item.threadId !== null) {
+      const thread = privateThreads.get(item.threadId);
+      if (thread !== undefined) {
+        thread.messages.push(item);
+        continue;
+      }
+    }
     if (item.kind === "user") {
       current = { key: item.key, user: item, steps: [], communications: [] };
       turns.push(current);
@@ -25,12 +38,20 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
       turns.push(current);
     }
     if (item.kind === "private_message") {
-      current.communications.push(item);
+      const communication = {
+        key: item.threadId === null ? item.key : `private-thread:${item.threadId}`,
+        messages: [item],
+      };
+      current.communications.push(communication);
+      if (item.threadId !== null) privateThreads.set(item.threadId, communication);
       continue;
     }
     current.steps.push(item);
   }
 
+  for (const thread of privateThreads.values()) {
+    thread.messages = orderPrivateMessages(thread.messages);
+  }
   return turns.map(({ key, user, steps, communications }) => {
     const candidate = steps.at(-1);
     const active = candidate?.pending === true ? candidate : null;
@@ -44,6 +65,22 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
       final,
     };
   });
+}
+
+function orderPrivateMessages(messages: VisiblePrivateMessage[]): VisiblePrivateMessage[] {
+  const byId = new Map(messages.map((message) => [message.messageId, message]));
+  const visited = new Set<string>();
+  const ordered: VisiblePrivateMessage[] = [];
+  function append(message: VisiblePrivateMessage) {
+    if (visited.has(message.messageId)) return;
+    // 对方的回复可能先于本地发送确认到达；被回复的消息始终在前。
+    const parent = message.replyTo === null ? undefined : byId.get(message.replyTo);
+    if (parent !== undefined) append(parent);
+    visited.add(message.messageId);
+    ordered.push(message);
+  }
+  for (const message of messages) append(message);
+  return ordered;
 }
 
 function isFinal(step: VisibleStep): boolean {
