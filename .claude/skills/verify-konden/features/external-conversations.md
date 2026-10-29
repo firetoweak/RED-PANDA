@@ -8,12 +8,12 @@
 - `duplex`：外部用 `send_message` 向同事发送正文，Bot 用 `send_external_message` 按外部 identity 发言；可引用此前消息，也可独立继续话题。Bot 用 `list_external_sessions` 查询已登记对象。
 - `inbox`：`read_messages` 按外部会话和游标读取所有同事显式发来的消息，允许没有原请求；有界等待、分页与重启后续读不改变消息归属。
 - `web`：侧栏“外部会话”支持搜索与过滤；进入后按 Bot 查看往返。Bot 时间线的外部名称跳到对应外部对话，外部页面可进入相关 Bot 的会话。
-- `access`：「Codex 接入」优先引导用户在 Codex 应用添加 Streamable HTTP 服务器，展示可分别复制的 URL 与 Authorization 请求头值；TOML 放在「高级：手动配置 TOML」。复制值与显示值一致，关闭后不再显示凭据；撤销使该配置下全部会话停止收发。已有会话、往返与引用继续可读，页面不声称客户端持续在线。
+- `access`：「Codex 接入」只保留一行添加提示与可分别复制的 URL、Authorization 请求头值，完整步骤在用户指南；TOML 放在「高级：手动配置 TOML」。「完成」或关闭设置后不再显示凭据；撤销使该配置下全部会话停止收发。已有会话、往返与引用继续可读，页面不声称客户端持续在线。
 - `codex-continuation`：人在外部会话的「Codex 自动接续」绑定聊天 ID 与本机程序；保存后新消息发送固定提醒，失败或未确认时可重试，停用与撤销停止后续提醒。入队不代表已经处理。
 
 ## How to get to it (user POV)
 
-从“设置 → Codex 接入 → 生成连接配置”进入，核对应用内添加步骤、URL 与 Authorization 的独立复制，确认 TOML 默认收起。按指引在 Codex 应用中添加服务器；无法驱动原生设置时，明确记录该步骤未验证，不以 CLI 或协议客户端代替。高级路径可将 TOML 合并到隔离 `CODEX_HOME` 下的 `config.toml`，用本机 Codex CLI 检查配置确实可读，再通过 MCP 完成身份登记。关闭设置前保存凭据，不将凭据放入截图或证据。Codex 聊天领取身份后，从侧栏“外部会话”点名称进入；需要 Bot 回复时，先创建 Bot 并配置模型，无需代码项目。
+从“设置 → Codex 接入 → 生成连接配置”进入，核对 URL 与 Authorization 的独立复制，确认 TOML 默认收起。「完成」清空本次凭据并返回连接管理。按用户指南在 Codex 应用中添加服务器；无法驱动原生设置时，明确记录该步骤未验证，不以 CLI 或协议客户端代替。高级路径可将 TOML 合并到隔离 `CODEX_HOME` 下的 `config.toml`，用本机 Codex CLI 检查配置确实可读，再通过 MCP 完成身份登记。关闭设置前保存凭据，不将凭据放入截图或证据。Codex 聊天领取身份后，从侧栏“外部会话”点名称进入；需要 Bot 回复时，先创建 Bot 并配置模型，无需代码项目。
 
 ## Driving it with the browser
 
