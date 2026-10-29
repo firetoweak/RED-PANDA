@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="886" viewBox="0 0 1280 886" role="img" aria-labelledby="title desc">
+  <title id="title">Worker 的退出不结束 Bot，也不删除历史</title>
+  <desc id="desc">没有 Worker 时 Bot 身份与事实仍存在。需要处理时启动，执行收口后有入口选择则空闲驻留，无入口选择且无请求时确认退出。退出确认期间的新活动取消退出。未知异常暴露，下一次真实请求再恢复，未知操作不自动重试。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="886" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <path d="M340 205 H488" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="414" y="189" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">需要处理</text>
+  <path d="M792 205 H940" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1090 260 V400" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1139" y="338" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">执行收口</text>
+  <path d="M940 456 H792" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="866" y="440" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">无人查看</text>
+  <path d="M488 456 H190 V260" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="335" y="439" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">确认后释放进程</text>
+  <path d="M1216 400 V286 H1228 V260" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M640 400 V320 H964 V260" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="751" y="305" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">确认期间有新活动：继续工作</text>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">Worker 的退出不结束 Bot，也不删除历史</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">进程按需要启动；模型服务与 Host 缓存的驻留另有自己的边界。</text>
+  <rect x="40" y="150" width="300" height="110" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="190.0" y="200.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,156,276,98">没有 Worker</text>
+  <text x="190.0" y="230.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,156,276,98">Bot 身份与历史仍存在</text>
+  <rect x="488" y="150" width="304" height="110" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="640.0" y="200.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="500,156,280,98">启动并重放事实</text>
+  <text x="640.0" y="230.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="500,156,280,98">只恢复允许继续的工作</text>
+  <rect x="940" y="150" width="300" height="110" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="1090.0" y="200.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="952,156,276,98">执行中</text>
+  <text x="1090.0" y="230.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="952,156,276,98">模型调用或工具执行</text>
+  <rect x="940" y="400" width="300" height="112" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="1090.0" y="451.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="952,406,276,100">空闲驻留</text>
+  <text x="1090.0" y="481.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="952,406,276,100">有入口查看：复用进程</text>
+  <rect x="488" y="400" width="304" height="112" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="640.0" y="437.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="500,406,280,100">确认可退出</text>
+  <text x="640.0" y="467.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="500,406,280,100">无人查看、没有执行</text>
+  <text x="640.0" y="495.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="500,406,280,100">没有尚未接纳的请求</text>
+  <text x="1204" y="370" font-size="17" text-anchor="end" font-weight="400" fill="#60758b">新活动</text>
+  <rect x="40" y="570" width="1200" height="92" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="640.0" y="611.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,576,1176,80">未知异常原样暴露，不因页面仍打开而自动重启</text>
+  <text x="640.0" y="641.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,576,1176,80">下一次真实请求再恢复；已开始但结果未知的操作不会盲目重跑。</text>
+  <rect x="40" y="698" width="1200" height="92" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="640.0" y="739.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,704,1176,80">事实、进程与外部工作各有生命周期</text>
+  <text x="640.0" y="769.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,704,1176,80">待确认事项保存在事实中；后台命令与子协作可以在父 Worker 退出后继续。</text>
+  <text x="40" y="850" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">只查看静止历史可以由 Host 服务，不必启动 Worker。</text>
+</svg>

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="890" viewBox="0 0 1280 890" role="img" aria-labelledby="title desc">
+  <title id="title">压缩交接：业务继续，窗口稍后切换</title>
+  <desc id="desc">业务在冻结输入后继续运行；独立后台只读冻结来源，交接材料就绪后在安全位置切换。新窗口由重述信息、交接材料和期间新增原始事实构成，完整执行历史不变。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="890" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <rect x="40" y="132" width="1200" height="190" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="64" y="168" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">业务会话</text>
+  <rect x="40" y="354" width="1200" height="204" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="64" y="390" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">后台只读交接</text>
+  <path d="M436 240 H504" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M804 240 H936" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M322 288 V416" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M436 466 H504" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M804 466 H936" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1068 416 V288" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1130" y="343" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">材料就绪</text>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">压缩交接：业务继续，窗口稍后切换</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">冻结点与切换点之间的新事实，全部原样接入新窗口。</text>
+  <rect x="208" y="192" width="228" height="96" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="322.0" y="235.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="220,198,204,84">冻结输入 A</text>
+  <text x="322.0" y="265.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="220,198,204,84">实际提示、工具与消息</text>
+  <rect x="504" y="192" width="300" height="96" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="654.0" y="235.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="516,198,276,84">继续接纳与执行</text>
+  <text x="654.0" y="265.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="516,198,276,84">期间新增事实 B</text>
+  <rect x="936" y="192" width="264" height="96" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="1068.0" y="235.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="948,198,240,84">安全切换窗口</text>
+  <text x="1068.0" y="265.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="948,198,240,84">直接调用与结果不拆开</text>
+  <rect x="208" y="416" width="228" height="100" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="322.0" y="461.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="220,422,204,88">只读冻结来源</text>
+  <text x="322.0" y="491.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="220,422,204,88">不读取后来的变化</text>
+  <rect x="504" y="416" width="300" height="100" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="654.0" y="461.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="516,422,276,88">多轮回查与整理</text>
+  <text x="654.0" y="491.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="516,422,276,88">不参与业务决策</text>
+  <rect x="936" y="416" width="264" height="100" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="1068.0" y="461.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="948,422,240,88">接纳交接材料</text>
+  <text x="1068.0" y="491.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="948,422,240,88">非空文本，无工具调用</text>
+  <text x="40" y="610" font-size="24" text-anchor="start" font-weight="700" fill="#20354a">切换后的模型阅读窗口</text>
+  <rect x="40" y="634" width="344" height="116" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="212.0" y="673.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,640,320,104">身份、能力与记忆</text>
+  <text x="212.0" y="703.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,640,320,104">从事实重述</text>
+  <text x="212.0" y="731.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,640,320,104">记忆用冻结点最近观察的原文</text>
+  <rect x="408" y="634" width="392" height="116" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="604.0" y="673.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="420,640,368,104">交接材料承接 A</text>
+  <text x="604.0" y="703.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="420,640,368,104">约定、进展与证据强度</text>
+  <text x="604.0" y="731.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="420,640,368,104">不代替运行状态或记忆正文</text>
+  <rect x="824" y="634" width="416" height="116" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="1032.0" y="673.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="836,640,392,104">新增事实 B 原样保留</text>
+  <text x="1032.0" y="703.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="836,640,392,104">包括期间到达的结果与记忆变化</text>
+  <text x="1032.0" y="731.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="836,640,392,104">保持真实顺序</text>
+  <rect x="40" y="778" width="1200" height="92" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="640.0" y="819.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,784,1176,80">改变模型的阅读窗口</text>
+  <text x="640.0" y="849.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,784,1176,80">完整 Journal 与执行身份持续存在；旧命令不会因移出窗口而重跑。</text>
+</svg>

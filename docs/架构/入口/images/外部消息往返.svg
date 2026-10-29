@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1024" viewBox="0 0 1280 1024" role="img" aria-labelledby="title desc">
+  <title id="title">外部协作：显式发送，主动收信，可选提醒</title>
+  <desc id="desc">原生 Codex 以自动提供的原生聊天标识接入，发送协作消息给长期 Bot。Bot 通过显式发送回信；Codex 主动按续读位置收取正文与身份。人可按聊天启用固定收信提醒，提醒与消息事实分开，消息送达不代表任务完成。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="1024" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <rect x="40" y="132" width="360" height="714" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="64" y="168" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">原生 Codex 聊天</text>
+  <rect x="460" y="132" width="360" height="714" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="484" y="168" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">Host / MCP 入口</text>
+  <rect x="880" y="132" width="360" height="714" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="904" y="168" font-size="22" text-anchor="start" font-weight="700" fill="#20354a">长期 Bot</text>
+  <path d="M378 249 H482" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M378 397 H482" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M798 397 H902" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1060 444 V504" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M902 551 H798" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M482 551 H378" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="7 6"/>
+  <path d="M378 736 H482" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M482 774 H378" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M640 598 V702" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">外部协作：显式发送，主动收信，可选提醒</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">以同机 Codex 为例；原生聊天标识自动随调用提供，正文与身份始终从 MCP 读取。</text>
+  <rect x="62" y="202" width="316" height="94" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="220.0" y="244.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="74,208,292,82">查询上下文与同事</text>
+  <text x="220.0" y="274.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="74,208,292,82">同一原生聊天沿用身份</text>
+  <rect x="482" y="202" width="316" height="94" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="640.0" y="244.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="494,208,292,82">按原生标识定位</text>
+  <text x="640.0" y="274.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="494,208,292,82">共享配置可服务多个聊天</text>
+  <rect x="62" y="350" width="316" height="94" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="220.0" y="392.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="74,356,292,82">发送协作消息</text>
+  <text x="220.0" y="422.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="74,356,292,82">讨论、调查、交接或验证</text>
+  <rect x="482" y="350" width="316" height="94" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="640.0" y="392.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="494,356,292,82">接纳与投递</text>
+  <text x="640.0" y="422.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="494,356,292,82">写入 Bot 时间线</text>
+  <rect x="902" y="350" width="316" height="94" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="1060.0" y="392.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="914,356,292,82">读取并开展工作</text>
+  <text x="1060.0" y="422.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="914,356,292,82">保留自己的长期上下文</text>
+  <rect x="902" y="504" width="316" height="94" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="1060.0" y="546.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="914,510,292,82">显式发给外部聊天</text>
+  <text x="1060.0" y="576.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="914,510,292,82">普通回复仍然给人</text>
+  <rect x="482" y="504" width="316" height="94" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="640.0" y="546.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="494,510,292,82">保存待收消息</text>
+  <text x="640.0" y="576.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="494,510,292,82">沿用 Bot 时间线事实</text>
+  <rect x="62" y="504" width="316" height="94" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="220.0" y="546.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="74,510,292,82">可选：固定收信提醒</text>
+  <text x="220.0" y="576.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="74,510,292,82">须由人按聊天启用</text>
+  <rect x="62" y="702" width="316" height="100" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="220.0" y="747.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="74,708,292,88">按续读位置收信</text>
+  <text x="220.0" y="777.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="74,708,292,88">有界等待，处理后续发言</text>
+  <rect x="482" y="702" width="316" height="100" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="640.0" y="747.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="494,708,292,88">返回正文、来源与引用</text>
+  <text x="640.0" y="777.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="494,708,292,88">附新的续读位置</text>
+  <text x="902" y="741" font-size="19" text-anchor="start" font-weight="400" fill="#20354a">双方可以继续发起话题</text>
+  <text x="902" y="777" font-size="19" text-anchor="start" font-weight="400" fill="#20354a">送达不等于完成或验收</text>
+  <rect x="40" y="882" width="1200" height="92" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="640.0" y="923.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,888,1176,80">提醒只负责叫原生聊天来收信</text>
+  <text x="640.0" y="953.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,888,1176,80">入队不代表已处理；提醒失败不撤销消息；停用或撤销后停止后续提醒。</text>
+</svg>
