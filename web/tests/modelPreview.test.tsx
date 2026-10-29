@@ -4,7 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModelSettingsDrawer } from "../previews/models/ModelSettingsDrawer";
 import { ModelPicker } from "../previews/models/ModelPicker";
 import { ModelPreview } from "../previews/models/ModelPreview";
+import { SearchSettingsPanel } from "../previews/models/SearchSettingsPanel";
 import type { CatalogModel, ModelPreviewApi, ModelTestResult, Preferences } from "../previews/models/api";
+import type { SearchPreviewApi, SearchSettings, SearchTestResult } from "../previews/models/searchApi";
 
 const MODELS: CatalogModel[] = [
   { id: "openai/alpha", provider: "openai", name: "Alpha", description: "alpha", contextTokens: 100_000,
@@ -165,4 +167,59 @@ it("已选模型按当前强度独立测试，切换分页保留进度，失败�
   await act(async () => { finishAlpha({ ok: true, latencyMs: 620 }); });
   expect(alpha().getByRole("status")).toHaveTextContent("示例测试通过 · 620 ms");
   expect(beta().getByRole("status")).toHaveTextContent("示例测试通过 · 420 ms");
+});
+
+const SEARCH_SETTINGS: SearchSettings = { enabled: true, provider: "deepseek", openaiModel: "openai/alpha" };
+const SEARCH_RESULT: SearchTestResult = {
+  query: "测试搜索词", provider: "deepseek", model: null, latencyMs: 280, summary: "示例搜索结果",
+  sources: [{ title: "测试来源", url: "https://example.com/reference", snippet: "来源摘要" }],
+};
+function fakeSearchApi(): SearchPreviewApi {
+  return {
+    loadSettings: vi.fn(async () => structuredClone(SEARCH_SETTINGS)),
+    saveSettings: vi.fn(async (value) => structuredClone(value)),
+    testSearch: vi.fn(async () => structuredClone(SEARCH_RESULT)),
+  };
+}
+
+it("搜索配置独立保存，撤销可还原，停用仍保留服务和非常用搜索模型", async () => {
+  const api = fakeSearchApi();
+  render(<MantineProvider env="test"><SearchSettingsPanel models={MODELS} api={api} /></MantineProvider>);
+  fireEvent.click(await screen.findByRole("combobox", { name: "搜索服务" }));
+  fireEvent.click(await screen.findByRole("option", { name: "OpenAI", exact: true }));
+  fireEvent.click(screen.getByRole("combobox", { name: "搜索模型" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Plain", exact: true }));
+  expect(api.saveSettings).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "撤销修改" }));
+  expect(screen.getByRole("combobox", { name: "搜索服务" })).toHaveValue("DeepSeek");
+  expect(screen.queryByRole("combobox", { name: "搜索模型" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("combobox", { name: "搜索服务" }));
+  fireEvent.click(await screen.findByRole("option", { name: "OpenAI", exact: true }));
+  fireEvent.click(screen.getByRole("combobox", { name: "搜索模型" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Plain", exact: true }));
+  fireEvent.click(screen.getByRole("switch", { name: "启用网络搜索" }));
+  expect(screen.getByRole("button", { name: "测试搜索" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "搜索模型" })).toHaveValue("Plain");
+  fireEvent.click(screen.getByRole("button", { name: "保存搜索配置" }));
+  await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ enabled: false, provider: "openai", openaiModel: "openai/plain" }));
+  expect(await screen.findByText("搜索配置已保存")).toBeVisible();
+  expect(api.testSearch).not.toHaveBeenCalled();
+});
+
+it("搜索测试可失败重试，返回结果带来源，换服务后清除旧结果", async () => {
+  const api = fakeSearchApi();
+  api.testSearch = vi.fn<SearchPreviewApi["testSearch"]>().mockRejectedValueOnce(new Error("示例服务超时"))
+    .mockResolvedValueOnce(SEARCH_RESULT);
+  render(<MantineProvider env="test"><SearchSettingsPanel models={MODELS} api={api} /></MantineProvider>);
+  fireEvent.change(await screen.findByRole("textbox", { name: "搜索词" }), { target: { value: " 测试搜索词 " } });
+  fireEvent.click(screen.getByRole("button", { name: "测试搜索" }));
+  expect(await screen.findByText("示例服务超时")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "重试搜索" }));
+  const result = await screen.findByRole("region", { name: "搜索测试结果" });
+  expect(within(result).getByText("示例搜索结果")).toBeVisible();
+  expect(within(result).getByRole("link", { name: "测试来源" })).toHaveAttribute("href", "https://example.com/reference");
+  expect(api.testSearch).toHaveBeenNthCalledWith(2, "测试搜索词", SEARCH_SETTINGS);
+  fireEvent.click(screen.getByRole("combobox", { name: "搜索服务" }));
+  fireEvent.click(await screen.findByRole("option", { name: "OpenAI", exact: true }));
+  expect(screen.queryByRole("region", { name: "搜索测试结果" })).not.toBeInTheDocument();
 });

@@ -6,6 +6,7 @@ import { IconCheck, IconRefresh, IconSearch, IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { PROVIDERS, providerName, type CatalogModel, type ModelPreviewApi, type Preferences } from "./api";
 import { SelectedModelsPanel } from "./SelectedModelsPanel";
+import { SearchSettingsPanel } from "./SearchSettingsPanel";
 
 export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, onSaved, api }: {
   opened: boolean;
@@ -75,6 +76,7 @@ export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, o
       <Tabs.List aria-label="模型配置分页" className="model-settings-nav">
         <Tabs.Tab value="providers">供应商与模型</Tabs.Tab>
         <Tabs.Tab value="selected" rightSection={<Badge size="sm" variant="light" color="gray">{selectedCount}</Badge>}>已选模型</Tabs.Tab>
+        <Tabs.Tab value="search">网络搜索</Tabs.Tab>
       </Tabs.List>
       <Tabs.Panel value="providers" className="model-settings-page">
         <div className="catalog-toolbar">
@@ -123,8 +125,9 @@ export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, o
           onDefaultChange={(value) => { setDraft((previous) => ({ ...previous, defaultModel: value })); setSavedNotice(false); }}
           testModel={api.testModel} />
       </Tabs.Panel>
+      <Tabs.Panel value="search" className="model-settings-page"><SearchSettingsPanel models={allModels} /></Tabs.Panel>
     </Tabs>
-    <div className="catalog-footer">
+    {page !== "search" ? <div className="catalog-footer">
       {hasInvalidThreshold ? <Text c="red" size="xs" role="alert">上下文整理阈值需要是正整数。</Text> : null}
       {saveError ? <Text c="red" size="xs" role="alert">{saveError}</Text> : null}
       <div className="catalog-actions">
@@ -138,6 +141,6 @@ export function ModelSettingsDrawer({ opened, onClose, preferences, allModels, o
           <Button disabled={!changed || hasInvalidThreshold} loading={saving} onClick={() => void save()}>保存配置</Button>
         </Group>
       </div>
-    </div>
+    </div> : null}
   </Drawer>;
 }
