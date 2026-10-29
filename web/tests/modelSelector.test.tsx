@@ -24,15 +24,17 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-it("模型按钮只显示模型名，点击展开列表，切换仍提交完整模型标识", async () => {
-  render(<MantineProvider><ModelSelector sessionId="session" connectionId="connection" /></MantineProvider>);
-  const button = screen.getByRole("button", { name: "切换模型：DeepSeek pro" });
+it("模型设置折叠为单个入口，经模型子菜单切换仍提交完整模型标识", async () => {
+  render(<MantineProvider env="test"><ModelSelector sessionId="session" connectionId="connection" /></MantineProvider>);
+  const button = screen.getByRole("button", { name: "模型设置：DeepSeek pro，推理强度：低" });
   expect(button).toHaveTextContent("pro");
   expect(button).not.toHaveTextContent("deepseek/");
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   fireEvent.mouseEnter(button);
   expect(screen.queryByRole("menuitem", { name: "DeepSeek flash" })).not.toBeInTheDocument();
   fireEvent.click(button);
+  expect(screen.queryByRole("menuitem", { name: "DeepSeek flash" })).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("menuitem", { name: "切换模型：DeepSeek pro" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: "DeepSeek flash" }));
   await waitFor(() => expect(select).toHaveBeenCalledWith({
     sessionId: "session", connectionId: "connection", model: "deepseek/flash", reasoningEffort:null,
@@ -42,7 +44,8 @@ it("模型按钮只显示模型名，点击展开列表，切换仍提交完整�
 
 it("会话强度菜单使用供应商自己的档位并随选择提交", async () => {
   render(<MantineProvider env="test"><ModelSelector sessionId="session" connectionId="connection" /></MantineProvider>);
-  fireEvent.click(screen.getByRole("button",{name:"推理强度：低"}));
+  fireEvent.click(screen.getByRole("button",{name:"模型设置：DeepSeek pro，推理强度：低"}));
+  fireEvent.click(await screen.findByRole("menuitem",{name:"推理强度：低"}));
   expect(screen.queryByRole("menuitem",{name:"中",exact:true})).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("menuitem",{name:"最高",exact:true}));
   await waitFor(() => expect(select).toHaveBeenCalledWith({sessionId:"session",connectionId:"connection",model:"deepseek/pro",reasoningEffort:"max"}));

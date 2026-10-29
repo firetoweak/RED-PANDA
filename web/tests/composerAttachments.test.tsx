@@ -49,7 +49,7 @@ function showComposer(running = false, inputTokens: number | null = null, sessio
     inputTokens,
     onSend, onStop: vi.fn(),
   };
-  const ui = (active: boolean) => <Provider store={store}><MantineProvider>
+  const ui = (active: boolean) => <Provider store={store}><MantineProvider env="test">
     <ChatPresentation value={{ names: ["Ada", "Ada QA", "李雷", "C++"], quote: null, onQuote: () => {}, onJump: () => {} }}>
       <Composer {...props} running={active} />
     </ChatPresentation>
@@ -266,7 +266,8 @@ it("模型选择未确认前不发送消息，确认后才可使用新选择发�
   modelSelect.mockReturnValue({unwrap:()=>new Promise((resolve)=>{finish=resolve;})});
   const view=showComposer();
   fireEvent.change(screen.getByLabelText("消息"),{target:{value:"使用新模型回答"}});
-  fireEvent.click(screen.getByRole("button",{name:"切换模型：DeepSeek test"}));
+  fireEvent.click(screen.getByRole("button",{name:"模型设置：DeepSeek test"}));
+  fireEvent.click(await screen.findByRole("menuitem",{name:"切换模型：DeepSeek test"}));
   fireEvent.click(await screen.findByRole("menuitem",{name:"DeepSeek other",exact:true}));
   expect(screen.getByRole("button",{name:"发送",exact:true})).toBeDisabled();
   fireEvent.keyDown(screen.getByLabelText("消息"),{key:"Enter"});

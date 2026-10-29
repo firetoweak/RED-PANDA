@@ -369,7 +369,22 @@ export function Composer({
       )}
       {composed.quote === null ? null : <MessageQuote quote={composed.quote} onRemove={() => setText(composed.body)} />}
       {mentions.menu}
-      <Group className="composer-line" gap={8} wrap="nowrap" align="flex-end">
+      <Textarea
+        aria-label="消息"
+        autosize
+        className="composer-input"
+        ref={textareaRef}
+        value={composed.body}
+        {...mentions.inputProps}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+        placeholder={disabled ? "正在连接…" : "输入消息，@ 选择 Bot…"}
+        minRows={1}
+        maxRows={7}
+        variant="unstyled"
+        disabled={disabled}
+      />
+      <Group className="composer-meta" gap={8} wrap="nowrap" align="center">
           <Tooltip label="选择窗口在运行后端的电脑上打开，也可拖入或粘贴文件">
             <ActionIcon
               aria-label="Add attachment"
@@ -384,21 +399,6 @@ export function Composer({
               <IconPlus size={16} />
             </ActionIcon>
           </Tooltip>
-        <Textarea
-          aria-label="消息"
-          autosize
-          className="composer-input"
-          ref={textareaRef}
-          value={composed.body}
-          {...mentions.inputProps}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          placeholder={disabled ? "正在连接…" : "输入消息，@ 选择 Bot…"}
-          minRows={1}
-          maxRows={7}
-          variant="unstyled"
-          disabled={disabled}
-        />
         {workspacePath === undefined ? null : (
           <Text className="composer-workspace" c="dimmed" ff="monospace" fz={11}
             title={workspacePath} truncate>
