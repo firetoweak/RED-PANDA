@@ -39,8 +39,8 @@ def collaboration(tmp_path):
 
     asyncio.run(create())
     service = host.external_messages
-    first, token = service.connections.create()
-    _, other_token = service.connections.create()
+    first, token = service.connections.create("test")
+    _, other_token = service.connections.create("test")
     web = WebChannel(host, None)
     hub = WebEventHub()
     app = create_web_app(channel=web, hub=hub, external_messages=service)
@@ -93,7 +93,11 @@ def collaboration(tmp_path):
 def test_web_manages_named_access(collaboration):
     c = collaboration
     path = "/api/external-connections"
-    assert c.client.post(path, json={"connection_id": "inactive"}).status_code == 409
+    assert c.client.post(path, json={"connection_id": "inactive", "name": "test"}).status_code == 409
+    before = c.client.get(path).json()
+    for fields in ({}, {"name": ""}, {"name": "   "}):
+        assert c.client.post(path, json={"connection_id": c.human_connection, **fields}).status_code == 422
+    assert c.client.get(path).json() == before
     created = c.client.post(path, json={"connection_id": c.human_connection, "name": "笔记本 Codex"})
     assert created.status_code == 201 and created.headers["cache-control"] == "no-store"
     credential = created.json()
@@ -104,6 +108,13 @@ def test_web_manages_named_access(collaboration):
     context = c.call("get_context", credential=credential["token"])["structuredContent"]
     assert {item["name"] for item in context["colleagues"]} == {"协调员", "其他 Bot"}
     external_id = credential["connection"]["connection_id"]
+    config_path = f"{path}/{external_id}/configuration"
+    assert c.client.post(config_path, json={"connection_id": "inactive"}).status_code == 409
+    config = c.client.post(config_path, json={"connection_id": c.human_connection})
+    assert config.headers["cache-control"] == "no-store"
+    assert config.json() == credential
+    restarted = ExternalMessages(c.host)
+    assert restarted.connection_configuration(external_id)["token"] == credential["token"]
     rename_path = f"{path}/{external_id}/name"
     assert c.client.put(rename_path, json={"connection_id": "inactive", "name": "x"}).status_code == 409
     assert c.client.put(rename_path, json={"connection_id": c.human_connection, "name": "x" * 81}).status_code == 422
@@ -117,6 +128,7 @@ def test_web_manages_named_access(collaboration):
     assert credential["token"] not in str(restored) and "token_hash" not in str(restored)
     assert c.client.request("DELETE", f"{path}/{external_id}", json={"connection_id": c.human_connection}).status_code == 204
     assert c.client.put(rename_path, json={"connection_id": c.human_connection, "name": "x"}).status_code == 404
+    assert c.client.post(config_path, json={"connection_id": c.human_connection}).status_code == 404
     assert c.client.request("DELETE", f"{path}/{external_id}", json={"connection_id": c.human_connection}).status_code == 404
     assert c.client.post("/mcp/", headers={"Authorization": "Bearer " + credential["token"]}, json={}).status_code == 401
 

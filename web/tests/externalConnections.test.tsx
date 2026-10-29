@@ -35,7 +35,7 @@ afterEach(() => {
   Reflect.deleteProperty(document, "fonts");
 });
 
-it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后隐藏凭据且支持撤销", async () => {
+it("确认命名后创建，可复制及重新查看配置，关闭后隐藏凭据且支持撤销", async () => {
   const store = createStore(); stores.push(store);
   let item: ExternalConnection = { connection_id: "a".repeat(32), name: "笔记本 Codex" };
   let entries: ExternalConnection[] = [];
@@ -45,6 +45,10 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
   vi.stubGlobal("fetch", vi.fn(async (request: Request) => {
     expect(new URL(request.url).pathname).toMatch(/^\/api\/external-connections/);
     if (request.method === "GET") return Response.json(entries);
+    if (new URL(request.url).pathname.endsWith("/configuration")) {
+      expect(await request.json()).toEqual({ connection_id: "human" });
+      return Response.json({ connection: item, token: "one-time-secret", url: "http://localhost/mcp/" });
+    }
     if (request.method === "POST") {
       expect(await request.json()).toEqual({ connection_id: "human", name: "笔记本 Codex" });
       entries = [item];
@@ -64,8 +68,14 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
     <ExternalAccess />
   </MantineProvider></Provider>);
   expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
-  fireEvent.change(screen.getByLabelText("接入名称"), { target: { value: "笔记本 Codex" } });
-  fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建连接配置" }));
+  expect(entries).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "取消创建" }));
+  expect(entries).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "新建连接配置" }));
+  expect(screen.getByRole("button", { name: "确认生成" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("textbox", { name: /接入名称/ }), { target: { value: "笔记本 Codex" } });
+  fireEvent.click(screen.getByRole("button", { name: "确认生成" }));
   expect(await screen.findByRole("textbox", { name: "URL" })).toHaveValue("http://localhost/mcp/");
   expect(screen.getByLabelText("HTTP 请求头：Authorization")).toHaveValue("Bearer one-time-secret");
   expect(screen.queryByRole("textbox", { name: "Codex MCP 配置（TOML）" })).not.toBeInTheDocument();
@@ -90,6 +100,10 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
   expect(screen.queryByLabelText("URL")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("HTTP 请求头：Authorization")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Codex MCP 配置（TOML）")).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "查看配置 笔记本 Codex" }));
+  expect(await screen.findByLabelText("HTTP 请求头：Authorization")).toHaveValue("Bearer one-time-secret");
+  await waitFor(() => expect(JSON.stringify(store.getState())).not.toContain("one-time-secret"));
+  fireEvent.click(screen.getByRole("button", { name: "返回连接列表" }));
   fireEvent.click(screen.getByRole("button", { name: "重命名 笔记本 Codex" }));
   fireEvent.change(screen.getByLabelText("修改接入名称"), { target: { value: "台式机 Codex" } });
   fireEvent.click(screen.getByRole("button", { name: "保存名称" }));

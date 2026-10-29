@@ -1,7 +1,6 @@
 """External conversation identities, scoped access and ordinary messages."""
 from __future__ import annotations
 
-from hashlib import sha256
 from datetime import datetime
 from pathlib import Path
 import secrets
@@ -56,11 +55,11 @@ class SendToExternal(MessageInput, ExternalIdentity):
 class ExternalConnection(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
     connection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
-    token_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    name: str = Field(default="", max_length=80)
+    token: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=80)
 
     def view(self):
-        return self.model_dump(mode="json", exclude={"token_hash"})
+        return self.model_dump(mode="json", exclude={"token"})
 
 
 class ExternalConnections(BaseModel):
@@ -78,13 +77,12 @@ class ConnectionStore:
         return ExternalConnections.model_validate_json(self.path.read_text(encoding="utf-8"))
 
     def authorize(self, token: str) -> ExternalConnection | None:
-        digest = sha256(token.encode()).hexdigest()
         return next((item for item in self.read().connections
-                     if secrets.compare_digest(item.token_hash, digest)), None)
+                     if secrets.compare_digest(item.token.encode(), token.encode())), None)
 
-    def create(self, name: str = "") -> tuple[ExternalConnection, str]:
+    def create(self, name: str) -> tuple[ExternalConnection, str]:
         token = secrets.token_urlsafe(32)
-        connection = ExternalConnection(connection_id=uuid4().hex, token_hash=sha256(token.encode()).hexdigest(), name=name)
+        connection = ExternalConnection(connection_id=uuid4().hex, token=token, name=name)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self.path) + ".lock"):
             saved = self.read()

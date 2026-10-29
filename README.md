@@ -84,7 +84,7 @@ Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用
 
 ## Codex 接入（MCP）
 
-1. 打开「设置」→「Codex 接入」，生成连接配置，将 TOML 内容合并到 Codex 的 `~/.codex/config.toml`，保留其他设置。凭据只显示一次，请在关闭设置前保存；保存后重启 Codex。
+1. 打开「设置」→「Codex 接入」，生成连接配置，将 TOML 内容合并到 Codex 的 `~/.codex/config.toml`，保留其他设置。可从列表「查看配置」重新查看凭据；保存后重启 Codex。
 2. Codex 聊天领取自己的会话身份后，即可在 Web 侧栏「外部会话」看到它；每个新聊天领取独立身份，原聊天重连时沿用。
 3. 联系长期 Bot 讨论需求、开展调查或交接工作，持续读取它们的答复与后续消息。普通交流无需代码项目或版本。
 

@@ -316,6 +316,13 @@ export const kondenApi = createApi({
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
       invalidatesTags: (_result, error) => error === undefined ? ["ExternalConnections"] : [],
     }),
+    viewExternalConnection: build.mutation<CreatedExternalConnection, { connectionId: string; externalId: string }>({
+      query: ({ connectionId, externalId }) => ({
+        url: `/external-connections/${externalId}/configuration`, method: "POST", body: { connection_id: connectionId },
+      }),
+      transformResponse: (value: unknown) => createdExternalConnectionSchema.parse(value),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+    }),
     renameExternalConnection: build.mutation<ExternalConnection, { connectionId: string; externalId: string; name: string }>({
       query: ({ connectionId, externalId, name }) => ({
         url: `/external-connections/${externalId}/name`, method: "PUT", body: { connection_id: connectionId, name },
@@ -675,6 +682,7 @@ export const {
   useSetExternalCodexMutation,
   useRetryExternalCodexMutation,
   useCreateExternalConnectionMutation,
+  useViewExternalConnectionMutation,
   useRevokeExternalConnectionMutation,
   useRenameExternalConnectionMutation,
   useGetBackgroundCommandsQuery,
