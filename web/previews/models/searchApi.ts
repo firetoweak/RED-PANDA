@@ -1,4 +1,7 @@
-/** Preview-only search settings and results. No credentials or network requests. */
+/** Preview-only search settings and results. No credentials or network requests.
+ * OpenAI integration will use Responses web_search with tool_choice="auto";
+ * only the search model is configurable.
+ */
 export type SearchProvider = "deepseek" | "openai";
 export type SearchSettings = { enabled: boolean; provider: SearchProvider; openaiModel: string };
 export type SearchTestResult = {

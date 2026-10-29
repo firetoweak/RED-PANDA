@@ -62,7 +62,7 @@ export function SearchSettingsPanel({ models, api = searchPreviewApi }: { models
         <div className="search-connection"><Text size="xs" c="dimmed">供应商连接</Text>
           <div><IconLink size={15} /><Text size="sm">{providerName(draft.provider)} · 示例连接</Text><Badge size="xs" variant="light" color="teal">已配置</Badge></div>
         </div>
-        {draft.provider === "openai" ? <Select className="search-model-field" label="搜索模型" description="单独用于搜索，不改变聊天输入框的模型选择。"
+        {draft.provider === "openai" ? <Select className="search-model-field" label="搜索模型" description="由此模型自动决定是否联网搜索，聊天模型保持独立。"
           searchable allowDeselect={false} value={draft.openaiModel} disabled={disabled}
           data={models.filter((model) => model.provider === "openai").map((model) => ({ value: model.id, label: model.name }))}
           onChange={(value) => change({ openaiModel: value! })} /> : null}
