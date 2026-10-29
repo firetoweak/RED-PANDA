@@ -6,7 +6,8 @@ cost tracking, or user-defined providers.
 
 from thinllm.chat_completions import ChatCompletionsClient
 from thinllm.catalog import list_codex_models
-from thinllm.codex import CodexResponsesClient, create_client
+from thinllm.codex import CodexResponsesClient
+from thinllm.responses import ResponsesClient
 from thinllm.errors import (
     InvalidLLMResponse,
     LLMAuthenticationError,
@@ -32,6 +33,7 @@ __all__ = [
     "PROVIDERS",
     "ChatCompletionsClient",
     "CodexResponsesClient",
+    "ResponsesClient",
     "create_client",
     "list_codex_models",
     "ContentDeltaSink",
@@ -48,3 +50,9 @@ __all__ = [
     "ToolCall",
     "resolve_endpoint",
 ]
+
+
+def create_client(endpoint, **kwargs):
+    """Select the built-in wire protocol without involving product code."""
+    clients = {"openai": ResponsesClient, "openai-codex": CodexResponsesClient}
+    return clients.get(endpoint.provider, ChatCompletionsClient)(endpoint, **kwargs)

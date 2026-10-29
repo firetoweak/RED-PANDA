@@ -13,7 +13,7 @@ import sys
 import time
 import types
 
-from thinllm import ChatCompletionsClient
+from thinllm import create_client
 from konden.config import load_app_config
 from konden.llm.config import load_endpoint
 from tests.fixtures.artifacts import MemoryArtifactGateway
@@ -158,7 +158,7 @@ async def main():
            (("artifacts", "artifacts"), ("projection", "context/projection"), ("core", "compact/core"))} if "baseline" in args.variants else {}
     config = load_app_config()
     summaries = []
-    async with ChatCompletionsClient(load_endpoint(config.default)) as client:
+    async with create_client(load_endpoint(config.default)) as client:
         for case in args.cases:
             for variant in args.variants:
                 summaries.append(await run_case(client, config.default_model, case, variant, old, args.output))

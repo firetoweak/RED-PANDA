@@ -6,12 +6,13 @@ import json
 import time
 
 from konden.config import load_app_config
-from thinllm import ChatCompletionsClient
+from thinllm import create_client
+from konden.llm.api import LLMApi
 from konden.llm.config import load_endpoint
 
 
 async def _stream_once(
-    client: ChatCompletionsClient,
+    client: LLMApi,
     model: str,
     prompt: str,
     thinking: bool,
@@ -52,7 +53,7 @@ async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
         "temperature": 0,
     }
     client_started = time.perf_counter()
-    async with ChatCompletionsClient(
+    async with create_client(
         load_endpoint(app.default), request_options=request_options
     ) as client:
         client_created = time.perf_counter()
@@ -71,6 +72,8 @@ async def _run_mode(app, prompt: str, thinking: bool, repeats: int):
 async def run(args: argparse.Namespace) -> dict[str, object]:
     config_started = time.perf_counter()
     app = load_app_config()
+    if app.default_model.partition("/")[0] in {"openai", "openai-codex"}:
+        raise ValueError("本实验使用 Chat Completions 专用参数；Responses 模型请使用 tests/live 验证。")
     config_seconds = time.perf_counter() - config_started
     modes = (
         [args.thinking == "on"]
