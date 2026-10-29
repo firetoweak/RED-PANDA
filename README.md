@@ -82,17 +82,17 @@ Bot 可按需使用随环境安装的 Chrome DevTools MCP、Playwright 和应用
 
 ## 开发与文档
 
-开发启动使用 `scripts/dev.ps1` / `scripts/dev.sh`。本地检查使用 `python scripts/ci.py`，验证选项见[统一验证入口](scripts/ci.py)，测试分层见[架构总览](docs/架构/总览.md#测试分层)。
+开发启动使用 `scripts/dev.ps1` / `scripts/dev.sh`。本地检查使用 `python scripts/ci.py`，验证选项见[统一验证入口](scripts/ci.py)，验证原则见[架构总览](docs/架构/总览.md#验证原则)。
 
 | 想了解什么 | 从这里开始 |
 | --- | --- |
 | 产品解决的问题、当前场景与边界 | [产品定位](docs/产品定位.md) |
 | 安装参数、运行环境与数据位置 | [运行指南](docs/运行指南.md) |
 | Codex 接入长期 Bot 对话 | [Codex 会话接入指南](docs/外部协作.md) |
-| 在外部对话中交付独立验证 | [独立验证](docs/独立验证.md) |
+| 在外部对话中交付独立验证 | [独立验证](docs/外部协作.md#独立验证) |
 | 模型连接与切换 | [模型配置](docs/模型配置.md) |
 | 源码验证入口 | [统一验证脚本](scripts/ci.py) |
-| 设计取舍与演进 | [架构方向](docs/项目架构方向.md) · [架构总览](docs/架构/总览.md) |
+| 设计取舍与演进 | [架构总览](docs/架构/总览.md) · [后续方向](docs/架构/CodingBot/方向.md) |
 | 全部文档 | [文档索引](docs/README.md) |
 
 ## 许可证
