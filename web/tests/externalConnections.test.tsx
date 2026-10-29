@@ -37,7 +37,7 @@ afterEach(() => {
 
 it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后隐藏凭据且支持撤销", async () => {
   const store = createStore(); stores.push(store);
-  const item = { connection_id: "a".repeat(32) };
+  let item: ExternalConnection = { connection_id: "a".repeat(32), name: "笔记本 Codex" };
   let entries: ExternalConnection[] = [];
   const writeText = vi.fn().mockRejectedValueOnce(new Error("clipboard denied")).mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText }, userAgent: navigator.userAgent });
@@ -46,9 +46,14 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
     expect(new URL(request.url).pathname).toMatch(/^\/api\/external-connections/);
     if (request.method === "GET") return Response.json(entries);
     if (request.method === "POST") {
-      expect(await request.json()).toEqual({ connection_id: "human" });
+      expect(await request.json()).toEqual({ connection_id: "human", name: "笔记本 Codex" });
       entries = [item];
       return Response.json({ connection: item, token: "one-time-secret", url: "http://localhost/mcp/" }, { status: 201 });
+    }
+    if (request.method === "PUT") {
+      expect(await request.json()).toEqual({ connection_id: "human", name: "台式机 Codex" });
+      item = { ...item, name: "台式机 Codex" }; entries = [item];
+      return Response.json(item);
     }
     expect(await request.json()).toEqual({ connection_id: "human" });
     expect(new URL(request.url).pathname.endsWith(item.connection_id)).toBe(true);
@@ -59,7 +64,7 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
     <ExternalAccess />
   </MantineProvider></Provider>);
   expect(await screen.findByText("尚未生成连接配置。")).toBeVisible();
-  expect(screen.queryByLabelText("接入名称")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("接入名称"), { target: { value: "笔记本 Codex" } });
   fireEvent.click(screen.getByRole("button", { name: "生成连接配置" }));
   expect(await screen.findByRole("textbox", { name: "URL" })).toHaveValue("http://localhost/mcp/");
   expect(screen.getByLabelText("HTTP 请求头：Authorization")).toHaveValue("Bearer one-time-secret");
@@ -85,11 +90,14 @@ it("优先展示应用接入字段，可分别复制并展开 TOML，关闭后�
   expect(screen.queryByLabelText("URL")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("HTTP 请求头：Authorization")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Codex MCP 配置（TOML）")).not.toBeInTheDocument();
-  fireEvent.click(await screen.findByRole("button", { name: "撤销 连接 aaaaaaaa" }));
+  fireEvent.click(screen.getByRole("button", { name: "重命名 笔记本 Codex" }));
+  fireEvent.change(screen.getByLabelText("修改接入名称"), { target: { value: "台式机 Codex" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+  fireEvent.click(await screen.findByRole("button", { name: "撤销 台式机 Codex" }));
   fireEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(removed).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "撤销 连接 aaaaaaaa" }));
+  fireEvent.click(screen.getByRole("button", { name: "撤销 台式机 Codex" }));
   fireEvent.click(screen.getByRole("button", { name: "确认撤销" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "撤销 连接 aaaaaaaa" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "撤销 台式机 Codex" })).not.toBeInTheDocument());
   expect(removed).toHaveBeenCalledOnce();
 });

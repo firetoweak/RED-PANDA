@@ -57,6 +57,10 @@ class ExternalConnection(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
     connection_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     token_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    name: str = Field(default="", max_length=80)
+
+    def view(self):
+        return self.model_dump(mode="json", exclude={"token_hash"})
 
 
 class ExternalConnections(BaseModel):
@@ -78,21 +82,32 @@ class ConnectionStore:
         return next((item for item in self.read().connections
                      if secrets.compare_digest(item.token_hash, digest)), None)
 
-    def create(self) -> tuple[ExternalConnection, str]:
+    def create(self, name: str = "") -> tuple[ExternalConnection, str]:
         token = secrets.token_urlsafe(32)
-        connection = ExternalConnection(connection_id=uuid4().hex, token_hash=sha256(token.encode()).hexdigest())
+        connection = ExternalConnection(connection_id=uuid4().hex, token_hash=sha256(token.encode()).hexdigest(), name=name)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with FileLock(str(self.path) + ".lock"):
             saved = self.read()
             saved.connections.append(connection)
-            write_json(self.path, saved.model_dump())
+            write_json(self.path, saved.model_dump(mode="json"))
         return connection, token
+
+    def rename(self, connection_id: str, name: str) -> ExternalConnection | None:
+        with FileLock(str(self.path) + ".lock"):
+            saved = self.read()
+            for index, item in enumerate(saved.connections):
+                if item.connection_id == connection_id:
+                    updated = item.model_copy(update={"name": name})
+                    saved.connections[index] = updated
+                    write_json(self.path, saved.model_dump(mode="json"))
+                    return updated
+        return None
 
     def revoke(self, connection_id: str) -> None:
         with FileLock(str(self.path) + ".lock"):
             saved = self.read()
             saved.connections = [item for item in saved.connections if item.connection_id != connection_id]
-            write_json(self.path, saved.model_dump())
+            write_json(self.path, saved.model_dump(mode="json"))
 
 
 def external_name(identity: str) -> str:

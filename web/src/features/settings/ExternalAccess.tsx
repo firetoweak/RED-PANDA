@@ -3,7 +3,7 @@ import { useClipboard } from "@mantine/hooks";
 import { useState } from "react";
 
 import type { CreatedExternalConnection } from "../../api/contracts";
-import { useCreateExternalConnectionMutation, useGetExternalConnectionsQuery, useRevokeExternalConnectionMutation } from "../../api/kondenApi";
+import { useCreateExternalConnectionMutation, useGetExternalConnectionsQuery, useRevokeExternalConnectionMutation, useRenameExternalConnectionMutation } from "../../api/kondenApi";
 import { useAppSelector } from "../../app/hooks";
 
 export function ExternalAccess() {
@@ -11,12 +11,16 @@ export function ExternalAccess() {
   const { currentData: connections = [], isLoading, error: loadError, refetch } = useGetExternalConnectionsQuery();
   const [createConnection, creating] = useCreateExternalConnectionMutation();
   const [revokeConnection, revoking] = useRevokeExternalConnectionMutation();
+  const [renameConnection, renaming] = useRenameExternalConnectionMutation();
+  const [name, setName] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [created, setCreated] = useState<CreatedExternalConnection | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyTarget, setCopyTarget] = useState<"url" | "authorization" | "config" | null>(null);
   const clipboard = useClipboard();
-  const busy = creating.isLoading || revoking.isLoading;
+  const busy = creating.isLoading || revoking.isLoading || renaming.isLoading;
   const config = created === null ? "" : [
     "[mcp_servers.konden]",
     `url = ${JSON.stringify(created.url)}`,
@@ -35,9 +39,10 @@ export function ExternalAccess() {
     if (connectionId === null || busy) return;
     setError(null);
     clipboard.reset();
-    const request = createConnection({ connectionId });
+    const request = createConnection({ connectionId, name: name.trim() });
     try {
       setCreated(await request.unwrap());
+      setName("");
     } catch (cause) {
       setError(typeof cause === "string" ? cause : "生成失败，请检查连接后重试。");
     } finally {
@@ -60,11 +65,26 @@ export function ExternalAccess() {
     }
   }
 
+  async function rename(externalId: string) {
+    if (connectionId === null || busy) return;
+    setError(null);
+    try {
+      await renameConnection({ connectionId, externalId, name: editName.trim() }).unwrap();
+      setEditing(null);
+    } catch (cause) {
+      setError(typeof cause === "string" ? cause : "重命名失败，请重试。");
+    }
+  }
+
   return <Stack gap="md">
     <Text size="sm">在 Codex 中添加 Streamable HTTP 服务。</Text>
-    {created === null ? <Group justify="flex-start">
+    {created === null ? <Stack gap="sm">
+      <TextInput label="接入名称" description="用设备或用途区分，例如：笔记本 Codex、项目验证。可稍后修改。"
+        placeholder="给这份连接配置起个名字" maxLength={80} value={name} onChange={(event) => setName(event.currentTarget.value)} />
+      <Group justify="flex-start">
       <Button loading={creating.isLoading} disabled={connectionId === null || busy} onClick={() => void create()}>生成连接配置</Button>
-    </Group> : <Stack gap="sm">
+    </Group>
+    </Stack> : <Stack gap="sm">
       <Stack gap="xs">
         <TextInput label="URL" value={created.url} readOnly />
         <Group justify="flex-end">
@@ -107,13 +127,26 @@ export function ExternalAccess() {
       </Alert> : isLoading ? <Text size="sm" c="dimmed">正在读取…</Text>
         : connections.length === 0 ? <Text size="sm" c="dimmed">尚未生成连接配置。</Text> : null}
       {connections.map((item) => {
-        const label = `连接 ${item.connection_id.slice(0, 8)}`;
+        const label = item.name || `连接 ${item.connection_id.slice(0, 8)}`;
         return <div key={item.connection_id}>
           <Group justify="space-between" wrap="nowrap">
-            <Text size="sm">{label}</Text>
+            <Stack gap={2} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <Text size="sm" fw={600}>{label}</Text>
+              <Text size="xs" c="dimmed">ID {item.connection_id.slice(0, 8)}</Text>
+            </Stack>
+            <Button size="compact-xs" variant="subtle" disabled={connectionId === null || busy}
+              aria-label={`重命名 ${label}`} onClick={() => { setEditing(item.connection_id); setEditName(item.name); }}>重命名</Button>
             <Button size="compact-xs" variant="subtle" color="red" disabled={connectionId === null || busy}
               aria-label={`撤销 ${label}`} onClick={() => setConfirmRevoke(item.connection_id)}>撤销</Button>
           </Group>
+          {editing !== item.connection_id ? null : <Stack gap="xs" mt="xs">
+            <TextInput label="修改接入名称" maxLength={80} value={editName} onChange={(event) => setEditName(event.currentTarget.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void rename(item.connection_id); }} />
+            <Group justify="flex-end" gap="xs">
+              <Button size="compact-xs" variant="subtle" disabled={busy} onClick={() => setEditing(null)}>取消命名</Button>
+              <Button size="compact-xs" loading={renaming.isLoading} disabled={connectionId === null || busy} onClick={() => void rename(item.connection_id)}>保存名称</Button>
+            </Group>
+          </Stack>}
           {confirmRevoke !== item.connection_id ? null : <Stack gap="xs" mt="xs">
             <Text size="sm">撤销后，使用此配置的外部会话立即失去收发能力，已有对话记录保留。</Text>
             <Group gap="xs" justify="flex-end">

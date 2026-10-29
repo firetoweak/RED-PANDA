@@ -91,6 +91,15 @@ class ConnectionRequest(BaseModel):
     connection_id: str = Field(min_length=1)
 
 
+class ExternalConnectionRequest(ConnectionRequest):
+    name: str = Field(default="", max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def trimmed_name(cls, value: str) -> str:
+        return value.strip()
+
+
 class AbsenceAnswer(ConnectionRequest):
     session_id: str = Field(min_length=1)
     action: Literal["continue", "stop"]
@@ -584,10 +593,18 @@ def create_web_app(
         return await _channel(request).retry_external_codex(body.connection_id, identity)
 
     @app.post("/api/external-connections", status_code=201)
-    async def create_external_connection(body: ConnectionRequest, request: Request):
-        created = await _channel(request).create_external_connection(body.connection_id)
+    async def create_external_connection(body: ExternalConnectionRequest, request: Request):
+        created = await _channel(request).create_external_connection(body.connection_id, body.name)
         return JSONResponse(status_code=201, content={**created, "url": str(request.base_url) + "mcp/"},
                             headers={"Cache-Control": "no-store"})
+
+    @app.exception_handler(ExternalConnectionNotFound)
+    async def external_connection_missing(request, error):
+        return JSONResponse(status_code=404, content={"detail": "没有这份连接配置，可能已撤销。"})
+
+    @app.put("/api/external-connections/{external_id}/name")
+    async def rename_external_connection(external_id: str, body: ExternalConnectionRequest, request: Request):
+        return await _channel(request).rename_external_connection(body.connection_id, external_id, body.name)
 
     @app.delete("/api/external-connections/{external_id}", status_code=204)
     async def revoke_external_connection(external_id: str, body: ConnectionRequest, request: Request):
