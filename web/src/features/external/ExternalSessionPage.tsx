@@ -10,6 +10,7 @@ import { MarkdownMessage } from "../conversation/MarkdownMessage";
 import { formatMessageTime } from "../conversation/messageTime";
 import { useMessageReading } from "../conversation/useMessageReading";
 import { CodexContinuation } from "./CodexContinuation";
+import { sessionStatus } from "./sessionStatus";
 
 const EMPTY_MESSAGES: ExternalConversationMessage[] = [];
 
@@ -38,10 +39,10 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
             <span className="agent-avatar agent-avatar-small" aria-hidden="true"><IconPlugConnected size={18} /></span>
             <div className="session-header-name">
               <Text fw={600} size="sm" truncate>{session.name}</Text>
-              <Text c="dimmed" fz={11}>外部会话 · {session.active ? "接入有效" : "接入已撤销"}</Text>
+              <Text c="dimmed" fz={11}>Codex · {sessionStatus(session)}</Text>
             </div>
           </Group>
-          <Text c="dimmed" fz={11} className="external-session-last-activity" title={formatMessageTime(session.last_activity_at).full}>最近活动 {formatMessageTime(session.last_activity_at).short}</Text>
+          <Text c="dimmed" fz={11} className="external-session-last-activity" title={formatMessageTime(session.last_activity_at).full}>最近消息 {formatMessageTime(session.last_activity_at).short}</Text>
         </header>
         <CodexContinuation identity={identity} active={session.active} value={conversation.codex} />
         {session.peers.length === 0 ? null : <div className="external-session-controls">

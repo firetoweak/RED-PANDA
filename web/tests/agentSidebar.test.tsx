@@ -117,13 +117,32 @@ afterEach(() => {
 it("没有内部 Bot 时仍能找到并打开已接入的外部会话", () => {
   browserStubs();
   queries.agents = []; queries.groups = [];
-  queries.externalSessions = [{ identity: "1".repeat(32), name: "外部会话-11111111", active: true,
+  queries.externalSessions = [{ identity: "1".repeat(32), name: "外部会话-11111111", active: true, codex_status: "disabled",
     created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] }];
   renderSidebar("/");
   const external = within(screen.getByRole("region", { name: "外部会话" }));
   fireEvent.click(external.getByRole("button", { name: "外部会话-11111111" }));
   expect(screen.getByTestId("current-path")).toHaveTextContent(`/external/${"1".repeat(32)}`);
   expect(external.getByRole("button", { name: "外部会话-11111111" })).toHaveAttribute("aria-current", "page");
+});
+
+it("侧栏区分收信方式并收起已撤销会话，仍可展开历史", () => {
+  browserStubs();
+  queries.agents = []; queries.groups = [];
+  const common = { created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] };
+  queries.externalSessions = [
+    { ...common, identity: "1".repeat(32), name: "文档讨论", active: true, codex_status: "disabled" },
+    { ...common, identity: "2".repeat(32), name: "验证通信", active: true, codex_status: "failed" },
+    { ...common, identity: "3".repeat(32), name: "过去的讨论", active: false, codex_status: "disabled" },
+  ];
+  renderSidebar("/");
+  const external = within(screen.getByRole("region", { name: "外部会话" }));
+  expect(external.getByText("需主动收信")).toBeVisible();
+  expect(external.getByText("提醒失败")).toBeVisible();
+  expect(external.queryByRole("button", { name: "过去的讨论" })).not.toBeInTheDocument();
+  fireEvent.click(external.getByRole("button", { name: "已撤销会话（1）" }));
+  expect(external.getByRole("button", { name: "过去的讨论" })).toBeVisible();
+  expect(external.getByText("接入已撤销")).toBeVisible();
 });
 
 it("删除 Bot 要确认，失败保留弹窗，成功后离开被删除的会话", async () => {

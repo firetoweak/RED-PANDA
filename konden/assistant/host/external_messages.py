@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from itertools import islice
-from uuid import uuid4
 
 from konden.assistant.external_messages import (
     EXTERNAL_MESSAGE, ConnectionStore, ExternalMessage, ExternalSession,
@@ -15,7 +14,7 @@ from konden.assistant.external_messages import (
 )
 from konden.assistant.host.agent_messages import message_identity
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
-from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexContinuations
+from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexContinuations, continuation_status
 from konden.runtime import DomainFactCommitted, Event
 
 
@@ -37,7 +36,7 @@ class ExternalMessages:
         self._sending = asyncio.Lock()
         self._changed = asyncio.Condition(self._sending)
         self._positions: dict[str, int] = {}
-        self._conversations: dict[tuple[str, str], list[tuple[str, Event, ExternalMessage]]] = {}
+        self._conversations: dict[str, list[tuple[str, Event, ExternalMessage]]] = {}
 
     async def _notify(self):
         if self.changed_sink is not None:
@@ -95,25 +94,27 @@ class ExternalMessages:
                          if isinstance(event.payload, DomainFactCommitted)
                          and event.payload.fact_type == EXTERNAL_MESSAGE]
             for event, message in additions:
-                messages = self._conversations.setdefault((message.connection_id, message.identity), [])
+                messages = self._conversations.setdefault(message.identity, [])
                 insort_right(messages, (session_id, event, message), key=lambda item: item[2].sequence)
             self._positions[session_id] = max(position, len(events))
         return agents
 
     def _messages_for(self, session, agents):
         return [(agents[session_id], event, message) for session_id, event, message
-                in self._conversations.get((session.connection_id, session.identity), ())]
+                in self._conversations.get(session.identity, ())]
 
     async def _conversation(self, session):
         return self._messages_for(session, await self._refresh())
 
-    def _session_view(self, session, messages, active_connections):
+    def _session_view(self, session, messages, active_connections, bindings):
         peers = {agent.session_id: {"name": agent.name, "session_id": agent.session_id, "deleted": agent.deleted}
                  for agent, _, _ in messages}
+        latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
         return {"identity": session.identity, "name": session.name,
                 "created_at": session.created_at.isoformat(),
                 "last_activity_at": max([session.created_at, *(event.occurred_at for _, event, _ in messages)]).isoformat(),
-                "active": session.connection_id in active_connections, "peers": list(peers.values())}
+                "active": session.connection_id in active_connections, "peers": list(peers.values()),
+                "codex_status": continuation_status(bindings.get(session.identity), latest)}
 
     async def list_sessions(self):
         sessions = self.sessions.read().sessions
@@ -121,7 +122,8 @@ class ExternalMessages:
             return []
         agents = await self._refresh()
         active = {item.connection_id for item in self.connections.read().connections}
-        return sorted((self._session_view(session, self._messages_for(session, agents), active)
+        bindings = self.codex.read().bindings
+        return sorted((self._session_view(session, self._messages_for(session, agents), active, bindings)
                        for session in sessions),
                       key=lambda item: item["last_activity_at"], reverse=True)
 
@@ -132,7 +134,7 @@ class ExternalMessages:
         messages = await self._conversation(session)
         active = {item.connection_id for item in self.connections.read().connections}
         latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
-        return {"session": self._session_view(session, messages, active),
+        return {"session": self._session_view(session, messages, active, self.codex.read().bindings),
                 "codex": self.codex.view(identity, latest), "messages": [
             {"message_id": message.message_id, "sequence": message.sequence,
              "direction": message.direction, "text": message.text, "reply_to": message.reply_to,
@@ -170,25 +172,30 @@ class ExternalMessages:
             raise ValueError("external conversation query requires a Bot identity")
         sessions = await self.list_sessions()
         return {"ok": True, "code": "EXTERNAL_SESSIONS_READ", "data": {"sessions": [
-            {key: item[key] for key in ("identity", "name", "active", "last_activity_at")}
+            {key: item[key] for key in ("identity", "name", "active", "last_activity_at", "codex_status")}
             for item in sessions]}}
 
-    async def context(self, connection, identity=None):
+    async def context(self, connection, identity, name=None):
         async with self._changed:
             if not self._active(connection.connection_id):
                 return self.revoked()
-            if identity is None:
-                session = ExternalSession(connection_id=connection.connection_id, identity=uuid4().hex,
-                                          created_at=datetime.now(timezone.utc))
+            session = next((item for item in self.sessions.read().sessions if item.identity == identity), None)
+            if session is None:
+                session = ExternalSession(connection_id=connection.connection_id, identity=identity,
+                                          created_at=datetime.now(timezone.utc), label=name)
                 self.sessions.add(session)
                 await self._notify()
-            else:
-                session = self._session(connection.connection_id, identity)
-                if session is None:
-                    return self.not_found()
+            elif session.connection_id != connection.connection_id or (name is not None and name != session.name):
+                if session.connection_id != connection.connection_id and self._active(session.connection_id):
+                    return {"ok": False, "code": "CONNECTION_CONFLICT",
+                            "error": "当前聊天已使用另一份接入配置。请先在 Web 撤销原配置，再通过新配置连接。"}
+                session = session.model_copy(update={"connection_id": connection.connection_id,
+                    "label": session.label if name is None else name})
+                self.sessions.update(session)
+                await self._notify()
             return {"ok": True, "identity": session.identity, "name": session.name,
                     "colleagues": [{"name": item.name} for item in await self.host.agents.list()],
-                    "notice": ("这个身份属于当前原生聊天。新聊天省略 identity 领取新身份；同一聊天继续或重连时沿用。"
+                    "notice": ("已自动识别当前 Codex 聊天，继续或重连无需保存和传回身份。可用 get_context 的 name 设置便于辨认的名称。"
                                "用 send_message 与同事交谈，用 read_messages 持续收取这个会话的消息。"
                                "同事可以继续发送后续消息；用户可在 Web 为当前会话启用支持的自动接续方式，未启用时需主动读取。")}
 
@@ -197,13 +204,13 @@ class ExternalMessages:
         return reply_to is None or any(agent.session_id == session_id and message.message_id == reply_to
                                       for agent, _, message in messages)
 
-    async def send(self, connection, arguments):
+    async def send(self, connection, identity, arguments):
         message_id = "external-" + sha256(json.dumps(
-            [connection.connection_id, arguments.identity, arguments.delivery_id]).encode()).hexdigest()
+            [connection.connection_id, identity, arguments.delivery_id]).encode()).hexdigest()
         async with self._changed:
             if not self._active(connection.connection_id):
                 return self.revoked()
-            session = self._session(connection.connection_id, arguments.identity)
+            session = self._session(connection.connection_id, identity)
             if session is None:
                 return self.not_found()
             messages = await self._conversation(session)
@@ -238,7 +245,7 @@ class ExternalMessages:
         if session is None:
             return self.not_found()
         await self._refresh()
-        messages = self._conversations.get((session.connection_id, session.identity), ())
+        messages = self._conversations.get(session.identity, ())
         if after > len(messages):
             return {"ok": False, "code": "INVALID_CURSOR", "error": "请使用这个会话上次返回的 next_cursor。"}
         position = bisect_right(messages, after, key=lambda item: item[2].sequence)
@@ -251,7 +258,7 @@ class ExternalMessages:
              "text": message.text, "reply_to": message.reply_to, "occurred_at": event.occurred_at.isoformat()}
             for _, event, message in page],
             "next_cursor": page[-1][2].sequence if page else after, "has_more": has_more,
-            "notice": "空结果只表示目前没有新消息。保留 identity 和 next_cursor，继续读取后续消息。"}
+            "notice": "空结果只表示目前没有新消息。保留 next_cursor，继续读取当前聊天的后续消息。"}
 
     async def read(self, connection, identity, after, limit, wait_seconds):
         deadline = asyncio.get_running_loop().time() + wait_seconds
@@ -304,7 +311,7 @@ class ExternalMessages:
     @staticmethod
     def not_found():
         return {"ok": False, "code": "SESSION_NOT_FOUND",
-                "error": "没有这个外部会话，请核对你实际取得的外部会话 identity。"}
+                "error": "当前连接中没有这个外部会话。原生聊天请先 get_context 连接；Bot 请用 list_external_sessions 查询联系标识。"}
 
     @staticmethod
     def invalid_reply():

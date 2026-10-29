@@ -124,21 +124,23 @@ export const createdExternalConnectionSchema = z.object({
 }).strict();
 export type CreatedExternalConnection = z.infer<typeof createdExternalConnectionSchema>;
 
+export const codexContinuationStatusSchema = z.enum(["disabled", "ready", "pending", "queued", "failed", "unknown"]);
 export const externalSessionSchema = z.object({
   identity: z.string().regex(/^[0-9a-f]{32}$/),
   name: z.string().min(1),
   created_at: z.string().datetime({ offset: true }),
   last_activity_at: z.string().datetime({ offset: true }),
   active: z.boolean(),
+  codex_status: codexContinuationStatusSchema,
   peers: z.array(z.object({ name: z.string().min(1), session_id: z.string().min(1), deleted: z.boolean() }).strict()),
 }).strict();
 export type ExternalSessionSummary = z.infer<typeof externalSessionSchema>;
 export const externalConversationSchema = z.object({
   session: externalSessionSchema,
   codex: z.object({
-    thread_id: z.string().nullable(),
+    thread_id: z.string().regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/),
     executable: z.string().min(1),
-    status: z.enum(["disabled", "ready", "pending", "queued", "failed", "unknown"]),
+    status: codexContinuationStatusSchema,
     detail: z.string().nullable(),
     attempted_at: z.string().datetime({ offset: true }).nullable(),
   }).strict(),
