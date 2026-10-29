@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tests.session_scheduler import build_settling_assistant as build_stress_assistant
 from konden.config import assistant_config_from_app, load_app_config
-from thinllm import ChatCompletionsClient
+from thinllm import create_client
 from konden.llm.config import load_endpoint
 from konden.paths import KondenHome
 from konden.filesystem.registry import WorkspaceRegistry
@@ -60,7 +60,7 @@ async def main() -> None:
 
     config = assistant_config_from_app(
         app_config,
-        ChatCompletionsClient(load_endpoint(app_config.default)),
+        create_client(load_endpoint(app_config.default)),
     )
     delivered: list[str] = []
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")

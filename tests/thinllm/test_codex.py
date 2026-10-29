@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from thinllm import (
-    CodexResponsesClient, Endpoint, InvalidLLMResponse, LLMAuthenticationError,
+    ResponsesClient, Endpoint, InvalidLLMResponse, LLMAuthenticationError,
     LLMContextLengthError, LLMProviderError, MissingProviderSetting, create_client, resolve_endpoint,
 )
 
@@ -14,6 +14,13 @@ MODEL = "openai-codex/test-model"
 ENDPOINT = Endpoint("openai-codex", "https://chatgpt.com/backend-api/codex", "token", False, "account")
 REASONING = {"type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "opaque"}
 CALL = {"type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": '{"key":"answer"}'}
+
+
+@pytest.fixture(params=["openai", "openai-codex"])
+def responses_connection(request):
+    if request.param == "openai-codex":
+        return ENDPOINT, MODEL
+    return resolve_endpoint("openai/gpt-6.1-terra", {"api_key": "existing-key"}), "openai/gpt-6.1-terra"
 
 
 def completed(output=None):
@@ -80,13 +87,18 @@ def test_damaged_auth_is_exposed_without_echoing_credentials(auth_file, auth):
         resolve_endpoint(MODEL, {"auth_file": ""})
 
 
-def test_codex_stream_and_tool_history_use_responses_without_duplicating_content():
+def test_stream_and_tool_history_use_responses_without_losing_native_output(responses_connection):
+    endpoint, model = responses_connection
+
     async def run():
         requests = []
+        output = [{"type": "message", "role": "assistant", "phase": "commentary", "content": [
+            {"type": "output_text", "text": "checking"},
+        ]}, REASONING, CALL, {**CALL, "call_id": "call_2"}]
         responses = iter([
             sse({"type": "response.reasoning_summary_text.delta", "delta": "thinking"},
                 {"type": "response.output_text.delta", "delta": "checking"},
-                completed([REASONING, {"type": "message", "content": [{"type": "output_text", "text": "checking"}]}, CALL])),
+                completed(output)),
             sse({"type": "response.output_text.delta", "delta": "OK"}, completed()),
         ])
 
@@ -94,43 +106,76 @@ def test_codex_stream_and_tool_history_use_responses_without_duplicating_content
             requests.append(request)
             return httpx.Response(200, content=next(responses))
 
-        tools = [{"type": "function", "function": {"name": "lookup", "parameters": {"type": "object"}}}]
+        tools = [{"type": "function", "function": {"name": "lookup", "parameters": {
+            "type": "object", "properties": {"key": {"type": "string"}, "optional": {"type": "string"}},
+            "required": ["key"],
+        }}}]
         history = [{"role": "system", "content": "help"}, {"role": "user", "content": [
             {"type": "text", "text": "read"},
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA==", "detail": "low"}},
         ]}]
         content, reasoning = [], []
-        async with create_client(ENDPOINT, transport=httpx.MockTransport(handle)) as client:
-            assert isinstance(client, CodexResponsesClient)
-            first = await client.chat(history, MODEL, tools, on_content_delta=content.append,
+        async with create_client(endpoint, transport=httpx.MockTransport(handle)) as client:
+            assert isinstance(client, ResponsesClient)
+            first = await client.chat(history, model, tools, on_content_delta=content.append,
                                       on_reasoning_delta=reasoning.append, reasoning_effort="high")
             assert first.response.content == "checking"
             assert content == ["checking"] and reasoning == ["thinking"]
             assert first.usage.cached_input_tokens == 96
-            call = first.response.calls[0]
+            assert [call.id for call in first.response.calls] == ["call_1", "call_2"]
+            assert first.response.message_extensions["responses_output"] == output
             second = await client.chat([*history, {
                 "role": "assistant", "content": first.response.content, **first.response.message_extensions,
-                "tool_calls": [{"id": call.id, "function": {"name": call.name, "arguments": call.arguments}}],
-            }, {"role": "tool", "tool_call_id": call.id, "content": "42"}], MODEL, tools)
+                "tool_calls": [{"id": "command_" + call.id, "function": {"name": call.name, "arguments": call.arguments}}
+                               for call in first.response.calls],
+            }, *[{"role": "tool", "tool_call_id": "command_" + call.id, "content": "42"}
+                 for call in first.response.calls]], model, tools)
         assert second.response.content == "OK"
-        assert str(requests[0].url) == "https://chatgpt.com/backend-api/codex/responses"
-        assert requests[0].headers["authorization"] == "Bearer token"
-        assert requests[0].headers["chatgpt-account-id"] == "account"
+        assert str(requests[0].url) == endpoint.base_url + "/responses"
+        assert requests[0].headers["authorization"] == "Bearer " + endpoint.api_key
+        if endpoint.provider == "openai-codex":
+            assert requests[0].headers["chatgpt-account-id"] == "account"
+        else:
+            assert "chatgpt-account-id" not in requests[0].headers
+            assert "originator" not in requests[0].headers
         payload = json.loads(requests[0].content)
-        assert payload["instructions"] == "help" and payload["model"] == "test-model"
+        assert payload["instructions"] == "help" and payload["model"] == model.partition("/")[2]
         assert payload["store"] is False and payload["stream"] is True
         assert "messages" not in payload and "stream_options" not in payload
         assert payload["reasoning"] == {"effort": "high", "summary": "auto"}
-        assert payload["tools"] == [{"type": "function", **tools[0]["function"]}]
+        assert payload["tools"] == [{"type": "function", "strict": False, **tools[0]["function"]}]
         assert payload["input"][0]["content"][1] == {
             "type": "input_image", "image_url": "data:image/png;base64,AA==", "detail": "low",
         }
         replay = json.loads(requests[1].content)
-        assert replay["input"][-4:] == [
-            {key: value for key, value in REASONING.items() if key != "id"},
-            {"role": "assistant", "content": [{"type": "output_text", "text": "checking"}]},
-            CALL, {"type": "function_call_output", "call_id": "call_1", "output": "42"},
+        assert "reasoning" not in replay
+        assert replay["input"][1:] == [
+            *output[:2],
+            {**CALL, "call_id": "command_call_1"}, {**CALL, "call_id": "command_call_2"},
+            {"type": "function_call_output", "call_id": "command_call_1", "output": "42"},
+            {"type": "function_call_output", "call_id": "command_call_2", "output": "42"},
         ]
+
+    asyncio.run(run())
+
+
+def test_replayed_control_call_does_not_create_an_unpaired_tool_call(responses_connection):
+    endpoint, model = responses_connection
+
+    async def run():
+        requests = []
+
+        def handle(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, content=sse(completed()))
+
+        history = [{"role": "assistant", "content": "Waiting for confirmation.",
+                    "responses_output": [REASONING, CALL]}]
+        async with create_client(endpoint, transport=httpx.MockTransport(handle)) as client:
+            await client.chat(history, model)
+        assert requests[0]["input"] == [REASONING, {"role": "assistant", "content": [
+            {"type": "output_text", "text": "Waiting for confirmation."},
+        ]}]
 
     asyncio.run(run())
 
@@ -146,11 +191,13 @@ def test_codex_stream_and_tool_history_use_responses_without_duplicating_content
     }}),
     b"data: {\n\n", b"data: [DONE]\n\n",
 ])
-def test_incomplete_or_malformed_stream_is_never_a_success(body):
+def test_incomplete_or_malformed_stream_is_never_a_success(body, responses_connection):
+    endpoint, model = responses_connection
+
     async def run():
-        async with create_client(ENDPOINT, transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))) as client:
+        async with create_client(endpoint, transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))) as client:
             with pytest.raises(InvalidLLMResponse):
-                await client.chat([], MODEL)
+                await client.chat([], model)
 
     asyncio.run(run())
 
@@ -162,16 +209,20 @@ def test_incomplete_or_malformed_stream_is_never_a_success(body):
     }}}), LLMContextLengthError),
     (200, sse({"type": "error", "code": "server_error", "message": "failed"}), LLMProviderError),
 ])
-def test_upstream_errors_keep_the_existing_error_contract(status, body, error):
+def test_upstream_errors_keep_the_existing_error_contract(status, body, error, responses_connection):
+    endpoint, model = responses_connection
+
     async def run():
-        async with create_client(ENDPOINT, transport=httpx.MockTransport(lambda _: httpx.Response(status, content=body))) as client:
+        async with create_client(endpoint, transport=httpx.MockTransport(lambda _: httpx.Response(status, content=body))) as client:
             with pytest.raises(error):
-                await client.chat([], MODEL)
+                await client.chat([], model)
 
     asyncio.run(run())
 
 
-def test_callback_errors_are_not_reclassified_as_upstream_corruption():
+def test_callback_errors_are_not_reclassified_as_upstream_corruption(responses_connection):
+    endpoint, model = responses_connection
+
     async def run():
         error = TypeError("caller bug")
 
@@ -179,9 +230,9 @@ def test_callback_errors_are_not_reclassified_as_upstream_corruption():
             raise error
 
         body = sse({"type": "response.output_text.delta", "delta": "hello"})
-        async with create_client(ENDPOINT, transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))) as client:
+        async with create_client(endpoint, transport=httpx.MockTransport(lambda _: httpx.Response(200, content=body))) as client:
             with pytest.raises(TypeError) as caught:
-                await client.chat([], MODEL, on_content_delta=callback)
+                await client.chat([], model, on_content_delta=callback)
         assert caught.value is error
 
     asyncio.run(run())

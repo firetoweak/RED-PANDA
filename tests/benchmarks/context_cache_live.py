@@ -142,7 +142,7 @@ def build_variants(
 
 async def run(args: argparse.Namespace) -> dict[str, object]:
     from konden.config import load_app_config
-    from thinllm import ChatCompletionsClient
+    from thinllm import create_client
     from konden.llm.config import load_endpoint
 
     root = runtime_data_root()
@@ -163,10 +163,12 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             for name, requests in variants.items()
         }
     app = load_app_config()
+    if app.default_model.partition("/")[0] != "vllm":
+        raise ValueError("本缓存隔离实验使用 vLLM 专用的 cache_salt 参数，请选择 vllm 模型。")
     salts = {name: secrets.token_urlsafe(32) for name in variants}
     rows: list[dict[str, object]] = []
     clients = {
-        name: ChatCompletionsClient(
+        name: create_client(
             load_endpoint(app.default),
             request_options={
                 "max_tokens": 1,
