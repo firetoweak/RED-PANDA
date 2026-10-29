@@ -96,7 +96,7 @@ def configure(home: KondenHome) -> ModelConfig:
         if threshold.isascii() and threshold.isdecimal() and int(threshold) > 0:
             break
         print("请输入大于 0 的整数。")
-    effort = None
+    effort = None if previous is None else previous.reasoning_effort
     if model == "stepfun/step-5-preview":
         while True:
             effort = _ask("推理程度（default/low/medium/high）",

@@ -65,7 +65,7 @@ def test_inventory_includes_disabled_and_builtin_capabilities_without_connecting
     server = next(item for item in data["mcp"] if item["id"] == "reports")
     assert (server["enabled"], server["last_status"]) == (False, "unknown")
     assert {item["id"] for item in data["mcp"] if item["origin"] == "builtin"} == {
-        "builtin-playwright", "builtin-chrome-devtools", "builtin-deepseek",
+        "builtin-playwright", "builtin-chrome-devtools", "builtin-deepseek", "builtin-openai-search",
     }
     assert not next(item for item in data["mcp"] if item["id"] == "builtin-deepseek")["enabled"]
     assert "secret-value" not in response.text

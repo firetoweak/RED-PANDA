@@ -88,6 +88,7 @@ export function Composer({
   }, [requestedQuote, onQuote]);
   const [pending, setPending] = useState<ComposerAttachment[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [changingModelFor, setChangingModelFor] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentions = useMentionCompletion({ text: composed.body, names, textarea: textareaRef,
     onChange: (body) => setText(withMessageQuote(body, composed.quote)) });
@@ -115,7 +116,7 @@ export function Composer({
   const ready = pending.filter(
     (item) => item.state === "done" && item.attachmentId !== null,
   );
-  const busy = disabled || sending || uploading || stopBusy;
+  const busy = disabled || sending || uploading || stopBusy || changingModelFor === sessionId;
   const canSend =
     !busy &&
     !selectionError && !settingsError &&
@@ -422,7 +423,8 @@ export function Composer({
               </span>
             </Tooltip>
           )}
-          <div className="composer-model"><ModelSelector sessionId={sessionId} connectionId={connectionId} /></div>
+          <div className="composer-model"><ModelSelector sessionId={sessionId} connectionId={connectionId}
+            onChanging={(changing) => setChangingModelFor((current) => changing ? sessionId : current === sessionId ? null : current)} /></div>
           <Group gap={6} wrap="nowrap">
             {canStop ? (
               <Tooltip label="停止">

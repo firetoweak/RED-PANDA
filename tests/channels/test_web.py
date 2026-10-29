@@ -126,8 +126,8 @@ class _Sessions:
     def model_selection(self, session_id):
         return self.models.selection(session_id)
 
-    def set_model(self, session_id, model):
-        return self.models.select(session_id, model)
+    def set_model(self, session_id, model, reasoning_effort=None):
+        return self.models.select(session_id, model, reasoning_effort)
 
     async def create_agent(self, *, name, path):
         workspace_id = None if path is None else "workspace-old"
@@ -494,12 +494,14 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertIn("模型认证失败", response.json()["message"])
         self.assertNotIn("private-test-key", response.text)
 
-    def test_model_connection_rejects_unsaved_model_before_calling_llm(self):
+    def test_model_connection_can_test_a_draft_without_saving_it(self):
+        before = self.models.path.read_bytes()
         response = self.client.post("/api/model-settings/test", json={
             "connection_id": self.connection.connection_id, "model": "ollama/unsaved",
         })
-        self.assertEqual(response.status_code, 400)
-        self.model_llm.chat.assert_not_awaited()
+        self.assertEqual(response.status_code, 200)
+        self.model_llm.chat.assert_awaited_once()
+        self.assertEqual(self.models.path.read_bytes(), before)
 
     def test_model_connection_does_not_downgrade_internal_failure(self):
         self.model_llm.chat.side_effect = RuntimeError("internal failure")
@@ -540,12 +542,10 @@ class WebFirstSliceTest(unittest.TestCase):
             self.assertEqual(self.hub._queues, set())
         asyncio.run(scenario())
 
-    def test_model_connection_does_not_downgrade_corrupt_persisted_config(self):
+    def test_model_settings_does_not_downgrade_corrupt_persisted_config(self):
         self.models.path.write_text("{", encoding="utf-8")
         with self.assertRaises(json.JSONDecodeError):
-            self.client.post("/api/model-settings/test", json={
-                "connection_id": self.connection.connection_id, "model": "ollama/qwen3:8b",
-            })
+            self.client.get("/api/model-settings")
         self.model_llm.chat.assert_not_awaited()
 
     def test_events_assigns_connection_identity_and_releases_on_disconnect(self):
@@ -675,22 +675,22 @@ class WebFirstSliceTest(unittest.TestCase):
         before = self.models.connections_path.read_bytes()
         catalog = [{"slug": "actual-id", "display_name": "Actual model", "context_window": 500000,
                     "supported_reasoning_levels": [{"effort": "high"}], "default_reasoning_level": "high"}]
-        with patch("konden.model_settings.list_codex_models", new=AsyncMock(return_value=catalog)) as lookup:
-            response = self.client.get("/api/model-settings/codex-models")
+        with patch("konden.model_settings.list_models", new=AsyncMock(return_value=catalog)) as lookup:
+            response = self.client.get("/api/model-settings/catalog/openai-codex")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), catalog)
-        lookup.assert_awaited_once_with(json.loads(before)["openai-codex"])
+        lookup.assert_awaited_once_with("openai-codex", json.loads(before)["openai-codex"])
         self.assertEqual(self.models.connections_path.read_bytes(), before)
 
     def test_codex_catalog_reports_known_failures_and_exposes_unknown_errors(self):
         for error in [LLMAuthenticationError("请重新授权"), LLMTransientError("请重试")]:
-            with self.subTest(error=error), patch("konden.model_settings.list_codex_models", new=AsyncMock(side_effect=error)):
-                response = self.client.get("/api/model-settings/codex-models")
+            with self.subTest(error=error), patch("konden.model_settings.list_models", new=AsyncMock(side_effect=error)):
+                response = self.client.get("/api/model-settings/catalog/openai-codex")
                 self.assertEqual(response.status_code, 502)
                 self.assertEqual(response.json(), {"detail": str(error)})
-        with patch("konden.model_settings.list_codex_models", new=AsyncMock(side_effect=LookupError("unknown"))):
+        with patch("konden.model_settings.list_models", new=AsyncMock(side_effect=LookupError("unknown"))):
             with self.assertRaisesRegex(LookupError, "unknown"):
-                self.client.get("/api/model-settings/codex-models")
+                self.client.get("/api/model-settings/catalog/openai-codex")
 
     def test_session_model_selection_and_invalid_model_boundary(self):
         response = self.client.get("/api/sessions/session-old/model")
@@ -699,6 +699,44 @@ class WebFirstSliceTest(unittest.TestCase):
             "connection_id": self.connection.connection_id, "model": "unknown/no-model",
         })
         self.assertEqual(response.status_code, 400)
+
+    def test_native_effort_is_checked_before_testing_and_stays_with_the_session(self):
+        connections = json.loads(self.models.connections_path.read_text(encoding="utf-8"))
+        connections["deepseek"]["api_key"] = "test"
+        write_json(self.models.connections_path, connections)
+        catalog = [{"model": "deepseek/test-model", "name": "Test model", "context_window": None,
+                    "reasoning_levels": ["low", "max"], "default_reasoning_effort": "low", "web_search": False}]
+        before = self.models.path.read_bytes()
+        with patch("konden.model_settings.list_models", new=AsyncMock(return_value=catalog)):
+            rejected = self.client.post("/api/model-settings/test", json={
+                "connection_id": self.connection.connection_id, "model": "deepseek/test-model", "reasoning_effort": "medium"})
+            self.assertEqual(rejected.status_code, 400)
+            self.model_llm.chat.assert_not_awaited()
+            selected = self.client.put("/api/sessions/session-old/model", json={
+                "connection_id": self.connection.connection_id, "model": "deepseek/test-model", "reasoning_effort": "max"})
+            self.assertEqual(selected.json()["selected"]["reasoning_effort"], "max")
+            tested = self.client.post("/api/model-settings/test", json={
+                "connection_id": self.connection.connection_id, "model": "deepseek/test-model", "reasoning_effort": "low"})
+            self.assertTrue(tested.json()["ok"])
+        self.assertEqual(self.model_llm.chat.call_args.kwargs["reasoning_effort"], "low")
+        self.assertEqual(self.models.path.read_bytes(), before)
+        self.assertEqual(self.models.selection("session-old")["selected"]["reasoning_effort"], "max")
+
+    def test_search_config_uses_the_existing_connection_without_changing_chat_settings(self):
+        connections = json.loads(self.models.connections_path.read_text(encoding="utf-8"))
+        connections["openai"]["api_key"] = "private-existing-key"
+        write_json(self.models.connections_path, connections)
+        before = self.models.path.read_bytes(), self.models.connections_path.read_bytes()
+        config = {"enabled": True, "provider": "openai", "openai_model": "openai/gpt-6.1-terra"}
+        saved = self.client.put("/api/model-settings/search", json={"connection_id": self.connection.connection_id, "config": config})
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(self.client.get("/api/model-settings/search").json(), config)
+        self.assertNotIn("private-existing-key", saved.text)
+        self.assertEqual(before, (self.models.path.read_bytes(), self.models.connections_path.read_bytes()))
+        rejected = self.client.put("/api/model-settings/search", json={
+            "connection_id": self.connection.connection_id, "config": {**config, "mode": "research"}})
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.client.get("/api/model-settings/search").json(), config)
 
     def test_model_settings_rejects_deleting_referenced_model(self):
         response = self.client.put("/api/model-settings", json={

@@ -1,7 +1,7 @@
 import { ActionIcon, Button, Collapse, Group, NumberInput, Select, Text, Tooltip } from "@mantine/core";
 import { IconAdjustments, IconAlertCircle, IconCheck, IconPlayerPlay, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
-import { providerName, type CatalogModel, type Favorite, type ModelPreviewApi, type ModelTestResult, type Preferences } from "./api";
+import { providerName, type CatalogModel, type Favorite, type ModelSettingsApi, type ModelTestResult, type Preferences } from "./modelUi";
 
 type ModelRowProps = {
   model: CatalogModel;
@@ -10,7 +10,7 @@ type ModelRowProps = {
   saving: boolean;
   onChange(values: Partial<Favorite>): void;
   onRemove(): void;
-  testModel: ModelPreviewApi["testModel"];
+  testModel: ModelSettingsApi["testModel"];
 };
 
 function SelectedModelRow({ model, favorite, isDefault, saving, onChange, onRemove, testModel }: ModelRowProps) {
@@ -36,7 +36,7 @@ function SelectedModelRow({ model, favorite, isDefault, saving, onChange, onRemo
         data={[{ value: "default", label: "供应商默认" }, ...model.efforts]} value={favorite.effort ?? "default"}
         allowDeselect={false} disabled={saving || testing} size="xs"
         onChange={(value) => onChange({ effort: value === "default" ? null : value })} />
-        : <Text size="xs" c="dimmed">未提供推理档位</Text>}
+        : <Text size="xs" c="dimmed">暂无推理档位</Text>}
     </div>
     <Button className="selected-model-test" aria-label={`测试 ${label}`} size="xs" variant="default"
       loading={testing} disabled={saving} leftSection={<IconPlayerPlay size={13} />}
@@ -52,7 +52,7 @@ function SelectedModelRow({ model, favorite, isDefault, saving, onChange, onRemo
     </Group>
     {testing || result ? <div className="model-test-result" role="status">
       {testing ? <Text size="xs" c="dimmed">正在测试…</Text>
-        : result?.ok ? <Text size="xs" c="teal"><IconCheck size={13} />示例测试通过 · {result.latencyMs} ms</Text>
+        : result?.ok ? <Text size="xs" c="teal"><IconCheck size={13} />测试通过 · {result.latencyMs} ms</Text>
           : result ? <Text size="xs" c="red"><IconAlertCircle size={13} />{result.message}</Text> : null}
     </div> : null}
     <Collapse expanded={expanded} className="selected-model-advanced">
@@ -60,7 +60,7 @@ function SelectedModelRow({ model, favorite, isDefault, saving, onChange, onRemo
         <NumberInput label="上下文整理阈值" description="输入达到此 token 数时整理上下文。" value={favorite.compactTokens}
           min={1} allowNegative={false} allowDecimal={false} disabled={saving}
           onChange={(value) => onChange({ compactTokens: typeof value === "number" ? value : 0 })} />
-        <Text size="xs" c="dimmed">示例上下文容量：{model.contextTokens.toLocaleString()} tokens</Text>
+        <Text size="xs" c="dimmed">{model.contextTokens === null ? "供应商未提供上下文容量" : `上下文容量：${model.contextTokens.toLocaleString()} tokens`}</Text>
       </div>
     </Collapse>
   </div>;
@@ -73,10 +73,10 @@ export function SelectedModelsPanel({ models, preferences, saving, onChange, onR
   onChange(id: string, values: Partial<Favorite>): void;
   onRemove(model: CatalogModel): void;
   onDefaultChange(id: string): void;
-  testModel: ModelPreviewApi["testModel"];
+  testModel: ModelSettingsApi["testModel"];
 }) {
   return <>
-    <div className="selected-models-intro"><Text size="sm" c="dimmed">每个测试只检查当前模型与推理强度，此预览返回模拟结果。</Text></div>
+    <div className="selected-models-intro"><Text size="sm" c="dimmed">每个测试只检查当前模型与推理强度，不改变会话设置。</Text></div>
     <div className="selected-models-scroll">
       <div className="selected-models-column-head" aria-hidden="true"><span>模型</span><span>默认推理强度</span><span>连接测试</span><span /></div>
       <div role="list" aria-label="已选模型">

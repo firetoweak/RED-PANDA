@@ -14,6 +14,8 @@ from konden.mcp.composition import build_mcp
 from konden.mcp.errors import McpConfigurationError
 from konden.mcp.toolsets import ToolsetLoadError
 from konden.paths import KondenHome
+from konden.config import write_json
+from konden.search import SearchConfig, SearchSettings
 
 
 def test_browser_catalog_is_available_without_installation_or_connection(tmp_path):
@@ -44,6 +46,26 @@ def test_deepseek_catalog_tracks_the_existing_connection_without_installation_or
     assert assembly.service.registry.snapshot() == ()
     assert not (home.mcp_root / "secrets").exists()
     assert assembly.client_manager._connections == {}
+
+
+def test_search_selection_changes_the_visible_service_and_revision(tmp_path):
+    home = KondenHome(tmp_path)
+    connections = initial_connections()
+    connections["openai"]["api_key"] = "private-openai"
+    connections["deepseek"]["api_key"] = "private-deepseek"
+    write_json(home.connections_path, connections)
+    provider = build_mcp(home).toolset_provider
+    assert {item.id for item in provider.descriptors(read_only_only=True)} == {"mcp:builtin-deepseek"}
+    settings = SearchSettings(home.connections_path)
+    first = SearchConfig(provider="openai", openai_model="openai/gpt-6.1-terra")
+    settings.save(first)
+    (descriptor,) = provider.descriptors(read_only_only=True)
+    assert descriptor.id == "mcp:builtin-openai-search"
+    settings.save(first.model_copy(update={"openai_model": "openai/gpt-4.1"}))
+    assert provider.descriptors(read_only_only=True)[0].revision != descriptor.revision
+    assert "private-" not in repr(provider.descriptors())
+    settings.save(first.model_copy(update={"enabled": False}))
+    assert provider.descriptors(read_only_only=True) == ()
 
 
 class BundledBrowserTest(unittest.IsolatedAsyncioTestCase):

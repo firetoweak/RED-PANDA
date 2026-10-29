@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { configureStore } from "@reduxjs/toolkit";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -8,19 +8,21 @@ import { Composer } from "../src/features/conversation/Composer";
 import { ChatPresentation } from "../src/features/conversation/ChatPresentation";
 import runtimeReducer from "../src/realtime/runtimeSlice";
 
-const { upload, selectLocal } = vi.hoisted(() => ({
+const { upload, selectLocal, modelSelect } = vi.hoisted(() => ({
   upload: vi.fn(),
   selectLocal: vi.fn(),
+  modelSelect: vi.fn(),
 }));
 vi.mock("../src/api/kondenApi", () => ({
   useGetSessionModelQuery: () => ({ data: {
     selected: { model: "deepseek/test", compact_threshold_tokens: 200000 }, effective: null, pending: true,
   } }),
+  useGetModelCatalogQuery: () => ({ currentData: [] }),
   useGetModelSettingsQuery: () => ({ data: {
-    config: { model: { default: "deepseek/test", candidates: [{ model: "deepseek/test", compact_threshold_tokens: 200000 }] } },
+    config: { model: { default: "deepseek/test", candidates: [{ model: "deepseek/test", compact_threshold_tokens: 200000 }, {model:"deepseek/other",compact_threshold_tokens:200000}] } },
     providers: [{ provider: "deepseek", configured: true, missing: null, local: false }],
   } }),
-  useSetSessionModelMutation: () => [vi.fn(), { isLoading: false }],
+  useSetSessionModelMutation: () => [modelSelect, { isLoading: false }],
   useGetWorkspacesQuery: () => ({ data: [] }),
   useUploadAttachmentMutation: () => [upload],
   useSelectLocalFileMutation: () => [selectLocal],
@@ -30,6 +32,7 @@ beforeEach(() => {
   localStorage.clear();
   upload.mockReset();
   selectLocal.mockReset();
+  modelSelect.mockReset().mockReturnValue({unwrap:async()=>({})});
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   Object.defineProperty(document, "fonts", { configurable: true, value: { addEventListener() {}, removeEventListener() {} } });
@@ -256,4 +259,19 @@ it("运行中发送失败后保留文字草稿，刷新后也不自动发送", a
   expect(screen.getByLabelText("消息")).toHaveValue("改为执行新要求");
   restored.stop();
   expect(restored.onSend).not.toHaveBeenCalled();
+});
+
+it("模型选择未确认前不发送消息，确认后才可使用新选择发送", async () => {
+  let finish!: (value:object)=>void;
+  modelSelect.mockReturnValue({unwrap:()=>new Promise((resolve)=>{finish=resolve;})});
+  const view=showComposer();
+  fireEvent.change(screen.getByLabelText("消息"),{target:{value:"使用新模型回答"}});
+  fireEvent.click(screen.getByRole("button",{name:"切换模型：DeepSeek test"}));
+  fireEvent.click(await screen.findByRole("menuitem",{name:"DeepSeek other",exact:true}));
+  expect(screen.getByRole("button",{name:"发送",exact:true})).toBeDisabled();
+  fireEvent.keyDown(screen.getByLabelText("消息"),{key:"Enter"});
+  expect(view.onSend).not.toHaveBeenCalled();
+  await act(async()=>{finish({});});
+  fireEvent.click(screen.getByRole("button",{name:"发送",exact:true}));
+  await waitFor(()=>expect(view.onSend).toHaveBeenCalledWith("使用新模型回答",[]));
 });

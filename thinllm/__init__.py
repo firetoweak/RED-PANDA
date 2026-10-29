@@ -5,7 +5,7 @@ cost tracking, or user-defined providers.
 """
 
 from thinllm.chat_completions import ChatCompletionsClient
-from thinllm.catalog import list_codex_models
+from thinllm.catalog import list_codex_models, list_models
 from thinllm.codex import CodexResponsesClient
 from thinllm.responses import ResponsesClient
 from thinllm.errors import (
@@ -36,6 +36,7 @@ __all__ = [
     "ResponsesClient",
     "create_client",
     "list_codex_models",
+    "list_models",
     "ContentDeltaSink",
     "Endpoint",
     "InvalidLLMResponse",

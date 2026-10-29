@@ -1450,9 +1450,9 @@ class HostSupervisor:
         self.store.require(session_id)
         return self.models.selection(session_id)
 
-    def set_model(self, session_id, model):
+    def set_model(self, session_id, model, reasoning_effort=None):
         self.store.require(session_id)
-        return self.models.select(session_id, model)
+        return self.models.select(session_id, model, reasoning_effort)
 
     async def resolve_control(self, session_id, request_id, *, approved):
         return await self.compact.application(

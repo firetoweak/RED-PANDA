@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "preview:models": "vite --host 127.0.0.1 --port 5193 --strictPort --open /model-preview.html#settings",
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.app.json"

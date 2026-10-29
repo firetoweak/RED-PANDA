@@ -30,8 +30,8 @@ import {
   groupSummarySchema,
   groupViewSchema,
   modelSettingsSchema,
-  codexModelsSchema,
-  type CodexModels,
+  modelCatalogSchema, type ModelCatalog,
+  searchConfigSchema, type SearchConfig, searchResultSchema, type SearchResult,
   sharedMemorySchema,
   sharedMemoryConflictSchema,
   type SharedMemory,
@@ -202,12 +202,27 @@ export const kondenApi = createApi({
       transformResponse: (value: unknown) => modelSettingsSchema.parse(value),
       providesTags: ["ModelSettings"],
     }),
-    getCodexModels: build.query<CodexModels, void>({
-      query: () => "/model-settings/codex-models",
-      transformResponse: (value: unknown) => codexModelsSchema.parse(value),
+    getModelCatalog: build.query<ModelCatalog, string>({
+      query: (provider) => `/model-settings/catalog/${encodeURIComponent(provider)}`,
+      transformResponse: (value: unknown) => modelCatalogSchema.parse(value),
       transformErrorResponse: (response) => response.status === 400 || response.status === 502
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
-      keepUnusedDataFor: 0,
+    }),
+    getSearchConfig: build.query<SearchConfig, void>({
+      query: () => "/model-settings/search",
+      transformResponse: (value: unknown) => searchConfigSchema.parse(value),
+    }),
+    saveSearchConfig: build.mutation<SearchConfig, { connectionId: string; config: SearchConfig }>({
+      query: ({ connectionId, config }) => ({url: "/model-settings/search", method: "PUT", body: {connection_id: connectionId, config}}),
+      transformResponse: (value: unknown) => searchConfigSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+    }),
+    testSearch: build.mutation<SearchResult, { connectionId: string; config: SearchConfig; query: string }>({
+      query: ({ connectionId, config, query }) => ({url: "/model-settings/search/test", method: "POST", body: {connection_id: connectionId, config, query}}),
+      transformResponse: (value: unknown) => searchResultSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400 || response.status === 502
+        ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
     }),
     saveModelSettings: build.mutation<ModelSettings, { connectionId: string; config: ModelConfig }>({
       query: ({ connectionId, config }) => ({
@@ -218,9 +233,9 @@ export const kondenApi = createApi({
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
       invalidatesTags: ["ModelSettings", "SessionModel"],
     }),
-    testModel: build.mutation<ModelTestResult, { connectionId: string; model: string }>({
-      query: ({ connectionId, model }) => ({
-        url: "/model-settings/test", method: "POST", body: { connection_id: connectionId, model },
+    testModel: build.mutation<ModelTestResult, { connectionId: string; model: string; reasoningEffort?: string | null }>({
+      query: ({ connectionId, model, reasoningEffort }) => ({
+        url: "/model-settings/test", method: "POST", body: { connection_id: connectionId, model, reasoning_effort: reasoningEffort ?? null },
       }),
       transformResponse: (value: unknown) => modelTestResultSchema.parse(value),
       transformErrorResponse: (response) => response.status === 400
@@ -231,10 +246,10 @@ export const kondenApi = createApi({
       transformResponse: (value: unknown) => sessionModelSchema.parse(value),
       providesTags: (_result, _error, id) => [{ type: "SessionModel", id }],
     }),
-    setSessionModel: build.mutation<SessionModel, SelectSession & { model: string }>({
-      query: ({ connectionId, sessionId, model }) => ({
+    setSessionModel: build.mutation<SessionModel, SelectSession & { model: string; reasoningEffort?: string | null }>({
+      query: ({ connectionId, sessionId, model, reasoningEffort }) => ({
         url: `/sessions/${encodeURIComponent(sessionId)}/model`, method: "PUT",
-        body: { connection_id: connectionId, model },
+        body: { connection_id: connectionId, model, reasoning_effort: reasoningEffort ?? null },
       }),
       transformResponse: (value: unknown) => sessionModelSchema.parse(value),
       transformErrorResponse: (response) => response.status === 400
@@ -698,7 +713,7 @@ export const {
   useGetPersonalMemoryQuery,
   useSavePersonalMemoryMutation,
   useSaveModelSettingsMutation,
-  useGetCodexModelsQuery,
+  useGetModelCatalogQuery,
   useTestModelMutation,
   useGetSessionModelQuery,
   useSetSessionModelMutation,

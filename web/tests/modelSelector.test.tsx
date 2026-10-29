@@ -5,6 +5,10 @@ import { ModelSelector } from "../src/features/models/ModelSelector";
 
 const { select } = vi.hoisted(() => ({ select: vi.fn() }));
 vi.mock("../src/api/kondenApi", () => ({
+  useGetModelCatalogQuery: () => ({currentData:[
+    {model:"deepseek/pro",name:"pro",context_window:100000,reasoning_levels:["low","max"],default_reasoning_effort:"low"},
+    {model:"deepseek/flash",name:"flash",context_window:100000,reasoning_levels:[],default_reasoning_effort:null},
+  ]}),
   useGetSessionModelQuery: () => ({ data: { selected: { model: "deepseek/pro" } } }),
   useGetModelSettingsQuery: () => ({ data: {
     config: { model: { candidates: [{ model: "deepseek/pro" }, { model: "deepseek/flash" }] } },
@@ -22,15 +26,24 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("模型按钮只显示模型名，点击展开列表，切换仍提交完整模型标识", async () => {
   render(<MantineProvider><ModelSelector sessionId="session" connectionId="connection" /></MantineProvider>);
-  const button = screen.getByRole("button", { name: "切换会话模型：pro" });
+  const button = screen.getByRole("button", { name: "切换模型：DeepSeek pro" });
   expect(button).toHaveTextContent("pro");
   expect(button).not.toHaveTextContent("deepseek/");
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   fireEvent.mouseEnter(button);
-  expect(screen.queryByRole("menuitem", { name: "flash" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "DeepSeek flash" })).not.toBeInTheDocument();
   fireEvent.click(button);
-  fireEvent.click(await screen.findByRole("menuitem", { name: "flash" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "DeepSeek flash" }));
   await waitFor(() => expect(select).toHaveBeenCalledWith({
-    sessionId: "session", connectionId: "connection", model: "deepseek/flash",
+    sessionId: "session", connectionId: "connection", model: "deepseek/flash", reasoningEffort:null,
   }));
+});
+
+
+it("会话强度菜单使用供应商自己的档位并随选择提交", async () => {
+  render(<MantineProvider env="test"><ModelSelector sessionId="session" connectionId="connection" /></MantineProvider>);
+  fireEvent.click(screen.getByRole("button",{name:"推理强度：低"}));
+  expect(screen.queryByRole("menuitem",{name:"中",exact:true})).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("menuitem",{name:"最高",exact:true}));
+  await waitFor(() => expect(select).toHaveBeenCalledWith({sessionId:"session",connectionId:"connection",model:"deepseek/pro",reasoningEffort:"max"}));
 });
