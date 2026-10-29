@@ -37,6 +37,32 @@ def sse(*events):
     return b"".join(b"data: " + json.dumps(event).encode() + b"\n\n" for event in events)
 
 
+@pytest.mark.parametrize("searched", [False, True])
+def test_openai_search_keeps_auto_choice_and_distinguishes_direct_answers(searched):
+    output = [{"type": "message", "content": [{"type": "output_text", "text": "answer",
+              "annotations": [{"type": "url_citation", "url": "https://example.com/", "title": "Source"}] if searched else []}]}]
+    if searched:
+        output.insert(0, {"type": "web_search_call", "action": {"type": "search",
+                        "sources": [{"type": "url", "url": "https://example.com/"}]}})
+
+    def handle(request):
+        payload = json.loads(request.content)
+        assert request.url == "https://api.openai.com/v1/responses"
+        assert payload["tools"] == [{"type": "web_search"}]
+        assert payload["tool_choice"] == "auto"
+        assert payload["model"] == "gpt-6.1-terra"
+        assert payload["include"] == ["web_search_call.action.sources"]
+        return httpx.Response(200, content=sse(completed(output)))
+
+    async def run():
+        endpoint = resolve_endpoint("openai/gpt-6.1-terra", {"api_key": "existing-key"})
+        async with ResponsesClient(endpoint, transport=httpx.MockTransport(handle)) as client:
+            result = await client.web_search("question", "openai/gpt-6.1-terra")
+        assert result == {"summary": "answer", "searched": searched,
+                          "sources": [{"url": "https://example.com/", "title": "Source", "snippet": ""}] if searched else []}
+    asyncio.run(run())
+
+
 def write_auth(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")

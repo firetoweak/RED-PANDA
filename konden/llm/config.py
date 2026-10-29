@@ -25,10 +25,9 @@ class ModelConfig:
         if type(self.compact_threshold_tokens) is not int or self.compact_threshold_tokens <= 0:
             raise ValueError("compact_threshold_tokens 必须是大于 0 的整数")
         if self.reasoning_effort is not None:
-            if self.model != "stepfun/step-5-preview":
-                raise ValueError("reasoning_effort 目前只支持 stepfun/step-5-preview")
-            if type(self.reasoning_effort) is not str or self.reasoning_effort not in ("low", "medium", "high"):
-                raise ValueError("reasoning_effort 必须是 low/medium/high")
+            if (type(self.reasoning_effort) is not str or not self.reasoning_effort
+                    or self.reasoning_effort != self.reasoning_effort.strip()):
+                raise ValueError("reasoning_effort 必须是供应商提供的非空档位")
 
     def to_dict(self) -> dict:
         data = asdict(self)

@@ -15,6 +15,33 @@ class ResponsesClient(ChatCompletionsClient):
     _done_marker = None
     _completion_label = "the response.completed event"
 
+    async def web_search(self, query: str, model: str) -> dict:
+        """One Responses turn with optional hosted search, preserving citations."""
+        result = await self._request({
+            "model": model.partition("/")[2], "input": query, "store": False, "stream": True,
+            "tools": [{"type": "web_search"}], "tool_choice": "auto",
+            "include": ["web_search_call.action.sources"],
+        }, model, None, None)
+        sources = {}
+        searched = False
+        try:
+            for item in result.response.message_extensions["responses_output"]:
+                if item["type"] == "web_search_call":
+                    searched = True
+                    for source in item["action"].get("sources", []):
+                        if source["type"] == "url":
+                            url = self._text(source["url"])
+                            sources[url] = {"url": url, "title": url, "snippet": ""}
+                elif item["type"] == "message":
+                    for part in item["content"]:
+                        for annotation in part.get("annotations", []):
+                            if annotation["type"] == "url_citation":
+                                url = self._text(annotation["url"])
+                                sources[url] = {"url": url, "title": self._text(annotation["title"]), "snippet": ""}
+        except (KeyError, TypeError, AttributeError) as error:
+            raise InvalidLLMResponse("invalid_web_search_response", "Malformed web search sources") from error
+        return {"summary": result.response.content, "searched": searched, "sources": list(sources.values())}
+
     def _payload(self, messages, model, tools, reasoning_effort) -> dict[str, object]:
         instructions = []
         items = []

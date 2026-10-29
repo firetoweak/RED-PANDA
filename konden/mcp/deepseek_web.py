@@ -6,97 +6,19 @@ import argparse
 from functools import partial
 import json
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool, ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import ValidationError
 
-from konden.llm.config import load_connections
 from konden.paths import KondenHome
 
-BASE_URL = "https://api.deepseek.com"
-
-
-class MissingApiKey(ValueError):
-    pass
-
-
-class DeepSeekAuth(httpx.Auth):
-    def __init__(self, connections_path: Path):
-        self._path = connections_path
-
-    def auth_flow(self, request):
-        key = load_connections(self._path)["deepseek"]["api_key"].strip()
-        if not key:
-            raise MissingApiKey("请在 connections.json 中填写 deepseek.api_key，或选择其他检索服务。")
-        request.headers["Authorization"] = f"Bearer {key}"
-        yield request
-
-
-class SearchInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    query: str = Field(min_length=1, max_length=128,
-        description="1～128 个字符的搜索词。支持 site:、-site:、引号、lang:、after: 和 before:。")
-    count: int = Field(default=10, ge=1, le=50, description="最多返回的结果条数，1～50。")
-    ori_question: str | None = Field(default=None, min_length=1, max_length=128,
-        description="可选的原始问题，1～128 个字符，用于补充搜索意图。")
-    need_content: bool = Field(default=False,
-        description="是否同时请求网页正文。默认只返回摘要；正文可能缺失，可按链接调用 web_fetch。")
-
-    @field_validator("query", "ori_question")
-    @classmethod
-    def nonblank(cls, value: str | None) -> str | None:
-        if value is not None and not value.strip():
-            raise ValueError("不能全为空白")
-        return value
-
-
-class FetchInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    url: str = Field(min_length=1, max_length=8192,
-        description="要读取的 HTTP/HTTPS 网页地址，最多 8192 个字符，不能携带用户名或密码。")
-
-    @field_validator("url")
-    @classmethod
-    def http_url(cls, value: str) -> str:
-        address = urlsplit(value)
-        if (address.scheme not in ("http", "https") or not address.hostname
-                or address.username is not None or address.password is not None):
-            raise ValueError("必须是含主机名且不携带用户名或密码的 HTTP/HTTPS URL")
-        return value
-
-
-class SearchResult(BaseModel):
-    model_config = ConfigDict(strict=True)
-
-    title: str
-    url: str
-    snippet: str
-    summary: str
-    content: str
-    date: str | None
-    site_name: str | None
-    site_icon: str | None
-    rerank_score: float
-    authority: int
-
-
-class SearchResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-
-    results: list[SearchResult]
-
-
-class FetchResponse(BaseModel):
-    model_config = ConfigDict(strict=True)
-
-    title: str
-    content: str
+from konden.search.deepseek import (
+    BASE_URL, DeepSeekAuth, MissingApiKey, SearchInput, FetchInput,
+    SearchResponse, FetchResponse, request_web,
+)
 
 
 INPUTS = {"web_search": SearchInput, "web_fetch": FetchInput}
@@ -135,8 +57,7 @@ async def call_tool(client: httpx.AsyncClient, context, params) -> CallToolResul
         return tool_result({"error": explanation, "hint": "修改参数后重试。"}, error=True)
     operation = "search" if params.name == "web_search" else "fetch"
     try:
-        response = await client.post(f"/v1/tools/{operation}", json=arguments.model_dump(exclude_none=True))
-        response.raise_for_status()
+        result = await request_web(client, operation, arguments)
     except MissingApiKey as error:
         return tool_result({"error": str(error)}, error=True)
     except httpx.HTTPStatusError as error:
@@ -153,10 +74,6 @@ async def call_tool(client: httpx.AsyncClient, context, params) -> CallToolResul
     except httpx.RequestError as error:
         return tool_result({"error": f"DeepSeek 请求失败：{error}",
                             "hint": "检查网络后重试，或选择其他检索服务。"}, error=True)
-    # A successful HTTP response must satisfy the provider's result contract.
-    result = OUTPUTS[params.name].model_validate(response.json()).model_dump()
-    if params.name == "web_fetch":
-        result = {"url": arguments.url, **result}
     return tool_result(result)
 
 

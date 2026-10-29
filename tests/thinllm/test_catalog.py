@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from thinllm import InvalidLLMResponse, LLMAuthenticationError, LLMProviderError, LLMTransientError, list_codex_models
+from thinllm import list_models
 
 
 def model(slug="MixedCase-ID", **overrides):
@@ -89,3 +90,37 @@ def test_transport_errors_are_transient_and_corrupt_credentials_propagate(auth_f
     auth_file.write_text("{", encoding="utf-8")
     with pytest.raises(json.JSONDecodeError):
         asyncio.run(list_codex_models({"auth_file": str(auth_file)}, transport=httpx.MockTransport(fail)))
+
+
+@pytest.mark.parametrize(("provider", "entry", "levels", "default"), [
+    ("deepseek", {"id": "deepseek-flash", "name": "DeepSeek Flash", "context_window": 1048576,
+                  "effort": {"supported_levels": ["low", "high", "max"], "default_level": "high"}},
+     ["low", "high", "max"], "high"),
+    ("stepfun", {"id": "step-5-preview", "reasoning_effort_support_list": ["low", "medium", "high"]},
+     ["low", "medium", "high"], None),
+    ("openai", {"id": "gpt-6.1-sol"}, ["low", "medium", "high", "xhigh", "max"], "medium"),
+    ("qwen", {"id": "unknown-new-model"}, [], None),
+])
+def test_native_model_capabilities_are_not_replaced_by_provider_wide_tiers(provider, entry, levels, default):
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"data": [entry]}))
+    result = asyncio.run(list_models(provider, {"api_key": "private"}, transport=transport))
+    assert result[0]["reasoning_levels"] == levels
+    assert result[0]["default_reasoning_effort"] == default
+    assert result[0]["model"] == provider + "/" + entry["id"]
+    assert "private" not in repr(result)
+
+
+def test_openai_catalog_excludes_non_conversation_and_retired_models():
+    entries = [{"id": "gpt-6.1-terra"}, {"id": "gpt-image-2"}, {"id": "text-embedding-3-small"},
+               {"id": "gpt-4o-mini-transcribe"}, {"id": "gpt-5-search-api"},
+               {"id": "gpt-4o", "shutdown_date": "2020-01-01"}]
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"data": entries}))
+    result = asyncio.run(list_models("openai", {"api_key": "private"}, transport=transport))
+    assert [item["model"] for item in result] == ["openai/gpt-6.1-terra"]
+
+
+def test_invalid_native_levels_are_a_catalog_protocol_error():
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"data": [
+        {"id": "deepseek-flash", "effort": {"supported_levels": [1]}}]}))
+    with pytest.raises(InvalidLLMResponse):
+        asyncio.run(list_models("deepseek", {"api_key": "private"}, transport=transport))
