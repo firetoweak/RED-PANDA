@@ -2,15 +2,18 @@
 .settings-drawer .mantine-Drawer-body:has(.model-settings-content) {padding:0;overflow:hidden;}
 .settings-drawer .mantine-Drawer-body > div:has(.model-settings-content) {height:100%;}
 .settings-drawer .model-settings-content {height:100%;min-height:0;}
-.composer-model-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; padding-bottom: 3px; }
-.model-picker-trigger .mantine-Button-label { gap: 7px; font-weight: 500; min-width: 0; }
+.composer-model-controls { display: flex; align-items: center; min-width: 0; }
+.model-picker-trigger { min-width: 0; max-width: 100%; --button-hover: var(--konden-hover); }
+.model-picker-trigger .mantine-Button-label { gap: 5px; font-weight: 500; min-width: 0; }
 .current-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
-.current-model-provider { color: var(--mantine-color-dimmed); font-size: 10px; font-weight: 400; }
-.effort-picker-trigger .mantine-Button-label { font-size: 12px; font-weight: 400; }
-.model-picker-trigger, .effort-picker-trigger { --button-hover: var(--konden-hover); }
-.selection-pending { flex-basis: 100%; padding: 4px 9px 0; }
+.current-model-effort { flex-shrink: 0; color: var(--mantine-color-dimmed); font-size: 12px; font-weight: 400; }
+.selection-pending { padding: 7px 10px; }
 .pending-dot { height: 4px; width: 4px; border-radius: 50%; background: var(--mantine-color-ember-4); }
-.model-picker-dropdown { width: min(240px, calc(100vw - 28px)); max-height: min(340px, 45dvh); overflow: auto; scrollbar-color: var(--konden-border-strong) transparent; border-color: var(--konden-border-strong); background: var(--konden-panel); border-radius: 9px; }
+.model-picker-dropdown { max-width: calc(100vw - 28px); border-color: var(--konden-border-strong); background: var(--konden-panel); border-radius: 9px; }
+.model-picker-options { max-height: min(340px, 45dvh); overflow: auto; scrollbar-color: var(--konden-border-strong) transparent; }
+.model-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.model-setting-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mantine-color-dimmed); }
+.model-setting-row > span:first-child { flex-shrink: 0; }
 .model-picker-option { padding: 10px; border-radius: 6px; color: var(--mantine-color-text); font-size: 13px; }
 .model-picker-option:hover, .model-picker-option:focus-visible, .model-picker-option[aria-current="true"] { background: var(--konden-hover); }
 .model-picker-option[aria-current="true"] .mantine-Menu-itemSection { color: var(--mantine-color-ember-4); }
@@ -78,9 +81,7 @@
 .search-source-url { margin-top: 5px; overflow-wrap: anywhere; }
 @media (max-width:760px) {
   .current-model-name { max-width: 145px; font-size: 12px; }
-  .current-model-provider { font-size: 9px; }
-  .composer-model-controls { max-width: calc(100vw - 90px); gap: 5px 0; }
-  .effort-picker-trigger .mantine-Button-label { font-size: 11px; }
+  .current-model-effort { font-size: 11px; }
   .model-settings-nav { padding: 0 18px; }
   .catalog-toolbar { padding: 21px 18px 16px; }
   .catalog-scroll { padding: 0 15px 12px; }

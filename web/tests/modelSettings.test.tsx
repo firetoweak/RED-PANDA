@@ -80,17 +80,23 @@ it("切换供应商后，迟到的旧目录不会覆盖新目录", async () => {
   expect(screen.getByRole("checkbox", { name: "在输入框显示 DeepSeek Beta" })).toBeVisible();
 });
 
-it("模型菜单只展示勾选模型的名称，推理菜单保留供应商自己的档位", async () => {
+it("折叠菜单按需展示生效提示与勾选模型，推理子菜单保留供应商自己的档位", async () => {
   const select = vi.fn();
   const view = render(<MantineProvider env="test"><ModelPicker models={MODELS} preferences={PREFERENCES}
-    selection={{ model: "deepseek/beta", effort: null }} onSelect={select} pending={false} /></MantineProvider>);
-  fireEvent.click(screen.getByRole("button", { name: "推理强度：高" }));
+    selection={{ model: "deepseek/beta", effort: null }} onSelect={select} pending /></MantineProvider>);
+  expect(screen.getAllByRole("button")).toHaveLength(1);
+  expect(screen.queryByText("下次回复生效")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "模型设置：DeepSeek Beta，推理强度：高" }));
+  expect(await screen.findByText("下次回复生效")).toBeVisible();
+  expect(screen.queryByText(/Context|Fast|上下文/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "推理强度：高" }));
   expect(await screen.findByRole("menuitem", { name: "最高", exact: true })).toBeVisible();
   expect(screen.queryByRole("menuitem", { name: "中", exact: true })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("menuitem", { name: "最高", exact: true }));
   expect(select).toHaveBeenCalledWith({ model: "deepseek/beta", effort: "max" });
-  fireEvent.click(screen.getByRole("button", { name: "切换模型：DeepSeek Beta" }));
-  const menu = await screen.findByRole("menu");
+  fireEvent.click(screen.getByRole("button", { name: "模型设置：DeepSeek Beta，推理强度：高" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "切换模型：DeepSeek Beta" }));
+  const menu = (await screen.findByRole("menuitem", { name: "OpenAI Alpha" })).closest('[role="menu"]') as HTMLElement;
   expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Alpha", "Beta"]);
   expect(menu.textContent).toBe("AlphaBeta");
   expect(within(menu).queryByRole("menuitem", { name: "OpenAI Plain" })).not.toBeInTheDocument();
@@ -99,7 +105,8 @@ it("模型菜单只展示勾选模型的名称，推理菜单保留供应商自�
   expect(select).toHaveBeenLastCalledWith({ model: "openai/alpha", effort: null });
   view.rerender(<MantineProvider env="test"><ModelPicker models={MODELS} preferences={PREFERENCES}
     selection={{ model: "openai/plain", effort: null }} onSelect={select} pending={false} /></MantineProvider>);
-  expect(screen.queryByRole("button", { name: /推理强度/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "模型设置：OpenAI Plain" }));
+  expect(screen.queryByRole("menuitem", { name: /推理强度/ })).not.toBeInTheDocument();
 });
 
 it("已选模型按当前强度独立测试，切换分页保留进度，失败可重试", async () => {

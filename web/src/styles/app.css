@@ -920,11 +920,9 @@ a.group-member:focus-visible { outline: 2px solid var(--konden-accent-ring); }
   user-select: text;
 }
 .private-composer { position: relative; }
-.private-composer .composer-line { padding: 8px 10px; }
 .private-composer .composer-input { min-width: 0; }
-.private-composer .composer-input textarea { min-height: 30px; padding: 4px 0; }
-.private-composer .composer-trailing { flex: 0 0 auto; align-items: center; }
-.private-composer .composer-model { max-width: 180px; }
+.private-composer .composer-input textarea { min-height: 44px; padding: 12px 14px 6px; }
+.private-composer .composer-trailing { align-items: center; }
 .private-composer .composer-workspace { flex: 0 1 140px; max-width: 140px; align-self: center; }
 .sidebar-auto-authorize { margin-left: auto; flex-shrink: 0; }
 .sidebar-auto-authorize .mantine-Switch-label { padding-left: 6px; font-size: 11px; color: var(--mantine-color-dimmed); white-space: nowrap; }
@@ -952,8 +950,9 @@ a.group-member:focus-visible { outline: 2px solid var(--konden-accent-ring); }
   .group-message.is-human .group-message-meta { margin-right: 35px; }
   .composer-dock, .group-composer-dock { padding-inline: 14px; padding-bottom: 10px; }
   .agent-card-action { display: none; }
-  .private-composer .composer-line { gap: 6px; padding-inline: 8px; }
-  .private-composer .composer-model { max-width: 90px; }
+  .private-composer .composer-meta { gap: 6px; padding-inline: 8px; }
+  .private-composer .composer-input textarea { font-size: 16px; }
+  .private-composer .composer-model { max-width: 180px; }
   .private-composer .composer-trailing { gap: 4px; }
   .private-composer .composer-workspace { display: none; }
 }
