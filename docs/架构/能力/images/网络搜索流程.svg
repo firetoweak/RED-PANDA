@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="892" viewBox="0 0 1280 892" role="img" aria-labelledby="title desc">
+  <title id="title">搜索独立配置，Bot 按任务决定怎样使用</title>
+  <desc id="desc">聊天模型与搜索设置独立。内置搜索复用供应商连接，启用且配置密钥后经只读 MCP 按需提供选定服务。DeepSeek 提供网页搜索和原文读取，OpenAI 由选定搜索模型自行决定是否联网并返回回答与来源。证据不足时由 Bot 选择补查，系统不隐式换服务。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="892" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <path d="M205 252 V362" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M668 252 V362" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1104 252 V304 H800 V362" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1045" y="333" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">共享连接，不复制密钥</text>
+  <path d="M370 413 H448" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M668 464 V506 H320 V568" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M668 506 H960 V568" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="640" y="539" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">只提供选中的一项；停用不影响浏览器与其他 MCP</text>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">搜索独立配置，Bot 按任务决定怎样使用</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">内置服务二选一；搜索、原文读取与浏览器可以组合，不要求固定流水线。</text>
+  <rect x="40" y="140" width="330" height="112" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="205.0" y="191.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,146,306,100">聊天模型</text>
+  <text x="205.0" y="221.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,146,306,100">沿用会话自己的选择</text>
+  <rect x="448" y="140" width="440" height="112" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="668.0" y="191.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="460,146,416,100">内置搜索设置</text>
+  <text x="668.0" y="221.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="460,146,416,100">启停、供应商、OpenAI 搜索模型</text>
+  <rect x="968" y="140" width="272" height="112" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="1104.0" y="191.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="980,146,248,100">供应商连接</text>
+  <text x="1104.0" y="221.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="980,146,248,100">复用当前 API Key</text>
+  <rect x="40" y="362" width="330" height="102" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="205.0" y="408.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,368,306,90">Bot 根据任务调用</text>
+  <text x="205.0" y="438.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,368,306,90">先看目录，按需加载</text>
+  <rect x="448" y="362" width="440" height="102" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="668.0" y="408.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="460,368,416,90">可见的搜索能力</text>
+  <text x="668.0" y="438.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="460,368,416,90">已启用且连接已配置的只读 MCP</text>
+  <rect x="40" y="568" width="560" height="128" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="320.0" y="613.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,574,536,116">DeepSeek：找网页与读原文</text>
+  <text x="320.0" y="643.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,574,536,116">web_search → 链接、摘要与可用正文</text>
+  <text x="320.0" y="671.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,574,536,116">web_fetch → 指定网页原文</text>
+  <rect x="680" y="568" width="560" height="128" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="960.0" y="613.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="692,574,536,116">OpenAI：搜索模型回答</text>
+  <text x="960.0" y="643.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="692,574,536,116">web_search → 回答、searched 与来源</text>
+  <text x="960.0" y="671.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="692,574,536,116">模型自行决定本次是否搜索</text>
+  <rect x="40" y="744" width="1200" height="120" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="640.0" y="785.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,750,1176,108">证据不够时，由 Bot 继续补查</text>
+  <text x="640.0" y="815.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,750,1176,108">按需读原文、换可用来源或用浏览器；系统不隐藏地切换供应商。</text>
+  <text x="640.0" y="843.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,750,1176,108">模型直接回答不能当成已经核实的最新网页信息。</text>
+</svg>
