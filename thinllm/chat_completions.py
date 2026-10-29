@@ -99,7 +99,7 @@ class ChatCompletionsClient:
         return await self._request(payload, model, on_content_delta, on_reasoning_delta)
 
     def _payload(self, messages, model, tools, reasoning_effort) -> dict[str, object]:
-        messages = [{key: value for key, value in message.items() if key != "codex_reasoning"}
+        messages = [{key: value for key, value in message.items() if key != "responses_output"}
                     for message in messages]
         if self._endpoint.pads_reasoning_content:
             messages = [

@@ -29,11 +29,7 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertGreaterEqual(result.usage.total_tokens, 1)
 
-    @unittest.skipUnless(
-        os.environ.get("KONDEN_RUN_DEEPSEEK_LIVE_TESTS") == "1",
-        "设置 KONDEN_RUN_DEEPSEEK_LIVE_TESTS=1 后运行 DeepSeek 协议回传测试",
-    )
-    async def test_thinking_tool_roundtrip(self):
+    async def test_tool_roundtrip_preserves_native_state(self):
         config = load_app_config()
         tools = [{
             "type": "function",
@@ -42,15 +38,16 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 "description": "Return the requested value.",
                 "parameters": {
                     "type": "object",
-                    "properties": {"key": {"type": "string"}},
+                    "properties": {"key": {"type": "string"}, "note": {"type": "string"}},
                     "required": ["key"],
                     "additionalProperties": False,
                 },
             },
         }]
+        prompt = "调用 lookup 查询 key=answer，不要提供 note；收到结果后用一句话报告其中的数字。"
         async with create_client(load_endpoint(config.default)) as client:
             first = await client.chat(
-                [{"role": "user", "content": "调用 lookup 查询 key=answer。"}],
+                [{"role": "user", "content": prompt}],
                 config.default_model,
                 tools,
             )
@@ -61,27 +58,27 @@ class LlmLiveClientTest(unittest.IsolatedAsyncioTestCase):
                 "content": first.response.content or None,
                 "tool_calls": [
                     {
-                        "id": call.id,
+                        "id": f"command-{index}",
                         "type": "function",
                         "function": {
                             "name": call.name,
                             "arguments": call.arguments,
                         },
                     }
-                    for call in first.response.calls
+                    for index, call in enumerate(first.response.calls)
                 ],
             }
             second = await client.chat(
                 [
-                    {"role": "user", "content": "调用 lookup 查询 key=answer。"},
+                    {"role": "user", "content": prompt},
                     assistant,
-                    {
+                    *[{
                         "role": "tool",
-                        "tool_call_id": first.response.calls[0].id,
+                        "tool_call_id": f"command-{index}",
                         "content": '{"answer":42}',
-                    },
+                    } for index, _ in enumerate(first.response.calls)],
                 ],
                 config.default_model,
                 tools,
             )
-        self.assertTrue(second.response.content.strip() or second.response.calls)
+        self.assertIn("42", second.response.content)

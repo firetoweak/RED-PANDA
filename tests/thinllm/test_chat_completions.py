@@ -9,6 +9,7 @@ import httpx
 
 from thinllm import (
     ChatCompletionsClient,
+    create_client,
     Endpoint,
     InvalidLLMResponse,
     LLMAuthenticationError,
@@ -207,7 +208,6 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
                 ("qwen3.8-omni-flash", {"preserve_thinking": True}),
                 ("qwen-unknown", {}),
             ],
-            "openai": [("gpt-4.1", {})],
             "stepfun": [("step-5-preview", {})],
             "deepseek": [("deepseek-v4-pro", {})],
             "vllm": [("glm-5.2", {})],
@@ -218,7 +218,7 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(provider=provider):
                 payloads = []
                 connection = {"api_key": "test", "base_url": "http://localhost/v1"}
-                async with ChatCompletionsClient(
+                async with create_client(
                     resolve_endpoint(f"{provider}/{models[0][0]}", connection),
                     transport=_recording(payloads),
                 ) as client:
@@ -246,6 +246,36 @@ class ChatCompletionsStreamingTest(unittest.IsolatedAsyncioTestCase):
                 for key, value in options.items():
                     self.assertEqual(payloads[0][key], value)
                 self.assertEqual(options, original)
+
+    async def test_switching_from_responses_keeps_text_and_tools_without_leaking_native_output(self):
+        history = [{"role": "assistant", "content": "checking", "responses_output": [
+            {"type": "reasoning", "encrypted_content": "opaque"},
+        ], "tool_calls": [{"id": "call-1", "type": "function", "function": {
+            "name": "lookup", "arguments": "{}",
+        }}]}, {"role": "tool", "tool_call_id": "call-1", "content": "42"}]
+        expected = [{key: value for key, value in message.items() if key != "responses_output"}
+                    for message in history]
+        for provider in ("deepseek", "qwen", "stepfun", "bigmodel", "vllm", "ollama"):
+            with self.subTest(provider=provider):
+                requests = []
+
+                def handle(request):
+                    requests.append(request)
+                    return httpx.Response(200, content=_DONE_OK)
+
+                model = provider + "/tool-model"
+                endpoint = resolve_endpoint(model, {"api_key": "test", "base_url": "http://localhost/v1"})
+                async with create_client(endpoint, transport=httpx.MockTransport(handle)) as client:
+                    await client.chat(history, model, [{"type": "function", "function": {"name": "lookup"}}])
+                self.assertEqual(str(requests[0].url), endpoint.base_url + "/chat/completions")
+                payload = json.loads(requests[0].content)
+                messages = payload["messages"]
+                if provider == "deepseek":
+                    self.assertEqual(messages[0].pop("reasoning_content"), "")
+                self.assertEqual(messages, expected)
+                self.assertEqual(payload["tool_choice"], "auto")
+                self.assertNotIn("input", payload)
+        self.assertIn("responses_output", history[0])
 
     async def test_all_native_reasoning_is_replayed_across_tools_and_user_turns(self):
         payloads = []
