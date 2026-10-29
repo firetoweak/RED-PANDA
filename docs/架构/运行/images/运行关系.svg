@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="840" viewBox="0 0 1280 840" role="img" aria-labelledby="title desc">
+  <title id="title">konden 运行关系</title>
+  <desc id="desc">Host 管理会话路由、共享模型客户端、命令、定时器和查询缓存。每个活跃 Session 由独立 Worker 推进，通过 Host 调用模型和命令，并读写自己的 SQLite Journal。Host 的查询缓存也读取该 Journal。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#708399"/>
+    </marker>
+    <style>
+      text { font-family: "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif; fill: #20354a; }
+      .heading { font-size: 26px; font-weight: 700; }
+      .label { font-size: 22px; font-weight: 600; text-anchor: middle; }
+      .detail { font-size: 17px; fill: #556779; text-anchor: middle; }
+      .edge-label { font-size: 16px; fill: #60758b; text-anchor: middle; }
+      .edge { fill: none; stroke: #708399; stroke-width: 2; marker-end: url(#arrow); }
+      .both { marker-start: url(#arrow); }
+      .host-node { fill: #fff; stroke: #b4c7dd; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="840" fill="#fff"/>
+
+  <!-- Process boundaries. Persistent storage and the model service sit outside them. -->
+  <rect x="248" y="160" width="480" height="622" rx="20" fill="#f1f6fc" stroke="#9db8d8" stroke-width="2"/>
+  <text x="280" y="203" class="heading">Host 进程</text>
+  <rect x="632" y="180" width="64" height="30" rx="15" fill="#dfeaf8"/>
+  <text x="664" y="201" font-size="16" text-anchor="middle" fill="#426286">常驻</text>
+
+  <rect x="864" y="160" width="392" height="456" rx="20" fill="#eff8f3" stroke="#8cbca2" stroke-width="2"/>
+  <text x="896" y="203" class="heading">Worker 进程</text>
+  <rect x="1160" y="180" width="64" height="30" rx="15" fill="#dceddf"/>
+  <text x="1192" y="201" font-size="16" text-anchor="middle" fill="#3c6b51">按需</text>
+
+  <!-- Fixed edge lanes keep request paths readable in every Markdown viewer. -->
+  <path class="edge" d="M488 120 V240"/>
+  <path class="edge both" d="M696 288 H896"/>
+  <path class="edge both" d="M696 426 H896"/>
+  <path class="edge both" d="M696 564 H896"/>
+  <path class="edge both" d="M208 426 H280"/>
+  <path class="edge" d="M696 702 H896"/>
+  <path class="edge both" d="M1060 580 V654"/>
+
+  <text x="796" y="273" class="edge-label">输入 / 控制</text>
+  <text x="796" y="411" class="edge-label">模型调用</text>
+  <text x="796" y="549" class="edge-label">命令 / 后续触发</text>
+  <text x="796" y="687" class="edge-label">历史读取</text>
+  <text x="1119" y="640" class="edge-label">事实 / 结果</text>
+
+  <!-- Inputs. -->
+  <rect x="280" y="32" width="416" height="88" rx="14" fill="#f8fafc" stroke="#c9d3de" stroke-width="1.5"/>
+  <text x="488" y="66" class="label" font-size="20">输入与触发</text>
+  <text x="488" y="96" class="detail">人的消息 · 同事消息 · 定时触发</text>
+
+  <!-- Host resources. -->
+  <rect x="280" y="240" width="416" height="96" rx="14" class="host-node"/>
+  <text x="488" y="279" class="label">会话路由与 Worker 生命周期</text>
+  <text x="488" y="309" class="detail">按 Session 定位、启动或复用进程</text>
+
+  <rect x="280" y="378" width="416" height="96" rx="14" class="host-node"/>
+  <text x="488" y="417" class="label">共享的模型客户端</text>
+  <text x="488" y="447" class="detail">按 Provider 复用连接</text>
+
+  <rect x="280" y="516" width="416" height="96" rx="14" class="host-node"/>
+  <text x="488" y="555" class="label">命令管理与定时器</text>
+  <text x="488" y="585" class="detail">持有后台命令，投递后续结果与触发</text>
+
+  <rect x="280" y="654" width="416" height="96" rx="14" class="host-node"/>
+  <text x="488" y="693" class="label">名册、历史读取与投影缓存</text>
+  <text x="488" y="723" class="detail">Worker 退出后仍可能保留</text>
+
+  <!-- One active Session. -->
+  <rect x="896" y="240" width="328" height="340" rx="16" fill="#fff" stroke="#8fbaa1" stroke-width="1.5"/>
+  <text x="1060" y="285" class="label">单个 Session 的执行</text>
+  <line x1="928" y1="310" x2="1192" y2="310" stroke="#dcebe2"/>
+  <text x="1060" y="356" font-size="21" text-anchor="middle">调度器与 Runtime</text>
+  <text x="1060" y="403" font-size="21" text-anchor="middle">上下文准备</text>
+  <text x="1060" y="450" font-size="21" text-anchor="middle">工具装配与调用</text>
+  <text x="1060" y="531" class="detail">空闲后按查看状态</text>
+  <text x="1060" y="556" class="detail">决定驻留或退出</text>
+
+  <!-- Model service: not a model loaded into each Worker. -->
+  <rect x="24" y="378" width="184" height="96" rx="14" fill="#f8fafc" stroke="#bac7d4" stroke-width="1.5"/>
+  <text x="116" y="417" class="label">模型服务</text>
+  <text x="116" y="447" class="detail">API / 本地服务</text>
+
+  <!-- Session Journal, drawn as durable storage. -->
+  <path d="M896 674 V758 C896 782 1224 782 1224 758 V674 Z" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <ellipse cx="1060" cy="674" rx="164" ry="20" fill="#fff2d6" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="1060" y="722" class="label" font-size="21">Session SQLite Journal</text>
+  <text x="1060" y="750" class="detail">持久事实与运行索引</text>
+
+  <text x="248" y="818" font-size="16" fill="#657487">同一数据根中的资源关系；箭头表示请求、结果或读取通路。</text>
+</svg>
