@@ -8,12 +8,12 @@
 - `duplex`：外部用 `send_message` 向同事发送正文，Bot 用 `send_external_message` 按外部 identity 发言；可引用此前消息，也可独立继续话题。Bot 用 `list_external_sessions` 查询已登记对象。
 - `inbox`：`read_messages` 按外部会话和游标读取所有同事显式发来的消息，允许没有原请求；有界等待、分页与重启后续读不改变消息归属。
 - `web`：侧栏“外部会话”支持搜索与过滤；进入后按 Bot 查看往返。Bot 时间线的外部名称跳到对应外部对话，外部页面可进入相关 Bot 的会话。
-- `access`：「Codex 接入」生成可直接合并到 Codex 配置文件的 TOML，复制值与显示值一致，关闭后不再显示凭据；撤销使该配置下全部会话停止收发。已有会话、往返与引用继续可读，页面不声称客户端持续在线。
+- `access`：「Codex 接入」只保留一行添加提示与可分别复制的 URL、Authorization 请求头值，完整步骤在用户指南；TOML 放在「高级：手动配置 TOML」。「完成」或关闭设置后不再显示凭据；撤销使该配置下全部会话停止收发。已有会话、往返与引用继续可读，页面不声称客户端持续在线。
 - `codex-continuation`：人在外部会话的「Codex 自动接续」绑定聊天 ID 与本机程序；保存后新消息发送固定提醒，失败或未确认时可重试，停用与撤销停止后续提醒。入队不代表已经处理。
 
 ## How to get to it (user POV)
 
-从“设置 → Codex 接入 → 生成连接配置”进入，将 TOML 合并到隔离 `CODEX_HOME` 下的 `config.toml`，用本机 Codex CLI 检查配置确实可读，再通过 MCP 完成身份登记。关闭设置前保存凭据，不将凭据放入截图或证据。Codex 聊天领取身份后，从侧栏“外部会话”点名称进入；需要 Bot 回复时，先创建 Bot 并配置模型，无需代码项目。
+从“设置 → Codex 接入 → 生成连接配置”进入，核对 URL 与 Authorization 的独立复制，确认 TOML 默认收起。「完成」清空本次凭据并返回连接管理。按用户指南在 Codex 应用中添加服务器；无法驱动原生设置时，明确记录该步骤未验证，不以 CLI 或协议客户端代替。高级路径可将 TOML 合并到隔离 `CODEX_HOME` 下的 `config.toml`，用本机 Codex CLI 检查配置确实可读，再通过 MCP 完成身份登记。关闭设置前保存凭据，不将凭据放入截图或证据。Codex 聊天领取身份后，从侧栏“外部会话”点名称进入；需要 Bot 回复时，先创建 Bot 并配置模型，无需代码项目。
 
 ## Driving it with the browser
 
@@ -36,3 +36,5 @@
 2026-10-25 增量通过：Windows 隔离 Web、MCP Streamable HTTP 协议客户端与真实 DeepSeek。首次登记可见、两个身份分流、无版本往返、Bot 独立后续发言、查询后主动联系、页面跳转、桌面明暗与 390px、真实 Host 重启续读、撤销中止等待和历史保留通过。旧验证记录的离线转换在隔离样本上保留身份、事件顺序、引用与原始备份。Python、前端和 smoke 统一入口通过。未验证原生 Codex/Claude 客户端的界面切换、Linux、外部群聊或空闲自动唤醒，也未重跑独立验收的修复复验业务场景。证据在本地 `.tools/external-conversation-proof/evidence/`。
 
 2026-10-28 Codex 接入增量通过：Windows 隔离 Web 实际生成 TOML，本机 Codex CLI 从独立 `CODEX_HOME` 正确读取 URL 与认证配置；普通协议客户端按该配置完成 MCP 握手、两个新身份登记、重连续用和空收件箱读取，不绑定 Codex 聊天，收到的通用提示也不假定客户端是 Codex。页面生成、复制、关闭后隐藏凭据、桌面明暗主题、390px、会话导航、取消及确认撤销通过，撤销后 MCP 返回 401。统一 Python 与前端检查通过。隔离实例未配置默认模型，本轮未运行真实 Bot 往返，也未重跑原生 Codex 自动接续联动；其他原生客户端与平台未验证。证据在本地 `.tools/codex-access-proof/evidence/`。
+
+2026-10-29 接入指引增量通过：Windows 隔离 Web 中，应用内添加步骤、URL 与完整 Authorization 值的独立复制、TOML 默认收起与展开复制、关闭和保存后隐藏凭据、取消及确认撤销通过；桌面明暗主题和 390px 无横向溢出。统一前端检查通过。原生 Codex 应用设置页未驱动，本轮未重跑 MCP 消息、真实 Bot 往返与自动接续。证据在本地 `.tools/mcp-app-setup/evidence/`。
