@@ -2,6 +2,7 @@ import type { VisibleItem, VisiblePrivateMessage, VisibleStep, VisibleUser } fro
 
 export type TimelineCommunication = {
   key: string;
+  message: VisiblePrivateMessage;
   messages: VisiblePrivateMessage[];
 };
 
@@ -15,18 +16,11 @@ export type TimelineTurn = {
 };
 
 export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
-  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[]; communications: TimelineCommunication[] }> = [];
-  const privateThreads = new Map<string, TimelineCommunication>();
+  const turns: Array<{ key: string; user: VisibleUser | null; steps: VisibleStep[]; communications: VisiblePrivateMessage[] }> = [];
+  const privateThreads = new Map<string, VisiblePrivateMessage[]>();
   let current: (typeof turns)[number] | null = null;
 
   for (const item of items) {
-    if (item.kind === "private_message" && item.threadId !== null) {
-      const thread = privateThreads.get(item.threadId);
-      if (thread !== undefined) {
-        thread.messages.push(item);
-        continue;
-      }
-    }
     if (item.kind === "user") {
       current = { key: item.key, user: item, steps: [], communications: [] };
       turns.push(current);
@@ -38,19 +32,19 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
       turns.push(current);
     }
     if (item.kind === "private_message") {
-      const communication = {
-        key: item.threadId === null ? item.key : `private-thread:${item.threadId}`,
-        messages: [item],
-      };
-      current.communications.push(communication);
-      if (item.threadId !== null) privateThreads.set(item.threadId, communication);
+      current.communications.push(item);
+      if (item.threadId !== null) {
+        const thread = privateThreads.get(item.threadId) ?? [];
+        thread.push(item);
+        privateThreads.set(item.threadId, thread);
+      }
       continue;
     }
     current.steps.push(item);
   }
 
-  for (const thread of privateThreads.values()) {
-    thread.messages = orderPrivateMessages(thread.messages);
+  for (const [threadId, messages] of privateThreads) {
+    privateThreads.set(threadId, orderPrivateMessages(messages));
   }
   return turns.map(({ key, user, steps, communications }) => {
     const candidate = steps.at(-1);
@@ -59,7 +53,11 @@ export function timelineTurns(items: VisibleItem[]): TimelineTurn[] {
     return {
       key,
       user,
-      communications,
+      communications: communications.map((message) => ({
+        key: message.key,
+        message,
+        messages: message.threadId === null ? [message] : privateThreads.get(message.threadId)!,
+      })),
       process: active === null && final === null ? steps : steps.slice(0, -1),
       active,
       final,

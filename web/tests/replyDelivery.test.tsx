@@ -95,7 +95,10 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(screen.queryByRole("link", { name: "打开 Lin 的对话" })).not.toBeInTheDocument();
   expect(screen.queryByText("请检查文件")).not.toBeInTheDocument();
   expect(screen.queryByText("文件没问题", { exact: true })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "与 Lin 的私聊" }));
+  expect(screen.getByRole("img", { name: "消息来自" })).toBeVisible();
+  expect(screen.getByRole("img", { name: "已发消息给" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "已发消息给 Lin，查看私聊" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "消息来自 Lin，查看私聊" }));
   expect(screen.getByRole("dialog", { name: "与 Lin 的私聊" })).toBeVisible();
   expect(screen.getByText("2 条消息")).toBeVisible();
   expect(screen.getByRole("link", { name: "打开 Lin 的对话" })).toHaveAttribute("href", "/sessions/agent-lin");

@@ -63,7 +63,7 @@ export function SubagentPanel({ parentSessionId, commandId }: {
               {items.map((item, index) => item.kind === "user"
                 ? <MarkdownMessage key={item.key} content={item.text} streaming={false} />
                 : item.kind === "step" ? <StepDisclosure key={item.key} step={item} index={index} expandRunning />
-                : <PrivateMessageNotice key={item.key} communication={{ key: item.key, messages: [item] }}
+                : <PrivateMessageNotice key={item.key} communication={{ key: item.key, message: item, messages: [item] }}
                     agentName={conversation?.agent_name ?? "子 Agent"} />)}
             </Stack>
           </Paper>}

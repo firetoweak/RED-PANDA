@@ -1,5 +1,5 @@
 import { Modal, UnstyledButton } from "@mantine/core";
-import { IconArrowDownLeft, IconArrowUpRight, IconExternalLink, IconMessages } from "@tabler/icons-react";
+import { IconArrowDownLeft, IconArrowUpRight, IconExternalLink } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -16,8 +16,7 @@ export function PrivateMessageNotice({ communication, agentName }: {
   const { data: agents = [] } = useGetAgentsQuery();
   const identityColor = useIdentityColor();
   const { sessionId } = useParams();
-  const { messages } = communication;
-  const message = messages[messages.length - 1];
+  const { message, messages } = communication;
   const peer = message.external === undefined ? agents.find((agent) => agent.name === message.peer) : undefined;
   const identity = <><BotAvatar name={message.peer} sessionId={peer?.session_id} /><span>{message.peer}</span></>;
   const direction = message.direction === "sent" ? "已发消息给" : "消息来自";
@@ -26,12 +25,13 @@ export function PrivateMessageNotice({ communication, agentName }: {
   const title = `${direction} ${message.peer} · ${time.full}`;
   const directionIcon = <span className="private-message-direction" role="img" aria-label={direction}><DirectionIcon aria-hidden="true" size={17} /></span>;
   if (message.external === undefined) return <>
-    <UnstyledButton className="private-message-trigger" aria-label={`与 ${message.peer} 的私聊`}
-      aria-haspopup="dialog" onClick={() => setOpened(true)}>
-      <IconMessages aria-hidden="true" size={15} />
-      <span>与 {message.peer} 的私聊</span>
-      <IconExternalLink aria-hidden="true" size={13} />
-    </UnstyledButton>
+    <div className="private-message-notice" title={title}>
+      {directionIcon}
+      <UnstyledButton className="private-message-peer private-message-trigger" data-identity={identityColor(message.peer)}
+        aria-label={`${direction} ${message.peer}，查看私聊`} aria-haspopup="dialog" onClick={() => setOpened(true)}>
+        {identity}
+      </UnstyledButton>
+    </div>
     <Modal opened={opened} onClose={() => setOpened(false)} size={680} padding={0}
       className="private-message-modal" closeButtonProps={{ "aria-label": "关闭私聊" }}
       title={<span className="private-message-modal-title">
