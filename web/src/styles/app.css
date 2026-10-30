@@ -607,7 +607,7 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
 .external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
 .external-roster { margin-top: 16px; }
-.external-roster .session-row { display: flex; }
+.external-roster .session-row { display: flex; align-items: center; gap: 4px; }
 .external-roster > .roster-section-header { padding-inline: 10px; }
 .external-session-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 29px; border-bottom: 1px solid var(--konden-border); }
 .external-codex { flex-shrink: 0; padding: 10px 29px; border-bottom: 1px solid var(--konden-border); }

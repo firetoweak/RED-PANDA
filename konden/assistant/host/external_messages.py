@@ -74,6 +74,15 @@ class ExternalMessages:
             self._changed.notify_all()
             await self._notify()
 
+    async def delete_session(self, identity):
+        async with self._changed:
+            if not any(session.identity == identity for session in self.sessions.read().sessions):
+                raise ExternalSessionNotFound(identity)
+            self.codex.configure(identity, None)
+            self.sessions.remove(identity)
+            self._changed.notify_all()
+            await self._notify()
+
     def _active(self, connection_id):
         return any(item.connection_id == connection_id for item in self.connections.read().connections)
 
@@ -320,7 +329,8 @@ class ExternalMessages:
     @staticmethod
     def not_found():
         return {"ok": False, "code": "SESSION_NOT_FOUND",
-                "error": "当前连接中没有这个外部会话。原生聊天请先 get_context 连接；Bot 请用 list_external_sessions 查询联系标识。"}
+                "error": ("当前外部会话尚未接入或已被用户删除，不能收发。请告知用户；"
+                          "用户要求重新接入时，原生聊天可调用 get_context。Bot 可用 list_external_sessions 查询其他已接入会话。")}
 
     @staticmethod
     def invalid_reply():

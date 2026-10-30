@@ -40,10 +40,12 @@ const queries = vi.hoisted(() => ({
   setAutoAuthorize: vi.fn(),
   createGroup: vi.fn(() => ({ unwrap: () => Promise.resolve({ group_id: "group-new" }) })),
   deleteAgent: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
+  deleteExternalSession: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
   dissolveGroup: vi.fn(() => ({ unwrap: () => Promise.resolve() })),
 }));
 vi.mock("../src/api/kondenApi", () => ({
   useDeleteAgentMutation: () => [queries.deleteAgent, { isLoading: false }],
+  useDeleteExternalSessionMutation: () => [queries.deleteExternalSession, { isLoading: false }],
   useDissolveGroupMutation: () => [queries.dissolveGroup, { isLoading: false }],
   useGetAutoAuthorizeQuery: () => ({ data: { enabled: false } }),
   useSetAutoAuthorizeMutation: () => [queries.setAutoAuthorize, { isLoading: false }],
@@ -146,6 +148,31 @@ it("侧栏区分收信方式并收起已撤销会话，仍可展开历史", () =
   fireEvent.click(external.getByRole("button", { name: "已撤销会话（1）" }));
   expect(external.getByRole("button", { name: "过去的讨论" })).toBeVisible();
   expect(external.getByText("接入已撤销")).toBeVisible();
+});
+
+it("外部会话删除需确认，失败保留弹窗，成功离开当前会话", async () => {
+  browserStubs();
+  queries.agents = []; queries.groups = [];
+  const identity = "1".repeat(32);
+  queries.externalSessions = [{ identity, name: "浏览器工具讨论", active: true, codex_status: "ready",
+    created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] }];
+  queries.deleteExternalSession.mockClear();
+  renderSidebar(`/external/${identity}`);
+  fireEvent.click(screen.getByRole("button", { name: "浏览器工具讨论 操作" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "删除外部会话" }));
+  expect(queries.deleteExternalSession).not.toHaveBeenCalled();
+  expect(screen.getByText(/Bot 对话中的已有往来保留/)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "取消", exact: true }));
+  expect(queries.deleteExternalSession).not.toHaveBeenCalled();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "浏览器工具讨论", exact: true }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "删除外部会话" }));
+  queries.deleteExternalSession.mockReturnValueOnce({ unwrap: () => Promise.reject("删除失败，请重试。") });
+  fireEvent.click(screen.getByRole("button", { name: "删除外部会话", exact: true }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("删除失败，请重试。");
+  expect(screen.getByTestId("current-path")).toHaveTextContent(`/external/${identity}`);
+  fireEvent.click(screen.getByRole("button", { name: "删除外部会话", exact: true }));
+  await waitFor(() => expect(screen.getByTestId("current-path")).toHaveTextContent(/^\/$/));
+  expect(queries.deleteExternalSession).toHaveBeenLastCalledWith({ connectionId: "connection", identity });
 });
 
 it("删除 Bot 要确认，失败保留弹窗，成功后离开被删除的会话", async () => {

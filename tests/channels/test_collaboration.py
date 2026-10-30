@@ -378,6 +378,50 @@ def test_waiting_reader_receives_messages_and_revocation_interrupts_wait(collabo
     assert not view["session"]["active"] and len(view["messages"]) == 1
 
 
+def test_human_can_remove_one_chat_without_revoking_shared_access_or_erasing_bot_history(collaboration):
+    c = collaboration
+    original = c.send()["message_id"]
+    c.reply(reply_to=original)
+    history = c.read()
+    before = c.client.portal.call(c.service.messages, "coordinator")
+    other = c.call("get_context", chat="2" * 32)["structuredContent"]["identity"]
+    path = f"/api/external-sessions/{c.identity}"
+    assert c.client.put(path + "/codex", json={"connection_id": c.human_connection,
+        "executable": sys.executable}).status_code == 200
+    assert c.client.request("DELETE", path, json={"connection_id": "inactive"}).status_code == 409
+    assert c.call("delete_external_session", {"identity": c.identity})["isError"]
+    assert len(c.client.get("/api/external-sessions").json()) == 2
+
+    changes = c.client.portal.call(c.hub.subscribe)
+    waiting = c.client.portal.start_task_soon(c.service.read, c.connection, c.identity, history["next_cursor"], 50, 50)
+    assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 204
+    assert changes.get_nowait().name == "external_sessions_changed"
+    assert waiting.result(timeout=3)["code"] == "SESSION_NOT_FOUND"
+    assert c.read()["code"] == c.send()["code"] == c.reply(command="removed")["code"] == "SESSION_NOT_FOUND"
+    assert c.client.get(path).status_code == 404
+    assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 404
+    assert c.identity not in c.service.codex.read().bindings
+    assert [item["identity"] for item in c.client.get("/api/external-sessions").json()] == [other]
+    restarted = ExternalMessages(c.host)
+    assert c.client.portal.call(restarted.list_sessions)[0]["identity"] == other
+    assert c.client.portal.call(c.service.messages, "coordinator") == before
+
+    restored = c.call("get_context")["structuredContent"]
+    assert restored["identity"] == c.identity
+    assert c.read()["messages"] == history["messages"]
+    assert c.client.get(path).json()["codex"]["status"] == "disabled"
+
+
+def test_revoked_chat_can_be_removed_without_removing_other_chats(collaboration):
+    c = collaboration
+    c.client.portal.call(c.service.revoke_connection, c.connection.connection_id)
+    path = f"/api/external-sessions/{c.identity}"
+    assert not c.client.get(path).json()["session"]["active"]
+    assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 204
+    assert c.client.get("/api/external-sessions").json() == []
+    assert c.client.portal.call(ExternalMessages(c.host).list_sessions) == []
+
+
 def test_codex_binding_is_human_owned_and_scoped_to_one_chat(collaboration):
     c = collaboration
     path = f"/api/external-sessions/{c.identity}/codex"
@@ -441,7 +485,8 @@ def test_codex_failure_preserves_messages_and_can_be_retried(collaboration):
         assert queue.call_count == 2
 
 
-def test_slow_codex_does_not_block_reading_or_reenable_a_disabled_binding(collaboration):
+@pytest.mark.parametrize("delete_session", [False, True])
+def test_slow_codex_does_not_block_reading_or_reenable_a_removed_binding(collaboration, delete_session):
     c = collaboration
     path = f"/api/external-sessions/{c.identity}/codex"
     c.client.put(path, json={"connection_id": c.human_connection,
@@ -460,10 +505,17 @@ def test_slow_codex_does_not_block_reading_or_reenable_a_disabled_binding(collab
         assert c.read()["messages"][0]["text"] == "消息已到"
         restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
         assert restarted["codex"]["status"] == "unknown"
-        assert c.client.request("DELETE", path, json={"connection_id": c.human_connection}).status_code == 200
+        response = c.client.request("DELETE", path.removesuffix("/codex") if delete_session else path,
+                                    json={"connection_id": c.human_connection})
+        assert response.status_code == (204 if delete_session else 200)
         c.client.portal.call(release.set)
         assert sending.result(timeout=2)["code"] == "DELIVERED"
-        assert c.client.get(f"/api/external-sessions/{c.identity}").json()["codex"]["status"] == "disabled"
+        assert c.identity not in c.service.codex.read().bindings
+        view = c.client.get(f"/api/external-sessions/{c.identity}")
+        if delete_session:
+            assert view.status_code == 404
+        else:
+            assert view.json()["codex"]["status"] == "disabled"
 
 
 def test_reply_references_stay_with_the_same_peer_and_chat(collaboration):
