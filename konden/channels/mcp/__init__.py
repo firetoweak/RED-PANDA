@@ -16,7 +16,7 @@ from konden.assistant.external_messages import SendExternal
 class ContextArguments(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=80,
-        description="可为当前聊天设置便于人辨认的名称，例如正在协作的主题；省略则保留现有名称。")
+        description="可选的显示别名；未设置别名时使用本机 Codex 聊天标题，无法读取标题时显示简短聊天标识。")
 
     @field_validator("name")
     @classmethod

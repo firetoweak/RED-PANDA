@@ -302,6 +302,14 @@ export const kondenApi = createApi({
       transformResponse: (value: unknown) => externalConversationSchema.parse(value),
       providesTags: ["ExternalSessions"],
     }),
+    deleteExternalSession: build.mutation<void, { connectionId: string; identity: string }>({
+      query: ({ connectionId, identity }) => ({
+        url: `/external-sessions/${encodeURIComponent(identity)}`,
+        method: "DELETE", body: { connection_id: connectionId },
+      }),
+      transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
+      invalidatesTags: (_result, error) => error === undefined ? ["ExternalSessions"] : [],
+    }),
     setExternalCodex: build.mutation<ExternalConversation, {
       connectionId: string; identity: string; target: { executable: string } | null;
     }>({
@@ -694,6 +702,7 @@ export const {
   useGetExternalConnectionsQuery,
   useGetExternalSessionsQuery,
   useGetExternalConversationQuery,
+  useDeleteExternalSessionMutation,
   useSetExternalCodexMutation,
   useRetryExternalCodexMutation,
   useCreateExternalConnectionMutation,
