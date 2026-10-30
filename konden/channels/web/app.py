@@ -26,7 +26,8 @@ from konden.assistant.authorization import AuthorizationConflict, AuthorizationT
 from konden.assistant.host.agent_groups import GroupDissolvedError, GroupNameTaken, GroupNotFound
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNameTaken, AgentNotFound
 from konden.assistant.host.agent_projects import ProjectLinkRefused
-from konden.assistant.host.external_messages import ExternalConnectionNotFound, ExternalSessionNotFound
+from konden.assistant.host.external_messages import ExternalConnectionNotFound, ExternalSessionNotFound, ExternalMessageInvalid
+from konden.assistant.external_messages import PostExternal
 from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexExecutable
 from konden.assistant.host.supervisor import HostSupervisor
 from konden.assistant.model_connection import check_model_connection
@@ -113,6 +114,10 @@ class AbsenceAnswer(ConnectionRequest):
 
 
 class CodexContinuationRequest(ConnectionRequest, CodexExecutable):
+    pass
+
+
+class ExternalMessageRequest(ConnectionRequest, PostExternal):
     pass
 
 
@@ -638,6 +643,15 @@ def create_web_app(
     @app.get("/api/external-sessions/{identity}")
     async def external_session(identity: str, request: Request):
         return await _channel(request).external_session(identity)
+
+    @app.post("/api/external-sessions/{identity}/messages")
+    async def post_external_message(identity: str, body: ExternalMessageRequest, request: Request):
+        arguments = PostExternal.model_validate(body.model_dump(exclude={"connection_id"}))
+        return await _channel(request).post_external_message(body.connection_id, identity, arguments)
+
+    @app.exception_handler(ExternalMessageInvalid)
+    async def external_message_invalid(request, error):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
 
     @app.delete("/api/external-sessions/{identity}", status_code=204)
     async def delete_external_session(identity: str, body: ConnectionRequest, request: Request):

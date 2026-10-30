@@ -1,6 +1,7 @@
 """External conversation behavior at the MCP and human Web boundaries."""
 import asyncio
 from datetime import datetime, timezone
+import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -11,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from konden.assistant.agents import AgentCreated, fact_arguments
 from konden.assistant.conversations import project_conversation
-from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, SendToExternal
+from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, USER_SOURCE, SendToExternal
 from konden.assistant.external_messages import parse_external
 from konden.assistant.host.external_messages import ExternalMessages
 from konden.assistant.host.codex_continuation import QueueAttempt
@@ -22,7 +23,7 @@ from konden.channels.web.app import create_web_app
 from konden.channels.web.channel import WebChannel
 from konden.channels.web.hub import WebEventHub
 from konden.paths import KondenHome
-from konden.runtime import AgentRuntime, SqliteJournal, replay
+from konden.runtime import AgentRuntime, SqliteJournal, UserMessageReceived, replay
 
 
 @pytest.fixture
@@ -46,14 +47,20 @@ def collaboration(tmp_path):
     hub = WebEventHub()
     app = create_web_app(channel=web, hub=hub, external_messages=service)
     deliveries = []
+    user_inputs = []
 
     async def deliver(operation, session_id, arguments):
         assert operation == "fact"
         deliveries.append(arguments)
         await AgentRuntime(SqliteJournal(store.require(session_id)), None, {}).receive_domain_fact(session_id, **arguments)
 
+    async def user_input(session_id, content, **kwargs):
+        user_inputs.append((session_id, content, kwargs))
+        await AgentRuntime(SqliteJournal(store.require(session_id)), None, {}).receive_user_message(session_id, content, **kwargs)
+
     with patch("konden.assistant.host.external_messages.read_codex_titles", new=AsyncMock(return_value={})) as titles, \
-            patch.object(host, "request", side_effect=deliver):
+            patch.object(host, "request", side_effect=deliver), \
+            patch.object(host, "receive_user_message", side_effect=user_input):
         with TestClient(app, base_url="http://127.0.0.1:8876") as client:
             human = client.portal.call(web.connect)
 
@@ -89,10 +96,16 @@ def collaboration(tmp_path):
                 arguments.update(options)
                 return call("read_messages", arguments, credential, chat=chat_identity)["structuredContent"]
 
+            def post(**changes):
+                arguments = dict(connection_id=human.connection_id, bot_session_id="coordinator",
+                                 text="请在这里讨论这个问题。", target="bot", delivery_id="human-1")
+                arguments.update(changes)
+                return client.post(f"/api/external-sessions/{identity}/messages", json=arguments)
+
             yield SimpleNamespace(host=host, service=service, store=store, client=client, hub=hub,
-                call=call, send=send, read=read, reply=reply, identity=identity, context=context,
+                call=call, send=send, read=read, reply=reply, post=post, identity=identity, context=context,
                 connection=first, token=token, other_token=other_token, deliveries=deliveries,
-                human_connection=human.connection_id, titles=titles)
+                human_connection=human.connection_id, titles=titles, user_inputs=user_inputs)
             client.portal.call(web.disconnect, human)
             client.portal.call(host.close)
 
@@ -500,7 +513,7 @@ def test_slow_codex_does_not_block_reading_or_reenable_a_removed_binding(collabo
 
     with patch("konden.assistant.host.codex_continuation.queue_codex", side_effect=queue):
         sending = c.client.portal.start_task_soon(c.service.send_from_bot, "coordinator",
-            {"command_id": "slow", "identity": c.identity, "text": "消息已到", "reply_to": None})
+            {"command_id": "slow", "identity": c.identity, "text": "消息已到", "reply_to": None, "target": None})
         c.client.portal.call(entered.wait)
         assert c.read()["messages"][0]["text"] == "消息已到"
         restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
@@ -551,3 +564,106 @@ def test_bot_and_web_observe_the_same_generic_conversation(collaboration):
     web = c.client.get("/api/external-sessions/" + c.identity).json()
     assert [item["text"] for item in web["messages"]] == ["你好，来讨论一下需求。", "收到，我们可以继续讨论。"]
     assert web["session"]["peers"] == [{"name": "协调员", "session_id": "coordinator", "deleted": False}]
+
+
+@pytest.mark.parametrize("target", ["bot", "codex", "both"])
+def test_human_posts_are_shared_but_only_addressed_agents_are_requested(collaboration, target):
+    """Visibility must not turn a human's choice into another Agent's instruction."""
+    c = collaboration
+    with patch.object(c.service.codex, "notify", new=AsyncMock(return_value=False)) as notify:
+        response = c.post(target=target)
+    assert response.status_code == 200
+    message = response.json()["messages"][0]
+    recipients = ["bot", "codex"] if target == "both" else [target]
+    assert message["sender"] == "user" and message["recipients"] == recipients
+    assert len(c.deliveries) == 1 and not c.deliveries[0]["requests_decision"]
+    assert len(c.user_inputs) == (target != "codex")
+    assert notify.call_count == (target != "bot")
+    received = c.read()["messages"][0]
+    assert received["sender"] == {"kind": "user", "name": "用户"}
+    assert received["bot_name"] == "协调员" and received["recipients"] == recipients
+    assert received["response_requested"] == (target != "bot")
+    assert "PRIVATE HUMAN CONTENT" not in str(response.json()) + str(c.read())
+    if target != "codex":
+        session_id, content, kwargs = c.user_inputs[0]
+        assert session_id == "coordinator" and kwargs == {"delivery_id": message["message_id"], "source": USER_SOURCE}
+        assert json.loads(content)["message_id"] == message["message_id"]
+
+    async def private_view():
+        events = await c.store.journal("coordinator").snapshot("coordinator")
+        state = replay("coordinator", events).state
+        return project_conversation("coordinator", events, state.steps, session=session_view(state))
+
+    private = c.client.portal.call(private_view)
+    assert [item.text for item in private.items if item.kind == "user"] == ["PRIVATE HUMAN CONTENT"] + (
+        [message["text"]] if target != "codex" else [])
+
+
+def test_agents_reply_to_human_without_waking_each_other_unless_explicitly_addressed(collaboration):
+    c = collaboration
+    human = c.post(target="both").json()["messages"][0]["message_id"]
+    with patch.object(c.service.codex, "notify", new=AsyncMock(return_value=False)) as notify:
+        c.reply(reply_to=human)
+        c.reply(command="to-both", reply_to=human, target="both")
+        assert notify.call_count == 1
+    c.send(reply_to=human)
+    assert not c.deliveries[-1]["requests_decision"]
+    c.send(delivery_id="to-both", reply_to=human, target="both")
+    assert c.deliveries[-1]["requests_decision"]
+    messages = c.client.get(f"/api/external-sessions/{c.identity}").json()["messages"]
+    assert [m["recipients"] for m in messages] == [["bot", "codex"], ["user"], ["codex", "user"], ["user"], ["bot", "user"]]
+    assert [m["response_requested"] for m in c.read()["messages"]] == [True, False, True]
+    assert c.send(target="bot")["code"] == "DELIVERY_CONFLICT"
+
+
+def test_human_retry_and_restart_finish_one_input_without_duplicating_the_conversation(collaboration):
+    """A lost response or a crash between acceptance and Bot input must be recoverable."""
+    c = collaboration
+    with patch.object(c.host, "receive_user_message", side_effect=RuntimeError("Worker unavailable")):
+        with pytest.raises(RuntimeError, match="Worker unavailable"):
+            c.post(target="both")
+    accepted = c.client.get(f"/api/external-sessions/{c.identity}").json()["messages"][0]
+    restored = ExternalMessages(c.host)
+    assert c.client.portal.call(restored.recover_user_inputs) == {"coordinator"}
+    assert c.client.portal.call(restored.recover_user_inputs) == set()
+    assert c.post(target="both").status_code == 200
+    for changes in ({"text": "改了内容"}, {"target": "bot"}, {"reply_to": accepted["message_id"]}):
+        assert c.post(**{"target": "both", **changes}).status_code == 409
+
+    async def verify():
+        events = await c.store.journal("coordinator").snapshot("coordinator")
+        inputs = [e for e in events if isinstance(e.payload, UserMessageReceived)
+                  and e.delivery is not None and e.delivery.source == USER_SOURCE]
+        assert len(inputs) == 1 and inputs[0].delivery.delivery_id == accepted["message_id"]
+        assert session_view(replay("coordinator", events).state).should_wake
+
+    c.client.portal.call(verify)
+    assert len(c.deliveries) == 1
+    c.reply(reply_to=accepted["message_id"])
+    c.post(delivery_id="human-2", target="codex", reply_to=accepted["message_id"])
+    first = c.read(limit=1)
+    second = c.client.portal.call(restored.read, c.connection, c.identity, first["next_cursor"], 50, 0)
+    assert [m["response_requested"] for m in second["messages"]] == [False, True]
+    assert second["next_cursor"] == 3
+    assert c.client.portal.call(restored.view, c.identity) == c.client.get(f"/api/external-sessions/{c.identity}").json()
+
+
+@pytest.mark.parametrize("changes,status", [
+    ({"connection_id": "inactive"}, 409), ({"sender": "codex"}, 422),
+    ({"direction": "received"}, 422), ({"text": "  "}, 422), ({"target": "everyone"}, 422),
+    ({"bot_session_id": "unknown"}, 409),
+])
+def test_human_post_validates_authority_and_content_before_accepting(collaboration, changes, status):
+    c = collaboration
+    assert c.post(**changes).status_code == status
+    assert not c.deliveries and not c.user_inputs
+
+
+def test_human_references_and_revocation_remain_scoped_to_the_selected_conversation(collaboration):
+    c = collaboration
+    other = c.send(recipient="其他 Bot")["message_id"]
+    assert c.post(reply_to=other).status_code == 409
+    assert c.post(reply_to="unknown").status_code == 409
+    c.client.portal.call(c.service.revoke_connection, c.connection.connection_id)
+    assert c.post().status_code == 409
+    assert len(c.deliveries) == 1 and not c.user_inputs

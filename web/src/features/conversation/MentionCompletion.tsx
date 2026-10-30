@@ -4,12 +4,14 @@ import { useId, useLayoutEffect, useRef, useState, type ChangeEvent, type Compos
 import { BotAvatar } from "./ChatPresentation";
 
 /** 私聊与群聊共用填名交互；是否通知、通知谁仍由各自发送入口决定。 */
-export function useMentionCompletion({ text, onChange, names, textarea, includeAll = false }: {
+export function useMentionCompletion({ text, onChange, names, textarea, includeAll = false, heading, allLabel = "所有人" }: {
   text: string;
   onChange: (text: string) => void;
   names: string[];
   textarea: RefObject<HTMLTextAreaElement | null>;
   includeAll?: boolean;
+  heading?: string;
+  allLabel?: string;
 }) {
   const [cursor, setCursor] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -21,7 +23,7 @@ export function useMentionCompletion({ text, onChange, names, textarea, includeA
   const listId = useId();
   const match = text.slice(0, cursor).match(/(^|[^A-Za-z0-9._%+-])@([^\n@]*)$/u);
   const candidates = match === null ? [] : [
-    ...(includeAll ? [{ value: "all", name: "所有人", all: true }] : []),
+    ...(includeAll ? [{ value: "all", name: allLabel, all: true }] : []),
     ...names.map((name) => ({ value: name, name, all: false })),
   ].filter(({ value, name }) => [value, name].some((label) => label.toLocaleLowerCase().startsWith(match[2].toLocaleLowerCase())));
   const opened = !dismissed && !composing && candidates.length > 0;
@@ -98,7 +100,7 @@ export function useMentionCompletion({ text, onChange, names, textarea, includeA
       replace(start, end, prefix);
     },
     menu: opened ? <div className="mention-menu">
-      <Text className="mention-heading" fz={11} c="dimmed">{includeAll ? "点名群成员" : "选择 Bot"}</Text>
+      <Text className="mention-heading" fz={11} c="dimmed">{heading ?? (includeAll ? "点名群成员" : "选择 Bot")}</Text>
       <div role="listbox" aria-label="点名候选" id={listId} ref={list}>
         {candidates.map(({ value, name, all }, index) => <button key={`${all ? "all" : "member"}:${value}`} type="button" role="option"
           id={`${listId}-${index}`} aria-selected={index === activeIndex} tabIndex={-1}

@@ -87,6 +87,10 @@ class WebChannel:
     async def external_session(self, identity):
         return await self._sessions.external_messages.view(identity)
 
+    async def post_external_message(self, connection_id, identity, arguments):
+        self._require_connection(connection_id)
+        return await self._sessions.external_messages.post_user(identity, arguments)
+
     async def delete_external_session(self, connection_id, identity):
         self._require_connection(connection_id)
         await self._sessions.external_messages.delete_session(identity)

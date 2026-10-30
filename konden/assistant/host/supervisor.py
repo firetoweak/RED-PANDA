@@ -261,6 +261,7 @@ class HostSupervisor:
                     await self.commands.restore(session_id, events)
         await self.agent_projects.recover()
         await self.agent_groups.prepare_recovery()
+        unfinished.extend(await self.external_messages.recover_user_inputs())
         for agent in joining:
             pending = self.store.require(agent.session_id).parent / "agent-creation.json"
             if not pending.exists():
@@ -273,7 +274,7 @@ class HostSupervisor:
         for event in renames:
             await self._notify_rename(event)
         await self.agent_groups.recover()
-        for session_id in unfinished:
+        for session_id in dict.fromkeys(unfinished):
             if not await self.lifecycle.is_deleted(session_id):
                 await self.resume(session_id)
         for entry in await self.agents.list(include_deleted=True):

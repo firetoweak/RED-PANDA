@@ -7,9 +7,11 @@ import type { ExternalConversation } from "../src/api/contracts";
 import { ExternalSessionPage } from "../src/features/external/ExternalSessionPage";
 
 const query = vi.hoisted(() => ({ data: undefined as ExternalConversation | undefined, connectionId: "human" as string | null,
-  save: vi.fn(), retry: vi.fn() }));
+  agents: [] as { session_id: string; name: string }[], save: vi.fn(), retry: vi.fn(), post: vi.fn() }));
 vi.mock("../src/api/kondenApi", () => ({
   useGetExternalConversationQuery: () => ({ data: query.data }),
+  useGetAgentsQuery: () => ({ data: query.agents }),
+  usePostExternalMessageMutation: () => [query.post, { isLoading: false }],
   useSetExternalCodexMutation: () => [query.save, { isLoading: false }],
   useRetryExternalCodexMutation: () => [query.retry, { isLoading: false }],
 }));
@@ -21,9 +23,12 @@ const codex = { thread_id: "11111111-1111-1111-1111-111111111111", executable: "
 const session = { identity, name: "外部会话-11111111", active: true, codex_status: "disabled" as const,
   created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] };
 beforeEach(() => {
+  localStorage.clear();
+  query.agents = [];
   query.connectionId = "human";
   query.save.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.retry.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
+  query.post.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -44,13 +49,13 @@ it("会话登记后即有可理解的空状态，撤销后仍可查看", () => {
   expect(screen.getByRole("region", { name: "外部会话消息" })).toBeVisible();
 });
 
-it("按 Bot 查看完整往返，并可切回全部对话", async () => {
+it("每段三方对话固定一位 Bot，消息和草稿按 Bot 分开", async () => {
   query.data = { session: { ...session, peers: [
     { name: "墨竹", session_id: "alpha", deleted: false }, { name: "松风", session_id: "beta", deleted: false },
   ] }, codex, messages: [
-    { message_id: "m1", sequence: 1, direction: "received", text: "讨论需求", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
-    { message_id: "m2", sequence: 2, direction: "sent", text: "第一位的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "m1", occurred_at: session.created_at },
-    { message_id: "m3", sequence: 3, direction: "sent", text: "第二位的主动消息", bot_name: "松风", bot_session_id: "beta", reply_to: null, occurred_at: session.created_at },
+    { message_id: "m1", sequence: 1, direction: "received", sender: "codex", recipients: ["bot"], text: "讨论需求", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "m2", sequence: 2, direction: "sent", sender: "bot", recipients: ["codex"], text: "第一位的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "m1", occurred_at: session.created_at },
+    { message_id: "m3", sequence: 3, direction: "sent", sender: "bot", recipients: ["codex"], text: "第二位的主动消息", bot_name: "松风", bot_session_id: "beta", reply_to: null, occurred_at: session.created_at },
   ] };
   open("?bot=alpha");
   const messages = within(screen.getByRole("region", { name: "外部会话消息" }));
@@ -58,9 +63,109 @@ it("按 Bot 查看完整往返，并可切回全部对话", async () => {
   expect(messages.queryByText("第二位的主动消息")).not.toBeInTheDocument();
   expect(messages.getByRole("button", { name: "查看 外部会话-11111111 的原消息" })).toBeVisible();
   expect(messages.getAllByRole("link", { name: "墨竹" })[0]).toHaveAttribute("href", "/sessions/alpha");
-  fireEvent.click(screen.getByRole("combobox", { name: "查看与哪位 Bot 的对话" }));
-  fireEvent.click(await screen.findByRole("option", { name: "全部 Bot 的对话" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "给墨竹的草稿" } });
+  fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
+  expect(screen.queryByRole("option", { name: "全部 Bot 的对话" })).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("option", { name: "松风" }));
   expect(screen.getByText("第二位的主动消息")).toBeVisible();
+  expect(screen.queryByText("第一位的回复")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("");
+  fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
+  fireEvent.click(await screen.findByRole("option", { name: "墨竹" }));
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("给墨竹的草稿");
+});
+
+it("无历史时先选择 Bot，三方来源和接收方可区分", async () => {
+  query.agents = [{ session_id: "alpha", name: "墨竹" }, { session_id: "beta", name: "松风" }];
+  query.data = { session, codex, messages: [] };
+  open();
+  expect(screen.queryByRole("textbox", { name: "三方会话消息" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
+  fireEvent.click(await screen.findByRole("option", { name: "墨竹" }));
+  expect(screen.getByText("三方对话已准备好")).toBeVisible();
+  expect(screen.queryByRole("combobox", { name: "发送给谁" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "@all 三方都能看见" } });
+  expect(screen.getByText(/发送给 @墨竹、@Codex/)).toHaveTextContent("Codex 需主动收信");
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue(""));
+  expect(query.post).toHaveBeenCalledWith({ connectionId: "human", identity, botSessionId: "alpha", text: "@all 三方都能看见",
+    target: "both", deliveryId: expect.stringMatching(/^web-/), replyTo: null });
+});
+
+it("发送失败保留引用、正文和编号，重试成功后清空", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [
+    { message_id: "human", sequence: 1, direction: "user_bot", sender: "user", recipients: ["bot"], text: "人的原话", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "bot", sequence: 2, direction: "bot_user", sender: "bot", recipients: ["user"], text: "@Codex 给人的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "human", occurred_at: session.created_at },
+  ] };
+  query.post.mockReturnValueOnce({ unwrap: () => Promise.reject("暂时断开，请重试") });
+  open("?bot=alpha");
+  expect(screen.getByRole("article", { name: "你的消息" })).toHaveTextContent("你 → 墨竹");
+  expect(screen.getByRole("article", { name: "墨竹的消息" })).toHaveTextContent("墨竹 → 你");
+  fireEvent.contextMenu(screen.getByText("@Codex 给人的回复"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "引用 墨竹 的消息" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "请继续" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("暂时断开，请重试");
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("请继续");
+  expect(screen.getByRole("button", { name: "取消引用" })).toBeVisible();
+  const first = query.post.mock.calls[0][0];
+  expect(first).toMatchObject({ target: "bot", text: "请继续", replyTo: "bot" });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue(""));
+  expect(query.post.mock.calls[1][0]).toEqual(first);
+  expect(screen.queryByRole("button", { name: "取消引用" })).not.toBeInTheDocument();
+});
+
+it("用 @ 补全接收方，确认候选的 Enter 不直接发送，删除点名后恢复默认 Bot", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  const input = screen.getByRole("textbox", { name: "三方会话消息" });
+  fireEvent.click(screen.getByRole("button", { name: "点名接收方" }));
+  expect(input).toHaveValue("@");
+  expect(screen.getByRole("option", { name: /双方.*@all/ })).toBeVisible();
+  fireEvent.keyDown(input, { key: "ArrowUp" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("@Codex ");
+  expect(query.post).not.toHaveBeenCalled();
+  expect(screen.getByText(/发送给 @Codex/)).toBeVisible();
+  fireEvent.change(input, { target: { value: "普通发言" } });
+  expect(screen.getByText("默认给 @墨竹")).toBeVisible();
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ text: "普通发言", target: "bot" })));
+});
+
+it.each([
+  ["@codex，请确认", "codex"], ["@墨竹 @Codex 请共同确认", "both"],
+  ["dev@Codex.example 和 @CodexTest 都只是正文", "bot"],
+])("只按正文中的完整点名发送：%s", async (text, target) => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ text, target })));
+});
+
+it("Bot 也叫 Codex 时点名仍能区分两个来源", async () => {
+  query.data = { session: { ...session, peers: [{ name: "Codex", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  const input = screen.getByRole("textbox", { name: "三方会话消息" });
+  fireEvent.change(input, { target: { value: "@Codex 只请原生聊天处理" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ target: "codex" })));
+  fireEvent.change(input, { target: { value: "@Codex（Bot） 只请 Bot 处理" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenLastCalledWith(expect.objectContaining({ target: "bot" })));
+});
+
+it.each(["disconnected", "revoked", "deleted"])("%s 时保留草稿而禁止发送", (unavailable) => {
+  query.connectionId = unavailable === "disconnected" ? null : "human";
+  query.data = { session: { ...session, active: unavailable !== "revoked", peers: [{ name: "墨竹", session_id: "alpha", deleted: unavailable === "deleted" }] }, codex, messages: [] };
+  localStorage.setItem(`konden.composerDraft.external:${identity}:alpha`, JSON.stringify({ text: "尚未发出" }));
+  open("?bot=alpha");
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("尚未发出");
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "发送三方消息" })).toBeDisabled();
+  expect(query.post).not.toHaveBeenCalled();
 });
 
 it("当前聊天自动定位，用户只需确认程序并启用接续", async () => {
