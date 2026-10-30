@@ -91,12 +91,14 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   expect(await screen.findByText("回给人")).toBeInTheDocument();
   expect(screen.getByText("结论给你")).toBeInTheDocument();
   expect(screen.getByText(/细节：文件没问题/)).toBeVisible();
-  expect(screen.getByText("2 条消息")).toBeVisible();
-  expect((await screen.findAllByRole("link", { name: "打开 Lin 的对话" })).map((link) => link.getAttribute("href")))
-    .toEqual(["/sessions/agent-lin"]);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "打开 Lin 的对话" })).not.toBeInTheDocument();
   expect(screen.queryByText("请检查文件")).not.toBeInTheDocument();
   expect(screen.queryByText("文件没问题", { exact: true })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "与 Lin 的交流", expanded: false }));
+  fireEvent.click(screen.getByRole("button", { name: "与 Lin 的私聊" }));
+  expect(screen.getByRole("dialog", { name: "与 Lin 的私聊" })).toBeVisible();
+  expect(screen.getByText("2 条消息")).toBeVisible();
+  expect(screen.getByRole("link", { name: "打开 Lin 的对话" })).toHaveAttribute("href", "/sessions/agent-lin");
   expect(screen.getByText("请检查文件")).toBeVisible();
   expect(screen.getByText("文件没问题", { exact: true })).toBeVisible();
   expect(screen.getAllByRole("article", { name: /的私信$/ }).map((item) => item.getAttribute("aria-label")))
@@ -110,8 +112,9 @@ it("同事和例行任务触发的普通回复直接可见，流式与历史一�
   });
   expect(await screen.findByText("收到，检查通过")).toBeVisible();
   expect(screen.getByText("3 条消息")).toBeVisible();
-  expect(screen.getAllByRole("button", { name: "与 Lin 的交流", expanded: true })).toHaveLength(1);
-  fireEvent.click(screen.getByRole("button", { name: "与 Lin 的交流", expanded: true }));
+  expect(screen.getAllByRole("dialog", { name: "与 Lin 的私聊" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "关闭私聊" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.queryByText("请检查文件")).not.toBeInTheDocument();
   expect(screen.queryByText("文件没问题", { exact: true })).not.toBeInTheDocument();
   expect(screen.queryByText("收到，检查通过")).not.toBeInTheDocument();
