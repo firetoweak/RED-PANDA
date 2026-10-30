@@ -2,8 +2,10 @@
 import asyncio
 from base64 import b64encode
 from io import BytesIO
+from pathlib import Path
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
 import httpx
 from PIL import Image
@@ -13,7 +15,8 @@ import pytest
 from konden.config import write_json
 from konden.llm.config import initial_connections
 from konden.media.images import ImageConfig, ImageGeneration, ImageInput
-from konden.media.openai_images import ImageProviderError
+from konden.media.openai_images import GeneratedImage, ImageProviderError
+from konden.mcp.image_generation import call_tool
 from konden.model_settings import ModelConfigurationError
 
 
@@ -104,6 +107,19 @@ def test_catalog_uses_actual_account_and_keeps_images_out_of_chat(service):
     assert asyncio.run(service.catalog(transport=httpx.MockTransport(handle))) == [
         {"model":"openai/chatgpt-image-latest","name":"chatgpt-image-latest"},
         {"model":"openai/gpt-image-1.5","name":"gpt-image-1.5"}]
+
+
+def test_tool_returns_a_relative_path_usable_by_send_file(service, tmp_path):
+    service.save(ImageConfig(enabled=True, model="openai/gpt-image-1.5"))
+    original = png()
+    with patch("konden.media.images.generate_image", new=AsyncMock(
+        return_value=GeneratedImage(original, "image/png", 3072, 2048))):
+        result = asyncio.run(call_tool(service, tmp_path, None,
+            SimpleNamespace(name="generate_image", arguments={"prompt":"blue square"})))
+    relative = result.structured_content["path"]
+    assert not Path(relative).is_absolute()
+    assert (tmp_path / relative).read_bytes() == original
+    assert relative.startswith("generated-images/")
 
 
 def test_missing_key_and_invalid_parameters_cannot_initiate_generation(service):

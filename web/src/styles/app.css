@@ -725,6 +725,8 @@ a.group-member:focus-visible { outline: 2px solid var(--konden-accent-ring); }
 }
 
 .attachment-tile {
+  display: inline-block;
+  vertical-align: middle;
   position: relative;
   flex-shrink: 0;
 }

@@ -8,6 +8,7 @@ import { StepDisclosure } from "../src/features/conversation/ExecutionProcess";
 import { timelineTurns } from "../src/features/conversation/timelineTurns";
 import type { VisibleStep } from "../src/features/conversation/visibleTimeline";
 import { FileAttachmentTile } from "../src/features/conversation/FileAttachmentTile";
+import { conversationViewSchema } from "../src/api/contracts";
 
 const file = {
   attachment_id: `file:${"a".repeat(32)}`,
@@ -54,7 +55,7 @@ it("带附件的消息单独成气泡，子 Agent 执行步骤里也能下载", 
   expect(screen.queryByRole("button", { name: "evidence.txt", hidden: true })).not.toBeInTheDocument();
 });
 
-it("交付的图片文件显示缩略图，点击放大，保留原文件下载", () => {
+it("图片只显示画面，文件名和大小不固定占位，点开放大后可下载原图", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   const href = `/api/sessions/ada/attachments/${encodeURIComponent(file.attachment_id)}`;
   render(<MantineProvider env="test">
@@ -62,8 +63,24 @@ it("交付的图片文件显示缩略图，点击放大，保留原文件下载"
   </MantineProvider>);
   const preview = screen.getByRole("button", { name: "e2e-03-stopped.PNG" });
   expect(preview.querySelector("img")).toHaveAttribute("src", href);
-  expect(screen.getByRole("link", { name: "e2e-03-stopped.PNG" })).toHaveAttribute("download");
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(screen.queryByText("e2e-03-stopped.PNG")).not.toBeInTheDocument();
+  expect(screen.queryByText(/KB/)).not.toBeInTheDocument();
   fireEvent.click(preview);
   expect(within(screen.getByRole("dialog", { name: "e2e-03-stopped.PNG" }))
     .getByRole("img", { name: "e2e-03-stopped.PNG" })).toHaveAttribute("src", href);
+  expect(within(screen.getByRole("dialog", { name:/e2e-03-stopped.PNG/ }))
+    .getByRole("link", {name:"下载原图"})).toHaveAttribute("href", href);
+});
+
+it("无说明的图片交付仍是完整消息，接口和时间线不会丢失附件", () => {
+  const picture = {...file,name:"picture.png"};
+  const imageStep = {...step("picture", "", [picture]),text:null};
+  const schema = conversationViewSchema.shape.items.element;
+  expect(schema.parse({kind:"step",step_id:"picture",output_id:"picture",text:null,
+    thinking:null,tools:[],files:[picture],occurred_at:"2026-10-19T00:00:00+00:00"})).toMatchObject({text:null,files:[picture]});
+  const turns = timelineTurns([imageStep,step("analysis","蓝色背景突出橙色主体。")]);
+  expect(turns[0].final?.files).toEqual([picture]);
+  expect(turns[0].final?.text).toBeNull();
+  expect(turns[1].final?.text).toBe("蓝色背景突出橙色主体。");
 });
