@@ -25,7 +25,7 @@ from konden.mcp.adapter import (
 from konden.mcp.client_manager import McpClientError, McpClientManager, McpToolNotStartedError
 from konden.mcp.registry import McpRegistry
 from konden.mcp.models import McpServerRecord
-from konden.mcp.bundled import BROWSER_SERVER_IDS, SEARCH_SERVER_IDS, BUILTIN_SERVER_IDS
+from konden.mcp.bundled import BROWSER_SERVER_IDS, SEARCH_SERVER_IDS, BUILTIN_SERVER_IDS, IMAGE_SERVER_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +72,8 @@ class McpToolsetProvider:
         return await self._registry.get(server_id)
 
     def _connection_hint(self, server_id: str) -> str:
+        if server_id == IMAGE_SERVER_ID:
+            return "图片生成暂不可用；请报告错误详情，并在模型配置的“图片生成”页检查启用状态、所选模型与 OpenAI 连接。"
         if server_id in SEARCH_SERVER_IDS:
             return "网络搜索暂不可用；请报告错误详情，可按 web-research Skill 使用浏览器。"
         if server_id in BROWSER_SERVER_IDS:
@@ -209,7 +211,8 @@ class McpToolsetProvider:
                     "code": "MCP_SERVER_DISABLED",
                     "data": {"server_id": record_id},
                     "error": f"MCP Server 不可用或已停用: {record_id}",
-                    "hint": ("请在模型配置中检查网络搜索服务与供应商连接，或使用其他可用检索工具。"
+                    "hint": (self._connection_hint(record_id) if record_id == IMAGE_SERVER_ID else
+                             "请在模型配置中检查网络搜索服务与供应商连接，或使用其他可用检索工具。"
                              if record_id in SEARCH_SERVER_IDS else
                              "先 load_management_tools 加载 mcp，用 list_mcp_servers 查看状态，再用 propose_mcp_recovery 申请恢复。"),
                 }

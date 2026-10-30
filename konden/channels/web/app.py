@@ -35,6 +35,8 @@ from konden.assistant.personal_memory import UpdatePersonalMemory
 from konden.automation.routines import RoutineNotFound
 from konden.model_settings import ModelCatalogUnavailable, ModelConfigurationError, ModelInUseError
 from konden.search import SearchConfig, SearchSettings
+from konden.media.images import ImageConfig, ImageGeneration
+from konden.media.openai_images import ImageProviderError
 from thinllm import InvalidLLMResponse, LLMProviderError, LLMTransientError
 import httpx
 from konden.assistant.runner import SessionNotFoundError
@@ -138,6 +140,10 @@ class ModelTestRequest(ConnectionRequest):
 
 class SearchSettingsRequest(ConnectionRequest):
     config: SearchConfig
+
+
+class ImageSettingsRequest(ConnectionRequest):
+    config: ImageConfig
 
 
 class SearchTestRequest(SearchSettingsRequest):
@@ -508,6 +514,22 @@ def create_web_app(
             return JSONResponse(status_code=502, content={"detail": f"DeepSeek 搜索失败（HTTP {error.response.status_code}）"})
         except httpx.TransportError as error:
             return JSONResponse(status_code=502, content={"detail": f"DeepSeek 搜索连接失败：{type(error).__name__}"})
+
+    @app.get("/api/model-settings/images")
+    async def image_settings(request: Request):
+        return ImageGeneration(request.app.state.models.connections_path).config().model_dump()
+
+    @app.put("/api/model-settings/images")
+    async def save_image_settings(body: ImageSettingsRequest, request: Request):
+        _channel(request)._require_connection(body.connection_id)
+        return ImageGeneration(request.app.state.models.connections_path).save(body.config)
+
+    @app.get("/api/model-settings/images/catalog")
+    async def image_catalog(request: Request):
+        try:
+            return await ImageGeneration(request.app.state.models.connections_path).catalog()
+        except ImageProviderError as error:
+            return JSONResponse(status_code=502, content={"detail": str(error)})
 
     @app.get("/api/shared-memory")
     async def read_shared_memory(request: Request):
