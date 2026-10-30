@@ -3,6 +3,7 @@ import MantineAIMarkdown from "@ai-markdown/react-mantine";
 import hljs from "highlight.js/lib/common";
 import { Children, cloneElement, isValidElement, memo, useContext, type ComponentProps, type ReactNode } from "react";
 import { ChatPresentation, useIdentityColor, MessageQuote, splitMessageQuote } from "./ChatPresentation";
+import { AttachmentTile } from "./AttachmentTile";
 
 const highlightedCodeBlock = {
   autoDetectUnknownLanguage: true,
@@ -43,7 +44,10 @@ function MentionParagraph({ children, node: _node, ...props }: ComponentProps<"p
 function MentionListItem({ children, node: _node, ...props }: ComponentProps<"li"> & { node?: unknown }) {
   return <li {...props}><MentionText>{children}</MentionText></li>;
 }
-const customComponents = { p: MentionParagraph, li: MentionListItem };
+function MessageImage({src, alt}: ComponentProps<"img">) {
+  return typeof src === "string" ? <AttachmentTile src={src} name={alt || "图片"} large downloadHref={src} /> : null;
+}
+const customComponents = { p: MentionParagraph, li: MentionListItem, img: MessageImage };
 
 interface MarkdownMessageProps {
   content: string;

@@ -599,7 +599,7 @@ def project_conversation(
                     continue
                 messages.append(StepItem(
                     "step", f"{payload.step.step_id}:{command_state.command.command_id}",
-                    command_state.command.command_id, effect.argument_dict()["text"], (),
+                    command_state.command.command_id, effect.argument_dict().get("text") or None, (),
                     event.occurred_at, files=_delivered_files(command_state, attachments)))
                 continue
             status, error = _tool_status(command_state, auto_authorize=session.auto_authorize)

@@ -82,7 +82,7 @@ function orderPrivateMessages(messages: VisiblePrivateMessage[]): VisiblePrivate
 }
 
 function isFinal(step: VisibleStep): boolean {
-  return !step.pending && step.text !== null && step.tools.length === 0;
+  return !step.pending && (step.text !== null || step.files.length > 0) && step.tools.length === 0;
 }
 
 function stepHasLiveWork(step: VisibleStep): boolean {
