@@ -617,9 +617,14 @@ def create_web_app(
     async def external_session(identity: str, request: Request):
         return await _channel(request).external_session(identity)
 
+    @app.delete("/api/external-sessions/{identity}", status_code=204)
+    async def delete_external_session(identity: str, body: ConnectionRequest, request: Request):
+        await _channel(request).delete_external_session(body.connection_id, identity)
+        return Response(status_code=204)
+
     @app.exception_handler(ExternalSessionNotFound)
     async def external_session_missing(request, error):
-        return JSONResponse(status_code=404, content={"detail": "没有这个外部会话。"})
+        return JSONResponse(status_code=404, content={"detail": "没有这个外部会话，可能尚未接入或已删除。"})
 
     @app.exception_handler(CodexContinuationInvalid)
     async def codex_continuation_invalid(request, error):

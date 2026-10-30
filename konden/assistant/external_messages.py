@@ -152,6 +152,13 @@ class ExternalSessionStore:
             saved.sessions[index] = session
             write_json(self.path, saved.model_dump(mode="json"))
 
+    def remove(self, identity: str) -> None:
+        with FileLock(str(self.path) + ".lock"):
+            saved = self.read()
+            index = next(index for index, item in enumerate(saved.sessions) if item.identity == identity)
+            saved.sessions.pop(index)
+            write_json(self.path, saved.model_dump(mode="json"))
+
 
 class ExternalMessage(MessageInput, ExternalIdentity):
     connection_id: str = Field(min_length=1)
