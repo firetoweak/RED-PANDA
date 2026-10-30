@@ -1,6 +1,6 @@
 # 计划、消息时间与上下文用量
 
-模型用 `update_plan` 维护计划；消息尾部显示时间；输入框显示上下文用量，超过阈值自动 compact。来源：`konden/assistant/work_plan.py`、`WorkPlanPanel.tsx`、`workPlanPlacement.ts`、`messageTime.ts`、`Composer.tsx`（用量环）、`Conversation.tsx`（compact 失败提示）、`ModelSettings.tsx`（阈值字段）、`konden/assistant/compact/core.py`（`find_history`、`compact.window_rolled_over`、`latest_input_tokens`；`model_usage` 是写进 journal 的用量元数据键，不是模型工具）。
+模型用 `update_plan` 维护计划；消息尾部显示时间；输入框显示上下文用量，超过阈值自动 compact。来源：`konden/assistant/work_plan.py`、`WorkPlanPanel.tsx`、`workPlanPlacement.ts`、`messageTime.ts`、`ContextUsage.tsx`（私聊与三方输入区共用用量环）、`Conversation.tsx`（compact 失败提示）、`ModelSettings.tsx`（阈值字段）、`konden/assistant/compact/core.py`（`find_history`、`compact.window_rolled_over`、`latest_input_tokens`；`model_usage` 是写进 journal 的用量元数据键，不是模型工具）。
 
 ## Sub-features
 

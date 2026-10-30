@@ -601,8 +601,6 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
   .private-message-transcript { padding: 48px 16px 20px; }
   .private-message-entry { max-width: 95%; }
 }
-.external-message { padding: 14px 18px; border: 1px solid var(--mantine-color-default-border); border-radius: 10px; overflow-wrap: anywhere; }
-.external-message .private-message-notice { justify-content: flex-start; margin-bottom: 8px; }
 .external-roster { margin-top: 16px; }
 .external-roster .session-row { display: flex; align-items: center; gap: 4px; }
 .external-roster > .roster-section-header { padding-inline: 10px; }
@@ -611,7 +609,7 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
 .external-codex-form { max-width: 680px; }
 .external-codex-detail { overflow-wrap: anywhere; white-space: pre-wrap; }
 .external-session-controls .mantine-Select-root { width: 230px; max-width: 100%; }
-.external-composer { width: min(var(--konden-composer-width), 100%); margin-inline: auto; }
+.external-composer .composer-trailing { flex: 0 1 auto; }
 .external-session-revoked { margin: 12px 24px 0; }
 .external-message-meta a { color: inherit; text-decoration: none; }
 .external-message-meta a:hover { text-decoration: underline; }
@@ -619,6 +617,8 @@ body.is-resizing-bot-details { cursor: col-resize; user-select: none; }
   .external-session-controls { padding: 10px 14px; }
   .external-codex { padding: 10px 14px; }
   .external-session-last-activity { display: none; }
+  .external-composer .composer-meta { flex-wrap: wrap; }
+  .external-composer .group-composer-recipients { flex-basis: 100%; }
 }
 .external-connection-config { font-family: var(--mantine-font-family-monospace); font-size: var(--mantine-font-size-xs); }
 .external-connection-name { min-width: 0; overflow-wrap: anywhere; }

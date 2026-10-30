@@ -3,7 +3,10 @@ import { IconAt, IconArrowUp } from "@tabler/icons-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
+import { useGetConversationQuery, useGetSessionModelQuery } from "../../api/kondenApi";
+import { ModelSelector } from "../models/ModelSelector";
 import { ChatPresentation, MessageQuote, splitMessageQuote, withMessageQuote } from "../conversation/ChatPresentation";
+import { ContextUsage } from "../conversation/ContextUsage";
 import { clearSentComposerText, restoreComposerText, saveComposerText } from "../conversation/composerDraft";
 import { createClientId } from "../conversation/clientId";
 import { useMentionCompletion } from "../conversation/MentionCompletion";
@@ -11,14 +14,18 @@ import { useMentionCompletion } from "../conversation/MentionCompletion";
 const pendingSchema = z.object({ content: z.string(), deliveryId: z.string().min(1) }).strict();
 export type ExternalTarget = "bot" | "codex" | "both";
 
-export function ExternalComposer({ identity, botId, botName, connected, posting, codexAutomatic, onSend }: {
-  identity: string; botId: string; botName: string; connected: boolean; posting: boolean;
+export function ExternalComposer({ identity, botId, botName, connectionId, connected, posting, codexAutomatic, onSend }: {
+  identity: string; botId: string; botName: string; connectionId: string | null; connected: boolean; posting: boolean;
   codexAutomatic: boolean;
   onSend: (text: string, target: ExternalTarget, deliveryId: string, replyTo: string | null) => Promise<boolean>;
 }) {
   const draftKey = `external:${identity}:${botId}`;
   const pendingKey = `konden.externalPending.${identity}:${botId}`;
   const [draft, setDraft] = useState(() => restoreComposerText(draftKey));
+  const [changingModel, setChangingModel] = useState(false);
+  const { currentData: conversation } = useGetConversationQuery(botId);
+  const { currentData: selection } = useGetSessionModelQuery(botId, { pollingInterval: 2000 });
+  const limit = selection?.effective?.compact_threshold_tokens ?? selection?.selected?.compact_threshold_tokens ?? 0;
   const { quote: requestedQuote, onQuote } = useContext(ChatPresentation);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const { body: text, quote } = splitMessageQuote(draft);
@@ -40,7 +47,8 @@ export function ExternalComposer({ identity, botId, botName, connected, posting,
     onQuote(null);
     textarea.current?.focus();
   }, [requestedQuote, onQuote]);
-  const canSend = connected && !posting && text.trim() !== "";
+  const expanded = quote !== null || text.length > 90 || text.includes("\n");
+  const canSend = connected && !posting && !changingModel && text.trim() !== "";
 
   async function send() {
     if (!canSend) return;
@@ -56,11 +64,11 @@ export function ExternalComposer({ identity, botId, botName, connected, posting,
     }
   }
 
-  return <div className="composer group-composer external-composer is-expanded">
+  return <div className={`composer group-composer external-composer${expanded ? " is-expanded" : ""}`}>
     {quote === null ? null : <MessageQuote quote={quote} onRemove={() => { if (!posting) setDraft(text); }} />}
     {mentions.menu}
     <Textarea className="composer-input" ref={textarea} aria-label="三方会话消息" placeholder="输入 @ 选择接收方，开始三方对话…"
-      variant="unstyled" autosize minRows={2} maxRows={7} value={text} disabled={!connected || posting}
+      variant="unstyled" autosize minRows={expanded ? 2 : 1} maxRows={7} value={text} disabled={!connected || posting}
       {...mentions.inputProps}
       onKeyDown={(event) => {
         if (mentions.handleKeyDown(event)) return;
@@ -76,8 +84,14 @@ export function ExternalComposer({ identity, botId, botName, connected, posting,
           {addressed.size === 0 ? "默认给" : "发送给"} {recipients}{target !== "bot" && !codexAutomatic ? " · Codex 需主动收信" : ""}
         </Text>
       </Group>
-      <Tooltip label="发送消息"><ActionIcon className="composer-send" aria-label="发送三方消息" disabled={!canSend}
-        loading={posting} radius="xl" size={32} onClick={() => void send()}><IconArrowUp size={18} /></ActionIcon></Tooltip>
+      <Group className="composer-trailing" gap={8} wrap="nowrap">
+        {selection === undefined ? null : <ContextUsage inputTokens={conversation?.context_input_tokens ?? null} limit={limit} />}
+        <div className="composer-model"><ModelSelector sessionId={botId} connectionId={connected ? connectionId : null}
+          onChanging={setChangingModel} /></div>
+        <Tooltip label="发送消息"><ActionIcon className="composer-send" aria-label="发送三方消息" disabled={!canSend}
+          loading={posting} loaderProps={{ color: "var(--konden-button-text)" }} radius="xl" size={32}
+          onClick={() => void send()}><IconArrowUp aria-hidden="true" size={18} stroke={2} /></ActionIcon></Tooltip>
+      </Group>
     </Group>
   </div>;
 }
