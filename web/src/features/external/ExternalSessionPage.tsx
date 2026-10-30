@@ -50,7 +50,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
   const author = (message: ExternalConversationMessage) => message.sender === "user" ? "你" : message.sender === "codex" ? session.name : message.bot_name;
   const participant = (role: "bot" | "codex" | "user", message: ExternalConversationMessage) => role === "bot"
     ? <Link to={`/sessions/${encodeURIComponent(message.bot_session_id)}`}>{message.bot_name}</Link> : role === "codex" ? session.name : "你";
-  return <ChatPresentation value={{ ...presentation, names: [session.name, "你", ...peers.map((peer) => peer.name)], quote, onQuote: setQuote, onJump: reading.jump }}>
+  return <ChatPresentation value={{ ...presentation, names: [session.name, "Codex", "你", ...peers.map((peer) => peer.name)], quote, onQuote: setQuote, onJump: reading.jump }}>
     <div className="session-page external-session-page">
       <div className="session-main">
         <header className="page-header session-header">

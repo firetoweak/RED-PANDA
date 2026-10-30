@@ -83,26 +83,25 @@ it("无历史时先选择 Bot，三方来源和接收方可区分", async () => 
   fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
   fireEvent.click(await screen.findByRole("option", { name: "墨竹" }));
   expect(screen.getByText("三方对话已准备好")).toBeVisible();
-  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "三方都能看见" } });
-  fireEvent.click(screen.getByRole("combobox", { name: "发送给谁" }));
-  fireEvent.click(await screen.findByRole("option", { name: "发送给双方" }));
-  expect(screen.getByText("Codex 需主动收信")).toBeVisible();
+  expect(screen.queryByRole("combobox", { name: "发送给谁" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "@all 三方都能看见" } });
+  expect(screen.getByText(/发送给 @墨竹、@Codex/)).toHaveTextContent("Codex 需主动收信");
   fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
   await waitFor(() => expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue(""));
-  expect(query.post).toHaveBeenCalledWith({ connectionId: "human", identity, botSessionId: "alpha", text: "三方都能看见",
+  expect(query.post).toHaveBeenCalledWith({ connectionId: "human", identity, botSessionId: "alpha", text: "@all 三方都能看见",
     target: "both", deliveryId: expect.stringMatching(/^web-/), replyTo: null });
 });
 
 it("发送失败保留引用、正文和编号，重试成功后清空", async () => {
   query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [
     { message_id: "human", sequence: 1, direction: "user_bot", sender: "user", recipients: ["bot"], text: "人的原话", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
-    { message_id: "bot", sequence: 2, direction: "bot_user", sender: "bot", recipients: ["user"], text: "Bot 给人的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "human", occurred_at: session.created_at },
+    { message_id: "bot", sequence: 2, direction: "bot_user", sender: "bot", recipients: ["user"], text: "@Codex 给人的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "human", occurred_at: session.created_at },
   ] };
   query.post.mockReturnValueOnce({ unwrap: () => Promise.reject("暂时断开，请重试") });
   open("?bot=alpha");
   expect(screen.getByRole("article", { name: "你的消息" })).toHaveTextContent("你 → 墨竹");
   expect(screen.getByRole("article", { name: "墨竹的消息" })).toHaveTextContent("墨竹 → 你");
-  fireEvent.contextMenu(screen.getByText("Bot 给人的回复"));
+  fireEvent.contextMenu(screen.getByText("@Codex 给人的回复"));
   fireEvent.click(await screen.findByRole("menuitem", { name: "引用 墨竹 的消息" }));
   fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "请继续" } });
   fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
@@ -115,6 +114,47 @@ it("发送失败保留引用、正文和编号，重试成功后清空", async (
   await waitFor(() => expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue(""));
   expect(query.post.mock.calls[1][0]).toEqual(first);
   expect(screen.queryByRole("button", { name: "取消引用" })).not.toBeInTheDocument();
+});
+
+it("用 @ 补全接收方，确认候选的 Enter 不直接发送，删除点名后恢复默认 Bot", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  const input = screen.getByRole("textbox", { name: "三方会话消息" });
+  fireEvent.click(screen.getByRole("button", { name: "点名接收方" }));
+  expect(input).toHaveValue("@");
+  expect(screen.getByRole("option", { name: /双方.*@all/ })).toBeVisible();
+  fireEvent.keyDown(input, { key: "ArrowUp" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toHaveValue("@Codex ");
+  expect(query.post).not.toHaveBeenCalled();
+  expect(screen.getByText(/发送给 @Codex/)).toBeVisible();
+  fireEvent.change(input, { target: { value: "普通发言" } });
+  expect(screen.getByText("默认给 @墨竹")).toBeVisible();
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ text: "普通发言", target: "bot" })));
+});
+
+it.each([
+  ["@codex，请确认", "codex"], ["@墨竹 @Codex 请共同确认", "both"],
+  ["dev@Codex.example 和 @CodexTest 都只是正文", "bot"],
+])("只按正文中的完整点名发送：%s", async (text, target) => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ text, target })));
+});
+
+it("Bot 也叫 Codex 时点名仍能区分两个来源", async () => {
+  query.data = { session: { ...session, peers: [{ name: "Codex", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  open("?bot=alpha");
+  const input = screen.getByRole("textbox", { name: "三方会话消息" });
+  fireEvent.change(input, { target: { value: "@Codex 只请原生聊天处理" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ target: "codex" })));
+  fireEvent.change(input, { target: { value: "@Codex（Bot） 只请 Bot 处理" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenLastCalledWith(expect.objectContaining({ target: "bot" })));
 });
 
 it.each(["disconnected", "revoked", "deleted"])("%s 时保留草稿而禁止发送", (unavailable) => {
