@@ -12,6 +12,7 @@ from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from konden.config import write_json
+from konden.assistant.attachments import is_valid_attachment_id
 from konden.runtime import DomainFactCommitted
 from konden.runtime.json_values import thaw_value
 
@@ -47,6 +48,8 @@ class SendExternal(MessageInput):
         description="回复这位同事时，可引用已收发消息的 message_id；新话题可省略。")
     target: Literal["bot", "user", "both"] | None = Field(default=None,
         description="这段三方对话中请谁处理：bot 为这位同事，user 为用户，both 为两者。省略时，回复用户消息发给用户，其余发给 Bot；所有发言都保留在这段三方记录中。")
+    files: list[str] = Field(default_factory=list,
+        description="可选附件，填写当前 Codex 聊天工作目录内文件的相对路径。图片和普通文件均可，发送时保存副本；重试保持列表不变。")
 
 
 class SendToExternal(MessageInput, ExternalIdentity):
@@ -56,6 +59,8 @@ class SendToExternal(MessageInput, ExternalIdentity):
         description="可引用你与这个外部会话之间的 message_id；继续交谈或新话题可省略。")
     target: Literal["codex", "user", "both"] | None = Field(default=None,
         description="这段三方对话中请谁处理：codex 为原生聊天，user 为用户，both 为两者。省略时，回复用户消息发给用户，其余发给 Codex；所有发言都保留在这段三方记录中。")
+    files: list[str] = Field(default_factory=list,
+        description="可选附件，填写你工作目录内文件的相对路径。图片和普通文件均可，发送时保存副本。")
 
 
 class PostExternal(MessageInput):
@@ -63,6 +68,14 @@ class PostExternal(MessageInput):
     target: Literal["bot", "codex", "both"]
     delivery_id: str = Field(min_length=1, max_length=200)
     reply_to: str | None = Field(default=None, min_length=1)
+    artifact_refs: list[str] = Field(default_factory=list)
+
+    @field_validator("artifact_refs")
+    @classmethod
+    def valid_attachments(cls, value):
+        if any(not is_valid_attachment_id(ref) for ref in value):
+            raise ValueError("artifact_refs 必须是有效的附件 id")
+        return value
 
 
 class ExternalConnection(BaseModel):
@@ -201,6 +214,8 @@ class ExternalMessage(MessageInput, ExternalIdentity):
     direction: Literal["received", "sent", "codex_user", "codex_both", "bot_user", "bot_both",
                        "user_bot", "user_codex", "user_both"]
     reply_to: str | None
+    artifact_refs: list[str] = Field(default_factory=list)
+    attachment_paths: list[str] = Field(default_factory=list)
 
     @property
     def incoming(self) -> bool:
@@ -237,7 +252,8 @@ class ExternalMessage(MessageInput, ExternalIdentity):
 
     def arguments(self) -> dict:
         return dict(fact_type=EXTERNAL_MESSAGE, data=self.model_dump(), source="external_collaboration",
-                    delivery_id=self.message_id, requests_decision=self.requests_decision)
+                    delivery_id=self.message_id, requests_decision=self.requests_decision,
+                    **({"artifact_refs": tuple(self.artifact_refs)} if self.artifact_refs else {}))
 
     def for_model(self) -> dict:
         return {"message_id": self.message_id,

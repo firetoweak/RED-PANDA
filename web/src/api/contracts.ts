@@ -135,6 +135,16 @@ export const externalSessionSchema = z.object({
   peers: z.array(z.object({ name: z.string().min(1), session_id: z.string().min(1), deleted: z.boolean() }).strict()),
 }).strict();
 export type ExternalSessionSummary = z.infer<typeof externalSessionSchema>;
+export const attachmentRefSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("image"), attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    name: z.string().min(1), size: z.number().int().nonnegative(),
+    mime: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+    width: z.number().int().positive(), height: z.number().int().positive() }).strict(),
+  z.object({ kind: z.literal("file"), attachment_id: z.string().regex(/^file:[0-9a-f]{32}$/),
+    name: z.string().min(1), size: z.number().int().nonnegative() }).strict(),
+]);
+export type AttachmentRef = z.infer<typeof attachmentRefSchema>;
+
 export const externalConversationSchema = z.object({
   session: externalSessionSchema,
   codex: z.object({
@@ -151,6 +161,7 @@ export const externalConversationSchema = z.object({
     sender: z.enum(["codex", "bot", "user"]),
     recipients: z.array(z.enum(["codex", "bot", "user"])).min(1),
     text: z.string().min(1),
+    attachments: attachmentRefSchema.array(),
     reply_to: z.string().nullable(),
     bot_name: z.string().min(1),
     bot_session_id: z.string().min(1),

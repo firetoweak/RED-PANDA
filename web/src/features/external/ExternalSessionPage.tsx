@@ -8,6 +8,8 @@ import { useGetAgentsQuery, useGetExternalConversationQuery, usePostExternalMess
 import { useAppSelector } from "../../app/hooks";
 import { BotAvatar, ChatPresentation, MessageMenu, MessageQuote, messageReference, type MessageReference } from "../conversation/ChatPresentation";
 import { MarkdownMessage } from "../conversation/MarkdownMessage";
+import { AttachmentTile, attachmentUrl } from "../conversation/AttachmentTile";
+import { FileAttachmentTile } from "../conversation/FileAttachmentTile";
 import { formatMessageTime } from "../conversation/messageTime";
 import { useMessageReading } from "../conversation/useMessageReading";
 import { CodexContinuation } from "./CodexContinuation";
@@ -82,6 +84,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
             </div> : messages.map((message, index) => {
               const source = message.reply_to === null ? undefined : byId.get(message.reply_to);
               const time = formatMessageTime(message.occurred_at);
+              const body = message.attachments.length === 0 ? message.text : message.text.replace(/\[(?:Image|File) #\d+\]/g, "").trim();
               return <div key={message.message_id} className="group-message-slot">
                 {index > 0 && messages[index - 1].message_id === reading.unreadAfter ? <div className="unread-divider" role="separator">以下是未读消息</div> : null}
                 <article className={message.sender === "user" ? "group-message is-human" : "group-message"} data-message-id={message.message_id} aria-label={`${author(message)}的消息`}>
@@ -92,7 +95,15 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
                     <MessageMenu id={message.message_id} author={author(message)} text={message.text}>
                       <div className="group-message-bubble" tabIndex={0}>
                         {source === undefined ? null : <MessageQuote quote={messageReference(source.message_id, author(source), source.text)} />}
-                        <MarkdownMessage content={message.text} streaming={false} />
+                        {message.attachments.length === 0 ? null : <Group className="user-attachments" gap={8} wrap="wrap">
+                          {message.attachments.map((file) => file.kind === "image"
+                            ? <AttachmentTile key={file.attachment_id} name={file.name} large
+                                src={attachmentUrl(message.bot_session_id, file.attachment_id)}
+                                downloadHref={attachmentUrl(message.bot_session_id, file.attachment_id)} />
+                            : <FileAttachmentTile key={file.attachment_id} name={file.name} size={file.size}
+                                href={attachmentUrl(message.bot_session_id, file.attachment_id)} />)}
+                        </Group>}
+                        {body === "" ? null : <MarkdownMessage content={body} streaming={false} />}
                       </div>
                     </MessageMenu>
                   </div>
@@ -114,11 +125,11 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
               connectionId={connectionId}
               connected={session.active && !selected.deleted && connectionId !== null} posting={posting.isLoading}
               codexAutomatic={conversation.codex.status !== "disabled"}
-              onSend={async (text, target, deliveryId, replyTo) => {
+              onSend={async (text, target, deliveryId, replyTo, artifactRefs) => {
                 if (connectionId === null) return false;
                 setFailure(null);
                 try {
-                  await postMessage({ connectionId, identity, botSessionId: selected.session_id, text, target, deliveryId, replyTo }).unwrap();
+                  await postMessage({ connectionId, identity, botSessionId: selected.session_id, text, target, deliveryId, replyTo, artifactRefs }).unwrap();
                   reading.latest();
                   return true;
                 } catch (cause) {

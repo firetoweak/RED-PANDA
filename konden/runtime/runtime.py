@@ -158,6 +158,7 @@ class AgentRuntime:
         source: str,
         requests_decision: bool = False,
         causation_id: str | None = None,
+        artifact_refs: tuple[str, ...] = (),
     ) -> Event:
         """Accept a non-human external fact for an already selected Session."""
 
@@ -170,6 +171,7 @@ class AgentRuntime:
             ),
             DeliveryIdentity(source, delivery_id),
             causation_id=causation_id,
+            artifact_refs=artifact_refs,
         )
 
     async def snapshot(self, session_id: str) -> tuple[Event, ...]:

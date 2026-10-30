@@ -52,7 +52,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 26
+PROJECTOR_VERSION = 27
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -183,6 +183,7 @@ def _user_content(
     event: Event,
     text: str,
     attachments: AttachmentStore | None,
+    *, source: str = "用户已发送",
 ) -> object:
     """用户消息带附件时，图片块之外同时把 id 留在正文里。
 
@@ -210,7 +211,7 @@ def _user_content(
             images.append(attachments.inspect(ref).to_block())
     if files:
         text += (
-            "\n用户已发送的文件材料：\n" + json.dumps(files, ensure_ascii=False)
+            f"\n{source}的文件材料：\n" + json.dumps(files, ensure_ascii=False)
             + "\n以上路径可用 read_file 或 execute_command 读取。"
             "以上文件只读；要修改先复制到工作区再改。"
         )
@@ -232,6 +233,7 @@ def _translate_visible_events(
     # Compact 只改变可见窗口；已经提交的材料仍属于此 Session。
     file_refs = {
         ref for event in events if isinstance(event.payload, UserMessageReceived)
+        or isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == EXTERNAL_MESSAGE
         for ref in event.artifact_refs if is_file_attachment_id(ref)
     }
     if file_refs:
@@ -354,6 +356,8 @@ def _translate_visible_events(
                 content = "<capability_catalog>\n" + content + "\n</capability_catalog>"
             elif payload.fact_type in MEMORY_FACTS:
                 content = memory_message(payload.fact_type, shown_data)["content"]
+            if payload.fact_type == EXTERNAL_MESSAGE:
+                content = _user_content(event, content, attachments, source="这条三方消息附带")
             items.append(_Projected(
                 {"role": "user", "content": content},
                 "trigger" if payload.requests_decision else "fact",

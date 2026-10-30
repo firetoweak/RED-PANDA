@@ -188,8 +188,7 @@ class AttachmentStore:
     def inspect(self, attachment_id: str) -> AttachmentRef:
         """从已落盘字节还原引用。用户消息的 artifact_refs 只有 id。"""
 
-        data = self.read(attachment_id)
-        with Image.open(BytesIO(data)) as image:
+        with Image.open(self.path(attachment_id)) as image:
             mime = _MIME_BY_FORMAT[image.format]
             width, height = image.size
         return AttachmentRef(attachment_id, mime, width, height, width, height)

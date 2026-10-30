@@ -16,6 +16,7 @@ import {
   type CreatedExternalConnection,
   externalSessionSchema,
   externalConversationSchema,
+  attachmentRefSchema, type AttachmentRef,
   type ExternalSessionSummary,
   type ExternalConversation,
   avatarSelectionSchema,
@@ -96,27 +97,7 @@ type SetAutoAuthorize = {
   enabled: boolean;
 };
 
-const attachmentRefSchema = z.discriminatedUnion("kind", [
-  z
-  .object({
-    kind: z.literal("image"),
-    attachment_id: z.string().regex(/^sha256:[0-9a-f]{64}$/),
-    name: z.string().min(1),
-    size: z.number().int().nonnegative(),
-    mime: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
-  })
-  .strict(),
-  z.object({
-    kind: z.literal("file"),
-    attachment_id: z.string().regex(/^file:[0-9a-f]{32}$/),
-    name: z.string().min(1),
-    size: z.number().int().nonnegative(),
-  }).strict(),
-]);
-
-export type AttachmentRef = z.infer<typeof attachmentRefSchema>;
+export type { AttachmentRef } from "./contracts";
 
 const validationIssue = z.object({ msg: z.string().min(1) }).passthrough();
 
@@ -322,11 +303,12 @@ export const kondenApi = createApi({
     postExternalMessage: build.mutation<ExternalConversation, {
       connectionId: string; identity: string; botSessionId: string;
       text: string; target: "bot" | "codex" | "both"; deliveryId: string; replyTo: string | null;
+      artifactRefs: string[];
     }>({
-      query: ({ connectionId, identity, botSessionId, text, target, deliveryId, replyTo }) => ({
+      query: ({ connectionId, identity, botSessionId, text, target, deliveryId, replyTo, artifactRefs }) => ({
         url: `/external-sessions/${encodeURIComponent(identity)}/messages`, method: "POST",
         body: { connection_id: connectionId, bot_session_id: botSessionId, text, target,
-          delivery_id: deliveryId, reply_to: replyTo },
+          delivery_id: deliveryId, reply_to: replyTo, artifact_refs: artifactRefs },
       }),
       transformResponse: (value: unknown) => externalConversationSchema.parse(value),
       transformErrorResponse: (response) => apiErrorDetail(response.data) ?? response,
