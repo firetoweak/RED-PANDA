@@ -1,5 +1,5 @@
 import { Modal, UnstyledButton } from "@mantine/core";
-import { IconArrowDownLeft, IconArrowUpRight, IconExternalLink } from "@tabler/icons-react";
+import { IconArrowDownLeft, IconArrowUpRight } from "@tabler/icons-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -32,35 +32,31 @@ export function PrivateMessageNotice({ communication, agentName }: {
         {identity}
       </UnstyledButton>
     </div>
-    <Modal opened={opened} onClose={() => setOpened(false)} size={680} padding={0}
-      className="private-message-modal" closeButtonProps={{ "aria-label": "关闭私聊" }}
-      title={<span className="private-message-modal-title">
-        <BotAvatar name={message.peer} sessionId={peer?.session_id} />
-        <span>与 {message.peer} 的私聊</span>
-      </span>}>
-      <div className="private-message-transcript">
-        {messages.map((item) => {
-          const author = item.direction === "sent" ? agentName : item.peer;
-          const recipient = item.direction === "sent" ? item.peer : agentName;
-          const itemTime = formatMessageTime(item.occurredAt);
-          return <article className="private-message-entry" key={item.key} data-direction={item.direction}
-            aria-label={`${author} 发给 ${recipient} 的私信`}>
-            <header className="private-message-entry-meta">
-              <BotAvatar name={author} sessionId={item.direction === "sent" ? sessionId : peer?.session_id} />
-              <span data-identity={identityColor(author)}>{author}</span>
-              <time dateTime={item.occurredAt} title={itemTime.full}>{itemTime.short}</time>
-            </header>
-            <div className="private-message-entry-body"><MarkdownMessage content={item.text} streaming={false} /></div>
-          </article>;
-        })}
-      </div>
-      <div className="private-message-modal-footer">
-        <span>{messages.length} 条消息</span>
-        {peer === undefined ? null : <Link className="private-message-open-peer" to={`/sessions/${encodeURIComponent(peer.session_id)}`}>
-          打开 {message.peer} 的对话 <IconExternalLink aria-hidden="true" size={14} />
-        </Link>}
-      </div>
-    </Modal>
+    <Modal.Root opened={opened} onClose={() => setOpened(false)} size={680} padding={0}
+      centered radius="lg" zIndex={300} className="private-message-modal">
+      <Modal.Overlay />
+      <Modal.Content aria-label={`与 ${message.peer} 的私聊`}>
+        <Modal.CloseButton className="private-message-close" aria-label="关闭私聊" />
+        <Modal.Body>
+          <div className="private-message-transcript">
+            {messages.map((item) => {
+              const author = item.direction === "sent" ? agentName : item.peer;
+              const recipient = item.direction === "sent" ? item.peer : agentName;
+              const itemTime = formatMessageTime(item.occurredAt);
+              return <article className="private-message-entry" key={item.key} data-direction={item.direction}
+                aria-label={`${author} 发给 ${recipient} 的私信`}>
+                <header className="private-message-entry-meta">
+                  <BotAvatar name={author} sessionId={item.direction === "sent" ? sessionId : peer?.session_id} />
+                  <span data-identity={identityColor(author)}>{author}</span>
+                  <time dateTime={item.occurredAt} title={itemTime.full}>{itemTime.short}</time>
+                </header>
+                <div className="private-message-entry-body"><MarkdownMessage content={item.text} streaming={false} /></div>
+              </article>;
+            })}
+          </div>
+        </Modal.Body>
+      </Modal.Content>
+    </Modal.Root>
   </>;
   const notice = <>
     <span>外部协作者</span>
