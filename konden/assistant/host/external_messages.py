@@ -15,6 +15,7 @@ from konden.assistant.external_messages import (
 from konden.assistant.host.agent_messages import message_identity
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
 from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexContinuations, continuation_status
+from konden.assistant.host.codex_titles import read_codex_titles
 from konden.runtime import DomainFactCommitted, Event
 
 
@@ -106,11 +107,15 @@ class ExternalMessages:
     async def _conversation(self, session):
         return self._messages_for(session, await self._refresh())
 
-    def _session_view(self, session, messages, active_connections, bindings):
+    async def _names(self, sessions):
+        titles = await read_codex_titles([session.identity for session in sessions if session.label is None])
+        return {session.identity: titles.get(session.identity, session.name) for session in sessions}
+
+    def _session_view(self, session, messages, active_connections, bindings, names):
         peers = {agent.session_id: {"name": agent.name, "session_id": agent.session_id, "deleted": agent.deleted}
                  for agent, _, _ in messages}
         latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
-        return {"identity": session.identity, "name": session.name,
+        return {"identity": session.identity, "name": names[session.identity],
                 "created_at": session.created_at.isoformat(),
                 "last_activity_at": max([session.created_at, *(event.occurred_at for _, event, _ in messages)]).isoformat(),
                 "active": session.connection_id in active_connections, "peers": list(peers.values()),
@@ -123,7 +128,8 @@ class ExternalMessages:
         agents = await self._refresh()
         active = {item.connection_id for item in self.connections.read().connections}
         bindings = self.codex.read().bindings
-        return sorted((self._session_view(session, self._messages_for(session, agents), active, bindings)
+        names = await self._names(sessions)
+        return sorted((self._session_view(session, self._messages_for(session, agents), active, bindings, names)
                        for session in sessions),
                       key=lambda item: item["last_activity_at"], reverse=True)
 
@@ -134,7 +140,8 @@ class ExternalMessages:
         messages = await self._conversation(session)
         active = {item.connection_id for item in self.connections.read().connections}
         latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
-        return {"session": self._session_view(session, messages, active, self.codex.read().bindings),
+        names = await self._names([session])
+        return {"session": self._session_view(session, messages, active, self.codex.read().bindings, names),
                 "codex": self.codex.view(identity, latest), "messages": [
             {"message_id": message.message_id, "sequence": message.sequence,
              "direction": message.direction, "text": message.text, "reply_to": message.reply_to,
@@ -193,7 +200,8 @@ class ExternalMessages:
                     "label": session.label if name is None else name})
                 self.sessions.update(session)
                 await self._notify()
-            return {"ok": True, "identity": session.identity, "name": session.name,
+            names = await self._names([session])
+            return {"ok": True, "identity": session.identity, "name": names[session.identity],
                     "colleagues": [{"name": item.name} for item in await self.host.agents.list()],
                     "notice": ("已自动识别当前 Codex 聊天，继续或重连无需保存和传回身份。可用 get_context 的 name 设置便于辨认的名称。"
                                "用 send_message 与同事交谈，用 read_messages 持续收取这个会话的消息。"
@@ -228,8 +236,9 @@ class ExternalMessages:
                 return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "没有这位同事，请用 get_context 查询当前名字。"}
             if not self._valid_reply(messages, recipient.session_id, arguments.reply_to):
                 return self.invalid_reply()
+            names = await self._names([session])
             message = ExternalMessage(connection_id=connection.connection_id, identity=session.identity,
-                name=session.name, message_id=message_id, sequence=len(messages) + 1, direction="received",
+                name=names[session.identity], message_id=message_id, sequence=len(messages) + 1, direction="received",
                 reply_to=arguments.reply_to, text=arguments.text)
             try:
                 await self.host.request("fact", recipient.session_id, message.arguments())

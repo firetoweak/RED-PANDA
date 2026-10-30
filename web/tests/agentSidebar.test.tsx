@@ -117,13 +117,16 @@ afterEach(() => {
 it("没有内部 Bot 时仍能找到并打开已接入的外部会话", () => {
   browserStubs();
   queries.agents = []; queries.groups = [];
-  queries.externalSessions = [{ identity: "1".repeat(32), name: "外部会话-11111111", active: true, codex_status: "disabled",
+  const title = "了解 Tabbit CLI 与 Playwright 的关系，以及交互式资源的设计";
+  queries.externalSessions = [{ identity: "1".repeat(32), name: title, active: true, codex_status: "disabled",
     created_at: "2026-10-25T01:00:00Z", last_activity_at: "2026-10-25T01:00:00Z", peers: [] }];
   renderSidebar("/");
   const external = within(screen.getByRole("region", { name: "外部会话" }));
-  fireEvent.click(external.getByRole("button", { name: "外部会话-11111111" }));
+  const entry = external.getByRole("button", { name: title });
+  expect(entry).toHaveAttribute("title", title);
+  fireEvent.click(entry);
   expect(screen.getByTestId("current-path")).toHaveTextContent(`/external/${"1".repeat(32)}`);
-  expect(external.getByRole("button", { name: "外部会话-11111111" })).toHaveAttribute("aria-current", "page");
+  expect(external.getByRole("button", { name: title })).toHaveAttribute("aria-current", "page");
 });
 
 it("侧栏区分收信方式并收起已撤销会话，仍可展开历史", () => {

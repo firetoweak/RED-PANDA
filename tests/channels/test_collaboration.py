@@ -52,7 +52,8 @@ def collaboration(tmp_path):
         deliveries.append(arguments)
         await AgentRuntime(SqliteJournal(store.require(session_id)), None, {}).receive_domain_fact(session_id, **arguments)
 
-    with patch.object(host, "request", side_effect=deliver):
+    with patch("konden.assistant.host.external_messages.read_codex_titles", new=AsyncMock(return_value={})) as titles, \
+            patch.object(host, "request", side_effect=deliver):
         with TestClient(app, base_url="http://127.0.0.1:8876") as client:
             human = client.portal.call(web.connect)
 
@@ -91,7 +92,7 @@ def collaboration(tmp_path):
             yield SimpleNamespace(host=host, service=service, store=store, client=client, hub=hub,
                 call=call, send=send, read=read, reply=reply, identity=identity, context=context,
                 connection=first, token=token, other_token=other_token, deliveries=deliveries,
-                human_connection=human.connection_id)
+                human_connection=human.connection_id, titles=titles)
             client.portal.call(web.disconnect, human)
             client.portal.call(host.close)
 
@@ -161,6 +162,35 @@ def test_registration_is_visible_before_messages_and_reconnection_preserves_iden
     assert all(set(item) == {"identity", "name", "active", "last_activity_at", "codex_status"} for item in peers)
     assert len(c.client.portal.call(c.host.agents.list)) == 2
     assert c.client.get("/api/external-sessions/unknown").status_code == 404
+
+
+def test_codex_titles_follow_renames_without_changing_identity_history_or_explicit_alias(collaboration):
+    c = collaboration
+    c.titles.return_value = {c.identity: "了解 Tabbit CLI 与 Playwright 的关系"}
+    context = c.call("get_context")["structuredContent"]
+    assert context["identity"] == c.identity and context["name"] == c.titles.return_value[c.identity]
+    original = c.send()["message_id"]
+    c.reply(reply_to=original)
+    history = c.read()
+    before = c.service.sessions.read()
+
+    c.titles.return_value = {c.identity: "浏览器工具选型"}
+    entries = c.client.get("/api/external-sessions").json()
+    assert len(entries) == 1 and entries[0]["name"] == "浏览器工具选型"
+    view = c.client.get("/api/external-sessions/" + c.identity).json()
+    assert view["session"]["name"] == "浏览器工具选型"
+    peers = c.client.portal.call(c.host._route, LIST_EXTERNAL, "coordinator", {})["data"]["sessions"]
+    assert peers[0]["name"] == "浏览器工具选型"
+    assert c.read()["messages"] == history["messages"]
+    assert c.service.sessions.read() == before
+    messages = c.client.portal.call(c.service.messages, "coordinator")
+    assert messages[0][1].name == context["name"]
+
+    c.titles.return_value = {}
+    c.call("get_context", {"name": "我的别名"})
+    c.titles.reset_mock()
+    assert c.client.get("/api/external-sessions").json()[0]["name"] == "我的别名"
+    c.titles.assert_awaited_once_with([])
 
 
 def test_access_and_identity_scope_messages_without_exposing_private_timelines(collaboration):

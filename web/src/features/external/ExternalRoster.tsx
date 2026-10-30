@@ -22,7 +22,7 @@ export function ExternalRoster({ query, onOpen }: { query: string; onOpen: (path
       : visible.length === 0 ? <Text c="dimmed" size="xs" px={10} py={8}>{query === "" ? "尚无外部会话，可在「设置 → Codex 接入」中配置。" : "没有匹配的外部会话。"}</Text> : null}
     <Stack gap={3}>{entries.map((session) => <div key={session.identity}
       className={identity === session.identity ? "session-row is-active" : "session-row"}>
-      <UnstyledButton className="session-row-main" aria-label={session.name}
+      <UnstyledButton className="session-row-main" aria-label={session.name} title={session.name}
         aria-current={identity === session.identity ? "page" : undefined}
         onClick={() => onOpen(`/external/${encodeURIComponent(session.identity)}`)}>
         <Group gap={10} wrap="nowrap">
