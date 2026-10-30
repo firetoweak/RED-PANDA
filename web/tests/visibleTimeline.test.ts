@@ -246,7 +246,7 @@ describe("visibleTimeline", () => {
 });
 
 describe("timelineTurns", () => {
-  it("keeps replies in one private conversation across ordinary replies, without mixing peers or new topics", () => {
+  it("keeps individual notices in the timeline while each opens its complete private conversation", () => {
     const incoming = { kind: "private_message" as const, message_id: "in", direction: "received" as const,
       peer: "Nova", thread_id: "nova-thread", reply_to: "out", text: "请检查文件", occurred_at: "2026-10-21T00:00:00Z" };
     const sent = { ...incoming, message_id: "out", direction: "sent" as const, reply_to: null };
@@ -260,7 +260,7 @@ describe("timelineTurns", () => {
     ] }, {}, null, {}));
     expect(turns).toHaveLength(2);
     expect(turns[0]).toMatchObject({
-      communications: [{ key: "private-thread:nova-thread", messages: [
+      communications: [{ key: "private:sent:out", message: { direction: "sent", messageId: "out" }, messages: [
         { key: "private:sent:out", direction: "sent", peer: "Nova", text: "请检查文件" },
         { key: "private:received:in", direction: "received", peer: "Nova", text: "请检查文件" },
       ] }],
@@ -268,8 +268,11 @@ describe("timelineTurns", () => {
     });
     expect(turns[1]).toMatchObject({
       communications: [
-        { key: "private-thread:lin-thread", messages: [{ peer: "Lin" }] },
-        { key: "private-thread:nova-new-topic", messages: [{ peer: "Nova" }] },
+        { key: "private:received:in", message: { direction: "received", messageId: "in" }, messages: [
+          { messageId: "out" }, { messageId: "in" },
+        ] },
+        { key: "private:sent:other", message: { peer: "Lin" }, messages: [{ peer: "Lin" }] },
+        { key: "private:sent:new", message: { peer: "Nova" }, messages: [{ peer: "Nova" }] },
       ],
       final: null,
     });
@@ -277,6 +280,7 @@ describe("timelineTurns", () => {
     expect(turnNeedsSilentEnd(sentOnly, true)).toBe(false);
     const earlyReply = timelineTurns(visibleTimeline({ ...conversation, items: [incoming, sent] }, {}, null, {}));
     expect(earlyReply[0].communications[0].messages.map((message) => message.messageId)).toEqual(["out", "in"]);
+    expect(earlyReply[0].communications.map(({ message }) => message.messageId)).toEqual(["in", "out"]);
   });
 
   it("keeps tool steps in the process and exposes the final no-tool step", () => {
