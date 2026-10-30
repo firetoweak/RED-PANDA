@@ -7,9 +7,10 @@ import type { ExternalConversation, SessionModel } from "../src/api/contracts";
 import { ExternalSessionPage } from "../src/features/external/ExternalSessionPage";
 
 const query = vi.hoisted(() => ({ data: undefined as ExternalConversation | undefined, connectionId: "human" as string | null,
-  agents: [] as { session_id: string; name: string }[], save: vi.fn(), retry: vi.fn(), post: vi.fn(),
+  agents: [] as { session_id: string; name: string }[], save: vi.fn(), retry: vi.fn(), post: vi.fn(), upload: vi.fn(),
   models: {} as Record<string, SessionModel>, usage: {} as Record<string, number | null>, modelSelect: vi.fn() }));
-vi.mock("../src/api/kondenApi", () => ({
+vi.mock("../src/api/kondenApi", async (importOriginal) => ({
+  apiErrorDetail: (await importOriginal<typeof import("../src/api/kondenApi")>()).apiErrorDetail,
   useGetConversationQuery: (id: string) => ({ currentData: query.usage[id] === undefined ? undefined : { context_input_tokens: query.usage[id] } }),
   useGetSessionModelQuery: (id: string) => ({ data: query.models[id], currentData: query.models[id] }),
   useGetModelCatalogQuery: () => ({ currentData: [] }),
@@ -22,6 +23,7 @@ vi.mock("../src/api/kondenApi", () => ({
   useGetExternalConversationQuery: () => ({ data: query.data }),
   useGetAgentsQuery: () => ({ data: query.agents }),
   usePostExternalMessageMutation: () => [query.post, { isLoading: false }],
+  useUploadAttachmentMutation: () => [query.upload],
   useSetExternalCodexMutation: () => [query.save, { isLoading: false }],
   useRetryExternalCodexMutation: () => [query.retry, { isLoading: false }],
 }));
@@ -45,6 +47,11 @@ beforeEach(() => {
   query.save.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.retry.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.post.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
+  query.upload.mockReset().mockImplementation(({ file }: { file: File }) => ({ unwrap: () => Promise.resolve({
+    kind: "file", attachment_id: "file:" + "a".repeat(32), name: file.name, size: file.size,
+  }) }));
+  URL.createObjectURL = vi.fn(() => "blob:test-preview");
+  URL.revokeObjectURL = vi.fn();
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -69,9 +76,9 @@ it("每段三方对话固定一位 Bot，消息和草稿按 Bot 分开", async (
   query.data = { session: { ...session, peers: [
     { name: "墨竹", session_id: "alpha", deleted: false }, { name: "松风", session_id: "beta", deleted: false },
   ] }, codex, messages: [
-    { message_id: "m1", sequence: 1, direction: "received", sender: "codex", recipients: ["bot"], text: "讨论需求", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
-    { message_id: "m2", sequence: 2, direction: "sent", sender: "bot", recipients: ["codex"], text: "第一位的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "m1", occurred_at: session.created_at },
-    { message_id: "m3", sequence: 3, direction: "sent", sender: "bot", recipients: ["codex"], text: "第二位的主动消息", bot_name: "松风", bot_session_id: "beta", reply_to: null, occurred_at: session.created_at },
+    { message_id: "m1", sequence: 1, attachments: [], direction: "received", sender: "codex", recipients: ["bot"], text: "讨论需求", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "m2", sequence: 2, attachments: [], direction: "sent", sender: "bot", recipients: ["codex"], text: "第一位的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "m1", occurred_at: session.created_at },
+    { message_id: "m3", sequence: 3, attachments: [], direction: "sent", sender: "bot", recipients: ["codex"], text: "第二位的主动消息", bot_name: "松风", bot_session_id: "beta", reply_to: null, occurred_at: session.created_at },
   ] };
   open("?bot=alpha");
   expect(screen.getByRole("button", { name: "模型设置：DeepSeek test" })).toBeVisible();
@@ -130,13 +137,13 @@ it("无历史时先选择 Bot，三方来源和接收方可区分", async () => 
   fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
   await waitFor(() => expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue(""));
   expect(query.post).toHaveBeenCalledWith({ connectionId: "human", identity, botSessionId: "alpha", text: "@all 三方都能看见",
-    target: "both", deliveryId: expect.stringMatching(/^web-/), replyTo: null });
+    target: "both", deliveryId: expect.stringMatching(/^web-/), replyTo: null, artifactRefs: [] });
 });
 
 it("发送失败保留引用、正文和编号，重试成功后清空", async () => {
   query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [
-    { message_id: "human", sequence: 1, direction: "user_bot", sender: "user", recipients: ["bot"], text: "人的原话", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
-    { message_id: "bot", sequence: 2, direction: "bot_user", sender: "bot", recipients: ["user"], text: "@Codex 给人的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "human", occurred_at: session.created_at },
+    { message_id: "human", sequence: 1, attachments: [], direction: "user_bot", sender: "user", recipients: ["bot"], text: "人的原话", bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "bot", sequence: 2, attachments: [], direction: "bot_user", sender: "bot", recipients: ["user"], text: "@Codex 给人的回复", bot_name: "墨竹", bot_session_id: "alpha", reply_to: "human", occurred_at: session.created_at },
   ] };
   query.post.mockReturnValueOnce({ unwrap: () => Promise.reject("暂时断开，请重试") });
   open("?bot=alpha");
@@ -234,4 +241,72 @@ it("提醒结果未确认时可重试，断线后停用和保存都不可用", a
   fireEvent.click(screen.getByRole("button", { name: "Codex 自动接续" }));
   expect(screen.getByRole("button", { name: "停用自动接续" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "保存设置" })).toBeDisabled();
+});
+
+it("普通附件可单独发送，文件名不点名；发送失败后沿原附件和编号重试", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  let uploaded!: (value: unknown) => void;
+  query.upload.mockReturnValueOnce({ unwrap: () => new Promise((resolve) => { uploaded = resolve; }) });
+  query.post.mockReturnValueOnce({ unwrap: () => Promise.reject("网络断开，请重试") });
+  open("?bot=alpha");
+  const picker = screen.getByLabelText("选择三方附件");
+  const clicked = vi.spyOn(picker, "click");
+  fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+  expect(clicked).toHaveBeenCalledOnce();
+  const file = new File(["zip bytes"], "@Codex 报告.zip", { type: "application/zip" });
+  fireEvent.change(picker, { target: { files: [file] } });
+  expect(screen.getByRole("button", { name: "发送三方消息" })).toBeDisabled();
+  uploaded({ kind: "file", attachment_id: "file:" + "a".repeat(32), name: file.name, size: file.size });
+  await waitFor(() => expect(screen.getByRole("button", { name: "发送三方消息" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("网络断开");
+  expect(screen.getByText("@Codex 报告.zip")).toBeVisible();
+  const first = query.post.mock.calls[0][0];
+  expect(first).toMatchObject({ target: "bot", text: "[File #1]", artifactRefs: ["file:" + "a".repeat(32)] });
+  cleanup();
+  open("?bot=alpha");
+  expect(screen.getByText("@Codex 报告.zip")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(screen.queryByText("@Codex 报告.zip")).not.toBeInTheDocument());
+  expect(query.post.mock.calls[1][0]).toEqual(first);
+  expect(query.upload).toHaveBeenCalledOnce();
+});
+
+it("粘贴图片失败可重试，未完成上传时不能发送，移除后释放预览", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  query.upload.mockReturnValueOnce({ unwrap: () => Promise.reject({ data: { detail: "图片格式无效" } }) });
+  open("?bot=alpha");
+  const input = screen.getByRole("textbox", { name: "三方会话消息" });
+  fireEvent.paste(input, { clipboardData: { files: [new File(["image"], "截图.png", { type: "image/png" })] } });
+  const retry = await screen.findByRole("button", { name: "重试" });
+  expect(retry).toHaveAttribute("title", "图片格式无效");
+  expect(screen.getByRole("button", { name: "发送三方消息" })).toBeDisabled();
+  query.upload.mockReturnValueOnce({ unwrap: () => Promise.resolve({ kind: "image", attachment_id: "sha256:" + "b".repeat(64),
+    name: "截图.png", size: 5, mime: "image/png", width: 32, height: 24 }) });
+  fireEvent.click(retry);
+  await waitFor(() => expect(screen.getByRole("button", { name: "发送三方消息" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Remove 截图.png" }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:test-preview");
+  expect(screen.getByRole("button", { name: "发送三方消息" })).toBeDisabled();
+});
+
+it("三种来源的附件都有预览或下载入口，附件占位符不作为正文展示", async () => {
+  const image = { kind: "image" as const, attachment_id: "sha256:" + "b".repeat(64), name: "图片", size: 5,
+    mime: "image/png" as const, width: 32, height: 24 };
+  const file = { kind: "file" as const, attachment_id: "file:" + "a".repeat(32), name: "报告.xlsx", size: 2048 };
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [
+    { message_id: "img", sequence: 1, direction: "received", sender: "codex", recipients: ["bot"], text: "看图", attachments: [image],
+      bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "file", sequence: 2, direction: "sent", sender: "bot", recipients: ["codex"], text: "报告", attachments: [file],
+      bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+    { message_id: "user-file", sequence: 3, direction: "user_bot", sender: "user", recipients: ["bot"], text: "[File #1]", attachments: [{ ...file, name: "材料.zip" }],
+      bot_name: "墨竹", bot_session_id: "alpha", reply_to: null, occurred_at: session.created_at },
+  ] };
+  open("?bot=alpha");
+  expect(screen.getByRole("link", { name: "报告.xlsx" })).toHaveAttribute("href", "/api/sessions/alpha/attachments/" + encodeURIComponent(file.attachment_id));
+  expect(screen.getByRole("link", { name: "材料.zip" })).toBeVisible();
+  expect(screen.queryByText("[File #1]")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "图片" }));
+  expect(await screen.findByRole("dialog", { name: "图片" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "下载原图" })).toHaveAttribute("href", "/api/sessions/alpha/attachments/" + encodeURIComponent(image.attachment_id));
 });

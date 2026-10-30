@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from konden.assistant.agents import AgentCreated, fact_arguments
+from konden.assistant.attachments import AttachmentGateway
 from konden.assistant.conversations import project_conversation
 from konden.assistant.external_messages import LIST_EXTERNAL, SEND_EXTERNAL, USER_SOURCE, SendToExternal
 from konden.assistant.external_messages import parse_external
@@ -43,7 +44,7 @@ def collaboration(tmp_path):
     service = host.external_messages
     first, token = service.connections.create("test")
     _, other_token = service.connections.create("test")
-    web = WebChannel(host, None)
+    web = WebChannel(host, SimpleNamespace(conversation=AsyncMock(return_value={})), AttachmentGateway(store.root))
     hub = WebEventHub()
     app = create_web_app(channel=web, hub=hub, external_messages=service)
     deliveries = []
@@ -513,7 +514,7 @@ def test_slow_codex_does_not_block_reading_or_reenable_a_removed_binding(collabo
 
     with patch("konden.assistant.host.codex_continuation.queue_codex", side_effect=queue):
         sending = c.client.portal.start_task_soon(c.service.send_from_bot, "coordinator",
-            {"command_id": "slow", "identity": c.identity, "text": "消息已到", "reply_to": None, "target": None})
+            {"command_id": "slow", "identity": c.identity, "text": "消息已到", "reply_to": None, "target": None, "files": []})
         c.client.portal.call(entered.wait)
         assert c.read()["messages"][0]["text"] == "消息已到"
         restarted = c.client.portal.call(ExternalMessages(c.host).view, c.identity)
@@ -619,14 +620,16 @@ def test_agents_reply_to_human_without_waking_each_other_unless_explicitly_addre
 def test_human_retry_and_restart_finish_one_input_without_duplicating_the_conversation(collaboration):
     """A lost response or a crash between acceptance and Bot input must be recoverable."""
     c = collaboration
+    from io import BytesIO
+    ref = AttachmentGateway(c.store.root).for_session("coordinator").save_file_stream(BytesIO(b"recovered"), "note.txt")
     with patch.object(c.host, "receive_user_message", side_effect=RuntimeError("Worker unavailable")):
         with pytest.raises(RuntimeError, match="Worker unavailable"):
-            c.post(target="both")
+            c.post(target="both", artifact_refs=[ref.attachment_id])
     accepted = c.client.get(f"/api/external-sessions/{c.identity}").json()["messages"][0]
     restored = ExternalMessages(c.host)
     assert c.client.portal.call(restored.recover_user_inputs) == {"coordinator"}
     assert c.client.portal.call(restored.recover_user_inputs) == set()
-    assert c.post(target="both").status_code == 200
+    assert c.post(target="both", artifact_refs=[ref.attachment_id]).status_code == 200
     for changes in ({"text": "改了内容"}, {"target": "bot"}, {"reply_to": accepted["message_id"]}):
         assert c.post(**{"target": "both", **changes}).status_code == 409
 
@@ -635,6 +638,7 @@ def test_human_retry_and_restart_finish_one_input_without_duplicating_the_conver
         inputs = [e for e in events if isinstance(e.payload, UserMessageReceived)
                   and e.delivery is not None and e.delivery.source == USER_SOURCE]
         assert len(inputs) == 1 and inputs[0].delivery.delivery_id == accepted["message_id"]
+        assert inputs[0].artifact_refs == (ref.attachment_id,)
         assert session_view(replay("coordinator", events).state).should_wake
 
     c.client.portal.call(verify)

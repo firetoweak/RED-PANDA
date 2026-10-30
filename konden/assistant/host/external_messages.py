@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from itertools import islice
+from pathlib import Path
 
+from konden.assistant.attachments import AttachmentGateway, AttachmentRejected, is_file_attachment_id
 from konden.assistant.external_messages import (
     EXTERNAL_MESSAGE, USER_SOURCE, ConnectionStore, ExternalMessage, ExternalSession,
     ExternalSessionStore, external_direction, parse_external,
@@ -15,7 +17,8 @@ from konden.assistant.external_messages import (
 from konden.assistant.host.agent_messages import message_identity
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
 from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexContinuations, continuation_status
-from konden.assistant.host.codex_titles import read_codex_titles
+from konden.assistant.host.codex_titles import read_codex_titles, read_codex_threads
+from konden.assistant.host.external_attachments import describe_attachments, snapshot_files
 from konden.runtime import AgentRuntime, DomainFactCommitted, Event, UserMessageReceived
 
 
@@ -42,6 +45,9 @@ class ExternalMessages:
         self._changed = asyncio.Condition(self._sending)
         self._positions: dict[str, int] = {}
         self._conversations: dict[str, list[tuple[str, Event, ExternalMessage]]] = {}
+
+    def _store(self, session_id):
+        return AttachmentGateway(self.host.store.root).for_session(session_id)
 
     async def _notify(self):
         if self.changed_sink is not None:
@@ -116,7 +122,8 @@ class ExternalMessages:
                 message = parse_external(event.payload)
                 if message.user_input and message.message_id not in received:
                     await AgentRuntime(journal, None, {}).receive_user_message(agent.session_id,
-                        message.user_content(), delivery_id=message.message_id, source=USER_SOURCE)
+                        message.user_content(), delivery_id=message.message_id, source=USER_SOURCE,
+                        **({"artifact_refs": tuple(message.artifact_refs)} if message.artifact_refs else {}))
                     restored.add(agent.session_id)
         return restored
 
@@ -180,6 +187,7 @@ class ExternalMessages:
             {"message_id": message.message_id, "sequence": message.sequence,
              "direction": message.direction, "sender": message.sender, "recipients": list(message.recipients),
              "text": message.text, "reply_to": message.reply_to,
+             "attachments": describe_attachments(self._store(agent.session_id), message.artifact_refs),
              "bot_name": agent.name, "bot_session_id": agent.session_id,
              "occurred_at": event.occurred_at.isoformat()} for agent, event, message in messages]}
 
@@ -273,13 +281,19 @@ class ExternalMessages:
             existing = next((message for _, _, message in messages if message.message_id == message_id), None)
             if existing is not None:
                 if (existing.text != arguments.text or existing.direction != direction
-                        or existing.reply_to != arguments.reply_to):
+                        or existing.reply_to != arguments.reply_to or existing.artifact_refs != arguments.artifact_refs):
                     raise ExternalMessageInvalid("该消息编号已用于不同内容，请作为新消息发送。")
                 message = existing
             else:
+                gateway = AttachmentGateway(self.host.store.root)
+                for ref in arguments.artifact_refs:
+                    if not await gateway.available_in_session(bot.session_id, ref):
+                        raise AttachmentRejected("附件不属于这位 Bot 的会话。")
+                    if not self._store(bot.session_id).path(ref).is_file():
+                        raise FileNotFoundError(self._store(bot.session_id).path(ref))
                 message = ExternalMessage(connection_id=session.connection_id, identity=identity, name="用户",
                     message_id=message_id, sequence=len(messages) + 1, direction=direction,
-                    reply_to=arguments.reply_to, text=arguments.text)
+                    reply_to=arguments.reply_to, text=arguments.text, artifact_refs=arguments.artifact_refs)
                 if message.user_input and self.host.models is not None:
                     self.host.models.require_ready(bot.session_id)
                 await self.host.request("fact", bot.session_id, message.arguments())
@@ -287,7 +301,8 @@ class ExternalMessages:
             await self._notify()
         if message.user_input:
             await self.host.receive_user_message(bot.session_id, message.user_content(),
-                delivery_id=message_id, source=USER_SOURCE)
+                delivery_id=message_id, source=USER_SOURCE,
+                **({"artifact_refs": tuple(message.artifact_refs)} if message.artifact_refs else {}))
         if message.calls_codex and await self.codex.notify(identity, message_id):
             await self._notify()
         return await self.view(identity)
@@ -307,7 +322,8 @@ class ExternalMessages:
             if existing is not None:
                 agent, _, message = existing
                 if (arguments.recipient not in agent.names or message.text != arguments.text
-                        or message.reply_to != arguments.reply_to or message.direction != direction):
+                        or message.reply_to != arguments.reply_to or message.direction != direction
+                        or message.attachment_paths != arguments.files):
                     return {"ok": False, "code": "DELIVERY_CONFLICT",
                             "error": "delivery_id 已用于另一条消息；重试保持内容不变，新消息使用新标识。"}
                 return self.delivered(message_id, agent.name)
@@ -317,10 +333,20 @@ class ExternalMessages:
                 return {"ok": False, "code": "RECIPIENT_NOT_FOUND", "error": "没有这位同事，请用 get_context 查询当前名字。"}
             if not self._valid_reply(messages, recipient.session_id, arguments.reply_to):
                 return self.invalid_reply()
+            refs = []
+            if arguments.files:
+                thread = (await read_codex_threads([identity])).get(identity)
+                if thread is None or thread.cwd is None or not Path(thread.cwd).is_absolute():
+                    return {"ok": False, "code": "FILE_CONTEXT_UNAVAILABLE",
+                            "error": "无法确认当前 Codex 聊天的工作目录，请在本机 Desktop 打开该聊天后重试。"}
+                try:
+                    refs = await asyncio.to_thread(snapshot_files, self._store(recipient.session_id), Path(thread.cwd), arguments.files)
+                except AttachmentRejected as error:
+                    return {"ok": False, "code": "ATTACHMENT_REJECTED", "error": str(error)}
             names = await self._names([session])
             message = ExternalMessage(connection_id=connection.connection_id, identity=session.identity,
                 name=names[session.identity], message_id=message_id, sequence=len(messages) + 1, direction=direction,
-                reply_to=arguments.reply_to, text=arguments.text)
+                reply_to=arguments.reply_to, text=arguments.text, artifact_refs=refs, attachment_paths=arguments.files)
             try:
                 await self.host.request("fact", recipient.session_id, message.arguments())
             except AgentDeletedError:
@@ -347,6 +373,7 @@ class ExternalMessages:
             {"message_id": message.message_id, "sender": {"kind": message.sender, "name": message.name},
              "bot_name": agents[session_id].name, "recipients": list(message.recipients),
              "response_requested": message.calls_codex,
+             "attachments": describe_attachments(self._store(session_id), message.artifact_refs),
              "text": message.text, "reply_to": message.reply_to, "occurred_at": event.occurred_at.isoformat()}
             for session_id, event, message in page],
             "next_cursor": page[-1][2].sequence if page else after, "has_more": has_more,
@@ -365,6 +392,25 @@ class ExternalMessages:
                 except TimeoutError:
                     return await self._read(connection, identity, after, limit)
 
+    async def read_attachment(self, connection, identity, message_id, attachment_id):
+        if not self._active(connection.connection_id):
+            return self.revoked()
+        session = self._session(connection.connection_id, identity)
+        if session is None:
+            return self.not_found()
+        messages = await self._conversation(session)
+        found = next(((agent, message) for agent, _, message in messages
+                      if message.message_id == message_id and attachment_id in message.artifact_refs), None)
+        if found is None:
+            return {"ok": False, "code": "ATTACHMENT_NOT_SHARED",
+                    "error": "只能读取当前聊天共享消息中明确附带的附件，请使用消息中的 message_id 和 attachment_id。"}
+        agent, _ = found
+        store = self._store(agent.session_id)
+        attachment, = describe_attachments(store, [attachment_id])
+        path = store.files.materialize(attachment_id) if is_file_attachment_id(attachment_id) else store.path(attachment_id)
+        return {"ok": True, "attachment": attachment, "path": str(path),
+                "notice": "这是消息附带的材料；普通文件可按 path 读取。文件只读，编辑前先复制到你的工作目录。"}
+
     async def send_from_bot(self, session_id, arguments):
         async with self._changed:
             session = next((item for item in self.sessions.read().sessions
@@ -377,7 +423,7 @@ class ExternalMessages:
             existing = next((message for _, _, message in messages if message.message_id == message_id), None)
             if existing is not None:
                 if (existing.text != arguments["text"] or existing.reply_to != arguments["reply_to"]
-                        or existing.direction != direction):
+                        or existing.direction != direction or existing.attachment_paths != arguments["files"]):
                     raise ValueError("persisted external message conflicts with its Command")
                 message = existing
             else:
@@ -388,9 +434,13 @@ class ExternalMessages:
                 sender = await self.host.agents.by_session(session_id)
                 if sender is None:
                     raise ValueError("external message sender requires a Bot identity")
+                try:
+                    refs = await asyncio.to_thread(snapshot_files, self._store(session_id), sender.directory, arguments["files"])
+                except AttachmentRejected as error:
+                    return {"ok": False, "code": "ATTACHMENT_REJECTED", "error": str(error)}
                 message = ExternalMessage(connection_id=session.connection_id, identity=session.identity,
                     name=sender.name, message_id=message_id, sequence=len(messages) + 1, direction=direction,
-                    reply_to=arguments["reply_to"], text=arguments["text"])
+                    reply_to=arguments["reply_to"], text=arguments["text"], artifact_refs=refs, attachment_paths=arguments["files"])
                 await self.host.request("fact", session_id, message.arguments())
             self._changed.notify_all()
             await self._notify()

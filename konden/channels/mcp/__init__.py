@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import json
+from base64 import b64encode
+from pathlib import Path
 from uuid import UUID
 
 from mcp.server import Server
-from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from mcp.types import CallToolResult, ImageContent, ListToolsResult, TextContent, Tool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from konden.assistant.external_messages import SendExternal
+from konden.assistant.attachments import is_valid_attachment_id
 
 
 class ContextArguments(BaseModel):
@@ -46,11 +49,26 @@ class ReadMessages(BaseModel):
     limit: int = Field(default=50, ge=1, le=100, description="最多返回的消息数。")
 
 
-ARGUMENTS = {"get_context": ContextArguments, "send_message": SendExternal, "read_messages": ReadMessages}
+class ReadAttachment(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    message_id: str = Field(min_length=1, description="附件所在共享消息的 message_id。")
+    attachment_id: str = Field(min_length=1, description="该消息 attachments 中的 attachment_id。")
+
+    @field_validator("attachment_id")
+    @classmethod
+    def valid_id(cls, value):
+        if not is_valid_attachment_id(value):
+            raise ValueError("需要有效的 attachment_id")
+        return value
+
+
+ARGUMENTS = {"get_context": ContextArguments, "send_message": SendExternal, "read_messages": ReadMessages,
+             "read_attachment": ReadAttachment}
 DESCRIPTIONS = {
     "get_context": "连接当前 Codex 聊天并查询同事名字，可设置便于辨认的聊天名称。聊天身份自动识别，无需领取或传回标识。",
     "send_message": "在你与指定 Bot、用户的三方对话中发言。recipient 指定这段对话的 Bot，target 指定请 Bot、用户或双方处理；消息对三方可见。无需代码项目或版本。",
     "read_messages": "等待并读取当前 Codex 聊天三方对话中的 Bot、用户消息。bot_name 标明对话对象；只有 response_requested=true 的消息请你处理，其他消息供了解背景。保留 next_cursor 续读。",
+    "read_attachment": "读取当前聊天共享消息附带的一个附件。图片直接返回图像；普通文件返回可供本机工具读取的只读材料路径。使用消息提供的 message_id 和 attachment_id。",
 }
 
 
@@ -99,15 +117,22 @@ def create_mcp_app(service):
             result = await service().context(connection, chat.identity, arguments.name)
         elif params.name == "send_message":
             result = await service().send(connection, chat.identity, arguments)
-        else:
+        elif params.name == "read_messages":
             result = await service().read(connection, chat.identity, arguments.after, arguments.limit, arguments.wait_seconds)
-        return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False))],
+        else:
+            result = await service().read_attachment(connection, chat.identity, arguments.message_id, arguments.attachment_id)
+        content = []
+        if params.name == "read_attachment" and result["ok"] and result["attachment"]["kind"] == "image":
+            data = Path(result.pop("path")).read_bytes()
+            content.append(ImageContent(type="image", mimeType=result["attachment"]["mime"], data=b64encode(data).decode("ascii")))
+        return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False)), *content],
                               structuredContent=result)
 
     server = Server("konden conversations", on_list_tools=list_tools, on_call_tool=call_tool, instructions=(
         "你在原生工具里工作，通过 konden 与长期 Bot 持续交谈和协作。"
         "先 get_context 查询同事，可用 name 为当前聊天命名。当前 Codex 聊天自动识别，继续或重连无需保存和传回身份。"
         "用 send_message 按同事名字发送消息，reply_to 可引用此前消息；用 read_messages 按 next_cursor 收取答复和后续发言。"
+        "send_message 的 files 可附带当前聊天工作目录中的文件；收到 attachments 后用 read_attachment 按需读取。"
         "每段三方对话包含当前 Codex 聊天、一位 Bot 和用户。target 决定请谁处理；回复用户消息默认发给用户。"
         "共享记录不表示所有成员都要回应；只有 response_requested=true 的消息明确请你处理。"
         "同事不需要等待新请求才能继续发消息。空结果不表示协作结束，可继续有界等待。"

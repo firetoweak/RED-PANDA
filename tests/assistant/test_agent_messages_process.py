@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from functools import partial
+from io import BytesIO
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from konden.assistant.agent_messages import SEND_GROUP_MESSAGE, SEND_MESSAGE
+from konden.assistant.attachments import AttachmentGateway
 from konden.assistant.context.memory import memory_observations, SHARED_MEMORY, PERSONAL_MEMORY
 from konden.assistant.agents import (
     AGENT_CREATED, COLLEAGUE_JOINED, GROUP_ATTENTION, PRIVATE_MESSAGE, parse_agent_fact,
@@ -165,7 +167,9 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         identity = "1" * 32
         await service.context(connection, identity, "恢复测试")
         before = await self.events(self.lin)
-        message = PostExternal(bot_session_id=self.ada.session_id, text="三方输入恢复检查", target="bot", delivery_id="human")
+        file = AttachmentGateway(self.store.root).for_session(self.ada.session_id).save_file_stream(BytesIO(b"attachment recovery"), "恢复材料.zip")
+        message = PostExternal(bot_session_id=self.ada.session_id, text="三方输入恢复检查", target="bot", delivery_id="human",
+                               artifact_refs=[file.attachment_id])
         with patch.object(self.host, "receive_user_message", side_effect=RuntimeError("delivery interrupted")):
             with self.assertRaisesRegex(RuntimeError, "delivery interrupted"):
                 await service.post_user(identity, message)
@@ -177,16 +181,19 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         inputs = [event for event in await self.events(self.ada) if isinstance(event.payload, UserMessageReceived)
                   and event.delivery is not None and event.delivery.source == USER_SOURCE]
         self.assertEqual(len(inputs), 1)
+        self.assertEqual(inputs[0].artifact_refs, (file.attachment_id,))
         # The Worker sees one genuine user input, not two apparent messages from one action.
         shown = self.llm.requests[-1]["messages"]
         self.assertEqual(sum("三方输入恢复检查" in str(item.get("content")) for item in shown), 1)
         self.assertTrue(any(item["role"] == "user" and "三方输入恢复检查" in str(item.get("content")) for item in shown))
+        self.assertIn("恢复材料.zip", str(shown))
         self.assertEqual(await self.events(self.lin), before)
         await self.host.external_messages.post_user(identity, message)
         await self.settled(self.ada)
         accepted = [event for event in await self.events(self.ada) if isinstance(event.payload, DomainFactCommitted)
                     and event.payload.fact_type == EXTERNAL_MESSAGE]
         self.assertEqual(len(accepted), 1)
+        self.assertEqual(accepted[0].artifact_refs, (file.attachment_id,))
         self.assertTrue(self.host.failures.empty())
 
     async def test_shared_and_personal_memories_keep_their_scope_across_rename_and_restart(self):

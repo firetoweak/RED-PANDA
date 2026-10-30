@@ -1,4 +1,4 @@
-"""Read local Codex display names without resuming chats or loading their history."""
+"""Read local Codex chat metadata without resuming chats or loading their history."""
 from __future__ import annotations
 
 import asyncio
@@ -16,9 +16,10 @@ class ThreadSummary(BaseModel):
     model_config = ConfigDict(strict=True)
     id: str
     name: str | None = None
+    cwd: str | None = None
 
 
-async def read_codex_titles(identities: list[str]) -> dict[str, str]:
+async def read_codex_threads(identities: list[str]) -> dict[str, ThreadSummary]:
     if not identities:
         return {}
     try:
@@ -55,7 +56,7 @@ async def read_codex_titles(identities: list[str]) -> dict[str, str]:
             result(await request(0, "initialize", {"clientInfo": {"name": "konden", "version": "0.1.0"}}))
             process.stdin.write(b'{"method":"initialized","params":{}}\n')
             await process.stdin.drain()
-            titles = {}
+            threads = {}
             for request_id, identity in enumerate(dict.fromkeys(identities), 1):
                 thread_id = str(UUID(identity))
                 response = await request(request_id, "thread/read", {"threadId": thread_id, "includeTurns": False})
@@ -64,9 +65,8 @@ async def read_codex_titles(identities: list[str]) -> dict[str, str]:
                 thread = ThreadSummary.model_validate(result(response)["thread"])
                 if thread.id != thread_id:
                     raise ValueError("Codex replied with a different thread id")
-                if thread.name is not None and thread.name.strip():
-                    titles[identity] = thread.name
-            return titles
+                threads[identity] = thread
+            return threads
     except TimeoutError:
         # Optional local metadata may be unavailable; it never determines identity or delivery.
         return {}
@@ -76,3 +76,8 @@ async def read_codex_titles(identities: list[str]) -> dict[str, str]:
             process.kill()
         await process.wait()
         await stderr
+
+
+async def read_codex_titles(identities: list[str]) -> dict[str, str]:
+    return {identity: thread.name for identity, thread in (await read_codex_threads(identities)).items()
+            if thread.name is not None and thread.name.strip()}
