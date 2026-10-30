@@ -738,6 +738,26 @@ class WebFirstSliceTest(unittest.TestCase):
         self.assertEqual(rejected.status_code, 422)
         self.assertEqual(self.client.get("/api/model-settings/search").json(), config)
 
+    def test_image_settings_require_connection_and_preserve_chat_and_credentials(self):
+        from konden.media.openai_images import ImageProviderError
+        connections = json.loads(self.models.connections_path.read_text(encoding="utf-8"))
+        connections["openai"]["api_key"] = "private-existing-key"
+        write_json(self.models.connections_path, connections)
+        before = self.models.path.read_bytes(), self.models.connections_path.read_bytes()
+        config = {"enabled":True, "model":"openai/gpt-image-1.5"}
+        rejected = self.client.put("/api/model-settings/images", json={"connection_id":"missing", "config":config})
+        self.assertEqual(rejected.status_code, 409)
+        saved = self.client.put("/api/model-settings/images", json={"connection_id":self.connection.connection_id, "config":config})
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(self.client.get("/api/model-settings/images").json(), config)
+        self.assertEqual(before, (self.models.path.read_bytes(), self.models.connections_path.read_bytes()))
+        self.assertNotIn("private-existing-key", saved.text)
+        with patch("konden.media.images.list_image_models", new=AsyncMock(side_effect=ImageProviderError("目录不可用"))):
+            self.assertEqual(self.client.get("/api/model-settings/images/catalog").status_code, 502)
+        with patch("konden.media.images.list_image_models", new=AsyncMock(side_effect=LookupError("internal"))):
+            with self.assertRaises(LookupError):
+                self.client.get("/api/model-settings/images/catalog")
+
     def test_model_settings_rejects_deleting_referenced_model(self):
         response = self.client.put("/api/model-settings", json={
             "connection_id": self.connection.connection_id,

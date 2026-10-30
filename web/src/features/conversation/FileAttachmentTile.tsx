@@ -11,12 +11,12 @@ export function FileAttachmentTile({ name, size, href, state = "done", error, on
   onRemove?: () => void;
   onRetry?: () => void;
 }) {
+  if (state === "done" && href !== undefined && /\.(png|jpe?g|webp|gif)$/i.test(name)) {
+    return <AttachmentTile src={href} name={name} large downloadHref={href} onRemove={onRemove} />;
+  }
   return (
     <Paper className="file-attachment" p="xs" radius="md" withBorder data-state={state}>
       <Stack gap="xs">
-      {state === "done" && href !== undefined && /\.(png|jpe?g|webp|gif)$/i.test(name) ? (
-        <AttachmentTile src={href} name={name} large />
-      ) : null}
       <Group gap={8} wrap="nowrap">
         {state === "uploading" ? <Loader size={18} /> : <IconFile size={22} />}
         <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>

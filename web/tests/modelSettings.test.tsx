@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ModelSettingsPanel as ModelSettingsDrawer } from "../src/features/models/ModelSettingsPanel";
 import { ModelPicker } from "../src/features/models/ModelPicker";
 import { SearchSettingsPanel } from "../src/features/models/SearchSettingsPanel";
+import type { ImageApi } from "../src/features/models/ImageSettingsPanel";
 import type { CatalogModel, ModelSettingsApi, ModelTestResult, Preferences } from "../src/features/models/modelUi";
 import type { SearchApi, SearchSettings, SearchTestResult } from "../src/features/models/searchTypes";
 
@@ -40,7 +41,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); Reflect.deleteProperty(docum
 it("常用模型先编辑草稿，撤销不保存，保存才提交偏好", async () => {
   const api = fakeApi();
   const saved = vi.fn();
-  render(<MantineProvider env="test"><ModelSettingsDrawer active connected searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
+  render(<MantineProvider env="test"><ModelSettingsDrawer active connected imageApi={fakeImageApi()} searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
     allModels={MODELS} onSaved={saved} api={api} /></MantineProvider>);
   const checkbox = await screen.findByRole("checkbox", { name: "在输入框显示 OpenAI Plain" });
   fireEvent.click(checkbox);
@@ -70,7 +71,7 @@ it("切换供应商后，迟到的旧目录不会覆盖新目录", async () => {
   api.loadModels = vi.fn((provider) => provider === "openai"
     ? new Promise<CatalogModel[]>((resolve) => { resolveOpenAi = resolve; })
     : Promise.resolve(MODELS.filter((item) => item.provider === provider)));
-  render(<MantineProvider env="test"><ModelSettingsDrawer active connected searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
+  render(<MantineProvider env="test"><ModelSettingsDrawer active connected imageApi={fakeImageApi()} searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
     allModels={MODELS} onSaved={() => {}} api={api} /></MantineProvider>);
   fireEvent.click(screen.getByRole("combobox", { name: "供应商" }));
   fireEvent.click(await screen.findByRole("option", { name: "DeepSeek · API Key" }));
@@ -118,7 +119,7 @@ it("已选模型按当前强度独立测试，切换分页保留进度，失败�
     return Promise.resolve<ModelTestResult>(++betaAttempts === 1
       ? { ok: false, message: "示例连接超时" } : { ok: true, latencyMs: 420 });
   });
-  render(<MantineProvider env="test"><ModelSettingsDrawer active connected searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
+  render(<MantineProvider env="test"><ModelSettingsDrawer active connected imageApi={fakeImageApi()} searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
     allModels={MODELS} onSaved={() => {}} api={api} /></MantineProvider>);
   fireEvent.click(screen.getByRole("tab", { name: /已选模型/ }));
   const alpha = () => within(screen.getByRole("listitem", { name: "OpenAI Alpha" }));
@@ -207,4 +208,42 @@ it("自动搜索直接回答时明确显示未联网，不当成检索失败", a
   expect(result).toHaveTextContent("模型直接回答，未联网");
   expect(within(result).queryByRole("link")).not.toBeInTheDocument();
   expect(screen.queryByText("搜索未完成")).not.toBeInTheDocument();
+});
+
+function fakeImageApi(): ImageApi {
+  return {loadSettings:vi.fn(async () => ({enabled:false,model:null})),
+    loadModels:vi.fn(async () => []),saveSettings:vi.fn(async (value:{enabled:boolean;model:string|null}) => value)};
+}
+
+it("图片配置按需读取，目录失败可重试，跨页草稿保留且独立保存", async () => {
+  const imageApi = fakeImageApi();
+  imageApi.loadModels = vi.fn().mockRejectedValueOnce("目录暂不可用").mockResolvedValue([
+    {model:"openai/gpt-image-1.5",name:"gpt-image-1.5"}]);
+  imageApi.saveSettings = vi.fn().mockRejectedValueOnce("保存失败").mockImplementation(async (value) => value);
+  const api = fakeApi();
+  render(<MantineProvider env="test"><ModelSettingsDrawer active connected imageApi={imageApi}
+    searchApi={fakeSearchApi()} connections={CONNECTIONS} preferences={PREFERENCES}
+    allModels={MODELS} onSaved={vi.fn()} api={api}/></MantineProvider>);
+  await screen.findByRole("checkbox", {name:"在输入框显示 OpenAI Plain"});
+  expect(imageApi.loadSettings).not.toHaveBeenCalled();
+  expect(imageApi.loadModels).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("tab", {name:"图片生成"}));
+  await screen.findByText("目录暂不可用");
+  fireEvent.click(screen.getByRole("button", {name:"重新加载图片模型"}));
+  await waitFor(() => expect(imageApi.loadModels).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole("switch", {name:"启用图片生成"}));
+  const select = screen.getByRole("combobox", {name:"图片模型"});
+  await waitFor(() => expect(select).not.toBeDisabled());
+  fireEvent.click(select);
+  fireEvent.click(await screen.findByRole("option", {name:"gpt-image-1.5",exact:true}));
+  fireEvent.click(screen.getByRole("tab", {name:"网络搜索"}));
+  fireEvent.click(screen.getByRole("tab", {name:"图片生成"}));
+  expect(screen.getByRole("combobox", {name:"图片模型"})).toHaveValue("gpt-image-1.5");
+  fireEvent.click(screen.getByRole("button", {name:"保存图片配置"}));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", {name:"保存图片配置"})).not.toBeDisabled();
+  fireEvent.click(screen.getByRole("button", {name:"保存图片配置"}));
+  await screen.findByText("图片配置已保存");
+  expect(imageApi.saveSettings).toHaveBeenLastCalledWith({enabled:true,model:"openai/gpt-image-1.5"});
+  expect(api.savePreferences).not.toHaveBeenCalled();
 });

@@ -1,5 +1,7 @@
 import {
   ActionIcon,
+  Anchor,
+  Group,
   Image,
   Loader,
   Modal,
@@ -14,6 +16,7 @@ type AttachmentTileProps = {
   state?: "uploading" | "done" | "error";
   large?: boolean;
   onRemove?: () => void;
+  downloadHref?: string;
 };
 
 export function AttachmentTile({
@@ -22,12 +25,13 @@ export function AttachmentTile({
   state = "done",
   large = false,
   onRemove,
+  downloadHref,
 }: AttachmentTileProps) {
   const [opened, setOpened] = useState(false);
   const canOpen = state === "done";
   return (
     <>
-      <div
+      <span
         className={
           large ? "attachment-tile attachment-tile-large" : "attachment-tile"
         }
@@ -68,7 +72,7 @@ export function AttachmentTile({
             <IconX size={10} stroke={2.4} />
           </ActionIcon>
         )}
-      </div>
+      </span>
       <Modal
         centered
         onClose={() => setOpened(false)}
@@ -76,7 +80,11 @@ export function AttachmentTile({
         size="auto"
         title={name}
         withCloseButton
+        closeButtonProps={{"aria-label":"关闭图片预览"}}
       >
+        {downloadHref === undefined ? null : <Group justify="flex-end" mb="xs">
+          <Anchor href={downloadHref} download={name} size="sm">下载原图</Anchor>
+        </Group>}
         <Image alt={name} mah="80vh" maw="80vw" src={src} />
       </Modal>
     </>

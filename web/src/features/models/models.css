@@ -58,7 +58,7 @@
 .catalog-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .catalog-actions .mantine-Button-label { font-weight: 500; font-size: 12px; }
 .saved-notice { display: inline-flex; align-items: center; gap: 5px; }
-.search-settings-scroll { flex: 1; min-height: 0; overflow: auto; padding: 28px; scrollbar-color: var(--konden-border-strong) transparent; }
+.search-settings-scroll, .image-settings-scroll { flex: 1; min-height: 0; overflow: auto; padding: 28px; scrollbar-color: var(--konden-border-strong) transparent; }
 .search-enable-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .search-service-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 23px 28px; align-items: end; }
 .search-service-fields .mantine-InputWrapper-label, .search-test-form .mantine-InputWrapper-label { margin-bottom: 7px; font-size: 12px; font-weight: 400; }
@@ -112,7 +112,7 @@
   .catalog-actions > .mantine-Text-root { font-size: 10px; }
   .catalog-actions > .mantine-Group-root { margin-left: auto; }
   .model-settings-nav .mantine-Tabs-tab { padding-inline: 10px; font-size: 12px; }
-  .search-settings-scroll { padding: 23px 18px; }
+  .search-settings-scroll, .image-settings-scroll { padding: 23px 18px; }
   .search-enable-row { gap: 16px; margin-bottom: 24px; }
   .search-enable-row > div > .mantine-Text-root:last-child { max-width: 28ch; line-height: 1.7; }
   .search-service-fields { grid-template-columns: minmax(0, 1fr); gap: 22px; }

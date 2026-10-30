@@ -482,6 +482,10 @@ export const searchConfigSchema = z.object({
   enabled: z.boolean(), provider: z.enum(["deepseek", "openai"]), openai_model: z.string().nullable(),
 }).strict();
 export type SearchConfig = z.infer<typeof searchConfigSchema>;
+export const imageConfigSchema = z.object({enabled:z.boolean(), model:z.string().nullable()}).strict();
+export type ImageConfig = z.infer<typeof imageConfigSchema>;
+export const imageCatalogSchema = z.object({model:z.string(), name:z.string()}).strict().array();
+export type ImageCatalog = z.infer<typeof imageCatalogSchema>;
 export const searchResultSchema = z.object({
   query: z.string(), provider: z.enum(["deepseek", "openai"]), model: z.string().nullable(),
   elapsed_ms: z.number().int().nonnegative(), searched: z.boolean(), summary: z.string().nullable(),

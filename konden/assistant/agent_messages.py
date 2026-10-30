@@ -85,15 +85,16 @@ MESSAGE_SCHEMAS = [
     {"type": "function", "function": {
         "name": SEND_FILE,
         "description": (
-            "把工作区内一个文件的副本交给人，在对话里提供下载，并附上 text 说明。"
+            "把工作区内一个文件的副本交给人。图片直接显示并可放大下载，其他文件提供下载卡片。"
+            "text 是可选正文，有实质说明时再填写，无需重复文件名、格式或‘已发送’。"
             "普通回答和汇报直接回复，不需要调用此工具。"
             "同事之间不要用它传文件，对方直接读你的工作目录。"
         ),
         "parameters": {"type": "object", "properties": {
-            "text": {"type": "string", "minLength": 1, "description": "发给人的消息正文。"},
+            "text": {"type": "string", "description": "可选的消息正文；只发送文件时省略。"},
             "path": {"type": "string", "minLength": 1,
                      "description": "工作区内的相对路径，把这个文件的一份副本交给人。"},
-        }, "required": ["text", "path"], "additionalProperties": False},
+        }, "required": ["path"], "additionalProperties": False},
     }},
     {"type": "function", "function": {
         "name": LIST_COLLEAGUES,
@@ -202,10 +203,10 @@ def message_bindings(transport, journal):
         return await transport(LIST_EXTERNAL, context.session_id, {})
 
     async def send_file(context, arguments):
-        text = arguments.get("text")
+        text = arguments.get("text", "")
         path = arguments.get("path")
-        if set(arguments) - {"text", "path"} or type(text) is not str or not text.strip():
-            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "send_file 需要非空的 text。"}
+        if set(arguments) - {"text", "path"} or type(text) is not str:
+            return {"ok": False, "code": "INVALID_ARGUMENT", "error": "send_file 只接受 path 和可选的字符串 text。"}
         if type(path) is not str or not path.strip():
             return {"ok": False, "code": "INVALID_ARGUMENT", "error": "path 必须是工作区内的相对路径。"}
         delivered = await transport(SEND_FILE, context.session_id, {

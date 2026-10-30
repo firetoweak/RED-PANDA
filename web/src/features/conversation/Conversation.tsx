@@ -310,10 +310,10 @@ export function Conversation({ agentName, agentNames = [], ref }: {
                         <AssistantAvatar name={agentName} />
                         <MessageMenu id={reply.key} author={agentName ?? "konden"} text={reply.text}>
                         <Stack className="assistant-reply" gap={6} tabIndex={0}>
-                          <MarkdownMessage
+                          {reply.text.trim() === "" ? null : <MarkdownMessage
                             content={reply.text}
                             streaming={reply.streaming}
-                          />
+                          />}
                           {reply.files.length === 0 ? null : (
                             <Group gap={8}>
                               {reply.files.map((file) => (

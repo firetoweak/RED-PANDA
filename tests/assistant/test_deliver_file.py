@@ -63,6 +63,29 @@ class DeliverFileTest(unittest.IsolatedAsyncioTestCase):
                 })
             self.assertEqual(refused["code"], "FILE_UNREADABLE")
 
+    async def test_picture_without_a_caption_is_delivered_and_survives_replay(self):
+        from PIL import Image
+
+        agent = await self.host.create_agent(name="Ada")
+        agent.directory.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (8, 8), "blue").save(agent.directory / "picture.png")
+        journal = SqliteJournal(self.store.require(agent.session_id))
+        runtime = AgentRuntime(journal, ScriptedDecisionMaker((
+            lambda _: ModelDecision(command_requests=(InvokeTool(SEND_FILE, (("path", "picture.png"),)),)),
+            lambda _: ModelDecision(content="蓝色背景突出中央主体。"),
+        )), message_bindings(self.host._route, journal))
+        await settle_session(runtime, agent.session_id)
+        reopened = SqliteJournal(self.store.require(agent.session_id))
+        events = await reopened.snapshot(agent.session_id)
+        state = replay(agent.session_id, events).state
+        view = project_conversation(agent.session_id, events, state.steps, session=session_view(state),
+            attachments=AttachmentGateway(self.store.root).for_session(agent.session_id))
+        picture, = [item for item in view.items if item.kind == "step" and item.files]
+        self.assertIsNone(picture.text)
+        self.assertEqual(picture.files[0].name, "picture.png")
+        self.assertEqual([item.text for item in view.items if item.kind == "step" and item.text],
+                         ["蓝色背景突出中央主体。"])
+
     async def test_file_tool_preserves_download_in_history_and_requires_a_file(self):
         agent = await self.host.create_agent(name="Ada")
         agent.directory.mkdir(parents=True, exist_ok=True)

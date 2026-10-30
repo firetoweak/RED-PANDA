@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { ModelSettingsPanel } from "./ModelSettingsPanel";
 import { catalogModels, configuredModel, configFrom, preferencesFrom, type ModelSettingsApi, type Preferences } from "./modelUi";
 import type { SearchApi, SearchSettings } from "./searchTypes";
+import type { ImageApi } from "./ImageSettingsPanel";
 import "./models.css";
 
 function searchFrom(value: SearchConfig): SearchSettings {
@@ -51,9 +52,21 @@ export function ModelSettings({ active = true }: { active?: boolean }) {
       return {...result,latencyMs:result.elapsed_ms};
     },
   }), [connectionId, dispatch]);
+  const imageApi = useMemo<ImageApi>(() => ({
+    async loadSettings() {
+      return dispatch(kondenApi.endpoints.getImageConfig.initiate(undefined,{subscribe:false,forceRefetch:true})).unwrap();
+    },
+    async loadModels() {
+      return dispatch(kondenApi.endpoints.getImageCatalog.initiate(undefined,{subscribe:false,forceRefetch:true})).unwrap();
+    },
+    async saveSettings(config) {
+      if (connectionId === null) throw new Error("连接已断开，请等待重新连接。");
+      return dispatch(kondenApi.endpoints.saveImageConfig.initiate({connectionId,config})).unwrap();
+    },
+  }), [connectionId, dispatch]);
   if (error) return <Alert color="red" title="模型配置读取失败">{JSON.stringify(error)}</Alert>;
   if (!data || !preferences) return <Stack p="lg"><Skeleton height={50}/><Skeleton height={150}/></Stack>;
   return <ModelSettingsPanel active={active} connected={connectionId !== null} preferences={preferences}
     allModels={data.config.model.candidates.map(configuredModel)} onSaved={setPreferences} api={api}
-    searchApi={searchApi} connections={data.providers} />;
+    searchApi={searchApi} imageApi={imageApi} connections={data.providers} />;
 }

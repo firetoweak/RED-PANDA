@@ -32,6 +32,7 @@ import {
   modelSettingsSchema,
   modelCatalogSchema, type ModelCatalog,
   searchConfigSchema, type SearchConfig, searchResultSchema, type SearchResult,
+  imageConfigSchema, type ImageConfig, imageCatalogSchema, type ImageCatalog,
   sharedMemorySchema,
   sharedMemoryConflictSchema,
   type SharedMemory,
@@ -207,6 +208,22 @@ export const kondenApi = createApi({
       transformResponse: (value: unknown) => modelCatalogSchema.parse(value),
       transformErrorResponse: (response) => response.status === 400 || response.status === 502
         ? z.object({ detail: z.string() }).strict().parse(response.data).detail : response,
+    }),
+    getImageConfig: build.query<ImageConfig, void>({
+      query: () => "/model-settings/images",
+      transformResponse: (value: unknown) => imageConfigSchema.parse(value),
+    }),
+    getImageCatalog: build.query<ImageCatalog, void>({
+      query: () => "/model-settings/images/catalog",
+      transformResponse: (value: unknown) => imageCatalogSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400 || response.status === 502
+        ? z.object({detail:z.string()}).strict().parse(response.data).detail : response,
+    }),
+    saveImageConfig: build.mutation<ImageConfig, {connectionId:string; config:ImageConfig}>({
+      query: ({connectionId, config}) => ({url:"/model-settings/images",method:"PUT",body:{connection_id:connectionId,config}}),
+      transformResponse: (value: unknown) => imageConfigSchema.parse(value),
+      transformErrorResponse: (response) => response.status === 400
+        ? z.object({detail:z.string()}).strict().parse(response.data).detail : response,
     }),
     getSearchConfig: build.query<SearchConfig, void>({
       query: () => "/model-settings/search",

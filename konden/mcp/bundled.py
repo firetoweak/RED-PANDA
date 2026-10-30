@@ -13,13 +13,15 @@ from konden.llm.config import load_connections
 from konden.mcp.models import McpServerRecord, StdioTransportConfig, TransportKind
 from konden.paths import KondenHome
 from konden.search import load_search_config, search_path
+from konden.media.images import image_config_path, load_image_config
 
 
 BROWSER_SERVER_IDS = frozenset({"builtin-chrome-devtools", "builtin-playwright"})
 DEEPSEEK_SERVER_ID = "builtin-deepseek"
 OPENAI_SERVER_ID = "builtin-openai-search"
 SEARCH_SERVER_IDS = frozenset({DEEPSEEK_SERVER_ID, OPENAI_SERVER_ID})
-BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | SEARCH_SERVER_IDS
+IMAGE_SERVER_ID = "builtin-image-generation"
+BUILTIN_SERVER_IDS = BROWSER_SERVER_IDS | SEARCH_SERVER_IDS | {IMAGE_SERVER_ID}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -92,6 +94,17 @@ def create_bundled_servers(home: KondenHome, task_root: Path | None = None) -> C
             args=("-m", "konden.mcp.openai_web", "--connections", str(home.connections_path)), cwd=str(ROOT)))
     content = b"".join((ROOT / path).read_bytes() for path in (
         "konden/search/__init__.py", "konden/search/deepseek.py", "konden/mcp/openai_web.py"))
+    image_content = b"".join((ROOT / path).read_bytes() for path in (
+        "konden/media/images.py", "konden/media/openai_images.py", "konden/mcp/image_generation.py"))
+    image_args = ("-m", "konden.mcp.image_generation", "--connections", str(home.connections_path))
+    if task_root is not None:
+        image_args += ("--output-root", str(task_root))
+    images = McpServerRecord(
+        id=IMAGE_SERVER_ID, display_name="Image Generation",
+        description="图片生成：用文字生成图片，保存完整原图并返回预览。使用独立选择的图片模型，复用 OpenAI API 连接，按用量计费。",
+        transport=TransportKind.STDIO,
+        transport_config=StdioTransportConfig(command=sys.executable, args=image_args, cwd=str(ROOT)),
+    )
 
     def read() -> tuple[McpServerRecord, ...]:
         config = load_search_config(search_path(home.connections_path))
@@ -100,7 +113,11 @@ def create_bundled_servers(home: KondenHome, task_root: Path | None = None) -> C
                    and bool(connections[config.provider]["api_key"].strip()))
         signature = hashlib.sha256(content + repr(config.model_dump()).encode()).digest()
         current_revision = int.from_bytes(signature[:6]) + revision
+        image_config = load_image_config(image_config_path(home.connections_path))
+        image_enabled = image_config.enabled and connections is not None and bool(connections["openai"]["api_key"].strip())
+        image_revision = int.from_bytes(hashlib.sha256(image_content + repr(image_config.model_dump()).encode()).digest()[:6]) + 1
         return (*fixed, replace(deepseek, enabled=enabled and config.provider == "deepseek", revision=current_revision),
-                replace(openai, enabled=enabled and config.provider == "openai", revision=current_revision))
+                replace(openai, enabled=enabled and config.provider == "openai", revision=current_revision),
+                replace(images, enabled=image_enabled, revision=image_revision))
 
     return read
