@@ -1,14 +1,24 @@
 import { MantineProvider } from "@mantine/core";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { ExternalConversation } from "../src/api/contracts";
+import type { ExternalConversation, SessionModel } from "../src/api/contracts";
 import { ExternalSessionPage } from "../src/features/external/ExternalSessionPage";
 
 const query = vi.hoisted(() => ({ data: undefined as ExternalConversation | undefined, connectionId: "human" as string | null,
-  agents: [] as { session_id: string; name: string }[], save: vi.fn(), retry: vi.fn(), post: vi.fn() }));
+  agents: [] as { session_id: string; name: string }[], save: vi.fn(), retry: vi.fn(), post: vi.fn(),
+  models: {} as Record<string, SessionModel>, usage: {} as Record<string, number | null>, modelSelect: vi.fn() }));
 vi.mock("../src/api/kondenApi", () => ({
+  useGetConversationQuery: (id: string) => ({ currentData: query.usage[id] === undefined ? undefined : { context_input_tokens: query.usage[id] } }),
+  useGetSessionModelQuery: (id: string) => ({ data: query.models[id], currentData: query.models[id] }),
+  useGetModelCatalogQuery: () => ({ currentData: [] }),
+  useGetModelSettingsQuery: () => ({ data: {
+    config: { model: { default: "deepseek/test", candidates: [
+      { model: "deepseek/test", compact_threshold_tokens: 200000 }, { model: "deepseek/other", compact_threshold_tokens: 100000 },
+    ] } }, providers: [{ provider: "deepseek", configured: true }],
+  } }),
+  useSetSessionModelMutation: () => [query.modelSelect, { isLoading: false }],
   useGetExternalConversationQuery: () => ({ data: query.data }),
   useGetAgentsQuery: () => ({ data: query.agents }),
   usePostExternalMessageMutation: () => [query.post, { isLoading: false }],
@@ -26,6 +36,12 @@ beforeEach(() => {
   localStorage.clear();
   query.agents = [];
   query.connectionId = "human";
+  query.models = {
+    alpha: { selected: { model: "deepseek/test", reasoning_effort: null, compact_threshold_tokens: 200000 }, effective: null, pending: false },
+    beta: { selected: { model: "deepseek/other", reasoning_effort: null, compact_threshold_tokens: 100000 }, effective: null, pending: false },
+  };
+  query.usage = { alpha: 20000, beta: null };
+  query.modelSelect.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.save.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.retry.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
   query.post.mockReset().mockReturnValue({ unwrap: () => Promise.resolve() });
@@ -58,6 +74,8 @@ it("每段三方对话固定一位 Bot，消息和草稿按 Bot 分开", async (
     { message_id: "m3", sequence: 3, direction: "sent", sender: "bot", recipients: ["codex"], text: "第二位的主动消息", bot_name: "松风", bot_session_id: "beta", reply_to: null, occurred_at: session.created_at },
   ] };
   open("?bot=alpha");
+  expect(screen.getByRole("button", { name: "模型设置：DeepSeek test" })).toBeVisible();
+  expect(screen.getByRole("img", { name: "10% 已用 · 20K / 200K tokens" })).toBeVisible();
   const messages = within(screen.getByRole("region", { name: "外部会话消息" }));
   expect(messages.getByText("第一位的回复")).toBeVisible();
   expect(messages.queryByText("第二位的主动消息")).not.toBeInTheDocument();
@@ -67,12 +85,35 @@ it("每段三方对话固定一位 Bot，消息和草稿按 Bot 分开", async (
   fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
   expect(screen.queryByRole("option", { name: "全部 Bot 的对话" })).not.toBeInTheDocument();
   fireEvent.click(await screen.findByRole("option", { name: "松风" }));
+  expect(screen.getByRole("button", { name: "模型设置：DeepSeek other" })).toBeVisible();
+  expect(screen.getByRole("img", { name: "暂无本窗口用量 · — / 100K tokens" })).toBeVisible();
+  expect(screen.queryByRole("img", { name: "10% 已用 · 20K / 200K tokens" })).not.toBeInTheDocument();
   expect(screen.getByText("第二位的主动消息")).toBeVisible();
   expect(screen.queryByText("第一位的回复")).not.toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("");
   fireEvent.click(screen.getByRole("combobox", { name: "三方对话中的 Bot" }));
   fireEvent.click(await screen.findByRole("option", { name: "墨竹" }));
+  expect(screen.getByRole("img", { name: "10% 已用 · 20K / 200K tokens" })).toBeVisible();
   expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("给墨竹的草稿");
+});
+
+it("三方页切换所选 Bot 的模型，确认前禁止发送且保留草稿", async () => {
+  query.data = { session: { ...session, peers: [{ name: "墨竹", session_id: "alpha", deleted: false }] }, codex, messages: [] };
+  let finish!: () => void;
+  query.modelSelect.mockReturnValueOnce({ unwrap: () => new Promise<void>((resolve) => { finish = resolve; }) });
+  open("?bot=alpha");
+  fireEvent.change(screen.getByRole("textbox", { name: "三方会话消息" }), { target: { value: "使用新模型回复" } });
+  fireEvent.click(screen.getByRole("button", { name: "模型设置：DeepSeek test" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "切换模型：DeepSeek test" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "DeepSeek other", exact: true }));
+  expect(query.modelSelect).toHaveBeenCalledWith({ sessionId: "alpha", connectionId: "human", model: "deepseek/other", reasoningEffort: null });
+  expect(screen.getByRole("button", { name: "发送三方消息" })).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "三方会话消息" }), { key: "Enter" });
+  expect(query.post).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "三方会话消息" })).toHaveValue("使用新模型回复");
+  await act(async () => { finish(); });
+  fireEvent.click(screen.getByRole("button", { name: "发送三方消息" }));
+  await waitFor(() => expect(query.post).toHaveBeenCalledWith(expect.objectContaining({ botSessionId: "alpha", text: "使用新模型回复" })));
 });
 
 it("无历史时先选择 Bot，三方来源和接收方可区分", async () => {

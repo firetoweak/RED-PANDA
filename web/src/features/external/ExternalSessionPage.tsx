@@ -111,6 +111,7 @@ function ExternalConversationView({ identity, bot, onBot }: { identity: string; 
           {failure === null ? null : <Alert color="red" role="alert" mb="sm">{failure}</Alert>}
           {selected === undefined ? <Text size="xs" c="dimmed" ta="center">{peers.length === 0 ? "先创建一位 Bot，再选择对话对象。" : "请先选择这段对话中的 Bot。"}</Text>
             : <ExternalComposer key={`${identity}:${selected.session_id}`} identity={identity} botId={selected.session_id} botName={selected.name}
+              connectionId={connectionId}
               connected={session.active && !selected.deleted && connectionId !== null} posting={posting.isLoading}
               codexAutomatic={conversation.codex.status !== "disabled"}
               onSend={async (text, target, deliveryId, replyTo) => {

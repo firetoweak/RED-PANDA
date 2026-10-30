@@ -31,6 +31,7 @@ import {
   useUploadAttachmentMutation,
 } from "../../api/kondenApi";
 import { ModelSelector } from "../models/ModelSelector";
+import { ContextUsage } from "./ContextUsage";
 import { AttachmentTile } from "./AttachmentTile";
 import { FileAttachmentTile } from "./FileAttachmentTile";
 import { createClientId } from "./clientId";
@@ -105,10 +106,6 @@ export function Composer({
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
   const limit = selection?.effective?.compact_threshold_tokens ?? selection?.selected?.compact_threshold_tokens ?? 0;
-  const usagePercent = inputTokens !== null && limit > 0 ? Math.round(inputTokens / limit * 100) : null;
-  const usageTitle = usagePercent !== null ? `${usagePercent}% 已用`
-    : inputTokens === null ? "暂无本窗口用量" : "上下文用量";
-  const usageTokens = `${inputTokens === null ? "—" : formatTokens(inputTokens)} / ${limit > 0 ? formatTokens(limit) : "—"} tokens`;
   const modelReady = selection?.selected != null && settings?.providers.some(
     (item) => item.provider === selection.selected?.model.split("/")[0] && item.configured,
   );
@@ -406,23 +403,7 @@ export function Composer({
           </Text>
         )}
         <Group className="composer-trailing" gap={8} wrap="nowrap">
-          {selection === undefined ? null : (
-            <Tooltip radius="md" label={<div>
-              <Text size="sm" ta="center">
-                {usagePercent === null ? usageTitle : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <span>{usagePercent}%</span><span>已用</span>
-                  </span>
-                )}
-              </Text>
-              <Text size="sm" ta="center" style={{ opacity: 0.65 }}>{usageTokens}</Text>
-            </div>}>
-              <span role="img" aria-label={usageTitle + " · " + usageTokens}
-                style={{ display: "inline-flex", padding: 6 }}>
-                <ContextRing used={inputTokens} limit={limit} />
-              </span>
-            </Tooltip>
-          )}
+          {selection === undefined ? null : <ContextUsage inputTokens={inputTokens} limit={limit} />}
           <div className="composer-model"><ModelSelector sessionId={sessionId} connectionId={connectionId}
             onChanging={(changing) => setChangingModelFor((current) => changing ? sessionId : current === sessionId ? null : current)} /></div>
           <Group gap={6} wrap="nowrap">
@@ -463,52 +444,6 @@ export function Composer({
     </Paper>
     </>
   );
-}
-
-function ContextRing({ used, limit }: { used: number | null; limit: number }) {
-  const ratio = used !== null && limit > 0 ? Math.min(used / limit, 1) : 0;
-  const radius = 5;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg
-      aria-hidden
-      className="context-ring"
-      height="14"
-      viewBox="0 0 14 14"
-      width="14"
-    >
-      <circle
-        cx="7"
-        cy="7"
-        fill="none"
-        r={radius}
-        stroke="var(--konden-ring-track)"
-        strokeWidth="2"
-      />
-      <circle
-        cx="7"
-        cy="7"
-        fill="none"
-        r={radius}
-        stroke="var(--mantine-color-ember-4)"
-        strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - ratio)}
-        strokeLinecap="round"
-        strokeWidth="2"
-        transform="rotate(-90 7 7)"
-      />
-    </svg>
-  );
-}
-
-function formatTokens(tokens: number) {
-  if (tokens < 1000) {
-    return String(tokens);
-  }
-  if (tokens % 1000 === 0) {
-    return `${tokens / 1000}K`;
-  }
-  return `${(tokens / 1000).toFixed(1)}K`;
 }
 
 function normalizeMime(type: string) {
