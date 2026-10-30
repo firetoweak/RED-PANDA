@@ -58,14 +58,10 @@ export function PrivateMessageNotice({ communication, agentName }: {
       </Modal.Content>
     </Modal.Root>
   </>;
-  const notice = <>
-    <span>外部协作者</span>
+  return <div className="private-message-notice" title={title}>
     {directionIcon}
     <Link className="private-message-peer" data-identity={identityColor(message.peer)}
+      aria-label={`${direction} ${message.peer}，查看三方对话`}
       to={`/external/${encodeURIComponent(message.external.identity)}${sessionId === undefined ? "" : `?bot=${encodeURIComponent(sessionId)}`}`}>{identity}</Link>
-  </>;
-  return <div className="external-message">
-    <div className="private-message-notice" title={title}>{notice}</div>
-    <MarkdownMessage content={message.text} streaming={false} />
   </div>;
 }

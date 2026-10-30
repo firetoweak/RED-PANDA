@@ -14,13 +14,18 @@ vi.mock("../src/features/conversation/MarkdownMessage", () => ({
   MarkdownMessage: ({ content }: { content: string }) => <div>{content}</div>,
 }));
 
-it("普通外部消息展示正文，并跳转到外部会话而不是同名内部 Bot", () => {
-  const message = { key: "external:1", kind: "private_message" as const, direction: "received" as const, threadId: null,
+it.each([
+  ["received", "消息来自"],
+  ["sent", "已发消息给"],
+] as const)("外部消息（%s）只显示方向与身份，正文从对应三方对话查看", (direction, label) => {
+  const message = { key: "external:1", kind: "private_message" as const, direction, threadId: null,
     peer: "Codex", occurredAt: "2026-10-23T01:00:00Z",
     text: "来讨论一下方案", messageId: "1", replyTo: null,
     external: { identity: "1".repeat(32) } };
   render(<MemoryRouter initialEntries={["/sessions/receiver"]}><Routes><Route path="/sessions/:sessionId" element={<PrivateMessageNotice agentName="接收方" communication={{ key: message.key, message, messages: [message] }} />} /></Routes></MemoryRouter>);
-  expect(screen.getByText("外部协作者")).toBeInTheDocument();
-  expect(screen.getByText("来讨论一下方案")).toBeInTheDocument();
-  expect(screen.getByRole("link")).toHaveAttribute("href", `/external/${"1".repeat(32)}?bot=receiver`);
+  expect(screen.getByRole("img", { name: label })).toBeInTheDocument();
+  expect(screen.queryByText("外部协作者")).not.toBeInTheDocument();
+  expect(screen.queryByText(message.text)).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: `${label} Codex，查看三方对话` }))
+    .toHaveAttribute("href", `/external/${"1".repeat(32)}?bot=receiver`);
 });
