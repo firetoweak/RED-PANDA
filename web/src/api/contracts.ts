@@ -147,7 +147,9 @@ export const externalConversationSchema = z.object({
   messages: z.array(z.object({
     message_id: z.string().min(1),
     sequence: z.number().int().positive(),
-    direction: z.enum(["received", "sent"]),
+    direction: z.enum(["received", "sent", "codex_user", "codex_both", "bot_user", "bot_both", "user_bot", "user_codex", "user_both"]),
+    sender: z.enum(["codex", "bot", "user"]),
+    recipients: z.array(z.enum(["codex", "bot", "user"])).min(1),
     text: z.string().min(1),
     reply_to: z.string().nullable(),
     bot_name: z.string().min(1),

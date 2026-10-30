@@ -9,14 +9,14 @@ import json
 from itertools import islice
 
 from konden.assistant.external_messages import (
-    EXTERNAL_MESSAGE, ConnectionStore, ExternalMessage, ExternalSession,
-    ExternalSessionStore, parse_external,
+    EXTERNAL_MESSAGE, USER_SOURCE, ConnectionStore, ExternalMessage, ExternalSession,
+    ExternalSessionStore, external_direction, parse_external,
 )
 from konden.assistant.host.agent_messages import message_identity
 from konden.assistant.host.agent_roster import AgentDeletedError, AgentNotFound
 from konden.assistant.host.codex_continuation import CodexContinuationInvalid, CodexContinuations, continuation_status
 from konden.assistant.host.codex_titles import read_codex_titles
-from konden.runtime import DomainFactCommitted, Event
+from konden.runtime import AgentRuntime, DomainFactCommitted, Event, UserMessageReceived
 
 
 class ExternalConnectionNotFound(LookupError):
@@ -24,6 +24,10 @@ class ExternalConnectionNotFound(LookupError):
 
 
 class ExternalSessionNotFound(LookupError):
+    pass
+
+
+class ExternalMessageInvalid(ValueError):
     pass
 
 
@@ -95,6 +99,27 @@ class ExternalMessages:
                 for event in await self.host.store.journal(session_id).snapshot(session_id)
                 if isinstance(event.payload, DomainFactCommitted) and event.payload.fact_type == EXTERNAL_MESSAGE]
 
+    async def recover_user_inputs(self):
+        """Complete accepted human inputs before any Bot Worker is resumed."""
+        restored = set()
+        for agent in await self.host.agents.list(include_deleted=True):
+            if agent.deleted:
+                continue
+            journal = self.host.store.journal(agent.session_id)
+            events = await journal.snapshot(agent.session_id)
+            received = {event.delivery.delivery_id for event in events
+                        if isinstance(event.payload, UserMessageReceived) and event.delivery is not None
+                        and event.delivery.source == USER_SOURCE}
+            for event in events:
+                if not isinstance(event.payload, DomainFactCommitted) or event.payload.fact_type != EXTERNAL_MESSAGE:
+                    continue
+                message = parse_external(event.payload)
+                if message.user_input and message.message_id not in received:
+                    await AgentRuntime(journal, None, {}).receive_user_message(agent.session_id,
+                        message.user_content(), delivery_id=message.message_id, source=USER_SOURCE)
+                    restored.add(agent.session_id)
+        return restored
+
     async def _refresh(self):
         agents = {agent.session_id: agent for agent in await self.host.agents.list(include_deleted=True)}
         for session_id in agents:
@@ -123,7 +148,7 @@ class ExternalMessages:
     def _session_view(self, session, messages, active_connections, bindings, names):
         peers = {agent.session_id: {"name": agent.name, "session_id": agent.session_id, "deleted": agent.deleted}
                  for agent, _, _ in messages}
-        latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
+        latest = next((message.message_id for _, _, message in reversed(messages) if message.calls_codex), None)
         return {"identity": session.identity, "name": names[session.identity],
                 "created_at": session.created_at.isoformat(),
                 "last_activity_at": max([session.created_at, *(event.occurred_at for _, event, _ in messages)]).isoformat(),
@@ -148,12 +173,13 @@ class ExternalMessages:
             raise ExternalSessionNotFound(identity)
         messages = await self._conversation(session)
         active = {item.connection_id for item in self.connections.read().connections}
-        latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
+        latest = next((message.message_id for _, _, message in reversed(messages) if message.calls_codex), None)
         names = await self._names([session])
         return {"session": self._session_view(session, messages, active, self.codex.read().bindings, names),
                 "codex": self.codex.view(identity, latest), "messages": [
             {"message_id": message.message_id, "sequence": message.sequence,
-             "direction": message.direction, "text": message.text, "reply_to": message.reply_to,
+             "direction": message.direction, "sender": message.sender, "recipients": list(message.recipients),
+             "text": message.text, "reply_to": message.reply_to,
              "bot_name": agent.name, "bot_session_id": agent.session_id,
              "occurred_at": event.occurred_at.isoformat()} for agent, event, message in messages]}
 
@@ -176,9 +202,9 @@ class ExternalMessages:
         if identity not in self.codex.read().bindings:
             raise CodexContinuationInvalid("请先启用 Codex 自动接续。")
         messages = await self._conversation(session)
-        latest = next((message.message_id for _, _, message in reversed(messages) if not message.incoming), None)
+        latest = next((message.message_id for _, _, message in reversed(messages) if message.calls_codex), None)
         if latest is None:
-            raise CodexContinuationInvalid("还没有 Bot 发来的消息。")
+            raise CodexContinuationInvalid("还没有需要 Codex 处理的消息。")
         await self.codex.notify(identity, latest, retry=True)
         await self._notify()
         return await self.view(identity)
@@ -221,6 +247,51 @@ class ExternalMessages:
         return reply_to is None or any(agent.session_id == session_id and message.message_id == reply_to
                                       for agent, _, message in messages)
 
+    @staticmethod
+    def _target(messages, reply_to, explicit, counterpart):
+        if explicit is not None:
+            return explicit
+        original = next((message for _, _, message in messages if message.message_id == reply_to), None)
+        return "user" if original is not None and original.sender == "user" else counterpart
+
+    async def post_user(self, identity, arguments):
+        message_id = "external-user-" + sha256(json.dumps(
+            [identity, arguments.bot_session_id, arguments.delivery_id]).encode()).hexdigest()
+        async with self._changed:
+            session = next((item for item in self.sessions.read().sessions if item.identity == identity), None)
+            if session is None:
+                raise ExternalSessionNotFound(identity)
+            if not self._active(session.connection_id):
+                raise ExternalMessageInvalid("接入已撤销，不能继续发送。")
+            bot = await self.host.agents.by_session(arguments.bot_session_id)
+            if bot is None or bot.deleted:
+                raise ExternalMessageInvalid("这位 Bot 已不可用，请重新选择。")
+            messages = await self._conversation(session)
+            if not self._valid_reply(messages, bot.session_id, arguments.reply_to):
+                raise ExternalMessageInvalid("只能引用这段三方对话中的消息。")
+            direction = external_direction("user", arguments.target)
+            existing = next((message for _, _, message in messages if message.message_id == message_id), None)
+            if existing is not None:
+                if (existing.text != arguments.text or existing.direction != direction
+                        or existing.reply_to != arguments.reply_to):
+                    raise ExternalMessageInvalid("该消息编号已用于不同内容，请作为新消息发送。")
+                message = existing
+            else:
+                message = ExternalMessage(connection_id=session.connection_id, identity=identity, name="用户",
+                    message_id=message_id, sequence=len(messages) + 1, direction=direction,
+                    reply_to=arguments.reply_to, text=arguments.text)
+                if message.user_input and self.host.models is not None:
+                    self.host.models.require_ready(bot.session_id)
+                await self.host.request("fact", bot.session_id, message.arguments())
+            self._changed.notify_all()
+            await self._notify()
+        if message.user_input:
+            await self.host.receive_user_message(bot.session_id, message.user_content(),
+                delivery_id=message_id, source=USER_SOURCE)
+        if message.calls_codex and await self.codex.notify(identity, message_id):
+            await self._notify()
+        return await self.view(identity)
+
     async def send(self, connection, identity, arguments):
         message_id = "external-" + sha256(json.dumps(
             [connection.connection_id, identity, arguments.delivery_id]).encode()).hexdigest()
@@ -231,11 +302,12 @@ class ExternalMessages:
             if session is None:
                 return self.not_found()
             messages = await self._conversation(session)
+            direction = external_direction("codex", self._target(messages, arguments.reply_to, arguments.target, "bot"))
             existing = next((item for item in messages if item[2].message_id == message_id), None)
             if existing is not None:
                 agent, _, message = existing
                 if (arguments.recipient not in agent.names or message.text != arguments.text
-                        or message.reply_to != arguments.reply_to):
+                        or message.reply_to != arguments.reply_to or message.direction != direction):
                     return {"ok": False, "code": "DELIVERY_CONFLICT",
                             "error": "delivery_id 已用于另一条消息；重试保持内容不变，新消息使用新标识。"}
                 return self.delivered(message_id, agent.name)
@@ -247,7 +319,7 @@ class ExternalMessages:
                 return self.invalid_reply()
             names = await self._names([session])
             message = ExternalMessage(connection_id=connection.connection_id, identity=session.identity,
-                name=names[session.identity], message_id=message_id, sequence=len(messages) + 1, direction="received",
+                name=names[session.identity], message_id=message_id, sequence=len(messages) + 1, direction=direction,
                 reply_to=arguments.reply_to, text=arguments.text)
             try:
                 await self.host.request("fact", recipient.session_id, message.arguments())
@@ -262,19 +334,21 @@ class ExternalMessages:
         session = self._session(connection.connection_id, identity)
         if session is None:
             return self.not_found()
-        await self._refresh()
+        agents = await self._refresh()
         messages = self._conversations.get(session.identity, ())
         if after > len(messages):
             return {"ok": False, "code": "INVALID_CURSOR", "error": "请使用这个会话上次返回的 next_cursor。"}
         position = bisect_right(messages, after, key=lambda item: item[2].sequence)
-        received = (item for item in islice(messages, position, None) if not item[2].incoming)
+        received = (item for item in islice(messages, position, None) if item[2].sender != "codex")
         page = list(islice(received, limit + 1))
         has_more = len(page) > limit
         page = page[:limit]
         return {"ok": True, "messages": [
-            {"message_id": message.message_id, "sender": {"kind": "bot", "name": message.name},
+            {"message_id": message.message_id, "sender": {"kind": message.sender, "name": message.name},
+             "bot_name": agents[session_id].name, "recipients": list(message.recipients),
+             "response_requested": message.calls_codex,
              "text": message.text, "reply_to": message.reply_to, "occurred_at": event.occurred_at.isoformat()}
-            for _, event, message in page],
+            for session_id, event, message in page],
             "next_cursor": page[-1][2].sequence if page else after, "has_more": has_more,
             "notice": "空结果只表示目前没有新消息。保留 next_cursor，继续读取当前聊天的后续消息。"}
 
@@ -298,11 +372,14 @@ class ExternalMessages:
             if session is None:
                 return self.not_found()
             messages = await self._conversation(session)
+            direction = external_direction("bot", self._target(messages, arguments["reply_to"], arguments["target"], "codex"))
             message_id = message_identity(session_id, arguments["command_id"])
             existing = next((message for _, _, message in messages if message.message_id == message_id), None)
             if existing is not None:
-                if existing.text != arguments["text"] or existing.reply_to != arguments["reply_to"]:
+                if (existing.text != arguments["text"] or existing.reply_to != arguments["reply_to"]
+                        or existing.direction != direction):
                     raise ValueError("persisted external message conflicts with its Command")
+                message = existing
             else:
                 if not self._active(session.connection_id):
                     return self.revoked()
@@ -312,12 +389,12 @@ class ExternalMessages:
                 if sender is None:
                     raise ValueError("external message sender requires a Bot identity")
                 message = ExternalMessage(connection_id=session.connection_id, identity=session.identity,
-                    name=sender.name, message_id=message_id, sequence=len(messages) + 1, direction="sent",
+                    name=sender.name, message_id=message_id, sequence=len(messages) + 1, direction=direction,
                     reply_to=arguments["reply_to"], text=arguments["text"])
                 await self.host.request("fact", session_id, message.arguments())
             self._changed.notify_all()
             await self._notify()
-        if await self.codex.notify(session.identity, message_id):
+        if message.calls_codex and await self.codex.notify(session.identity, message_id):
             await self._notify()
         return self.delivered(message_id, session.name)
 

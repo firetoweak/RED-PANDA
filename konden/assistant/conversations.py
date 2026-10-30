@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from konden.assistant.control import pending_approval_view, project_control_message
-from konden.assistant.external_messages import EXTERNAL_MESSAGE, external_name, parse_external
+from konden.assistant.external_messages import EXTERNAL_MESSAGE, USER_SOURCE, external_name, parse_external
 from konden.assistant.agents import COMMUNICATION_LIMIT_REACHED, PRIVATE_MESSAGE, parse_agent_fact, project_agent
 from konden.assistant.compact.core import latest_input_tokens
 from konden.assistant.attachments import AttachmentGateway, AttachmentStore
@@ -544,6 +544,10 @@ def project_conversation(
         payload = event.payload
         if isinstance(payload, DomainFactCommitted) and payload.fact_type == EXTERNAL_MESSAGE:
             message = parse_external(payload)
+            if message.sender == "user":
+                if message.user_input:
+                    items.append(UserItem("user", message.message_id, message.text, event.occurred_at))
+                continue
             peer = external_name(message.identity)
             items.append(ExternalMessageItem("external_message", message.message_id,
                 "received" if message.incoming else "sent", peer, message.identity, message.text,
@@ -562,6 +566,8 @@ def project_conversation(
                                                message.reply_to, event.occurred_at))
             continue
         if isinstance(payload, UserMessageReceived):
+            if event.delivery is not None and event.delivery.source == USER_SOURCE:
+                continue
             file_ids = tuple(ref for ref in event.artifact_refs if is_file_attachment_id(ref))
             if file_ids and attachments is None:
                 raise ValueError("文件引用必须装配 Session 附件存储")

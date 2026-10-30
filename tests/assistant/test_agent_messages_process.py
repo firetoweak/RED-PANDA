@@ -18,12 +18,13 @@ from konden.assistant.agents import (
 )
 from konden.assistant.host.session_store import SessionStore
 from konden.assistant.host.supervisor import HostSupervisor
+from konden.assistant.external_messages import EXTERNAL_MESSAGE, USER_SOURCE, PostExternal
 from konden.assistant.shared_memory import READ_SHARED_MEMORY, UPDATE_SHARED_MEMORY, SharedMemoryStore
 from konden.assistant.personal_memory import READ_PERSONAL_MEMORY, UPDATE_PERSONAL_MEMORY, personal_memory_store
 from konden.automation.routines import RoutineFire
 from konden.llm.api import LLMCallResult, LLMResponse, LLMUsage, ToolCall
 from konden.paths import KondenHome
-from konden.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, replay
+from konden.runtime import AgentRuntime, CommandPhase, DomainFactCommitted, InvokeTool, ModelDecision, SqliteJournal, StepCommitted, ToolBinding, UserMessageReceived, replay
 from tests.assistant.test_runner import ScriptedDecisionMaker
 from tests.assistant.test_supervisor import until
 from tests.fixtures.agent_messages import interrupted_send_config
@@ -155,6 +156,37 @@ class AgentMessagesProcessTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(args[0] == self.ada.session_id for args in outputs))
         self.assertEqual(await self.events(self.lin), before)
         self.assertNotIn(self.lin.session_id, self.host.workers)
+        self.assertTrue(self.host.failures.empty())
+
+    async def test_restart_delivers_accepted_three_party_user_input_to_one_worker_once(self):
+        """Accepted Web input must reach a real Worker even if its first delivery was interrupted."""
+        service = self.host.external_messages
+        connection, _ = service.connections.create("test")
+        identity = "1" * 32
+        await service.context(connection, identity, "恢复测试")
+        before = await self.events(self.lin)
+        message = PostExternal(bot_session_id=self.ada.session_id, text="三方输入恢复检查", target="bot", delivery_id="human")
+        with patch.object(self.host, "receive_user_message", side_effect=RuntimeError("delivery interrupted")):
+            with self.assertRaisesRegex(RuntimeError, "delivery interrupted"):
+                await service.post_user(identity, message)
+        await self.host.close()
+        self.host = self.new_host()
+        self.llm.requests.clear()
+        await self.host.resume_unfinished_sessions()
+        await self.settled(self.ada)
+        inputs = [event for event in await self.events(self.ada) if isinstance(event.payload, UserMessageReceived)
+                  and event.delivery is not None and event.delivery.source == USER_SOURCE]
+        self.assertEqual(len(inputs), 1)
+        # The Worker sees one genuine user input, not two apparent messages from one action.
+        shown = self.llm.requests[-1]["messages"]
+        self.assertEqual(sum("三方输入恢复检查" in str(item.get("content")) for item in shown), 1)
+        self.assertTrue(any(item["role"] == "user" and "三方输入恢复检查" in str(item.get("content")) for item in shown))
+        self.assertEqual(await self.events(self.lin), before)
+        await self.host.external_messages.post_user(identity, message)
+        await self.settled(self.ada)
+        accepted = [event for event in await self.events(self.ada) if isinstance(event.payload, DomainFactCommitted)
+                    and event.payload.fact_type == EXTERNAL_MESSAGE]
+        self.assertEqual(len(accepted), 1)
         self.assertTrue(self.host.failures.empty())
 
     async def test_shared_and_personal_memories_keep_their_scope_across_rename_and_restart(self):

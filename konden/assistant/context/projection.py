@@ -52,7 +52,7 @@ from konden.runtime.model import (
 )
 
 
-PROJECTOR_VERSION = 25
+PROJECTOR_VERSION = 26
 MESSAGE_EXTENSIONS = "message_extensions"
 DEFAULT_SIZE_EXTERNALIZE_CHARS = 32_000
 DEFAULT_PREVIEW_CHARS = 2_000
@@ -308,7 +308,7 @@ def _translate_visible_events(
                 shown_data = agent_fact_for_model(payload)
             elif payload.fact_type == EXTERNAL_MESSAGE:
                 message = parse_external(payload)
-                if not message.incoming:
+                if message.sender == "bot" or message.user_input:
                     continue
                 shown_data = message.for_model()
             elif payload.fact_type == ROUTINE_DUE:
