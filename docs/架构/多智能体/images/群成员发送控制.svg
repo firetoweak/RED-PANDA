@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1064" viewBox="0 0 1280 1064" role="img" aria-labelledby="title desc">
+  <title id="title">群成员发言：接纳消息与继续叫人分开控制</title>
+  <desc id="desc">新发言先校验群成员、点名、引用与源头总量。引用命中该成员尚未回应的请求时，检查讨论回应条数，未达上限才消费该关系并接续原讨论；否则作为新讨论，仍沿用源头总量。群发言与讨论推进结果原子接纳，提交后分发。轮数到限仍保存本条发言，但不再追加回应请求。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8 Z" fill="#708399"/></marker>
+    <style>text{font-family:"Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif}</style>
+  </defs>
+  <rect width="1280" height="1064" fill="#fff"/>
+  <!-- Backgrounds, connections and nodes are separate for editable layering. -->
+  <path d="M368 194 H440" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M880 194 H944" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="912" y="180" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">不通过</text>
+  <path d="M660 248 V280 H640 V312" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="710" y="292" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">通过</text>
+  <path d="M408 366 H320 V492" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="364" y="352" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">是</text>
+  <path d="M872 366 H960 V492" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="916" y="352" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">否</text>
+  <path d="M320 616 V654 H528 V694" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="424" y="642" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">未达上限</text>
+  <path d="M960 616 V654 H752 V694" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="850" y="642" font-size="17" text-anchor="middle" font-weight="400" fill="#60758b">接纳</text>
+  <path d="M528 806 V850 H320 V898" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M752 806 V850 H960 V898" fill="none" stroke="#708399" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="40" y="54" font-size="30" text-anchor="start" font-weight="700" fill="#20354a">群成员发言：接纳消息与继续叫人分开控制</text>
+  <text x="40" y="88" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">以下描述新发言；同一次发送的重试沿原身份确认，不重复计数。</text>
+  <rect x="40" y="140" width="328" height="108" rx="16" fill="#f5f2fb" stroke="#b9aad4" stroke-width="1.5"/>
+  <text x="204.0" y="189.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,146,304,96">成员显式发送</text>
+  <text x="204.0" y="219.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,146,304,96">可主动发言，也可引用消息</text>
+  <rect x="440" y="140" width="440" height="108" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="660.0" y="189.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="452,146,416,96">发送校验与源头总量</text>
+  <text x="660.0" y="219.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="452,146,416,96">成员、点名、群内引用与源头额度</text>
+  <rect x="944" y="140" width="296" height="108" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="1092.0" y="189.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="956,146,272,96">拒绝这次新发言</text>
+  <text x="1092.0" y="219.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="956,146,272,96">返回原因，不写入群</text>
+  <rect x="408" y="312" width="464" height="108" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="640.0" y="361.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="420,318,440,96">是否命中自己的待回应请求？</text>
+  <text x="640.0" y="391.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="420,318,440,96">按成员与 reply_to 匹配</text>
+  <rect x="40" y="492" width="560" height="124" rx="16" fill="#f1f6fc" stroke="#9db8d8" stroke-width="1.5"/>
+  <text x="320.0" y="535.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,498,536,112">检查原讨论的回应条数</text>
+  <text x="320.0" y="565.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,498,536,112">未达上限：消费请求，接续原讨论</text>
+  <text x="320.0" y="593.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,498,536,112">达到上限：拒绝本次回应</text>
+  <rect x="680" y="492" width="560" height="124" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="960.0" y="535.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="692,498,536,112">另起讨论</text>
+  <text x="960.0" y="565.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="692,498,536,112">不引用、引用无关消息，或已回应过</text>
+  <text x="960.0" y="593.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="692,498,536,112">讨论轮次重建，源头总量沿用</text>
+  <rect x="292" y="694" width="696" height="112" rx="16" fill="#fff8e8" stroke="#c6aa6b" stroke-width="1.5"/>
+  <text x="640.0" y="731.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="304,700,672,100">原子接纳消息与讨论推进结果</text>
+  <text x="640.0" y="761.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="304,700,672,100">群消息、回应消费、讨论计数与待投递安排</text>
+  <text x="640.0" y="789.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="304,700,672,100">提交后再分发副本与回应请求</text>
+  <rect x="40" y="898" width="560" height="92" rx="16" fill="#eff8f3" stroke="#8cbca2" stroke-width="1.5"/>
+  <text x="320.0" y="939.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="52,904,536,80">仍可继续本次讨论</text>
+  <text x="320.0" y="969.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="52,904,536,80">点名叫对应成员，未点名叫其余成员</text>
+  <rect x="680" y="898" width="560" height="92" rx="16" fill="#f7f9fb" stroke="#c3ced9" stroke-width="1.5"/>
+  <text x="960.0" y="939.0" font-size="23" text-anchor="middle" font-weight="700" fill="#20354a" data-bound="692,904,536,80">已到轮数上限</text>
+  <text x="960.0" y="969.0" font-size="18" text-anchor="middle" font-weight="400" fill="#556779" data-bound="692,904,536,80">本条消息入群，但不再追加回应请求</text>
+  <text x="40" y="1035" font-size="18" text-anchor="start" font-weight="400" fill="#60758b">源头与讨论回应量超限会拒绝发送；轮数限制决定本条发言是否继续叫人。</text>
+</svg>
