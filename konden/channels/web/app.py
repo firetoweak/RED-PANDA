@@ -970,17 +970,19 @@ def create_web_app(
 
 
 class _FrontendFiles(StaticFiles):
-    """前端构建产物；未知页面路径交给前端路由，未知 API 路径保持 404。"""
+    """未版本化的前端文件每次验证；未知页面回入口，未知 API 保持 404。"""
 
     async def get_response(self, path: str, scope) -> Response:
         if Path(path).parts[:1] == ("api",):
             raise StarletteHTTPException(status_code=404)
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
-        return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _channel(request: Request) -> WebChannel:
