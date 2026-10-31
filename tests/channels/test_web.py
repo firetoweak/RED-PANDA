@@ -77,6 +77,33 @@ def test_static_resources_are_explicit(tmp_path):
                 assert missing_api.json() == {"detail": "Not Found"}
 
 
+def test_frontend_entry_revalidates_after_deployment(tmp_path):
+    """旧入口须验证再复用，部署更新后不能继续引用旧版前端资源。"""
+    assets = tmp_path / "dist"
+    (assets / "assets").mkdir(parents=True)
+    entry = assets / "index.html"
+    entry.write_text("frontend v1", encoding="utf-8")
+    app = create_web_app(channel=SimpleNamespace(), static_dir=assets)
+
+    with TestClient(app) as client:
+        paths = ("/", "/index.html", "/sessions/example")
+        cached = {path: client.get(path) for path in paths}
+        for path, response in cached.items():
+            assert response.status_code == 200
+            assert response.text == "frontend v1"
+            assert response.headers["cache-control"] == "no-cache"
+            unchanged = client.get(path, headers={"If-None-Match": response.headers["etag"]})
+            assert unchanged.status_code == 304
+            assert unchanged.headers["cache-control"] == "no-cache"
+
+        entry.write_text("frontend version 2", encoding="utf-8")
+        for path, response in cached.items():
+            updated = client.get(path, headers={"If-None-Match": response.headers["etag"]})
+            assert updated.status_code == 200
+            assert updated.text == "frontend version 2"
+            assert updated.headers["cache-control"] == "no-cache"
+
+
 def test_frontend_files_stay_inside_static_dir(tmp_path):
     assets = tmp_path / "dist"
     (assets / "assets").mkdir(parents=True)
